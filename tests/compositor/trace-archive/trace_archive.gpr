@@ -1,0 +1,10 @@
+project Trace_Archive is
+ for Source_Dirs use (".", "../../../userspace/lib/compositor", "../../../userspace/runtime/gnat");
+ for Source_Files use ("compositor_trace_archive.ads", "compositor_trace_archive.adb", "compositor_trace_framing.ads", "compositor_trace_framing.adb", "archive_check.adb", "framing_check.adb", "archive_reader.adb", "compositor_elapsed.ads", "compositor_frame_trace.ads", "compositor_frame_trace.adb", "compositor_input_trace.ads", "compositor_input_trace.adb", "compositor_source_trace.ads", "compositor_source_trace.adb", "compositor_render_trace.ads", "compositor_render_trace.adb", "compositor_trace_wire.ads", "compositor_trace_wire.adb", "compositor_trace_metrics.ads", "compositor_trace_metrics.adb", "compositor_trace_stream.ads", "compositor_trace_stream.adb", "cubit.ads", "cubit-metric_records.ads", "cubit-metric_records.adb", "cubit-metric_protocol.ads");
+ for Object_Dir use external ("TRACE_ARCHIVE_OUTPUT", "build") & "/obj";
+ for Exec_Dir use external ("TRACE_ARCHIVE_OUTPUT", "build");
+ for Main use ("archive_check.adb", "framing_check.adb", "archive_reader.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+ end Compiler;
+end Trace_Archive;

@@ -1,0 +1,996 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2019 Jon Andrew
+--
+-- CuBitOS Entry Point / Main routine
+-------------------------------------------------------------------------------
+pragma Warnings (Off);
+with CPU_Performance_Report;
+with System.Secondary_Stack;
+pragma Warnings (On);
+
+with Interfaces;
+with System.Storage_Elements; use System.Storage_Elements;
+
+with ACPI;
+with BootAllocator;
+with BuddyAllocator;
+with Boot_Reclaim;
+with Build;
+with Interrupt_Entry;
+with Config;
+with Cpuid;
+with Ioapic;
+with Interrupts;
+with Interrupt_Lines;
+with IPI;
+with TLB_Shootdown;
+with Lapic;
+with Mem_mgr;
+with MemoryAreas;
+with Firmware_Frames;
+with InterruptNumbers;
+with Modules;
+with PerCpuData;
+with Pic;
+with Process;
+with Scheduler;
+with Serial;
+with Multiboot; use Multiboot;
+with CPU_Topology.Boot;
+with System.Machine_Code;
+with Services.Idle;
+with StoragePools;
+with TextIO; use TextIO;
+with Time;
+with Timer_pit;
+with Timer_Expiry_Probe;
+with Video;
+with Video.EGA;
+with Boot_Diagnostics;
+with Boot_Timer_Setup;
+with Boot_Timeline;
+with TLB_Context;
+with Syscall_Census;
+with User_Wait;
+with Boot_Timeline_Layout;
+with Virtmem; use Virtmem;
+with x86;
+with CPUID;
+with CPU_Baseline;
+with Virtualization_Report;
+with VM_Objects;
+
+-- Not explicitly called, need to be with'd here for compilation
+with Last_Chance_Handler;
+pragma Unreferenced(Last_Chance_Handler);
+
+with Syscall;
+with Process.Map_Probe;
+with Kernel_Window;
+with Process_Pool;
+pragma Unreferenced(Syscall);
+
+-- Ada implementation: custom storage, address overlays or live context state.
+-- Only separately annotated SPARK policy/state routines carry proof obligations.
+package body kmain is
+
+-- For testing only. Can remove later.
+-- package U64List is new LinkedList(Unsigned_64, Textmode.printd);
+
+-- CPU-local data for our BSP
+cpu0Data        : PerCPUData.PerCPUData;
+
+apicBase        : virtmem.PhysAddress := 0;
+ioapicBase      : virtmem.PhysAddress := 0;
+ioapicVirtBase  : virtmem.VirtAddress := 0;
+
+NoACPIException      : exception;
+NoAPICException      : exception;
+
+-- Bootloader lengths must not size the entry stack. Keep the bounded decoded
+-- map in kernel-owned storage and pass only its published prefix downstream.
+bootMemoryAreas : Multiboot.Boot_Memory_Map;
+bootAllocationMap : Firmware_Frames.Region_Array (bootMemoryAreas'Range);
+
+-------------------------------------------------------------------------------
+-- kmain
+--
+-- Entry point for the kernel.
+-------------------------------------------------------------------------------
+procedure kmain (magic       : Unsigned_32;
+                 mbInfoPhysical : Unsigned_32)
+is
+    mbInfo   : MultibootInfo;
+    ssPtr    : System.Secondary_Stack.SS_Stack_Ptr;
+    memAreaCount : Natural := 0;
+    earlyText : Boolean := False;
+
+    --  Diagnostic-only VGA text output needs neither allocation nor a
+    --  framebuffer mapping: boot tables already map physical B8000.
+    procedure earlyCheckpoint (message : String) is
+    begin
+        if earlyText then
+            print ("EARLY: ");
+            println (message);
+        end if;
+    end earlyCheckpoint;
+
+    --  Serial keeps the milestone record; graphics updates a fixed slot.
+    --  CuBit's userspace is built for x86-64-v3 (the font engine's target):
+    --  a CPU without it would fault on an instruction mid-run. Refuse it
+    --  here, before any program starts, with one line naming what it lacks.
+    --  CPUID and XGETBV only (no MSR).
+    procedure requireBaseline is
+        eax, ebx, ecx, edx : Unsigned_32;
+        W : CPU_Baseline.Words;
+    begin
+        CPUID.cpuid (0, 0, eax, ebx, ecx, edx);
+        W.Leaf7_Present := eax >= 7;
+        CPUID.cpuid (1, 0, eax, ebx, ecx, edx);
+        W.Leaf1_ECX := ecx;
+        if W.Leaf7_Present then
+            CPUID.cpuid (7, 0, eax, ebx, ecx, edx);
+            W.Leaf7_EBX := ebx;
+        end if;
+        CPUID.cpuid (16#8000_0000#, 0, eax, ebx, ecx, edx);
+        W.Extended_Present := eax >= 16#8000_0001#;
+        if W.Extended_Present then
+            CPUID.cpuid (16#8000_0001#, 0, eax, ebx, ecx, edx);
+            W.Extended_ECX := ecx;
+        end if;
+        if (x86.getCR4 and x86.CR4_OSXSAVE) /= 0 then
+            W.XCR0 := x86.getXCR0;
+        end if;
+        if not CPU_Baseline.Meets (W) then
+            --  Before the secondary stack exists: no string building.
+            declare
+                Text : CPU_Baseline.Names_Text;
+                Length : Natural;
+            begin
+                CPU_Baseline.Describe (CPU_Baseline.Missing (W), Text, Length);
+                println;
+                print ("CuBit needs an x86-64-v3 CPU; this one lacks: ");
+                print (Text (1 .. Length));
+                println (". Halted.");
+            end;
+            loop
+                x86.cli;
+                x86.halt;
+            end loop;
+        end if;
+    end requireBaseline;
+
+    procedure showBootStage (message : String) is
+    begin
+        Boot_Diagnostics.Complete_Step (message);
+        println ("[ OK ] " & message, LT_GREEN, BLACK);
+    end showBootStage;
+
+    package BT renames Boot_Timeline_Layout;
+begin
+    --  The TSC at kernel entry: time since reset, so firmware and the boot
+    --  loader are the first span of the boot timeline (docs/boot-timeline.md).
+    Boot_Timeline.Initialize (x86.rdtsc);
+
+    if (config.serialMirror) then
+        Serial.init (serial.COM1);
+        TextIO.enableSerial;
+        print ("CuBit v0.0.1");
+    end if;
+    --  First, before anything relies on what such a CPU may lack.
+    requireBaseline;
+
+    Multiboot.Read_Information (magic, mbInfoPhysical, mbInfo);
+    earlyText := mbInfo.framebuffer_type = 2;
+    if earlyText then
+        TextIO.setVideo (Video.EGA.getTextInterface);
+        TextIO.clear (BLACK);
+        earlyCheckpoint ("Ada entered; boot information admitted");
+    end if;
+
+    earlyCheckpoint ("CPU features");
+    cpuid.setupCPUID;
+    CPU_Topology.Initialize (CPU_Topology.Boot.CPUs, cpuid.leaf1ebx.localAPICID);
+
+    -- Enable SMEP/SMAP if supported
+    enableSMEPSMAP : declare
+        use Interfaces;
+        cr4 : Unsigned_64 := x86.getCR4;
+    begin
+        if cpuid.leaf7ebx.hasSMEP then
+            cr4 := cr4 or x86.CR4_SMEP;
+            println ("SMEP enabled");
+        end if;
+        if cpuid.leaf7ebx.hasSMAP then
+            -- The interrupt entry stubs clear AC from here on, as SYSCALL
+            -- does (Interrupt_Entry); every CPU has the BSP's features.
+            Interrupt_Entry.Clears_Alignment_Check := True;
+            cr4 := cr4 or x86.CR4_SMAP;
+            println ("SMAP enabled");
+        end if;
+        x86.setCR4 (cr4);
+        if Build.Smap_Entry_Probe then
+            println ("SMAP probe: armed");
+        end if;
+    end enableSMEPSMAP;
+
+    earlyCheckpoint ("CPU-local state");
+    PerCPUData.setup (0,
+                      cpu0Data,
+                      cpu0Data'Address,
+                      cpu0Data.gdt'Address,
+                      cpu0Data.gdtPointer'Address,
+                      cpu0Data.tss'Address);
+
+    ssPtr := PerCPUData.getSecondaryStack;
+
+    earlyCheckpoint ("secondary stack");
+    System.Secondary_Stack.SS_Init (ssPtr);
+
+    earlyCheckpoint ("interrupt tables");
+    Interrupts.setup;
+    -- The futex pause's MSR (IPC-010), through the recovering MSR path,
+    -- which needs the #GP handler.
+    User_Wait.Setup_This_CPU (Boot_CPU => True);
+
+    earlyCheckpoint ("normalize boot memory map");
+    Multiboot.getMemoryAreas (mbInfo, bootMemoryAreas, memAreaCount);
+    MemoryAreas.Allocation_Map (bootMemoryAreas (1 .. memAreaCount),
+                                bootAllocationMap (1 .. memAreaCount));
+
+    earlyCheckpoint ("bootstrap allocator");
+    BootAllocator.setup (bootMemoryAreas (1 .. memAreaCount),
+                         bootAllocationMap (1 .. memAreaCount));
+
+    earlyCheckpoint ("kernel page tables");
+    Mem_mgr.setup (bootMemoryAreas (1 .. memAreaCount));
+    -- On the kernel's tables now (untagged): CPUs may tag address spaces.
+    TLB_Context.Setup_This_CPU (Boot_CPU => True);
+    earlyCheckpoint ("buddy allocator");
+    BuddyAllocator.setup (bootAllocationMap (1 .. memAreaCount));
+    -- The buddy allocator owns every frame now: nothing may use the boot
+    -- allocator again, and boot-only memory goes back (Boot_Reclaim).
+    earlyCheckpoint ("boot memory reclaim");
+    Boot_Reclaim.Retire_Boot_Allocator;
+    Boot_Reclaim.Release_Loader_Metadata;
+    earlyCheckpoint ("storage pools");
+    StoragePools.setup;
+    earlyCheckpoint ("kernel window");
+    Kernel_Window.Setup;
+    Process_Pool.Setup;
+    earlyCheckpoint ("process tables");
+    Process.setup;
+    if Build.Kernel_Map_Probe then
+        println ("KERN014 probe: armed");
+        Process.Map_Probe.Check_Free_Links;
+    end if;
+    earlyCheckpoint ("memory initialization complete");
+    Boot_Timeline.Mark_Stage (BT.Memory_Ready);
+
+    -- Use video driver chosen by GRUB
+    if earlyText then
+        println ("Using EGA driver");
+        TextIO.setVideo (Video.EGA.getTextInterface);
+        TextIO.clear (BLUE);
+    else
+        Boot_Diagnostics.Setup (Multiboot.Framebuffer);
+    end if;
+
+    if earlyText then TextIO.clear (BLACK); end if;
+    Boot_Timeline.Mark_Stage (BT.Framebuffer_Ready);
+
+    --  Graphical diagnostics use fixed rows, never terminal scrolling. The
+    --  complete byte stream still reaches the existing serial mirror.
+    println ("CuBitOS v0.0.1", LT_BLUE, BLACK);
+    println ("Booting...");
+    if not earlyText then
+        TextIO.disableVideo;
+    end if;
+
+    println ("Build Date:    " & Build.DATE);
+    println ("Git Commit:    " & Build.COMMIT);
+    println ("Source Hash:   " & Build.HASH);
+    println ("Compiled With: " & Standard'Compiler_Version);
+    println;
+
+    println ("-----------------------------------------------------");
+    println ("                  Virtual Memory                     ", LT_BLUE, BLACK);
+    println ("-----------------------------------------------------");
+    print ("Virtual Kernel Area:    ");
+    print (KERNEL_START_VIRT'Address);
+    print (" - "); println(KERNEL_END_VIRT'Address);
+
+    print ("Bootstrap Stack Area:   ");
+    print (STACK_BOTTOM);
+    print (" - "); println (STACK_TOP);
+
+    print ("DMA Area:               ");
+    print (DMA_REGION_START);
+    print (" - "); println (DMA_REGION_END);
+    println;
+
+    println ("-----------------------------------------------------");
+    println ("                    Processor                        ", LT_BLUE, BLACK);
+    println ("-----------------------------------------------------");
+    print ("Standard CPUID level: "); println (cpuid.getMaxStandardFunction);
+    print ("Extended CPUID level: "); println (cpuid.getMaxExtendedFunction);
+    print ("CPU Vendor: "); println (cpuid.cpuVendor, GREEN, BLACK);
+    print ("CPU Model:  "); println (cpuid.cpuBrand);
+    println;
+
+    println ("-----------------------------------------------------");
+    println ("                   Kernel Sections                   ", LT_BLUE, BLACK);
+    println ("-----------------------------------------------------");
+    print ("text:     "); print (stext'Address);
+        print("-"); println (etext'Address);
+    print("rodata:   "); print (srodata'Address);
+        print("-"); println (erodata'Address);
+    print("data:     "); print (sdata'Address);
+        print("-"); println (edata'Address);
+    print("bss:      "); print (sbss'Address);
+        print("-"); println (ebss'Address);
+
+    println;
+    println ("-----------------------------------------------------");
+    println ("                     Memory Areas                    ", LT_BLUE, BLACK);
+    println ("-----------------------------------------------------");
+    println ("      Start                 End            Type");
+    for area of bootMemoryAreas (1 .. memAreaCount) loop
+        print (area.startAddr); print (" - "); print (area.endAddr);
+        print ("   ");
+        case area.kind is
+            when MemoryAreas.USABLE =>
+                println ("Usable", LT_GREEN, BLACK);
+
+            when MemoryAreas.RESERVED =>
+                println ("Reserved", YELLOW, BLACK);
+
+            when MemoryAreas.ACPI =>
+                println ("ACPI", MAGENTA, BLACK);
+
+            when MemoryAreas.HIBERNATE =>
+                println ("Hibernate", BROWN, BLACK);
+
+            when MemoryAreas.BAD =>
+                println ("Bad", RED, BLACK);
+
+            when MemoryAreas.VIDEO =>
+                println ("Framebuffer", CYAN, BLACK);
+
+            when MemoryAreas.IO =>
+                null;       -- Not something Multiboot gives us
+
+            when MemoryAreas.BOOT_RESERVED =>
+                println ("Boot data (released after use)", YELLOW, BLACK);
+        end case;
+    end loop;
+    println;
+
+    println ("-----------------------------------------------------");
+    println ("                     Framebuffer                     ", LT_BLUE, BLACK);
+    println ("-----------------------------------------------------");
+    print ("Location: "); print (mbInfo.framebuffer_addr);
+    print (", size: ");   printd (mbInfo.framebuffer_width);
+    print ("x");          printd (mbInfo.framebuffer_height);
+    print (", ");         print (Integer(mbInfo.framebuffer_bpp));
+    println (" bpp");
+    print ("Type:        "); println (Integer(mbInfo.framebuffer_type));
+    print ("Pitch:       "); println (Integer(mbInfo.framebuffer_pitch));
+    print ("Red field:   "); println (Integer(mbInfo.framebuffer_red_field_position));
+    print ("Red size:    "); println (Integer(mbInfo.framebuffer_red_mask_size));
+    print ("Blue field:  "); println (Integer(mbInfo.framebuffer_blue_field_position));
+    print ("Blue size:   "); println (Integer(mbInfo.framebuffer_blue_mask_size));
+    print ("Green field: "); println (Integer(mbInfo.framebuffer_green_field_position));
+    print ("Green size:  "); println (Integer(mbInfo.framebuffer_green_mask_size));
+    println;
+
+    BuddyAllocator.print;
+
+    initACPI: declare
+    begin
+        Boot_Diagnostics.Begin_Step ("Reading ACPI tables");
+        println("Setting up ACPI", LT_BLUE, BLACK);
+        if not acpi.setup then
+            raise NoACPIException with "ACPI Setup Failed, MP tables for SMP data not implemented.";
+        end if;
+    end initACPI;
+    showBootStage ("ACPI tables loaded");
+    Boot_Timeline.Mark_Stage (BT.Firmware_Tables_Ready);
+    Boot_Diagnostics.Begin_Step ("Taking ownership of firmware timers");
+    Boot_Timer_Setup.Take_Over;
+    showBootStage ("Firmware timers quiesced");
+    Boot_Timeline.Mark_Stage (BT.Firmware_Timers_Owned);
+    Boot_Diagnostics.Begin_Step ("Configuring interrupt routing");
+
+
+    initPIC: declare
+    begin
+        -- PIC needs to be set up for proper interrupt re-mapping/masking
+        println("Setting up 8259 PIC", LT_BLUE, BLACK);
+        pic.setupPIC;
+        Interrupts.setInterruptController (Interrupts.LEGACY_PIC);
+        showBootStage ("Legacy PIC programmed");
+    end initPIC;
+
+
+    initReferenceClock: declare
+    begin
+        Boot_Diagnostics.Begin_Step ("Selecting boot clock reference");
+        if Time.Try_CPU_TSC then
+            println ("BOOT-CLOCK: CPUID.15 TSC; PIT interrupts not required");
+            showBootStage ("CPU-reported TSC frequency accepted; PIT bypassed");
+        else
+        -- Enable PIT for now just so we have a clock to calibrate the APIC with.
+        println("Setting up PIT and enabling timer interrupts", LT_BLUE, BLACK);
+        timer_pit.setupPIT;
+        timer_pit.enable;
+        showBootStage ("PIT programmed; IRQ0 unmasked");
+        Boot_Diagnostics.Begin_Step ("Waiting for PIT interrupts (bounded calibration)");
+        x86.sti;
+        -- Independent low-rate reference, before the hypervisor can clamp a
+        -- short LAPIC period. Never calibrate TSC against counted fast IRQs.
+        Time.calibrateTSC;
+        showBootStage ("PIT interrupts received; TSC calibrated");
+        end if;
+        -- No more dependency on PIT delivery, including LAPIC calibration.
+        x86.cli;
+        timer_pit.disable;
+    end initReferenceClock;
+    Boot_Timeline.Mark_Stage (BT.Clock_Calibrated);
+    -- PERF-013: how fast the boot CPU runs before any frequency policy.
+    CPU_Performance_Report.Report;
+    -- VMM-001 slice 0: what the CPU offers a hypervisor (enables nothing).
+    Virtualization_Report.Report;
+    VM_Objects.Setup_This_CPU;
+    Boot_Diagnostics.Begin_Step ("Calibrating LAPIC countdown against TSC");
+
+
+    initAPIC: declare
+    begin
+        if cpuid.leaf1ecx.hasX2APIC then
+            -- TODO: see if x2APIC is available, we'll use it if it is... eventually.
+            println("X2APIC Available");
+        end if;
+        -- TODO: make this the same if statement when x2APIC is done.
+
+        if cpuid.leaf1edx.hasAPIC then
+            println("Setting up Local APIC", LT_BLUE, BLACK);
+            apicBase := PhysAddress(x86.rdmsr(x86.MSRs.APIC_BASE) and x86.MSRs.APIC_BASE_MASK);
+            --print("APIC enabled? "); println(x86.rdmsr(x86.MSRs.APIC_BASE));
+            -- If ACPI didn't have a good address, we'll try the MSR APIC_BASE.
+            if acpi.lapicAddr /= 0 then
+                println(" Using APIC base address from ACPI tables. ");
+
+                if acpi.lapicAddr /= apicBase then
+                    println("WARNING: ACPI table APIC address doesn't match APIC_BASE MSR.");
+                end if;
+
+                apicBase := acpi.lapicAddr;
+            else
+                print(" APIC address not found in ACPI, using APIC_BASE MSR: ");
+            end if;
+
+            setupLAPIC : declare
+                package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
+            begin
+                myLapic.setupLAPIC_BSP;
+                -- Store calibrated timer interval for APs to use
+                Interrupts.setLAPICTimerInterval (myLapic.getTimerInterval);
+            end setupLAPIC;
+
+            Interrupts.setInterruptController (Interrupts.APIC);
+            Interrupts.setLAPICBaseAddress (apicBase);
+            IPI.init (To_Address (virtmem.P2V (apicBase)));
+            pic.disable;
+            -- IF is still clear, the PIT is masked, and APs have not started.
+            -- Anchor elapsed time before enabling the faster LAPIC tick.
+            Time.enableSchedulingClock;
+            Boot_Timeline.Set_Frequency (Interfaces.Unsigned_64 (Time.tscFrequencyHz));
+            Boot_Timeline.Mark_Stage (BT.Scheduling_Clock_Started);
+        else
+            -- @TODO not a big deal to fall-back to the PIC, but we need to
+            -- handle it.
+            raise NoAPICException with "APIC not available.";
+        end if;
+    end initAPIC;
+
+    initTimerCalibration: declare
+    begin
+        x86.sti;
+        -- TSC rate came from CPUID or the bounded PIT fallback.
+        print (" TSC timer calibration: ");
+        printd (time.tscPerDuration);
+        println (" ticks/us");
+
+        if not cpuid.hasInvariantTSC then
+            println (" CAUTION: Time-Stamp Counter is not invariant and may vary with CPU speed.",
+                YELLOW, BLACK);
+        else
+            println (" TSC is invariant.");
+        end if;
+
+        -- experiment
+        x86.cli;
+    end initTimerCalibration;
+
+    if Build.Test_Deadline_Timer then
+        Timer_Expiry_Probe.Run;
+    end if;
+
+    initIOAPIC: declare
+    begin
+        ioapicBase := acpi.ioapicAddr;
+
+        -- TODO: break this out into a subprogram and put it in ioapic.
+        if ioapicBase = 0 then
+            println (" WARNING: No I/O APIC found in the ACPI tables. ");
+            println (" Defaulting to legacy PIC controller.");
+            -- Enable keyboard IRQ on legacy PIC (IRQ 1 = vector 33)
+            pic.enableIRQ (InterruptNumbers.PS2KEYBOARD);
+        else
+            -- disable caching on the mmap-ed I/O APIC registers,
+            -- re-map it into the higher-half.
+            ioapicVirtBase := Virtmem.P2V(ioapicBase);
+
+            print ("Setting up I/O APIC at address: ", LT_BLUE, BLACK);
+            println (ioapicVirtBase);
+
+            setupIOAPIC: declare
+                package io_apic is new ioapic(To_Address(ioapicVirtBase));
+                function mapIOFrame is new Mem_mgr.mapIOFrame(BuddyAllocator.allocFrame);
+                IORemapException : exception;
+            begin
+                if not mapIOFrame (ioapicBase) then
+                    raise IORemapException with "Unable to remap I/O APIC registers.";
+                else
+                    io_apic.setupIOAPIC (acpi.ioapicID);
+
+                    -- Enable Keyboard Interrupts
+                    println ("Enabling keyboard");
+                    io_apic.enableIRQ (33, 0);
+
+                    -- Enable PS/2 Mouse Interrupts (IRQ 12 = vector 44)
+                    println ("Enabling PS/2 mouse");
+                    io_apic.enableIRQ (InterruptNumbers.PS2MOUSE, 0);
+
+                    -- Enable IDE1 Interrupts (for userspace ATA driver)
+                    println ("Enabling IDE1");
+                    io_apic.enableIRQ (InterruptNumbers.IDE1, 0);
+
+                    -- The legacy lines' controller (Interrupt_Lines).
+                    Interrupt_Lines.Set_IO_APIC (
+                        To_Address (ioapicVirtBase), acpi.ioapicGSIBase);
+                end if;
+            end setupIOAPIC;
+        end if;
+    end initIOAPIC;
+    showBootStage ("Interrupt routing ready");
+    Boot_Timeline.Mark_Stage (BT.Interrupt_Routing_Ready);
+    Boot_Diagnostics.Begin_Step ("Loading the live system image");
+
+
+    initModules: declare
+    begin
+        println;
+        println ("-----------------------------------------------------");
+        println ("                   CuBit Modules                     ", LT_BLUE, BLACK);
+        println ("-----------------------------------------------------");
+
+        Modules.setup;
+    end initModules;
+    showBootStage ("Live system image loaded");
+    Boot_Diagnostics.Begin_Step ("Starting secondary CPUs");
+
+    TLB_Shootdown.Register_CPU (0);
+    if acpi.numCPUs > 1 then
+        initSMP: declare
+            package myLapic is new lapic(To_Address(virtmem.P2V(apicBase)));
+            maxAPs : constant Natural :=
+                Natural'Min(acpi.numCPUs - 1, Config.MAX_SMP_CPUS - 1);
+        begin
+            println("Starting SMP CPUs", LT_BLUE, BLACK);
+
+            for cpu in 1 .. maxAPs loop
+                declare
+                    Destination : constant Unsigned_8 := CPU_Topology.Destination
+                      (CPU_Topology.Boot.CPUs, cpu);
+                    Started_At : constant Unsigned_64 := x86.rdtsc;
+                begin
+                    println ("SMP start logical=" & Natural'Image (cpu) &
+                      " apic=" & Unsigned_8'Image (Destination));
+                    AP_Startup_Stage := 0;
+                    startingCPU := Unsigned_32(cpu);
+                    myLapic.bootAP(Destination, 16#7000#);
+                    for Poll in 1 .. 100_000_000 loop
+                        exit when startingCPU = 0;
+                        exit when x86.rdtsc - Started_At > Time.tscFrequencyHz * 2;
+                        System.Machine_Code.Asm ("pause", Volatile => True);
+                    end loop;
+                    if startingCPU /= 0 then
+                        println ("SMP FAILED cpu=" & Natural'Image (cpu) &
+                          " apic=" & Unsigned_8'Image (Destination) &
+                          " stage=" & Unsigned_32'Image (AP_Startup_Stage));
+                        raise Program_Error with "Secondary CPU startup timed out";
+                    end if;
+                    println ("SMP ready logical=" & Natural'Image (cpu) &
+                      " apic=" & Unsigned_8'Image (Destination));
+                end;
+            end loop;
+        end initSMP;
+    end if;
+    showBootStage ("CPU initialization complete");
+    Boot_Timeline.Mark_Stage (BT.Secondary_CPUs_Ready);
+
+    println ("Starting idle service");
+    Process.startKernelThread (procStart => Services.Idle.start'Address,
+                               name      => "Idle            ",
+                               pid       => Config.SERVICE_IDLE_PID,
+                               priority  => -1,
+                               homeCPU   => 0);
+
+    -- println (testKThread1'Address);
+    -- Process.startKernelThread (testKThread1'Address, "kthread1        ", 1);
+    -- print ("Creating kernel thread 2, procedure address: ");
+    -- println (testKThread2'Address);
+    -- Process.startKernelThread (testKThread2'Address, "kthread2        ", 2);
+
+    -- println ("Creating User Process");
+    -- Process.createFirstProcess;
+
+    initScheduler: declare
+    begin
+        Process.startReaper;
+        if Build.Syscall_Census then
+            Syscall_Census.Start;
+        end if;
+        showBootStage ("Starting userspace...");
+        Boot_Diagnostics.Begin_Step ("Starting services / NUC trace 12");
+        println("Starting scheduler on CPU 0");
+        Boot_Timeline.Mark_Stage (BT.Scheduler_Started);
+        Scheduler.schedule(cpu0Data);
+    end initScheduler;
+
+end kmain;
+
+
+-------------------------------------------------------------------------------
+-- apEnter
+-- This function is called once per AP CPU startup. It creates the per-CPU data
+-- and starts the scheduler.
+--
+-- Note that we place the per-CPU data on the CPU's stack and then give its
+-- address to the KERNELGS_BASE MSR for later Per-CPU access (in
+-- setupPerCPUData). Since this procedure never exits, the stack is a safe
+-- place to keep it.
+-------------------------------------------------------------------------------
+procedure apEnter (cpuNum : in Unsigned_32) is
+    cpuData         : aliased PerCpuData.PerCPUData;
+    ssPtr           : System.Secondary_Stack.SS_Stack_Ptr;
+    DummyException  : exception;
+    idlePID         : constant Process.ProcessID :=
+        Process.ProcessID(Config.IDLE_PID_BASE + Natural(cpuNum));
+begin
+    PerCPUData.setup (Integer(cpuNum),
+                      cpuData,
+                      cpuData'Address,
+                      cpuData.gdt'Address,
+                      cpuData.gdtPointer'Address,
+                      cpuData.tss'Address);
+    AP_Startup_Stage := 2;
+
+    -- set up secondary stack for this CPU
+    ssPtr := PerCPUData.getSecondaryStack;
+    System.Secondary_Stack.SS_Init (ssPtr);
+
+    Interrupts.loadIDT;
+    User_Wait.Setup_This_CPU (Boot_CPU => False);
+
+    -- switch to the kernel's primary page tables.
+    Mem_mgr.switchAddressSpace;
+    TLB_Context.Setup_This_CPU (Boot_CPU => False);
+    AP_Startup_Stage := 3;
+
+    -- Diagnostic rendering needs both CPU-local lock bookkeeping and the
+    -- kernel framebuffer mapping, not the AP's bootstrap page tables.
+    print ("CPU started: ", GREEN, BLACK); printdln (cpuNum);
+
+    -- Enable SMEP/SMAP on this AP
+    enableAPSMEPSMAP : declare
+        use Interfaces;
+        cr4 : Unsigned_64 := x86.getCR4;
+    begin
+        if cpuid.leaf7ebx.hasSMEP then
+            cr4 := cr4 or x86.CR4_SMEP;
+        end if;
+        if cpuid.leaf7ebx.hasSMAP then
+            cr4 := cr4 or x86.CR4_SMAP;
+        end if;
+        x86.setCR4 (cr4);
+    end enableAPSMEPSMAP;
+
+    -- VMM-001: SVM on this AP too, when the boot CPU found it usable.
+    VM_Objects.Setup_This_CPU;
+
+    -- Set up LAPIC timer on this AP using BSP's calibrated interval
+    setupAPLapic : declare
+        package myLapic is new lapic(Interrupts.lapicAddr);
+    begin
+        myLapic.setTimerInterval (Interrupts.getLAPICTimerInterval);
+        myLapic.setupLAPIC_AP;
+    end setupAPLapic;
+
+    if Build.Test_Deadline_Timer then
+        Timer_Expiry_Probe.Run;
+    end if;
+
+    -- Create idle process for this CPU
+    AP_Startup_Stage := 4;
+    Process.startKernelThread (
+        procStart => Services.Idle.start'Address,
+        name      => "Idle            ",
+        pid       => idlePID,
+        priority  => -1,
+        homeCPU   => Natural(cpuNum));
+
+    TLB_Shootdown.Register_CPU (Natural (cpuNum));
+
+    -- Signal BSP that we're up
+    AP_Startup_Stage := 5;
+    startingCPU := 0;
+
+    -- Enable interrupts before entering scheduler (needed for timer)
+    x86.sti;
+
+    Scheduler.schedule (cpuData);
+    x86.halt;
+
+    -- will never get here
+    raise DummyException;
+end apEnter;
+
+    --package Tests is
+    --
+    --
+    -- procedure task1
+    --
+    -- is
+    --     ignore : Unsigned_64;
+    -- begin
+    --     while True loop
+    --         time.sleep(1 * time.Seconds);
+    --         println("Task 1 in USERMODE");
+    --         println("This next instruction should cause an exception:");
+    --         time.sleep(5 * time.Seconds);
+    --         ignore := x86.rdmsr(x86.MSRs.MISC_ENABLE);
+    --     end loop;
+    -- end task1;
+
+    -- procedure task2
+    --
+    -- is
+    -- begin
+    --     while True loop
+    --         time.sleep(1 * time.Seconds);
+    --         println("Task 2");
+    --     end loop;
+    -- end task2;
+
+    -- procedure task3
+    --
+    -- is
+    -- begin
+    --     while True loop
+    --         time.sleep(1 * time.Seconds);
+    --         println("Task 3");
+    --     end loop;
+    -- end task3;
+
+    -- println("Test sleep for 5 seconds using APIC timer");
+    -- for i in 1..5 loop
+    --     time.bootCalibrationSleep(1000);
+    --     print(".");
+    -- end loop;
+    -- println;
+    -- println("Test sleep for 60 seconds using TSC timer");
+    -- for i in 1..60 loop
+    --     for j in 1..1_000 loop
+    --         time.sleep(1 * time.Milliseconds);
+    --     end loop;
+    --     print(i);
+    -- end loop;
+    -- println;
+
+    --println("Test Allocations");
+    --testMemory;
+
+    -- makeTestProcesses : declare
+    --     taskone : Process.ProcessID;
+    --     tasktwo : Process.ProcessID;
+    --     taskthree : Process.ProcessID;
+    -- begin
+    --     println("Creating test tasks:");
+    --     Process.create(procMain => task1'Address,
+    --                 ppid => 0,
+    --                 lightweight => True,
+    --                 name => "Task 1          ",
+    --                 secTag => 0,
+    --                 privilege => Process.KERNEL,
+    --                 priority => 3,
+    --                 pid => taskone);
+    --     print("Task 1 PID: "); println(taskone);
+
+    --     Process.create(procMain => task2'Address,
+    --                 ppid => 0,
+    --                 lightweight => True,
+    --                 name => "Task 2          ",
+    --                 secTag => 0,
+    --                 privilege => Process.KERNEL,
+    --                 priority => 4,
+    --                 pid => tasktwo);
+    --     print("Task 2 PID: "); println(tasktwo);
+
+    --     Process.create(procMain => task3'Address,
+    --                 ppid => 0,
+    --                 lightweight => True,
+    --                 name => "Task 3          ",
+    --                 secTag => 0,
+    --                 privilege => Process.KERNEL,
+    --                 priority => 4,
+    --                 pid => taskthree);
+    --     print("Task 3 PID: "); println(taskthree);
+    -- end makeTestProcesses;
+
+    -- testBootAllocator : declare
+    --     allocAddr : Virtmem.PhysAddress;
+    -- begin
+    --     println("Test boot allocator allocation: ");
+    --     print("Free frames: "); printdln(BootAllocator.getFreeFrameCount);
+    --     print("Allocate 40 frames: ");
+    --     BootAllocator.allocFrames(40, allocAddr);
+    --     println(allocAddr);
+    --     print("Free frames: "); printdln(BootAllocator.getFreeFrameCount);
+    --     print("Allocate 128k frames: ");
+    --     BootAllocator.allocFrames(128_000, allocAddr);
+    --     println(allocAddr);
+    --     print("Free frames: "); printdln(BootAllocator.getFreeFrameCount);
+    -- end testBootAllocator;
+
+    -- testSlab: declare
+    --     type myObject is record
+    --         a : Unsigned_64;
+    --         b : Unsigned_64;
+    --         c : Unsigned_64;
+    --         d : Unsigned_64;
+    --     end record;
+
+    --     objSlab : SlabAllocator.Slab;
+
+    --     type myObjPtr is access myObject;
+    --     for myObjPtr'Simple_Storage_Pool use objSlab;
+
+    --     objs : array (Natural range 1..64) of myObjPtr;
+    --     package getAddr is new System.Address_To_Access_Conversions(myObject);
+
+    --     procedure free is new Ada.Unchecked_Deallocation(myObject, myObjPtr);
+    --     obj : myObjPtr;
+    -- begin
+    --     println("Setting up Slab Allocator");
+    --     SlabAllocator.setup(objSlab, myObject'Size, alignment => 64);
+    --     print("Block address: "); println(objSlab.blockAddr);
+    --     print("Capacity: "); println(objSlab.capacity);
+    --     print("Free objects: "); println(objSlab.numFree);
+
+    --     println("Allocating an object.");
+    --     obj := new myObject;
+    --     print("Got object with address: "); println(getAddr.To_Address(getAddr.Object_Pointer(obj)));
+    --     print("Free objects: "); println(objSlab.numFree);
+    --     println("Freeing object.");
+    --     free(obj);
+    --     print("Free objects: "); println(objSlab.numFree);
+
+    --     println("Allocating a bunch of objects");
+    --     for o of objs loop
+    --         o := new myObject;
+    --     end loop;
+    --     print("Free objects: "); println(objSlab.numFree);
+
+    --     for o of objs loop
+    --         print("Object with address: "); println(getAddr.To_Address(getAddr.Object_Pointer(o)));
+    --     end loop;
+
+    --     println("Freeing a bunch of objects");
+    --     for o of objs loop
+    --         free(o);
+    --     end loop;
+    --     print("Free objects: "); println(objSlab.numFree);
+
+    --     println("Allocating a bunch of objects");
+    --     for o of objs loop
+    --         o := new myObject;
+    --     end loop;
+    --     print("Free objects: "); println(objSlab.numFree);
+
+    --     for o of objs loop
+    --         print("Object with address: "); println(getAddr.To_Address(getAddr.Object_Pointer(o)));
+    --     end loop;
+
+    --     println("Freeing a bunch of objects");
+    --     for o of objs loop
+    --         free(o);
+    --     end loop;
+    --     print("Free objects: "); println(objSlab.numFree);
+
+    --     println("Tearing down Slab Allocator");
+    --     SlabAllocator.teardown(objSlab);
+    --     println("Done.");
+    -- end testSlab;
+
+    -- testLinkedLists: declare
+
+    --     dummy: Unsigned_64;
+    --     u64s : U64List.List;
+    -- begin
+    --     U64List.setup(U64s, 100);
+
+    --     print("List: "); U64List.print(u64s);
+    --     print("Length: "); println(u64s.length);
+    --     print("Capacity: "); println(u64s.capacity);
+
+    --     println("Inserting 0 in new linked list");
+    --     U64List.insertFront(u64s, 0);
+    --     print("List: "); U64List.print(u64s);
+
+    --     println("Removing 0");
+    --     U64List.popFront(u64s);
+    --     print("List: "); U64List.print(u64s);
+
+    --     println("Inserting 1 in linked list");
+    --     U64List.insertBack(u64s, 1);
+    --     print("List: "); U64List.print(u64s);
+
+    --     println("Removing 1");
+    --     U64List.popFront(u64s);
+    --     print("List: "); U64List.print(u64s);
+
+    --     println("Inserting 15 U64s in new linked list");
+
+    --     for i in 1..15 loop
+    --         U64List.insertBack(u64s, Unsigned_64(i));
+    --     end loop;
+
+    --     print("List:"); U64List.print(u64s);
+    --     print("Front: "); printdln(U64List.front(u64s));
+    --     print("Back: "); printdln(U64List.back(u64s));
+
+    --     print("Adding 36 to the front of the list");
+    --     U64List.insertFront(u64s, Unsigned_64(36));
+    --     print("List: "); U64List.print(u64s);
+    --     print("Front: "); printdln(U64List.front(u64s));
+    --     print("Back: "); printdln(U64List.back(u64s));
+    --     print("Length: "); println(u64s.length);
+
+    --     print("Removing from front of list");
+    --     U64List.popFront(u64s);
+    --     print("List: "); U64List.print(u64s);
+    --     print("Front: "); printdln(U64List.front(u64s));
+    --     print("Back: "); printdln(U64List.back(u64s));
+    --     print("Length: "); println(u64s.length);
+
+    --     print("Removing from back of list twice");
+    --     U64List.popBack(u64s);
+    --     U64List.popBack(u64s);
+    --     print("List: "); U64List.print(u64s);
+    --     print("Front: "); printdln(U64List.front(u64s));
+    --     print("Back: "); printdln(U64List.back(u64s));
+    --     print("Length: "); println(u64s.length);
+
+    --     print("Clearing list");
+    --     U64List.clear(u64s);
+    --     print("List: "); U64List.print(u64s);
+    --     print("Length: "); println(u64s.length);
+    -- end testLinkedLists;
+
+    --end Tests;
+
+end kmain; -- end package

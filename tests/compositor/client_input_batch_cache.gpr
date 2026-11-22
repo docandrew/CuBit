@@ -1,0 +1,8 @@
+project Client_Input_Batch_Cache extends "input_protocol.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/ui", "build/input-batch-wire/source");
+   for Source_Files use Input_Protocol'Source_Files &
+     ("client_input_batch_cache.ads", "client_input_batch_cache.adb", "client_input_batch_cache_tests.adb");
+   for Object_Dir use "build/client-input-batch-cache/obj";
+   for Exec_Dir use "build/client-input-batch-cache";
+   for Main use ("client_input_batch_cache_tests.adb");
+end Client_Input_Batch_Cache;

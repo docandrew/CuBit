@@ -1,0 +1,3946 @@
+------------------------------------------------------------------------------
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--
+--  @summary
+--  Interactive Shell Application
+--
+--  Framebuffer console with keyboard input, line editing, and command
+--  dispatch. Communicates with procmgr.svc for process spawning.
+--
+--  Capability slots:
+--    4  = CAP_DEVICE_MEM (framebuffer access)
+--    12 = CAP_ENDPOINT to procmgr
+--    22 = CAP_ENDPOINT to display.svc
+------------------------------------------------------------------------------
+with CuBit.Child_Exits;
+with CuBit.Console_Route;
+with CuBit.Waits;
+with CuBit.Monotonic;
+with Interfaces; use Interfaces;
+with System; use System;
+with System.Storage_Elements; use System.Storage_Elements;
+
+with CuBit.Settings.Inspection;
+with CuBit.Filesystems;
+with CuBit.Directory_Pages;
+with CuBit.Messages; use CuBit.Messages;
+with CuBit.System_Facts;
+with CuBit.Process_IDs.Text;
+with CuBit.Process_IDs;
+with CuBit.Process_List;
+with CuBit.Display_Protocol;
+with CuBit.Desktop_Messages;
+with CuBit.Grant_References;
+with CuBit.Launch_Arguments;
+with CuBit.Launch_Failure_Text;
+with CuBit.Launch_Grants;
+with CuBit.Net_Link;
+with CuBit.Net_Management;
+with CuBit.Memory_Grants;
+with CuBit.Logging;
+with CuBit.Log_Protocol;
+with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
+with CuBit.Streams;
+with CuBit.Protocols;
+with Font8x16;
+with CuBit.Handles.Control;
+with CuBit.Handles.Devices;
+with CuBit.Handles.Startup;
+with CuBit.Handles.Services;
+with CuBit.Startup_Tables;
+with Startup;
+with CuBit.Process_Observer_Lists;
+with CuBit.Monotonic;
+
+procedure main is
+   --  The shell holds no process authority over what procmgr starts for it
+   --  (the kernel refused its kill before CAP-002 too): kill reports it.
+   function noKill return Unsigned_64 is (Unsigned_64'Last);
+   function Image (Process : Process_ID) return String
+     renames CuBit.Process_IDs.Text.Image;
+   package DSP renames CuBit.Display_Protocol;
+   package MG renames CuBit.Memory_Grants;
+   use ASCII;
+
+   --  The approved network scope, or the null handle (calls through it fail).
+   --  procmgr, for the shell's own raw launch and process requests.
+   Process_Manager_Endpoint : constant CuBit.Handles.Endpoint :=
+     CuBit.Handles.Services.Process_Manager.Handle (Startup.Process_Manager);
+   --  The Launch badge into the user session: spawn and bg (CAP-012).
+   Launch_Endpoint : constant CuBit.Handles.Endpoint :=
+     CuBit.Handles.Services.Process_Manager.Handle (Startup.Launch);
+   Network_Service : constant CuBit.Handles.Endpoint :=
+     (if Startup.Network.Present then Startup.Network.Value
+      else CuBit.Handles.No_Endpoint);
+
+   --  IPC label constants
+   OP_OPEN    : constant Unsigned_32 := 16#0001#;
+   OP_CLOSE   : constant Unsigned_32 := 16#0002#;
+   OP_READ    : constant Unsigned_32 := 16#0003#;
+   OP_WRITE   : constant Unsigned_32 := 16#0004#;
+
+   --  Open flags
+   O_WRONLY   : constant Unsigned_64 := 1;
+   O_CREAT    : constant Unsigned_64 := 64;
+   O_TRUNC    : constant Unsigned_64 := 512;
+   --  Launched programs' scheduling priority.
+   Launch_Priority : constant Unsigned_32 := 5;
+   REPLY_OK   : constant Unsigned_32 := 16#F000#;
+   REPLY_ERR  : constant Unsigned_32 := 16#F001#;
+
+   --  Network IPC labels
+   OP_NET_RESOLVE    : constant Unsigned_32 := 16#0410#;
+
+   --  GPU mode renders into owned RAM granted read-only to display.svc.
+   --  Linear framebuffer mode still draws directly into the device mapping.
+   OP_DISPLAY_ATTACH_BUFFER : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Attach_Buffer);
+   OP_DISPLAY_PRESENT_RECT  : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Present_Rectangle);
+   OP_DISPLAY_GET_STATUS    : constant Unsigned_32 := DSP.Operation'Enum_Rep (DSP.Get_Status);
+
+   DISPLAY_OK                 : constant Unsigned_64 := 0;
+   DISPLAY_BACKEND_VIRTIO_GPU : constant Unsigned_64 := 3;
+
+
+   --  Framebuffer state
+   fbWidth  : Natural := 0;
+   fbHeight : Natural := 0;
+   fbPitch  : Natural := 0;
+   fbAddr   : System.Address := System.Null_Address;
+
+   --  Optional display.svc present bridge.  This is active only when the
+   --  display service reports a GPU backend; the linear framebuffer path keeps
+   --  drawing directly to visible memory as before.
+   displayAttached : Boolean := False;
+   displayGrant : MG.Grant_Reference;
+   displayGranted : Boolean := False;
+   displayPixels : System.Address := System.Null_Address;
+   fullPresentNeeded : Boolean := False;
+
+   --  Console grid dimensions
+   cols : Natural := 0;
+   rows : Natural := 0;
+
+   --  Colors (BGRA format)
+   FG_COLOR : constant Unsigned_32 := 16#00FF_FF00#;  -- green
+   BG_COLOR : constant Unsigned_32 := 16#0000_0000#;  -- black
+
+   --  Console state
+   MAX_COLS : constant := 256;
+   MAX_ROWS : constant := 64;
+
+   type ScreenRow is array (0 .. MAX_COLS - 1) of Unsigned_8;
+   type ScreenBuf is array (0 .. MAX_ROWS - 1) of ScreenRow;
+   type DirtyFlags is array (0 .. MAX_ROWS - 1) of Boolean;
+
+   screen    : ScreenBuf;
+   dirty     : DirtyFlags;
+   cursorRow : Natural := 0;
+   cursorCol : Natural := 0;
+
+   --  Line editing buffer
+   LINE_MAX : constant := 256;
+   lineBuf  : String (1 .. LINE_MAX);
+   lineLen  : Natural := 0;
+
+   --  Keyboard state
+   shiftDown : Boolean := False;
+   ctrlDown  : Boolean := False;
+
+   --  Foreground child process tracking
+   foregroundPID : Process_ID := No_Process;
+   EVENT_CAP_FAULT  : constant Unsigned_32 := 16#0104#;
+
+   --  The foreground child's first output port (ring 1), subscribed
+   --  when it starts. CuBit has no stdout; a program declares its ports.
+   FIRST_PORT_RING : constant := 1;
+   childStream : CuBit.Streams.SubInfo;
+   streamSubPending : Boolean := False;  -- async subscribe in flight
+   streamDrainPolls : Natural := 0;      -- polls since child exit
+
+   --  The idle check (headless startup-health): the system calls this
+   --  thread makes in its first second at the prompt, printed once unless a
+   --  key comes first. The idle loop waits for activity; it used to poll
+   --  for events and sleep 1 ms, about 2,000 system calls a second.
+   Idle_Check_Ms : constant := 1_000;
+   idleCheckDue  : Unsigned_64 := 0;     --  0: reported, cancelled or not started
+   idleCheckFrom : Unsigned_64 := 0;
+   --  The last activity wait answered Work and no event was there.
+   wokeForNothing : Boolean := False;
+
+   function threadCalls return Unsigned_64 is
+     (CuBit.System_Facts.Thread_System_Calls);
+   STREAM_SUB_TOKEN  : constant Unsigned_64 := 42;
+   STREAM_LIST_TOKEN : constant Unsigned_64 := 43;
+
+   --  Buffer for reading child stream data (global to avoid stack growth)
+   streamRdBuf : array (0 .. 511) of Unsigned_8;
+
+   --  procmgr communication
+   procmgrPID : Process_ID := No_Process;
+   grantBuf   : System.Address := System.Null_Address;
+   spawnGrant : CuBit.Memory_Grants.Grant_Reference;
+   GRANT_BUF_PAGES : constant := 1;
+
+   --  Filesystem communication
+   fsBuf       : System.Address := System.Null_Address;
+   fsGrant     : CuBit.Memory_Grants.Grant_Reference;
+   fsReady     : Boolean := False;
+   FS_BUF_PAGES : constant := 4;  -- 16KB
+
+   --  Netstack communication
+   netstackReady : Boolean := False;
+
+   --  Working directory state
+   CWD_MAX : constant := 128;
+   cwdBuf  : String (1 .. CWD_MAX);
+   cwdLen  : Natural := 0;   -- 0 = ramdisk root (legacy)
+
+   ---------------------------------------------------------------------------
+   --  PS/2 Set 1 scancode to ASCII translation
+   --  bit 7 clear = make (press), bit 7 set = break (release)
+   ---------------------------------------------------------------------------
+   type ScanTable is array (0 .. 127) of Unsigned_8;
+
+   scancodeNormal : constant ScanTable := (
+      16#00# => 0,
+      16#01# => 27,    -- Escape
+      16#02# => Character'Pos ('1'),
+      16#03# => Character'Pos ('2'),
+      16#04# => Character'Pos ('3'),
+      16#05# => Character'Pos ('4'),
+      16#06# => Character'Pos ('5'),
+      16#07# => Character'Pos ('6'),
+      16#08# => Character'Pos ('7'),
+      16#09# => Character'Pos ('8'),
+      16#0A# => Character'Pos ('9'),
+      16#0B# => Character'Pos ('0'),
+      16#0C# => Character'Pos ('-'),
+      16#0D# => Character'Pos ('='),
+      16#0E# => 8,     -- Backspace
+      16#0F# => 9,     -- Tab
+      16#10# => Character'Pos ('q'),
+      16#11# => Character'Pos ('w'),
+      16#12# => Character'Pos ('e'),
+      16#13# => Character'Pos ('r'),
+      16#14# => Character'Pos ('t'),
+      16#15# => Character'Pos ('y'),
+      16#16# => Character'Pos ('u'),
+      16#17# => Character'Pos ('i'),
+      16#18# => Character'Pos ('o'),
+      16#19# => Character'Pos ('p'),
+      16#1A# => Character'Pos ('['),
+      16#1B# => Character'Pos (']'),
+      16#1C# => 10,    -- Enter
+      16#1D# => 0,     -- Left Ctrl
+      16#1E# => Character'Pos ('a'),
+      16#1F# => Character'Pos ('s'),
+      16#20# => Character'Pos ('d'),
+      16#21# => Character'Pos ('f'),
+      16#22# => Character'Pos ('g'),
+      16#23# => Character'Pos ('h'),
+      16#24# => Character'Pos ('j'),
+      16#25# => Character'Pos ('k'),
+      16#26# => Character'Pos ('l'),
+      16#27# => Character'Pos (';'),
+      16#28# => Character'Pos ('''),
+      16#29# => Character'Pos ('`'),
+      16#2A# => 0,     -- Left Shift (handled separately)
+      16#2B# => Character'Pos ('\'),
+      16#2C# => Character'Pos ('z'),
+      16#2D# => Character'Pos ('x'),
+      16#2E# => Character'Pos ('c'),
+      16#2F# => Character'Pos ('v'),
+      16#30# => Character'Pos ('b'),
+      16#31# => Character'Pos ('n'),
+      16#32# => Character'Pos ('m'),
+      16#33# => Character'Pos (','),
+      16#34# => Character'Pos ('.'),
+      16#35# => Character'Pos ('/'),
+      16#36# => 0,     -- Right Shift (handled separately)
+      16#37# => Character'Pos ('*'),
+      16#38# => 0,     -- Left Alt
+      16#39# => Character'Pos (' '),
+      others => 0
+   );
+
+   scancodeShifted : constant ScanTable := (
+      16#02# => Character'Pos ('!'),
+      16#03# => Character'Pos ('@'),
+      16#04# => Character'Pos ('#'),
+      16#05# => Character'Pos ('$'),
+      16#06# => Character'Pos ('%'),
+      16#07# => Character'Pos ('^'),
+      16#08# => Character'Pos ('&'),
+      16#09# => Character'Pos ('*'),
+      16#0A# => Character'Pos ('('),
+      16#0B# => Character'Pos (')'),
+      16#0C# => Character'Pos ('_'),
+      16#0D# => Character'Pos ('+'),
+      16#0E# => 8,     -- Backspace
+      16#1A# => Character'Pos ('{'),
+      16#1B# => Character'Pos ('}'),
+      16#1C# => 10,    -- Enter
+      16#27# => Character'Pos (':'),
+      16#28# => Character'Pos ('"'),
+      16#29# => Character'Pos ('~'),
+      16#2B# => Character'Pos ('|'),
+      16#33# => Character'Pos ('<'),
+      16#34# => Character'Pos ('>'),
+      16#35# => Character'Pos ('?'),
+      16#39# => Character'Pos (' '),
+      others => 0
+   );
+
+   ---------------------------------------------------------------------------
+   --  printDec - print a small unsigned number in decimal
+   ---------------------------------------------------------------------------
+   procedure printDec (val : Unsigned_64) is
+      buf : String (1 .. 20);
+      pos : Natural := buf'Last;
+      v   : Unsigned_64 := val;
+   begin
+      if v = 0 then
+         debugPrint ("0");
+         return;
+      end if;
+      while v > 0 loop
+         buf (pos) := Character'Val (Character'Pos ('0') +
+                                      Natural (v mod 10));
+         v := v / 10;
+         pos := pos - 1;
+      end loop;
+      debugPrint (buf (pos + 1 .. buf'Last));
+   end printDec;
+
+   procedure printDec (val : Unsigned_32) is
+   begin
+      printDec (Unsigned_64 (val));
+   end printDec;
+
+   procedure printDec64 (val : Unsigned_64) is
+      buf : String (1 .. 20);
+      pos : Natural := buf'Last;
+      v   : Unsigned_64 := val;
+   begin
+      if v = 0 then
+         debugPrint ("0");
+         return;
+      end if;
+      while v > 0 loop
+         buf (pos) := Character'Val (Character'Pos ('0') +
+                                      Natural (v mod 10));
+         v := v / 10;
+         pos := pos - 1;
+      end loop;
+      debugPrint (buf (pos + 1 .. buf'Last));
+   end printDec64;
+
+   ---------------------------------------------------------------------------
+   --  Framebuffer rendering
+   ---------------------------------------------------------------------------
+
+   --  Write a single pixel at (x, y) in 32-bit BGRA
+   procedure putPixel (x, y : Natural; color : Unsigned_32) is
+      offset : constant Storage_Offset :=
+         Storage_Offset (y * fbPitch + x * 4);
+      pixel : Unsigned_32 with Import, Address => fbAddr + offset;
+   begin
+      pixel := color;
+   end putPixel;
+
+   --  Render a single glyph at character grid position (col, row)
+   procedure renderGlyph (col, row : Natural; ch : Unsigned_8) is
+      baseX : constant Natural := col * Font8x16.GLYPH_WIDTH;
+      baseY : constant Natural := row * Font8x16.GLYPH_HEIGHT;
+      glyph : Font8x16.GlyphData renames Font8x16.font (Natural (ch));
+   begin
+      for glyphRow in 0 .. Font8x16.GLYPH_HEIGHT - 1 loop
+         declare
+            bits : constant Unsigned_8 := glyph (glyphRow);
+         begin
+            for bit in 0 .. 7 loop
+               if (bits and Shift_Right (16#80#, bit)) /= 0 then
+                  putPixel (baseX + bit, baseY + glyphRow, FG_COLOR);
+               else
+                  putPixel (baseX + bit, baseY + glyphRow, BG_COLOR);
+               end if;
+            end loop;
+         end;
+      end loop;
+   end renderGlyph;
+
+   procedure setupDisplayPresent;
+
+   procedure releaseDisplayPresent is
+      msg : Message := NULL_MESSAGE;
+      tag : MessageTag;
+      revoked : Boolean;
+   begin
+      msg := CuBit.Desktop_Messages.From_Wire
+        (DSP.Encode_Lease_Request (DSP.Release_Display));
+      tag := capCall (Startup.Display, msg, CuBit.Messages.Wait_Forever);
+      msg.tag := tag;
+      displayAttached := False;
+      if displayGranted then
+         MG.Revoke (displayGrant, revoked);
+         if not revoked then
+            debugPrint ("shell: display grant revoke failed" & LF);
+         end if;
+         displayGranted := False;
+      end if;
+   end releaseDisplayPresent;
+
+   --  Present a framebuffer rectangle through display.svc.  This is the
+   --  narrow bridge that makes the old framebuffer console visible on primary
+   --  GPU modes: shell draws bytes, display.svc copies them to scanout.
+   procedure presentDisplayRect (x, y, w, h : Natural) is
+      msg : Message := NULL_MESSAGE;
+      tag : MessageTag;
+      retry : Boolean := False;
+   begin
+      if not displayAttached or else w = 0 or else h = 0 then
+         return;
+      end if;
+
+      loop
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_DISPLAY_PRESENT_RECT,
+                     length => 4,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         msg.words (0) := Unsigned_64 (x);
+         msg.words (1) := Unsigned_64 (y);
+         msg.words (2) := Unsigned_64 (w);
+         msg.words (3) := Unsigned_64 (h);
+
+         tag := capCall (Startup.Display, msg, CuBit.Messages.Wait_Forever);
+         msg.tag := tag;
+         exit when tag.length >= 1 and then msg.words (0) = DISPLAY_OK;
+
+         displayAttached := False;
+         exit when retry;
+         exit when foregroundPID /= No_Process;
+
+         --  Another display client, such as desktop.svc, may have temporarily
+         --  attached its own buffer. Reattach the CLI buffer once so returning
+         --  from a graphical session does not leave the shell drawing into an
+         --  invisible stale buffer.
+         retry := True;
+         setupDisplayPresent;
+         exit when not displayAttached;
+      end loop;
+
+      if not displayAttached then
+         debugPrint ("shell: display present disabled" & LF);
+      end if;
+   end presentDisplayRect;
+
+   --  Attach an owned RAM framebuffer to display.svc when the visible
+   --  device is GPU-backed.  Linear framebuffer mode intentionally skips this
+   --  path so legacy boot and plain VBE behavior remains unchanged.
+   procedure setupDisplayPresent is
+      status : Message := NULL_MESSAGE;
+      attach : Message := NULL_MESSAGE;
+      tag    : MessageTag;
+      pages  : Unsigned_64;
+      ok     : Boolean;
+      pid    : Process_ID;
+      acquire : Message := NULL_MESSAGE;
+      layout : DSP.Buffer_Layout;
+      rawBuffer : Unsigned_64;
+   begin
+      if fbWidth not in 1 .. Natural (DSP.DP.Positive_Extent'Last) or else
+        fbHeight not in 1 .. Natural (DSP.DP.Positive_Extent'Last)
+      then
+         return;
+      end if;
+      layout := (DSP.DP.Positive_Extent (fbWidth),
+                 DSP.DP.Positive_Extent (fbHeight), fbPitch);
+      if not DSP.DP.Valid_Layout (layout) then
+         return;
+      end if;
+      if displayGranted then
+         releaseDisplayPresent;
+      end if;
+      pid := Registered_Driver (DRIVER_DISPLAY);
+      if pid = No_Process then
+         debugPrint ("shell: display service unavailable" & LF);
+         return;
+      end if;
+      debugPrint ("shell: display service pid=");
+      debugPrint (Image (pid));
+      debugPrint ("" & LF);
+      --  A desktop session owns the display: a lease taken here would
+      --  only block the desktop's own acquisition (it retries briefly).
+      if Registered_Driver (DRIVER_DESKTOP) /= No_Process then
+         debugPrint ("shell: desktop owns the display; present skipped" & LF);
+         return;
+      end if;
+
+      status.tag := (label  => OP_DISPLAY_GET_STATUS,
+                     length => 0,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+      tag := capCall (Startup.Display, status, CuBit.Messages.Wait_Forever);
+      status.tag := tag;
+
+      if tag.length < 2 or else
+         status.words (0) /= DISPLAY_BACKEND_VIRTIO_GPU
+      then
+         debugPrint ("shell: display backend=");
+         if tag.length >= 1 then
+            printDec (Unsigned_32 (status.words (0)));
+         else
+            debugPrint ("?");
+         end if;
+         debugPrint (" no present bridge" & LF);
+         return;
+      end if;
+
+      acquire := CuBit.Desktop_Messages.From_Wire
+        (DSP.Encode_Lease_Request (DSP.Acquire_Display));
+      tag := capCall (Startup.Display, acquire, CuBit.Messages.Wait_Forever);
+      acquire.tag := tag;
+      if tag.length < 1 or else acquire.words (0) /= DISPLAY_OK then
+         debugPrint ("shell: display acquire denied" & LF);
+         return;
+      end if;
+
+      pages :=
+        (Unsigned_64 (fbPitch) * Unsigned_64 (fbHeight) + 4095) / 4096;
+
+      if displayPixels = System.Null_Address then
+         --  MAPFB is device memory, not a frame owned by this process. Generic
+         --  grants intentionally cannot pin/regrant it. Draw directly into an
+         --  ordinary owned buffer instead; no extra staging copy is needed.
+         rawBuffer := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
+         if rawBuffer = Unsigned_64'Last then
+            debugPrint ("shell: display buffer allocation failed" & LF);
+            releaseDisplayPresent;
+            return;
+         end if;
+         displayPixels := To_Address
+           (Integer_Address ((rawBuffer + 4095) and not Unsigned_64'(4095)));
+      end if;
+
+      --  Scanout only reads the client's pixels; it has no write authority.
+      MG.Create_Via_Capability
+        (slot      => Startup.Display,
+         localAddr => displayPixels,
+         numPages  => Natural (pages),
+         readWrite => False,
+         reference => displayGrant,
+         success   => ok);
+
+      if not ok then
+         debugPrint ("shell: display grant failed" & LF);
+         releaseDisplayPresent;
+         return;
+      end if;
+      displayGranted := True;
+      attach := CuBit.Desktop_Messages.From_Wire
+        (DSP.Encode_Attachment ((displayGrant, layout)));
+
+      tag := capCall (Startup.Display, attach, CuBit.Messages.Wait_Forever);
+      attach.tag := tag;
+      if tag.label = OP_DISPLAY_ATTACH_BUFFER and then tag.length = 1 and then
+        attach.words (0) = DISPLAY_OK
+      then
+         fbAddr := displayPixels;
+         displayAttached := True;
+         debugPrint ("shell: display buffer attached" & LF);
+      else
+         debugPrint ("shell: display attach failed" & LF);
+         releaseDisplayPresent;
+      end if;
+   end setupDisplayPresent;
+
+   procedure renderRow (row : Natural) is
+   begin
+      for col in 0 .. cols - 1 loop
+         renderGlyph (col, row, screen (row)(col));
+      end loop;
+   end renderRow;
+
+   --  Render all dirty lines to framebuffer
+   procedure renderDirty is
+      anyDirty : Boolean := False;
+      minRow   : Natural := 0;
+      maxRow   : Natural := 0;
+   begin
+      for row in 0 .. rows - 1 loop
+         if dirty (row) then
+            if not anyDirty then
+               minRow := row;
+               maxRow := row;
+               anyDirty := True;
+            else
+               maxRow := row;
+            end if;
+
+            renderRow (row);
+            dirty (row) := False;
+         end if;
+      end loop;
+
+      if anyDirty then
+         if fullPresentNeeded or else maxRow - minRow > 8 then
+            --  Scrolls, clears, startup redraws, and large command-output
+            --  bursts can affect many lines at once. Present the whole text
+            --  grid for those cases so the compatibility console remains
+            --  visually coherent on GPU-backed displays.
+            if displayAttached then
+               for row in 0 .. rows - 1 loop
+                  renderRow (row);
+               end loop;
+            end if;
+            presentDisplayRect
+              (0, 0,
+               cols * Font8x16.GLYPH_WIDTH,
+               rows * Font8x16.GLYPH_HEIGHT);
+            fullPresentNeeded := False;
+         else
+            --  Common interactive typing should be cheap: one dirty text row
+            --  is only a few kilobytes instead of a full 1024x768 transfer.
+            --  Include one neighboring row on each side so newline/prompt
+            --  transitions cannot leave stale glyph pixels at row boundaries.
+            declare
+               presentMin : Natural := minRow;
+               presentMax : Natural := maxRow;
+            begin
+               if presentMin > 0 then
+                  presentMin := presentMin - 1;
+               end if;
+               if presentMax + 1 < rows then
+                  presentMax := presentMax + 1;
+               end if;
+
+               if displayAttached then
+                  for row in presentMin .. presentMax loop
+                     renderRow (row);
+                  end loop;
+               end if;
+               presentDisplayRect
+                 (0,
+                  presentMin * Font8x16.GLYPH_HEIGHT,
+                  cols * Font8x16.GLYPH_WIDTH,
+                  (presentMax - presentMin + 1) * Font8x16.GLYPH_HEIGHT);
+            end;
+         end if;
+      end if;
+   end renderDirty;
+
+   ---------------------------------------------------------------------------
+   --  Console text output
+   ---------------------------------------------------------------------------
+
+   --  Scroll screen up by one line
+   procedure scrollUp is
+   begin
+      for row in 0 .. rows - 2 loop
+         screen (row) := screen (row + 1);
+         dirty (row) := True;
+      end loop;
+      --  Clear bottom row
+      for col in 0 .. cols - 1 loop
+         screen (rows - 1)(col) := Character'Pos (' ');
+      end loop;
+      dirty (rows - 1) := True;
+      fullPresentNeeded := True;
+   end scrollUp;
+
+   --  Put a character at current cursor position and advance
+   procedure putChar (ch : Character) is
+   begin
+      if ch = ASCII.LF then
+         cursorCol := 0;
+         cursorRow := cursorRow + 1;
+         if cursorRow >= rows then
+            scrollUp;
+            cursorRow := rows - 1;
+         end if;
+      elsif ch = ASCII.CR then
+         cursorCol := 0;
+      elsif ch = ASCII.BS then
+         if cursorCol > 0 then
+            cursorCol := cursorCol - 1;
+            screen (cursorRow)(cursorCol) := Character'Pos (' ');
+            dirty (cursorRow) := True;
+         end if;
+      else
+         if cursorCol >= cols then
+            cursorCol := 0;
+            cursorRow := cursorRow + 1;
+            if cursorRow >= rows then
+               scrollUp;
+               cursorRow := rows - 1;
+            end if;
+         end if;
+         screen (cursorRow)(cursorCol) := Character'Pos (ch);
+         dirty (cursorRow) := True;
+         cursorCol := cursorCol + 1;
+      end if;
+   end putChar;
+
+   --  Print a string to the console
+   procedure putStr (s : String) is
+   begin
+      for i in s'Range loop
+         putChar (s (i));
+      end loop;
+   end putStr;
+
+   --  Print a decimal number to the console
+   procedure putDec (val : Unsigned_64) is
+      buf : String (1 .. 20);
+      pos : Natural := buf'Last;
+      v   : Unsigned_64 := val;
+   begin
+      if v = 0 then
+         putChar ('0');
+         return;
+      end if;
+      while v > 0 loop
+         buf (pos) := Character'Val (Character'Pos ('0') +
+                                      Natural (v mod 10));
+         v := v / 10;
+         pos := pos - 1;
+      end loop;
+      putStr (buf (pos + 1 .. buf'Last));
+   end putDec;
+
+   procedure putDec (val : Unsigned_32) is
+   begin
+      putDec (Unsigned_64 (val));
+   end putDec;
+
+   function hasSuffix (s, suffix : String) return Boolean is
+      offset : Natural;
+   begin
+      if s'Length < suffix'Length then
+         return False;
+      end if;
+
+      offset := s'Last - suffix'Length + 1;
+      for i in suffix'Range loop
+         if s (offset + (i - suffix'First)) /= suffix (i) then
+            return False;
+         end if;
+      end loop;
+
+      return True;
+   end hasSuffix;
+
+   function shouldRunInBackground (filename : String) return Boolean is
+   begin
+      if hasSuffix (filename, "desktop.svc") then
+         return False;
+      end if;
+
+      --  Long-lived services/drivers should not become the shell foreground
+      --  child. A foreground child intentionally steals the command loop until
+      --  it exits, which is correct for apps like DOOM and wrong for services
+      --  such as desktop.svc.
+      return hasSuffix (filename, ".svc") or else hasSuffix (filename, ".drv");
+   end shouldRunInBackground;
+
+   function shouldYieldDisplayToChild (filename : String) return Boolean is
+   begin
+      --  Graphical foreground clients own visibility through desktop.svc. The
+      --  CLI shell keeps its old framebuffer mapped, but must not reattach it
+      --  to display.svc while the desktop compositor is presenting.
+      return hasSuffix (filename, "desktop-shell.app") or else
+             hasSuffix (filename, "desktop.svc");
+   end shouldYieldDisplayToChild;
+
+   --  Print prompt
+   procedure printPrompt is
+   begin
+      putStr ("cubit ");
+      if cwdLen > 0 then
+         putStr (cwdBuf (1 .. cwdLen));
+      else
+         putChar ('/');
+      end if;
+      putStr ("> ");
+      renderDirty;
+   end printPrompt;
+
+   ---------------------------------------------------------------------------
+   --  Command handling
+   ---------------------------------------------------------------------------
+
+   procedure cmdHelp is
+   begin
+      putStr ("Commands:" & LF);
+      putStr ("  inspect <file>   - show app manifest metadata" & LF);
+      putStr ("  bg <file>        - spawn process in background" & LF);
+      putStr ("  cat <path>       - display file contents" & LF);
+      putStr ("  cd [path]        - change working directory" & LF);
+      putStr ("  clear            - clear screen" & LF);
+      putStr ("  config <cmd>     - config store (get/set/delete/list)" & LF);
+      putStr ("  echo <text>      - print text" & LF);
+      putStr ("  head [-n N] <f>  - first N lines (default 10)" & LF);
+      putStr ("  hexdump <path>   - hex+ASCII file dump" & LF);
+      putStr ("  help             - show this help" & LF);
+      putStr ("  ifconfig         - show network interface" & LF);
+      putStr ("  kill <pid>       - terminate a process" & LF);
+      putStr ("  logs             - show recent log entries" & LF);
+      putStr ("  ls [path]        - list directory contents" & LF);
+      putStr ("  mem              - show memory usage" & LF);
+      putStr ("  nslookup <host>  - DNS lookup" & LF);
+      putStr ("  ping <ip>        - send ICMP echo requests" & LF);
+      putStr ("  volumes          - show storage volumes" & LF);
+      putStr ("  ps               - list running processes" & LF);
+      putStr ("  pwd              - print working directory" & LF);
+      putStr ("  route            - show routing table" & LF);
+      putStr ("  spawn <file>     - spawn a new process" & LF);
+      putStr ("  streams <pid>    - list process streams" & LF);
+      putStr ("  sysinfo          - system information" & LF);
+      putStr ("  uptime           - time since boot" & LF);
+      putStr ("  wc <path>        - line/word/byte counts" & LF);
+      putStr ("  write <p> <text> - write text to file" & LF);
+   end cmdHelp;
+
+   procedure cmdClear is
+   begin
+      for row in 0 .. rows - 1 loop
+         for col in 0 .. cols - 1 loop
+            screen (row)(col) := Character'Pos (' ');
+         end loop;
+         dirty (row) := True;
+      end loop;
+      cursorRow := 0;
+      cursorCol := 0;
+      fullPresentNeeded := True;
+   end cmdClear;
+
+   procedure cmdEcho (arg : String) is
+   begin
+      putStr (arg);
+      putChar (LF);
+   end cmdEcho;
+
+   --  procmgr's OP_LAUNCH for the program named by the first Length bytes
+   --  of the grant buffer (CuBit.Launch_Arguments), through the shell's
+   --  Launch badge: it must be in this shell's launch table (manifest
+   --  may_launch), and it gets its approval within the user session's
+   --  envelope, none of the shell's authority (CAP-012). No arguments,
+   --  delegated places or rings.
+   function Launch_Request (Length : Natural) return Message is
+      Request : Message := NULL_MESSAGE;
+   begin
+      Request.tag := (label  => CuBit.Launch_Arguments.Launch_Operation,
+                      length => CuBit.Launch_Arguments.Launch_Request_Words,
+                      protocol  => 0, ipc => <>, reserved  => 0);
+      Request.words (0) := CuBit.Grant_References.Encode (spawnGrant);
+      Request.words (1) := Unsigned_64 (Length);
+      Request.words (2) := 0;
+      Request.words (3) := CuBit.Launch_Grants.Request_Word (Launch_Priority, 0);
+      return Request;
+   end Launch_Request;
+
+   --  Why procmgr refused a launch (its error reply's typed reason).
+   procedure putLaunchRefusal (Command : String; Reply : Message) is
+   begin
+      putStr (Command & ": not started: " &
+              (if CuBit.Launch_Arguments.Is_Failure (Reply.words (0))
+               then CuBit.Launch_Failure_Text.Explanation
+                      (CuBit.Launch_Arguments.Failure_Of (Reply.words (0)))
+               else "procmgr gave no reason") & LF);
+   end putLaunchRefusal;
+
+   procedure cmdSpawn (filename : String) is
+      msg : Message;
+      tag : MessageTag;
+   begin
+      if procmgrPID = No_Process then
+         putStr ("error: procmgr not found" & LF);
+         return;
+      end if;
+
+      if filename'Length = 0 then
+         putStr ("usage: spawn <filename>" & LF);
+         return;
+      end if;
+
+      --  Write filename into grant buffer with cwd prefix if needed
+      declare
+         buf : array (0 .. GRANT_BUF_PAGES * 4096 - 1) of Unsigned_8 with
+            Import, Address => grantBuf;
+         pos : Natural := 0;
+         totalLen : Natural;
+      begin
+         if filename (filename'First) /= '@' and cwdLen > 0 then
+            --  Prepend cwd
+            for i in 1 .. cwdLen loop
+               buf (pos) := Unsigned_8 (Character'Pos (cwdBuf (i)));
+               pos := pos + 1;
+            end loop;
+         end if;
+         for i in 0 .. filename'Length - 1 loop
+            buf (pos) := Unsigned_8 (
+               Character'Pos (filename (filename'First + i)));
+            pos := pos + 1;
+         end loop;
+         totalLen := pos;
+         msg := Launch_Request (totalLen);
+         tag := capCall (Launch_Endpoint, msg, CuBit.Messages.Wait_Forever);
+      end;
+
+      if tag.label = REPLY_OK then
+         putStr ("spawned PID ");
+         putDec (msg.words (0));
+         putChar (LF);
+         if shouldRunInBackground (filename) then
+            renderDirty;
+            return;
+         end if;
+
+         if shouldYieldDisplayToChild (filename) then
+            releaseDisplayPresent;
+         else
+            renderDirty;
+         end if;
+
+         foregroundPID := From_Word (msg.words (0));
+         debugPrint ("shell: foregroundPID set to ");
+         debugPrint (Image (foregroundPID));
+         debugPrint ("" & LF);
+
+         --  Open a channel on the child's first outlet, without waiting.
+         --  The shell holds no endpoint to a child procmgr starts for it
+         --  (CAP-002: nothing is found by scanning a table), so its output
+         --  is not subscribed to.
+         declare
+            ok : constant Boolean := False;
+         begin
+            if ok then
+               streamSubPending := True;
+               streamDrainPolls := 0;
+               debugPrint ("shell: stream subscribe sent" & LF);
+            else
+               debugPrint ("shell: stream subscribe failed" & LF);
+            end if;
+         end;
+      else
+         putLaunchRefusal ("spawn", msg);
+      end if;
+   end cmdSpawn;
+
+   ---------------------------------------------------------------------------
+   --  cmdBg - spawn a process in the background (no foreground tracking)
+   ---------------------------------------------------------------------------
+   procedure cmdBg (filename : String) is
+      msg : Message;
+      tag : MessageTag;
+   begin
+      if procmgrPID = No_Process then
+         putStr ("error: procmgr not found" & LF);
+         return;
+      end if;
+
+      if filename'Length = 0 then
+         putStr ("usage: bg <filename>" & LF);
+         return;
+      end if;
+
+      --  Write filename into grant buffer with cwd prefix if needed
+      declare
+         buf : array (0 .. GRANT_BUF_PAGES * 4096 - 1) of Unsigned_8 with
+            Import, Address => grantBuf;
+         pos : Natural := 0;
+         totalLen : Natural;
+      begin
+         if filename (filename'First) /= '@' and cwdLen > 0 then
+            for i in 1 .. cwdLen loop
+               buf (pos) := Unsigned_8 (Character'Pos (cwdBuf (i)));
+               pos := pos + 1;
+            end loop;
+         end if;
+         for i in 0 .. filename'Length - 1 loop
+            buf (pos) := Unsigned_8 (
+               Character'Pos (filename (filename'First + i)));
+            pos := pos + 1;
+         end loop;
+         totalLen := pos;
+         msg := Launch_Request (totalLen);
+         tag := capCall (Launch_Endpoint, msg, CuBit.Messages.Wait_Forever);
+      end;
+
+      if tag.label = REPLY_OK then
+         putStr ("[bg] PID ");
+         putDec (msg.words (0));
+         putChar (LF);
+      else
+         putLaunchRefusal ("bg", msg);
+      end if;
+   end cmdBg;
+
+   ---------------------------------------------------------------------------
+   --  cmdKill - kill a process by PID
+   ---------------------------------------------------------------------------
+   procedure cmdKill (args : String) is
+      pid : Process_ID;
+      valid : Boolean;
+      ret : Unsigned_64;
+   begin
+      if args'Length = 0 then
+         putStr ("usage: kill <pid>" & LF);
+         return;
+      end if;
+
+      --  The process, as ps prints it (its identity in decimal).
+      CuBit.Process_IDs.Parse (args, pid, valid);
+      if not valid then
+         putStr ("kill: invalid PID" & LF);
+         return;
+      elsif pid = No_Process then
+         putStr ("kill: no such process" & LF);
+         return;
+      end if;
+
+      ret := noKill;
+      if ret = 0 then
+         putStr ("killed PID ");
+         putStr (Image (pid));
+         putChar (LF);
+      else
+         putStr ("kill: failed (no permission or invalid PID)" & LF);
+      end if;
+   end cmdKill;
+
+   ---------------------------------------------------------------------------
+   --  resolvePath - write resolved path into fsBuf, return effective length
+   --  If path starts with '@' it is absolute (copy verbatim).
+   --  If cwdLen=0, pass through as-is (ramdisk legacy).
+   --  Otherwise prepend cwd.
+   ---------------------------------------------------------------------------
+   function resolvePath (path : String) return Natural is
+      buf : array (0 .. FS_BUF_PAGES * 4096 - 1) of Character
+        with Import, Address => fsBuf;
+      pos : Natural := 0;
+   begin
+      --  Absolute scheme path
+      if path'Length > 0 and then path (path'First) = '@' then
+         for i in 0 .. path'Length - 1 loop
+            buf (pos) := path (path'First + i);
+            pos := pos + 1;
+         end loop;
+         return pos;
+      end if;
+
+      --  No cwd set: pass through (ramdisk legacy)
+      if cwdLen = 0 then
+         for i in 0 .. path'Length - 1 loop
+            buf (pos) := path (path'First + i);
+            pos := pos + 1;
+         end loop;
+         return pos;
+      end if;
+
+      --  Prepend cwd
+      for i in 1 .. cwdLen loop
+         buf (pos) := cwdBuf (i);
+         pos := pos + 1;
+      end loop;
+
+      --  Append path
+      for i in 0 .. path'Length - 1 loop
+         buf (pos) := path (path'First + i);
+         pos := pos + 1;
+      end loop;
+
+      return pos;
+   end resolvePath;
+
+   procedure cmdCat (path : String) is
+      msg : Message;
+      tag : MessageTag;
+      handle : Unsigned_64;
+   begin
+      if not fsReady then
+         putStr ("error: filesystem not available" & LF);
+         return;
+      end if;
+
+      if path'Length = 0 then
+         putStr ("usage: cat <path>" & LF);
+         return;
+      end if;
+
+      --  Resolve path against cwd into fsBuf
+      declare
+         resolvedLen : constant Natural := resolvePath (path);
+      begin
+         --  OP_OPEN: slot, path length, options, generation
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_OPEN,
+                     length => 4,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         msg.words (0) := fsGrant.slot;
+         msg.words (1) := Unsigned_64 (resolvedLen);
+         msg.words (2) := 0;
+         msg.words (3) := fsGrant.generation;
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+      end;
+
+      if tag.label /= REPLY_OK then
+         putStr ("cat: file not found" & LF);
+         return;
+      end if;
+
+      handle := msg.words (0);
+
+      --  Read loop
+      loop
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_READ,
+                     length => 4,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         msg.words (0) := handle;
+         msg.words (1) := fsGrant.slot;
+         msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
+         msg.words (3) := fsGrant.generation;
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+         if tag.label /= REPLY_OK then
+            exit;
+         end if;
+
+         declare
+            bytesRead : constant Unsigned_64 := msg.words (0);
+         begin
+            exit when bytesRead = 0;
+
+            --  Print data from grant buffer
+            declare
+               data : String (1 .. Natural (bytesRead))
+                 with Import, Address => fsBuf;
+            begin
+               for i in data'Range loop
+                  declare
+                     ch : constant Character := data (i);
+                  begin
+                     --  Only print printable ASCII + newline/tab
+                     if ch >= ' ' or ch = ASCII.LF or ch = ASCII.HT then
+                        putChar (ch);
+                     end if;
+                  end;
+               end loop;
+            end;
+         end;
+      end loop;
+
+      --  OP_CLOSE
+      msg := NULL_MESSAGE;
+      msg.tag := (label  => OP_CLOSE,
+                  length => 1,
+                  protocol  => 0, ipc => <>,
+                  reserved  => 0);
+      msg.words (0) := handle;
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+      putChar (LF);
+      renderDirty;
+   end cmdCat;
+
+   procedure cmdLs (path : String) is
+      msg : Message;
+      tag : MessageTag;
+      resolvedLen : Natural;
+      directory : CuBit.Filesystems.Directory_Handle;
+   begin
+      if not fsReady then
+         putStr ("error: filesystem not available" & LF);
+         return;
+      end if;
+
+      --  Resolve path against cwd into fsBuf
+      resolvedLen := resolvePath (path);
+
+      msg := CuBit.Filesystems.Open_Directory_Request
+        (fsGrant, CuBit.Filesystems.Path_Byte_Count (resolvedLen));
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+      if tag.label /= CuBit.Filesystems.REPLY_OK then
+         putStr ("ls: cannot list directory" & LF);
+         return;
+      end if;
+      directory := CuBit.Filesystems.Directory_Handle (msg.words (0));
+
+      loop
+         msg := CuBit.Filesystems.Read_Directory_Page_Request
+           (directory, fsGrant);
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+         if tag.label /= CuBit.Filesystems.REPLY_OK then
+            putStr ("ls: directory read failed" & LF);
+            exit;
+         end if;
+
+         declare
+            package DP renames CuBit.Directory_Pages;
+            shared : constant DP.Page with Import, Address => fsBuf;
+            page : constant DP.Page := shared;   --  copied, then checked
+            valid, ended, ok : Boolean;
+            count : DP.Entry_Count;
+            used : DP.Used_Bytes;
+            resume, stamp : Unsigned_64;
+            atEntry : Natural := DP.Header_Bytes;
+            nextEntry : Natural;
+            item : DP.Facts;
+            name : DP.Name_Bytes;
+            nameLength : DP.Name_Length;
+         begin
+            DP.Check (page, valid, count, used, ended, resume, stamp);
+            if not valid then
+               putStr ("ls: malformed directory reply" & LF);
+               exit;
+            end if;
+            for entryIndex in 1 .. count loop
+               DP.Get (page, atEntry, used, item, name, nameLength, nextEntry, ok);
+               exit when not ok;
+               atEntry := nextEntry;
+               for nameIndex in 1 .. nameLength loop
+                  putChar (Character'Val (name (nameIndex)));
+               end loop;
+               putChar (LF);
+            end loop;
+            exit when ended;
+         end;
+      end loop;
+
+      msg := CuBit.Filesystems.Close_Directory_Request (directory);
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+      if tag.label /= CuBit.Filesystems.REPLY_OK then
+         putStr ("ls: directory close failed" & LF);
+      end if;
+   end cmdLs;
+
+   ---------------------------------------------------------------------------
+   --  putDec64 - print an Unsigned_64 in decimal
+   ---------------------------------------------------------------------------
+   procedure putDec64 (val : Unsigned_64) is
+      buf : String (1 .. 20);
+      pos : Natural := buf'Last;
+      v   : Unsigned_64 := val;
+   begin
+      if v = 0 then
+         putChar ('0');
+         return;
+      end if;
+      while v > 0 loop
+         buf (pos) := Character'Val (Character'Pos ('0') +
+                                      Natural (v mod 10));
+         v := v / 10;
+         pos := pos - 1;
+      end loop;
+      putStr (buf (pos + 1 .. buf'Last));
+   end putDec64;
+
+   ---------------------------------------------------------------------------
+   --  write <path> <text>   — create/overwrite file with text content
+   ---------------------------------------------------------------------------
+   procedure cmdWrite (arg : String) is
+      msg    : Message;
+      tag    : MessageTag;
+      handle : Unsigned_64;
+      sepIdx : Natural := 0;
+   begin
+      if not fsReady then
+         putStr ("error: filesystem not available" & LF);
+         return;
+      end if;
+
+      --  Find first space separating path from text
+      for i in arg'Range loop
+         if arg (i) = ' ' then
+            sepIdx := i;
+            exit;
+         end if;
+      end loop;
+
+      if sepIdx = 0 or sepIdx = arg'Last then
+         putStr ("usage: write <path> <text>" & LF);
+         return;
+      end if;
+
+      declare
+         path : String renames arg (arg'First .. sepIdx - 1);
+         text : String renames arg (sepIdx + 1 .. arg'Last);
+         resolvedLen : constant Natural := resolvePath (path);
+      begin
+         --  OP_OPEN with O_CREAT | O_TRUNC | O_WRONLY
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_OPEN,
+                     length => 4,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         msg.words (0) := fsGrant.slot;
+         msg.words (1) := Unsigned_64 (resolvedLen);
+         msg.words (2) := O_CREAT or O_TRUNC or O_WRONLY;
+         msg.words (3) := fsGrant.generation;
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+         if tag.label /= REPLY_OK then
+            putStr ("write: cannot open file" & LF);
+            return;
+         end if;
+
+         handle := msg.words (0);
+
+         --  Copy text into grant buffer
+         declare
+            buf : String (1 .. text'Length)
+              with Import, Address => fsBuf;
+         begin
+            for i in text'Range loop
+               buf (i - text'First + 1) := text (i);
+            end loop;
+         end;
+
+         --  OP_WRITE
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_WRITE,
+                     length => 4,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         msg.words (0) := handle;
+         msg.words (1) := fsGrant.slot;
+         msg.words (2) := Unsigned_64 (text'Length);
+         msg.words (3) := fsGrant.generation;
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+         if tag.label /= REPLY_OK then
+            putStr ("write: write failed" & LF);
+         else
+            putStr ("wrote ");
+            putDec64 (msg.words (0));
+            putStr (" bytes" & LF);
+         end if;
+
+         --  OP_CLOSE
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_CLOSE,
+                     length => 1,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         msg.words (0) := handle;
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+      end;
+   end cmdWrite;
+
+   ---------------------------------------------------------------------------
+   --  putHex8 - print a byte as 2 hex digits
+   ---------------------------------------------------------------------------
+   procedure putHex8 (val : Unsigned_8) is
+      hexChars : constant String := "0123456789abcdef";
+   begin
+      putChar (hexChars (Natural (Shift_Right (val, 4)) + 1));
+      putChar (hexChars (Natural (val and 16#0F#) + 1));
+   end putHex8;
+
+   ---------------------------------------------------------------------------
+   --  putHex32 - print a 32-bit value as 8 hex digits
+   ---------------------------------------------------------------------------
+   procedure putHex32 (val : Unsigned_32) is
+   begin
+      putHex8 (Unsigned_8 (Shift_Right (val, 24) and 16#FF#));
+      putHex8 (Unsigned_8 (Shift_Right (val, 16) and 16#FF#));
+      putHex8 (Unsigned_8 (Shift_Right (val, 8) and 16#FF#));
+      putHex8 (Unsigned_8 (val and 16#FF#));
+   end putHex32;
+
+   ---------------------------------------------------------------------------
+   --  putDecSigned - print a signed integer in decimal
+   ---------------------------------------------------------------------------
+   procedure putDecSigned (val : Integer) is
+   begin
+      if val < 0 then
+         putChar ('-');
+         putDec (Unsigned_32 (-(val)));
+      else
+         putDec (Unsigned_32 (val));
+      end if;
+   end putDecSigned;
+
+   ---------------------------------------------------------------------------
+   --  putPadded - print a string right-padded to a given width
+   ---------------------------------------------------------------------------
+   procedure putPadded (s : String; width : Natural) is
+   begin
+      putStr (s);
+      if s'Length < width then
+         for i in 1 .. width - s'Length loop
+            putChar (' ');
+         end loop;
+      end if;
+   end putPadded;
+
+   ---------------------------------------------------------------------------
+   --  putDecRight - print a decimal number right-justified in a field
+   ---------------------------------------------------------------------------
+   procedure putDecRight (val : Unsigned_64; width : Natural) is
+      buf : String (1 .. 20);
+      pos : Natural := buf'Last;
+      v   : Unsigned_64 := val;
+      len : Natural;
+   begin
+      if v = 0 then
+         for i in 1 .. width - 1 loop
+            putChar (' ');
+         end loop;
+         putChar ('0');
+         return;
+      end if;
+      while v > 0 loop
+         buf (pos) := Character'Val (Character'Pos ('0') +
+                                      Natural (v mod 10));
+         v := v / 10;
+         pos := pos - 1;
+      end loop;
+      len := buf'Last - pos;
+      if len < width then
+         for i in 1 .. width - len loop
+            putChar (' ');
+         end loop;
+      end if;
+      putStr (buf (pos + 1 .. buf'Last));
+   end putDecRight;
+
+   ---------------------------------------------------------------------------
+   --  putIP - print dotted-decimal IP from packed Unsigned_64 (low 32 bits)
+   ---------------------------------------------------------------------------
+   procedure putIP (packed : Unsigned_64) is
+   begin
+      putDec (Unsigned_32 (packed and 16#FF#));
+      putChar ('.');
+      putDec (Unsigned_32 (Shift_Right (packed, 8) and 16#FF#));
+      putChar ('.');
+      putDec (Unsigned_32 (Shift_Right (packed, 16) and 16#FF#));
+      putChar ('.');
+      putDec (Unsigned_32 (Shift_Right (packed, 24) and 16#FF#));
+   end putIP;
+
+   ---------------------------------------------------------------------------
+   --  putMAC - print colon-separated hex MAC from packed Unsigned_64
+   ---------------------------------------------------------------------------
+   procedure putMAC (packed : Unsigned_64) is
+   begin
+      for i in 0 .. 5 loop
+         if i > 0 then
+            putChar (':');
+         end if;
+         putHex8 (Unsigned_8 (Shift_Right (packed, i * 8) and 16#FF#));
+      end loop;
+   end putMAC;
+
+   ---------------------------------------------------------------------------
+   --  parseIP - parse "A.B.C.D" string into packed Unsigned_64
+   ---------------------------------------------------------------------------
+   procedure parseIP (s      : String;
+                      packed : out Unsigned_64;
+                      ok     : out Boolean) is
+      octet : Natural := 0;
+      idx   : Natural := 0;
+      bytes : array (0 .. 3) of Unsigned_64 := (others => 0);
+   begin
+      packed := 0;
+      ok := False;
+
+      for i in s'Range loop
+         if s (i) = '.' then
+            if idx >= 3 or octet > 255 then
+               return;
+            end if;
+            bytes (idx) := Unsigned_64 (octet);
+            idx := idx + 1;
+            octet := 0;
+         elsif s (i) >= '0' and s (i) <= '9' then
+            octet := octet * 10 + (Character'Pos (s (i)) -
+                                    Character'Pos ('0'));
+            if octet > 255 then
+               return;
+            end if;
+         else
+            return;
+         end if;
+      end loop;
+
+      if idx = 3 and octet <= 255 then
+         bytes (3) := Unsigned_64 (octet);
+         packed := bytes (0) or
+                   Shift_Left (bytes (1), 8) or
+                   Shift_Left (bytes (2), 16) or
+                   Shift_Left (bytes (3), 24);
+         ok := True;
+      end if;
+   end parseIP;
+
+   ---------------------------------------------------------------------------
+   --  cmdUptime
+   ---------------------------------------------------------------------------
+   procedure cmdUptime is
+      ms   : Unsigned_64;
+      secs : Unsigned_64;
+      mins : Unsigned_64;
+      hrs  : Unsigned_64;
+      days : Unsigned_64;
+   begin
+      ms   := CuBit.Monotonic.Milliseconds;
+      days := ms / 86_400_000;
+      hrs  := (ms / 3_600_000) mod 24;
+      mins := (ms / 60_000) mod 60;
+      secs := (ms / 1000) mod 60;
+
+      putStr ("up ");
+      if days > 0 then
+         putDec64 (days);
+         putStr ("d ");
+      end if;
+      putDec64 (hrs);
+      putStr ("h ");
+      putDec64 (mins);
+      putStr ("m ");
+      putDec64 (secs);
+      putStr ("s" & LF);
+   end cmdUptime;
+
+   ---------------------------------------------------------------------------
+   --  cmdMem - show memory usage
+   ---------------------------------------------------------------------------
+   procedure cmdMem is
+      total : Unsigned_64;
+      free  : Unsigned_64;
+      used  : Unsigned_64;
+   begin
+      total := CuBit.System_Facts.Memory_Bytes;
+      free  := CuBit.System_Facts.Free_Memory_Bytes;
+
+      if total = 0 or free = 0 or free > total then
+         putStr ("error: memory info not available" & LF);
+         return;
+      end if;
+
+      used := total - free;
+
+      putStr ("Total:  ");
+      putDec64 (total / 1024 / 1024);
+      putStr (" MB" & LF);
+      putStr ("Used:   ");
+      putDec64 (used / 1024 / 1024);
+      putStr (" MB" & LF);
+      putStr ("Free:   ");
+      putDec64 (free / 1024 / 1024);
+      putStr (" MB" & LF);
+   end cmdMem;
+
+   ---------------------------------------------------------------------------
+   --  cmdSysinfo
+   ---------------------------------------------------------------------------
+   procedure cmdSysinfo is
+      val : Unsigned_64;
+   begin
+      --  CPU count
+      val := CuBit.System_Facts.Processor_Count;
+      putStr ("CPUs:         ");
+      putDec (Unsigned_32 (val));
+      putChar (LF);
+
+      --  Framebuffer
+      putStr ("Framebuffer:  ");
+      putDec (Unsigned_32 (CuBit.System_Facts.Framebuffer.Width));
+      putChar ('x');
+      putDec (Unsigned_32 (CuBit.System_Facts.Framebuffer.Height));
+      putStr (" pitch=");
+      putDec (Unsigned_32 (CuBit.System_Facts.Framebuffer.Pitch));
+      putStr (" bpp=");
+      putDec (Unsigned_32 (CuBit.System_Facts.Framebuffer.Bits_Per_Pixel));
+      putChar (LF);
+
+      --  Registered drivers
+      putStr ("Drivers:" & LF);
+      declare
+         type DriverInfo is record
+            id   : Unsigned_64;
+            name : String (1 .. 12);
+            nlen : Natural;
+         end record;
+         type DriverTable is array (1 .. 5) of DriverInfo;
+         drivers : constant DriverTable := (
+            (1, "keyboard    ", 8),
+            (2, "ata         ", 3),
+            (3, "netstack    ", 8),
+            (4, "procmgr     ", 7),
+            (5, "nvme        ", 4));
+         pid : Process_ID;
+      begin
+         for d of drivers loop
+            pid := Registered_Driver (d.id);
+            if pid /= No_Process then
+               putStr ("  ");
+               putStr (d.name (1 .. d.nlen));
+               putStr (" pid=");
+               putStr (Image (pid));
+               putChar (LF);
+            end if;
+         end loop;
+      end;
+   end cmdSysinfo;
+
+   ---------------------------------------------------------------------------
+   --  cmdVolumes - show available storage volumes
+   ---------------------------------------------------------------------------
+   procedure cmdVolumes is
+      pid : Process_ID;
+   begin
+      putStr ("SCHEME      DRIVER  PID" & LF);
+
+      --  Ramdisk is always available if FS is up
+      if fsReady then
+         declare
+            fsPid : constant Process_ID :=
+               Registered_Driver (DRIVER_FS);
+         begin
+            putStr ("(ramdisk)   cpio     ");
+            putStr (Image (fsPid));
+            putChar (LF);
+         end;
+      end if;
+
+      --  ATA
+      pid := Registered_Driver (DRIVER_ATA);
+      if pid /= No_Process then
+         putStr ("@ata:0/     ext2     ");
+         putStr (Image (pid));
+         putChar (LF);
+      end if;
+
+      --  NVMe
+      pid := Registered_Driver (DRIVER_NVME);
+      if pid /= No_Process then
+         putStr ("@nvme:0/    ext2     ");
+         putStr (Image (pid));
+         putChar (LF);
+      end if;
+   end cmdVolumes;
+
+   ---------------------------------------------------------------------------
+   --  cmdPs
+   ---------------------------------------------------------------------------
+   PS_BUF_SIZE : constant := 8192;  -- 256 entries x 32 bytes
+
+   procedure cmdPs is
+      --  Identities are up to 20 digits; most print far shorter.
+      PID_COLUMN : constant := 12;
+      psBuf   : System.Address;
+      ret     : Unsigned_64;
+      count   : Unsigned_64;
+
+      type StateNames is array (0 .. 11) of String (1 .. 10);
+      stateTable : constant StateNames := (
+         "INVALID   ",
+         "READY     ",
+         "RUNNING   ",
+         "SLEEPING  ",
+         "WAITING   ",
+         "WAITEVT   ",
+         "SENDING   ",
+         "RECEIVING ",
+         "WAITREPLY ",
+         "WAITCOMP  ",
+         "WAITNOTIF ",
+         "SUSPENDED ");
+   begin
+      --  Allocate buffer via sbrk
+      ret := syscall (SYSCALL_SBRK, PS_BUF_SIZE);
+      if ret = Unsigned_64'Last then
+         putStr ("ps: sbrk failed" & LF);
+         return;
+      end if;
+      psBuf := To_Address (Integer_Address (ret));
+
+      --  The process list, from procmgr's process-observer role.
+      count := CuBit.Process_Observer_Lists.Read (Startup.Process_Observer, psBuf, PS_BUF_SIZE);
+      if count = Unsigned_64'Last then
+         putStr ("ps: the process list is unavailable" & LF);
+         return;
+      end if;
+
+      --  Print header
+      putStr ((1 .. PID_COLUMN - 3 => ' ') & "PID  NAME              STATE      CPU  PRI   MEM" & LF);
+      putStr ((1 .. PID_COLUMN - 3 => ' ') & "---  ----              -----      ---  ---   ---" & LF);
+
+      --  Parse entries, skip unnamed SUSPENDED processes
+      for i in 0 .. count - 1 loop
+         declare
+            offset : constant Storage_Offset := Storage_Offset (i * 32);
+            entryAddr : constant System.Address := psBuf + offset;
+
+            Item : constant CuBit.Process_List.Process_Entry :=
+              CuBit.Process_List.Get (psBuf, Natural (i));
+            pidVal : constant Process_ID := Item.Identity;
+            stateVal : constant Unsigned_8 := Item.State;
+            cpuVal : constant Unsigned_8 := Item.CPU;
+            nameField : String renames Item.Name;
+            framesVal : constant Unsigned_32 := Item.Frames;
+
+            stateIdx : Natural;
+            nameEnd  : Natural := 0;
+            pri      : Integer;
+            memKB    : Unsigned_32;
+         begin
+            --  Name: find end (trim spaces/nulls)
+            for j in reverse 1 .. 16 loop
+               if nameField (j) /= ' ' and
+                  nameField (j) /= Character'Val (0)
+               then
+                  nameEnd := j;
+                  exit;
+               end if;
+            end loop;
+
+            --  Skip unnamed SUSPENDED entries (reserved but unused slots)
+            if nameEnd = 0 and Natural (stateVal) = 11 then
+               goto Next_Entry;
+            end if;
+
+            --  The identity (KERN-003), right-justified
+            putStr ((1 .. Natural'Max (0, PID_COLUMN - Image (pidVal)'Length) => ' ') & Image (pidVal));
+            putStr ("  ");
+
+            if nameEnd > 0 then
+               putPadded (nameField (1 .. nameEnd), 18);
+            else
+               putPadded ("(unnamed)", 18);
+            end if;
+
+            --  State
+            stateIdx := Natural (stateVal);
+            if stateIdx <= 11 then
+               putStr (stateTable (stateIdx));
+            else
+               putStr ("???       ");
+            end if;
+            putStr ("  ");
+
+            --  CPU
+            putDecRight (Unsigned_64 (cpuVal), 2);
+            putStr ("  ");
+
+            --  Priority (signed)
+            pri := Integer (Item.Priority);
+            putDecSigned (pri);
+
+            --  Memory (frames * 4 = KB)
+            memKB := framesVal * 4;
+            putStr ("  ");
+            putDecRight (Unsigned_64 (memKB), 5);
+            putChar ('K');
+
+            putChar (LF);
+         <<Next_Entry>>
+         end;
+      end loop;
+   end cmdPs;
+
+   ---------------------------------------------------------------------------
+   --  cmdHexdump
+   ---------------------------------------------------------------------------
+   procedure cmdHexdump (path : String) is
+      msg    : Message;
+      tag    : MessageTag;
+      handle : Unsigned_64;
+      fileOffset : Unsigned_32 := 0;
+   begin
+      if not fsReady then
+         putStr ("error: filesystem not available" & LF);
+         return;
+      end if;
+
+      if path'Length = 0 then
+         putStr ("usage: hexdump <path>" & LF);
+         return;
+      end if;
+
+      --  Resolve path against cwd into fsBuf
+      declare
+         resolvedLen : constant Natural := resolvePath (path);
+      begin
+         --  OP_OPEN
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_OPEN,
+                     length => 4, protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := fsGrant.slot;
+         msg.words (1) := Unsigned_64 (resolvedLen);
+         msg.words (2) := 0;
+         msg.words (3) := fsGrant.generation;
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+      end;
+
+      if tag.label /= REPLY_OK then
+         putStr ("hexdump: file not found" & LF);
+         return;
+      end if;
+
+      handle := msg.words (0);
+
+      --  Read and dump loop
+      loop
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_READ,
+                     length => 4, protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := handle;
+         msg.words (1) := fsGrant.slot;
+         msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
+         msg.words (3) := fsGrant.generation;
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+         exit when tag.label /= REPLY_OK;
+
+         declare
+            bytesRead : constant Natural := Natural (msg.words (0));
+            data : array (0 .. bytesRead - 1) of Unsigned_8
+               with Import, Address => fsBuf;
+            pos : Natural := 0;
+            lineLen : Natural;
+         begin
+            exit when bytesRead = 0;
+
+            while pos < bytesRead loop
+               --  Bytes remaining on this line
+               if bytesRead - pos >= 16 then
+                  lineLen := 16;
+               else
+                  lineLen := bytesRead - pos;
+               end if;
+
+               --  Offset
+               putHex32 (fileOffset);
+               putStr ("  ");
+
+               --  Hex bytes
+               for j in 0 .. 15 loop
+                  if j < lineLen then
+                     putHex8 (data (pos + j));
+                  else
+                     putStr ("  ");
+                  end if;
+                  if j = 7 then
+                     putChar (' ');
+                  end if;
+                  putChar (' ');
+               end loop;
+
+               --  ASCII
+               putStr (" |");
+               for j in 0 .. lineLen - 1 loop
+                  declare
+                     b : constant Unsigned_8 := data (pos + j);
+                  begin
+                     if b >= 32 and b <= 126 then
+                        putChar (Character'Val (Natural (b)));
+                     else
+                        putChar ('.');
+                     end if;
+                  end;
+               end loop;
+               --  Pad ASCII field if short line
+               for j in lineLen .. 15 loop
+                  putChar (' ');
+               end loop;
+               putStr ("|" & LF);
+
+               pos := pos + lineLen;
+               fileOffset := fileOffset + Unsigned_32 (lineLen);
+            end loop;
+         end;
+      end loop;
+
+      --  OP_CLOSE
+      msg := NULL_MESSAGE;
+      msg.tag := (label  => OP_CLOSE,
+                  length => 1, protocol => 0, ipc => <>, reserved => 0);
+      msg.words (0) := handle;
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+      renderDirty;
+   end cmdHexdump;
+
+   ---------------------------------------------------------------------------
+   --  cmdHead
+   ---------------------------------------------------------------------------
+   procedure cmdHead (args : String) is
+      msg      : Message;
+      tag      : MessageTag;
+      handle   : Unsigned_64;
+      maxLines : Natural := 10;
+      lineCount : Natural := 0;
+      pathStart : Natural := args'First;
+   begin
+      if not fsReady then
+         putStr ("error: filesystem not available" & LF);
+         return;
+      end if;
+
+      if args'Length = 0 then
+         putStr ("usage: head [-n N] <path>" & LF);
+         return;
+      end if;
+
+      --  Parse "-n N" prefix
+      if args'Length > 3 and then
+         args (args'First) = '-' and then
+         args (args'First + 1) = 'n' and then
+         args (args'First + 2) = ' '
+      then
+         --  Find number end
+         declare
+            numStart : constant Natural := args'First + 3;
+            numEnd   : Natural := numStart;
+            n        : Natural := 0;
+         begin
+            --  Skip to space after number
+            while numEnd <= args'Last and then
+                  args (numEnd) /= ' '
+            loop
+               numEnd := numEnd + 1;
+            end loop;
+
+            --  Parse number
+            for k in numStart .. numEnd - 1 loop
+               if args (k) >= '0' and args (k) <= '9' then
+                  n := n * 10 +
+                     (Character'Pos (args (k)) - Character'Pos ('0'));
+               end if;
+            end loop;
+
+            if n > 0 then
+               maxLines := n;
+            end if;
+
+            --  Skip space after number
+            if numEnd <= args'Last and then args (numEnd) = ' ' then
+               pathStart := numEnd + 1;
+            else
+               putStr ("usage: head [-n N] <path>" & LF);
+               return;
+            end if;
+         end;
+      end if;
+
+      declare
+         actualPath : String renames args (pathStart .. args'Last);
+      begin
+         if actualPath'Length = 0 then
+            putStr ("usage: head [-n N] <path>" & LF);
+            return;
+         end if;
+
+         --  Resolve path against cwd into fsBuf
+         declare
+            resolvedLen : constant Natural := resolvePath (actualPath);
+         begin
+            --  OP_OPEN
+            msg := NULL_MESSAGE;
+            msg.tag := (label  => OP_OPEN,
+                        length => 4, protocol => 0, ipc => <>, reserved => 0);
+            msg.words (0) := fsGrant.slot;
+            msg.words (1) := Unsigned_64 (resolvedLen);
+            msg.words (2) := 0;
+            msg.words (3) := fsGrant.generation;
+            tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+         end;
+
+         if tag.label /= REPLY_OK then
+            putStr ("head: file not found" & LF);
+            return;
+         end if;
+
+         handle := msg.words (0);
+
+         --  Read loop
+         loop
+            msg := NULL_MESSAGE;
+            msg.tag := (label  => OP_READ,
+                        length => 4, protocol => 0, ipc => <>, reserved => 0);
+            msg.words (0) := handle;
+            msg.words (1) := fsGrant.slot;
+            msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
+            msg.words (3) := fsGrant.generation;
+            tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+            exit when tag.label /= REPLY_OK;
+
+            declare
+               bytesRead : constant Natural := Natural (msg.words (0));
+               data : String (1 .. bytesRead) with Import, Address => fsBuf;
+               done : Boolean := False;
+            begin
+               exit when bytesRead = 0;
+
+               for j in data'Range loop
+                  putChar (data (j));
+                  if data (j) = ASCII.LF then
+                     lineCount := lineCount + 1;
+                     if lineCount >= maxLines then
+                        done := True;
+                        exit;
+                     end if;
+                  end if;
+               end loop;
+
+               exit when done;
+            end;
+         end loop;
+
+         --  OP_CLOSE
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_CLOSE,
+                     length => 1, protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := handle;
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+         renderDirty;
+      end;
+   end cmdHead;
+
+   ---------------------------------------------------------------------------
+   --  cmdWc
+   ---------------------------------------------------------------------------
+   procedure cmdWc (path : String) is
+      msg      : Message;
+      tag      : MessageTag;
+      handle   : Unsigned_64;
+      lines    : Unsigned_32 := 0;
+      words    : Unsigned_32 := 0;
+      bytes    : Unsigned_32 := 0;
+      inWord   : Boolean := False;
+   begin
+      if not fsReady then
+         putStr ("error: filesystem not available" & LF);
+         return;
+      end if;
+
+      if path'Length = 0 then
+         putStr ("usage: wc <path>" & LF);
+         return;
+      end if;
+
+      --  Resolve path against cwd into fsBuf
+      declare
+         resolvedLen : constant Natural := resolvePath (path);
+      begin
+         --  OP_OPEN
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_OPEN,
+                     length => 4, protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := fsGrant.slot;
+         msg.words (1) := Unsigned_64 (resolvedLen);
+         msg.words (2) := 0;
+         msg.words (3) := fsGrant.generation;
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+      end;
+
+      if tag.label /= REPLY_OK then
+         putStr ("wc: file not found" & LF);
+         return;
+      end if;
+
+      handle := msg.words (0);
+
+      --  Read loop
+      loop
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_READ,
+                     length => 4, protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := handle;
+         msg.words (1) := fsGrant.slot;
+         msg.words (2) := Unsigned_64 (FS_BUF_PAGES * 4096);
+         msg.words (3) := fsGrant.generation;
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+         exit when tag.label /= REPLY_OK;
+
+         declare
+            bytesRead : constant Natural := Natural (msg.words (0));
+            data : array (0 .. bytesRead - 1) of Unsigned_8
+               with Import, Address => fsBuf;
+         begin
+            exit when bytesRead = 0;
+
+            bytes := bytes + Unsigned_32 (bytesRead);
+
+            for j in data'Range loop
+               declare
+                  b : constant Unsigned_8 := data (j);
+                  isSpace : constant Boolean :=
+                     b = 16#20# or b = 16#09# or b = 16#0A# or
+                     b = 16#0D#;
+               begin
+                  if b = 16#0A# then
+                     lines := lines + 1;
+                  end if;
+
+                  if isSpace then
+                     inWord := False;
+                  elsif not inWord then
+                     inWord := True;
+                     words := words + 1;
+                  end if;
+               end;
+            end loop;
+         end;
+      end loop;
+
+      --  OP_CLOSE
+      msg := NULL_MESSAGE;
+      msg.tag := (label  => OP_CLOSE,
+                  length => 1, protocol => 0, ipc => <>, reserved => 0);
+      msg.words (0) := handle;
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+      --  Print results
+      putStr ("  ");
+      putDecRight (Unsigned_64 (lines), 6);
+      putStr ("  ");
+      putDecRight (Unsigned_64 (words), 6);
+      putStr ("  ");
+      putDecRight (Unsigned_64 (bytes), 6);
+      putStr ("  ");
+      putStr (path);
+      putChar (LF);
+   end cmdWc;
+
+   ---------------------------------------------------------------------------
+   --  cmdInspect - show app manifest metadata (.cubit.id, .cubit.streams,
+   --                .cubit.caps, .cubit.access)
+   ---------------------------------------------------------------------------
+   OP_SEEK : constant Unsigned_32 := 16#0006#;
+
+   --  Read helpers: read typed values from fsBuf at byte offset
+   function bufU8 (off : Natural) return Unsigned_8 is
+      val : Unsigned_8 with Import,
+         Address => fsBuf + Storage_Offset (off);
+   begin
+      return val;
+   end bufU8;
+
+   function bufU16 (off : Natural) return Unsigned_16 is
+      val : Unsigned_16 with Import,
+         Address => fsBuf + Storage_Offset (off);
+   begin
+      return val;
+   end bufU16;
+
+   function bufU32 (off : Natural) return Unsigned_32 is
+      val : Unsigned_32 with Import,
+         Address => fsBuf + Storage_Offset (off);
+   begin
+      return val;
+   end bufU32;
+
+   function bufU64 (off : Natural) return Unsigned_64 is
+      val : Unsigned_64 with Import,
+         Address => fsBuf + Storage_Offset (off);
+   begin
+      return val;
+   end bufU64;
+
+   --  Seek to an offset in an open file handle
+   procedure seekTo (handle : Unsigned_64; offset : Unsigned_64) is
+      msg : Message := NULL_MESSAGE;
+      tag : MessageTag;
+   begin
+      msg.tag := (label  => OP_SEEK,
+                  length => 3, protocol => 0, ipc => <>, reserved => 0);
+      msg.words (0) := handle;
+      msg.words (1) := offset;
+      msg.words (2) := 0;  -- SEEK_SET
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+   end seekTo;
+
+   --  Read up to count bytes into fsBuf; returns actual bytes read
+   function readChunk
+     (handle : Unsigned_64;
+      count  : Unsigned_64) return Unsigned_64
+   is
+      msg : Message := NULL_MESSAGE;
+      tag : MessageTag;
+   begin
+      msg.tag := (label  => OP_READ,
+                  length => 4, protocol => 0, ipc => <>, reserved => 0);
+      msg.words (0) := handle;
+      msg.words (1) := fsGrant.slot;
+      msg.words (2) := count;
+      msg.words (3) := fsGrant.generation;
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+      if tag.label /= REPLY_OK then
+         return 0;
+      end if;
+      return msg.words (0);
+   end readChunk;
+
+   procedure cmdInspect (path : String) is
+      msg    : Message;
+      tag    : MessageTag;
+      handle : Unsigned_64;
+      fileSize   : Unsigned_64;
+      e_shoff    : Unsigned_64;
+      e_shnum    : Unsigned_16;
+      bytesRead  : Unsigned_64;
+
+      SHT_PROGBITS   : constant Unsigned_32 := 1;
+      CACC_MAGIC     : constant Unsigned_32 := 16#43434143#;
+      CBIT_MAGIC     : constant Unsigned_32 := 16#43424954#;
+      CBID_MAGIC     : constant Unsigned_32 := 16#44494243#;
+      CBST_MAGIC     : constant Unsigned_32 := 16#54534243#;
+      foundAccess    : Boolean := False;
+      foundCaps      : Boolean := False;
+      foundId        : Boolean := False;
+      foundStreams    : Boolean := False;
+   begin
+      if not fsReady then
+         putStr ("error: filesystem not available" & LF);
+         return;
+      end if;
+
+      if path'Length = 0 then
+         putStr ("usage: inspect <file>" & LF);
+         return;
+      end if;
+
+      --  Resolve path against cwd into fsBuf
+      declare
+         resolvedLen : constant Natural := resolvePath (path);
+      begin
+         --  OP_OPEN
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => OP_OPEN,
+                     length => 4, protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := fsGrant.slot;
+         msg.words (1) := Unsigned_64 (resolvedLen);
+         msg.words (2) := 0;
+         msg.words (3) := fsGrant.generation;
+         tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+      end;
+
+      if tag.label /= REPLY_OK then
+         putStr ("inspect: file not found" & LF);
+         return;
+      end if;
+
+      handle   := msg.words (0);
+      fileSize := msg.words (1);
+
+      --  Read ELF header (first 64 bytes)
+      bytesRead := readChunk (handle, 64);
+      if bytesRead < 64 then
+         putStr ("inspect: file too small" & LF);
+         goto Close_File;
+      end if;
+
+      --  Validate ELF magic: 0x7F 'E' 'L' 'F'
+      if bufU8 (0) /= 16#7F# or bufU8 (1) /= 16#45# or
+         bufU8 (2) /= 16#4C# or bufU8 (3) /= 16#46#
+      then
+         putStr ("inspect: not an ELF file" & LF);
+         goto Close_File;
+      end if;
+
+      e_shoff := bufU64 (40);
+      e_shnum := bufU16 (60);
+
+      if e_shoff = 0 or e_shnum = 0 then
+         putStr ("inspect: no section headers" & LF);
+         goto Close_File;
+      end if;
+
+      --  Read section header table into fsBuf
+      --  Each section header is 64 bytes; limit to what fsBuf can hold
+      declare
+         shTableSize : constant Unsigned_64 :=
+            Unsigned_64 (e_shnum) * 64;
+         maxRead : constant Unsigned_64 :=
+            Unsigned_64 (FS_BUF_PAGES * 4096);
+         actualShNum : Unsigned_16;
+      begin
+         if shTableSize > maxRead then
+            actualShNum := Unsigned_16 (maxRead / 64);
+         else
+            actualShNum := e_shnum;
+         end if;
+
+         seekTo (handle, e_shoff);
+         bytesRead := readChunk (handle,
+            Unsigned_64 (actualShNum) * 64);
+
+         if bytesRead < Unsigned_64 (actualShNum) * 64 then
+            actualShNum := Unsigned_16 (bytesRead / 64);
+         end if;
+
+         --  Copy section header info to stack before we reuse fsBuf.
+         --  We need sh_type, sh_offset, sh_size for each PROGBITS section.
+         declare
+            MAX_SECTIONS : constant := 64;
+            type SHInfo is record
+               sh_type   : Unsigned_32;
+               sh_offset : Unsigned_64;
+               sh_size   : Unsigned_64;
+            end record;
+            sections : array (0 .. MAX_SECTIONS - 1) of SHInfo;
+            numSections : Natural := 0;
+         begin
+            for i in 0 .. Natural (actualShNum) - 1 loop
+               declare
+                  base : constant Natural := i * 64;
+                  sht  : constant Unsigned_32 := bufU32 (base + 4);
+               begin
+                  if sht = SHT_PROGBITS and numSections < MAX_SECTIONS then
+                     sections (numSections).sh_type   := sht;
+                     sections (numSections).sh_offset  :=
+                        bufU64 (base + 24);
+                     sections (numSections).sh_size    :=
+                        bufU64 (base + 32);
+                     numSections := numSections + 1;
+                  end if;
+               end;
+            end loop;
+
+            --  Scan each PROGBITS section for magic signatures
+            for s in 0 .. numSections - 1 loop
+               if sections (s).sh_size >= 4 and
+                  sections (s).sh_offset + sections (s).sh_size <= fileSize
+               then
+                  --  Read first 4 bytes to check magic
+                  seekTo (handle, sections (s).sh_offset);
+                  bytesRead := readChunk (handle, 4);
+
+                  if bytesRead >= 4 then
+                     declare
+                        magic : constant Unsigned_32 := bufU32 (0);
+                     begin
+                        -------------------------------------------------------
+                        --  .cubit.id section (CBID)
+                        -------------------------------------------------------
+                        if magic = CBID_MAGIC and not foundId then
+                           seekTo (handle, sections (s).sh_offset);
+                           bytesRead := readChunk (handle,
+                              sections (s).sh_size);
+
+                           if bytesRead >= 8 then
+                              declare
+                                 ver : constant Unsigned_16 :=
+                                    bufU16 (4);
+                                 cnt : constant Unsigned_16 :=
+                                    bufU16 (6);
+                                 pos : Natural := 8;
+                              begin
+                                 putStr ("Package Identity "
+                                    & "(.cubit.id v");
+                                 putDec (Unsigned_32 (ver));
+                                 putStr (", ");
+                                 putDec (Unsigned_32 (cnt));
+                                 putStr (" entries):" & LF);
+
+                                 if ver = 1 and cnt > 0 then
+                                    for e in 0 ..
+                                       Natural (cnt) - 1
+                                    loop
+                                       exit when pos + 3 >
+                                          Natural (bytesRead);
+
+                                       declare
+                                          kLen : constant Natural :=
+                                             Natural (bufU8 (pos));
+                                          vLen : constant Natural :=
+                                             Natural (bufU16 (pos + 1));
+                                       begin
+                                          pos := pos + 3;
+                                          exit when pos + kLen + vLen >
+                                             Natural (bytesRead);
+
+                                          putStr ("  ");
+                                          --  Print key
+                                          for c in 0 .. kLen - 1 loop
+                                             putChar (
+                                                Character'Val (
+                                                   Natural (
+                                                      bufU8 (pos + c))));
+                                          end loop;
+                                          putStr (" = ");
+                                          --  Print value
+                                          for c in 0 .. vLen - 1 loop
+                                             declare
+                                                ch : constant Unsigned_8 :=
+                                                   bufU8 (
+                                                      pos + kLen + c);
+                                             begin
+                                                if ch >= 32 and
+                                                   ch < 127
+                                                then
+                                                   putChar (
+                                                      Character'Val (
+                                                         Natural (ch)));
+                                                end if;
+                                             end;
+                                          end loop;
+                                          putChar (LF);
+
+                                          pos := pos + kLen + vLen;
+                                       end;
+                                    end loop;
+                                 end if;
+                              end;
+
+                              foundId := True;
+                           end if;
+
+                        -------------------------------------------------------
+                        --  .cubit.streams section (CBST)
+                        -------------------------------------------------------
+                        elsif magic = CBST_MAGIC and not foundStreams then
+                           seekTo (handle, sections (s).sh_offset);
+                           bytesRead := readChunk (handle,
+                              sections (s).sh_size);
+
+                           if bytesRead >= 8 then
+                              declare
+                                 ver : constant Unsigned_16 :=
+                                    bufU16 (4);
+                                 cnt : constant Unsigned_16 :=
+                                    bufU16 (6);
+                              begin
+                                 putChar (LF);
+                                 putStr ("Streams "
+                                    & "(.cubit.streams v");
+                                 putDec (Unsigned_32 (ver));
+                                 putStr (", ");
+                                 putDec (Unsigned_32 (cnt));
+                                 putStr (" entries):" & LF);
+
+                                 if ver = 1 and cnt > 0 and
+                                    bytesRead >= 8 +
+                                       Unsigned_64 (cnt) * 8
+                                 then
+                                    for e in 0 ..
+                                       Natural (cnt) - 1
+                                    loop
+                                       declare
+                                          eBase : constant Natural :=
+                                             8 + e * 8;
+                                          sid : constant Unsigned_16 :=
+                                             bufU16 (eBase);
+                                          pg  : constant Unsigned_16 :=
+                                             bufU16 (eBase + 2);
+                                          tt  : constant Unsigned_16 :=
+                                             bufU16 (eBase + 4);
+                                          fl  : constant Unsigned_16 :=
+                                             bufU16 (eBase + 6);
+                                       begin
+                                          putStr ("  [");
+                                          putDec (Unsigned_32 (e));
+                                          putStr ("] ");
+
+                                          --  A port's ring: its position
+                                          --  in the manifest plus one.
+                                          putStr ("ring=");
+                                          putDec (Unsigned_32 (sid));
+
+                                          putStr ("  pages=");
+                                          putDec (Unsigned_32 (pg));
+
+                                          putStr ("  type=");
+                                          case tt is
+                                             when 0 =>
+                                                putStr ("raw");
+                                             when 1 =>
+                                                putStr ("text");
+                                             when others =>
+                                                putDec (
+                                                   Unsigned_32 (tt));
+                                          end case;
+
+                                          if fl /= 0 then
+                                             putStr ("  flags=");
+                                             putDec (Unsigned_32 (fl));
+                                          end if;
+
+                                          putChar (LF);
+                                       end;
+                                    end loop;
+                                 end if;
+                              end;
+
+                              foundStreams := True;
+                           end if;
+
+                        -------------------------------------------------------
+                        --  .cubit.access section (CACC)
+                        -------------------------------------------------------
+                        elsif magic = CACC_MAGIC and not foundAccess then
+                           seekTo (handle, sections (s).sh_offset);
+                           bytesRead := readChunk (handle,
+                              sections (s).sh_size);
+
+                           if bytesRead >= 16 then
+                              declare
+                                 ver   : constant Unsigned_16 :=
+                                    bufU16 (4);
+                                 cnt   : constant Unsigned_16 :=
+                                    bufU16 (6);
+                              begin
+                                 putChar (LF);
+                                 putStr ("Filesystem Access "
+                                    & "(.cubit.access v");
+                                 putDec (Unsigned_32 (ver));
+                                 putStr (", ");
+                                 putDec (Unsigned_32 (cnt));
+                                 putStr (" entries):" & LF);
+
+                                 if ver = 1 and cnt > 0 and
+                                    bytesRead >= 16 +
+                                       Unsigned_64 (cnt) * 80
+                                 then
+                                    for e in 0 ..
+                                       Natural (cnt) - 1
+                                    loop
+                                       declare
+                                          eBase : constant Natural :=
+                                             16 + e * 80;
+                                          rights : constant Unsigned_8 :=
+                                             bufU8 (eBase);
+                                          pLen : constant Natural :=
+                                             Natural (bufU8 (eBase + 1));
+                                       begin
+                                          putStr ("  [");
+                                          putDec (Unsigned_32 (e));
+                                          putStr ("] ");
+
+                                          --  Rights flags
+                                          if (rights and 1) /= 0 then
+                                             putChar ('R');
+                                          end if;
+                                          if (rights and 2) /= 0 then
+                                             putChar ('W');
+                                          end if;
+                                          if (rights and 4) /= 0 then
+                                             putChar ('X');
+                                          end if;
+                                          if (rights and 8) /= 0 then
+                                             putChar ('C');
+                                          end if;
+
+                                          putStr ("    ");
+
+                                          --  Path prefix
+                                          if pLen = 0 then
+                                             putStr ("(wildcard)");
+                                          else
+                                             for c in 0 .. pLen - 1 loop
+                                                declare
+                                                   ch : constant
+                                                      Unsigned_8 :=
+                                                      bufU8 (eBase + 8 +
+                                                         c);
+                                                begin
+                                                   if ch >= 32 and
+                                                      ch < 127
+                                                   then
+                                                      putChar (
+                                                         Character'Val (
+                                                            Natural (ch)));
+                                                   end if;
+                                                end;
+                                             end loop;
+                                          end if;
+
+                                          putChar (LF);
+                                       end;
+                                    end loop;
+                                 end if;
+                              end;
+
+                              foundAccess := True;
+                           end if;
+
+                        -------------------------------------------------------
+                        --  .cubit.caps section (CBIT)
+                        -------------------------------------------------------
+                        elsif magic = CBIT_MAGIC and not foundCaps then
+                           seekTo (handle, sections (s).sh_offset);
+                           bytesRead := readChunk (handle,
+                              sections (s).sh_size);
+
+                           if bytesRead >= 8 then
+                              declare
+                                 ver   : constant Unsigned_16 :=
+                                    bufU16 (4);
+                                 cnt   : constant Unsigned_16 :=
+                                    bufU16 (6);
+
+                                 --  Manifest request type names
+                                 type ReqName is record
+                                    name : String (1 .. 12);
+                                    nlen : Natural;
+                                 end record;
+                                 reqNames : constant
+                                    array (0 .. 9) of ReqName := (
+                                    0 => ("UNKNOWN     ", 7),
+                                    1 => ("FRAMEBUFFER ", 11),
+                                    2 => ("SERVICE     ", 7),
+                                    3 => ("IOPORT      ", 6),
+                                    4 => ("IRQ         ", 3),
+                                    5 => ("DEVICE_MEM  ", 10),
+                                    6 => ("PROCESS     ", 7),
+                                    7 => ("UNKNOWN     ", 7),
+                                    8 => ("STREAM      ", 6),
+                                    9 => ("RESOURCE    ", 8));
+                              begin
+                                 putChar (LF);
+                                 putStr ("Capabilities "
+                                    & "(.cubit.caps v");
+                                 putDec (Unsigned_32 (ver));
+                                 putStr (", ");
+                                 putDec (Unsigned_32 (cnt));
+                                 putStr (" entries):" & LF);
+
+                                 if ver = 1 and cnt > 0 and
+                                    bytesRead >= 8 +
+                                       Unsigned_64 (cnt) * 16
+                                 then
+                                    for e in 0 ..
+                                       Natural (cnt) - 1
+                                    loop
+                                       declare
+                                          eBase : constant Natural :=
+                                             8 + e * 16;
+                                          reqType : constant Natural :=
+                                             Natural (bufU8 (eBase));
+                                          rights : constant Unsigned_8 :=
+                                             bufU8 (eBase + 1);
+                                          slot : constant Unsigned_8 :=
+                                             bufU8 (eBase + 2);
+                                          param0 : constant Unsigned_32 :=
+                                             bufU32 (eBase + 4);
+                                          rIdx : Natural := reqType;
+                                       begin
+                                          if rIdx > 9 then
+                                             rIdx := 0;
+                                          end if;
+
+                                          putStr ("  [");
+                                          putDec (Unsigned_32 (e));
+                                          putStr ("] ");
+                                          putStr (reqNames (rIdx).name
+                                             (1 .. reqNames (rIdx).nlen));
+                                          putChar (' ');
+
+                                          --  Rights
+                                          if (rights and 1) /= 0 then
+                                             putChar ('R');
+                                          end if;
+                                          if (rights and 2) /= 0 then
+                                             putChar ('W');
+                                          end if;
+                                          if (rights and 8) /= 0 then
+                                             putChar ('G');
+                                          end if;
+                                          if (rights and 4) /= 0 then
+                                             putChar ('X');
+                                          end if;
+
+                                          --  Slot
+                                          putStr ("   slot ");
+                                          putDec (Unsigned_32 (slot));
+
+                                          --  Driver name for SERVICE type
+                                          if reqType = 2 then
+                                             putStr ("  ");
+                                             case param0 is
+                                                when 1 =>
+                                                   putStr ("keyboard");
+                                                when 2 =>
+                                                   putStr ("ata");
+                                                when 3 =>
+                                                   putStr ("netstack");
+                                                when 4 =>
+                                                   putStr ("procmgr");
+                                                when 5 =>
+                                                   putStr ("nvme");
+                                                when 6 =>
+                                                   putStr ("fs");
+                                                when 7 =>
+                                                   putStr ("devmgr");
+                                                when 8 =>
+                                                   putStr ("hda");
+                                                when 9 =>
+                                                   putStr ("mixer");
+                                                when 10 =>
+                                                   putStr ("mouse");
+                                                when 11 =>
+                                                   putStr ("config");
+                                                when 12 =>
+                                                   putStr ("netmgr");
+                                                when others =>
+                                                   putStr ("driver=");
+                                                   putDec (param0);
+                                             end case;
+                                          end if;
+
+                                          --  Stream details: lo16=ID, hi16=pages
+                                          if reqType = 8 then
+                                             declare
+                                                sid : constant Unsigned_32 :=
+                                                   param0 and 16#FFFF#;
+                                                pg  : constant Unsigned_32 :=
+                                                   Shift_Right (param0, 16)
+                                                      and 16#FFFF#;
+                                             begin
+                                                putStr ("  ring=");
+                                                putDec (sid);
+                                                putStr (" pages=");
+                                                putDec (pg);
+                                             end;
+                                          end if;
+
+                                          putChar (LF);
+                                       end;
+                                    end loop;
+                                 end if;
+                              end;
+
+                              foundCaps := True;
+                           end if;
+                        end if;
+                     end;
+                  end if;
+               end if;
+
+               exit when foundId and foundStreams and
+                         foundAccess and foundCaps;
+            end loop;
+         end;
+      end;
+
+      --  Report missing sections
+      if not foundId then
+         putStr ("Package Identity: (no .cubit.id)" & LF);
+      end if;
+      if not foundStreams and not foundCaps then
+         putStr ("Streams: (none)" & LF);
+      end if;
+      if not foundCaps then
+         putStr ("Capabilities: (none)" & LF);
+      end if;
+      if not foundAccess then
+         putChar (LF);
+         putStr ("Filesystem Access: (no .cubit.access)" & LF);
+         putStr ("  deny-by-default (no filesystem access)" & LF);
+      end if;
+
+   <<Close_File>>
+      msg := NULL_MESSAGE;
+      msg.tag := (label  => OP_CLOSE,
+                  length => 1, protocol => 0, ipc => <>, reserved => 0);
+      msg.words (0) := handle;
+      tag := capCall (Startup.Filesystem, msg, CuBit.Messages.Wait_Forever);
+
+      renderDirty;
+   end cmdInspect;
+
+   --  Manual string comparison (avoids memcmp dependency)
+   function strEqual (a : String; b : String) return Boolean is
+   begin
+      if a'Length /= b'Length then
+         return False;
+      end if;
+      for i in 0 .. a'Length - 1 loop
+         if a (a'First + i) /= b (b'First + i) then
+            return False;
+         end if;
+      end loop;
+      return True;
+   end strEqual;
+
+   --  Check if line starts with a given prefix
+   function startsWith (line : String; prefix : String) return Boolean is
+   begin
+      if line'Length < prefix'Length then
+         return False;
+      end if;
+      for i in 0 .. prefix'Length - 1 loop
+         if line (line'First + i) /= prefix (prefix'First + i) then
+            return False;
+         end if;
+      end loop;
+      return True;
+   end startsWith;
+
+   procedure cmdPwd is
+   begin
+      if cwdLen > 0 then
+         putStr (cwdBuf (1 .. cwdLen));
+      else
+         putChar ('/');
+      end if;
+      putChar (LF);
+   end cmdPwd;
+
+   procedure cmdCd (path : String) is
+   begin
+      if path'Length = 0 then
+         --  No args: print cwd
+         cmdPwd;
+         return;
+      end if;
+
+      --  "/" resets to ramdisk root
+      if path'Length = 1 and then path (path'First) = '/' then
+         cwdLen := 0;
+         return;
+      end if;
+
+      --  Set new cwd
+      if path'Length > CWD_MAX then
+         putStr ("cd: path too long" & LF);
+         return;
+      end if;
+
+      for i in 0 .. path'Length - 1 loop
+         cwdBuf (i + 1) := path (path'First + i);
+      end loop;
+      cwdLen := path'Length;
+
+      --  Ensure trailing '/'
+      if cwdBuf (cwdLen) /= '/' then
+         if cwdLen < CWD_MAX then
+            cwdLen := cwdLen + 1;
+            cwdBuf (cwdLen) := '/';
+         end if;
+      end if;
+   end cmdCd;
+
+   ---------------------------------------------------------------------------
+   --  cmdConfig
+   --  Handle "config get/set/delete/list" subcommands.
+   ---------------------------------------------------------------------------
+   procedure cmdConfig (arg : String) is
+      use type CuBit.Settings.Outcome;
+      Config : constant CuBit.Settings.Inspection.Inspector := Startup.Settings.Inspector;
+
+      procedure printOutcome (s : CuBit.Settings.Outcome) is
+      begin
+         case s is
+            when CuBit.Settings.Present     => null;
+            when CuBit.Settings.Absent      => putStr ("error: not found" & LF);
+            when CuBit.Settings.Denied      => putStr ("error: access denied" & LF);
+            when CuBit.Settings.Invalid     => putStr ("error: not a valid value" & LF);
+            when CuBit.Settings.Unavailable => putStr ("error: Config is not answering" & LF);
+         end case;
+      end printOutcome;
+
+      procedure printChange (s : CuBit.Settings.Change_Outcome) is
+      begin
+         case s is
+            when CuBit.Settings.Done        => putStr ("ok" & LF);
+            when CuBit.Settings.Not_Present => putStr ("error: not found" & LF);
+            when CuBit.Settings.Refused     => putStr ("error: access denied" & LF);
+            when CuBit.Settings.Too_Long    => putStr ("error: value too long" & LF);
+            when CuBit.Settings.No_Config   => putStr ("error: Config is not answering" & LF);
+         end case;
+      end printChange;
+
+   begin
+      if startsWith (arg, "get ") and arg'Length > 4 then
+         declare
+            val : CuBit.Settings.Text;
+            st  : CuBit.Settings.Outcome;
+         begin
+            CuBit.Settings.Inspection.Read (Config, arg (arg'First + 4 .. arg'Last), val, st);
+            if st = CuBit.Settings.Present then
+               putStr (CuBit.Settings.Image (val));
+               putChar (LF);
+            else
+               printOutcome (st);
+            end if;
+         end;
+
+      elsif startsWith (arg, "set ") and arg'Length > 4 then
+         --  Parse "set key value"
+         declare
+            rest    : String renames arg (arg'First + 4 .. arg'Last);
+            spaceAt : Natural := 0;
+            st      : CuBit.Settings.Change_Outcome;
+         begin
+            --  Find space separator between key and value
+            for i in rest'Range loop
+               if rest (i) = ' ' then
+                  spaceAt := i;
+                  exit;
+               end if;
+            end loop;
+
+            if spaceAt = 0 then
+               putStr ("usage: config set <key> <value>" & LF);
+            else
+               CuBit.Settings.Inspection.Write
+                 (Config, rest (rest'First .. spaceAt - 1), rest (spaceAt + 1 .. rest'Last), st);
+               printChange (st);
+            end if;
+         end;
+
+      elsif startsWith (arg, "delete ") and arg'Length > 7 then
+         declare
+            st : CuBit.Settings.Change_Outcome;
+         begin
+            CuBit.Settings.Inspection.Delete (Config, arg (arg'First + 7 .. arg'Last), st);
+            printChange (st);
+         end;
+
+      elsif startsWith (arg, "list") then
+         declare
+            count : Natural := 0;
+            st    : CuBit.Settings.Outcome;
+            procedure Show (Key : String) is
+            begin
+               putStr ("  " & Key & LF);
+               count := count + 1;
+            end Show;
+            procedure List is new CuBit.Settings.Inspection.For_Each (Show);
+         begin
+            if arg'Length > 5 and then arg (arg'First + 4) = ' ' then
+               List (Config, arg (arg'First + 5 .. arg'Last), st);
+            else
+               List (Config, "", st);
+            end if;
+            if st = CuBit.Settings.Present then
+               putDec (Unsigned_32 (count));
+               putStr (" keys" & LF);
+            else
+               printOutcome (st);
+            end if;
+         end;
+
+      else
+         putStr ("usage: config get|set|delete|list" & LF);
+         putStr ("  config get <key>" & LF);
+         putStr ("  config set <key> <value>" & LF);
+         putStr ("  config delete <key>" & LF);
+         putStr ("  config list [prefix]" & LF);
+      end if;
+   end cmdConfig;
+
+   ---------------------------------------------------------------------------
+   --  cmdIfconfig - show every network interface (CuBit.Net_Management)
+   ---------------------------------------------------------------------------
+   procedure cmdIfconfig is
+      package NM renames CuBit.Net_Management;
+      package NL renames CuBit.Net_Link;
+      msg : Message;
+      tag : MessageTag;
+      previous : Unsigned_64 := 0;
+      shown : Natural := 0;
+   begin
+      if not netstackReady then
+         putStr ("error: netstack not available" & LF);
+         return;
+      end if;
+      loop
+         msg := NULL_MESSAGE;
+         msg.tag := (label => NM.Label (NM.Interface_Next),
+                     length => Unsigned_8 (NM.Request_Words (NM.Interface_Next)),
+                     protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := previous;
+         tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
+         exit when tag.label /= REPLY_OK or else not NL.Valid_Handle_Word (msg.words (0))
+           or else msg.words (0) = previous;
+         previous := msg.words (0);
+         msg := NULL_MESSAGE;
+         msg.tag := (label => NM.Label (NM.Interface_Detail),
+                     length => Unsigned_8 (NM.Request_Words (NM.Interface_Detail)),
+                     protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := previous;
+         tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
+         if tag.label = REPLY_OK then
+            declare
+               S : constant NM.Decoded_Summary :=
+                 NM.Decode_Summary ((msg.words (0), msg.words (1), msg.words (2), msg.words (3)));
+            begin
+               if S.Valid then
+                  declare
+                     Name : constant NL.Interface_Name := NL.Name_Of (S.Item.Identity, S.Item.Address);
+                  begin
+                     shown := shown + 1;
+                     putStr (Name.Text (1 .. Name.Length) & ":" & LF);
+                     putStr ("  link:    " &
+                             (case S.Item.Condition is
+                                 when NL.Up => "UP", when NL.Dormant => "DORMANT", when NL.Down => "DOWN") &
+                             (case S.Item.Kind is
+                                 when NL.Ethernet => " (ethernet)", when NL.Wireless => " (wireless)") & LF);
+                     putStr ("  inet:    ");
+                     putIP (Unsigned_64 (S.Item.Settings.Address));
+                     putStr ("/");
+                     putDec (Unsigned_32 (S.Item.Settings.Prefix));
+                     putStr ("  metric ");
+                     putDec (Unsigned_32 (S.Item.Settings.Metric));
+                     putChar (LF);
+                     putStr ("  gw:      ");
+                     putIP (Unsigned_64 (S.Item.Settings.Gateway));
+                     putChar (LF);
+                     putStr ("  ether:   ");
+                     putMAC (NL.Address_Word (S.Item.Address));
+                     putChar (LF);
+                  end;
+               end if;
+            end;
+         end if;
+      end loop;
+      if shown = 0 then
+         putStr ("(no interfaces)" & LF);
+      end if;
+   end cmdIfconfig;
+
+   ---------------------------------------------------------------------------
+   --  cmdRoute - show routing table
+   ---------------------------------------------------------------------------
+   procedure cmdRoute is
+      package NM renames CuBit.Net_Management;
+      msg       : Message;
+      tag       : MessageTag;
+      startIdx  : Unsigned_64 := 0;
+      printed   : Natural := 0;
+   begin
+      if not netstackReady then
+         putStr ("error: netstack not available" & LF);
+         return;
+      end if;
+
+      putStr ("DESTINATION     PREFIX  GATEWAY         IF  METRIC" & LF);
+
+      loop
+         msg := NULL_MESSAGE;
+         msg.tag := (label  => NM.Label (NM.Route_List),
+                     length => Unsigned_8 (NM.Request_Words (NM.Route_List)),
+                     protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := startIdx;
+         tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
+         exit when tag.label /= REPLY_OK or else tag.length = 0;
+
+         for slot in 0 .. Natural'Min (Natural (tag.length), NM.Routes_Per_Answer) - 1 loop
+            declare
+               R : constant NM.Decoded_Route :=
+                 NM.Decode_Route ((msg.words (slot * 2), msg.words (slot * 2 + 1)));
+            begin
+               if R.Valid then
+                  putIP (Unsigned_64 (R.Item.Destination));
+                  putStr ("  /");
+                  putDec (Unsigned_32 (R.Item.Prefix));
+                  putStr (if R.Item.Prefix < 10 then "    " else "   ");
+                  putIP (Unsigned_64 (R.Item.Gateway));
+                  putStr ("  ");
+                  putDec (R.Item.Slot);
+                  putStr ("   ");
+                  putDec (Unsigned_32 (R.Item.Metric));
+                  putStr (if R.Item.Usable then "" else "  (link down)");
+                  putChar (LF);
+                  printed := printed + 1;
+               end if;
+            end;
+         end loop;
+
+         --  The next page (the answer's reserved field; 0: no more).
+         exit when tag.reserved = 0;
+         startIdx := Unsigned_64 (tag.reserved);
+      end loop;
+
+      if printed = 0 then
+         putStr ("(no routes)" & LF);
+      end if;
+   end cmdRoute;
+
+   ---------------------------------------------------------------------------
+   --  cmdPing - send ICMP echo requests
+   ---------------------------------------------------------------------------
+   procedure cmdPing (target : String) is
+      dstPacked : Unsigned_64;
+      ok : Boolean;
+      msg : Message;
+      tag : MessageTag;
+   begin
+      if not netstackReady then
+         putStr ("error: netstack not available" & LF);
+         return;
+      end if;
+
+      parseIP (target, dstPacked, ok);
+      if not ok then
+         putStr ("invalid IP address" & LF);
+         return;
+      end if;
+
+      putStr ("PING ");
+      putIP (dstPacked);
+      putChar (LF);
+      renderDirty;
+
+      for seq in 1 .. 4 loop
+         declare
+            sendTs : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+            ignore : Unsigned_64;
+         begin
+            msg := NULL_MESSAGE;
+            msg.tag := (label  => CuBit.Net_Management.Label (CuBit.Net_Management.Ping),
+                        length => 3, protocol => 0, ipc => <>, reserved => 0);
+            msg.words (0) := dstPacked;
+            msg.words (1) := Unsigned_64 (seq);
+            msg.words (2) := sendTs;
+            tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
+
+            if tag.label = REPLY_OK then
+               putStr ("reply from ");
+               putIP (msg.words (1));
+               putStr (" seq=");
+               putDec (Unsigned_32 (msg.words (0)));
+               putStr (" time=");
+               putDec (Unsigned_32 (msg.words (2)));
+               putStr ("ms" & LF);
+            else
+               putStr ("request timeout seq=");
+               putDec (Unsigned_32 (seq));
+               putChar (LF);
+            end if;
+
+            renderDirty;
+
+            --  Wait ~1 second between pings (except after last)
+            if seq < 4 then
+               ignore := CuBit.Waits.Sleep_For (1000);
+            end if;
+         end;
+      end loop;
+   end cmdPing;
+
+   ---------------------------------------------------------------------------
+   --  cmdNslookup - DNS lookup
+   ---------------------------------------------------------------------------
+   procedure cmdNslookup (hostname : String) is
+      msg : Message;
+      tag : MessageTag;
+      nameLen : constant Natural := hostname'Length;
+   begin
+      if not netstackReady then
+         putStr ("error: netstack not available" & LF);
+         return;
+      end if;
+
+      if nameLen = 0 or nameLen > 32 then
+         putStr ("hostname too long (max 32)" & LF);
+         return;
+      end if;
+
+      msg := NULL_MESSAGE;
+      msg.tag := (label  => OP_NET_RESOLVE,
+                  length => Unsigned_8 (nameLen),
+                  protocol  => 0, ipc => <>, reserved => 0);
+
+      --  Pack hostname bytes into message words
+      declare
+         raw : array (0 .. 31) of Unsigned_8 with
+            Import, Address => msg.words'Address;
+      begin
+         for i in 0 .. 31 loop
+            raw (i) := 0;
+         end loop;
+         for i in 0 .. nameLen - 1 loop
+            raw (i) := Character'Pos (hostname (hostname'First + i));
+         end loop;
+      end;
+
+      tag := capCall (Network_Service, msg, CuBit.Messages.Wait_Forever);
+
+      if tag.label = REPLY_OK then
+         putStr ("Address: ");
+         putIP (msg.words (0));
+         putChar (LF);
+      else
+         putStr ("lookup failed" & LF);
+      end if;
+   end cmdNslookup;
+
+   ---------------------------------------------------------------------------
+   --  cmdStreams - query a process for its active streams
+   ---------------------------------------------------------------------------
+   procedure cmdStreams (args : String) is
+      OP_STREAM_LIST : constant Unsigned_32 := 16#0705#;
+      pid     : Process_ID;
+      valid   : Boolean;
+      msg     : Message;
+      comp    : CompletionEntry;
+      ok      : Boolean;
+      ret     : Unsigned_64;
+      bitmask : Unsigned_64;
+      count   : Unsigned_32;
+   begin
+      if args'Length = 0 then
+         putStr ("usage: streams <pid>" & LF);
+         return;
+      end if;
+
+      --  The process, as ps prints it (its identity in decimal).
+      CuBit.Process_IDs.Parse (args, pid, valid);
+      if not valid then
+         putStr ("streams: invalid PID" & LF);
+         return;
+      elsif pid = No_Process then
+         putStr ("streams: no such process" & LF);
+         return;
+      end if;
+
+      --  Build and send OP_STREAM_LIST
+      msg := NULL_MESSAGE;
+      msg.tag := (label  => OP_STREAM_LIST,
+                  length => 0, protocol => 0, ipc => <>, reserved => 0);
+
+      --  No endpoint to another process is held (CAP-002).
+      ok := False;
+      if not ok then
+         putStr ("streams: send failed" & LF);
+         return;
+      end if;
+
+      --  Poll for completion with timeout
+      for attempt in 1 .. 50 loop
+         ret := Poll_Completion (comp'Address);
+         if ret = 1 and then comp.token = STREAM_LIST_TOKEN then
+            if comp.msg.tag.label = REPLY_OK then
+               bitmask := comp.msg.words (0);
+               count   := Unsigned_32 (comp.msg.words (1));
+
+               putStr ("PID ");
+               putStr (Image (pid));
+               putStr (": ");
+               putDec (count);
+               putStr (" stream(s)" & LF);
+
+               --  Scan bits 0..15 for active stream IDs
+               for bit in 0 .. 15 loop
+                  if (bitmask and Shift_Left (1, bit)) /= 0 then
+                     putStr ("  port ring ");
+                     putDec (Unsigned_32 (bit));
+                     putChar (LF);
+                  end if;
+               end loop;
+            elsif comp.msg.tag.label = REPLY_ERR then
+               putStr ("streams: error from PID ");
+               putStr (Image (pid));
+               putChar (LF);
+            else
+               putStr ("streams: unexpected reply" & LF);
+            end if;
+            return;
+         end if;
+
+         declare
+            ignore : Unsigned_64;
+         begin
+            ignore := CuBit.Waits.Sleep_For (10);
+         end;
+      end loop;
+
+      putStr ("streams: no response from PID ");
+      putStr (Image (pid));
+      putChar (LF);
+   end cmdStreams;
+
+   ---------------------------------------------------------------------------
+   --  cmdLogs - inspect typed diagnostics through an observer authority.
+   --  The reader owns its output page for the lifetime of this process.
+   ---------------------------------------------------------------------------
+   Log_Reader : CuBit.Logging.Reader := CuBit.Logging.Bound_To (Startup.Log_Observer);
+
+   procedure cmdLogs is
+      use CuBit.Log_Protocol;
+      Value : Event;
+      Lost : Unsigned_64;
+      Result : Status;
+   begin
+      CuBit.Logging.Subscribe (Log_Reader, Result);
+      if Result /= OK then
+         putStr ("logs: observer unavailable or not authorized: " &
+                 Status'Image (Result) & LF);
+         return;
+      end if;
+      for Attempt in 1 .. 50 loop
+         CuBit.Logging.Read_Next (Log_Reader, Value, Lost, Result);
+         exit when Result = Empty;
+         if Result = OK then
+            putStr ("[PID ");
+            putDec64 (Value.Source);
+            putStr ("] ");
+            putDec64 (Value.Monotonic_Ms);
+            putStr (" " & CuBit.Log_Records.Severity'Image
+                      (CuBit.Log_Records.Level (Value.Data)) & ": " &
+                    CuBit.Log_Records.Texts.Text (Value.Data) & LF);
+         elsif Result = Gap then
+            putStr ("logs: dropped ");
+            putDec64 (Lost);
+            putStr (" records" & LF);
+         else
+            putStr ("logs: " & Status'Image (Result) & LF);
+            exit;
+         end if;
+      end loop;
+      CuBit.Logging.Close (Log_Reader, Result);
+   end cmdLogs;
+
+   procedure dispatchCommand is
+      line : String renames lineBuf (1 .. lineLen);
+   begin
+      if lineLen = 0 then
+         return;
+      end if;
+
+      if strEqual (line, "help") then
+         cmdHelp;
+      elsif startsWith (line, "cd ") and lineLen > 3 then
+         cmdCd (line (4 .. lineLen));
+      elsif strEqual (line, "cd") then
+         cmdCd ("");
+      elsif strEqual (line, "pwd") then
+         cmdPwd;
+      elsif startsWith (line, "inspect ") and lineLen > 8 then
+         cmdInspect (line (9 .. lineLen));
+      elsif strEqual (line, "inspect") then
+         putStr ("usage: inspect <file>" & LF);
+      elsif startsWith (line, "bg ") and lineLen > 3 then
+         cmdBg (line (4 .. lineLen));
+      elsif strEqual (line, "bg") then
+         putStr ("usage: bg <filename>" & LF);
+      elsif strEqual (line, "clear") then
+         cmdClear;
+      elsif startsWith (line, "echo ") and lineLen > 5 then
+         cmdEcho (line (6 .. lineLen));
+      elsif startsWith (line, "spawn ") and lineLen > 6 then
+         cmdSpawn (line (7 .. lineLen));
+      elsif strEqual (line, "spawn") then
+         putStr ("usage: spawn <filename>" & LF);
+      elsif startsWith (line, "kill ") and lineLen > 5 then
+         cmdKill (line (6 .. lineLen));
+      elsif strEqual (line, "kill") then
+         putStr ("usage: kill <pid>" & LF);
+      elsif startsWith (line, "cat ") and lineLen > 4 then
+         cmdCat (line (5 .. lineLen));
+      elsif strEqual (line, "cat") then
+         putStr ("usage: cat <path>" & LF);
+      elsif startsWith (line, "ls ") and lineLen > 3 then
+         cmdLs (line (4 .. lineLen));
+      elsif strEqual (line, "ls") then
+         cmdLs ("");
+      elsif strEqual (line, "logs") then
+         cmdLogs;
+      elsif strEqual (line, "uptime") then
+         cmdUptime;
+      elsif strEqual (line, "sysinfo") then
+         cmdSysinfo;
+      elsif strEqual (line, "mem") then
+         cmdMem;
+      elsif strEqual (line, "volumes") then
+         cmdVolumes;
+      elsif strEqual (line, "ps") then
+         cmdPs;
+      elsif startsWith (line, "hexdump ") and lineLen > 8 then
+         cmdHexdump (line (9 .. lineLen));
+      elsif strEqual (line, "hexdump") then
+         putStr ("usage: hexdump <path>" & LF);
+      elsif startsWith (line, "head ") and lineLen > 5 then
+         cmdHead (line (6 .. lineLen));
+      elsif strEqual (line, "head") then
+         putStr ("usage: head [-n N] <path>" & LF);
+      elsif startsWith (line, "wc ") and lineLen > 3 then
+         cmdWc (line (4 .. lineLen));
+      elsif strEqual (line, "wc") then
+         putStr ("usage: wc <path>" & LF);
+      elsif startsWith (line, "config ") and lineLen > 7 then
+         cmdConfig (line (8 .. lineLen));
+      elsif strEqual (line, "config") then
+         cmdConfig ("");
+      elsif strEqual (line, "ifconfig") then
+         cmdIfconfig;
+      elsif strEqual (line, "route") then
+         cmdRoute;
+      elsif startsWith (line, "ping ") and lineLen > 5 then
+         cmdPing (line (6 .. lineLen));
+      elsif strEqual (line, "ping") then
+         putStr ("usage: ping <ip>" & LF);
+      elsif startsWith (line, "nslookup ") and lineLen > 9 then
+         cmdNslookup (line (10 .. lineLen));
+      elsif strEqual (line, "nslookup") then
+         putStr ("usage: nslookup <hostname>" & LF);
+      elsif startsWith (line, "streams ") and lineLen > 8 then
+         cmdStreams (line (9 .. lineLen));
+      elsif strEqual (line, "streams") then
+         putStr ("usage: streams <pid>" & LF);
+      elsif startsWith (line, "write ") and lineLen > 6 then
+         cmdWrite (line (7 .. lineLen));
+      elsif strEqual (line, "write") then
+         putStr ("usage: write <path> <text>" & LF);
+      else
+         putStr ("unknown command: ");
+         putStr (line);
+         putChar (LF);
+      end if;
+   end dispatchCommand;
+
+   ---------------------------------------------------------------------------
+   --  Keyboard processing
+   ---------------------------------------------------------------------------
+   procedure processKey (scancode : Unsigned_8) is
+      isRelease : constant Boolean := (scancode and 16#80#) /= 0;
+      code : constant Natural := Natural (scancode and 16#7F#);
+      ch : Unsigned_8;
+   begin
+      --  Handle shift key state
+      if code = 16#2A# or code = 16#36# then
+         shiftDown := not isRelease;
+         return;
+      end if;
+
+      --  Handle ctrl key state (Left Ctrl = 0x1D)
+      if code = 16#1D# then
+         ctrlDown := not isRelease;
+         return;
+      end if;
+
+      --  Only process make (press) events
+      if isRelease then
+         return;
+      end if;
+
+      --  Ctrl+C: kill foreground process
+      if ctrlDown and code = 16#2E# then
+         if foregroundPID /= No_Process then
+            CuBit.Streams.Unsubscribe (childStream);
+            streamSubPending := False;
+            declare
+               ret : Unsigned_64;
+            begin
+               ret := noKill;
+               debugPrint ("shell: Ctrl+C kill pid=");
+               debugPrint (Image (foregroundPID));
+               debugPrint (" ret=");
+               printDec (Unsigned_32 (ret));
+               debugPrint ("" & LF);
+            end;
+            --  Do not clear foregroundPID here; the exit
+            --  handler in the main loop will do it.
+         end if;
+         return;
+      end if;
+
+      --  Translate scancode to ASCII
+      if shiftDown then
+         ch := scancodeShifted (code);
+         --  For alpha keys, shift means uppercase
+         if ch = 0 then
+            ch := scancodeNormal (code);
+            --  Convert lowercase letter to uppercase
+            if ch >= Character'Pos ('a') and ch <= Character'Pos ('z') then
+               ch := ch - 32;
+            end if;
+         end if;
+      else
+         ch := scancodeNormal (code);
+      end if;
+
+      if ch = 0 then
+         return;
+      end if;
+
+      --  Handle special keys
+      if ch = 10 then
+         --  Enter: dispatch command
+         putChar (LF);
+         renderDirty;
+         dispatchCommand;
+         lineLen := 0;
+         if foregroundPID = No_Process then
+            printPrompt;
+         end if;
+      elsif ch = 8 then
+         --  Backspace
+         if lineLen > 0 then
+            lineLen := lineLen - 1;
+            putChar (ASCII.BS);
+            renderDirty;
+         end if;
+      elsif ch >= 32 and ch < 127 then
+         --  Printable character
+         if lineLen < LINE_MAX then
+            lineLen := lineLen + 1;
+            lineBuf (lineLen) := Character'Val (Natural (ch));
+            putChar (Character'Val (Natural (ch)));
+            renderDirty;
+         end if;
+      end if;
+   end processKey;
+
+   ---------------------------------------------------------------------------
+   --  claimLegacyInput - own raw input only without a desktop session
+   ---------------------------------------------------------------------------
+   procedure claimLegacyInput is
+      desktopPID : constant Process_ID :=
+        Registered_Driver (DRIVER_DESKTOP);
+      ignore : Unsigned_64;
+   begin
+      --  DRIVER_KEYBOARD/DRIVER_MOUSE are still transitional single-owner
+      --  routes.  A legacy framebuffer shell must not overwrite an active
+      --  desktop session merely because it happened to start later.
+      if desktopPID /= No_Process then
+         debugPrint
+           ("shell: desktop owns input; raw registration skipped" & LF);
+         return;
+      end if;
+
+      ignore := registerDriver (DRIVER_KEYBOARD, Startup.Keyboard);
+      ignore := registerDriver (DRIVER_MOUSE, Startup.Mouse);
+   end claimLegacyInput;
+
+   ---------------------------------------------------------------------------
+   --  Initialization
+   ---------------------------------------------------------------------------
+   eventMsg : Message;
+
+begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
+   debugPrint ("shell: starting..." & LF);
+
+   --  Register as the raw-input consumer only for a console-only boot.  A
+   --  desktop session owns input routing once present.
+   claimLegacyInput;
+
+   --  Map framebuffer
+   declare
+      ret : Unsigned_64;
+   begin
+      ret := CuBit.Handles.Devices.Map_Framebuffer (Startup.Framebuffer);
+      if ret = Unsigned_64'Last then
+         debugPrint ("shell: MAPFB failed" & LF);
+         declare
+            ignore : Unsigned_64;
+         begin
+            ignore := syscall (SYSCALL_EXIT, 1);
+         end;
+         return;
+      end if;
+      fbAddr := To_Address (Integer_Address (ret));
+   end;
+
+   --  Query framebuffer dimensions
+   fbWidth  := Natural (CuBit.System_Facts.Framebuffer.Width);
+   fbHeight := Natural (CuBit.System_Facts.Framebuffer.Height);
+   fbPitch  := Natural (CuBit.System_Facts.Framebuffer.Pitch);
+
+   debugPrint ("shell: FB ");
+   printDec (Unsigned_32 (fbWidth));
+   debugPrint ("x");
+   printDec (Unsigned_32 (fbHeight));
+   debugPrint ("" & LF);
+
+   --  Calculate grid size
+   cols := fbWidth / Font8x16.GLYPH_WIDTH;
+   rows := fbHeight / Font8x16.GLYPH_HEIGHT;
+
+   if cols > MAX_COLS then
+      cols := MAX_COLS;
+   end if;
+   if rows > MAX_ROWS then
+      rows := MAX_ROWS;
+   end if;
+
+   setupDisplayPresent;
+
+   --  Initialize screen buffer
+   for row in 0 .. MAX_ROWS - 1 loop
+      for col in 0 .. MAX_COLS - 1 loop
+         screen (row)(col) := Character'Pos (' ');
+      end loop;
+      dirty (row) := True;
+   end loop;
+   fullPresentNeeded := True;
+
+   --  Discover procmgr PID
+   declare
+      retries : Natural := 0;
+   begin
+      loop
+         procmgrPID := Registered_Driver (DRIVER_PROCMGR);
+         exit when procmgrPID /= No_Process or retries > 50;
+         retries := retries + 1;
+         declare
+            ignore : Unsigned_64;
+         begin
+            ignore := CuBit.Waits.Sleep_For (10);
+         end;
+      end loop;
+   end;
+
+   if procmgrPID /= No_Process then
+      debugPrint ("shell: found procmgr pid=");
+      debugPrint (Image (procmgrPID));
+      debugPrint ("" & LF);
+
+      --  Allocate grant buffer for procmgr communication
+      declare
+         ret : Unsigned_64;
+         ok  : Boolean;
+      begin
+         ret := syscall (SYSCALL_SBRK, Unsigned_64 (GRANT_BUF_PAGES * 4096));
+         if ret /= Unsigned_64'Last then
+            grantBuf := To_Address (Integer_Address (ret));
+            CuBit.Memory_Grants.Create_Via_Capability (
+               slot      => Process_Manager_Endpoint,
+               localAddr => grantBuf,
+               numPages  => GRANT_BUF_PAGES,
+               readWrite => True,
+               reference => spawnGrant,
+               success   => ok);
+            if not ok then
+               debugPrint ("shell: grant to procmgr failed" & LF);
+               procmgrPID := No_Process;
+            end if;
+         end if;
+      end;
+   else
+      debugPrint ("shell: procmgr not found" & LF);
+   end if;
+
+   --  Set up filesystem grant buffer
+   declare
+      ret : Unsigned_64;
+      ok  : Boolean;
+   begin
+      ret := syscall (SYSCALL_SBRK, Unsigned_64 (FS_BUF_PAGES * 4096));
+      if ret /= Unsigned_64'Last then
+         fsBuf := To_Address (Integer_Address (ret));
+         CuBit.Memory_Grants.Create_Via_Capability (
+            slot      => Startup.Filesystem,
+            localAddr => fsBuf,
+            numPages  => FS_BUF_PAGES,
+            readWrite => True,
+            reference => fsGrant,
+            success   => ok);
+         if ok then
+            fsReady := True;
+            debugPrint ("shell: FS grant OK" & LF);
+         else
+            debugPrint ("shell: FS grant failed" & LF);
+         end if;
+      else
+         debugPrint ("shell: sbrk for FS buf failed" & LF);
+      end if;
+   end;
+
+   --  Check if netstack is available
+   declare
+      pid : Process_ID;
+   begin
+      pid := Registered_Driver (DRIVER_NETSTACK);
+      if pid /= No_Process then
+         netstackReady := True;
+         debugPrint ("shell: netstack available pid=");
+         debugPrint (Image (pid));
+         debugPrint ("" & LF);
+      end if;
+   end;
+
+   --  Auto-detect cwd from registered disk driver
+   declare
+      pid : Process_ID;
+   begin
+      pid := Registered_Driver (DRIVER_NVME);
+      if pid /= No_Process then
+         cwdBuf (1 .. 8) := "@nvme:0/";
+         cwdLen := 8;
+         debugPrint ("shell: cwd=@nvme:0/" & LF);
+      else
+         pid := Registered_Driver (DRIVER_ATA);
+         if pid /= No_Process then
+            cwdBuf (1 .. 7) := "@ata:0/";
+            cwdLen := 7;
+            debugPrint ("shell: cwd=@ata:0/" & LF);
+         else
+            cwdLen := 0;
+            debugPrint ("shell: cwd=/ (ramdisk)" & LF);
+         end if;
+      end if;
+   end;
+
+   --  Flush stale events that accumulated during initialization.
+   --  PS/2 mouse init generates IRQs that can produce spurious keyboard
+   --  events (e.g. Intellimouse device ID 0x03 = scancode '2').
+   declare
+      flushMsg : Message;
+      flushed  : Boolean;
+   begin
+      loop
+         flushed := Poll_Event (flushMsg);
+         exit when not flushed;
+      end loop;
+   end;
+
+   --  Welcome banner
+   putStr ("CuBitOS Shell v0.1" & LF);
+   putStr ("Type 'help' for available commands." & LF);
+   putChar (LF);
+   printPrompt;
+   idleCheckFrom := threadCalls;
+   idleCheckDue := CuBit.Monotonic.Milliseconds + Idle_Check_Ms;
+
+   --  Main loop: poll keyboard events, or wait for foreground child
+   loop
+      if foregroundPID /= No_Process then
+         --  Poll for child exit event (Poll_Event returns the whole
+         --  message).
+         declare
+            found : Boolean;
+         begin
+            found := Poll_Event (eventMsg);
+            if found then
+               debugPrint ("shell: FG event label=");
+               printDec (eventMsg.tag.label);
+               debugPrint (" w0=");
+               printDec64 (eventMsg.words (0));
+               debugPrint (" want=");
+               debugPrint (Image (foregroundPID));
+               debugPrint ("" & LF);
+            end if;
+            --  The kernel's exit event, or procmgr's notice for a child
+            --  launched into the session (procmgr is its kernel parent).
+            if found and then
+               CuBit.Child_Exits.Is_Exit
+                 (eventMsg.tag.label, eventMsg.tag.length, eventMsg.authorityTag,
+                  eventMsg.words (0), eventMsg.words (1), eventMsg.words (2)) and then
+               From_Word (eventMsg.words (0)) = foregroundPID
+            then
+               debugPrint ("shell: child exited, reclaiming input" & LF);
+               foregroundPID := No_Process;
+               --  Its pages stay until this side lets go of them.
+               CuBit.Streams.Unsubscribe (childStream);
+               --  Note: streamSubPending is NOT cleared here.  If the
+               --  subscription completion hasn't arrived yet, it will
+               --  be drained by the poll loop below (or after the
+               --  foreground block, at the top of the main loop).
+
+               --  Reclaim raw input only in a console-only session.  Child
+               --  exit must not steal it from desktop.svc.
+               claimLegacyInput;
+               --  Mark all lines dirty and redraw
+               for row in 0 .. rows - 1 loop
+                  dirty (row) := True;
+               end loop;
+               fullPresentNeeded := True;
+               setupDisplayPresent;
+               renderDirty;
+               printPrompt;
+            elsif found and then
+               eventMsg.tag.label = EVENT_CAP_FAULT
+            then
+               debugPrint ("shell: cap fault pid=");
+               printDec (eventMsg.words (0));
+               debugPrint (" syscall=");
+               printDec (Unsigned_32 (eventMsg.words (1)));
+               debugPrint ("" & LF);
+            elsif found and then
+               eventMsg.tag.label = CuBit.Streams.OP_STREAM_AVAILABLE
+            then
+               debugPrint ("shell: stream available pid=");
+               printDec (eventMsg.words (0));
+               debugPrint (" mask=");
+               printDec (Unsigned_32 (eventMsg.words (1)));
+               debugPrint ("" & LF);
+            elsif found and then eventMsg.tag.label = 1 then
+               --  Keyboard event while foreground running: track Ctrl+C
+               declare
+                  raw : constant Unsigned_8 :=
+                     Unsigned_8 (eventMsg.words (0) and 16#FF#);
+                  isRel : constant Boolean := (raw and 16#80#) /= 0;
+                  sc    : constant Unsigned_8 := raw and 16#7F#;
+               begin
+                  if sc = 16#1D# then
+                     ctrlDown := not isRel;
+                  elsif not isRel and ctrlDown and sc = 16#2E# then
+                     if foregroundPID /= No_Process then
+                        CuBit.Streams.Unsubscribe (childStream);
+                        streamSubPending := False;
+                        declare
+                           ret : Unsigned_64;
+                        begin
+                           ret := noKill;
+                           debugPrint ("shell: Ctrl+C kill pid=");
+                           debugPrint (Image (foregroundPID));
+                           debugPrint (" ret=");
+                           printDec (Unsigned_32 (ret));
+                           debugPrint ("" & LF);
+                        end;
+                     end if;
+                  end if;
+               end;
+            end if;
+
+            --  Check for stream subscription completion
+            if streamSubPending and not childStream.Link.Active then
+               declare
+                  comp : CompletionEntry;
+                  ret  : Unsigned_64;
+               begin
+                  ret := Poll_Completion (comp'Address);
+                  if ret = 1 and then comp.token = STREAM_SUB_TOKEN then
+                     declare
+                        subscribed : Boolean;
+                     begin
+                        CuBit.Streams.Subscribe_Finish (childStream, comp.msg, subscribed);
+                        if subscribed and then foregroundPID = No_Process then
+                           CuBit.Streams.Unsubscribe (childStream);
+                        elsif subscribed then
+                           debugPrint ("shell: stream subscribed" & LF);
+                        end if;
+                     end;
+                     --  Either way, the completion is consumed.
+                     streamSubPending := False;
+                  end if;
+               end;
+            end if;
+
+            --  Poll child's stdout ring buffer
+            if childStream.Link.Active then
+               declare
+                  tt      : CuBit.Streams.TypeTag;
+                  n       : Unsigned_32;
+                  gotData : Boolean := False;
+               begin
+                  loop
+                     n := CuBit.Streams.streamRead (
+                        childStream, streamRdBuf'Address, 512, tt);
+                     exit when n = 0;
+                     gotData := True;
+                     for i in 0 .. Natural (n) - 1 loop
+                        if streamRdBuf (i) = 10 then
+                           putChar (LF);
+                        elsif streamRdBuf (i) >= 32
+                           and streamRdBuf (i) < 127
+                        then
+                           putChar (Character'Val (Natural (streamRdBuf (i))));
+                        end if;
+                     end loop;
+                  end loop;
+                  if gotData then
+                     renderDirty;
+                  end if;
+               end;
+            end if;
+
+            if not found and not childStream.Link.Active then
+               declare
+                  ignore : Unsigned_64;
+               begin
+                  ignore := CuBit.Waits.Sleep_For (5);
+               end;
+            end if;
+         end;
+      else
+         --  Normal: process keyboard events
+         declare
+            found : Boolean;
+         begin
+            found := Poll_Event (eventMsg);
+            if found then
+               wokeForNothing := False;
+               --  Only process keyboard events (label=1), skip mouse/other
+               if eventMsg.tag.label = 1 then
+                  idleCheckDue := 0;
+                  declare
+                     raw : constant Unsigned_8 :=
+                        Unsigned_8 (eventMsg.words (0) and 16#FF#);
+                  begin
+                     processKey (raw);
+                  end;
+               elsif eventMsg.tag.label = EVENT_CAP_FAULT then
+                  putStr ("cap fault: pid=");
+                  putDec (eventMsg.words (0));
+                  putStr (" syscall=");
+                  putDec (Unsigned_32 (eventMsg.words (1)));
+                  putChar (LF);
+                  renderDirty;
+               end if;
+            else
+               --  Nothing to do: wait for an event (or a completion, which
+               --  the stream drain below takes), not a 1 ms sleep.
+               declare
+                  ignore : Unsigned_64;
+                  comp   : CompletionEntry;
+                  now    : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+                  due    : Unsigned_64 := Unsigned_64'Last;   --  no deadline
+                  woke   : Activity_Result;
+               begin
+                  if idleCheckDue /= 0 and then now >= idleCheckDue then
+                     debugPrint ("shell: idle system calls in" &
+                                 Unsigned_64'Image (Idle_Check_Ms) & " ms=" &
+                                 Unsigned_64'Image (threadCalls - idleCheckFrom) & LF);
+                     idleCheckDue := 0;
+                  end if;
+                  --  Outside a stream subscription no completion is wanted:
+                  --  one left over would answer every wait.
+                  if wokeForNothing and then not streamSubPending then
+                     while Poll_Completion (comp'Address) = 1 loop
+                        null;
+                     end loop;
+                  end if;
+                  if streamSubPending then
+                     due := now + 1;   --  the drain below counts turns
+                  end if;
+                  if idleCheckDue /= 0 then
+                     due := Unsigned_64'Min (due, idleCheckDue);
+                  end if;
+                  woke := Wait_For_Activity_Until (due);
+                  wokeForNothing := woke = Work_Available;
+                  if woke = Unavailable then
+                     ignore := CuBit.Waits.Sleep_For (1);
+                  end if;
+               end;
+            end if;
+         end;
+      end if;
+
+      --  Drain stale stream subscription completion after child exit.
+      --  The child may have replied before dying (completion pending) or
+      --  died before processing the subscribe (no completion ever comes).
+      --  Poll a few times, then give up.
+      if streamSubPending and foregroundPID = No_Process then
+         declare
+            comp : CompletionEntry;
+            ret  : Unsigned_64;
+         begin
+            ret := Poll_Completion (comp'Address);
+            if ret = 1 then
+               --  The child answered before it ended: let go of it.
+               CuBit.Streams.Unsubscribe (childStream);
+               streamSubPending := False;
+               streamDrainPolls := 0;
+            else
+               streamDrainPolls := streamDrainPolls + 1;
+               if streamDrainPolls > 50 then
+                  --  Give up: child died before replying.
+                  streamSubPending := False;
+                  streamDrainPolls := 0;
+               end if;
+            end if;
+         end;
+      end if;
+   end loop;
+end main;

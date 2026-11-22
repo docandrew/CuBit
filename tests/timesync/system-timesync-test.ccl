@@ -1,0 +1,19 @@
+# Headless timesync regression: system.ccl with time.servers pointed at the
+# loopback fixture (tests/timesync/fixture.py). Keep other settings in sync.
+# CuBit System Configuration
+# Loaded by devmgr at boot, seeded into config.svc
+# This CCL profile is authoritative at boot; runtime edits are volatile.
+(system-config v1
+  (setting "desktop.appearance.theme.light" "(theme v1 (base alloy-light))")
+  (setting "desktop.appearance.theme.dark" "(theme v1 (base alloy-dark))")
+  (setting "clock.time-zone" "UTC")
+  # SNTP servers for timesync.svc (host or host:port). A majority of at least
+  # two must agree before the clock is adjusted.
+  (setting "time.servers" "10.0.2.2:18123 10.0.2.2:18124 10.0.2.2:18125")
+  # The NIC (pinned at PCI 00:10.0) gets a static address, so the run does
+  # not wait for DHCP. IPv4 is written mapped, ::ffff:a.b.c.d.
+  (setting "net.interface.pci-00-10-0"
+    (Net_Interface.Static (Static_Interface address => "::ffff:10.0.2.15" prefix => 120
+      gateway => (Gateway.Via "::ffff:10.0.2.2"))))
+  (setting "net.dns.primary" "::ffff:10.0.2.3")
+)

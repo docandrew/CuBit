@@ -1,0 +1,14 @@
+# DOOM (doomgeneric on the CuBit libc, userspace/ports/doom). Reads
+# doom1.wad from the NVMe or ATA disk, keeping saves and its configuration
+# in that volume's root, or on live images from the optical disc or the boot
+# archive; a window on the desktop; sound effects through the mixer.
+(executable-manifest v1
+  (identity "com.cubit.doom")
+  (version "1.0.0")
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@nvme:0")
+  (filesystem-scope (rights read write create) "@ata:0")
+  (filesystem-scope (rights read) "@cd:0/doom1.wad")
+  (filesystem-scope (rights read) "@boot/doom1.wad")
+  (request-service desktop read-write desktop)
+  (request-service mixer read-write mixer))

@@ -1,0 +1,178 @@
+[
+  {
+    "key": "r1-reference-store",
+    "source": "r1-reference-store.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-reference-copy",
+    "source": "r1-reference-copy.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-name-store",
+    "source": "r1-name-store.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-name-copy",
+    "source": "r1-name-copy.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-caller-local",
+    "source": "r1-caller-local.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-nested-field",
+    "source": "r1-nested-field.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-bad-index",
+    "source": "r1-bad-index.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r1-bad-count",
+    "source": "r1-bad-count.asl",
+    "revision": 1,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-reference-store",
+    "source": "r2-reference-store.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-reference-copy",
+    "source": "r2-reference-copy.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-name-store",
+    "source": "r2-name-store.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-name-copy",
+    "source": "r2-name-copy.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-caller-local",
+    "source": "r2-caller-local.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-nested-field",
+    "source": "r2-nested-field.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-bad-index",
+    "source": "r2-bad-index.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  },
+  {
+    "key": "r2-bad-count",
+    "source": "r2-bad-count.asl",
+    "revision": 2,
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG"
+    ]
+  }
+]

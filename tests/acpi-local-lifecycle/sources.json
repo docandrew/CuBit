@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/backend/acpi_local_shutdown.ads",
+      "sha256": "13cfe9251585d87029b023004ed25ab50091ed40af3c20db8f8a35c68763775a"
+    },
+    {
+      "path": "userspace/services/acpi/backend/acpi_local_shutdown.adb",
+      "sha256": "4a511a718616d6c09136c87b85b663ca29767b3a5e465c1b3ff92f33e88a8c25"
+    },
+    {
+      "path": "userspace/services/acpi/backend/acpi_platform_pool_owner.ads",
+      "sha256": "aeb677d2e8141b4c388afc58729bf0c55083dec196fa89e4a87d1fe4da56c719"
+    },
+    {
+      "path": "userspace/services/acpi/backend/acpi_platform_pool_owner.adb",
+      "sha256": "6131663f7af41f224237dd4b667f46a076e8d8c2d22ae242312f3f4d8af3dd3d"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit.ads",
+      "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-platform_pool_exchange.ads",
+      "sha256": "15789556743c75ff4d4ee7047ac68cb445b96e9dbfda790491963b6b1a94f24b"
+    },
+    {
+      "path": "shared/capabilities/capability_abi.ads",
+      "sha256": "845dec7e6ce5b6e8aa2fb618ca6710322c949cd16ede3dcd213b9dd4b96e01bc"
+    },
+    {
+      "path": "shared/capabilities/capability_abi.adb",
+      "sha256": "f280df7b0e8291913387a6bd4607a7e18b3025d5cb512c07f102ad90b682af20"
+    },
+    {
+      "path": "shared/capabilities/platform_pool_abi.ads",
+      "sha256": "751a1639aeee93db60b588888110e7e782976ba92af2e2414767abaa6d79cbe0"
+    }
+  ],
+  "helpers": [
+    {
+      "path": "README.md",
+      "sha256": "e22c6c010401adb22468cd1a473172301d6b37d41e404a357aa9112b32054b9e"
+    },
+    {
+      "path": "pool_owner_tests.adb",
+      "sha256": "4888af0daebd55dad266e5fcefa86fab67169ce243ac2ebd2d1cd9d01c5753b0"
+    },
+    {
+      "path": "run.mjs",
+      "sha256": "d6399780fc8266907f520c04efbc36c7df5617c68579947af49984a81725b9b9"
+    },
+    {
+      "path": "run.sh",
+      "sha256": "d5f77af934cde7200ca1489c25ffbd21409b7e90fb2bd90c2f7e7608e5f06dec"
+    },
+    {
+      "path": "shutdown_tests.adb",
+      "sha256": "8f8d38b96347a300b7edf33e47de6bd82a56c0cf3cc0d26d80390f6b7a5b83dd"
+    }
+  ]
+}

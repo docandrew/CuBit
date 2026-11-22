@@ -1,0 +1,25 @@
+# virtio-gpu.drv's startup capabilities (docs/ccl-driver-manifests.md,
+# docs/capability-handles.md): devmgr fills its startup table from these
+# requests before it first runs; the driver reads them by binding name
+# (Startup.Registers, ...). The registers live in the BAR the virtio
+# common-configuration capability names (virtio-gpu-pci 4, virtio-vga 2);
+# devmgr follows the capability, the index here is the usual one.
+(Executable_Manifest
+  identity => "com.cubit.virtio-gpu"
+  version => "0.1.0"
+  # 0x1AF4:0x1050, virtio-gpu (also behind virtio-vga).
+  drives => [(Device_Match.PCI_IDs (PCI_IDs 0x1AF4 0x1050 0x1050))]
+  requests => [
+    (device-memory "registers" 4 1048576 Access.Read_Write)
+    # Entry 0: control and cursor queues; entry 1: configuration changes
+    # (display events). One vector if the device has only one entry.
+    (interrupt "device" Interrupt_Mode.MSI_X 2)
+    (dma "frames" 33554432)
+    (device-memory "notify" 4 1048576 Access.Read_Write)
+    (service "device-manager" "ready")
+    # The GPU service registration (DRIVER_GPU); absent when another GPU
+    # driver is the GPU service.
+    (notification "gpu" Notify_Access.Manage "registration")
+    # ABI-002: its debug text, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["registration" "logstore"])

@@ -1,0 +1,934 @@
+[
+  {
+    "key": "initial-string1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/string1",
+    "aml": "initial/unoptimized/string1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": "424344"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-buffer1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/buffer1",
+    "aml": "initial/unoptimized/buffer1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "buffer",
+      "hex": "00fe"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-emptystring1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/emptystring1",
+    "aml": "initial/unoptimized/emptystring1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": ""
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-emptybuffer1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/emptybuffer1",
+    "aml": "initial/unoptimized/emptybuffer1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "buffer",
+      "hex": ""
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-outside1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/outside1",
+    "aml": "initial/unoptimized/outside1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": ""
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-hugecount1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/hugecount1",
+    "aml": "initial/unoptimized/hugecount1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": "4243"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-hugeindex1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/hugeindex1",
+    "aml": "initial/unoptimized/hugeindex1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": ""
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-zero1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/zero1",
+    "aml": "initial/unoptimized/zero1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": ""
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-integer1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/integer1",
+    "aml": "initial/unoptimized/integer1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "buffer",
+      "hex": "776655"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-coerce1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/coerce1",
+    "aml": "initial/unoptimized/coerce1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": "4243"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-directindex1",
+    "revision": 1,
+    "classification": "compiler_rejection",
+    "provenance": "initial/oracle/directindex1"
+  },
+  {
+    "key": "initial-heldindex1",
+    "revision": 1,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "provenance": "initial/oracle/heldindex1",
+    "aml": "initial/oracle/heldindex1.aml",
+    "marker": 0,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "initial-methodindex1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/oracle/methodindex1",
+    "aml": "initial/oracle/methodindex1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "buffer",
+      "hex": "4243"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-heldref1",
+    "revision": 1,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "provenance": "initial/oracle/heldref1",
+    "aml": "initial/oracle/heldref1.aml",
+    "marker": 0,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "initial-deref1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/oracle/deref1",
+    "aml": "initial/oracle/deref1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "buffer",
+      "hex": "2030"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-package1",
+    "revision": 1,
+    "classification": "compiler_rejection",
+    "provenance": "initial/oracle/package1"
+  },
+  {
+    "key": "initial-uninit1",
+    "revision": 1,
+    "classification": "compiler_rejection",
+    "provenance": "initial/oracle/uninit1"
+  },
+  {
+    "key": "initial-namedint1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/namedint1",
+    "aml": "initial/unoptimized/namedint1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "integer",
+          "value": 188
+        },
+        {
+          "kind": "integer",
+          "value": 1
+        },
+        {
+          "kind": "integer",
+          "value": 0
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-namedstr1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/namedstr1",
+    "aml": "initial/unoptimized/namedstr1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "integer",
+          "value": 2
+        },
+        {
+          "kind": "integer",
+          "value": 0
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-namedbuf1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/namedbuf1",
+    "aml": "initial/unoptimized/namedbuf1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "buffer",
+          "hex": "42430000"
+        },
+        {
+          "kind": "integer",
+          "value": 3
+        },
+        {
+          "kind": "integer",
+          "value": 0
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-member1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/index-observation/member1",
+    "aml": "initial/index-observation/member1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "integer",
+          "value": 2
+        },
+        {
+          "kind": "integer",
+          "value": 0
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-byte1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/index-observation/byte1",
+    "aml": "initial/index-observation/byte1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "integer",
+          "value": 66
+        },
+        {
+          "kind": "integer",
+          "value": 1
+        },
+        {
+          "kind": "integer",
+          "value": 0
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-same1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/oracle/same1",
+    "aml": "initial/oracle/same1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "buffer",
+          "hex": "7730"
+        },
+        {
+          "kind": "buffer",
+          "hex": "20300000"
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-argref1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/oracle/argref1",
+    "aml": "initial/oracle/argref1.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "buffer",
+          "hex": "4243"
+        },
+        {
+          "kind": "buffer",
+          "hex": "4243"
+        },
+        {
+          "kind": "integer",
+          "value": 3
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-once1",
+    "revision": 1,
+    "classification": "returned",
+    "provenance": "initial/oracle/once1",
+    "aml": "initial/oracle/once1.aml",
+    "marker": 111,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "buffer",
+          "hex": "42430000"
+        },
+        {
+          "kind": "integer",
+          "value": 111
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-badindex1",
+    "revision": 1,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "provenance": "initial/oracle/badindex1",
+    "aml": "initial/oracle/badindex1.aml",
+    "marker": 1101,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "initial-badsource1",
+    "revision": 1,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "provenance": "initial/oracle/badsource1",
+    "aml": "initial/oracle/badsource1.aml",
+    "marker": 1110,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "initial-string2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/string2",
+    "aml": "initial/unoptimized/string2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": "424344"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-buffer2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/buffer2",
+    "aml": "initial/unoptimized/buffer2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "buffer",
+      "hex": "00fe"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-emptystring2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/emptystring2",
+    "aml": "initial/unoptimized/emptystring2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": ""
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-emptybuffer2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/emptybuffer2",
+    "aml": "initial/unoptimized/emptybuffer2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "buffer",
+      "hex": ""
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-outside2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/outside2",
+    "aml": "initial/unoptimized/outside2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": ""
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-hugecount2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/hugecount2",
+    "aml": "initial/unoptimized/hugecount2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": "4243"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-hugeindex2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/hugeindex2",
+    "aml": "initial/unoptimized/hugeindex2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": ""
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-zero2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/zero2",
+    "aml": "initial/unoptimized/zero2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": ""
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-integer2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/integer2",
+    "aml": "initial/unoptimized/integer2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "buffer",
+      "hex": "77665544332211"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-coerce2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/coerce2",
+    "aml": "initial/unoptimized/coerce2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "string",
+      "hex": "4243"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-directindex2",
+    "revision": 2,
+    "classification": "compiler_rejection",
+    "provenance": "initial/oracle/directindex2"
+  },
+  {
+    "key": "initial-heldindex2",
+    "revision": 2,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "provenance": "initial/oracle/heldindex2",
+    "aml": "initial/oracle/heldindex2.aml",
+    "marker": 0,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "initial-methodindex2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/oracle/methodindex2",
+    "aml": "initial/oracle/methodindex2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "buffer",
+      "hex": "4243"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-heldref2",
+    "revision": 2,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "provenance": "initial/oracle/heldref2",
+    "aml": "initial/oracle/heldref2.aml",
+    "marker": 0,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "initial-deref2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/oracle/deref2",
+    "aml": "initial/oracle/deref2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "buffer",
+      "hex": "2030"
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-package2",
+    "revision": 2,
+    "classification": "compiler_rejection",
+    "provenance": "initial/oracle/package2"
+  },
+  {
+    "key": "initial-uninit2",
+    "revision": 2,
+    "classification": "compiler_rejection",
+    "provenance": "initial/oracle/uninit2"
+  },
+  {
+    "key": "initial-namedint2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/namedint2",
+    "aml": "initial/unoptimized/namedint2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "integer",
+          "value": 188
+        },
+        {
+          "kind": "integer",
+          "value": 1
+        },
+        {
+          "kind": "integer",
+          "value": 0
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-namedstr2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/namedstr2",
+    "aml": "initial/unoptimized/namedstr2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "integer",
+          "value": 2
+        },
+        {
+          "kind": "integer",
+          "value": 0
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-namedbuf2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/unoptimized/namedbuf2",
+    "aml": "initial/unoptimized/namedbuf2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "buffer",
+          "hex": "42430000"
+        },
+        {
+          "kind": "integer",
+          "value": 3
+        },
+        {
+          "kind": "integer",
+          "value": 0
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-member2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/index-observation/member2",
+    "aml": "initial/index-observation/member2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "integer",
+          "value": 2
+        },
+        {
+          "kind": "integer",
+          "value": 0
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-byte2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/index-observation/byte2",
+    "aml": "initial/index-observation/byte2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "integer",
+          "value": 66
+        },
+        {
+          "kind": "integer",
+          "value": 1
+        },
+        {
+          "kind": "integer",
+          "value": 0
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-same2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/oracle/same2",
+    "aml": "initial/oracle/same2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "buffer",
+          "hex": "7730"
+        },
+        {
+          "kind": "buffer",
+          "hex": "20300000"
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-argref2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/oracle/argref2",
+    "aml": "initial/oracle/argref2.aml",
+    "marker": 0,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "buffer",
+          "hex": "4243"
+        },
+        {
+          "kind": "buffer",
+          "hex": "4243"
+        },
+        {
+          "kind": "integer",
+          "value": 3
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-once2",
+    "revision": 2,
+    "classification": "returned",
+    "provenance": "initial/oracle/once2",
+    "aml": "initial/oracle/once2.aml",
+    "marker": 111,
+    "result": {
+      "kind": "package",
+      "items": [
+        {
+          "kind": "string",
+          "hex": "4243"
+        },
+        {
+          "kind": "buffer",
+          "hex": "42430000"
+        },
+        {
+          "kind": "integer",
+          "value": 111
+        }
+      ]
+    },
+    "status": "OBJECT_RETURNED"
+  },
+  {
+    "key": "initial-badindex2",
+    "revision": 2,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "provenance": "initial/oracle/badindex2",
+    "aml": "initial/oracle/badindex2.aml",
+    "marker": 1101,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "initial-badsource2",
+    "revision": 2,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "provenance": "initial/oracle/badsource2",
+    "aml": "initial/oracle/badsource2.aml",
+    "marker": 1110,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "ordering-countempty1",
+    "revision": 1,
+    "classification": "AE_AML_BUFFER_LIMIT",
+    "aml": "ordering/oracle/countempty1.aml",
+    "marker": 10111,
+    "status": "EMPTY_BUFFER"
+  },
+  {
+    "key": "ordering-countempty2",
+    "revision": 2,
+    "classification": "AE_AML_BUFFER_LIMIT",
+    "aml": "ordering/oracle/countempty2.aml",
+    "marker": 10111,
+    "status": "EMPTY_BUFFER"
+  },
+  {
+    "key": "ordering-countpackage1",
+    "revision": 1,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "aml": "ordering/oracle/countpackage1.aml",
+    "marker": 10111,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "ordering-countpackage2",
+    "revision": 2,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "aml": "ordering/oracle/countpackage2.aml",
+    "marker": 10111,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "ordering-indexbad1",
+    "revision": 1,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "aml": "ordering/oracle/indexbad1.aml",
+    "marker": 10111,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "ordering-indexbad2",
+    "revision": 2,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "aml": "ordering/oracle/indexbad2.aml",
+    "marker": 10111,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "ordering-sourcebad1",
+    "revision": 1,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "aml": "ordering/oracle/sourcebad1.aml",
+    "marker": 10111,
+    "status": "UNSUPPORTED_VALUE"
+  },
+  {
+    "key": "ordering-sourcebad2",
+    "revision": 2,
+    "classification": "AE_AML_OPERAND_TYPE",
+    "aml": "ordering/oracle/sourcebad2.aml",
+    "marker": 10111,
+    "status": "UNSUPPORTED_VALUE"
+  }
+]

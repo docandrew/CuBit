@@ -1,0 +1,7 @@
+# wifi.svc's settings (docs/wifi.md "Secrets", D5). A WPA2 network's
+# passphrase is a Secret, one per network: wifi.secret.<SSID as lower-case
+# hexadecimal>. Only wifi.svc's manifest names this family, so only wifi.svc
+# reads or writes it; (wifi.passphrase "ssid") hands the passphrase to
+# wifi.svc, which stores it. Config never shows it to config-all.
+(Setting_Catalog settings => [
+  (Setting "wifi.secret." Shape.Family Value.Text Class.Secret "")])

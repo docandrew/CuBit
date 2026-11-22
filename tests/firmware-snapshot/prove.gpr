@@ -1,0 +1,21 @@
+--  SPARK proof (level 2) of the FIRMWARE_SNAPSHOT wire ABI and the
+--  kernel's service body, instantiated over the hosted test snapshot.
+project Prove is
+   for Source_Dirs use ("../../shared/boot", "../../shared/firmware", "../../kernel/src", "prove");
+   for Source_Files use
+     ("firmware_snapshot_abi.ads", "firmware_snapshot_abi.adb",
+      "firmware_snapshot_service.ads", "firmware_snapshot_service.adb",
+      "firmware_tables.ads", "firmware_tables.adb",
+      "firmware_tables-catalog.ads", "firmware_tables-catalog.adb",
+      "firmware_tables-copies.ads", "firmware_tables-copies.adb",
+      "firmware_tables-snapshots.ads", "firmware_tables-snapshots.adb",
+      "firmware_tables-snapshots-transfers.ads", "firmware_tables-snapshots-transfers.adb",
+      "proof_instance.ads", "proof_instance.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Prove;

@@ -1,0 +1,18 @@
+# The ACPI launch's fixture driver (docs/device-matching.md "ACPI launch"):
+# devmgr launches it when it admits the memory spans of an ACPI device whose
+# _HID is CBIT1057, the headless gpio-launch profile's GPIO controller (no
+# real device has it). Each device-memory index names an admitted span in
+# _CRS order: window 1 is span 1 (the second), at most 4 MiB (the span is
+# 64 KiB); window 2 is span 0 (the first), one page. "parent" is the
+# controller's parent interrupt line (its first _CRS interrupt).
+(Executable_Manifest
+  identity => "com.cubit.test.gpio-launch-check"
+  version => "0.1.0"
+  drives => [(Device_Match.ACPI_ID "CBIT1057")]
+  requests => [
+    (device-memory "second-span" 1 4194304 Access.Read_Write)
+    (device-memory "first-span" 0 4096 Access.Read)
+    (platform-interrupt "parent" 0)
+    (service "device-manager" "ready")
+    (service "logstore" "logstore")]
+  optional => ["logstore" "parent"])

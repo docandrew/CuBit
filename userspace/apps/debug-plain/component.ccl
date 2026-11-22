@@ -1,0 +1,4 @@
+# A debugger target without the cooperative stub (DBG-001): the Debugger
+# attaches to it through the kernel (Debug_Observe), as to any program.
+(Component name => "debug-plain" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

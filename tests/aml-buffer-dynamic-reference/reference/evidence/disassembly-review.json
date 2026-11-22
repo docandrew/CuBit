@@ -1,0 +1,122 @@
+[
+  {
+    "key": "1-return-arg",
+    "exact_reviewed_structure": "Return (Buffer (Arg0)",
+    "disassembly_sha256": "f23a743e07a88427b38f3c8e8d0c0823fb195251c043aca4f5934c0b8c058371",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "2-return-arg",
+    "exact_reviewed_structure": "Return (Buffer (Arg0)",
+    "disassembly_sha256": "282bc0f15ad7dee8c3729a91a207ec7bd4622ba5da29f7ff42aaac36629c49eb",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "1-store-local",
+    "exact_reviewed_structure": "Local1 = Buffer (Local0)",
+    "disassembly_sha256": "67e61c9b3fd008f79db2f80c95b94aca96fda83513516788619cf120a25c7d6b",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "2-store-local",
+    "exact_reviewed_structure": "Local1 = Buffer (Local0)",
+    "disassembly_sha256": "9fcadd1fe28045b01c5b647aa0687f92dbf64204df498f307822cf180a1c6a1a",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "1-count-method",
+    "exact_reviewed_structure": "Local0 = Buffer (CNTM ())",
+    "disassembly_sha256": "245d549f495c55bccc050109b50bcc31de4cac1493b629044f95c28d061ef810",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "2-count-method",
+    "exact_reviewed_structure": "Local0 = Buffer (CNTM ())",
+    "disassembly_sha256": "4ae6856c4037d4fb514e7161825f11e8db67ba2c272cd85eaefc26d227349c65",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "1-count-add",
+    "exact_reviewed_structure": "Local1 = Buffer (MARK = (Local0 + One))",
+    "disassembly_sha256": "fe89ee2f1a2f2337c122521bb2cd503c90d9fb02dac270ff810305400dc99776",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "2-count-add",
+    "exact_reviewed_structure": "Local1 = Buffer (MARK = (Local0 + One))",
+    "disassembly_sha256": "9d4d834d289381044f8b174ce980f4b3a2e23b41c3d42db517643edf757ec5aa",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "1-nested-buffer",
+    "exact_reviewed_structure": "Local1 = Buffer (Buffer ((Local0 + One))",
+    "disassembly_sha256": "4e8196a69546d7e9505a3f01acc1ed89e799e0a4a572b5fa305b6c966d32ce2b",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "2-nested-buffer",
+    "exact_reviewed_structure": "Local1 = Buffer (Buffer ((Local0 + One))",
+    "disassembly_sha256": "eb8889de2b5d7e5bba3280463a32c4383bddb30f10389800a302938bf87e0ee1",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "1-method-actual",
+    "exact_reviewed_structure": "Return (SIZE (Buffer (Local0)",
+    "disassembly_sha256": "94d3f5db4f9886d3247d50822d5c7b241c99e48c63a5503d0d364cef6788252a",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "2-method-actual",
+    "exact_reviewed_structure": "Return (SIZE (Buffer (Local0)",
+    "disassembly_sha256": "231e110c7869e9c1e8d44f8a628f2bff24ae167f85c7119a2a5457c77d83bfd6",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "1-raw-initializer",
+    "exact_reviewed_structure": "0x70, 0x01, 0x4D, 0x41, 0x52, 0x4B, 0xA4, 0x01",
+    "disassembly_sha256": "957d332a7f0c746ea8e8cb882b14d8a59847c4bf3f5c2768b95efe50b292dcf5",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "2-raw-initializer",
+    "exact_reviewed_structure": "0x70, 0x01, 0x4D, 0x41, 0x52, 0x4B, 0xA4, 0x01",
+    "disassembly_sha256": "72473905c57a103a7a3f6cb2dc40d7300f8f0c7fe51e8066a6db48e68002ebaa",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "1-count-failure",
+    "exact_reviewed_structure": "Local0 = Buffer (FAIL ())",
+    "disassembly_sha256": "b23a86ecb5e66f26b968134b0cd2f36717ebe38f1192499c6e6d46a7b7fcb338",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "2-count-failure",
+    "exact_reviewed_structure": "Local0 = Buffer (FAIL ())",
+    "disassembly_sha256": "aca787665091da27d8a7ade6e3f383d3a80d243f753e69b32aedcf48fdeb778e",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "1-target-failure",
+    "exact_reviewed_structure": "TARG [0x63] = Buffer (CNTM ())",
+    "disassembly_sha256": "150f9528f50021e5f84bbbbc312cec1e8025d305e048d28f014077a1362991e7",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "2-target-failure",
+    "exact_reviewed_structure": "TARG [0x63] = Buffer (CNTM ())",
+    "disassembly_sha256": "f2a529cceff3beecfaf3ddab0d27648855752d5de6ca83c3cd7ac13411d9f609",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "1-numeric-prefix",
+    "exact_reviewed_structure": "Return ((Buffer ((Local0 + One))",
+    "disassembly_sha256": "fe37e6b7ece0cc6605083c9737818063679c6f47c831ef752cada4a9be3d2523",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  },
+  {
+    "key": "2-numeric-prefix",
+    "exact_reviewed_structure": "Return ((Buffer ((Local0 + One))",
+    "disassembly_sha256": "eb112974285508b9c21737f38bba85b52e3ada56ad8ede97e80f18cd46237035",
+    "review": "Body inspected, dynamic count retained; both revision bodies identical."
+  }
+]

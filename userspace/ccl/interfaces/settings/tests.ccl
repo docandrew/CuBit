@@ -1,0 +1,8 @@
+# Settings only the test programs use (config-check, config-denied, Penny's
+# Config sandbox probe).
+(Setting_Catalog settings => [
+  (Setting "test.config." Shape.Family Value.Text Class.Application_State "")
+  (Setting "test.denied" Shape.Key Value.Text Class.Application_State "")
+  (Setting "browser.servo.sandbox_probe" Shape.Key Value.Text Class.Application_State "")
+  # The typed-collection probe's (tests/config-object-client).
+  (Setting "org.cubit.publication" Shape.Key Value.Collection Class.Application_State "")])

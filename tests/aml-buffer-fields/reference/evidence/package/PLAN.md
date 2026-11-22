@@ -1,0 +1,1 @@
+Root reviewed and authorized two bounded source shapes at DSDT revisions1/2. Source-only parent /home/doc/git/.acpi-proof-work/createfield-package-capture-plan-4xrc25mp. All subprocesses128MiB address space,64MiB stack,1MiB output,5s timeout; no force compilation, offsets zero/count8/data1byte. CPU slot1 reserved. Normal rejects preserved separately. Hypothesis16706/MARK3.

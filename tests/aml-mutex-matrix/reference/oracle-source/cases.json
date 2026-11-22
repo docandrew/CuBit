@@ -1,0 +1,170 @@
+[
+  {
+    "source": "cases/r1-uncontended.asl",
+    "revision": 1,
+    "family": "uncontended",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r1-recursive.asl",
+    "revision": 1,
+    "family": "recursive",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r1-nested-sharing.asl",
+    "revision": 1,
+    "family": "nested-sharing",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r1-increasing.asl",
+    "revision": 1,
+    "family": "increasing",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r1-decreasing-acquire.asl",
+    "revision": 1,
+    "family": "decreasing-acquire",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r1-wrong-level-release.asl",
+    "revision": 1,
+    "family": "wrong-level-release",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r1-equal-level-out-of-order.asl",
+    "revision": 1,
+    "family": "equal-level-out-of-order",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r1-return-cleanup.asl",
+    "revision": 1,
+    "family": "return-cleanup",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r1-error-cleanup.asl",
+    "revision": 1,
+    "family": "error-cleanup",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r1-unowned-release.asl",
+    "revision": 1,
+    "family": "unowned-release",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r1-serialized-restore.asl",
+    "revision": 1,
+    "family": "serialized-restore",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r1-serialized-order.asl",
+    "revision": 1,
+    "family": "serialized-order",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-uncontended.asl",
+    "revision": 2,
+    "family": "uncontended",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-recursive.asl",
+    "revision": 2,
+    "family": "recursive",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-nested-sharing.asl",
+    "revision": 2,
+    "family": "nested-sharing",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-increasing.asl",
+    "revision": 2,
+    "family": "increasing",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-decreasing-acquire.asl",
+    "revision": 2,
+    "family": "decreasing-acquire",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-wrong-level-release.asl",
+    "revision": 2,
+    "family": "wrong-level-release",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-equal-level-out-of-order.asl",
+    "revision": 2,
+    "family": "equal-level-out-of-order",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-return-cleanup.asl",
+    "revision": 2,
+    "family": "return-cleanup",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-error-cleanup.asl",
+    "revision": 2,
+    "family": "error-cleanup",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-unowned-release.asl",
+    "revision": 2,
+    "family": "unowned-release",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-serialized-restore.asl",
+    "revision": 2,
+    "family": "serialized-restore",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  },
+  {
+    "source": "cases/r2-serialized-order.asl",
+    "revision": 2,
+    "family": "serialized-order",
+    "batch": "execute TEST; evaluate MARK; execute PROB; execute TEST; evaluate MARK; execute PROB",
+    "expected": "unobserved; source-derived distinctions in DESIGN.txt, not acceptance values"
+  }
+]

@@ -1,0 +1,72 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+-----------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                              Provers   Justified   Unproved
+-----------------------------------------------------------------------------------------------------------
+Data Dependencies                 .           .                                    .           .          .
+Flow Dependencies                 .           .                                    .           .          .
+Initialization                   44          44                                    .           .          .
+Non-Aliasing                      3           3                                    .           .          .
+Run-time Checks                  28           .                28 (CVC5 38%, Z3 62%)           .          .
+Assertions                       16           .                 16 (CVC5 7%, Z3 93%)           .          .
+Functional Contracts             22           .    22 (CVC5 19%, Trivial 4%, Z3 77%)           .          .
+LSP Verification                  .           .                                    .           .          .
+Termination                      15          15                                    .           .          .
+Concurrency                       .           .                                    .           .          .
+-----------------------------------------------------------------------------------------------------------
+Total                           128    62 (48%)                             66 (52%)           .          .
+
+
+max steps used for successful proof: 31934
+
+============================
+Most difficult proved checks
+============================
+
+metric_store.adb:139:19: postcondition proved in max 8 seconds
+metric_store.adb:161:13: loop invariant after first iteration proved in max 7 seconds
+metric_store.ads:63:19: postcondition proved in max 2 seconds
+metric_history.ads:32:16: postcondition proved in max 1 seconds
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 3 units
+in unit cubit-metric_raw_validation, 2 subprograms and packages out of 2 analyzed
+  CuBit.Metric_Raw_Validation at cubit-metric_raw_validation.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  CuBit.Metric_Raw_Validation.Valid at cubit-metric_raw_validation.ads:6 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit metric_raw_query, 2 subprograms and packages out of 2 analyzed
+  Metric_Raw_Query at metric_raw_query.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Raw_Query.Fill at metric_raw_query.ads:6 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (8 checks)
+in unit metric_store, 28 subprograms and packages out of 28 analyzed
+  Metric_Store at metric_store.ads:13 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Absorb at metric_store.adb:129 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (15 checks)
+  Metric_Store.Advance_Time at metric_store.ads:47 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Metric_Store.Apply at metric_store.adb:73 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (12 checks)
+  Metric_Store.Fill_Summaries at metric_store.ads:73 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (8 checks)
+  Metric_Store.History_Dropped at metric_store.ads:31 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.History_Next at metric_store.ads:30 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Ingest at metric_store.ads:58 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  Metric_Store.Owned_By at metric_store.ads:52 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw.Append at metric_history.ads:28, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Metric_Store.Raw.Exhausted at metric_history.ads:24, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw.First at metric_history.ads:22, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw.Following at metric_history.ads:23, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw.Index at metric_history.ads:55, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Metric_Store.Raw.Item at metric_history.ads:25, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Metric_Store.Raw.Read at metric_history.ads:42, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Metric_Store.Raw.State at metric_history.ads:58, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Metric_Store.Raw.Valid at metric_history.ads:21, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Raw.Valid_Event at metric_history.ads:17, instantiated at metric_store.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Read_History at metric_store.ads:32 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Metric_Store.Record_Sample at metric_store.adb:56 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Same_Except at metric_store.ads:55 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Saturating_Add at metric_store.adb:6 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Select_Source at metric_store.adb:17 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Metric_Store.Store at metric_store.ads:105 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Metric_Store.Summary at metric_store.adb:238 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Metric_Store.Valid at metric_store.ads:29 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)

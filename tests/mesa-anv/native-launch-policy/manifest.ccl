@@ -1,0 +1,6 @@
+(executable-manifest v1
+  (identity "com.cubit.test.render-launch-policy")
+  (version "1")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore)
+  (request-render read-write render))

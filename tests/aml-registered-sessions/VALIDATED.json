@@ -1,0 +1,64 @@
+{
+  "state": "registered execution with idle terminal-failure retained-result cleanup",
+  "matrix": {
+    "checks": 10248,
+    "profiles": [
+      "checked",
+      "release"
+    ],
+    "directory": "/home/doc/cubit-build-tmp/aml-active-definition-matrix-CDsPPf",
+    "source_scope": "Current cleanup production source and updated failure expectations"
+  },
+  "active_sessions": {
+    "checks": 1028,
+    "profiles": [
+      "checked",
+      "release"
+    ],
+    "source_scope": "Historical predecessor evidence; not rerun for cleanup"
+  },
+  "idle_sessions": {
+    "checks": 2388,
+    "profiles": [
+      "checked",
+      "release"
+    ],
+    "directory": "/home/doc/cubit-build-tmp/aml-idle-session-j0dkLS",
+    "source_scope": "Portable current cleanup candidate, both AML widths"
+  },
+  "registry_policy": {
+    "checks_per_profile": 108614,
+    "states_per_profile": 46,
+    "transitions_per_profile": 690
+  },
+  "normal_acpica_reference": {
+    "cases": 6,
+    "common_namespace_values_matched": 6,
+    "declaration_owner_groups_matched": 6,
+    "scope": "Common effects only; owner helper and AML API/replay contracts differ",
+    "source_scope": "Historical predecessor controls; no ACPICA equivalent for service-owned retained pins"
+  },
+  "registry_proof": {
+    "checks": 170,
+    "unproved": 0,
+    "source_unchanged": true,
+    "scope": "Isolated registry initialization/transitions/identity/session predicate; not caller, namespace, VM or Core correctness"
+  },
+  "publication_evidence": "/home/doc/git/.acpi-proof-work/failed-owner-release-publication-work/PUBLICATION.json",
+  "new_proof": false,
+  "whole_interpreter_proved": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "goal": "active and incomplete",
+  "predecessor_publication": "/home/doc/git/.acpi-proof-work/registered-loader-publication-work/PUBLICATION.json",
+  "busy_release": {
+    "checks": 52,
+    "profiles": [
+      "checked",
+      "release"
+    ],
+    "directory": "/home/doc/cubit-build-tmp/aml-busy-release-zcDLtr",
+    "source_scope": "Real synchronous Stall callback; local library reentry only"
+  },
+  "cleanup_or_caller_proved": false
+}

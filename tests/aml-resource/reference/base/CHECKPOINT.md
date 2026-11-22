@@ -1,0 +1,9 @@
+# Resource-template oracle
+
+79341 TERMINAL0;50 normal DSDT attempts, allcompiled with runtimewidth and method-specific ConcatenateResTemplate disassembly.26returned,24runtimeerrors,0compilerrejects/timeouts/crashes. Exact errors classified separately in reviewed-observations; original outputs unchanged. ACPICA subprocess128MiB/5seconds/64MiB, pinned Nix/nice19. Known outstanding-cache-allocation cleanup diagnostics retained; no clean teardown claim.
+
+Both widths: empty/empty, nonzerochecksum and invalidtrailingbytes return7900. Payload79 remains inside vendorbytes:7279aa71427900. Single79/missingEndTag -> NO_RESOURCE_END_TAG;78/7A andDMAwronglength -> BAD_RESOURCE_LENGTH; reservedtypes/IntegerZero -> INVALID_RESOURCE_TYPE; overruns/shortlargeheader -> BUFFER_LENGTH. LargeVendor empty payload withEndTag,total5 failsBUFFER_LENGTH; onepayloadbyte,total6 succeeds840100427900, matching pinned genericlarge precheck. Treat this as pinned implementation compatibility behavior, not normative descriptor rule.
+
+Integer0x79 andString"y" coerce to validresourceBuffer and return7900. All source/target expressions run once ORDER MARK123. Competing leftbadlength/rightinvalidtype yields left BAD_RESOURCE_LENGTH aftertargetMARK1; this establishes template-validation order, not all source coercion ordering. FreshLocal target aliases result (mutation0900); matchingnamedBuffer extent1 stays79; namedInteger becomes121; namedString becomes"0x79 0x00" bytes30783739203078303000 afterToBuffer wrapper. These confirm implicit TARGETREF storage, not explicit replacement.
+
+Root independently cited official ACPI6.6 section19.6.13 (empty accepted,onebyte runtimeerror,newEndTag/checksum) and6.4 section6.4.2.9 (EndTag79 payload1,checksum0success). This checkpoint does not claim complete normative descriptor audit. Primary plan f2y2d16t retains pinned parser/source tables. No CuBit implementation/parity/proof claim.

@@ -1,0 +1,472 @@
+------------------------------------------------------------------------------
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--
+--  @summary
+--  Userspace ATA/IDE PIO driver.
+--
+--  Performs PIO reads on the primary ATA channel. Runs IDENTIFY at startup
+--  to detect the drive, then offers the shared Block.Device.V1 protocol.
+--
+--  All hardware access is port I/O through the I/O port handles devmgr gave
+--  it at launch (its manifest's command-block and control bindings).
+------------------------------------------------------------------------------
+with CuBit.Console_Route;
+with Interfaces; use Interfaces;
+with System; use System;
+with System.Storage_Elements; use System.Storage_Elements;
+
+with CuBit.Messages; use CuBit.Messages;
+with CuBit.Block_Devices; use CuBit.Block_Devices;
+with CuBit.Block_Requests; use CuBit.Block_Requests;
+with CuBit.Block_Sync_Driver;
+with CuBit.Block_Work; use CuBit.Block_Work;
+with CuBit.Device_Identities;
+with CuBit.Handles;
+with Startup;
+
+procedure main is
+   use ASCII;
+
+   --  ATA primary channel ports
+   IO_BASE   : constant Unsigned_16 := 16#1F0#;
+   CTRL_PORT : constant Unsigned_16 := 16#3F6#;
+
+
+   --  Register offsets from IO_BASE
+   REG_DATA       : constant Unsigned_16 := IO_BASE + 0;
+   REG_SECTOR_CT  : constant Unsigned_16 := IO_BASE + 2;
+   REG_LBA_LOW    : constant Unsigned_16 := IO_BASE + 3;
+   REG_LBA_MID    : constant Unsigned_16 := IO_BASE + 4;
+   REG_LBA_HI     : constant Unsigned_16 := IO_BASE + 5;
+   REG_DRIVE_SEL  : constant Unsigned_16 := IO_BASE + 6;
+   REG_STATUS     : constant Unsigned_16 := IO_BASE + 7;
+   REG_COMMAND    : constant Unsigned_16 := IO_BASE + 7;
+
+   --  ATA commands
+   CMD_IDENTIFY   : constant Unsigned_8 := 16#EC#;
+   CMD_READ_PIO   : constant Unsigned_8 := 16#20#;
+   CMD_WRITE_PIO  : constant Unsigned_8 := 16#30#;
+   CMD_FLUSH_CACHE : constant Unsigned_8 := 16#E7#;
+
+   --  IDENTIFY word 85 (command sets enabled), bit 5: volatile write cache.
+   IDENTIFY_ENABLED_FEATURES : constant := 85;
+   WRITE_CACHE_ENABLED : constant Unsigned_16 := 16#0020#;
+
+   --  Drive select values
+   SELECT_MASTER  : constant Unsigned_8 := 16#A0#;
+   SELECT_LBA     : constant Unsigned_8 := 16#40#;
+
+   --  Status register bits
+   STATUS_BSY     : constant Unsigned_8 := 16#80#;
+   STATUS_DRQ     : constant Unsigned_8 := 16#08#;
+   STATUS_ERR     : constant Unsigned_8 := 16#01#;
+
+   --  Sector size, and the most sectors one 28-bit PIO command moves here.
+   SECTOR_SIZE    : constant := 512;
+   MAX_PIO_SECTORS : constant := 255;
+   --  Blocks a 28-bit LBA addresses.
+   LBA28_BLOCKS   : constant := 2 ** 28;
+   ATA_POLL_LIMIT : constant Positive := 100_000;
+
+   --  No offered device is distinct from a failed IDENTIFY transaction.
+   type Identification_Result is (Identified, No_Device, Identification_Failed);
+   identification : Identification_Result := No_Device;
+   driveBlockCount : Unsigned_64 := 0;
+   --  Completed writes may sit in the drive's cache until FLUSH CACHE.
+   --  Assumed until IDENTIFY says the cache is disabled.
+   writeCacheEnabled : Boolean := True;
+
+   ---------------------------------------------------------------------------
+   --  outb / inb wrappers (call syscall port I/O)
+   ---------------------------------------------------------------------------
+   --  The control port has its own handle; every other register is in
+   --  the command block.
+   function Ports_For (port : Unsigned_16) return CuBit.Handles.IO_Ports is
+     (if port = CTRL_PORT then Startup.Control else Startup.Command_Block);
+
+   procedure outb (port : Unsigned_16; val : Unsigned_8) is
+      ignore : Unsigned_64;
+   begin
+      ignore := portOutp8 (Ports_For (port), port, val);
+   end outb;
+
+   function inb (port : Unsigned_16) return Unsigned_8 is
+   begin
+      return Unsigned_8 (portInp8 (Ports_For (port), port) and 16#FF#);
+   end inb;
+
+   --  Floating bus value (no controller present)
+   STATUS_FLOAT   : constant Unsigned_8 := 16#FF#;
+
+   ---------------------------------------------------------------------------
+   --  waitBSY - poll until BSY clears, return False if no controller
+   ---------------------------------------------------------------------------
+   function waitBSY return Boolean is
+      st : Unsigned_8;
+   begin
+      for i in 1 .. ATA_POLL_LIMIT loop
+         st := inb (REG_STATUS);
+         if st = STATUS_FLOAT then
+            return False;
+         end if;
+         if (st and STATUS_BSY) = 0 then
+            return True;
+         end if;
+      end loop;
+      return False;  --  Timeout
+   end waitBSY;
+
+   ---------------------------------------------------------------------------
+   --  waitDRQ - poll until DRQ sets (or ERR)
+   --  Returns True if DRQ is set, False on error.
+   ---------------------------------------------------------------------------
+   function waitDRQ return Boolean is
+      st : Unsigned_8;
+   begin
+      for attempt in 1 .. ATA_POLL_LIMIT loop
+         st := inb (REG_STATUS);
+         if st = STATUS_FLOAT or else (st and STATUS_ERR) /= 0 then
+            return False;
+         end if;
+         if (st and STATUS_DRQ) /= 0 then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end waitDRQ;
+
+   ---------------------------------------------------------------------------
+   --  ata400nsDelay - read alternate status 4 times for 400ns delay
+   ---------------------------------------------------------------------------
+   procedure ata400nsDelay is
+      ignore : Unsigned_8;
+   begin
+      for i in 1 .. 4 loop
+         ignore := inb (CTRL_PORT);
+      end loop;
+   end ata400nsDelay;
+
+   ---------------------------------------------------------------------------
+   --  doIdentify - run ATA IDENTIFY on primary master
+   --  No_Device means absent hardware or an explicitly recognized ATAPI device
+   --  outside this ATA provider. Timeouts/errors must not masquerade as absence.
+   ---------------------------------------------------------------------------
+   function doIdentify return Identification_Result is
+      st   : Unsigned_8;
+      mid  : Unsigned_8;
+      hi   : Unsigned_8;
+
+      --  256-word (512 byte) identify buffer
+      type IdentifyBuf is array (0 .. 255) of Unsigned_16;
+      buf : IdentifyBuf := [others => 0];
+   begin
+      --  Select master drive
+      outb (REG_DRIVE_SEL, SELECT_MASTER);
+      ata400nsDelay;
+
+      --  Zero out sector count and LBA registers
+      outb (REG_SECTOR_CT, 0);
+      outb (REG_LBA_LOW, 0);
+      outb (REG_LBA_MID, 0);
+      outb (REG_LBA_HI, 0);
+
+      --  Send IDENTIFY
+      outb (REG_COMMAND, CMD_IDENTIFY);
+      ata400nsDelay;
+
+      --  Read status; if 0 or 0xFF, no drive/controller
+      st := inb (REG_STATUS);
+      if st = 0 or st = STATUS_FLOAT then
+         debugPrint ("ATA: No drive on primary master." & LF);
+         return No_Device;
+      end if;
+
+      --  Wait for BSY to clear
+      if not waitBSY then
+         debugPrint ("ATA: BSY timeout during IDENTIFY." & LF);
+         return Identification_Failed;
+      end if;
+
+      --  Check for ATAPI/SATA by reading LBA mid/hi
+      mid := inb (REG_LBA_MID);
+      hi := inb (REG_LBA_HI);
+      if (mid = 16#14# and hi = 16#EB#) or else
+         (mid = 16#69# and hi = 16#96#)
+      then
+         debugPrint ("ATA: Non-ATA device detected (ATAPI/SATA)." & LF);
+         return No_Device;
+      elsif mid /= 0 or hi /= 0 then
+         return Identification_Failed;
+      end if;
+
+      --  Poll until DRQ or ERR
+      if not waitDRQ then
+         debugPrint ("ATA: IDENTIFY failed (error bit set)." & LF);
+         return Identification_Failed;
+      end if;
+
+      --  Read 256 words of identify data via individual portInp16 calls.
+      --  The former bulk rep-insw syscall was not reliable from userspace.
+      for i in buf'Range loop
+         buf (i) := Unsigned_16 (portInp16 (Startup.Command_Block, REG_DATA) and 16#FFFF#);
+      end loop;
+
+      --  This driver currently issues 28-bit PIO commands, so report only the
+      --  range it can actually address even if IDENTIFY advertises LBA48.
+      driveBlockCount := Unsigned_64 (buf (60)) or
+        Shift_Left (Unsigned_64 (buf (61)), 16);
+      writeCacheEnabled :=
+        (buf (IDENTIFY_ENABLED_FEATURES) and WRITE_CACHE_ENABLED) /= 0;
+      if driveBlockCount > LBA28_BLOCKS then
+         driveBlockCount := LBA28_BLOCKS;
+      end if;
+      if driveBlockCount = 0 then
+         return Identification_Failed;
+      end if;
+
+      debugPrint ("ATA: Drive detected on primary master." & LF);
+      return Identified;
+   end doIdentify;
+
+
+   ---------------------------------------------------------------------------
+   --  readSectors - PIO read of count sectors starting at LBA into addr
+   --  Returns number of bytes read, or 0 on error.
+   ---------------------------------------------------------------------------
+   function readSectors (lba   : Unsigned_32;
+                         count : Unsigned_8;
+                         addr  : System.Address) return Unsigned_64
+   is
+      drv    : Unsigned_8;
+   begin
+      if count = 0 then
+         return 0;
+      end if;
+
+      --  Select drive with LBA mode + top 4 bits of LBA
+      drv := SELECT_MASTER or SELECT_LBA or
+             Unsigned_8 (Shift_Right (lba, 24) and 16#0F#);
+      outb (REG_DRIVE_SEL, drv);
+      ata400nsDelay;
+
+      --  Set sector count
+      outb (REG_SECTOR_CT, count);
+
+      --  Set LBA bytes
+      outb (REG_LBA_LOW, Unsigned_8 (lba and 16#FF#));
+      outb (REG_LBA_MID, Unsigned_8 (Shift_Right (lba, 8) and 16#FF#));
+      outb (REG_LBA_HI,  Unsigned_8 (Shift_Right (lba, 16) and 16#FF#));
+
+      --  Send READ PIO command
+      outb (REG_COMMAND, CMD_READ_PIO);
+
+      --  Read each sector
+      for sec in 0 .. Natural (count) - 1 loop
+         ata400nsDelay;
+         if not waitBSY then
+            debugPrint ("ATA: BSY timeout during read." & LF);
+            return Unsigned_64 (sec * SECTOR_SIZE);
+         end if;
+
+         if not waitDRQ then
+            debugPrint ("ATA: Read error at sector." & LF);
+            return Unsigned_64 (sec * SECTOR_SIZE);
+         end if;
+
+         --  Read 256 words (512 bytes) via individual portInp16 calls.
+         --  The former bulk rep-insw syscall was not reliable from userspace,
+         --  because that implementation wrote to a user address from ring 0.
+         declare
+            type WordBuf is array (0 .. 255) of Unsigned_16
+              with Pack;
+            sectorWords : WordBuf
+              with Import,
+                   Address => addr +
+                     System.Storage_Elements.Storage_Offset
+                       (sec * SECTOR_SIZE);
+         begin
+            for i in sectorWords'Range loop
+               sectorWords (i) :=
+                 Unsigned_16 (portInp16 (Startup.Command_Block, REG_DATA) and 16#FFFF#);
+            end loop;
+         end;
+      end loop;
+
+      return Unsigned_64 (Natural (count) * SECTOR_SIZE);
+   end readSectors;
+
+   ---------------------------------------------------------------------------
+   --  writeSectors - PIO write of count sectors starting at LBA from addr
+   --  Returns number of bytes written, or 0 on error.
+   ---------------------------------------------------------------------------
+   function writeSectors (lba   : Unsigned_32;
+                          count : Unsigned_8;
+                          addr  : System.Address) return Unsigned_64
+   is
+      drv : Unsigned_8;
+   begin
+      if count = 0 then
+         return 0;
+      end if;
+
+      --  Select drive with LBA mode + top 4 bits of LBA
+      drv := SELECT_MASTER or SELECT_LBA or
+             Unsigned_8 (Shift_Right (lba, 24) and 16#0F#);
+      outb (REG_DRIVE_SEL, drv);
+      ata400nsDelay;
+
+      --  Set sector count
+      outb (REG_SECTOR_CT, count);
+
+      --  Set LBA bytes
+      outb (REG_LBA_LOW, Unsigned_8 (lba and 16#FF#));
+      outb (REG_LBA_MID, Unsigned_8 (Shift_Right (lba, 8) and 16#FF#));
+      outb (REG_LBA_HI,  Unsigned_8 (Shift_Right (lba, 16) and 16#FF#));
+
+      --  Send WRITE PIO command
+      outb (REG_COMMAND, CMD_WRITE_PIO);
+
+      --  Write each sector
+      for sec in 0 .. Natural (count) - 1 loop
+         ata400nsDelay;
+         if not waitBSY then
+            debugPrint ("ATA: BSY timeout during write." & LF);
+            return Unsigned_64 (sec * SECTOR_SIZE);
+         end if;
+
+         if not waitDRQ then
+            debugPrint ("ATA: Write error at sector." & LF);
+            return Unsigned_64 (sec * SECTOR_SIZE);
+         end if;
+
+         --  Write 256 words (512 bytes) via individual portOutp16 calls
+         declare
+            type WordBuf is array (0 .. 255) of Unsigned_16
+              with Pack;
+            sectorWords : WordBuf
+              with Import,
+                   Address => addr +
+                     System.Storage_Elements.Storage_Offset
+                       (sec * SECTOR_SIZE);
+            ignore : Unsigned_64;
+         begin
+            for i in sectorWords'Range loop
+               ignore := portOutp16 (Startup.Command_Block, REG_DATA, sectorWords (i));
+            end loop;
+         end;
+      end loop;
+
+      --  Wait for command completion. With the write cache enabled this is
+      --  not durability: OP_FLUSH_DEVICE issues FLUSH CACHE for that.
+      ata400nsDelay;
+      if not waitBSY or else (inb (REG_STATUS) and STATUS_ERR) /= 0 then
+         debugPrint ("ATA: command failed after write." & LF);
+         return 0;
+      end if;
+
+      return Unsigned_64 (Natural (count) * SECTOR_SIZE);
+   end writeSectors;
+
+   ---------------------------------------------------------------------------
+   --  flushCache - FLUSH CACHE: every completed write reaches the media.
+   --  PIO writes offer no FUA here, so this is the only durability barrier.
+   ---------------------------------------------------------------------------
+   function flushCache return Boolean is
+   begin
+      outb (REG_DRIVE_SEL, SELECT_MASTER or SELECT_LBA);
+      ata400nsDelay;
+      outb (REG_COMMAND, CMD_FLUSH_CACHE);
+      ata400nsDelay;
+      return waitBSY and then (inb (REG_STATUS) and STATUS_ERR) = 0;
+   end flushCache;
+
+   ---------------------------------------------------------------------------
+   --  Block.Device.V1 through the shared front end (CuBit.Block_Requests).
+   ---------------------------------------------------------------------------
+   function deviceState return Device_State is
+     (case identification is
+        when Identified =>
+          (Presence      => Available,
+           Blocks        => driveBlockCount,
+           Logical_Size  => SECTOR_SIZE,
+           Physical_Size => SECTOR_SIZE,
+           Max_Transfer  => MAX_PIO_SECTORS,
+           --  PIO writes offer no FUA: FLUSH CACHE is the only barrier.
+           Features      =>
+             FEATURE_FLUSH or
+             (if writeCacheEnabled then FEATURE_VOLATILE_CACHE else 0),
+           Media         => Fixed_Media),
+        when No_Device => (Presence => No_Device),
+        when Identification_Failed => (Presence => Faulted));
+
+   --  The block count is capped to 28-bit LBAs and Count to MAX_PIO_SECTORS,
+   --  so both conversions are exact.
+   procedure transfer
+     (item   : Transfer_Request;
+      buffer : System.Address;
+      moved  : out Unsigned_64)
+   is
+   begin
+      if item.Direction = Device_Read then
+         moved := readSectors
+           (Unsigned_32 (item.First_Block), Unsigned_8 (item.Count), buffer);
+      else
+         moved := writeSectors
+           (Unsigned_32 (item.First_Block), Unsigned_8 (item.Count), buffer);
+      end if;
+   end transfer;
+
+   procedure flush (durable : out Boolean) is
+   begin
+      durable := not writeCacheEnabled or else flushCache;
+   end flush;
+
+   --  Writes stay open to every client that reaches the driver until devmgr
+   --  mints ATA write badges (DEV-002).
+   package Block_Server is new CuBit.Block_Sync_Driver
+     (Writes => Any_Client_Writes, Transfer => transfer, Flush => flush);
+
+begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
+   debugPrint ("ATA Driver: Starting..." & LF);
+
+   --  Run IDENTIFY to detect primary master drive
+   identification := doIdentify;
+
+   if identification /= Identified then
+      debugPrint ("ATA Driver: No drive found, entering message loop anyway." & LF);
+   end if;
+
+   --  Register ATA driver
+   declare
+      ignore : Unsigned_64;
+   begin
+      ignore := registerDriver (DRIVER_ATA, Startup.Registration);
+   end;
+
+   --  Signal devmgr that we are ready
+   declare
+      OP_READY       : constant Unsigned_32 := 16#FF00#;
+      ignore : MessageTag;
+   begin
+      ignore := capSend (Startup.Ready,
+         (tag      => (label => OP_READY, length => 0,
+                       protocol => 0, ipc => <>, reserved => 0),
+          authorityTag => 0,
+          words    => [others => 0]), CuBit.Messages.Wait_Forever);
+   end;
+
+   debugPrint ("ATA: registered, entering message loop" & LF);
+
+   --  Main IPC message loop
+   Block_Server.Start (deviceState, CuBit.Device_Identities.No_Identity);
+   loop
+      Block_Server.Serve_One;
+   end loop;
+end main;

@@ -1,0 +1,18 @@
+project Vulkan_Target_Bundle extends "vulkan_submission.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Submission'Source_Files &
+     ("compositor_upload_progress.ads", "compositor_upload_progress.adb", "compositor_upload.ads", "compositor_upload.adb", "vulkan_upload_record.h", "vulkan_upload_record.c", "vulkan_upload_record_ffi.ads", "vulkan_upload_record_ffi.adb", "vulkan_upload_recording.ads", "vulkan_upload_recording.adb", "vulkan_upload_buffer.c", "vulkan_upload_owner.ads", "vulkan_upload_owner.adb", "vulkan_upload_ffi.ads", "vulkan_upload_ffi.adb", "vulkan_device_source_ffi.ads", "vulkan_device_source_ffi.adb", "vulkan_owned_source.ads", "vulkan_owned_source.adb", "vulkan_device_pipeline_ffi.ads", "vulkan_device_pipeline_ffi.adb", "vulkan_device_targets_ffi.ads", "vulkan_device_targets_ffi.adb", "vulkan_context_owner.ads", "vulkan_context_owner.adb", "vulkan_context_ffi.ads", "vulkan_context_ffi.adb", "vulkan_context.c", "vulkan_scene_recording.ads", "vulkan_scene_recording.adb",
+      "vulkan_target_bundle_tests.adb", "vulkan_target_bundle_bridge.ads", "vulkan_target_bundle_bridge.adb",
+      "vulkan_affine_test_bridge.ads", "vulkan_affine_test_bridge.adb",
+      "vulkan_owned_image.c", "vulkan_owned_target_binding.c", "vulkan_owned_targets.h",
+      "vulkan_owned_targets.ads", "vulkan_owned_targets.adb", "vulkan_owned_target_ffi.ads", "vulkan_owned_target_ffi.adb",
+      "vulkan_image_owner.ads", "vulkan_image_owner.adb", "vulkan_image_ffi.ads", "vulkan_image_ffi.adb",
+      "compositor_storage.ads", "compositor_storage.adb");
+   for Object_Dir use "build/vulkan-target-bundle/obj";
+   for Exec_Dir use "build/vulkan-target-bundle";
+   for Main use ("vulkan_target_bundle_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+      for Default_Switches ("C") use ("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-DCUBIT_VULKAN_OWNED_TARGET_TEST=1");
+   end Compiler;
+end Vulkan_Target_Bundle;

@@ -1,0 +1,87 @@
+CuBit development shell
+  Build:  make -C kernel world
+  Test:   tests/headless/run.sh --test desktop-display
+  Run:    make -C kernel run-desktop
+hid_query.asl     47:     Method (ORC0, 0) { Return (\TPD0._DSM (ToUUID ("3CDFF6F7-4267-4555-AD05-B30A3D8938DE"), One, Zero, Package() {})) }
+Remark   2095 -                                                                                   Effective AML package length is zero ^ 
+
+hid_query.asl     48:     Method (ORC1, 0) { Return (\TPD0._DSM (ToUUID ("3CDFF6F7-4267-4555-AD05-B30A3D8938DE"), One, One, Package() {})) }
+Remark   2095 -                                                                                  Effective AML package length is zero ^ 
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     hid_query.asl -    2240 bytes     91 keywords      0 source lines
+AML Output:    hid_query.aml -     563 bytes     75 opcodes      16 named objects
+Hex Dump:      hid_query.hex -    5702 bytes
+
+Compilation successful. 0 Errors, 0 Warnings, 2 Remarks, 8 Optimizations
+Input file hid_query.aml, Length 0x233 (563) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 000233 (v02 CUBIT  HIDQUERY 00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: HIDQUERY] (id 01) -   16 Objects with   3 Devices,   0 Regions,    5 Methods (0/5/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 25 (0x19) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Evaluating \ORC0
+Evaluation of \ORC0 returned object 0x555555601dd0, external buffer length 20
+  [Buffer] Length 01 =     0000: 03                                               // .
+
+Evaluating \ORC1
+Evaluation of \ORC1 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000001234
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORC0
+Evaluation of \ORC0 returned object 0x555555601dd0, external buffer length 20
+  [Buffer] Length 01 =     0000: 00                                               // .
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORC0
+Evaluation of \ORC0 returned object 0x555555601dd0, external buffer length 20
+  [Buffer] Length 02 =     0000: 03 80                                            // ..
+
+Evaluating \ORC1
+Evaluation of \ORC1 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000FFFF
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORC1
+Evaluation of \ORC1 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORC0
+Evaluation of \ORC0 returned object 0x555555601dd0, external buffer length 20
+  [Buffer] Length 01 =     0000: 03                                               // .
+
+Evaluating \ORC1
+Evaluation of \ORC1 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000001234
+
+0x555555609540 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

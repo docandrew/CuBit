@@ -1,0 +1,457 @@
+------------------------------------------------------------------------------
+--  CuBit IPC benchmark client
+--
+--  Prints compact final summaries only. Serial output is intentionally kept
+--  out of measured loops so it does not dominate the numbers.
+------------------------------------------------------------------------------
+with CuBit.Console_Route;
+with CuBit.Waits;
+with CuBit.Readiness;
+with Interfaces; use Interfaces;
+
+with CuBit.Messages; use CuBit.Messages;
+with CuBit.Benchmark_Clock;
+with CuBit.Timing_Histograms;
+with CuBit.Handles;
+with CuBit.Handles.IPC;
+with CuBit.Handles.Power;
+with CuBit.Handles.Tracing;
+with Platform_Power_ABI;
+with Startup;
+with CuBit.Monotonic;
+
+procedure main is
+   use ASCII;
+   package Clock renames CuBit.Benchmark_Clock;
+   package Timing renames CuBit.Timing_Histograms;
+   Rate : Unsigned_64;
+
+   Bench : constant CuBit.Handles.Endpoint := Startup.Ipc_Test;
+   OP_BENCH_ECHO  : constant Unsigned_32 := 16#0910#;
+   OP_BENCH_DIE   : constant Unsigned_32 := 16#0911#;
+   OP_BENCH_HOLD  : constant Unsigned_32 := 16#0912#;
+   REPLY_OK       : constant Unsigned_32 := 16#F000#;
+   XOR_MAGIC      : constant Unsigned_64 := 16#C0B1_7000_BE11#;
+
+   WARMUP_COUNT : constant Natural := 64;
+   SYNC_COUNT   : constant Natural := 20_000;
+   ASYNC_COUNT  : constant Natural := 8_192;
+   KERNEL_COUNT : constant Natural := 20_000;
+   TOKEN_BASE   : constant Unsigned_64 := 16#B100_0000#;
+
+   ok : Boolean := True;
+
+   procedure printDec (val : Unsigned_64) is
+      buf : String (1 .. 20);
+      pos : Natural := buf'Last;
+      v   : Unsigned_64 := val;
+   begin
+      if v = 0 then
+         debugPrint ("0");
+         return;
+      end if;
+
+      while v > 0 loop
+         buf (pos) := Character'Val (Character'Pos ('0') +
+                                      Natural (v mod 10));
+         v := v / 10;
+         pos := pos - 1;
+      end loop;
+
+      debugPrint (buf (pos + 1 .. buf'Last));
+   end printDec;
+
+   procedure fail (reason : String) is
+   begin
+      debugPrint ("BENCH: FAIL ipc ");
+      debugPrint (reason);
+      debugPrint (LF & "");
+      ok := False;
+   end fail;
+
+   function nowMs return Unsigned_64 is
+   begin
+      return CuBit.Monotonic.Milliseconds;
+   end nowMs;
+
+   function echoMsg (value : Unsigned_64) return Message is
+      msg : Message := NULL_MESSAGE;
+   begin
+      msg.tag := (label  => OP_BENCH_ECHO,
+                  length => 1,
+                  protocol  => 0, ipc => <>,
+                  reserved  => 0);
+      msg.words (0) := value;
+      return msg;
+   end echoMsg;
+
+   procedure verifyReply (replyMsg : Message; expected : Unsigned_64) is
+   begin
+      if replyMsg.tag.label /= REPLY_OK then
+         fail ("reply-label");
+      elsif replyMsg.words (0) /= expected then
+         fail ("reply-value");
+      elsif replyMsg.words (1) /= (expected xor XOR_MAGIC) then
+         fail ("reply-check");
+      end if;
+   end verifyReply;
+
+   procedure runSync is
+      msg : Message;
+      t0  : Unsigned_64;
+      t1  : Unsigned_64;
+      Started, Finished : Unsigned_64;
+      Samples : Timing.Histogram;
+   begin
+      for i in 1 .. WARMUP_COUNT loop
+         msg := echoMsg (Unsigned_64 (i));
+         msg.tag := capCall (Bench, msg, CuBit.Messages.Wait_Forever);
+         verifyReply (msg, Unsigned_64 (i));
+         exit when not ok;
+      end loop;
+
+      if not ok then
+         return;
+      end if;
+
+      t0 := nowMs;
+      for i in 1 .. SYNC_COUNT loop
+         msg := echoMsg (Unsigned_64 (i));
+         Started := Clock.Read_Counter;
+         msg.tag := capCall (Bench, msg, CuBit.Messages.Wait_Forever);
+         Finished := Clock.Read_Counter;
+         if Finished < Started then
+            fail ("counter-went-backwards");
+            exit;
+         end if;
+         Timing.Add (Samples, Finished - Started);
+         verifyReply (msg, Unsigned_64 (i));
+         exit when not ok;
+      end loop;
+      t1 := nowMs;
+
+      if not ok then
+         return;
+      end if;
+
+      debugPrint ("BENCH: ipc sync count=");
+      printDec (Unsigned_64 (SYNC_COUNT));
+      debugPrint (" total_ms=");
+      printDec (t1 - t0);
+      debugPrint (LF & "");
+      Clock.Report ("ipc-sync-round-trip", Samples);
+   end runSync;
+
+   --  ABI-002 / KERN-004: a Call on a kernel-object handle against a
+   --  dedicated system call on the same handle and the null-call floor.
+   --  The kernel-object Call is Enter_State (S3) on the platform power
+   --  object: the whole path (the endpoint path refuses the handle, the
+   --  kernel resolves it, decodes the message, admits and answers Not_Yet)
+   --  with no register touched. INSPECT_CAPABILITY resolves the same
+   --  handle and copies a record out; GETPID does nothing.
+   procedure runKernelObject is
+      package PA renames Platform_Power_ABI;
+      use type PA.Refusal;
+      Power : constant CuBit.Handles.Platform_Power := Startup.Power;
+      Entered : CuBit.Handles.Power.Outcome;
+      Described : CuBit.Handles.IPC.Description;
+      Ignored : Unsigned_64;
+      Started, Finished : Unsigned_64;
+      Calls, Inspections, Nulls : Timing.Histogram;
+      --  The cheapest system call: a futex wait whose word already differs
+      --  from the expected value returns at once (GETPID, the old null
+      --  call, is a page load now).
+      Mismatch : aliased Unsigned_32 := 1;
+      function Null_Call return Unsigned_64 is
+        (CuBit.Waits.Futex_Wait (Mismatch'Address, 0, CuBit.Waits.Now));
+   begin
+      Entered := CuBit.Handles.Power.Enter_State (Power, PA.S3);
+      if not Entered.Answered or else Entered.Why /= PA.Not_Yet then
+         fail ("kernel-object S3 not refused Not_Yet");
+         return;
+      end if;
+      for i in 1 .. WARMUP_COUNT loop
+         Entered := CuBit.Handles.Power.Enter_State (Power, PA.S3);
+         Described := CuBit.Handles.IPC.Describe (Power);
+         Ignored := Null_Call;
+      end loop;
+      for i in 1 .. KERNEL_COUNT loop
+         Started := Clock.Read_Counter;
+         Entered := CuBit.Handles.Power.Enter_State (Power, PA.S3);
+         Finished := Clock.Read_Counter;
+         if Finished >= Started then Timing.Add (Calls, Finished - Started); end if;
+      end loop;
+      for i in 1 .. KERNEL_COUNT loop
+         Started := Clock.Read_Counter;
+         Described := CuBit.Handles.IPC.Describe (Power);
+         Finished := Clock.Read_Counter;
+         if Finished >= Started then Timing.Add (Inspections, Finished - Started); end if;
+      end loop;
+      for i in 1 .. KERNEL_COUNT loop
+         Started := Clock.Read_Counter;
+         Ignored := Null_Call;
+         Finished := Clock.Read_Counter;
+         if Finished >= Started then Timing.Add (Nulls, Finished - Started); end if;
+      end loop;
+      if not Described.Current then
+         fail ("kernel-object handle not current");
+         return;
+      end if;
+      Clock.Report ("kernel-object-call", Calls);
+      Clock.Report ("handle-syscall-inspect", Inspections);
+      Clock.Report ("null-syscall-futex-mismatch", Nulls);
+      debugPrint ("BENCH: PASS kernel-object call" & LF);
+   end runKernelObject;
+
+   procedure runAsync is
+      completions : CompletionRing;
+      ret        : Unsigned_64;
+      submitOk   : Boolean;
+      submitted  : Natural := 0;
+      completed  : Natural := 0;
+      inFlight   : Natural := 0;
+      t0         : Unsigned_64;
+      t1         : Unsigned_64;
+      seen       : array (1 .. ASYNC_COUNT) of Boolean := (others => False);
+      Started : array (1 .. ASYNC_COUNT) of Unsigned_64 := (others => 0);
+      Samples : Timing.Histogram;
+      Finished : Unsigned_64;
+   begin
+      completions := (others => NULL_COMPLETION);
+      for I in 1 .. WARMUP_COUNT loop
+         submitOk := capSubmit
+           (Bench, echoMsg (Unsigned_64 (I)), Unsigned_64 (I));
+         if not submitOk then fail ("async-warmup-submit"); return; end if;
+         ret := waitCompletion (completions'Address, 1, 1);
+         if ret /= 1 or else completions (0).status /= COMPLETION_OK then
+            fail ("async-warmup-completion"); return;
+         end if;
+         verifyReply (completions (0).msg, Unsigned_64 (I));
+         if not ok then return; end if;
+      end loop;
+      t0 := nowMs;
+
+      while completed < ASYNC_COUNT and then ok loop
+         --  Keep the kernel completion queue busy without turning this into a
+         --  queue-depth test. Current async capacity is small, so refill as
+         --  completions arrive and measure sustained throughput.
+         while submitted < ASYNC_COUNT and then inFlight < 16 loop
+            Started (submitted + 1) := Clock.Read_Counter;
+            submitOk := capSubmit
+              (Bench,
+               echoMsg (Unsigned_64 (submitted + 1)),
+               TOKEN_BASE + Unsigned_64 (submitted + 1));
+
+            exit when not submitOk;
+            submitted := submitted + 1;
+            inFlight := inFlight + 1;
+         end loop;
+
+         if inFlight = 0 and then submitted < ASYNC_COUNT then
+            fail ("async-submit");
+            exit;
+         end if;
+
+         ret := waitCompletion (completions'Address, 16, 1);
+
+         if ret = 0 then
+            fail ("async-wait");
+            exit;
+         end if;
+
+         for slot in CompletionIndex loop
+            exit when slot >= Natural (ret);
+
+            if completions (slot).status /= COMPLETION_OK then
+               fail ("async-status");
+            elsif completions (slot).token <= TOKEN_BASE or else
+                  completions (slot).token >
+                     TOKEN_BASE + Unsigned_64 (ASYNC_COUNT)
+            then
+               fail ("async-token");
+            else
+               declare
+                  idx : constant Natural :=
+                     Natural (completions (slot).token - TOKEN_BASE);
+               begin
+                  if seen (idx) then
+                     fail ("async-duplicate");
+                  else
+                     Finished := Clock.Read_Counter;
+                     if Finished < Started (idx) then
+                        fail ("counter-went-backwards");
+                        exit;
+                     end if;
+                     Timing.Add (Samples, Finished - Started (idx));
+                     verifyReply (completions (slot).msg,
+                                  Unsigned_64 (idx));
+                     seen (idx) := True;
+                     completed := completed + 1;
+                     if inFlight > 0 then
+                        inFlight := inFlight - 1;
+                     end if;
+                  end if;
+               end;
+            end if;
+
+            exit when not ok;
+         end loop;
+      end loop;
+      t1 := nowMs;
+
+      if not ok then
+         return;
+      end if;
+
+      debugPrint ("BENCH: ipc async submitted=");
+      printDec (Unsigned_64 (submitted));
+      debugPrint (" completed=");
+      printDec (Unsigned_64 (completed));
+      debugPrint (" total_ms=");
+      printDec (t1 - t0);
+      debugPrint (LF & "");
+      Clock.Report ("ipc-async-observed-completion", Samples);
+   end runAsync;
+
+   procedure runRetirement is
+      msg : Message;
+      entryResult : aliased CompletionEntry;
+      ignored : Unsigned_64;
+      tag : MessageTag;
+      held : Natural := 0;
+      seen : array (1 .. 64) of Boolean := (others => False);
+      deadline : Unsigned_64;
+      --  KERN-013: every completion below, the target-died and cancelled
+      --  ones too, moves the readiness page's completion count by one.
+      Counted_Before : constant CuBit.Readiness.Count :=
+        CuBit.Readiness.Produced (CuBit.Readiness.Completions);
+      use type CuBit.Readiness.Count;
+   begin
+      -- Leave completed results unread, filling 63 of the 64 reservations.
+      for i in 1 .. 63 loop
+         msg := echoMsg (Unsigned_64(i));
+         deadline := nowMs + 2_000;
+         while not capSubmit (Bench, msg, Unsigned_64(i)) loop
+            if nowMs >= deadline then fail ("saturation-submit"); return; end if;
+            ignored := CuBit.Waits.Sleep_For (1);
+         end loop;
+         ignored := CuBit.Waits.Sleep_For (1);
+      end loop;
+      msg := NULL_MESSAGE;
+      msg.tag.label := OP_BENCH_HOLD;
+      if not capSubmit (Bench, msg, 64) then
+         fail ("last-completion-reservation"); return;
+      end if;
+      msg := echoMsg (65);
+      if capSubmit (Bench, msg, 65) then
+         fail ("completion-overcommit"); return;
+      end if;
+      -- Exit with both a blocked synchronous caller and an abandoned async
+      -- request. Both must complete; the held request's result occupies the
+      -- last slot.
+      msg := NULL_MESSAGE;
+      msg.tag.label := OP_BENCH_DIE;
+      tag := capCall (Bench, msg, CuBit.Messages.Wait_Forever);
+      --  The kernel ends the held call: REPLY_ENDED, not a server label.
+      if Ending_Of (tag) /= Call_Ended then fail ("sync-target-exit"); return; end if;
+      deadline := nowMs + 2_000;
+      for i in 1 .. 64 loop
+         loop
+            exit when Poll_Completion (entryResult'Address) = 1;
+            if nowMs >= deadline then fail ("lost-exit-completion"); return; end if;
+            ignored := CuBit.Waits.Sleep_For (1);
+         end loop;
+         if entryResult.token not in 1 .. 64 then
+            fail ("completion-token-range"); return;
+         end if;
+         if seen(Natural(entryResult.token)) then
+            fail ("duplicate-completion"); return;
+         end if;
+         seen(Natural(entryResult.token)) := True;
+         if entryResult.token = 64 then
+            --  Which ending depends on what the server receives first. If it
+            --  took the held request, its next receive displaced the reply
+            --  authority and the kernel cancelled it then (BUG-004); if the
+            --  synchronous DIE overtook it, the request was still queued at
+            --  exit and the target died. Either way it ended, never lost.
+            if entryResult.status /= COMPLETION_CANCELLED
+              and then entryResult.status /= COMPLETION_TARGET_DIED
+            then
+               fail ("held-request-not-ended"); return;
+            end if;
+            held := held + 1;
+         elsif entryResult.status /= COMPLETION_OK then
+            fail ("lost-completed-reply"); return;
+         end if;
+      end loop;
+      if held /= 1 or else capSubmit (Bench, msg, 65) then
+         fail ("retired-endpoint-admission"); return;
+      end if;
+      if CuBit.Readiness.Produced (CuBit.Readiness.Completions) - Counted_Before /= 64 then
+         fail ("readiness-completion-count"); return;
+      end if;
+      debugPrint ("IPC-RETIREMENT-CHECK: PASS" & LF);
+   end runRetirement;
+
+begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
+   debugPrint ("bench-ipc-client: starting" & LF);
+   Clock.Calibrate (Rate);
+   if Rate = 0 then
+      fail ("unstable-counter-calibration");
+      return;
+   end if;
+   declare
+      Overhead : Timing.Histogram;
+      Before, After : Unsigned_64;
+   begin
+      for I in 1 .. 1024 loop
+         Before := Clock.Read_Counter;
+         After := Clock.Read_Counter;
+         if After >= Before then
+            Timing.Add (Overhead, After - Before);
+         end if;
+      end loop;
+      Clock.Report ("counter-read-pair", Overhead);
+   end;
+   debugPrint ("BENCH: phase=untraced async_depth=16" & LF);
+   runSync;
+   if ok then runAsync; end if;
+   if ok then runKernelObject; end if;
+   debugPrint ("BENCH: phase=traced async_depth=16" & LF);
+   --  The kernel trace object (Trace_ABI): reset before the traced phase.
+   if not CuBit.Handles.Tracing.Done
+            (CuBit.Handles.Tracing.Perform (Startup.Trace, CuBit.Handles.Tracing.ABI.Reset))
+   then
+      debugPrint ("BENCH: FAIL trace reset" & LF);
+      ok := False;
+   end if;
+
+   runSync;
+   if ok then
+      runAsync;
+   end if;
+
+   if ok then
+      debugPrint ("BENCH: PASS ipc" & LF);
+   end if;
+
+   if not CuBit.Handles.Tracing.Done
+            (CuBit.Handles.Tracing.Perform (Startup.Trace, CuBit.Handles.Tracing.ABI.Summary))
+   then
+      debugPrint ("BENCH: FAIL trace summary" & LF);
+      ok := False;
+   end if;
+
+   if ok then runRetirement; end if;
+
+   declare
+      ret : Unsigned_64;
+   begin
+      ret := syscall (SYSCALL_EXIT);
+      loop
+         ret := CuBit.Waits.Sleep_For (1000);
+      end loop;
+   end;
+end main;

@@ -1,0 +1,9 @@
+# The same source, built against this manifest's own generated bindings
+# (CAP-003); it declares no clock, and asks for one anyway.
+(executable-manifest v1
+  (identity "com.cubit.rust-probe-denied")
+  (version "0.1.0")
+  (request-service ccl-test-host read-write test-host)
+  # Its diagnostics (cubit_debug_write, the libc's records: CuBit.Libc_Log).
+  (request-service logstore read-write logstore)
+  (optional logstore))

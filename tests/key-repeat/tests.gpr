@@ -1,0 +1,17 @@
+--  Hosted tests of the desktop typematic state machine (Key_Repeat).
+project Tests is
+   Src := External ("KEY_REPEAT_SRC", "../../userspace/services/desktop");
+   for Source_Dirs use (".", Src, "../../userspace/ccl/src");
+   for Source_Files use
+     ("key_repeat_tests.adb", "key_repeat.ads", "key_repeat.adb",
+      "ccl.ads", "ccl-interfaces.ads", "ccl-interfaces-desktop_input.ads");
+   for Object_Dir use External ("KEY_REPEAT_OBJ", "build/obj");
+   for Exec_Dir use External ("KEY_REPEAT_OBJ", "build");
+   for Main use ("key_repeat_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-O1");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-Es");
+   end Binder;
+end Tests;

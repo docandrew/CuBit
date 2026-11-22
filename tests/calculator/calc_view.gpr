@@ -1,0 +1,25 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+--  Hosted Calculator window (docs/calculator.md): the app's shell
+--  (userspace/apps/calculator) with the calculator core, the real toolkit
+--  and fonts on Linux, and an in-memory clipboard (view/).
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Calc_View is
+   for Languages use ("Ada");
+   for Source_Dirs use ("view", "build/source", "../../userspace/apps/calculator", "../../userspace/lib/calc",
+                        "../../userspace/lib/ui", "../../userspace/lib/theme", "../../userspace/lib/compositor",
+                        "../../userspace/lib/display", "../../userspace/ccl/src");
+   --  The native entry point is not hosted.
+   for Excluded_Source_Files use ("main.adb");
+   for Object_Dir use "build/view";
+   for Exec_Dir use "build";
+   for Main use ("calc_view_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O1", "-g", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ", "-gnatVa");
+      --  The toolkit's proved pixel loops as native apps build them.
+      for Switches ("client_glyph_blend.adb") use ("-O3", "-gnat2022", "-gnatwa", "-fno-tree-vrp");
+      for Switches ("client_raster.adb") use ("-O3", "-gnat2022", "-gnatwa", "-fno-tree-vrp");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-Es");
+   end Binder;
+end Calc_View;

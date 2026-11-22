@@ -1,0 +1,6 @@
+(executable-manifest v1
+  (identity "com.cubit.test.mesa-triangle-window")
+  (version "1")
+  (request-render read-write render)
+  (request-service logstore read-write logstore)
+  (request-service desktop read-write desktop))

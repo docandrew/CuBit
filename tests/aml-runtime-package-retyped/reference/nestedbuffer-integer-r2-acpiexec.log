@@ -1,0 +1,63 @@
+Input file /home/doc/git/.acpi-proof-work/runtime-package-retyped-ref-oracle-27wg672m/results/nestedbuffer-integer-r2.aml, Length 0x91 (145) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x0000654E2230F180 000024 (v02 Intel )
+ACPI: XSDT 0x0000654E541E6D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x0000654E2230EFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000654E541ED160 000091 (v02 CUBIT  RETYPE   00000001 INTL 20260408)
+ACPI: FACS 0x0000654E2230F140 000040
+
+ACPI table initialization:
+Table [DSDT: RETYPE  ] (id 01) -    6 Objects with   0 Devices,   0 Regions,    4 Methods (1/3/1 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 15 (0xF) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Initializing Device/Processor/Thermal objects and executing _INI/_STA methods:
+    Executed 0 _INI methods requiring 0 _STA executions (examined 2 objects)
+Evaluating \TEST
+0x3 Outstanding allocations after evaluation of \TEST
+Evaluation of \TEST returned object 0x654e541e6dd0, external buffer length 18
+  [Integer] = 0000000000000055
+
+Evaluating \OBS0
+Evaluation of \OBS0 returned object 0x654e541e6dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+Evaluating \OBS1
+Evaluation of \OBS1 returned object 0x654e541e6dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+Evaluating \TEST
+0x2 Outstanding allocations after evaluation of \TEST
+Evaluation of \TEST returned object 0x654e541e6dd0, external buffer length 18
+  [Integer] = 0000000000000055
+
+Evaluating \OBS0
+Evaluation of \OBS0 returned object 0x654e541e6dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+Evaluating \OBS1
+Evaluation of \OBS1 returned object 0x654e541e6dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+0x78046b2bd040 Length 0x0002  dsobject-0374 [Not a Descriptor - too small]
+0x78046b2ba040 Length 0x0018 dspkginit-0268 [Not a Descriptor] 
+0x78046b2b7040 Length 0x0002  dsobject-0374 [Not a Descriptor - too small]
+0x78046b2b5040 Length 0x0018 dspkginit-0268 [Not a Descriptor] 
+0x654e541f0390 Length 0x0048   utcache-0453 [Operand Object]      Integer  RefCount 0x0001
+0x654e541f0310 Length 0x0048   utcache-0453 [Operand Object]      Integer  RefCount 0x0001
+0x654e541f0140 Length 0x0048   utcache-0453 [Operand Object]       Buffer  RefCount 0x0001
+0x654e541eff90 Length 0x0048   utcache-0453 [Operand Object]       Buffer  RefCount 0x0001
+0x654e541ed7d0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x654e541ecce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x654e541ecba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x654e541ec9f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 12 (0xC) Outstanding cache allocations (20260408/uttrack-902)

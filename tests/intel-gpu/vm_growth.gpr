@@ -1,0 +1,13 @@
+project VM_Growth is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use external ("VM_GROWTH_OBJECT_DIR", "build-vm-growth");
+   for Main use ("vm_growth_tests.adb", "vm_growth_backing_tests.adb",
+                 "vm_growth_writer_tests.adb", "vm_growth_capacity_tests.adb",
+                 "table_provenance_tests.adb",
+                 "table_retirement_tests.adb", "table_backing_tests.adb",
+                 "table_growth_tests.adb", "table_generation_io_tests.adb",
+                 "table_recycle_tests.adb", "vm_growth_bind_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end VM_Growth;

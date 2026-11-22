@@ -1,0 +1,6 @@
+# The program gcc builds on CuBit (tests/gcc): it needs nothing, and exits
+# with 42. ccl-manifest renders this as assembly (hello-manifest.s), which
+# the driver assembles and links on CuBit with the program.
+(Executable_Manifest
+  identity => "com.cubit.gcc-hello"
+  version => "0.1.0")

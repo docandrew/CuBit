@@ -1,0 +1,15 @@
+{
+  "run.py": "91c41b52ff7efa0f4d7d7f01b77da7c4e902bbcb30bbddc8467f99262e262d12",
+  "PLAN.md": "4f32bbd2b6a018d29137e8884a745583b2b639ebffa584dce6b10d79f63c91e0",
+  "cases.json": "a3976aa87b607cee653e98adb21fa6e1247d66da6225a337df290b8f04c71b83",
+  "cases/1-GEN1.asl": "25d2880f19d9199e000516781153b3f1f15716f5e2151cbe3ccb4dab0e8e81bc",
+  "cases/2-GEN1.asl": "c0ee0f4e4ee8c2e6513a88f2c17f3d5161f8e7638198caa2b976c7bd346d3be9",
+  "cases/2-LOCAL.asl": "fc160e250748ac4c8547308dc9fea74c4140179a8400d0f01afcf77472452311",
+  "cases/2-ARG.asl": "72b1017f80df98ffb2c05f713fe2e50e8b968281fac961103e2bf96c09ed1d50",
+  "cases/1-ARG.asl": "015161c25b8131ec92da42d32a6dee96430c0a8214c7868668a225a3bfcec159",
+  "cases/1-LOCAL.asl": "ff7a1ad3bf3d1f443bad48dcedbb8b3af1dfbf879edcb74ad4cf553ee01245cb",
+  "cases/1-REPEAT.asl": "6a5dda51f86a1aeafed50bd2ec77188f141e799913f68afad70c2e894aace70b",
+  "cases/2-REPEAT.asl": "afb113da58c85976095560afcc7026ede164bce3b2c37e0835293e6f96c8eac3",
+  "cases/2-QTYPE.asl": "1a7d3ed28a1e6c452c145cef58535cd007c1258642316a4b1ee3a3781ac6cc3d",
+  "cases/1-QTYPE.asl": "685007c200a844e38ac59fc01eba3ae542c6bf536251792aa655711767ed0e01"
+}

@@ -1,0 +1,18 @@
+--  UFS host controller codecs, UPIU, descriptors and partition tables:
+--  hosted tests and SPARK proofs (HW-001 step 3).
+project UFS_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use
+     (".", "../../userspace/services/ufs", "../../userspace/lib/scsi",
+      "../../userspace/lib/partitions");
+   for Source_Files use
+     ("main.adb", "scsi.ads", "scsi.adb", "ufshci.ads", "ufshci.adb",
+      "ufs_upiu.ads", "ufs_upiu.adb", "ufs_descriptors.ads",
+      "ufs_descriptors.adb", "partition_tables.ads", "partition_tables.adb",
+      "ufs_text.ads", "ufs_text.adb", "ufs_layout.ads", "ufs_quirks.ads");
+   for Object_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end UFS_Tests;

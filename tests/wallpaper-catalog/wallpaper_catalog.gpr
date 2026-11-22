@@ -1,0 +1,18 @@
+--  Hosted tests of the wallpaper catalog (Desktop_Wallpaper_Catalog), the
+--  decoded-wallpaper store and its memory ceiling (Desktop_Wallpaper_Store),
+--  the wallpaper choice and fallbacks (Desktop_Wallpaper_Choice) and the
+--  typed desktop.appearance.v2 setting (Desktop_Appearance_Settings), with
+--  the real generated decoders and CuAlloc (run.sh).
+with "../../userspace/ccl/cubit_shared.gpr";
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+project Wallpaper_Catalog is
+   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/ccl/src",
+     "../../userspace/lib/image", "../../userspace/lib/theme", "../../userspace/lib/compositor");
+   for Excluded_Source_Files use ("main.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("wallpaper_catalog_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-g", "-O1");
+   end Compiler;
+end Wallpaper_Catalog;

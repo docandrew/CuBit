@@ -1,0 +1,94 @@
+[
+  {
+    "aml_sha256": "9ff6814a42dcf3d3825b45d08968245f1a120cc500763cc4097d24b0d0688d8c",
+    "classification": "inconclusive",
+    "compile_returncode": 0,
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "diagnostics": [],
+    "disassembly_returncode": 0,
+    "expectation": null,
+    "key": "base-1-HUGE",
+    "marker_values": [],
+    "method_opcode_verified": true,
+    "observations": "evidence/base/reviewed-observations.json",
+    "returncode": 0,
+    "review_note": "Exit 0 but output ends at Evaluating TEST, without value, explicit AML error, or MARK. Original automated runtime_error classification is not supported.",
+    "revision": 1,
+    "signature": "DSDT",
+    "source_key": "1-HUGE",
+    "source_set": "base",
+    "verified_bits": 32,
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ]
+  },
+  {
+    "aml_sha256": "9d5685b1955d5ec57e684eb699d5401b40a72a66c311f8bf272b724a550edd30",
+    "classification": "inconclusive",
+    "compile_returncode": 0,
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "diagnostics": [],
+    "disassembly_returncode": 0,
+    "expectation": null,
+    "key": "base-2-HUGE",
+    "marker_values": [],
+    "method_opcode_verified": true,
+    "observations": "evidence/base/reviewed-observations.json",
+    "returncode": 0,
+    "review_note": "Exit 0 but output ends at Evaluating TEST, without value, explicit AML error, or MARK. Original automated runtime_error classification is not supported.",
+    "revision": 2,
+    "signature": "DSDT",
+    "source_key": "2-HUGE",
+    "source_set": "base",
+    "verified_bits": 64,
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ]
+  },
+  {
+    "classification": "normal_compiler_syntax_rejection",
+    "compile_returncode": 255,
+    "expectation": null,
+    "key": "small-1-GEN1",
+    "observations": "evidence/small/reviewed-observations.json",
+    "review": "Invalid SizeOf(ToBuffer(...)) wrapper; not evidence of CreateField rejection.",
+    "source_key": "1-GEN1",
+    "source_set": "small"
+  },
+  {
+    "classification": "normal_compiler_syntax_rejection",
+    "compile_returncode": 255,
+    "expectation": null,
+    "key": "small-1-QTYPE",
+    "observations": "evidence/small/reviewed-observations.json",
+    "review": "Invalid SizeOf(ToBuffer(...)) wrapper; not evidence of CreateField rejection.",
+    "source_key": "1-QTYPE",
+    "source_set": "small"
+  },
+  {
+    "classification": "normal_compiler_syntax_rejection",
+    "compile_returncode": 255,
+    "expectation": null,
+    "key": "small-2-GEN1",
+    "observations": "evidence/small/reviewed-observations.json",
+    "review": "Invalid SizeOf(ToBuffer(...)) wrapper; not evidence of CreateField rejection.",
+    "source_key": "2-GEN1",
+    "source_set": "small"
+  },
+  {
+    "classification": "normal_compiler_syntax_rejection",
+    "compile_returncode": 255,
+    "expectation": null,
+    "key": "small-2-QTYPE",
+    "observations": "evidence/small/reviewed-observations.json",
+    "review": "Invalid SizeOf(ToBuffer(...)) wrapper; not evidence of CreateField rejection.",
+    "source_key": "2-QTYPE",
+    "source_set": "small"
+  }
+]

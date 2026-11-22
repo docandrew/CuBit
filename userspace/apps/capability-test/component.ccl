@@ -1,0 +1,3 @@
+(Component name => "capability-test" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    link_extra => [(Link_Argument.File "userspace/apps/capability-test/build/syscall_registers.o")])))

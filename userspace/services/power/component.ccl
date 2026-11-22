@@ -1,0 +1,4 @@
+# power.svc (PWR-003 slice 1, docs/power-states.md): the power manager.
+(Component name => "power" kind => (Kind.Service Launcher.Process_Manager)
+  source => (Source.Ada (Ada_Source
+    language => Ada_Language.Ada_2022)))

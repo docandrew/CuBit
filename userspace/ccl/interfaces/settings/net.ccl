@@ -1,0 +1,11 @@
+# netmgr.svc's settings. Each interface, by its stable name
+# (net.interface.<name>, docs/net-link.md section 7), is one Net_Interface:
+# Automatic (DHCP and SLAAC; also what an absent setting means), Static or
+# Disabled. The DNS servers are each one 16-byte IPv6 address (IPv4 written
+# ::ffff:a.b.c.d).
+(Setting_Catalog settings => [
+  (Setting "net.interface." Shape.Family
+    (Value.Typed (CCL_Type "CCL.Interfaces.Net_Interface.TYPE_SOURCE" "Net_Interface"))
+    Class.Declaration_Managed "Net_Interface_Settings")
+  (Setting "net.dns.primary" Shape.Key Value.Address Class.Declaration_Managed "")
+  (Setting "net.dns.secondary" Shape.Key Value.Address Class.Declaration_Managed "")])

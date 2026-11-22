@@ -1,0 +1,36 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+--------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow   Provers   Justified   Unproved
+--------------------------------------------------------------------------------
+Data Dependencies                 1           1         .           .          .
+Flow Dependencies                 .           .         .           .          .
+Initialization                    .           .         .           .          .
+Non-Aliasing                      .           .         .           .          .
+Run-time Checks                   .           .         .           .          .
+Assertions                        .           .         .           .          .
+Functional Contracts              .           .         .           .          .
+LSP Verification                  .           .         .           .          .
+Termination                       1           1         .           .          .
+Concurrency                       .           .         .           .          .
+--------------------------------------------------------------------------------
+Total                             2    2 (100%)         .           .          .
+
+
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit aml_execution_limits, 2 subprograms and packages out of 2 analyzed
+proof skipped for this unit (only flow analysis was requested)
+  AML_Execution_Limits at aml_execution_limits.ads:1 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements)
+  AML_Execution_Limits.Charged_Field_Work at aml_execution_limits.ads:20 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements)

@@ -1,0 +1,34 @@
+CuBit development shell
+  Build:  make -C kernel world
+  Test:   tests/headless/run.sh --test desktop-display
+  Run:    make -C kernel run-desktop
+Setup
+   [mkdir]        object directory for project Reference
+Compile
+   [Ada]          table_runner.adb
+   [Ada]          acpi_service.adb
+   [Ada]          aml_decode.adb
+   [Ada]          aml_execute.adb
+   [Ada]          aml_objects.adb
+   [Ada]          firmware_tables.adb
+   [Ada]          aml_namespace.adb
+   [Ada]          acpi_fadt.adb
+   [Ada]          aml_coercions.adb
+   [Ada]          aml_coercions-strings.adb
+   [Ada]          aml_data.adb
+   [Ada]          aml_field_data.adb
+   [Ada]          aml_fields.adb
+   [Ada]          aml_integers.adb
+   [Ada]          aml_names.adb
+   [Ada]          aml_table_backing.adb
+   [Ada]          firmware_tables-identifiers.adb
+   [Ada]          firmware_tables-snapshots.adb
+   [Ada]          aml_logic.adb
+   [Ada]          firmware_tables-copies.adb
+   [Ada]          firmware_tables-catalog.adb
+Bind
+   [gprbind]      table_runner.bexch
+   [Ada]          table_runner.ali
+Link
+   [link]         table_runner.adb
+{'checks': 8, 'baseline_diagnostics': ['ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)'], 'batches_with_diagnostics': 2, 'scope': 'actual AML DataTableRegion + Field execution through CuBit service and ACPICA'}

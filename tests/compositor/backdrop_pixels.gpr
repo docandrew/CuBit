@@ -1,0 +1,8 @@
+project Backdrop_Pixels extends "wallpaper_output.gpr" is
+   for Source_Dirs use Wallpaper_Output'Source_Dirs;
+   for Source_Files use Wallpaper_Output'Source_Files &
+     ("desktop_backdrop_pixels.ads", "desktop_backdrop_pixels.adb", "compositor_upload.ads", "compositor_upload.adb", "backdrop_pixels_tests.adb");
+   for Main use ("backdrop_pixels_tests.adb");
+   for Object_Dir use "build/desktop-backdrop/pixel-build/obj";
+   for Exec_Dir use "build/desktop-backdrop/pixel-build";
+end Backdrop_Pixels;

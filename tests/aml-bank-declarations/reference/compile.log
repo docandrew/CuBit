@@ -1,0 +1,24 @@
+bank.asl     11:         BankField (REG0, BNK0, BVAL (), ByteAcc, NoLock, Preserve)
+Remark   2173 -                       ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\DYNB)
+
+bank.asl     24:         BankField (REGX, BNK0, BVAL (), ByteAcc, NoLock, Preserve)
+Remark   2173 -                       ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RERR)
+
+bank.asl     30:         BankField (REG0, BNKX, BVAL (), ByteAcc, NoLock, Preserve)
+Remark   2173 -                       ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\BERR)
+
+bank.asl     39:             BankField (REG0, BNK0, BVAL (), ByteAcc, NoLock, Preserve)
+Remark   2173 -                           ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\DUPL)
+
+bank.asl     53:         BankField (REG0, BNK0, FVAL (), ByteAcc, NoLock, Preserve)
+Remark   2173 -                       ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\FAIL)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     bank.asl -    1657 bytes     46 keywords      0 source lines
+AML Output:    bank.aml -     393 bytes     24 opcodes      22 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 5 Remarks, 0 Optimizations

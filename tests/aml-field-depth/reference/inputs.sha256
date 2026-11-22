@@ -1,0 +1,6 @@
+f40983850f28118bc56ed6e13d6ccfb2fd3ac5879cc052b6e5f78b6a82d6cfc0  depth128.asl
+edf914e38e1d936772e4066b004f9095f2110a05431380b12c21aba8835134d8  depth256.asl
+1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb  /nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl
+a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe  /nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec
+6ffc31aeb807149b491cde9a065c75ca6935e04a996da1f2b47fa45c41e53fd9  /home/doc/git/cubit/tests/aml-field-initializer-replay/reference/bounded_tool.py
+771f5b67ba2b248039a1282468e2c8748f373be6de0ce67983319408dd4fdf6d  /home/doc/git/.acpi-proof-work/field-work-policy-kKwkMac3/source/tests/aml-bank-declarations/extract_observations.awk

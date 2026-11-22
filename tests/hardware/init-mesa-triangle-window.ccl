@@ -1,0 +1,9 @@
+# Opt-in real Mesa draw and synchronous Desktop presentation diagnostic.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "config-storage.svc" (priority 5) (role config-storage))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "boot-logs.app" (priority 4))
+  (start "mesa-triangle-window.app" (priority 3) (render approve-declared)))

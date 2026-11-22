@@ -1,0 +1,13 @@
+project Input_Delivery_Native is
+   for Source_Dirs use ("../../userspace/lib/compositor", "../../userspace/services/desktop");
+   for Source_Files use ("desktop_input_transfer.ads", "desktop_input_transfer.adb",
+     "compositor_input_delivery.ads", "compositor_input_delivery.adb",
+     "compositor_input_batch_wire.ads", "compositor_input_batch_wire.adb",
+     "compositor_input_batches.ads", "compositor_input_batches.adb",
+     "compositor_input_queue.ads", "compositor_input_queue.adb");
+   for Runtime ("Ada") use "../../userspace/runtime";
+   for Object_Dir use "build/input-delivery-native";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+end Input_Delivery_Native;

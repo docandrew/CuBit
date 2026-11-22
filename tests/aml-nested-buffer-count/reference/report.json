@@ -1,0 +1,22 @@
+[
+  {
+    "label": "r1-iasl",
+    "result": 0,
+    "log_sha256": "3a13e44b9cd0eb1251a12683dd5158ad8f114d94b68ab2062c0dae27232aabbc"
+  },
+  {
+    "label": "r1-acpiexec",
+    "result": 0,
+    "log_sha256": "bec0ade36c97bd6ce69fb6a42f06d5824aff3e2b698df0f79a4c7c14ba113a76"
+  },
+  {
+    "label": "r2-iasl",
+    "result": 0,
+    "log_sha256": "574819a0bea5a6a8d87624cb66a49c10e8e6025ef3b85625ba57148c15e61078"
+  },
+  {
+    "label": "r2-acpiexec",
+    "result": 0,
+    "log_sha256": "bd8818565e53b1f28e4916e8b7a2f786205ca9219aea122660e93fca8d03b2f2"
+  }
+]

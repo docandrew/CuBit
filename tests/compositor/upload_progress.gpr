@@ -1,0 +1,11 @@
+project Upload_Progress is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("compositor_upload.ads", "compositor_upload.adb",
+      "compositor_upload_progress.ads", "compositor_upload_progress.adb", "upload_progress_model.ads", "upload_progress_tests.adb");
+   for Object_Dir use "build/upload-progress/obj";
+   for Exec_Dir use "build/upload-progress";
+   for Main use ("upload_progress_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Upload_Progress;

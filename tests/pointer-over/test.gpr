@@ -1,0 +1,12 @@
+--  Hosted test: Compositor_Pointer_Over against Desktop's former per-pixel
+--  pointer blend (main.adb premultipliedPixelOver), bit for bit. run.sh.
+project Test is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("pointer_over_tests.adb", "compositor_pointer_over.ads", "compositor_pointer_over.adb");
+   for Main use ("pointer_over_tests.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Test;

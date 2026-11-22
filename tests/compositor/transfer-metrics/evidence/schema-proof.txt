@@ -1,0 +1,52 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+----------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                             Provers   Justified   Unproved
+----------------------------------------------------------------------------------------------------------
+Data Dependencies                 .           .                                   .           .          .
+Flow Dependencies                 .           .                                   .           .          .
+Initialization                    1           1                                   .           .          .
+Non-Aliasing                      .           .                                   .           .          .
+Run-time Checks                  25           .               25 (CVC5 29%, Z3 71%)           .          .
+Assertions                        .           .                                   .           .          .
+Functional Contracts              6           .    6 (CVC5 8%, Trivial 13%, Z3 79%)           .          .
+LSP Verification                  .           .                                   .           .          .
+Termination                      10          10                                   .           .          .
+Concurrency                       .           .                                   .           .          .
+----------------------------------------------------------------------------------------------------------
+Total                            42    11 (26%)                            31 (74%)           .          .
+
+
+max steps used for successful proof: 1408
+
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 2 units
+in unit compositor_metric_batch_policy, 12 subprograms and packages out of 12 analyzed
+  Compositor_Metric_Batch_Policy at compositor_metric_batch_policy.ads:6 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Metric_Batch_Policy.Accepted at compositor_metric_batch_policy.ads:32 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Compositor_Metric_Batch_Policy.Delay_Us at compositor_metric_batch_policy.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Compositor_Metric_Batch_Policy.Due at compositor_metric_batch_policy.ads:23 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Metric_Batch_Policy.First at compositor_metric_batch_policy.ads:19 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Metric_Batch_Policy.Next at compositor_metric_batch_policy.ads:20 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Metric_Batch_Policy.Samples at compositor_metric_batch_policy.ads:21 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Metric_Batch_Policy.State at compositor_metric_batch_policy.ads:41 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Metric_Batch_Policy.Statepredicate at compositor_metric_batch_policy.ads:41 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Metric_Batch_Policy.Submitted at compositor_metric_batch_policy.ads:38 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Compositor_Metric_Batch_Policy.Used at compositor_metric_batch_policy.ads:18 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Metric_Batch_Policy.Wake_At_Ms at compositor_metric_batch_policy.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+in unit compositor_work_metrics, 4 subprograms and packages out of 4 analyzed
+  Compositor_Work_Metrics at compositor_work_metrics.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Work_Metrics.Declaration at compositor_work_metrics.ads:10 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (7 checks)
+  Compositor_Work_Metrics.Key at compositor_work_metrics.ads:9 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Work_Metrics.Prepare at compositor_work_metrics.ads:21 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (10 checks)

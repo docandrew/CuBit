@@ -1,0 +1,16 @@
+--  Proof of the Storehouse core (docs/ccl-build.md, "First slice"):
+--  tests/ccl-build/run.sh --prove. Only userspace/lib/storehouse is
+--  analysed; the SPARK crypto crates are proved upstream.
+with "../../userspace/lib/tls/sparktls_host.gpr";
+project Storehouse_Proof is
+   for Languages use ("Ada");
+   for Source_Dirs use ("../../userspace/lib/storehouse");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      --  The core is proved free of run-time errors, so it is -gnatp safe.
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatp");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--checks-as-errors=on", "--counterexamples=off");
+   end Prove;
+end Storehouse_Proof;

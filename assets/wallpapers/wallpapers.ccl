@@ -1,0 +1,15 @@
+# The desktop wallpaper package's source list (Assets/cubit-wallpapers/):
+# the one place a wallpaper is declared. One Wallpaper_Sources
+# (CCL.Interfaces.Wallpapers.SOURCES_TYPE_SOURCE), checked by the type
+# system. tools/build_wallpaper_assets.py writes each picture as
+# <name>.qoi, reduced to width x height, and the package's catalog.ccl, which
+# the desktop reads at run time: adding or removing a picture is an edit
+# here, not a code change. The first entry is the default wallpaper.
+(Wallpaper_Sources images => [
+  (Wallpaper_Source
+    name => "cubes"
+    label => "Cubes"
+    source => "wallpaper2.png"
+    width => 2048
+    height => 576
+    attribution => "CuBit project owner's original wallpaper2.png (5120x1440); redistribution terms to be confirmed before a public release")])

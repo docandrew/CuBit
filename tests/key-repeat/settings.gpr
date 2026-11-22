@@ -1,0 +1,13 @@
+--  Hosted tests of the typed desktop.input.key-repeat setting (CCL schema,
+--  canonical form, the desktop's decoder).
+with "../../userspace/ccl/cubit_shared.gpr";
+project Settings is
+   for Source_Dirs use (".", "../../userspace/services/desktop/", "../../userspace/ccl/src");
+   for Excluded_Source_Files use ("main.adb", "key_repeat_tests.adb");
+   for Object_Dir use "build/settings";
+   for Exec_Dir use "build/settings";
+   for Main use ("settings_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwa", "-g", "-O1");
+   end Compiler;
+end Settings;

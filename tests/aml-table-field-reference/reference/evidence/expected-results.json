@@ -1,0 +1,134 @@
+[
+  {
+    "key": "1-aligned-1025",
+    "aml_sha256": "1c8b764bcb3eb5ca4850b9e4843deb76cf7a4267a4c1b355412bca890c58524e",
+    "phases": {
+      "TEST": 1025,
+      "MARK": 3,
+      "POST": 41891
+    },
+    "bit_count": 8200,
+    "bit_offset": 512
+  },
+  {
+    "key": "2-aligned-1025",
+    "aml_sha256": "55d411b07b8994eddb6a8dbe0fa67fb08f4c4759778315cfb9f15eb24ad690fa",
+    "phases": {
+      "TEST": 1025,
+      "MARK": 3,
+      "POST": 41891
+    },
+    "bit_count": 8200,
+    "bit_offset": 512
+  },
+  {
+    "key": "1-unaligned-1025",
+    "aml_sha256": "96cbb7654897fea1597602139d8661bde68f52e5d68c65b9798e80eefdb17ad8",
+    "phases": {
+      "TEST": 1025,
+      "MARK": 3,
+      "POST": 38036
+    },
+    "bit_count": 8200,
+    "bit_offset": 515
+  },
+  {
+    "key": "2-unaligned-1025",
+    "aml_sha256": "04cc29879472c0b4e60e331d2f325e01132c0fba5c030a5bd7d342eae6660e40",
+    "phases": {
+      "TEST": 1025,
+      "MARK": 3,
+      "POST": 38036
+    },
+    "bit_count": 8200,
+    "bit_offset": 515
+  },
+  {
+    "key": "1-masked-tail-1025",
+    "aml_sha256": "d044d5cfffa295eca51e0d3d1f9ec07b013fc841a4ea162c14c96458ca96a1d0",
+    "phases": {
+      "TEST": 1025,
+      "MARK": 3,
+      "POST": 148
+    },
+    "bit_count": 8193,
+    "bit_offset": 515
+  },
+  {
+    "key": "2-masked-tail-1025",
+    "aml_sha256": "bf7f477a61600cdbd8cd5513a037289c0ca4c70548c079c4cee12290a8db7d4b",
+    "phases": {
+      "TEST": 1025,
+      "MARK": 3,
+      "POST": 148
+    },
+    "bit_count": 8193,
+    "bit_offset": 515
+  },
+  {
+    "key": "1-aligned-8192",
+    "aml_sha256": "6ef32abc0f0df4c4316ef4243c37f030b15940157087f74a340fe2d41e548d06",
+    "phases": {
+      "TEST": 8192,
+      "MARK": 3,
+      "POST": 23203
+    },
+    "bit_count": 65536,
+    "bit_offset": 512
+  },
+  {
+    "key": "2-aligned-8192",
+    "aml_sha256": "b0ba4c40cef43c45830aecaaf7b7e2f95c22c19ffaa27899cbedd7582a21e47e",
+    "phases": {
+      "TEST": 8192,
+      "MARK": 3,
+      "POST": 23203
+    },
+    "bit_count": 65536,
+    "bit_offset": 512
+  },
+  {
+    "key": "1-unaligned-8192",
+    "aml_sha256": "b27757eb93638cd441a3822bfbb04aeb68d1e08e47e78151b675bf5132a46d46",
+    "phases": {
+      "TEST": 8192,
+      "MARK": 3,
+      "POST": 27540
+    },
+    "bit_count": 65536,
+    "bit_offset": 515
+  },
+  {
+    "key": "2-unaligned-8192",
+    "aml_sha256": "12186bd583ef1dd12ad2a4dcc60dddabd1492295be21684078322fb30ee7d68e",
+    "phases": {
+      "TEST": 8192,
+      "MARK": 3,
+      "POST": 27540
+    },
+    "bit_count": 65536,
+    "bit_offset": 515
+  },
+  {
+    "key": "1-threshold-33",
+    "aml_sha256": "803b50300559595fee290360961be0d306199a8d53347c1647c53663e7a8078e",
+    "phases": {
+      "TEST": 5,
+      "MARK": 3,
+      "POST": 148
+    },
+    "bit_count": 33,
+    "bit_offset": 515
+  },
+  {
+    "key": "2-threshold-33",
+    "aml_sha256": "e822a676ca0d4ea7c10775329666bb3fc1fe2af5533fa124b48b28032be44e30",
+    "phases": {
+      "TEST": 4022779284,
+      "MARK": 1,
+      "POST": 4022779284
+    },
+    "bit_count": 33,
+    "bit_offset": 515
+  }
+]

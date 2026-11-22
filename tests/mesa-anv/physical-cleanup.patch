@@ -1,0 +1,56 @@
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -1817,6 +1817,10 @@
+  * Failure frees compiler state acquired here; caller retains base/transport.
+  */
+ VkResult anv_physical_device_init_common(struct anv_physical_device *device);
++/* Release common retained resources before the base/transport. Safe after
++ * partial initialization and repeat calls; excludes WSI and backend resources.
++ */
++void anv_physical_device_finish_common(struct anv_physical_device *device);
+ void anv_physical_device_init_properties(struct anv_physical_device *device);
+ void anv_update_meminfo(struct anv_physical_device *device);
+ 
+--- a/src/intel/vulkan/anv_physical_device_common.c
++++ b/src/intel/vulkan/anv_physical_device_common.c
+@@ -49,6 +49,16 @@
+    vk_free(&device->instance->vk.alloc, device);
+ }
+ 
++void
++anv_physical_device_finish_common(struct anv_physical_device *device)
++{
++   free(device->engine_info);
++   device->engine_info = NULL;
++   anv_physical_device_free_disk_cache(device);
++   ralloc_free(device->compiler);
++   device->compiler = NULL;
++}
++
+ static VkResult
+ anv_physical_device_get_parameters(struct anv_physical_device *device)
+ {
+--- a/src/intel/vulkan/anv_physical_device_drm.c
++++ b/src/intel/vulkan/anv_physical_device_drm.c
+@@ -211,9 +211,7 @@
+    release_physical_device_budget(device->memory.heaps_budget);
+    intel_perf_free(device->perf);
+ fail_engine_info:
+-   free(device->engine_info);
+-   anv_physical_device_free_disk_cache(device);
+-   ralloc_free(device->compiler);
++   anv_physical_device_finish_common(device);
+ fail_base:
+    anv_physical_device_free(device);
+ fail_fd:
+@@ -232,9 +230,7 @@
+ 
+    anv_finish_wsi(device);
+    anv_measure_device_destroy(device);
+-   free(device->engine_info);
+-   anv_physical_device_free_disk_cache(device);
+-   ralloc_free(device->compiler);
++   anv_physical_device_finish_common(device);
+    release_physical_device_budget(device->memory.heaps_budget);
+    intel_perf_free(device->perf);
+    intel_virtio_unref_fd(device->local_fd);

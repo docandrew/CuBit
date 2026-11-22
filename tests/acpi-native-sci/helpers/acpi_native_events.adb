@@ -1,0 +1,1 @@
+with SCI_Probe;package body ACPI_Native_Events is procedure Handle(Publisher:CuBit.Process_IDs.Process_ID;Item:CuBit.Messages.Message;Stop:out Boolean;Handled:out Boolean) is pragma Unreferenced(Publisher,Item);begin SCI_Probe.Other_Events:=SCI_Probe.Other_Events+1;Stop:=False;Handled:=True;end;end ACPI_Native_Events;

@@ -1,0 +1,4 @@
+(Component name => "devices" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    libraries => ["ui-toolkit"]
+    language => Ada_Language.Ada_2022)))

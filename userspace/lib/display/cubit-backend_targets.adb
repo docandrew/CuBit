@@ -1,0 +1,47 @@
+package body CuBit.Backend_Targets with SPARK_Mode is
+   procedure Set_Count (S : in out State; N : Buffer_Count) is
+   begin
+      if S.Stage = Unconfigured then S.Buffers := N; end if;
+   end Set_Count;
+   procedure Cleared (S : in out State) is
+   begin
+      if S.Stage in Unconfigured | Idle then S := (Idle, 0, 0, S.Buffers, 1);
+      else S.Stage := Failed; end if;
+   end Cleared;
+   procedure Prepare (S : in out State; Accepted : out Boolean) is
+   begin
+      Accepted := S.Stage = Idle;
+      if Accepted then
+         S.Stage := Preparing;
+         S.Next := (S.Front + 1) mod S.Buffers;
+      end if;
+   end Prepare;
+   procedure Prepare_Target (S : in out State; B : Buffer; Accepted : out Boolean) is
+   begin
+      Accepted := S.Stage = Idle and B < S.Buffers and B /= S.Front;
+      if Accepted then
+         S.Stage := Preparing;
+         S.Next := B;
+      end if;
+   end Prepare_Target;
+   procedure Seal (S : in out State; ID : Identifier) is
+   begin
+      if S.Stage = Preparing and ID /= 0 then S.Stage := In_Flight; S.Pending := ID;
+      else S.Stage := Failed; end if;
+   end Seal;
+   procedure Complete (S : in out State; ID : Identifier; Published : Boolean) is
+   begin
+      if S.Stage = In_Flight and ID = S.Pending and Published then
+         S := (Idle, S.Next, 0, S.Buffers, (S.Next + 1) mod S.Buffers);
+      else S.Stage := Failed; end if;
+   end Complete;
+   procedure Abandon (S : in out State; ID : Identifier) is
+   begin
+      if S.Stage = In_Flight and ID = S.Pending then
+         S.Stage := Idle;
+         S.Pending := 0;
+      else S.Stage := Failed; end if;
+   end Abandon;
+   procedure Quarantine (S : in out State) is
+   begin S.Stage := Failed; end Quarantine;
+end CuBit.Backend_Targets;

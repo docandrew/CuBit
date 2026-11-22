@@ -1,0 +1,437 @@
+-------------------------------------------------------------------------------
+-- CuBit OS
+-- Copyright (C) 2020 Jon Andrew
+--
+-- @summary Physical Memory Manager
+--
+-- @description Implementation of a Buddy Allocator using free lists organized
+-- by block order, where block size = FRAME_SIZE * (2 ^ Order).
+-- 
+-- The CuBit physical memory manager works on blocks strictly
+-- aligned by their size. This has some tradeoffs. We lose some memory to
+-- external fragmentation if a usable area does not start at a multiple of our
+-- largest block size, i.e. if we're using a MAX_BUDDY_ORDER of 10, our largest
+-- block is 4MiB. If a memory area starts at 1MiB, we'd lose 3MiB prior to the
+-- 4MiB boundary before we can allocate memory starting at the 4MiB mark. The
+-- worst-case scenario would be a memory area starting at <4MiB and ending at
+-- <8MiB. This allocator will not use this memory.
+--
+-- The advantages to this scheme are two-fold. One, we can use power-of-2
+-- addresses with only a single shift and xor to do buddy/parent calculations,
+-- which is faster than doing arithmetic on page frame numbers. Two, all
+-- allocations yield pages which are strictly aligned by their block size, with
+-- no additional accounting required when aligned blocks are needed.
+--
+-- If on a memory-constrained system, it benefits the user to use a smaller
+-- value for Config.MAX_BUDDY_ORDER to minimize memory losses outside of these
+-- aligned boundaries.
+--
+-- NOTE: Explicitly storing addresses here is probably not the most
+-- Ada-standard way of doing things, but it makes the arithmetic easier without
+-- a bunch of Address_to_Access conversions, etc. Using explicit placement
+-- with Import is much more straightforward.
+--
+-- Coalescing consults a separate XOR bitmap, never user-controlled payload
+-- bytes to decide whether a buddy is free. Bitmap layout/indexing is provided
+-- by the SPARK Buddy_Bitmap core. Bitmap and frame lifetime metadata are
+-- reserved by the boot allocator before memory enters the free lists.
+--
+-- Out-of-band Buddy_Blocks descriptors now validate the head's state and order
+-- before a runtime free or list removal. Boot admission is a separate operation.
+-- Buddy_Geometry supplies proved local split/coalesce span calculations.
+-- Intrusive links, their correspondence with those descriptors, and arena-wide
+-- partition preservation remain proof boundaries; see
+-- docs/allocator-verification.md. Physical overlays are not formally safe
+-- merely because they use addresses instead of access types.
+--
+-- @CAUTION This allocator names blocks by their linear-mapped (higher-half)
+--  addresses. If you're going to take one of these blocks for user process
+--  memory, map the equivalent physical address (Virtmem.V2P). The free lists
+--  themselves live out of the blocks (KERN-014), in a link table.
+-------------------------------------------------------------------------------
+with System.Storage_Elements; use System.Storage_Elements;
+with Interfaces; use Interfaces;
+
+with Buddy_Metadata;
+with BootAllocator; use type BootAllocator.Allocator_Phase;
+with Config;
+with Firmware_Frames;
+with Process_Identities;
+with Spinlocks;
+with Virtmem;
+with x86;
+
+package BuddyAllocator with
+    SPARK_Mode => On
+is
+    AllocatorException  : exception;
+
+    NO_BLOCK_AVAILABLE  : constant System.Address := System.Null_Address;
+
+    -- Kernel-only charge identities name retained accounting incarnations,
+    -- not current access-owner PIDs. Install once before binding any charges.
+    -- The handler must not raise; it runs only after actual reclamation and
+    -- AFTER dropping the buddy lock (possibly still under grantLock).
+    type Charge_Refund_Handler is access procedure
+      (Identity, Pages : Unsigned_64);
+    procedure installChargeRefundHandler
+      (Handler : not null Charge_Refund_Handler; Success : out Boolean)
+      with SPARK_Mode => Off;
+    -- Call on an allocated, unpublished page. Never changes access ownership.
+    procedure bindFrameCharge
+      (addr : Virtmem.PhysAddress; Identity : Unsigned_64; Success : out Boolean)
+      with SPARK_Mode => Off;
+    -- Kernel metadata: caller owns the unpublished allocation exclusively.
+    -- Requires no user owner/pins; does not grant userspace access. The same
+    -- actual-free callback retains the original account until reclamation.
+    procedure bindKernelFrameCharge
+      (addr : Virtmem.PhysAddress; Identity : Unsigned_64; Success : out Boolean)
+      with SPARK_Mode => Off;
+    -- Snapshot includes growth reservations as well as retained radix pages.
+    -- Separate from backing and per-owner quotas; does not reserve RAM.
+    procedure chargeMetadataUsage (Pages, Limit : out Unsigned_64)
+      with SPARK_Mode => Off;
+    
+    -- Track whether setup has been called on this package
+    initialized         : Boolean := False with Ghost;
+
+    ---------------------------------------------------------------------------
+    -- Order is the number of frames per buddy block
+    -- i.e. block size = FRAME_SIZE * (2^ORDER)
+    ---------------------------------------------------------------------------
+    type Order is new Natural range 0 .. Config.MAX_BUDDY_ORDER;
+
+    ---------------------------------------------------------------------------
+    -- FreeBlock - a free list's head, kept in the freeLists array. Blocks'
+    --  own links are out of band (KERN-014): one Free_Link_Codes.Links per
+    --  frame in a table beside the block descriptors, so a free block holds
+    --  nothing of the allocator's.
+    --
+    -- @param prevNode - the last block in the list (or the head itself).
+    -- @param nextNode - the first block in the list (or the head itself).
+    -- @param buddy - unused.
+    -- @param numFreeBlocks - number of free blocks in this list.
+    ---------------------------------------------------------------------------
+    type FreeBlock is
+    record
+        prevBlock       : System.Address;
+        nextBlock       : System.Address;
+        buddy           : System.Address;
+        numFreeBlocks   : Natural;
+    end record;
+
+    ---------------------------------------------------------------------------
+    -- Circular lists through the link table. Its overlays remain outside
+    -- SPARK proof; the splices are Intrusive_List_Splices.
+    ---------------------------------------------------------------------------
+    type FreeListArray is array (Order) of FreeBlock;
+
+    ---------------------------------------------------------------------------
+    -- Array of free lists for each order/block size
+    ---------------------------------------------------------------------------
+    freeLists : FreeListArray;
+
+    totalManagedBytes : Storage_Count := 0;
+
+    -- Free frames in the process pool (KERN-014), counted as free memory.
+    poolFreeFrameCount : Natural := 0;
+
+    lockName : aliased constant String := "buddy";
+    lock : Spinlocks.Spinlock;
+
+    function "<" (Left : in System.Address; Right : System.Address) return Boolean;
+    pragma Convention (Intrinsic, "<");
+    pragma Inline_Always ("<");
+    pragma Pure_Function ("<");
+
+    ---------------------------------------------------------------------------
+    -- blockSize
+    -- @return the size (in bytes) of a given block order
+    ---------------------------------------------------------------------------
+    function blockSize (ord : in Order) return Storage_Count with
+        Depends => (blockSize'Result => ord),
+        Post    => blockSize'Result >= Virtmem.FRAME_SIZE and then
+                   blockSize'Result <= 2 ** (Virtmem.FRAME_SHIFT + Config.MAX_BUDDY_ORDER);
+
+    ---------------------------------------------------------------------------
+    -- getOrder
+    -- @return the order size for a given allocation request (in bytes)
+    ---------------------------------------------------------------------------
+    function getOrder (allocSize : in Storage_Count) return Order with
+        Depends => (getOrder'Result => allocSize),
+        Pre     => allocSize in 1 .. blockSize (Order'Last);
+
+    ---------------------------------------------------------------------------
+    -- isValidBlock - given an address and an order, return True if this
+    --  address represents a potentially valid block starting address, False
+    --  otherwise.
+    -- @NOTE a failed allocation (i.e. Null_Address) will still be considered a
+    --  "valid" block per this function, so do NOT use this function to check
+    --  for a successful allocation.
+    ---------------------------------------------------------------------------
+    function isValidBlock (ord : in Order; addr : in System.Address)
+        return Boolean with
+        Post => isValidBlock'Result = 
+            ((addr mod blockSize(ord)) = 0);
+
+    ---------------------------------------------------------------------------
+    -- getListAddress
+    -- Returns the head address of a freeLists list for a given order.
+    --  This is a bit of a backdoor for SPARK_Mode with the setup procedure, to
+    --  give us the 'Address attribute for the list heads.
+    --
+    --  Frankly, I'm not sure if this is a good idea or not. I'd like SPARK in
+    --  the setup procedure since we're doing fairly complicated bounds-checks,
+    --  etc., but sneaking around SPARK mode with tricks like this function
+    --  seems like it could get down a bad road.
+    ---------------------------------------------------------------------------
+    function getListAddress (ord : in Order) return System.Address with
+        Global  => (Input => freeLists),
+        Depends => (getListAddress'Result => (ord, freeLists));
+
+    ---------------------------------------------------------------------------
+    -- setup
+    -- Add frames of memory to be managed by this allocator.
+    -- Uses the kernel-owned normalized firmware map. Edge spans are tiled
+    -- with smaller aligned blocks instead of being discarded.
+    -- Regardless of Config.MAX_BUDDY_ORDER, this procedure will not attempt to
+    -- use any memory < Config.MIN_PHYS_ALLOC.
+    ---------------------------------------------------------------------------
+    procedure setup (Map : Firmware_Frames.Region_Array) with
+        Global  => (In_Out      => (freeLists, BuddyAllocator.initialized,
+                                    BootAllocator.BitmapState,
+                                    x86.interruptsEnabled),
+                    Input       => Virtmem.MAX_PHYS_USABLE),
+        Depends => (freeLists                  => (Map,
+                                                   BootAllocator.BitmapState,
+                                                   Virtmem.MAX_PHYS_USABLE),
+                    BootAllocator.BitmapState   =>+ Virtmem.MAX_PHYS_USABLE,
+                    x86.interruptsEnabled       =>+ null,
+                    BuddyAllocator.initialized  => null,
+                    null                        => (freeLists,
+                                                   BuddyAllocator.initialized)),
+        Pre     => BootAllocator.Phase = BootAllocator.Active,
+        Post    => BuddyAllocator.initialized and then
+                   BootAllocator.Phase = BootAllocator.Active;
+
+    ---------------------------------------------------------------------------
+    -- adoptFrames
+    -- Take frames the allocator has never managed: boot memory setup left
+    -- reserved (a boot module, loader metadata, the boot allocator's own
+    -- section) whose last reader is done. Every frame must still be in its
+    -- never-admitted state, so no memory is admitted twice (a violation is a
+    -- kernel panic). Tiled into aligned blocks like setup; the managed total
+    -- grows by the frames adopted. Takes the allocator lock.
+    ---------------------------------------------------------------------------
+    procedure adoptFrames (first : Virtmem.PhysAddress; frames : Positive) with
+        Global  => (In_Out      => (freeLists, lock, totalManagedBytes,
+                                    x86.interruptsEnabled),
+                    Proof_In    => BuddyAllocator.initialized),
+        Pre     => BuddyAllocator.initialized;
+
+    ---------------------------------------------------------------------------
+    -- alloc
+    -- Allocate a block of memory with the given order
+    -- @param ord - order required
+    -- @param addr - output address of the block if successful, or
+    --  NO_BLOCK_AVAILABLE if no blocks of suitable size were found.
+    ---------------------------------------------------------------------------
+    procedure alloc (ord : in Order; addr : out System.Address) with
+        Global  => (In_Out      => (freeLists, lock,
+                                    x86.interruptsEnabled),
+                    Proof_In    => BuddyAllocator.initialized),
+        Depends => (addr                    => (ord, freeLists),
+                    freeLists               => (ord, freeLists),
+                    lock                    =>+ null,
+                    x86.interruptsEnabled   =>+ null),
+        Pre     => BuddyAllocator.initialized,
+        Post    => isValidBlock (ord, addr);
+
+    -- Slow-path DMA placement: the requested block must fit entirely below
+    -- the exclusive physical ceiling. No allocate/reject/retry loop and no
+    -- change to the ordinary allocation fast path. Zero admits no memory.
+    procedure allocBelow
+      (ord : Order; ceiling : Interfaces.Unsigned_64;
+       addr : out System.Address) with
+        Pre => BuddyAllocator.initialized,
+        Post => isValidBlock (ord, addr);
+
+    ---------------------------------------------------------------------------
+    -- allocFrame
+    -- Convenience procedure for getting a single physical frame, shorthand for
+    --  alloc(0, V2P(addr))
+    -- @param addr - output address returned by this function, 0 if unsuccessful.
+    ---------------------------------------------------------------------------
+    procedure allocFrame (addr : out Virtmem.PhysAddress) with
+        Global  => (In_Out      => (freeLists, lock,
+                                    x86.interruptsEnabled),
+                    Proof_In    => BuddyAllocator.initialized),
+        Depends => (addr                    => (freeLists),
+                    freeLists               => (freeLists),
+                    lock                    =>+ null,
+                    x86.interruptsEnabled   =>+ null),
+        Pre     => BuddyAllocator.initialized,
+        Post    => isValidBlock (0, To_Address(addr));
+
+    ---------------------------------------------------------------------------
+    -- The process pool (KERN-014 slice 4, docs/kernel-memory-map.md): 2 MiB
+    -- regions outside the kernel's linear map. Process_Pool moves regions
+    -- in and out (the linear-map detach, the TLB round, zeroing through the
+    -- kernel window); these primitives keep the books under the allocator
+    -- lock. A frame of a joined region freed through freeFrame, unpinFrame
+    -- or free (DMA runs up to order 9) returns to the pool, dirty.
+    ---------------------------------------------------------------------------
+    -- An order-9 block of the kernel's lists, zeroed through the linear map
+    -- (it is still mapped), for Process_Pool to detach; 0 if none.
+    procedure takeRegion
+      (base : out Virtmem.PhysAddress; ceiling : Interfaces.Unsigned_64 := 0)
+      with SPARK_Mode => Off;
+    -- After its linear-map entry is cleared (Saved) and a TLB round has
+    -- completed: every frame free and clean, in the pool.
+    procedure joinPool (base : Virtmem.PhysAddress; Saved : Virtmem.PageTableEntry)
+      with SPARK_Mode => Off;
+    -- An aligned run of 2**ord frames of the pool below ceiling (0: any);
+    -- base 0 if none. With onlyClean, only a run of clean frames: zeroed
+    -- with a TLB round since (no CPU can still translate them through the
+    -- kernel window); clean says whether the run is.
+    procedure allocFromPool
+      (ord : Order; ceiling : Interfaces.Unsigned_64; onlyClean : Boolean;
+       base : out Virtmem.PhysAddress; clean : out Boolean)
+      with SPARK_Mode => Off, Pre => ord <= 9;
+    -- Laundering (Process_Pool): up to Frames'Length free dirty frames are
+    -- taken out of the pool for zeroing through the window; after a TLB
+    -- round each goes back clean.
+    type Frame_List is array (Positive range <>) of Virtmem.PhysAddress;
+    procedure takeDirty (Frames : out Frame_List; Count : out Natural)
+      with SPARK_Mode => Off;
+    procedure returnClean (frame : Virtmem.PhysAddress) with SPARK_Mode => Off;
+    -- A wholly free region leaves the pool (found False: none); it is still
+    -- detached. Its frames' Clean bits stay readable (poolFrameClean) until
+    -- the caller zeroes the dirty ones, attaches it and frees it (free (9)).
+    procedure leavePool
+      (base : out Virtmem.PhysAddress; Saved : out Virtmem.PageTableEntry;
+       found : out Boolean) with SPARK_Mode => Off;
+    function poolFrameClean (addr : Virtmem.PhysAddress) return Boolean
+      with SPARK_Mode => Off;
+    -- Called (outside the lock) when a kernel allocation finds no block:
+    -- give wholly free pool regions back; Released when any went.
+    type Pool_Reclaim_Handler is access procedure (Released : out Boolean);
+    procedure installPoolReclaimHandler (Handler : not null Pool_Reclaim_Handler)
+      with SPARK_Mode => Off;
+
+    ---------------------------------------------------------------------------
+    -- free
+    -- Free a block of memory of specific order
+    -- @param ord - order of the _original allocation_
+    -- @param addr - address of the _original allocation_
+    ---------------------------------------------------------------------------
+    procedure free (ord : in Order; addr : in System.Address) with
+        Global  => (In_Out      => (freeLists, lock,
+                                    x86.interruptsEnabled),
+                    Proof_In    => BuddyAllocator.initialized),
+        Depends => (freeLists               => (ord, addr, freeLists),
+                    lock                    =>+ null,
+                    x86.interruptsEnabled   =>+ null),
+        Pre     => isValidBlock(ord, addr) and BuddyAllocator.initialized;
+
+    ---------------------------------------------------------------------------
+    -- freeFrame
+    -- Convenience procedure for freeing a single frame, shorthand for
+    --  free(0, addr)
+    -- @param addr - address of the _original allocation_
+    ---------------------------------------------------------------------------
+    procedure freeFrame (addr : in Virtmem.PhysAddress) with
+        Global  => (In_Out      => (freeLists, lock,
+                                    x86.interruptsEnabled),
+                    Proof_In    => BuddyAllocator.initialized),
+        Depends => (freeLists               => (addr, freeLists),
+                    lock                    =>+ null,
+                    x86.interruptsEnabled   =>+ null),
+        Pre     => isValidBlock(0, To_Address(addr)) and BuddyAllocator.initialized;
+
+    ---------------------------------------------------------------------------
+    -- Frame lifetime pins
+    --
+    -- A pinned order-0 frame cannot return to the allocator.  freeFrame marks
+    -- it for deferred release, and the final unpin performs that release.
+    -- Shared-memory mappings use this to keep backing pages alive until the
+    -- mapping is removed and every online CPU acknowledges invalidation.
+    -- Acquisitions may defer that revocation but do not own separate pins.
+    ---------------------------------------------------------------------------
+    -- The process slot a user frame belongs to (No_Owner: none). Every
+    -- slot fits (Process_Identities.Slot), and its stored width is the
+    -- owner table's entry size.
+    type Frame_Owner is range 0 .. Process_Identities.Slot'Last with Size => 32;
+    No_Owner : constant Frame_Owner := 0;
+    pragma Compile_Time_Error
+      (Frame_Owner'Object_Size /= Buddy_Metadata.Owner_Bytes * System.Storage_Unit,
+       "Frame owner width must match the owner table entry");
+
+    -- Ownership validation and pin acquisition share one allocator-lock
+    -- interval, so a stale physical address cannot pass a separate check.
+    procedure pinOwnedFrame
+      (addr : Virtmem.PhysAddress; owner : Frame_Owner; success : out Boolean)
+      with SPARK_Mode => Off;
+
+    procedure unpinFrame
+      (addr    : in Virtmem.PhysAddress;
+       success : out Boolean) with
+        SPARK_Mode => Off;
+
+    -- Tag userspace-owned frames with their process.  This includes ordinary
+    -- order-0 pages and DMA allocations explicitly assigned to a userspace
+    -- driver; unowned MMIO can therefore never enter the generic grant path.
+    procedure claimUserFrame
+      (addr    : in Virtmem.PhysAddress;
+       owner   : in Frame_Owner;
+       success : out Boolean) with
+        SPARK_Mode => Off;
+
+    procedure releaseUserFrame
+      (addr  : in Virtmem.PhysAddress;
+       owner : in Frame_Owner) with
+        SPARK_Mode => Off;
+
+    function isUserFrameOwnedBy
+      (addr  : Virtmem.PhysAddress;
+       owner : Frame_Owner) return Boolean with
+        SPARK_Mode => Off;
+
+    ---------------------------------------------------------------------------
+    -- getTotalBytes
+    -- Returns the total usable memory (in bytes) tracked by this allocator
+    ---------------------------------------------------------------------------
+    function getTotalBytes return Storage_Count with
+        Global  => (Input    => totalManagedBytes,
+                    Proof_In => BuddyAllocator.initialized),
+        Depends => (getTotalBytes'Result => totalManagedBytes),
+        Pre     => BuddyAllocator.initialized;
+
+    ---------------------------------------------------------------------------
+    -- getFreeBytes
+    -- Returns the amount of memory available (in bytes) from this allocator
+    ---------------------------------------------------------------------------
+    function getFreeBytes return Storage_Count with
+        Global  => (Input       => (freeLists, poolFreeFrameCount),
+                    Proof_In    => BuddyAllocator.initialized),
+        Depends => (getFreeBytes'Result => (freeLists, poolFreeFrameCount)),
+        Pre     => BuddyAllocator.initialized;
+
+    ---------------------------------------------------------------------------
+    -- getFreeFrames
+    -- Returns the amount of frames available from this allocator
+    ---------------------------------------------------------------------------
+    function getFreeFrames return Natural with
+        Global  => (Input       => (freeLists, poolFreeFrameCount),
+                    Proof_In    => BuddyAllocator.initialized),
+        Depends => (getFreeFrames'Result => (freeLists, poolFreeFrameCount)),
+        Pre     => BuddyAllocator.initialized;
+
+    ---------------------------------------------------------------------------
+    -- print
+    -- Prints a nice table with the buddy allocator information.
+    ---------------------------------------------------------------------------
+    procedure print with
+        Pre => BuddyAllocator.initialized;
+    
+end BuddyAllocator;

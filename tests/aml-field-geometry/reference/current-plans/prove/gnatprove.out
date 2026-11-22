@@ -1,0 +1,45 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+---------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                            Provers   Justified   Unproved
+---------------------------------------------------------------------------------------------------------
+Data Dependencies                 .           .                                  .           .          .
+Flow Dependencies                 .           .                                  .           .          .
+Initialization                    3           3                                  .           .          .
+Non-Aliasing                      .           .                                  .           .          .
+Run-time Checks                   4           .                           4 (CVC5)           .          .
+Assertions                        .           .                                  .           .          .
+Functional Contracts              4           .    4 (CVC5 89%, Trivial 6%, Z3 6%)           .          .
+LSP Verification                  .           .                                  .           .          .
+Termination                       8           8                                  .           .          .
+Concurrency                       .           .                                  .           .          .
+---------------------------------------------------------------------------------------------------------
+Total                            19    11 (58%)                            8 (42%)           .          .
+
+
+max steps used for successful proof: 8373
+
+============================
+Most difficult proved checks
+============================
+
+aml_field_plans.adb:73:23: precondition proved in max 2 seconds
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit aml_field_plans, 10 subprograms and packages out of 10 analyzed
+  AML_Field_Plans at aml_field_plans.ads:5 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Field_Plans.Buffer_Length at aml_field_plans.ads:29 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  AML_Field_Plans.Count at aml_field_plans.ads:17 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Field_Plans.Datum_At at aml_field_plans.ads:21 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  AML_Field_Plans.Matches at aml_field_plans.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  AML_Field_Plans.Plan at aml_field_plans.ads:32 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Field_Plans.Prepare at aml_field_plans.ads:18 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  AML_Field_Plans.Result_Form at aml_field_plans.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Field_Plans.Rule at aml_field_plans.ads:20 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Field_Plans.Valid at aml_field_plans.ads:16 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)

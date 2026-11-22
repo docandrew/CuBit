@@ -1,0 +1,8 @@
+{
+  "attempts": 20,
+  "classes": {
+    "returned": 16,
+    "runtime_error": 4
+  },
+  "scope": "dynamic Buffer TermArgs normal ASL; exact raw status observations, disassembly review pending"
+}

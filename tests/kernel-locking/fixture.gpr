@@ -1,0 +1,11 @@
+project Fixture is
+    for Source_Dirs use ("fixture", "../../kernel/src");
+    for Source_Files use ("config.ads", "percpudata.ads", "percpudata.adb",
+                         "tlb_shootdown.ads", "tlb_shootdown.adb",
+                         "trace.ads", "x86.ads",
+                         "interrupt_state.ads", "interrupt_state.adb");
+    for Object_Dir use "build/fixture";
+    package Compiler is
+        for Default_Switches ("Ada") use ("-gnata", "-O2", "-g");
+    end Compiler;
+end Fixture;

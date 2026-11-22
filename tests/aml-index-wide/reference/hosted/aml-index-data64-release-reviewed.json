@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-wide-pressure-maavWdxP/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-wide-pressure-maavWdxP/source/tests/aml-index-data64/results/release-ly7o_92j",
+  "mode": "release",
+  "inputs": 231,
+  "references": 20,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 315,
+  "stages": 2,
+  "logs": {
+    "index_width_tests": "Index width checks 496"
+  },
+  "ALI": 77,
+  "dependencies": 1061,
+  "strict_commands": 76,
+  "audit_sha256": "4b7875ca7e07619821139517b90d2141aac4ef1b3c7954c7d47cf6e8ae705dfc",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

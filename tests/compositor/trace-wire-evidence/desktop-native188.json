@@ -1,0 +1,151 @@
+{
+  "status": "PASS",
+  "scope": "Native CuBit actual Desktop hooks through bounded SDK, real metricsvc IPC/grants and raw collector; unified Mesa software execution with explicit frozen platform/libc/font seeds. No Intel GPU, hardware latch, photon latency or 240Hz performance claim.",
+  "result": {
+    "status": "PASS",
+    "gpu_enabled": false,
+    "scope": "native CuBit runtime-dispatch software fallback with explicit boot seeds",
+    "binary_sha256": "9d684cdc7afaac55e10d4ae2435e515cd4fc769bc7fe5d06a760dc9f0f58fc43",
+    "memory": "1G",
+    "render_approved": false,
+    "render_attempts": [
+      [
+        "4294967329",
+        "TRUE"
+      ]
+    ],
+    "software_fallback": "PASS",
+    "hardware_validated": false,
+    "mesa_execution": {
+      "status": "PASS",
+      "renderer": "mesa-softpipe",
+      "text_draw": true,
+      "imported_surface_draw": true,
+      "client_retired_buffer_frames": 9,
+      "hardware_validated": false,
+      "scope": "Successful native Mesa draw and client self-check markers; pixel checks required separately"
+    },
+    "client_pixels": {
+      "status": "PASS",
+      "client_rectangle": [
+        120,
+        130,
+        512,
+        384
+      ],
+      "cursor_exclusion": [
+        78,
+        158,
+        97,
+        186
+      ],
+      "scale": [
+        1,
+        1
+      ]
+    },
+    "input_overlay": "off",
+    "cursor_moves": 32,
+    "cursor_roundtrips": 8,
+    "cursor_damage": "PASS exact restoration and no changes outside old/new footprints",
+    "overlay_click_pixels": "unchanged without HUD",
+    "scaled_cursor_moves": 16,
+    "scaled_cursor_roundtrips": 4,
+    "native_scales": [
+      [
+        5,
+        4
+      ]
+    ],
+    "output_pixels": [
+      1024,
+      768
+    ],
+    "metrics": {
+      "status": "PASS",
+      "frames": 13,
+      "batches": 35,
+      "producer_dropped_at_observer_exit": 2,
+      "schema_rejections": 0,
+      "batch_gaps": 0,
+      "scope": "Authenticated progress and schema; loss snapshot at observer exit, not full-run sampling completeness"
+    },
+    "log_channel": "PASS authenticated ordered startup/backend records and reader close",
+    "observer_sha256": "b04ccc9c30841f197e5d5c3623664ffce0652098848460e72232989d437a398e",
+    "profiling": "PASS completion measurements, diagnostic declaration with zero samples, no verbose trace markers",
+    "desktop_trace": "TEST: PASS desktop-trace input= 10 source= 5 frame= 21 draws= 19 submits= 20 producer_dropped= 6 batch_gaps= 0 history_loss= 0 skipped_rows= 0 rejected_rows= 0 retirement=confirmed",
+    "menu_changed_pixels": [
+      104419,
+      104419,
+      104419
+    ],
+    "restored_cycles": 3,
+    "false_gpu_markers": 0
+  },
+  "inputs_sha256": {
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-187/cursor-arrived-125.png": "f29597f3bce96d81f2967cae814a003dadcb5039c7c2840b96e16d74ba15b070",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-179/seed/cubit_kernel": "8b5bdcad173c14d4da98b9a0a3ec7366e224ea15bf964b54e0c122dac358d57b",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-179/seed/initrd.img": "dfbf34e2afaf424c4dc4390d5a4311a5ce03d77d8fb87eefa89f2eff733bccf3",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-179/seed/display.svc": "a9a3d9e9616a16003410231c0644c6c4cb8f23d0c95d2f97eeaeb4ea8115866d",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-179/seed/clock.svc": "d3d3e231212a66dad0d723fff6f1aeed1653d4112da5ddf3e9c47265f6ad59ed",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-179/seed/logstore.svc": "062b12b0d988fd04630ccdfbdb3343974463dae1dfe709381b184c7dcc4c73d6",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-185/metrics/metrics.svc": "f045a031adee326fe8943bd73f67b1f5dce172ad718da429eebfd6927fe4fca0",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-185/metrics/desktop-metrics-observer.app": "6643b0d9649475f7dd5422eb2108c42dab07aeab1f7bb1ae41a8f6ceeee81e34",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-185/metrics/desktop-trace-observer.app": "1ef8822decc96c93a311aebe7b7defd986458b2b502cacba5c52b963adfb380e",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-185/metrics/trace-publication.app": "20f771307e5f8983e5e8a766095f0c6038511e29cb2ee88cdf7db4763c248c18",
+    "/home/doc/git/cubit/build-graphics-tests/native-mesa-combined2-window-20261007/native-mesa-window.app": "62505111683c5adcc737845cfe507a6b9f5c6668d61bca90cb99f138943fe196",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-187/mesa_activation.py": "add21d08f0ec604c388dc89f01d97870d0648468e5f9f11f23b441e05bfc4e3f",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-linked-183/desktop-vulkan-compositor.svc": "9d684cdc7afaac55e10d4ae2435e515cd4fc769bc7fe5d06a760dc9f0f58fc43",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-linked-183/compositor-result.json": "1926765a4e2233d03a7bbffe9ce2d1e24fa2b1b1117ceccf20c8571e08eeacd7",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-platform-7bezr_yc/tools/verify_desktop_vulkan_compositor.py": "ef0bf4b71b2510a2f5528dd43f345a7fd2e4edcf61d9b82855a1af6e9c25b996",
+    "/home/doc/git/compositor-test-artifacts/desktop-trace-boot-187/run.py": "cc27d16c89dfccb1e2babaa19e53ba05eed44fcd66b7a87f3ce8ffb4cd12f270",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-platform-7bezr_yc/tools/build_development_disk.py": "3044fd6ea3899dc98a86aef6d0e82b0d2133098f071408cc3e9bf9f4136764af",
+    "/home/doc/git/compositor-test-artifacts/deadline-log-observer-24/desktop-log-observer.app": "b04ccc9c30841f197e5d5c3623664ffce0652098848460e72232989d437a398e",
+    "/home/doc/git/compositor-test-artifacts/deadline-log-observer-24/result.json": "2ab32758e64a7485b566bf8578a4095987bfec6b5b1363ceef282339c463e8e8",
+    "/home/doc/git/compositor-test-artifacts/deadline-log-observer-24/inputs.json": "3ceaf27d42bb9af33a50881c4267f3e74b2bc4d1f2a52bd0d7d01609e83dd6c9",
+    "/tmp/cubit-build-combined-window.py": "01577bee50a812a3522d4a66b8066890d6085edbd7df9deebf7028a321bcc792",
+    "/home/doc/git/cubit/build-graphics-tests/native-mesa-combined2-20261007/bundle/inputs.json": "7ca780e3d34bfb1ca33d14593a5f6d31b9cedfadc828e0aad9f36acbf341bd39",
+    "/home/doc/git/cubit/build-graphics-tests/native-mesa-combined2-20261007/bundle/link-args.json": "44e3cc5ef6d6e3a4d3dd11beca026945eecdb3a8b54b997d2821a682dcbe1d9f",
+    "/home/doc/git/cubit/build-graphics-tests/native-mesa-combined2-20261007/build.json": "aa773fe981b89ec6f4652a407717ecbd0502f8b158a22e011ba56cf652e9b6d3",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/tools/verify_native_mesa_build.py": "e0e98b3e751f6bc39c140198b9946270cc246e1f0e7020af7cff049c3da1fa87",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/tools/verify_mesa_service_bundle.py": "8fb86d5bc371f368d212982a6e68f245c117b6a533fca170af49ba2e976f844d",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/tests/mesa-software/compile-native-probe.py": "1a56ba763b6dae48a9695a51b5022ce32c8561edc1a866d5283586c2304b68fe",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/userspace/ccl/build/manifest/ccl-manifest": "54735cc95603c43ac8fe4bb7385c63d59b7355248d1d793c5811b4217766be32",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/userspace/ccl/catalogs/native-runtime-services.ccl": "2cd5c82466176f4d57686c21eab564f2e268188515d6eb44f41f8235ffb357a6",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/tests/mesa-software/window-manifest.ccl": "4df31093c6d7d1175fdc9d4d91c875ab0ba321de79e8838fd138f4679cd8bf11",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/tests/mesa-software/cube-scene.h": "9632f7398a077b41ceb0b0123191ba3aff21f3e1191a673e43cda649aff98524",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/tests/mesa-software/buffer-winsys.h": "a3ef8b1904e29c53e5f27b9f04d62e2e1f700bd73deb1dc000d94f2a3aa999cb",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/userspace/c/cubit.h": "5bcf8dd2817311172dbb435b932cfbff1abbbd5c09e172e05adf776ab9dad1ed",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/userspace/c/cubit_desktop.h": "751308a697625347cee7dfbb549be0bf829eb1051830218406f962119f863fee",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/userspace/c/cubit_fs_queue.h": "2d7ddc619d535b136abd6795cf7c8349ebacbefdbd51427d2ac683f06935d12a",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/userspace/c/cubit_net_channel.h": "8f826a5f52ee55ae93b290b6e3c066d607b231e23b0415c4bf3bc44d6a4d0cea",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/tests/mesa-software/native-mesa-window.c": "35e5740c49884ac4e5d391ef31d332ec2a8f4faf59d3f6575f81d904c2762272",
+    "/home/doc/git/cubit/.build-workspaces/graphics-deadline-apps-IAC8RXa3/tests/mesa-software/buffer-winsys.c": "ff822b4b6a0948f44ce71f4ed2860ba70d0718552e154a1d216761499c6b5f1a",
+    "/home/doc/git/cubit/build-graphics-tests/native-mesa-combined2-window-20261007/native-mesa-window.o": "6c9107a30a9dca84b262d47e1f48bdd011780d3ceaeea74e3fc6610fd1fb6caf",
+    "/home/doc/git/cubit/build-graphics-tests/native-mesa-combined2-window-20261007/buffer-winsys.o": "4cbf562237cdfa7fbf7431a913abcd4001467fa78b998846ac937a2309215384",
+    "/home/doc/git/cubit/build-graphics-tests/native-mesa-combined2-window-20261007/window-manifest.S": "be3484035fbdedf0fcbedb7427226be991fd272f55f4238df7d2179e2a717c4b",
+    "/home/doc/git/cubit/build-graphics-tests/native-mesa-combined2-window-20261007/window-manifest.o": "38306e191767cbebde720a0a8048ce8400759e912ae29a18afd92df93da7a40b",
+    "/home/doc/git/cubit/build-graphics-tests/native-mesa-combined2-window-20261007/fixture.json": "d05ea7629e99d2b7016ee2406c38a0cabfe4970985faaeb1e11fa651e831123b"
+  },
+  "native_directory": "/home/doc/git/compositor-test-artifacts/desktop-trace-native-run-188",
+  "desktop_sources_sha256": {
+    "userspace/services/desktop/main.adb": "9cae981d558dbaeb8a802fc9f996fac8a872da75f93cdfa08cd5dabd75ecf1b3",
+    "userspace/services/desktop/desktop_metric_publisher.ads": "82e8bbbff70cbd973c3f0bc1d4a6e0d5eddb24f5a2fbdb53157e2307f45e1fa4",
+    "userspace/services/desktop/desktop_metric_publisher.adb": "eaad070fae1c7f46b56469ea7f3527a7411076ac963bdfc95673a09943f073ed",
+    "userspace/services/desktop/metrics-on/desktop_metrics.ads": "72b33d5fe29024aacb6aa5e5aaecda4331ba2a4c8fce13a07382ef7f928e70b5",
+    "userspace/services/desktop/manifest.ccl": "829442e03e5e7065e348f010aba9c1479c38c75b3f3d9b8dc2e563632a33ef07",
+    "userspace/lib/compositor/compositor_trace_publication.ads": "d11a998bfae990aa79fe6ac4a2741fbdece2621159bc1b780461d0361e699cde",
+    "userspace/lib/compositor/compositor_trace_publication.adb": "d7edaec6350a14f71cf5a9ba25d61b3ddea48884d3687d86832cffde837a79ca",
+    "userspace/lib/compositor/compositor_metric_batch_policy.ads": "bab412ad6750dc862ff296dcd91b17213919a9375c5e6df06dc25457af0daf82",
+    "userspace/lib/compositor/compositor_metric_batch_policy.adb": "019d712c5c285ed894a609684b7bb60e495a204146ab2ae848e1ccdda6377666"
+  },
+  "serial_sha256": "01969c985b14e9eb91b56a4744ed3988263b8754af4eb610d148692b8623f678",
+  "build_record_sha256": "1926765a4e2233d03a7bbffe9ce2d1e24fa2b1b1117ceccf20c8571e08eeacd7",
+  "trace_collector": "TEST: PASS desktop-trace input= 10 source= 5 frame= 21 draws= 19 submits= 20 producer_dropped= 6 batch_gaps= 0 history_loss= 0 skipped_rows= 0 rejected_rows= 0 retirement=confirmed",
+  "loss_scope": "Producer dropped value6 counts metric records across this publisher, not complete trace events or whole-run completeness. Raw cursor statistics and producer snapshot end at collector exit.",
+  "failed_runs": {
+    "181": "Legacy Mesa attachment client produced input/submit/frame but no publication source/draw. Added protected-frame client without changing Desktop.",
+    "186": "Trace collector passed all types; scaled cursor baseline captured old location.187oracle reused105arrival check with positive and two negative controls, preserving damage assertions."
+  },
+  "publication": "Candidate remains private; production source publication, reproducible fixture packaging and documentation pending."
+}

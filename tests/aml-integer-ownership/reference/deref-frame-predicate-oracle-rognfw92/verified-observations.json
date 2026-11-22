@@ -1,0 +1,50 @@
+[
+  {
+    "case": "r1-arg-ref",
+    "classification": "executed",
+    "integer": 4294967295,
+    "cache_warning": true
+  },
+  {
+    "case": "r1-arg-held",
+    "classification": "executed",
+    "integer": 4294967295,
+    "cache_warning": true
+  },
+  {
+    "case": "r1-local-ref",
+    "classification": "executed",
+    "integer": 4294967295,
+    "cache_warning": true
+  },
+  {
+    "case": "r1-local-held",
+    "classification": "executed",
+    "integer": 4294967295,
+    "cache_warning": true
+  },
+  {
+    "case": "r2-arg-ref",
+    "classification": "executed",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r2-arg-held",
+    "classification": "executed",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r2-local-ref",
+    "classification": "executed",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r2-local-held",
+    "classification": "executed",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  }
+]

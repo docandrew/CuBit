@@ -1,0 +1,8 @@
+project Proof is
+ for Source_Dirs use (".");
+ for Source_Files use ("i2c_channel_badges.ads", "i2c_channel_badges.adb", "i2c_transfer_wire.ads", "i2c_transfer_wire.adb", "cubit.ads", "cubit-grant_references.ads", "i2c_configure_replies.ads", "i2c_configure_replies.adb");
+ for Object_Dir use "proof/obj";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+ end Compiler;
+end Proof;

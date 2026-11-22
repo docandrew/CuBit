@@ -1,0 +1,1 @@
+DefinitionBlock ("", "DSDT", 2, "CUBIT", "TOBREF", 1) { Name (PACK,Package (1) {9}) Method (CTRL,0) {Return (One)} Method (TEST,0) {ToBuffer ("AB",Index (PACK,Zero)) Return (DerefOf (Index (PACK,Zero)))} }

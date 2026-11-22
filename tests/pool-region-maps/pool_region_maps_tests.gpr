@@ -1,0 +1,14 @@
+--  KERN-014 slice 4: hosted test and proof of one process-pool region
+--  (free and clean frames, aligned runs)
+--  (kernel/src/pool_region_maps).
+project Pool_Region_Maps_Tests is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("main.adb", "pool_region_maps.ads", "pool_region_maps.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Pool_Region_Maps_Tests;

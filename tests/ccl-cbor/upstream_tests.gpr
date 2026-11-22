@@ -1,0 +1,22 @@
+project Upstream_Tests is
+   Source := external ("CBOR_ADA_SRC");
+   Contracts := external ("CBOR_UPSTREAM_CONTRACTS", "off");
+   for Source_Dirs use (Source & "/src", Source & "/test");
+   for Object_Dir use "build/upstream-" & Contracts;
+   for Exec_Dir use "build/upstream-" & Contracts;
+   for Main use ("test_cbor.adb");
+   package Compiler is
+      -- Match upstream's split assertion policy by default. The opt-in
+      -- all-contracts run exposes negative-bound anonymous test fixtures.
+      case Contracts is
+         when "on" =>
+            for Default_Switches ("Ada") use
+              ("-O2", "-g", "-gnat2022", "-gnata", "-gnato", "-gnatVa", "-I-");
+         when others =>
+            for Default_Switches ("Ada") use
+              ("-O2", "-g", "-gnat2022", "-gnato", "-gnatVa", "-I-");
+      end case;
+      for Switches ("test_cbor.adb") use
+        ("-O2", "-g", "-gnat2022", "-gnata", "-gnato", "-I-");
+   end Compiler;
+end Upstream_Tests;

@@ -1,0 +1,28 @@
+--- a/src/vulkan/wsi/wsi_common_headless.c
++++ b/src/vulkan/wsi/wsi_common_headless.c
+@@ -31,8 +31,6 @@
+ #include "wsi_common_entrypoints.h"
+ #include "wsi_common_private.h"
+ 
+-#include "drm-uapi/drm_fourcc.h"
+-
+ struct wsi_headless {
+    struct wsi_interface base;
+ };
+--- a/include/drm-uapi/drm_fourcc.h
++++ b/include/drm-uapi/drm_fourcc.h
+@@ -24,7 +24,14 @@
+ #ifndef DRM_FOURCC_H
+ #define DRM_FOURCC_H
+ 
++#if defined(__cubit__)
++/* Format identifiers are data, not a dependency on the Linux DRM ABI. */
++#include <stdint.h>
++typedef uint32_t __u32;
++typedef uint64_t __u64;
++#else
+ #include "drm.h"
++#endif
+ 
+ #if defined(__cplusplus)
+ extern "C" {

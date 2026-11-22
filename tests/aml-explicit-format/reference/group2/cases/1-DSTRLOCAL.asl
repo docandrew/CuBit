@@ -1,0 +1,1 @@
+DefinitionBlock ("", "DSDT", 1, "CUBIT", "FMTLOCAL", 1) {Name(MARK,Zero) Name(STR0,"ABC") Method(CTRL,0){Return(One)} Method(WIDT,0){Return(ShiftRight(Ones,32))} Method(TEST,0){Store(0x5A,Index(ToDecimalString(STR0,Local0),Zero)) Return(ToBuffer(Local0))}}

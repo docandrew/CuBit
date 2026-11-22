@@ -1,0 +1,16 @@
+with "../../userspace/ccl/cubit_shared.gpr";
+--  SPARK proof of the agent core (userspace/lib/agent, AGENT-002):
+--    systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 \
+--      gnatprove -P tests/agent/prove.gpr -j2 -u agent_loop.adb ...
+--  The units it proves are listed in tests/agent/prove-units.txt; their CCL
+--  dependencies (userspace/ccl/src) are proved with the CCL core.
+project Prove is
+   for Source_Dirs use ("../../userspace/lib/agent", "../../userspace/ccl/src");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--report=fail", "--no-inlining");
+   end Prove;
+end Prove;

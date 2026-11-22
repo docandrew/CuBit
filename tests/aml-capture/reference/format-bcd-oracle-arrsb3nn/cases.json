@@ -1,0 +1,782 @@
+[
+  {
+    "key": "r1-todecimalstring-reference-store",
+    "source": "r1-todecimalstring-reference-store.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-todecimalstring-reference-copyobject",
+    "source": "r1-todecimalstring-reference-copyobject.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-todecimalstring-name-store",
+    "source": "r1-todecimalstring-name-store.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-todecimalstring-name-copyobject",
+    "source": "r1-todecimalstring-name-copyobject.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-todecimalstring-unchanged-local-store",
+    "source": "r1-todecimalstring-unchanged-local-store.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-todecimalstring-immediate-store",
+    "source": "r1-todecimalstring-immediate-store.asl",
+    "revision": 1,
+    "op": "ToDecimalString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tohexstring-reference-store",
+    "source": "r1-tohexstring-reference-store.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tohexstring-reference-copyobject",
+    "source": "r1-tohexstring-reference-copyobject.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tohexstring-name-store",
+    "source": "r1-tohexstring-name-store.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tohexstring-name-copyobject",
+    "source": "r1-tohexstring-name-copyobject.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tohexstring-unchanged-local-store",
+    "source": "r1-tohexstring-unchanged-local-store.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tohexstring-immediate-store",
+    "source": "r1-tohexstring-immediate-store.asl",
+    "revision": 1,
+    "op": "ToHexString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-frombcd-reference-store",
+    "source": "r1-frombcd-reference-store.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-frombcd-reference-copyobject",
+    "source": "r1-frombcd-reference-copyobject.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-frombcd-name-store",
+    "source": "r1-frombcd-name-store.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-frombcd-name-copyobject",
+    "source": "r1-frombcd-name-copyobject.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-frombcd-unchanged-local-store",
+    "source": "r1-frombcd-unchanged-local-store.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-frombcd-immediate-store",
+    "source": "r1-frombcd-immediate-store.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tobcd-reference-store",
+    "source": "r1-tobcd-reference-store.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tobcd-reference-copyobject",
+    "source": "r1-tobcd-reference-copyobject.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tobcd-name-store",
+    "source": "r1-tobcd-name-store.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tobcd-name-copyobject",
+    "source": "r1-tobcd-name-copyobject.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tobcd-unchanged-local-store",
+    "source": "r1-tobcd-unchanged-local-store.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-tobcd-immediate-store",
+    "source": "r1-tobcd-immediate-store.asl",
+    "revision": 1,
+    "op": "ToBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-frombcd-invalid-store",
+    "source": "r1-frombcd-invalid-store.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "invalid-reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r1-frombcd-invalid-copyobject",
+    "source": "r1-frombcd-invalid-copyobject.asl",
+    "revision": 1,
+    "op": "FromBCD",
+    "variant": "invalid-reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-todecimalstring-reference-store",
+    "source": "r2-todecimalstring-reference-store.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-todecimalstring-reference-copyobject",
+    "source": "r2-todecimalstring-reference-copyobject.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-todecimalstring-name-store",
+    "source": "r2-todecimalstring-name-store.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-todecimalstring-name-copyobject",
+    "source": "r2-todecimalstring-name-copyobject.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-todecimalstring-unchanged-local-store",
+    "source": "r2-todecimalstring-unchanged-local-store.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-todecimalstring-immediate-store",
+    "source": "r2-todecimalstring-immediate-store.asl",
+    "revision": 2,
+    "op": "ToDecimalString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tohexstring-reference-store",
+    "source": "r2-tohexstring-reference-store.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tohexstring-reference-copyobject",
+    "source": "r2-tohexstring-reference-copyobject.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tohexstring-name-store",
+    "source": "r2-tohexstring-name-store.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tohexstring-name-copyobject",
+    "source": "r2-tohexstring-name-copyobject.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tohexstring-unchanged-local-store",
+    "source": "r2-tohexstring-unchanged-local-store.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tohexstring-immediate-store",
+    "source": "r2-tohexstring-immediate-store.asl",
+    "revision": 2,
+    "op": "ToHexString",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-frombcd-reference-store",
+    "source": "r2-frombcd-reference-store.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-frombcd-reference-copyobject",
+    "source": "r2-frombcd-reference-copyobject.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-frombcd-name-store",
+    "source": "r2-frombcd-name-store.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-frombcd-name-copyobject",
+    "source": "r2-frombcd-name-copyobject.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-frombcd-unchanged-local-store",
+    "source": "r2-frombcd-unchanged-local-store.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-frombcd-immediate-store",
+    "source": "r2-frombcd-immediate-store.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tobcd-reference-store",
+    "source": "r2-tobcd-reference-store.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tobcd-reference-copyobject",
+    "source": "r2-tobcd-reference-copyobject.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tobcd-name-store",
+    "source": "r2-tobcd-name-store.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "name",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tobcd-name-copyobject",
+    "source": "r2-tobcd-name-copyobject.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "name",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tobcd-unchanged-local-store",
+    "source": "r2-tobcd-unchanged-local-store.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "unchanged-local",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-tobcd-immediate-store",
+    "source": "r2-tobcd-immediate-store.asl",
+    "revision": 2,
+    "op": "ToBCD",
+    "variant": "immediate",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-frombcd-invalid-store",
+    "source": "r2-frombcd-invalid-store.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "invalid-reference",
+    "mutation": "Store",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  },
+  {
+    "key": "r2-frombcd-invalid-copyobject",
+    "source": "r2-frombcd-invalid-copyobject.asl",
+    "revision": 2,
+    "op": "FromBCD",
+    "variant": "invalid-reference",
+    "mutation": "CopyObject",
+    "methods": [
+      "PRE0",
+      "TEST",
+      "POST",
+      "FLAG",
+      "DEST"
+    ]
+  }
+]

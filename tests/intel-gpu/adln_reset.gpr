@@ -1,0 +1,8 @@
+project ADLN_Reset is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-adln-reset";
+   for Main use ("adln_reset_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end ADLN_Reset;

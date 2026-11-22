@@ -1,0 +1,1 @@
+with ACPI_Requests; with CuBit.Messages; package ACPI_Native_Power_Entry is procedure Dispatch (Server : in out ACPI_Requests.State; Request : CuBit.Messages.Message; Runtime_Selected : Boolean; Reply : out CuBit.Messages.Message; Handled, Reply_Now : out Boolean);procedure Begin_Stop;function Blocks_Runtime return Boolean;end ACPI_Native_Power_Entry;

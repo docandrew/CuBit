@@ -1,0 +1,12 @@
+{
+  "tests/acpi-resource-data/reference/compile.log": "c7e7ccda6e350b3e538b3476c4f3808bb913e33466b1b2350b8dd4955bf369c8",
+  "tests/acpi-resource-data/reference/expected.tsv": "3742b9cea7e9e51615380e834fdf152d9a179d4efb69cf606c3d867ecc83a2d0",
+  "tests/acpi-resource-data/reference/pci-routes.tsv": "34c7d5d3e4979c212a7353935f11a8ca963cb548c0ca54266576f6eb26909db1",
+  "tests/acpi-resource-data/reference/reference.log": "f2f4f4c80885164af2532c44746c997dae859cba62e7cfce1b7104f730f3e65c",
+  "tests/acpi-resource-data/reference/reference32.log": "4a0e4e17fe4274b73f85097a117566777ad63caf20ac38f8c8e4258cf7e5382f",
+  "tests/acpi-resource-data/reference/resources.aml": "3432d374d62c1e264a894a5e9f282f903a53bfadd9dae38e11ee89076c16c207",
+  "tests/acpi-resource-data/reference/resources.asl": "6997441fc53c592dacda24fb8936060788ac5347dfc9c9de8810ededcd1309c5",
+  "tests/acpi-resource-data/reference/resources32.aml": "a875bb3d9b3834f10adab6d594685eb82d611fc3dece2006c0e50aa77a63ceff",
+  "tests/acpi-resource-data/reference/status.tsv": "d2d70804ecd697d5a9c3ede742b29e5e7f86572fff79369985db325a6aba3d3a",
+  "tests/acpi-resource-data/reference/tools.sha256": "e8d296f3d9269628a8e4b33d6aea09a2b5fee899979d1bbc16967729e840f7ef"
+}

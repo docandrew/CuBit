@@ -1,0 +1,1 @@
+with Admission_Probe;package body CuBit.Refusal_Notes is procedure Warn_Once(Service,Key,Text:String) is pragma Unreferenced(Service,Key,Text);begin Admission_Probe.Warnings:=Admission_Probe.Warnings+1;end;end CuBit.Refusal_Notes;

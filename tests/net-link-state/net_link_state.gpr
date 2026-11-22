@@ -1,0 +1,22 @@
+project Net_Link_State is
+   --  The driver<->netstack link contract (CuBit.Net_Link, the link block in
+   --  CuBit.Frame_Rings) and netstack's link state machine (Link_Tracker).
+   Runtime := "../../userspace/runtime/gnat";
+   Net := "../../userspace/net/src";
+   for Source_Dirs use (".", Runtime, Net);
+   for Source_Files use ("cubit.ads", "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+                         "cubit-slot_rings.ads", "cubit-slot_rings.adb",
+                         "cubit-frame_rings.ads", "cubit-net_link.ads", "cubit-net_link.adb",
+                         "cubit-net_address.ads", "cubit-net_management.ads", "cubit-net_management.adb",
+                         "link_tracker.ads", "link_tracker.adb",
+                         "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-gnata", "-gnato", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Net_Link_State;

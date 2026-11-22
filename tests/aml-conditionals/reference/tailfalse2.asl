@@ -1,0 +1,1 @@
+DefinitionBlock("", "DSDT", 2, "CUBIT", "TAIL", 1){ Method(TEST,1){If(Arg0){ Return(11) } Else { Return(22) }}}

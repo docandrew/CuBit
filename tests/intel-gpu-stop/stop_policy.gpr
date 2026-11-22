@@ -1,0 +1,11 @@
+--  intel-gpu's Stop policy (PWR-003): hosted checks and its proof.
+project Stop_Policy is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("stop_policy_tests.adb",
+     "intel_gpu_stop_policy.ads", "intel_gpu_stop_policy.adb");
+   for Object_Dir use "build";
+   for Main use ("stop_policy_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Stop_Policy;

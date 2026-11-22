@@ -1,0 +1,530 @@
+--- a/userspace/lib/acpi/aml_execute.ads
++++ b/userspace/lib/acpi/aml_execute.ads
+@@ -101,6 +101,15 @@
+       with procedure Materialize
+         (Environment : in out Context; Kind : Literal_Kind; Data : AML_Decode.Bytes;
+          Binding : out Binding_Result);
++      -- Reserve before evaluating selectors so duplicates and recursive lookup
++      -- observe declaration order. End_Call owns cleanup after any failure.
++      with procedure Reserve_Region
++        (Environment : in out Context; Scope : Natural; Path : AML_Names.Name_Result;
++         Token : out Natural; Status : out Execution_Status);
++      with procedure Complete_Region
++        (Environment : in out Context; Input : aliased Read_Context; Token : Natural;
++         Width : AML_Decode.Integer_Width; Signature, OEM, Table_ID : Datum;
++         Status : out Execution_Status);
+    procedure Execute_With_Input
+      (Code : AML_Decode.Bytes; Width : AML_Decode.Integer_Width;
+       Args : Value_Arguments; Argument_Count : Natural; Budget : Natural;
+--- a/userspace/lib/acpi/aml_execute.adb
++++ b/userspace/lib/acpi/aml_execute.adb
+@@ -555,6 +555,41 @@
+          case Op is
+             when 16#5B# =>
+                if Offset = Limit then Result_Out := Failure (Truncated, Charged); return; end if;
++               if Code (Code'First + Offset) = 16#88# then
++                  Offset := Offset + 1;
++                  declare
++                     use type AML_Names.Parse_Status;
++                     Path : AML_Names.Name_Result;
++                     Token : Natural;
++                     Declared_Status : Execution_Status;
++                     Signature, OEM, Table_ID : Datum;
++                  begin
++                     if Offset = Limit then Result_Out := Failure (Bad_Name, Charged); return; end if;
++                     Path := AML_Names.Read_Name (Code (Code'First + Offset .. Code'First + (Limit - 1)));
++                     if Path.Kind /= AML_Names.Accepted or else Path.Count = 0 then
++                        Result_Out := Failure (Bad_Name, Charged); return;
++                     end if;
++                     Offset := Offset + Path.Consumed;
++                     Reserve_Region (Environment, Scope, Path, Token, Declared_Status);
++                     if Declared_Status /= Returned or else Token = 0 then
++                        Result_Out := Failure
++                          ((if Declared_Status in Failure_Status then Declared_Status else Unsupported), Charged);
++                        return;
++                     end if;
++                     Operand (Signature, Declared_Status);
++                     if Declared_Status /= Returned then Result_Out := Failure (Declared_Status, Charged); return; end if;
++                     Operand (OEM, Declared_Status);
++                     if Declared_Status /= Returned then Result_Out := Failure (Declared_Status, Charged); return; end if;
++                     Operand (Table_ID, Declared_Status);
++                     if Declared_Status /= Returned then Result_Out := Failure (Declared_Status, Charged); return; end if;
++                     Complete_Region (Environment, Input, Token, Width, Signature, OEM, Table_ID, Declared_Status);
++                     if Declared_Status /= Returned then
++                        Result_Out := Failure
++                          ((if Declared_Status in Failure_Status then Declared_Status else Unsupported), Charged);
++                        return;
++                     end if;
++                  end;
++               else
+                if Code (Code'First + Offset) /= 16#81# then
+                   Result_Out := Failure (Unsupported, Charged); return;
+                end if;
+@@ -597,6 +632,7 @@
+                   end if;
+                   Offset := Finish;
+                end;
++               end if;
+             when 16#14# => -- Method: declaration takes effect when executed.
+                declare
+                   P : Package_Result;
+@@ -775,9 +811,27 @@
+       begin
+          Binding := (Status => Failed_Binding, Failure => Unsupported_Value);
+       end Reject_Literal;
++      procedure Reject_Region
++        (Environment : in out Context; Scope : Natural; Path : AML_Names.Name_Result;
++         Token : out Natural; Status : out Execution_Status)
++        with Pre => Context_Valid (Environment), Post => Context_Valid (Environment)
++      is
++         pragma Unreferenced (Scope, Path);
++      begin
++         Token := 0; Status := Unsupported;
++      end Reject_Region;
++      procedure Reject_Completion
++        (Environment : in out Context; Input : aliased No_Input; Token : Natural;
++         Width : Integer_Width; Signature, OEM, Table_ID : Datum; Status : out Execution_Status)
++        with Pre => Context_Valid (Environment), Post => Context_Valid (Environment)
++      is
++         pragma Unreferenced (Input, Token, Width, Signature, OEM, Table_ID);
++      begin
++         Status := Unsupported;
++      end Reject_Completion;
+       procedure Execute is new Execute_With_Input
+         (Context, No_Input, Context_Valid, Read_Binding, Get_Method, Write,
+-         Begin_Call, End_Call, Define_Method, Reject_Fields, Reject_Literal);
++         Begin_Call, End_Call, Define_Method, Reject_Fields, Reject_Literal, Reject_Region, Reject_Completion);
+    begin
+       Execute (Code, Width, Args, Argument_Count, Budget, Empty, Environment,
+                Scope, Result_Out, Calls_Left, Current_Sync);
+--- a/userspace/lib/acpi/aml_namespace.ads
++++ b/userspace/lib/acpi/aml_namespace.ads
+@@ -84,7 +84,7 @@
+                   Name (Tree, I) = Name (Tree'Old, I))
+              else Tree = Tree'Old and then Node = Root);
+    type Object_Kind is (Scope_Object, Device_Object, Integer_Object, String_Object, Buffer_Object, Package_Object, Method_Object,
+-                       Table_Region_Object, Table_Field_Object);
++                       Table_Region_Object, Table_Field_Object, Uninitialized_Region_Object);
+    function Kind (Tree : State; Node : Node_ID) return Object_Kind
+      with Pre => Node <= Count (Tree),
+           Post => (if Node = Root then Kind'Result = Scope_Object);
+--- a/userspace/lib/acpi/aml_namespace.adb
++++ b/userspace/lib/acpi/aml_namespace.adb
+@@ -1,4 +1,6 @@
+ pragma Ada_2022;
++with AML_Coercions.Strings;
++with Firmware_Tables.Identifiers;
+ with AML_Fields;
+ with AML_Data;
+ with AML_Coercions;
+@@ -291,6 +293,8 @@
+       Located := Resolve (Tree, Node_ID (Scope), Path);
+       if Located.Status /= Found then
+          return (Status => AML_Execute.Missing_Binding);
++      elsif Kind (Tree, Located.Node) = Uninitialized_Region_Object then
++         return (Status => AML_Execute.Failed_Binding, Failure => AML_Execute.Uninitialized);
+       elsif Kind (Tree, Located.Node) = Method_Object then
+          return (Status => AML_Execute.Method_Binding,
+                  Method_ID => Natural (Located.Node),
+@@ -628,6 +632,127 @@
+         Object => (ID => ID, Type_Code => (if Kind = AML_Execute.String_Literal then 2 else 3),
+           Size => Data'Length, Conversion_32 => C32, Conversion_64 => C64));
+    end Materialize_Literal;
++
++   procedure Reserve_Region
++     (Tree : in out State; Scope : Natural; Path : AML_Names.Name_Result;
++      Token : out Natural; Status : out AML_Execute.Execution_Status)
++     with Pre => Valid_Context (Tree), Post => Valid_Context (Tree)
++   is
++      Base, Node : Node_ID;
++      Added : Insert_Status;
++   begin
++      Token := 0; Status := AML_Execute.Bad_Name;
++      if Scope = 0 or else Scope > Tree.Used or else not Tree.Items (Scope).Alive
++        or else Tree.Items (Scope).Active_Calls = 0
++        or else Path.Kind /= AML_Names.Accepted or else Path.Count = 0
++        or else (Path.Rooted and Path.Parents /= 0)
++      then return; end if;
++      for I in 1 .. Path.Count loop
++         if not AML_Names.Valid (Path.Parts (I)) then return; end if;
++      end loop;
++      Base := (if Path.Rooted then Root else Node_ID (Scope));
++      for I in 1 .. Path.Parents loop
++         pragma Loop_Invariant (Base <= Tree.Used);
++         if Base = Root then Status := AML_Execute.Unknown_Name; return; end if;
++         Base := Parent (Tree, Base);
++      end loop;
++      for I in 1 .. Path.Count - 1 loop
++         pragma Loop_Invariant (Base <= Tree.Used);
++         Base := Child (Tree, Base, Path.Parts (I));
++         if Base = Root then Status := AML_Execute.Unknown_Name; return; end if;
++      end loop;
++      if Kind (Tree, Base) not in Scope_Object | Device_Object | Method_Object then
++         Status := AML_Execute.Unknown_Name; return;
++      end if;
++      Insert (Tree, Base, Path.Parts (Path.Count), Node, Added);
++      case Added is
++         when Duplicate => Status := AML_Execute.Duplicate_Name; return;
++         when Full => Status := AML_Execute.Namespace_Limit; return;
++         when Invalid_Name => return;
++         when Inserted => null;
++      end case;
++      Tree.Items (Node).Owner := Node_ID (Scope);
++      Tree.Items (Node).Object_Type := Uninitialized_Region_Object;
++      Token := Natural (Node);
++      Status := AML_Execute.Returned;
++   end Reserve_Region;
++
++   procedure Complete_Region
++     (Tree : in out State; Input : aliased AML_Table_Backing.State; Token : Natural;
++      Width : AML_Decode.Integer_Width; Signature, OEM, Table_ID : AML_Execute.Datum;
++      Status : out AML_Execute.Execution_Status)
++     with Pre => Valid_Context (Tree), Post => Valid_Context (Tree)
++   is
++      use type AML_Decode.Byte;
++      type Selector is record
++         Valid : Boolean := False;
++         Length : Natural := 0;
++         Prefix : String (1 .. 8) := [others => Character'Val (0)];
++      end record;
++      function Describe (Data : AML_Decode.Bytes) return Selector is
++         Result : Selector := (Valid => True, others => <>);
++      begin
++         for I in Data'Range loop
++            exit when Data (I) = 0;
++            Result.Length := Result.Length + 1;
++            if Result.Length <= 8 then
++               Result.Prefix (Result.Length) := Character'Val (Data (I));
++            end if;
++            pragma Loop_Invariant (Result.Length <= I - Data'First + 1);
++         end loop;
++         return Result;
++      end Describe;
++      function Convert (Item : AML_Execute.Datum) return Selector is
++      begin
++         if not Item.Is_Object then
++            return Describe (AML_Coercions.Strings.From_Integer (Item.Number, Width));
++         elsif Item.Object.ID = 0 or else Item.Object.ID > AML_Objects.Count (Tree.Values) then
++            return (others => <>);
++         end if;
++         declare
++            ID : constant AML_Objects.Object_ID := Item.Object.ID;
++         begin
++            if AML_Objects.Kind (Tree.Values, ID) = AML_Objects.String_Object then
++               return Describe (AML_Objects.Byte_Data (Tree.Values, ID));
++            elsif AML_Objects.Kind (Tree.Values, ID) = AML_Objects.Buffer_Object then
++               declare
++                  Data : constant AML_Decode.Bytes := AML_Objects.Byte_Data (Tree.Values, ID);
++               begin
++                  if Data'Length > Natural'Last / 5 then return (others => <>); end if;
++                  return Describe (AML_Coercions.Strings.From_Buffer (Data));
++               end;
++            elsif AML_Objects.Kind (Tree.Values, ID) = AML_Objects.Integer_Object then
++               return Describe (AML_Coercions.Strings.From_Integer (AML_Objects.Integer_Data (Tree.Values, ID), Width));
++            end if;
++         end;
++         return (others => <>);
++      end Convert;
++      Sig, Manufacturer, Model : Selector;
++      Query : Firmware_Tables.Identifiers.Selection := (Name => "____", others => <>);
++      Found_Table : Natural;
++   begin
++      Status := AML_Execute.Unsupported_Value;
++      if Token = 0 or else Token > Tree.Used or else not Tree.Items (Token).Alive
++        or else Tree.Items (Token).Object_Type /= Uninitialized_Region_Object
++      then return; end if;
++      Sig := Convert (Signature); Manufacturer := Convert (OEM); Model := Convert (Table_ID);
++      if not Sig.Valid or else not Manufacturer.Valid or else not Model.Valid then return; end if;
++      if Sig.Length < 4 or else Manufacturer.Length > 6 or else Model.Length > 8 then return; end if;
++      Query.Name := Sig.Prefix (1 .. 4);
++      if not AML_Names.Valid (Query.Name) then Status := AML_Execute.Bad_Name; return; end if;
++      Query.Match_OEM := Manufacturer.Length /= 0;
++      Query.OEM := Manufacturer.Prefix (1 .. 6);
++      Query.Match_OEM_Table := Model.Length /= 0;
++      Query.OEM_Table := Model.Prefix;
++      Found_Table := AML_Table_Backing.Find_Table (Input, Query);
++      if Found_Table = 0 or else not AML_Table_Backing.Valid_Span (Input, Found_Table) then
++         Status := AML_Execute.Unknown_Name; return;
++      end if;
++      Tree.Items (Token).Table_Binding :=
++        (Region => (Table => Found_Table, Extent => Input.Tables (Found_Table).Extent), others => <>);
++      Tree.Items (Token).Object_Type := Table_Region_Object;
++      Status := AML_Execute.Returned;
++   end Complete_Region;
+ 
+    procedure Invoke_With_Tables
+      (Tree : in out State; Input : aliased AML_Table_Backing.State; Node : Node_ID;
+@@ -694,7 +819,7 @@
+       end Lookup;
+       procedure Execute is new AML_Execute.Execute_With_Input
+         (State, AML_Table_Backing.State, Valid_Context, Lookup, Read_Method, Write_Binding,
+-         Begin_Method, End_Method, Define_Method, Define_Fields, Materialize_Literal);
++         Begin_Method, End_Method, Define_Method, Define_Fields, Materialize_Literal, Reserve_Region, Complete_Region);
+       Method : constant AML_Execute.Method_Definition := Read_Method (Tree, Node);
+    begin
+       if not Method.Exists then
+--- /dev/null
++++ b/tests/aml-core/region_executor_tests.adb
+@@ -0,0 +1,174 @@
++pragma Ada_2022;
++with Ada.Text_IO;
++with AML_Execute; use AML_Execute;
++with AML_Decode; use AML_Decode;
++with AML_Names;
++procedure Region_Executor_Tests is
++   use type AML_Names.Parse_Status;
++   use type Integer_Value;
++   use type Byte;
++   type Mutable is record
++      Active : Natural := 0;
++      Reserved : Boolean := False;
++      Seen, Completed, Reservations : Natural := 0;
++      Reject : Boolean := False;
++   end record;
++   type Backing (Length : Positive) is limited record
++      Data : Bytes (1 .. Length) := [others => 0];
++   end record;
++   function Valid (Environment : Mutable) return Boolean is (Environment.Active <= 33);
++   procedure Lookup
++     (Environment : in out Mutable; Input : aliased Backing; Scope : Natural;
++      Path : AML_Names.Name_Result; Width : Integer_Width;
++      Purpose : Binding_Purpose; Binding : out Binding_Result)
++   is
++      pragma Unreferenced (Input, Scope, Width, Purpose);
++      ID : Natural := 0;
++   begin
++      if Path.Kind = AML_Names.Accepted and then Path.Count = 1 then
++         if Path.Parts (1) = "SIG0" then ID := 1;
++         elsif Path.Parts (1) = "OEM0" then ID := 2;
++         elsif Path.Parts (1) = "TAB0" then ID := 3;
++         elsif Path.Parts (1) = "REG0" and then Environment.Reserved then
++            Binding := (Status => Failed_Binding, Failure => Uninitialized); return;
++         end if;
++      end if;
++      if ID = 0 then Binding := (Status => Missing_Binding); return; end if;
++      if not Environment.Reserved then raise Program_Error with "lookup before reservation"; end if;
++      Environment.Seen := Environment.Seen * 10 + ID;
++      Binding := (Status => Method_Binding, Method_ID => ID, Parameters => 0);
++   end Lookup;
++   function Get_Method (Environment : Mutable; ID : Natural) return Method_Definition is
++      pragma Unreferenced (Environment);
++   begin
++      if ID in 1 .. 3 then
++         return (Exists => True, Length => 3, Code => [16#A4#, 16#0A#, Byte (ID)],
++                 Width => Bits_64, Flags => 0, Scope => ID);
++      end if;
++      return (Exists => False, Length => 0);
++   end Get_Method;
++   procedure Write
++     (Environment : in out Mutable; Scope : Natural; Path : AML_Names.Name_Result;
++      Width : Integer_Width; Item : Datum; Status : out Write_Status) is
++      pragma Unreferenced (Environment, Scope, Path, Width, Item);
++   begin
++      Status := Write_Unsupported;
++   end Write;
++   procedure Begin_Call (Environment : in out Mutable; Scope : Natural; Allowed : out Boolean) is
++      pragma Unreferenced (Scope);
++   begin
++      Allowed := Environment.Active < 33;
++      if Allowed then Environment.Active := Environment.Active + 1; end if;
++   end Begin_Call;
++   procedure End_Call (Environment : in out Mutable; Scope : Natural) is
++   begin
++      Environment.Active := Environment.Active - 1;
++      if Scope = 0 then Environment.Reserved := False; end if;
++   end End_Call;
++   procedure Define_Method
++     (Environment : in out Mutable; Scope : Natural; Path : AML_Names.Name_Result;
++      Flags : Byte; Width : Integer_Width; Code : Bytes; Status : out Declaration_Status) is
++      pragma Unreferenced (Environment, Scope, Path, Flags, Width, Code);
++   begin
++      Status := Declaration_Unsupported;
++   end Define_Method;
++   procedure Reject_Fields
++     (Environment : in out Mutable; Scope : Natural; Region : AML_Names.Name_Result;
++      Flags : AML_Decode.Byte; Entries : AML_Decode.Bytes; Status : out Execution_Status)
++   is
++      pragma Unreferenced (Environment, Scope, Region, Flags, Entries);
++   begin
++      Status := Unsupported;
++   end Reject_Fields;
++   procedure Reject_Literal
++     (Environment : in out Mutable; Kind : Literal_Kind; Data : Bytes; Binding : out Binding_Result)
++   is
++      pragma Unreferenced (Environment, Kind, Data);
++   begin
++      Binding := (Status => Failed_Binding, Failure => Unsupported_Value);
++   end Reject_Literal;
++   procedure Reserve_Region
++     (Environment : in out Mutable; Scope : Natural; Path : AML_Names.Name_Result;
++      Token : out Natural; Status : out Execution_Status)
++   is
++      pragma Unreferenced (Scope);
++   begin
++      Token := 0;
++      if Path.Kind /= AML_Names.Accepted or else Path.Count /= 1 or else Path.Parts (1) /= "REG0" then
++         Status := Bad_Name;
++      elsif Environment.Reserved then Status := Duplicate_Name;
++      else
++         Environment.Reserved := True;
++         Environment.Reservations := Environment.Reservations + 1;
++         Token := 1; Status := Returned;
++      end if;
++   end Reserve_Region;
++   procedure Complete_Region
++     (Environment : in out Mutable; Input : aliased Backing; Token : Natural;
++      Width : Integer_Width; Signature, OEM, Table_ID : Datum; Status : out Execution_Status)
++   is
++      pragma Unreferenced (Input, Width);
++      function Number (D : Datum) return Natural is
++        (if D.Is_Object then D.Object.ID else Natural (D.Number));
++   begin
++      if not Environment.Reserved or else Token /= 1 then raise Program_Error; end if;
++      if Number (Signature) /= 1 or else Number (OEM) /= 2 or else Number (Table_ID) /= 3 then
++         raise Program_Error with "selector order or values";
++      end if;
++      if Environment.Reject then Status := Unknown_Name; return; end if;
++      Environment.Completed := Environment.Completed + 1;
++      Status := Returned;
++   end Complete_Region;
++   procedure Execute is new Execute_With_Input
++     (Mutable, Backing, Valid, Lookup, Get_Method, Write, Begin_Call, End_Call,
++      Define_Method, Reject_Fields, Reject_Literal, Reserve_Region, Complete_Region);
++   Input : aliased Backing (1);
++   Environment : Mutable;
++   Result : Execution_Result;
++   Checks : Natural := 0;
++   Code : constant Bytes := [16#5B#,16#88#,82,69,71,48,
++                             83,73,71,48,79,69,77,48,84,65,66,48,16#A4#,1];
++   Args_Code : constant Bytes := [16#5B#,16#88#,82,69,71,48,16#68#,16#69#,16#6A#,16#A4#,1];
++   procedure Check (B : Boolean) is
++   begin
++      Checks := Checks + 1;
++      if not B then raise Program_Error with Checks'Image; end if;
++   end Check;
++   procedure Run (Data : Bytes; Budget : Natural := 100) is
++   begin
++      Execute (Data, Bits_64, [others => <>], 0, Budget, Input, Environment, 0, Result);
++      Check (Environment.Active = 0 and not Environment.Reserved and Result.Charged <= Budget);
++   end Run;
++begin
++   Run (Code);
++   Check (Result.Status = Returned and then Result.Value = 1);
++   Check (Environment.Seen = 123 and Environment.Completed = 1 and Environment.Reservations = 1);
++   for N in 0 .. Code'Length loop
++      Environment := (others => <>);
++      Run (Code (1 .. N));
++      Check (Environment.Completed = (if N >= 18 then 1 else 0));
++   end loop;
++   for Budget in 0 .. 40 loop
++      Environment := (others => <>);
++      Run (Code, Budget);
++      Check (Result.Status in Returned | Budget_Exceeded);
++      Check (Environment.Completed <= 1);
++   end loop;
++   Environment := (others => <>);
++   Run (Code (1 .. 18) & Code);
++   Check (Result.Status = Duplicate_Name and Environment.Seen = 123 and Environment.Completed = 1);
++   Environment := (Reject => True, others => <>);
++   Run (Code);
++   Check (Result.Status = Unknown_Name and Environment.Seen = 123 and Environment.Completed = 0);
++   Environment := (others => <>);
++   Run ([16#5B#,16#88#,82,69,71,48,82,69,71,48,0,0]);
++   Check (Result.Status = Uninitialized and Environment.Completed = 0);
++   Environment := (others => <>);
++   Execute (Args_Code, Bits_64,
++     [0 => (Is_Object => True, Object => (ID => 1, Type_Code => 2, others => <>)),
++      1 => (Is_Object => True, Object => (ID => 2, Type_Code => 2, others => <>)),
++      2 => (Is_Object => True, Object => (ID => 3, Type_Code => 2, others => <>)), others => <>],
++     3, 100, Input, Environment, 0, Result);
++   Check (Result.Status = Returned and Environment.Completed = 1 and Environment.Active = 0 and not Environment.Reserved);
++   Ada.Text_IO.Put_Line ("DataTableRegion executor checks:" & Checks'Image);
++end Region_Executor_Tests;
+--- /dev/null
++++ b/tests/aml-core/region_service_tests.adb
+@@ -0,0 +1,85 @@
++pragma Ada_2022;
++with Ada.Text_IO;
++with Interfaces; use Interfaces;
++with ACPI_Service; use ACPI_Service;
++with AML_Execute;
++
++with Firmware_Tables;
++procedure Region_Service_Tests is
++   use type AML_Execute.Execution_Status;
++   use type Firmware_Tables.Bytes;
++   subtype Bytes is Firmware_Tables.Bytes;
++   Checks : Natural := 0;
++   procedure Check (B : Boolean) is
++   begin
++      Checks := Checks + 1;
++      if not B then raise Program_Error with Checks'Image; end if;
++   end Check;
++   function Enc (S : String) return Bytes is
++      B : Bytes (1 .. S'Length);
++   begin
++      for I in B'Range loop B (I) := Character'Pos (S (S'First + I - 1)); end loop;
++      return B;
++   end Enc;
++   function Method (Name : String; Code : Bytes) return Bytes is
++     ([16#14#, Unsigned_8 (6 + Code'Length)] & Enc (Name) & [0] & Code);
++   function Table (Name : String; Revision : Unsigned_8; Data : Bytes) return Bytes is
++      B : Bytes (1 .. 36 + Data'Length) := [others => 0];
++      Sum : Unsigned_8 := 0;
++   begin
++      for I in 1 .. 4 loop
++         B (I) := Character'Pos (Name (I));
++         B (4 + I) := Unsigned_8 (Shift_Right (Unsigned_32 (B'Length), 8 * (I - 1)) and 255);
++      end loop;
++      B (9) := Revision;
++      B (37 .. B'Last) := Data;
++      for V of B loop Sum := Sum + V; end loop;
++      B (10) := 0 - Sum;
++      return B;
++   end Table;
++   function Text (S : String) return Bytes is ([16#0D#] & Enc (S) & [0]);
++   function Region (Sig : Bytes; OEM : Bytes := Text (""); ID : Bytes := Text ("")) return Bytes is
++     ([16#5B#,16#88#] & Enc ("REG0") & Sig & OEM & ID);
++   Good : constant Bytes := Region (Text ("DSDT"));
++   Field_Code : constant Bytes := [16#5B#,16#81#,11] & Enc ("REG0") & [0] & Enc ("FLD0") & [8];
++   Code : constant Bytes :=
++     Method ("GOOD", Good & [16#A4#,16#8E#] & Enc ("REG0")) &
++     Method ("READ", Good & Field_Code & [16#A4#] & Enc ("FLD0")) &
++     Method ("MISS", Region (Text ("NONE")) & [16#A4#,1]) &
++     Method ("SELF", Region ([16#8E#] & Enc ("REG0")) & [16#A4#,1]) &
++     Method ("DUPL", Good & Good & [16#A4#,1]) &
++     Method ("MSEL", [16#A4#] & Text ("DSDT")) &
++     Method ("DYNM", Region (Enc ("MSEL")) & [16#A4#,16#8E#] & Enc ("REG0")) &
++     Method ("BUFF", Region (Text ("DSDT"), [16#11#,3,16#0A#,0]) & [16#A4#,1]) &
++     Method ("INTG", Region (Text ("DSDT"), [0]) & [16#A4#,1]);
++   Service : aliased State := Fresh;
++   Status : Install_Status;
++   R : AML_Execute.Execution_Result;
++   Initial_Count : Namespace.Node_ID;
++   procedure Run (Name : String; Budget : Natural := 100) is
++   begin
++      Invoke (Service, Namespace.Child (Snapshot (Service),Namespace.Root,Name),
++              [others => 0],0,Budget,R);
++      Check (R.Charged <= Budget);
++      Check (Namespace.Count (Snapshot (Service)) = Initial_Count);
++   end Run;
++begin
++   Install (Service,1,DSDT,Table ("DSDT",2,Code),Status);
++   Check (Status = Installed);
++   Initial_Count := Namespace.Count (Snapshot (Service));
++   for I in 1 .. 20 loop
++      Run ("GOOD"); Check (R.Status = AML_Execute.Returned and then R.Value = 10);
++      Run ("READ"); Check (R.Status = AML_Execute.Returned and then R.Value = Character'Pos ('D'));
++      Run ("MISS"); Check (R.Status = AML_Execute.Unknown_Name);
++      Run ("SELF"); Check (R.Status = AML_Execute.Uninitialized);
++      Run ("DUPL"); Check (R.Status = AML_Execute.Duplicate_Name);
++      Run ("DYNM"); Check (R.Status = AML_Execute.Returned and then R.Value = 10);
++      Run ("BUFF"); Check (R.Status = AML_Execute.Returned and then R.Value = 1);
++      Run ("INTG"); Check (R.Status = AML_Execute.Unsupported_Value);
++   end loop;
++   for Budget in 0 .. 50 loop
++      Run ("READ", Budget);
++      Check (R.Status in AML_Execute.Returned | AML_Execute.Budget_Exceeded);
++   end loop;
++   Ada.Text_IO.Put_Line ("DataTableRegion service checks:" & Checks'Image);
++end Region_Service_Tests;

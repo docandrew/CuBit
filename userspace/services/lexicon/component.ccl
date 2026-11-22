@@ -1,0 +1,7 @@
+(Component name => "lexicon" kind => (Kind.Service Launcher.Process_Manager)
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/lexicon" "userspace/lib/lexicon/channel"]
+    language => Ada_Language.Ada_2022
+    optimization => Optimization.Maximum
+    checks => Checks.Suppressed
+    value_range_propagation => false)))

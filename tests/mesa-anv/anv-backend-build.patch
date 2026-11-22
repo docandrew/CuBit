@@ -1,0 +1,75 @@
+--- a/src/intel/vulkan/meson.build
++++ b/src/intel/vulkan/meson.build
+@@ -166,27 +166,11 @@
+ endforeach
+ 
+ libanv_files = files(
+-  'i915/anv_batch_chain.c',
+-  'i915/anv_batch_chain.h',
+-  'i915/anv_device.c',
+-  'i915/anv_device.h',
+-  'i915/anv_gem.c',
+-  'i915/anv_gem.h',
+-  'i915/anv_kmd_backend.c',
+-  'i915/anv_queue.c',
+-  'i915/anv_queue.h',
+   'layers/anv_android_layer.c',
+   'layers/anv_doom64.c',
+   'layers/anv_furmark.c',
+   'layers/anv_hitman3.c',
+   'layers/anv_rmv_layer.c',
+-  'xe/anv_batch_chain.c',
+-  'xe/anv_batch_chain.h',
+-  'xe/anv_kmd_backend.c',
+-  'xe/anv_device.c',
+-  'xe/anv_device.h',
+-  'xe/anv_queue.c',
+-  'xe/anv_queue.h',
+   'anv_allocator.c',
+   'anv_android.h',
+   'anv_astc_emu.c',
+@@ -250,6 +234,27 @@
+   'bvh/anv_bvh_defines.h',
+ )
+ 
++if host_machine.system() != 'cubit'
++  libanv_files += files(
++  'i915/anv_batch_chain.c',
++  'i915/anv_batch_chain.h',
++  'i915/anv_device.c',
++  'i915/anv_device.h',
++  'i915/anv_gem.c',
++  'i915/anv_gem.h',
++  'i915/anv_kmd_backend.c',
++  'i915/anv_queue.c',
++  'i915/anv_queue.h',
++  'xe/anv_batch_chain.c',
++  'xe/anv_batch_chain.h',
++  'xe/anv_kmd_backend.c',
++  'xe/anv_device.c',
++  'xe/anv_device.h',
++  'xe/anv_queue.c',
++  'xe/anv_queue.h',
++  )
++endif
++
+ anv_deps = [
+   dep_libdrm,
+   dep_valgrind,
+--- a/src/intel/vulkan/anv_kmd_backend.c
++++ b/src/intel/vulkan/anv_kmd_backend.c
+@@ -30,12 +30,14 @@
+ anv_kmd_backend_get(enum intel_kmd_type type)
+ {
+    switch (type) {
++#if !defined(__cubit__)
+    case INTEL_KMD_TYPE_I915:
+       return anv_i915_kmd_backend_get();
+    case INTEL_KMD_TYPE_XE:
+       return anv_xe_kmd_backend_get();
+    case INTEL_KMD_TYPE_STUB:
+       return anv_stub_kmd_backend_get();
++#endif
+    default:
+       return NULL;
+    }

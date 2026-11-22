@@ -1,0 +1,33 @@
+library project Native is
+   CBOR_Source := external ("CBOR_ADA_SRC");
+   for Source_Dirs use (".", "../../userspace/lib/config", "../../userspace/ccl/src",
+                       "../../userspace/ccl/persistence", CBOR_Source & "/src");
+   for Source_Files use
+     ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
+     ("native_receiver_check.ads", "native_receiver_check.adb",
+      "config_worker_receiver.ads", "config_worker_receiver.adb",
+      "config_worker.ads", "config_worker.adb", "config_worker_storage.ads",
+      "config_database.ads", "config_database.adb",
+      "config_database-schemas.ads", "config_database-schemas.adb",
+      "ccl-objects-schemas-persistence.ads", "ccl-objects-schemas-persistence.adb",
+      "ccl-objects-persistence.ads", "ccl-objects-persistence.adb",
+      "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",
+      "cbor.ads", "cbor-model.ads", "cbor-decoding.ads", "cbor-decoding.adb",
+      "cbor-encoding.ads", "cbor-encoding.adb",
+      "config_worker_channel.ads", "config_worker_channel.adb",
+      "config_worker_messages.ads", "config_worker_messages.adb",
+      "config_schema_protocol.ads", "config_schema_protocol.adb",
+      "config_schema_worker.ads", "config_schema_worker.adb",
+      "config_worker_protocol.ads", "config_worker_protocol.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
+      "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb");
+   for Object_Dir use "build/native";
+   for Library_Dir use "build/native-lib";
+   for Library_Name use "config_worker_channel";
+   for Library_Kind use "static";
+   for Runtime ("Ada") use "../../userspace/runtime";
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-g", "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+end Native;

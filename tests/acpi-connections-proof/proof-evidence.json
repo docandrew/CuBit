@@ -1,0 +1,49 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/connections-contracts-A3wVB00I/source",
+  "output": "/home/doc/git/.acpi-proof-work/connections-contracts-A3wVB00I/source/tests/acpi-connections-proof/results/prove-sBYjnlGN",
+  "units": [
+    {
+      "unit": "acpi_resource_data-serial_connections",
+      "spark_sha256": "d2a37fc681e2a04b489f1c96990dc17e64c29691d0c34b7b1138436c2042ebca",
+      "entities": 5,
+      "flow_checks": 15,
+      "proof_checks": 139,
+      "valid_goals": 234,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    },
+    {
+      "unit": "acpi_resource_data-pin_descriptors",
+      "spark_sha256": "5b1557eacd4c0af563cec7013c0e3e357341aca4ba41daf0a9c2a0cf27f9e9d0",
+      "entities": 7,
+      "flow_checks": 21,
+      "proof_checks": 114,
+      "valid_goals": 197,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    },
+    {
+      "unit": "acpi_resource_data-clock_inputs",
+      "spark_sha256": "dba4c3ecd40bc4420ba80660dcb1ff6998b84b77c8e831618fd61937642c68e8",
+      "entities": 6,
+      "flow_checks": 12,
+      "proof_checks": 58,
+      "valid_goals": 95,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    }
+  ],
+  "totals": {
+    "entities": 18,
+    "flow_checks": 48,
+    "proof_checks": 311,
+    "valid_goals": 526
+  },
+  "scope": "Selected serial/pin/clock runtime safety and declared extent/span contracts; pin-read availability/value relative to Decode-reported span/count; exact clock Hertz numerator scaling and divisor preservation; initialization/dependencies/termination. Not full decoded field-to-wire correspondence, acceptance/error classification completeness, source/provider/label/controller admission, service/namespace or whole AML/native correctness.",
+  "full_snapshot_inputs": 4497,
+  "collector_sha256": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
+  "collector_binding": "Verified against full immutable snapshot pins; the next publication also includes this imported collector explicitly in the phase manifest."
+}

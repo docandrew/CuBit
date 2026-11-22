@@ -1,0 +1,10 @@
+project ADLN_PAT is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("adln_pat_tests.adb", "intel_gpu_adln_pat.ads",
+                        "intel_gpu_adln_pat.adb", "intel_gpu_pat_registers.ads");
+   for Object_Dir use "build-adln-pat";
+   for Main use ("adln_pat_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end ADLN_PAT;

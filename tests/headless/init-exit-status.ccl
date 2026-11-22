@@ -1,0 +1,13 @@
+# A returning main's exit status (LIVE-002; headless exit-status test): one
+# exit-status-check per ending. procmgr logs each exit code: 0 for a plain
+# return, 1 for Ada.Command_Line.Failure, 134 for an unhandled exception.
+(startup v1
+  # ABI-002: services' debug text reaches serial only through logstore's mirror.
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "exit-status-check.app" (priority 3)
+    (arguments (Exit_Status_Parameters ending => Exit_Ending.Returns)))
+  (start "exit-status-check.app" (priority 3)
+    (arguments (Exit_Status_Parameters ending => Exit_Ending.Sets_Failure)))
+  (start "exit-status-check.app" (priority 3)
+    (arguments (Exit_Status_Parameters ending => Exit_Ending.Raises)))
+)

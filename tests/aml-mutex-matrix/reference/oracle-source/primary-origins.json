@@ -1,0 +1,26 @@
+{
+  "exmutex.c": {
+    "origin": "/home/doc/git/.acpi-proof-work/acpica-name-init-diagnostic-z94ee17u/source/source/components/executer/exmutex.c",
+    "sha256": "38a03b0b07ecd46fd7f8e0d2d7a92356a440314969547493bf5f467e63a7e2bf"
+  },
+  "exsystem.c": {
+    "origin": "/home/doc/git/.acpi-proof-work/acpica-name-init-diagnostic-z94ee17u/source/source/components/executer/exsystem.c",
+    "sha256": "ed676327f7549c0b963e6a007bacf3b347b25624026a581ce5867553bf275cb3"
+  },
+  "dsmethod.c": {
+    "origin": "/home/doc/git/.acpi-proof-work/acpica-name-init-diagnostic-z94ee17u/source/source/components/dispatcher/dsmethod.c",
+    "sha256": "005146caac20a9df9fb51aeb1b648e2dd69a944ba925e09bb8d83b311425629c"
+  },
+  "psparse.c": {
+    "origin": "/home/doc/git/.acpi-proof-work/acpica-name-init-diagnostic-z94ee17u/source/source/components/parser/psparse.c",
+    "sha256": "b5f5ee5b032ac7bad12ee3c654bf696fad70a1f989bd78f624a4c9aed969a88a"
+  },
+  "exoparg1.c": {
+    "origin": "/home/doc/git/.acpi-proof-work/acpica-name-init-diagnostic-z94ee17u/source/source/components/executer/exoparg1.c",
+    "sha256": "45f28151b2ac73decde7b7b4adabd284fe3afcb155c4c74aeaa651ff6596237a"
+  },
+  "exoparg2.c": {
+    "origin": "/home/doc/git/.acpi-proof-work/acpica-name-init-diagnostic-z94ee17u/source/source/components/executer/exoparg2.c",
+    "sha256": "19245c302f1c59842b23b2301a0fff3eef1bec292cb4e1cd81b2aecea9ee8cdc"
+  }
+}

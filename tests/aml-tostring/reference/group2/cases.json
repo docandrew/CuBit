@@ -1,0 +1,14 @@
+[
+  {
+    "name": "NINT",
+    "extra": "Name(TARG,7)",
+    "body": "Store(0x5A,Index(ToString(BUFF,Ones,TARG),Zero)) Return(ToBuffer(TARG))",
+    "purpose": "freshString result alias to differingnamedInteger"
+  },
+  {
+    "name": "NBUF",
+    "extra": "Name(TARG,Buffer(){0x58})",
+    "body": "Store(0x5A,Index(ToString(BUFF,Ones,TARG),Zero)) Return(ToBuffer(TARG))",
+    "purpose": "freshString result alias to differingnamedBuffer"
+  }
+]

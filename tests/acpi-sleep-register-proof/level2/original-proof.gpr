@@ -1,0 +1,7 @@
+project Proof is
+ for Source_Dirs use ("../source");
+ for Object_Dir use "obj";
+ package Compiler is
+ for Default_Switches ("Ada") use ("-gnat2022","-gnatwa","-gnatwe","-gnata","-gnato");
+ end Compiler;
+end Proof;

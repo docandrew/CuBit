@@ -1,0 +1,5 @@
+(Component name => "files" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/apps/files/native"]
+    libraries => ["ui-toolkit"]
+    language => Ada_Language.Ada_2022)))

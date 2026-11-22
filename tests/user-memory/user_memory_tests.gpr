@@ -1,0 +1,13 @@
+project User_Memory_Tests is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use
+     ("main.adb", "copy_proof.ads", "copy_proof.adb",
+      "user_buffer_copy.ads", "user_buffer_copy.adb",
+      "user_page_walk.ads", "user_page_walk.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-g");
+   end Compiler;
+end User_Memory_Tests;

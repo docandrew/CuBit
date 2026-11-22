@@ -1,0 +1,1139 @@
+{
+  "assumptions": [
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 9,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 11,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 12,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 11,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 12,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 8,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 13,
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "arg": 11,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 13,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 12,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 11,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 13,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 12,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 3,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 6,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 13,
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "arg": 11,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 13,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 12,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 11,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 13,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 12,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 3,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 2,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 2,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 7,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 7,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 4,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 14,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 14,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 7,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 5,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 10,
+        "predicate": "CLAIM_AORTE"
+      }
+    }
+  ],
+  "entities": {
+    " 1": {
+      "name": "AML_Field_Plans.Buffer_Length",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 32
+        }
+      ]
+    },
+    " 10": {
+      "name": "AML_Field_Plans.Plan",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 35
+        }
+      ]
+    },
+    " 11": {
+      "name": "AML_Field_Datums.Count",
+      "sloc": [
+        {
+          "file": "aml_field_datums.ads",
+          "line": 16
+        }
+      ]
+    },
+    " 12": {
+      "name": "AML_Field_Datums.Valid",
+      "sloc": [
+        {
+          "file": "aml_field_datums.ads",
+          "line": 15
+        }
+      ]
+    },
+    " 13": {
+      "name": "AML_Field_Datums.Prepare",
+      "sloc": [
+        {
+          "file": "aml_field_datums.ads",
+          "line": 20
+        }
+      ]
+    },
+    " 14": {
+      "name": "AML_Field_Datums.At_Index",
+      "sloc": [
+        {
+          "file": "aml_field_datums.ads",
+          "line": 32
+        }
+      ]
+    },
+    " 2": {
+      "name": "AML_Field_Plans.Count",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 20
+        }
+      ]
+    },
+    " 3": {
+      "name": "AML_Field_Plans.Prepare",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 21
+        }
+      ]
+    },
+    " 4": {
+      "name": "AML_Field_Plans.Matches",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 27
+        }
+      ]
+    },
+    " 5": {
+      "name": "AML_Field_Plans.Result_Form",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 30
+        }
+      ]
+    },
+    " 6": {
+      "name": "AML_Field_Plans.Rule",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 23
+        }
+      ]
+    },
+    " 7": {
+      "name": "AML_Field_Plans.Datum_At",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 24
+        }
+      ]
+    },
+    " 8": {
+      "name": "AML_Field_Plans.Valid",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 19
+        }
+      ]
+    },
+    " 9": {
+      "name": "AML_Field_Plans",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 5
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 1,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 32,
+      "msg_id": 0,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 2,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 20,
+      "msg_id": 1,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 7,
+      "entity": 3,
+      "file": "aml_field_plans.adb",
+      "how_proved": "flow",
+      "line": 24,
+      "msg_id": 2,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 7,
+      "entity": 3,
+      "file": "aml_field_plans.adb",
+      "how_proved": "flow",
+      "line": 25,
+      "msg_id": 3,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 7,
+      "entity": 3,
+      "file": "aml_field_plans.adb",
+      "how_proved": "flow",
+      "line": 26,
+      "msg_id": 4,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 3,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 21,
+      "msg_id": 5,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 4,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 27,
+      "msg_id": 6,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 5,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 30,
+      "msg_id": 7,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 6,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 23,
+      "msg_id": 8,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 7,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 24,
+      "msg_id": 9,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 8,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 19,
+      "msg_id": 10,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    }
+  ],
+  "pragma_assume": [
+  ],
+  "progress": "PROGRESS_PROOF",
+  "proof": [
+    {
+      "check_col": 49,
+      "check_file": "aml_field_plans.adb",
+      "check_line": 74,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 726,
+              "time": 2.72300000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 93,
+              "time": 1.79480000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 49,
+      "entity": 3,
+      "file": "aml_field_plans.adb",
+      "how_proved": "prover",
+      "line": 74,
+      "msg_id": 11,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 726,
+          "max_time": 2.72300001233816E-02
+        }
+      }
+    },
+    {
+      "check_col": 20,
+      "check_file": "aml_field_plans.ads",
+      "check_line": 22,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Timeout",
+              "steps": 1,
+              "time": 5
+            },
+            "Z3": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.58430000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 2757,
+              "time": 1.36442000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 6595,
+              "time": 3.52178000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 3591,
+              "time": 1.45752000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 2760,
+              "time": 1.25390000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 2757,
+              "time": 1.27368000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 20,
+      "entity": 3,
+      "file": "aml_field_plans.ads",
+      "how_proved": "prover",
+      "line": 22,
+      "msg_id": 12,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 5,
+          "max_steps": 6595,
+          "max_time": 3.52178007364273E-01
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        },
+        "Z3": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 4.58430014550686E-02
+        }
+      }
+    },
+    {
+      "check_col": 86,
+      "check_file": "aml_field_plans.adb",
+      "check_line": 79,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.25590000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 86,
+      "entity": 7,
+      "file": "aml_field_plans.adb",
+      "how_proved": "prover",
+      "line": 79,
+      "msg_id": 13,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 1.25590004026890E-02
+        }
+      }
+    },
+    {
+      "check_col": 23,
+      "check_file": "aml_field_plans.adb",
+      "check_line": 79,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 8373,
+              "time": 1.17741000000000E+00
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 257,
+              "time": 1.99460000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 34,
+              "time": 1.90460000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 23,
+      "entity": 7,
+      "file": "aml_field_plans.adb",
+      "how_proved": "prover",
+      "line": 79,
+      "msg_id": 14,
+      "rule": "VC_PRECONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 3,
+          "max_steps": 8373,
+          "max_time": 1.17740499973297E+00
+        }
+      }
+    },
+    {
+      "check_col": 53,
+      "check_file": "aml_field_plans.adb",
+      "check_line": 86,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.14000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.87600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.23700000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.57300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.58800000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.28300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.31600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 53,
+      "entity": 4,
+      "file": "aml_field_plans.adb",
+      "how_proved": "prover",
+      "line": 86,
+      "msg_id": 15,
+      "rule": "VC_PRECONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 7,
+          "max_steps": 1,
+          "max_time": 9.28299967199564E-03
+        }
+      }
+    },
+    {
+      "check_col": 48,
+      "check_file": "aml_field_plans.adb",
+      "check_line": 102,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.84500000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 48,
+      "entity": 1,
+      "file": "aml_field_plans.adb",
+      "how_proved": "prover",
+      "line": 102,
+      "msg_id": 16,
+      "rule": "VC_DIVISION_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 4.84499987214804E-03
+        }
+      }
+    },
+    {
+      "check_col": 81,
+      "check_file": "aml_field_plans.adb",
+      "check_line": 102,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 3377,
+              "time": 5.80710000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.99510000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 81,
+      "entity": 1,
+      "file": "aml_field_plans.adb",
+      "how_proved": "prover",
+      "line": 102,
+      "msg_id": 17,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 3377,
+          "max_time": 5.80709986388683E-02
+        }
+      }
+    },
+    {
+      "check_col": 41,
+      "check_file": "aml_field_plans.ads",
+      "check_line": 33,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 3416,
+              "time": 6.05120000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 41,
+      "entity": 1,
+      "file": "aml_field_plans.ads",
+      "how_proved": "prover",
+      "line": 33,
+      "msg_id": 18,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 3416,
+          "max_time": 6.05119988322258E-02
+        }
+      }
+    }
+  ],
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all",
+    " 10": "all",
+    " 2": "all",
+    " 3": "all",
+    " 4": "all",
+    " 5": "all",
+    " 6": "all",
+    " 7": "all",
+    " 8": "all",
+    " 9": "all"
+  },
+  "stop_reason": "STOP_REASON_NONE",
+  "timings": {
+    " 1": {
+      "gnat2why.vc_generation": 1.36900003999472E-02,
+      "gnatwhy3.init": 2.82092988491058E-01,
+      "gnatwhy3.register_vcs": 8.13999865204096E-03,
+      "gnatwhy3.run_vcs": 7.00000009601354E-06,
+      "gnatwhy3.save_session": 2.73200008086860E-03,
+      "gnatwhy3.schedule_vcs": 5.69909997284412E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 5.84999890998006E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 1.99000001884997E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 3.99900000047637E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 1.55699905008078E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 4.76199900731444E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 1.96700007654727E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 1.19300000369549E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 1.35499902535230E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 1.23299902770668E-03,
+      "gnatwhy3.transformations.eliminate_literal": 1.65400002151728E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 2.19599902629852E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 9.99000008050643E-07,
+      "gnatwhy3.transformations.inline_trivial": 3.04710008203983E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 3.99900000047637E-06,
+      "gnatwhy3.transformations.remove_unused": 9.95299872010946E-03,
+      "gnatwhy3.transformations.simplify_formula": 1.55100005213171E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 5.65900001674891E-03
+    },
+    " 2": {
+      "gnat2why.vc_generation": 1.02890003472567E-02
+    },
+    " 3": {
+      "gnat2why.vc_generation": 8.08899998664856E-02,
+      "gnatwhy3.init": 3.27309012413025E-01,
+      "gnatwhy3.register_vcs": 5.48090003430843E-02,
+      "gnatwhy3.run_vcs": 9.99900021270150E-06,
+      "gnatwhy3.save_session": 8.85399896651506E-03,
+      "gnatwhy3.schedule_vcs": 4.53270003199577E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.20179988443851E-02,
+      "gnatwhy3.transformations.detect_polymorphism": 3.73200001195073E-03,
+      "gnatwhy3.transformations.discriminate_if_poly": 7.99900044512469E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 1.02300001308322E-02,
+      "gnatwhy3.transformations.eliminate_builtin": 1.26010002568364E-02,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 3.28300008550286E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 5.81600004807115E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 6.22199894860387E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 3.98699892684817E-03,
+      "gnatwhy3.transformations.eliminate_literal": 7.05899903550744E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 4.13399888202548E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 4.99899988426478E-06,
+      "gnatwhy3.transformations.inline_trivial": 6.96400031447411E-02,
+      "gnatwhy3.transformations.introduce_premises": 3.87199898250401E-03,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 9.00000031833770E-06,
+      "gnatwhy3.transformations.remove_unused": 2.49719992280006E-02,
+      "gnatwhy3.transformations.simplify_formula": 8.94299894571304E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 3.15399989485741E-02
+    },
+    " 4": {
+      "gnat2why.vc_generation": 3.40460017323494E-02,
+      "gnatwhy3.init": 3.18471014499664E-01,
+      "gnatwhy3.register_vcs": 1.22769987210631E-02,
+      "gnatwhy3.run_vcs": 7.00000009601354E-06,
+      "gnatwhy3.save_session": 2.12799897417426E-03,
+      "gnatwhy3.schedule_vcs": 3.37110012769699E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 7.03800003975630E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 6.24998996499926E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 3.99900000047637E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 1.12699903547764E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 6.57000020146370E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 9.66000021435320E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 9.75998991634697E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 9.67998988926411E-04,
+      "gnatwhy3.transformations.eliminate_inductive": 6.82000012602657E-04,
+      "gnatwhy3.transformations.eliminate_literal": 1.88100000377744E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 1.05900003109127E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 1.99900000552589E-06,
+      "gnatwhy3.transformations.inline_trivial": 5.37060014903545E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 6.00000021222513E-06,
+      "gnatwhy3.transformations.remove_unused": 1.87519993633032E-02,
+      "gnatwhy3.transformations.simplify_formula": 1.43299903720617E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 7.83099886029959E-03
+    },
+    " 5": {
+      "gnat2why.vc_generation": 2.68179997801781E-02
+    },
+    " 6": {
+      "gnat2why.vc_generation": 2.32020001858473E-02
+    },
+    " 7": {
+      "gnat2why.vc_generation": 1.65119990706444E-02,
+      "gnatwhy3.init": 3.03791999816895E-01,
+      "gnatwhy3.register_vcs": 1.00699989125133E-02,
+      "gnatwhy3.run_vcs": 7.00000009601354E-06,
+      "gnatwhy3.save_session": 2.10599903948605E-03,
+      "gnatwhy3.schedule_vcs": 4.68010008335114E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 6.20600022375584E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 2.91000003926456E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 3.00000010611257E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 1.37700000777841E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 6.64999894797802E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 1.48400000762194E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 1.50899903383106E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 1.40599894803017E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 1.65200000628829E-03,
+      "gnatwhy3.transformations.eliminate_literal": 1.74700003117323E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 1.91999902017415E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 1.99900000552589E-06,
+      "gnatwhy3.transformations.inline_trivial": 3.61390002071857E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 3.99900000047637E-06,
+      "gnatwhy3.transformations.remove_unused": 1.22560001909733E-02,
+      "gnatwhy3.transformations.simplify_formula": 1.70400005299598E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 7.25900009274483E-03
+    },
+    " 8": {
+      "gnat2why.vc_generation": 3.44341009855270E-01
+    },
+    "global": {
+      "flow analysis": 1.05650000274181E-01,
+      "globals (advanced)": 3.08099994435906E-03,
+      "globals (basic)": 1.38870002701879E-02,
+      "init_why_sections": 3.01760006695986E-02,
+      "marking": 1.56580004841089E-02,
+      "properties (advanced)": 4.07999992603436E-04,
+      "translation of standard": 4.12800014019012E-02
+    }
+  }
+}

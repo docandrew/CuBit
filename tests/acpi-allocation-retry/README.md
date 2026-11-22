@@ -1,0 +1,9 @@
+# ACPI allocation retry regression
+
+Run inside the pinned Nix hosted Ada/GPR/ACPICA environment with TMPDIR exported before entering Nix. `bash tests/acpi-allocation-retry/run.sh` builds into a fresh TMPDIR directory. `--validate-only` checks source hashes without compiling. No kernel/image/QEMU build occurs.
+
+Release hosted tests exercise the actual collecting namespace with small object, byte and element arenas, retained-root survival, one collection before final refusal, successful retry after releasing a root, and existing owner/entry/reclamation scenarios. The small retry helper separately runs with assertions and overflow checks enabled, and with release checks suppressed. Whole interpreter assertion-enabled code generation is not part of this test. ACPICA checks the buffer, temporary and package fixture semantics for both table revisions; CuBit allocation pressure is its own implementation policy.
+
+Optional `--capture-dir /absolute/path` verifies the pinned 25-table Lenovo corpus hashes before building the replay. Both modeled MPGN branches must preserve their entire ordered hardware-access transcript, exact fuel and terminal result, and perform zero collections. Firmware tables are not included here. The fixture intentionally stops later at the unadmitted PTCI/LFCN field; it does not claim complete startup or native/hardware validation. The per-process 30-second limit is a test timeout, not a laptop performance promise.
+
+Every source/input hash is checked before and after every command. Each build has a 180-second limit, one compiler job and bounded captured output. Test results do not establish a whole-service SPARK proof or production allocator/firmware correctness. The live production files must match sources.json; old mirrors deliberately fail validation after later changes until reviewed and refreshed.

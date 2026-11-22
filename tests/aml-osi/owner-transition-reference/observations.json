@@ -1,0 +1,686 @@
+[
+  {
+    "case": "r1-keep",
+    "results": [
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "RAW0",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "EXPR",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "RAW0",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "EXPR",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      }
+    ],
+    "repeat_agreement": true,
+    "statuses": [],
+    "cache_warning": true,
+    "aml_sha256": "2ac2b99f1a4c4fac862a32ac49cb0a69c32f55c91a264d2545b69016ca36dba3"
+  },
+  {
+    "case": "r1-drop",
+    "results": [
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "RAW0",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "EXPR",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "RAW0",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "EXPR",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      }
+    ],
+    "repeat_agreement": true,
+    "statuses": [],
+    "cache_warning": true,
+    "aml_sha256": "c6cb8dcddd37c0b1497129cbcf34f16548bdc0b0cb38b2f8b38420e2cfdfdc74"
+  },
+  {
+    "case": "r2-keep",
+    "results": [
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "RAW0",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "EXPR",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "RAW0",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "EXPR",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "FFFFFFFFFFFFFFFF"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      }
+    ],
+    "repeat_agreement": true,
+    "statuses": [],
+    "cache_warning": true,
+    "aml_sha256": "9b294934e4d5dbd5c0ceec1fa01f509aa53b1ad617ba32bd156c99dc6a833c8a"
+  },
+  {
+    "case": "r2-drop",
+    "results": [
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "RAW0",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "EXPR",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "RAW0",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "TEST",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      },
+      {
+        "method": "INIT",
+        "kind": "integer",
+        "value": "0000000000000000"
+      },
+      {
+        "method": "EXPR",
+        "kind": "integer",
+        "value": "FFFFFFFFFFFFFFFF"
+      },
+      {
+        "method": "POST",
+        "kind": "package",
+        "value": {
+          "elements": [
+            {
+              "kind": "integer",
+              "hex": "0000000000000000"
+            }
+          ]
+        }
+      },
+      {
+        "method": "FLG0",
+        "kind": "integer",
+        "value": "0000000000000001"
+      }
+    ],
+    "repeat_agreement": true,
+    "statuses": [],
+    "cache_warning": true,
+    "aml_sha256": "84f89fc2277bc93810c14adb1f9f666e53af437d1a90569eec2cf35a5ad0ac46"
+  }
+]

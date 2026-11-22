@@ -1,0 +1,11 @@
+project Audio is
+   for Source_Dirs use (".", "fixture", "build/src");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      -- Linux-hosted tests only, never the native kernel/app flags.
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-O2", "-g");
+   end Compiler;
+end Audio;

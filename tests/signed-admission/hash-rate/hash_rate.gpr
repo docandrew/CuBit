@@ -1,0 +1,20 @@
+--  SPDX-License-Identifier: GPL-3.0-or-later
+--
+--  The payload digest's hash rate on the build host (SIGN-001,
+--  docs/signed-binaries.md "Digest choice"): SPARKTLSCrypto's SHA-384 and,
+--  for comparison, SHA-256, compiled exactly as signing_host.gpr and
+--  sparktls_host.gpr compile them, plus the admission's ECDSA costs.
+--  Linked statically so the binary runs on another Linux host as is.
+with "../../../userspace/lib/signing/signing_host.gpr";
+project Hash_Rate is
+   for Source_Dirs use (".");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("hash_rate.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022");
+   end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use ("-static");
+   end Linker;
+end Hash_Rate;

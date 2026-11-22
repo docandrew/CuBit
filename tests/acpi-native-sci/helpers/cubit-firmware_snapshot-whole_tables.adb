@@ -1,0 +1,4 @@
+package body CuBit.Firmware_Snapshot.Whole_Tables is
+ procedure Find(Tables:Authority;Signature:String;Table:out Table_ID;Bytes:out Table_Bytes;Status:out Read_Status) is pragma Unreferenced(Tables,Signature);begin Table:=1;Bytes:=116;Status:=Found;end;
+ procedure Copy(Tables:Authority;Table:Table_ID;Into:out Byte_Array;Status:out Read_Status) is pragma Unreferenced(Tables,Table);use type Interfaces.Unsigned_8;Sum:Interfaces.Unsigned_8:=0;begin Into:=[others=>0];Into(1..4):=[Character'Pos('F'),Character'Pos('A'),Character'Pos('C'),Character'Pos('P')];Into(5):=116;Into(9):=1;Into(47):=9;Into(58):=4;Into(89):=4;for B of Into loop Sum:=Sum+B;end loop;Into(10):=0-Sum;Status:=Found;end;
+end CuBit.Firmware_Snapshot.Whole_Tables;

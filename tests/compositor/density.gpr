@@ -1,0 +1,11 @@
+project Density is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use
+     ("density_tests.adb", "compositor_density.ads", "compositor_density.adb");
+   for Object_Dir use "build/density/obj";
+   for Exec_Dir use "build/density";
+   for Main use ("density_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Density;

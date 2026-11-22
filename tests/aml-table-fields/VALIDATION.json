@@ -1,0 +1,18 @@
+{
+  "tested_snapshot": "/home/doc/git/.acpi-proof-work/table-fields-public-prepared-a3ucty5m",
+  "worker": 96386,
+  "observed_exit_code": 0,
+  "terminal_audit": {
+    "path": "/home/doc/git/.acpi-proof-work/table-fields-public-prepared-a3ucty5m/validation/terminal-audit.json",
+    "sha256": "f72ff2f3f28036856a5bc7f46826109c9c3fd39a29698059d538be4549770cd8"
+  },
+  "source_manifest": {
+    "path": "/home/doc/git/.acpi-proof-work/table-fields-public-prepared-a3ucty5m/inputs.json",
+    "sha256": "5ec1470685e1560571acafe940f69a6a7f44d043ff11e2ba1d36f708c41290af"
+  },
+  "artifact_manifest": {
+    "path": "/home/doc/git/.acpi-proof-work/table-fields-public-prepared-a3ucty5m/validation/artifact-hashes.json",
+    "sha256": "82404557a18f9ae6882a697d9e8b0fd6bbad7730c495849000f72cf8748af830"
+  },
+  "scope": "Canonical successor changes documentation only; all executable source, fixture, raw reference and harness bytes identical to tested snapshot."
+}

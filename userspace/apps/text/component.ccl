@@ -1,0 +1,8 @@
+(Component name => "text" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/apps/text/native" "userspace/lib/text"]
+    libraries => ["ui-toolkit"]
+    language => Ada_Language.Ada_2022
+    units => [(Unit_Code ["text_utf8.adb" "text_layout.adb" "text_pieces.adb" "text_cursors.adb"
+                          "text_marks.adb" "text_history.adb" "text_syntax.adb" "text_search.adb"
+                          "text_commands.adb" "text_modal.adb"] "proved")])))

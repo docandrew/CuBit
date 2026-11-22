@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="amber" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffdc80"/><stop offset="1" stop-color="#ffa41f"/></linearGradient>
+<linearGradient id="slate" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#5d5778"/><stop offset="1" stop-color="#3a3452"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M2 12 L28 12 L28 28 L2 28Z" transform="translate(2 2)"/>
+  <path d="M2 12 L28 12 L28 28 L2 28Z" transform="translate(1 1)"/>
+  <path d="M2 12 L28 12 L28 28 L2 28Z"/>
+</g>
+<path d="M2 12 L28 12 L28 28 L2 28Z" fill="#1d1530" transform="translate(2 2)"/>
+<path d="M2 12 L28 12 L28 28 L2 28Z" fill="#1d1530" transform="translate(1 1)"/>
+<path d="M2 12 L28 12 L28 28 L2 28Z" fill="url(#slate)"/>
+<path d="M2 16 L7 16 L11 12 L6 12Z" fill="#ffffff"/>
+<path d="M12 16 L17 16 L21 12 L16 12Z" fill="#ffffff"/>
+<path d="M22 16 L27 16 L28 12 L26 12Z" fill="#ffffff"/>
+<path d="M11.8 18 L19 22 L11.8 26Z" fill="#8af5e8"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M2 5 L26 2 L27 8 L2 11Z" transform="translate(2 2)"/>
+  <path d="M2 5 L26 2 L27 8 L2 11Z" transform="translate(1 1)"/>
+  <path d="M2 5 L26 2 L27 8 L2 11Z"/>
+</g>
+<path d="M2 5 L26 2 L27 8 L2 11Z" fill="#1d1530" transform="translate(2 2)"/>
+<path d="M2 5 L26 2 L27 8 L2 11Z" fill="#1d1530" transform="translate(1 1)"/>
+<path d="M2 5 L26 2 L27 8 L2 11Z" fill="url(#slate)"/>
+<path d="M3.5 4.81 L6.5 4.44 L3.69 10.8 L0.56 11.17Z" fill="url(#amber)"/>
+<path d="M9.5 4.06 L12.5 3.69 L9.94 10.05 L6.81 10.42Z" fill="url(#amber)"/>
+<path d="M15.5 3.31 L18.5 2.94 L16.19 9.3 L13.06 9.67Z" fill="url(#amber)"/>
+<path d="M21.5 2.56 L24.5 2.19 L22.44 8.55 L19.31 8.92Z" fill="url(#amber)"/>
+</svg>

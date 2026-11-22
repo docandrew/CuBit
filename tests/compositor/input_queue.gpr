@@ -1,0 +1,10 @@
+project Input_Queue is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("input_queue_tests.adb", "compositor_input_queue.ads", "compositor_input_queue.adb");
+   for Object_Dir use "build/input-queue/obj";
+   for Exec_Dir use "build/input-queue";
+   for Main use ("input_queue_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Input_Queue;

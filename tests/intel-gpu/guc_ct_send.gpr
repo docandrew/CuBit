@@ -1,0 +1,10 @@
+project GuC_CT_Send is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("guc_ct_send_tests.adb", "intel_gpu_guc_ct_send.ads",
+     "intel_gpu_guc_ct_send.adb", "intel_gpu_guc_ctb.ads", "intel_gpu_guc_ctb.adb");
+   for Object_Dir use "build-guc-ct-send";
+   for Main use ("guc_ct_send_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end GuC_CT_Send;

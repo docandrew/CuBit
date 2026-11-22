@@ -1,0 +1,5 @@
+# No render authority and no fabricated discovery provider.
+(startup v1
+  # ABI-002: services' debug text reaches serial only through logstore's mirror.
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "mesa-no-provider.app" (priority 3)))

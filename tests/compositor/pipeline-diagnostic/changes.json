@@ -1,0 +1,10 @@
+[
+  "userspace/lib/compositor/vulkan_pipeline_diagnostic.h",
+  "userspace/lib/compositor/vulkan_device_storage.c",
+  "userspace/lib/compositor/vulkan_affine.c",
+  "userspace/lib/compositor/vulkan_checker.c",
+  "userspace/lib/compositor/vulkan_device_pipeline_ffi.ads",
+  "userspace/lib/compositor/vulkan_device_pipeline_ffi.adb",
+  "userspace/lib/compositor/vulkan_sources.c",
+  "userspace/services/desktop/main.adb"
+]

@@ -1,0 +1,13 @@
+--- a/gst-libs/gst/play/gstplay.c
++++ b/gst-libs/gst/play/gstplay.c
+@@ -3644,7 +3644,9 @@
+   self->audio_sid = g_strdup (info->stream_id);
+   GST_DEBUG_OBJECT (self, "Selecting audio stream id '%s'", info->stream_id);
+ 
+-  ret = gst_play_select_streams (self);
++  /* Store a valid disabled track for the next enable operation.
++   * An audio-only stream has no selection event to send while disabled. */
++  ret = !self->audio_enabled || gst_play_select_streams (self);
+   g_mutex_unlock (&self->lock);
+   g_object_unref (info);
+ 

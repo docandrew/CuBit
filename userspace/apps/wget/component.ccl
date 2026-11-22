@@ -1,0 +1,2 @@
+(Component name => "wget" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

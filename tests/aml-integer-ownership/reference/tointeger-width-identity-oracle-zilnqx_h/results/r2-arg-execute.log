@@ -1,0 +1,66 @@
+Input file /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.aml, Length 0x2A (42) bytes
+Input file /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg.aml, Length 0x63 (99) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x000059CEED24C180 000024 (v02 Intel )
+ACPI: XSDT 0x000059CF18A29150 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x000059CEED24BFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x000059CF18A23D90 00002A (v02 CUBIT  BASE     00000001 INTL 20260408)
+ACPI: FACS 0x000059CEED24C140 000040
+
+ACPI table initialization:
+Table [DSDT: BASE    ] (id 01) -    1 Objects with   0 Devices,   0 Regions,    0 Methods (0/0/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 10 (0xA) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Initializing Device/Processor/Thermal objects and executing _INI/_STA methods:
+    Executed 0 _INI methods requiring 0 _STA executions (examined 2 objects)
+CuBitProbeSupported
+AnotherTestString
+Windows 2000
+Windows 2001
+Windows 2001 SP1
+Windows 2001.1
+Windows 2001 SP2
+Windows 2001.1 SP1
+Windows 2006.1
+Windows 2006 SP1
+Windows 2006 SP2
+Windows 2009
+Windows 2012
+Windows 2013
+Windows 2015
+Windows 2016
+Windows 2017
+Windows 2017.2
+Windows 2018
+Windows 2018.2
+Windows 2019
+Windows 2020
+Windows 2021
+Windows 2022
+Extended Address Space Descriptor
+ACPI: Host-directed Dynamic ACPI Table Load:
+ACPI: SSDT 0x00007A082B2C2010 000063 (v02 CUBIT  TOINTWID 00000001 INTL 20260408)
+ACPI Exec: Table Event INSTALL, [SSDT] 0x7a082b2c2010
+Table [SSDT: TOINTWID] (id 05) -    2 Objects with   0 Devices,   0 Regions,    2 Methods (0/2/0 Serial/Non/Cvt)
+ACPI Exec: Table Event LOAD, [SSDT] 0x7a082b2c2010
+Final data object initialization: Namespace contains 14 (0xE) objects
+Acpi table [SSDT] successfully installed and loaded
+Evaluating \TEST
+Evaluation of \TEST returned object 0x59cf18a23dd0, external buffer length 18
+  [Integer] = FFFFFFFFFFFFFFFF
+
+0x59cf18a29d80 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x59cf18a29d20 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x59cf18a29be0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x59cf18a29a30 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

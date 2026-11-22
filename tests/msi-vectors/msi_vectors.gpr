@@ -1,0 +1,27 @@
+--  Hosted tests and proofs for device interrupt vectors (run.sh).
+project MSI_Vectors is
+   --  Mutations (mutations.sh) substitute edited copies of the units.
+   for Source_Dirs use
+     (".", external ("MSI_SHARED_SRC", "../../shared/interrupts"),
+      external ("MSI_KERNEL_SRC", "../../kernel/src"),
+      external ("MSI_DEVMGR_SRC", "../../userspace/services/devmgr"));
+   for Source_Files use
+     ("main.adb", "device_model.ads", "device_model.adb",
+      "device_vector_abi.ads", "device_vector_abi.adb",
+      "device_vectors.ads", "device_vectors.adb",
+      "pci_message_interrupts.ads", "pci_message_interrupts.adb",
+      "pci_message_functions.ads", "pci_message_functions.adb");
+   for Object_Dir use external ("MSI_VECTORS_OBJ", "build/obj");
+   for Exec_Dir use external ("MSI_VECTORS_EXEC", "build");
+   for Main use ("main.adb");
+   --  Mutation runs build without contract checks, so the tests' own
+   --  checks must catch each mutation (the proof is run separately).
+   Assertions := external ("MSI_VECTORS_ASSERTIONS", "-gnata");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", Assertions, "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end MSI_Vectors;

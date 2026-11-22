@@ -1,0 +1,5 @@
+{
+  "tests/acpi-hid-i2c/capture_phase.py": "tests/acpi-gpio-routing-proof/capture_phase.py",
+  "tests/acpi-hid-i2c/hosted_capture.py": "tests/acpi-provider-native/hosted_capture.py",
+  "tests/acpi-hid-i2c/source_guards.py": "tests/acpi-provider-native/source_guards.py"
+}

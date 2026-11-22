@@ -1,0 +1,12 @@
+--  Hosted tests and proof for Process_Identities (docs/process-objects.md).
+project Process_Identities_Test is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("process_identities.ads", "process_identities.adb", "main.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwJ");
+   end Compiler;
+end Process_Identities_Test;

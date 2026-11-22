@@ -1,0 +1,303 @@
+{
+  "version": 1,
+  "name": "acpi-hid-native-producer",
+  "kind": "producer",
+  "main": "producer_tests.adb",
+  "profiles": [
+    "checked",
+    "release"
+  ],
+  "verdict": "HID producer",
+  "scenarios": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43
+  ],
+  "production_files": [
+    "userspace/services/acpi/native/acpi_native_hid_producer.ads",
+    "userspace/services/acpi/native/acpi_native_hid_producer.adb",
+    "userspace/services/acpi/native/acpi_native_hid_offers.ads",
+    "userspace/services/acpi/native/acpi_native_hid_offers.adb",
+    "userspace/services/acpi/native/acpi_consumer_request_ids.ads",
+    "userspace/services/acpi/native/acpi_consumer_request_ids.adb",
+    "shared/platform/hid_offer_payload.ads",
+    "shared/platform/hid_offer_payload.adb",
+    "userspace/runtime/gnat/cubit-hid_offer_exchange.ads",
+    "userspace/runtime/gnat/cubit-gpio_bootstrap_exchange.ads",
+    "userspace/runtime/gnat/cubit-firmware_data_exchange.ads",
+    "userspace/runtime/gnat/cubit-grant_references.ads"
+  ],
+  "ada_directories": [],
+  "checked_units": [
+    "acpi_native_hid_producer",
+    "acpi_native_hid_offers",
+    "acpi_consumer_request_ids"
+  ],
+  "scope": "Actual native producer/transport/allocator and canonical payload/protocols; Core/collection/runtime window/admission/physical boundary/IPC/grants/clocks explicitly modeled. No whole native instance execution.",
+  "selected_helpers": [
+    "tests/acpi-hid-native-producer/fixture/acpi_fallible_heap.adb",
+    "tests/acpi-hid-native-producer/fixture/acpi_fallible_heap.ads",
+    "tests/acpi-hid-native-producer/fixture/acpi_native_hid_collection.adb",
+    "tests/acpi-hid-native-producer/fixture/acpi_native_hid_collection.ads",
+    "tests/acpi-hid-native-producer/fixture/acpi_native_hid_detection.ads",
+    "tests/acpi-hid-native-producer/fixture/acpi_native_initializer_history.adb",
+    "tests/acpi-hid-native-producer/fixture/acpi_native_initializer_history.ads",
+    "tests/acpi-hid-native-producer/fixture/acpi_native_pre_device.adb",
+    "tests/acpi-hid-native-producer/fixture/acpi_native_pre_device.ads",
+    "tests/acpi-hid-native-producer/fixture/acpi_one_service.adb",
+    "tests/acpi-hid-native-producer/fixture/acpi_one_service.ads",
+    "tests/acpi-hid-native-producer/fixture/acpi_requests.ads",
+    "tests/acpi-hid-native-producer/fixture/acpi_service.ads",
+    "tests/acpi-hid-native-producer/fixture/cubit-handles-ipc.adb",
+    "tests/acpi-hid-native-producer/fixture/cubit-handles-ipc.ads",
+    "tests/acpi-hid-native-producer/fixture/cubit-handles.ads",
+    "tests/acpi-hid-native-producer/fixture/cubit-memory_grants.adb",
+    "tests/acpi-hid-native-producer/fixture/cubit-memory_grants.ads",
+    "tests/acpi-hid-native-producer/fixture/cubit-messages.adb",
+    "tests/acpi-hid-native-producer/fixture/cubit-messages.ads",
+    "tests/acpi-hid-native-producer/fixture/cubit-monotonic.adb",
+    "tests/acpi-hid-native-producer/fixture/cubit-monotonic.ads",
+    "tests/acpi-hid-native-producer/fixture/cubit.ads",
+    "tests/acpi-hid-native-producer/fixture/gpio_bootstrap_payload.ads",
+    "tests/acpi-hid-native-producer/fixture/producer_model.adb",
+    "tests/acpi-hid-native-producer/fixture/producer_model.ads",
+    "tests/acpi-hid-native-producer/fixture/producer_tests.adb",
+    "tests/acpi-hid-native-producer/fixture/sender_model.adb",
+    "tests/acpi-hid-native-producer/fixture/sender_model.ads"
+  ],
+  "tools": {
+    "gprbuild": {
+      "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+      "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+    },
+    "gcc": {
+      "path": "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gcc",
+      "sha256": "216c8e207c60cee4b90866c28a4a89d424e37fecc03526d2ba825a2d2d58a1ef"
+    },
+    "iasl": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "sha256": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb"
+    },
+    "acpiexec": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "sha256": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
+    }
+  },
+  "inputs": [
+    {
+      "path": "shared/platform/hid_offer_payload.adb",
+      "sha256": "effe917080d0380daa4549bad0e2c5e5f7d936de431375514e1011e60b2b381e"
+    },
+    {
+      "path": "shared/platform/hid_offer_payload.ads",
+      "sha256": "b16d0a38a16996bddbfe7d5a0e83f4a2eaf87ac320b38cb654fa70ed254fd936"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_fallible_heap.adb",
+      "sha256": "5f6cea98dc69f73222b7c88b49fb209acdc0c3233d18d6809efaf9b90170dcc5"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_fallible_heap.ads",
+      "sha256": "1d2688fac0656a62cd1c5a5175f2e7cd23a803e40ace71626a1cbb045de12c17"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_native_hid_collection.adb",
+      "sha256": "c6d0fc33c0cbfabb7a622c4abbdfa0888ee10b97fbdb42be639bf86d396f2ae1"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_native_hid_collection.ads",
+      "sha256": "853c797f8ea5ec4f61087d1330032073c1a3f928187c7a0326453ca8682ef38e"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_native_hid_detection.ads",
+      "sha256": "7f56440c15bf1fefbf7e2a8eb4980cb59d91d34febcb104bd29fbb085d2de4f1"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_native_initializer_history.adb",
+      "sha256": "f310851807e4db575d5d120aac4e6a1d5671c679c6fb8db5289e6f318bb1a472"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_native_initializer_history.ads",
+      "sha256": "080b12446d5941c402f6bf1c0ef8503085a8bb236ac7a604011231a0de75bfef"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_native_pre_device.adb",
+      "sha256": "db3052e88d90fa02f4e526c77e830ab5f31ce6b554998d84948e04eb299a11ba"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_native_pre_device.ads",
+      "sha256": "3be6e2f138cffc64cab3f30b7d2c1d4cb445099e392063d813c923c3f66fb1ea"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_one_service.adb",
+      "sha256": "f6acf394848d71f3a7e007e29643f3f1243bb996ccc0d0bf18e133f112583371"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_one_service.ads",
+      "sha256": "7ee5c44d5b81cff052ee4ee426294d409073c7ca6669ce42faf5f7eca9ca94ec"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_requests.ads",
+      "sha256": "b07ddc157898e44ae29bf54a9410ddd7152d7a0eac8c4d6cb1af534ac5d4262a"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/acpi_service.ads",
+      "sha256": "2062ea44f8a6b74fd0b08871d4d62022f5fc9a29bf570dec038aebfb072074e1"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/cubit-handles-ipc.adb",
+      "sha256": "772ad48c4a122822660832221b2343a3f83f120844df47fd5e23831af8aa2a27"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/cubit-handles-ipc.ads",
+      "sha256": "7e61196714ea3a2133b8a250f86d0a759aad486d3645b32c613608503805e719"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/cubit-handles.ads",
+      "sha256": "2f63fed56593f39dadb4eb2e7b7027ad554dcd0c6291b328b7019b048c1ab5f6"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/cubit-memory_grants.adb",
+      "sha256": "3a624ca2610ccb5bdb48733ee22f997a350853f99461848fa7aa61d8cf89898d"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/cubit-memory_grants.ads",
+      "sha256": "5bb31b838cbd91c528a8c3d3dcbc57f3c4bb52d690e8e1e72e4b1626544df06d"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/cubit-messages.adb",
+      "sha256": "d972bbf1f10c7a97c4d4ff6124b6a39687c38c5568c85512bd7e8656926c7ee9"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/cubit-messages.ads",
+      "sha256": "6c1ef5bb93d4a3524b11e3be360f708abc8f5e808beeec209a2f1f358c168819"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/cubit-monotonic.adb",
+      "sha256": "c9207af1d7d45fbfd94d4c4fed911c5731972b018e768e08271e908433c6e115"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/cubit-monotonic.ads",
+      "sha256": "d679f0e63d9d7d132190c77d3e6a69c8f53996ef85c3f5940bc22163afd4d3a9"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/cubit.ads",
+      "sha256": "da1156fc1292b3f4a2d17ceea94a50ab6c4ba33f7a4129a05d0ed3f6c02aa19a"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/gpio_bootstrap_payload.ads",
+      "sha256": "1a2f2e727e2ebf93d98be18bc64b0e972b74fb2c28d797ac3178ea9f8880a52a"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/producer_model.adb",
+      "sha256": "d7b296b06feb4b39417f62812533b584b55e2383351bff42857b64b1f01553f7"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/producer_model.ads",
+      "sha256": "4d389fe7be66bf5a2336d7f4b33c65d6d0ed3dac9e4a2508eb9ffe6af5d68279"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/producer_tests.adb",
+      "sha256": "7f4bf66973cc167c56a4738907f3348e5bc7a02275b704a6f8eddead1e6d70bd"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/sender_model.adb",
+      "sha256": "943e7c9626779e7b94816ffc4c9201adf0cd4bd7a580171263d1f5f10b9c9f39"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/fixture/sender_model.ads",
+      "sha256": "0691ea5beacc7d5d173878dcafff7540165476efe09a2a9af337b7fa08426730"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/README.md",
+      "sha256": "ccdbad8300e1153f4e738c6d9c3e9b1c23fdd9bb5948bcd9cfdf11f5499fba44"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/run.mjs",
+      "sha256": "d51195f432df54ea59e4cea60031d1a2f730d5d0f2f16c190d3248beae70a8e6"
+    },
+    {
+      "path": "tests/acpi-hid-native-producer/run.sh",
+      "sha256": "1aac3b9e8ab172a31e7a0f0aca6d63a955bfef17e108b28004369d86f21a8929"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-firmware_data_exchange.ads",
+      "sha256": "f034a93c89ade20c62af87c2cc35c43b625dae869e5390a012491ddc838836b1"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-gpio_bootstrap_exchange.ads",
+      "sha256": "0a1f2ca52637fddb81363f68f19550726b63f4ebe8bc9c895a6d18a43fe5e921"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-grant_references.ads",
+      "sha256": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-hid_offer_exchange.ads",
+      "sha256": "2dd86fee37adad6a3bb1c38a1dc07ca4d66d612c23351bbf71eac6c713ef3e93"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_consumer_request_ids.adb",
+      "sha256": "abbece25d72e681494bb6dd0fa2eb0192ca7f4dee22c9c61a3d4fb5af5bccd3d"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_consumer_request_ids.ads",
+      "sha256": "0106e93c3f92178c97f6c787b3110cc34e2831088a38765f77b8df8d017af68d"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_hid_offers.adb",
+      "sha256": "b98ec13f15826eae0d264e4fc4faec6d4d1ffca4a8d3cfcabd0a9f16f13c7a80"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_hid_offers.ads",
+      "sha256": "fae41f0b5e23c04f7f226a95fde5af7917fbe9aacd13e3eee3f696a697d326f4"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_hid_producer.adb",
+      "sha256": "a341d2506e8f8d4ebffa62c2f1030bd8e1809e2fff147080c8dc24f652b41cc7"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_hid_producer.ads",
+      "sha256": "18765dea4960c4feeb8be7865f7ede8e1062ae7e2945ddf4e9a773d09bbbea9c"
+    }
+  ]
+}

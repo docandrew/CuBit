@@ -1,0 +1,56 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2020 Jon Andrew
+--
+-- Build-time constants for keeping track of Git commit and build date. Note
+-- that this file will be pre-processed by a tool like sed to produce the
+-- actual build.ads file used during compilation.
+-------------------------------------------------------------------------------
+package Build with SPARK_MODE => On 
+is
+    -- Diagnostic demand accounting only; never changes scheduling policy.
+    Observe_Scheduling_Budgets : constant Boolean := SED_SHADOW_SCHEDULING;
+    Test_Deadline_Timer : constant Boolean := SED_DEADLINE_TIMER_TEST;
+    Test_Latency_Trace : constant Boolean := SED_LATENCY_TRACE;
+    Wakeup_Scheduling : constant Boolean := SED_WAKEUP_SCHEDULING;
+    OneShot_Scheduling : constant Boolean := SED_ONESHOT_SCHEDULING;
+    -- An idle CPU takes unpinned ready work from other CPUs' ready lists.
+    Work_Stealing : constant Boolean := SED_WORK_STEALING;
+    -- The futex pause (IPC-010): the kernel sets IA32_UMWAIT_CONTROL and
+    -- publishes its limit so Futex_Wait may UMWAIT briefly before the
+    -- kernel sleep. Off until proved on the laptop (USER_WAIT_PAUSE=1).
+    User_Wait_Pause : constant Boolean := SED_USER_WAIT_PAUSE;
+    -- Address-space tags (x86 PCIDs, TLB_Context): CR3 loads keep cached
+    -- translations when the CPU has PCID and INVPCID. Off until proved on
+    -- the laptop (TAGGED_TLB=1); off, every CR3 load drops the old address
+    -- space's translations.
+    Tagged_TLB : constant Boolean := SED_TAGGED_TLB;
+    -- System call census (ABI-002, Syscall_Census): count each process's
+    -- calls and print them (SYSCALL_CENSUS=1). Diagnostic only.
+    Syscall_Census : constant Boolean := SED_SYSCALL_CENSUS;
+    -- Interrupt-entry SMAP probe (SEC-026, Interrupts.Probe_User_Access):
+    -- an interrupt from user code holding RFLAGS.AC reads that code's user
+    -- page and reports whether SMAP stopped it (SMAP_ENTRY_PROBE=1). Tests.
+    Smap_Entry_Probe : constant Boolean := SED_SMAP_ENTRY_PROBE;
+    -- Kernel-map probe (KERN-014, Process.Map_Probe): reads a process's page
+    -- through the kernel's linear map on its request, and checks at boot
+    -- that a freed frame holds no allocator links (KERN014_PROBE=1). Tests.
+    Kernel_Map_Probe : constant Boolean := SED_KERN014_PROBE;
+    -- Debug-register probe (DBG-001, Debug_Register_Probe): on a process's
+    -- console request the kernel arms a data breakpoint on one of its user
+    -- words, for the MOV SS / POP SS debug-exception test
+    -- (DEBUG_REGISTER_PROBE=1, headless --test mov-ss-debug). Tests only.
+    Debug_Register_Probe : constant Boolean := SED_DEBUG_REGISTER_PROBE;
+    -- Records the kernel log ring holds (Kernel_Log, LOG-004): at most
+    -- Kernel_Log_Publication.Maximum_Records; a test build shrinks it to
+    -- exercise overflow (KERNEL_LOG_RECORDS=64 make -C kernel world).
+    Kernel_Log_Records : constant := SED_KERNEL_LOG_RECORDS;
+    -- Git Commit
+    COMMIT : constant String := "SED_GIT_HASH";
+
+    -- Date of Build
+    DATE : constant String := "SED_BUILD_DATE";
+
+    -- SHA-256 hash of all the files in src/
+    HASH : constant String := "SED_SRC_HASH";
+end Build;

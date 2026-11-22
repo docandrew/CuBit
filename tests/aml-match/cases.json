@@ -1,0 +1,782 @@
+[
+  {
+    "key": "1-MEQ",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-MEQ.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-MLE",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-MLE.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-MLT",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-MLT.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-MGE",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-MGE.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-MGT",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-MGT.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 2
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-IMIX",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-IMIX.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-SMIX",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-SMIX.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-BMIX",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-BMIX.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-NULL",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-NULL.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-NEST",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-NEST.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-EMPTYBYTE",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-EMPTYBYTE.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-NONE",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-NONE.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 4294967295
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-LAST",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-LAST.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-BOUND",
+    "group": 1,
+    "classification": "runtime_error",
+    "aml": "reference/group1/cases/1-BOUND.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "PACKAGE_LIMIT",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-HUGE",
+    "group": 1,
+    "classification": "runtime_error",
+    "aml": "reference/group1/cases/1-HUGE.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "PACKAGE_LIMIT",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-EMPTY",
+    "group": 1,
+    "classification": "runtime_error",
+    "aml": "reference/group1/cases/1-EMPTY.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "PACKAGE_LIMIT",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-ORDER",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-ORDER.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 4294967295
+      },
+      "marker": 1234
+    }
+  },
+  {
+    "key": "1-MUTATE",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-MUTATE.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 4294967295
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-LOCAL",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-LOCAL.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-REF",
+    "group": 1,
+    "classification": "runtime_error",
+    "aml": "reference/group1/cases/1-REF.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "UNSUPPORTED_VALUE",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-NAME",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/1-NAME.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-BADOBJ",
+    "group": 1,
+    "classification": "compile_rejected",
+    "compiler_errors": [
+      "6058"
+    ]
+  },
+  {
+    "key": "1-ERRORORDER",
+    "group": 1,
+    "classification": "compile_rejected",
+    "compiler_errors": [
+      "6058"
+    ]
+  },
+  {
+    "key": "1-BADOP",
+    "group": 1,
+    "classification": "compile_rejected",
+    "compiler_errors": [
+      "6126"
+    ]
+  },
+  {
+    "key": "2-MEQ",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-MEQ.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-MLE",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-MLE.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-MLT",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-MLT.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-MGE",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-MGE.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-MGT",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-MGT.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 2
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-IMIX",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-IMIX.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-SMIX",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-SMIX.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-BMIX",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-BMIX.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-NULL",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-NULL.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-NEST",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-NEST.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-EMPTYBYTE",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-EMPTYBYTE.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-NONE",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-NONE.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 18446744073709551615
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-LAST",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-LAST.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 1
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-BOUND",
+    "group": 1,
+    "classification": "runtime_error",
+    "aml": "reference/group1/cases/2-BOUND.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "PACKAGE_LIMIT",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-HUGE",
+    "group": 1,
+    "classification": "runtime_error",
+    "aml": "reference/group1/cases/2-HUGE.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "PACKAGE_LIMIT",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-EMPTY",
+    "group": 1,
+    "classification": "runtime_error",
+    "aml": "reference/group1/cases/2-EMPTY.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "PACKAGE_LIMIT",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-ORDER",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-ORDER.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 18446744073709551615
+      },
+      "marker": 1234
+    }
+  },
+  {
+    "key": "2-MUTATE",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-MUTATE.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 18446744073709551615
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-LOCAL",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-LOCAL.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-REF",
+    "group": 1,
+    "classification": "runtime_error",
+    "aml": "reference/group1/cases/2-REF.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "UNSUPPORTED_VALUE",
+      "result": null,
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-NAME",
+    "group": 1,
+    "classification": "returned",
+    "aml": "reference/group1/cases/2-NAME.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 0
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-BADOBJ",
+    "group": 1,
+    "classification": "compile_rejected",
+    "compiler_errors": [
+      "6058"
+    ]
+  },
+  {
+    "key": "2-ERRORORDER",
+    "group": 1,
+    "classification": "compile_rejected",
+    "compiler_errors": [
+      "6058"
+    ]
+  },
+  {
+    "key": "2-BADOP",
+    "group": 1,
+    "classification": "compile_rejected",
+    "compiler_errors": [
+      "6126"
+    ]
+  },
+  {
+    "key": "1-SKIP",
+    "group": 2,
+    "classification": "returned",
+    "aml": "reference/group2/cases/1-SKIP.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 4294967295
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "1-BADRETURN",
+    "group": 2,
+    "classification": "runtime_error",
+    "aml": "reference/group2/cases/1-BADRETURN.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "UNSUPPORTED_VALUE",
+      "result": null,
+      "marker": 1
+    }
+  },
+  {
+    "key": "1-PRIORITY",
+    "group": 2,
+    "classification": "runtime_error",
+    "aml": "reference/group2/cases/1-PRIORITY.aml",
+    "revision": 1,
+    "bits": 32,
+    "expected": {
+      "status": "EMPTY_BUFFER",
+      "result": null,
+      "marker": 1
+    }
+  },
+  {
+    "key": "2-SKIP",
+    "group": 2,
+    "classification": "returned",
+    "aml": "reference/group2/cases/2-SKIP.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "RETURNED",
+      "result": {
+        "kind": "integer",
+        "value": 18446744073709551615
+      },
+      "marker": 0
+    }
+  },
+  {
+    "key": "2-BADRETURN",
+    "group": 2,
+    "classification": "runtime_error",
+    "aml": "reference/group2/cases/2-BADRETURN.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "UNSUPPORTED_VALUE",
+      "result": null,
+      "marker": 1
+    }
+  },
+  {
+    "key": "2-PRIORITY",
+    "group": 2,
+    "classification": "runtime_error",
+    "aml": "reference/group2/cases/2-PRIORITY.aml",
+    "revision": 2,
+    "bits": 64,
+    "expected": {
+      "status": "EMPTY_BUFFER",
+      "result": null,
+      "marker": 1
+    }
+  }
+]

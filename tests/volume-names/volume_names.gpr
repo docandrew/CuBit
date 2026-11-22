@@ -1,0 +1,13 @@
+--  Hosted tests and proofs for the filesystem service's volume names
+--  (userspace/services/filesystem/volume_list, run.sh).
+project Volume_Names is
+   for Source_Dirs use (".", "../../userspace/services/filesystem");
+   for Source_Files use ("volume_list.ads", "volume_list.adb", "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+end Volume_Names;

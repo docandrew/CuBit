@@ -1,0 +1,131 @@
+with CuBit.Console_Route;
+with CCL_Native_Bindings;
+with Interfaces; use Interfaces;
+with CuBit.Messages; use CuBit.Messages;
+with CuBit.Logging;
+with CBOR;
+with CCL.Control;
+with CCL.Sessions;
+with Control_Transport;
+with Control_HTTP;
+with Control_Wire;
+with Control_Presentation;
+with Control_Host;
+with CuBit.Monotonic;
+
+procedure Main is
+   Host : CCL.Control.Observation;
+   Success : Boolean;
+   use type Control_HTTP.Parse_State;
+   use type Control_HTTP.Method;
+   use type CCL.Control.Operation;
+
+   procedure Serve is
+      Input : String (1 .. Control_HTTP.Max_Input);
+      Used : Natural := 0;
+      Count : Natural;
+      Frame : Control_HTTP.Request;
+      Query : Control_Wire.Request;
+      Encoded : Control_Wire.Response;
+      Result : CCL.Control.Response;
+      Session : CCL.Sessions.Session;
+      Valid : Boolean;
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+      Deadline : constant Unsigned_64 :=
+        (if Now > Unsigned_64'Last - 5000 then Unsigned_64'Last else Now + 5000);
+   begin
+      loop
+         Control_Transport.Read_Some (Input (Used + 1 .. Input'Last), Count, Deadline, Success);
+         if not Success then return; end if;
+         Used := Used + Count;
+         Control_HTTP.Parse (Input (1 .. Used), Frame);
+         exit when Frame.State /= Control_HTTP.Incomplete or Used = Input'Length;
+      end loop;
+      if Frame.State /= Control_HTTP.Ready then
+         Control_Transport.Write_All (Control_HTTP.Error_Response, Success); return;
+      end if;
+      if Frame.Verb = Control_HTTP.Preflight then
+         Control_Transport.Write_All (Control_HTTP.Preflight_Response, Success); return;
+      end if;
+      declare
+         Bytes : CBOR.Byte_Array (1 .. CBOR.SE_Offset (Frame.Body_Length));
+      begin
+         for I in Bytes'Range loop
+            Bytes (I) := Character'Pos (Input (Frame.Body_First + Natural (I) - 1));
+         end loop;
+         Control_Wire.Decode (Bytes, Query, Valid);
+      end;
+      if not Valid then
+         Control_Transport.Write_All (Control_HTTP.Error_Response, Success); return;
+      end if;
+      -- Inspection runs in a fresh bounded session. A tab's session
+      -- (Query.Session) keeps its definitions and streams in Control_Host;
+      -- it separates tabs and grants no authority (no login yet).
+      CCL.Sessions.Initialize (Session);
+      if Query.Op = CCL.Control.Complete_Expression then
+         Result := (Observed => Host, others => <>);
+         Control_Host.Complete (Query.Session, Query.Source (1 .. Query.Length), Result.Completion);
+      elsif Query.Op in CCL.Control.Evaluate_Expression | CCL.Control.Present_Expression then
+         Result := (Observed => Host, others => <>);
+         Control_Host.Evaluate (Query.Session, Query.Source (1 .. Query.Length), Result.Outcome);
+      elsif Query.Op in CCL.Control.Start_Monitor | CCL.Control.Stop_Monitor |
+        CCL.Control.Inspect_Monitor | CCL.Control.Present_Monitor
+      then
+         Result := (Observed => Host, others => <>);
+         case Query.Op is
+            when CCL.Control.Start_Monitor =>
+               Control_Host.Start_Monitor (Query.Session, Query.Source (1 .. Query.Length), Result.Accepted);
+            when CCL.Control.Stop_Monitor =>
+               Control_Host.Stop_Monitor (Query.Target, Result.Accepted);
+            when others => Result.Accepted := True;
+         end case;
+         Control_Host.Pump;
+         Result.Monitor := Control_Host.Monitor;
+      else
+         Control_Host.Read_Clock (Host.Clock_Available, Host.Monotonic_Ms);
+         CCL.Control.Execute (Session, Query.Op, Query.Source (1 .. Query.Length), Host, Result);
+      end if;
+      if Query.Op in CCL.Control.Present_Expression | CCL.Control.Read_Image_Rows |
+        CCL.Control.Present_Monitor | CCL.Control.Complete_Expression
+      then
+         Control_Presentation.Encode (Query, Result, Encoded);
+      else
+         Control_Wire.Encode (Query, Result, Encoded);
+      end if;
+      if Encoded.Length = 0 then
+         Control_Transport.Write_All (Control_HTTP.Error_Response, Success); return;
+      end if;
+      declare
+         Output : String (1 .. Encoded.Length);
+      begin
+         for I in Output'Range loop Output (I) := Character'Val (Encoded.Data (CBOR.SE_Offset (I))); end loop;
+         Control_Transport.Write_All (Control_HTTP.Response_Header (Output'Length) & Output, Success);
+      end;
+      if Success then debugPrint ("ccl-control: request completed" & ASCII.LF); end if;
+   end Serve;
+begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
+   debugPrint ("ccl-control: DEVELOPMENT PLAINTEXT; own bindings only" & ASCII.LF);
+   if CCL_Native_Bindings.Logstore.Present then
+      CuBit.Logging.Announce ("ccl-control: started (development plaintext listener)", Success,
+                              CCL_Native_Bindings.Logstore.Value);
+   end if;
+   Host.Process_Id := Own_Process_Word;
+   Host.Clock_Process := To_Word (Registered_Driver (DRIVER_CLOCK));
+   Control_Host.Initialize (Success);
+   if not Success then
+      debugPrint ("ccl-control: host binding initialization failed" & ASCII.LF); return;
+   end if;
+   Control_Transport.Listen (Host.Network_Process, Success);
+   if not Success then
+      debugPrint ("ccl-control: listener failed" & ASCII.LF);
+      Control_Transport.Close; return;
+   end if;
+   debugPrint ("ccl-control: native listener ready" & ASCII.LF);
+   loop
+      Control_Host.Pump;
+      Control_Transport.Accept_Connection (Control_Host.Next_Deadline, Success);
+      if Success then Serve; Control_Transport.Close_Connection; end if;
+   end loop;
+end Main;

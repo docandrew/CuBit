@@ -1,0 +1,570 @@
+with CuBit.Block_Devices;
+with CuBit.Handles.IPC;
+with Fs_Attachments;
+with Startup;
+with CuBit.Filesystems; use CuBit.Filesystems;
+with CuBit.Volume_Descriptions;
+with Ext2_Support;
+with Fs_Partitions;
+with ISO9660;
+with Fs_Path_Checks;
+with Fs_Reply_Labels;
+with CuBit.File_Access;
+with CuBit.Filesystem_Places;
+with Fs_Server.Access_Control; use Fs_Server.Access_Control;
+with Fs_Server.Delegations; use Fs_Server.Delegations;
+with Fs_Server.Replies; use Fs_Server.Replies;
+with Fs_Server.Watches; use Fs_Server.Watches;
+with CuBit.System_Stops;
+with CuBit.Console_Route;
+
+package body Fs_Server.Storage is
+
+   package Labels renames Fs_Reply_Labels;
+
+   use type Ext2.Flush_Status;
+   use ASCII;
+
+   FS_PAGE_SIZE : constant := 4096;
+
+   --  The volume a block device attaches as: "<kind>:<ordinal>", where
+   --  the ordinal is its controller's place among those of its kind in PCI
+   --  location order (Fs_Attachments). @nvme:0 is registered at startup;
+   --  another NVMe controller's volume is registered when it attaches.
+   --  The ATA channel is one device.
+   NVMe_Volume_Prefix : constant String := "nvme:";
+   NVMe_Transfer_Pages : constant Transfer_Page_Count := 128;
+   --  A UFS disk: one slot's buffer (64 KiB) per transfer.
+   UFS_Volume_Prefix : constant String := "ufs:";
+   UFS_Transfer_Pages : constant Transfer_Page_Count := 16;
+
+   --  Generic endpoint admission. The registry role is only a boot-order hint;
+   --  grant creation is authorized by the endpoint already installed by devmgr.
+   procedure ensureVolume (Volume : Volume_Index; Result : out Admission_Result) is
+      Device : constant Device_Binding := Binding (Volumes, Volume);
+      Context : Volume_Context renames Contexts (Volume);
+      Grant_OK, Revoked : Boolean;
+      Provider : Process_ID;
+      Raw : Unsigned_64;
+   begin
+      Result := Context.Status;
+      if Context.Status /= Provider_Not_Ready then
+         return;
+      end if;
+      if not CuBit.Handles.Valid (Device.Endpoint) then
+         return; -- not attached yet
+      end if;
+      if Device.Ready_Role /= 0 then
+         Provider := Registered_Driver (Device.Ready_Role);
+         if Provider = No_Process then
+            return; -- not supplied yet; no session or identity was replaced
+         end if;
+      end if;
+      if Context.Buffer = System.Null_Address then
+         Raw := syscall
+           (SYSCALL_SBRK, Unsigned_64 (Device.Transfer_Pages + 1) * FS_PAGE_SIZE);
+         if Raw = 0 or else Raw = Unsigned_64'Last then
+            Result := Insufficient_Resources;
+            return;
+         end if;
+         Context.Buffer := toAddr
+           ((Raw + FS_PAGE_SIZE - 1) and not (FS_PAGE_SIZE - 1));
+      end if;
+      CuBit.Memory_Grants.Create_Via_Capability
+        (Device.Endpoint, Context.Buffer, Device.Transfer_Pages, True,
+         Context.Grant, Grant_OK);
+      if not Grant_OK then
+         Result := Grant_Rejected;
+         return;
+      end if;
+      --  A GPT disk's volume is its Linux filesystem partition.
+      declare
+         Window : Ext2.Volume_Window;
+         Found : Fs_Partitions.Window_Result;
+         use type Fs_Partitions.Window_Result;
+      begin
+         Fs_Partitions.Find_Root
+           (Device.Endpoint, Context.Grant, Context.Buffer,
+            Unsigned_32 (Device.Transfer_Pages) * FS_PAGE_SIZE, Window, Found);
+         if Found in Fs_Partitions.Whole_Device | Fs_Partitions.Partition then
+            Ext2.initBlockDevice
+              (Context.Fs, Device.Endpoint, Unsigned_64 (Volume), Context.Grant, Context.Buffer,
+               Unsigned_32 (Device.Transfer_Pages) * FS_PAGE_SIZE, Window, Result);
+         else
+            Result := (if Found = Fs_Partitions.Device_Error then Device_Error
+                       else Unsupported_Filesystem);
+         end if;
+      end;
+      Context.Status := Result;
+      bumpNamespace;   --  names on this volume resolve anew
+      if Result = Admitted then
+         debugPrint ("FS Server: volume " & Volume_List.Name (Volumes, Volume) & " ready." & LF);
+      else
+         CuBit.Memory_Grants.Revoke (Context.Grant, Revoked);
+         --  No rebinding/retry after admission uncertainty. A pending revoked
+         --  grant must not be overwritten with a new reference.
+         debugPrint ("FS Server: volume " & Volume_List.Name (Volumes, Volume) &
+                     " rejected: " & Description (Result) & LF);
+      end if;
+   end ensureVolume;
+
+   procedure mountBootImage (address, size : Unsigned_64) is
+   begin
+      if address = 0 then
+         debugPrint ("FS Server: No ramdisk found, disk-only mode." & LF);
+         cpioOk := False;
+         return;
+      end if;
+      debugPrint ("FS Server: Got ramdisk, initializing CPIO..." & LF);
+
+      Cpio.init (cpioArchive, toAddr (address), size, cpioOk);
+      if not cpioOk then
+         debugPrint ("FS Server: Invalid CPIO archive on ramdisk." & LF);
+      elsif Cpio.findFile (cpioArchive, "live-rw.ext2") < cpioArchive.count then
+         --  With a RAM block driver serving the writable seed (mem:0), the
+         --  archive's copy is not ours to read: devmgr released those pages
+         --  and did not map them here. Withhold the entry before any open.
+         if Startup.Ramdisk.Present then
+            Cpio.withhold (cpioArchive, Cpio.findFile (cpioArchive, "live-rw.ext2"));
+         end if;
+         declare
+            Result : Registration_Result;
+            admission : Admission_Result;
+         begin
+            Register
+              (Volumes, "mem:0",
+               (Endpoint => (if Startup.Ramdisk.Present then Startup.Ramdisk.Value
+                             else CuBit.Handles.No_Endpoint),
+                Ready_Role => 0, Transfer_Pages => 128),
+               Default_Write_Volume, Result);
+            if Result = Registered then
+               --  The live medium's RAM root is its system volume.
+               Choose_System (Volumes, Volume_Index (Default_Write_Volume), Live_Root);
+               ensureVolume (Volume_Index (Default_Write_Volume), admission);
+               if admission = Admitted then
+                  debugPrint ("FS Server: Writable memory filesystem ready." & LF);
+               end if;
+            end if;
+         end;
+      end if;
+   end mountBootImage;
+
+   procedure registerVolumes (ok : out Boolean) is
+      Volume : Volume_Reference;
+      Result : Registration_Result;
+   begin
+      ok := False;
+      Register (Volumes, "ata:0",
+        (Endpoint => CuBit.Handles.No_Endpoint, Ready_Role => DRIVER_ATA, Transfer_Pages => 8),
+        Volume, Result);
+      if Result /= Registered then
+         debugPrint ("FS Server: volume list initialization failed." & LF);
+         return;
+      end if;
+      Register (Volumes, NVMe_Volume_Prefix & "0",
+        (Endpoint => CuBit.Handles.No_Endpoint, Ready_Role => DRIVER_NVME,
+         Transfer_Pages => NVMe_Transfer_Pages),
+        Volume, Result);
+      if Result /= Registered then
+         debugPrint ("FS Server: volume list initialization failed." & LF);
+         return;
+      end if;
+      --  The development disk is the system volume unless a live RAM root
+      --  or an installed root outranks it.
+      Choose_System (Volumes, Volume, Development_Disk);
+      ok := True;
+   end registerVolumes;
+
+   function Ordinal_Image (Ordinal : Fs_Attachments.Device_Ordinal) return String is
+      Image : constant String := Fs_Attachments.Device_Ordinal'Image (Ordinal);
+   begin
+      return Image (Image'First + 1 .. Image'Last);
+   end Ordinal_Image;
+
+   procedure handleAttach (sender : Process_ID; msg : Message) is
+      Device : Unsigned_64;
+      Ordinal : Fs_Attachments.Device_Ordinal;
+      Attached : Boolean := False;
+      Volume : Volume_Reference := No_Volume;
+      Result : Registration_Result;
+      System_Disk : Boolean;
+   begin
+      if sender = No_Process or else sender /= Registered_Driver (DRIVER_DEVMGR)
+        or else msg.tag.length /= Fs_Attachments.Attach_Words
+        or else not CuBit.Handles.IPC.Offers (msg)
+        or else msg.words (1) > Fs_Attachments.Maximum_Ordinal
+        or else msg.words (2) not in Fs_Attachments.Data_Disk | Fs_Attachments.System_Disk
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      Device := msg.words (0);
+      Ordinal := Fs_Attachments.Device_Ordinal (msg.words (1));
+      System_Disk := msg.words (2) = Fs_Attachments.System_Disk;
+      declare
+         Offered : constant CuBit.Handles.IPC.Accepted_Endpoint :=
+           CuBit.Handles.IPC.Accept_Endpoint (CuBit.Handles.IPC.Accept_Offered (sender));
+      begin
+         if Offered.OK then
+            if Device = Fs_Attachments.Device_Code (Fs_Attachments.Optical_Device) then
+               --  One optical volume (@cd:0): the first drive devmgr attaches.
+               ISO9660.Attach (Offered.Value, Attached);
+            elsif Device = Fs_Attachments.Device_Code (Fs_Attachments.ATA_Device) then
+               if Ordinal = 0 then
+                  Volume := Volume_List.Find (Volumes, "ata:0");
+               end if;
+            elsif Device in Fs_Attachments.Device_Code (Fs_Attachments.NVMe_Device)
+                          | Fs_Attachments.Device_Code (Fs_Attachments.UFS_Device)
+            then
+               declare
+                  UFS : constant Boolean :=
+                    Device = Fs_Attachments.Device_Code (Fs_Attachments.UFS_Device);
+                  Name : constant String :=
+                    (if UFS then UFS_Volume_Prefix else NVMe_Volume_Prefix) & Ordinal_Image (Ordinal);
+               begin
+                  Volume := Volume_List.Find (Volumes, Name);
+                  if Volume = No_Volume then
+                     Register (Volumes, Name,
+                       (Endpoint => CuBit.Handles.No_Endpoint, Ready_Role => 0,
+                        Transfer_Pages => (if UFS then UFS_Transfer_Pages else NVMe_Transfer_Pages)),
+                       Volume, Result);
+                     if Result /= Registered then
+                        debugPrint ("FS Server: volume " & Name & " not registered" & LF);
+                        Volume := No_Volume;
+                     end if;
+                  end if;
+               end;
+            end if;
+            if Volume /= No_Volume then
+               Volume_List.Attach (Volumes, Volume, Offered.Value, Attached);
+               if Attached then
+                  if System_Disk then
+                     --  An installed system's root (storage.system-volume).
+                     Choose_System (Volumes, Volume, Installed_Root);
+                     debugPrint ("FS Server: @system is @" & Volume_List.Name (Volumes, Volume) & LF);
+                  end if;
+                  bumpNamespace;   --  a new volume's names resolve
+               end if;
+            end if;
+            if not Attached then
+               declare
+                  Ignore : constant CuBit.Handles.IPC.Close_Result :=
+                    CuBit.Handles.IPC.Close (Offered.Value);
+               begin
+                  null;
+               end;
+            end if;
+         end if;
+      end;
+      sendReply (sender, (if Attached then REPLY_OK else REPLY_ERR), 0);
+   end handleAttach;
+
+   package VD renames CuBit.Volume_Descriptions;
+   use type VD.Volume_Kind;
+   pragma Compile_Time_Error
+     (VD.Record_Bytes /= FQ.Volume_Description_Bytes, "Volume.Description.V1 size");
+
+   procedure handleDescribeVolume (owner : Process_ID; pathLength, rangeBytes : Unsigned_64) is
+      pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
+      selection : Path_Selection;
+      reference : Volume_Reference;
+      relStart : Integer;
+      item : VD.Description;
+      bytes : VD.Record_Image;
+
+      procedure setName (name : String) is
+      begin
+         item.Length := Natural'Min (name'Length, VD.Maximum_Name_Bytes);
+         for i in 1 .. item.Length loop
+            item.Name (i) := Character'Pos (name (name'First + i - 1));
+         end loop;
+      end setName;
+   begin
+      if pathLength = 0 or else pathLength > MAXIMUM_PATH_BYTES or else
+        pathLength > rangeBytes or else rangeBytes < VD.Record_Bytes
+      then
+         sendReply (owner, REPLY_ERR, 0);
+         return;
+      end if;
+      declare
+         source : String (1 .. Natural (pathLength)) with Import, Address => curArena;
+      begin
+         pathBuffer (1 .. Natural (pathLength)) := source;   --  copy, then validate
+      end;
+      declare
+         path : String renames pathBuffer (1 .. Natural (pathLength));
+      begin
+         if Fs_Path_Checks.Has_Traversal (path) then
+            sendReply (owner, REPLY_ERR, 0);
+            return;
+         elsif not checkAccess (owner, path, ACL_READ) then
+            sendReply (owner, REPLY_ACCESS_DENIED, 0);
+            return;
+         end if;
+         Select_Path (Volumes, path, selection, reference, relStart);
+      end;
+      if selection = Unqualified then
+         reference := Default_Write_Volume;
+         selection := (if reference = No_Volume then Unknown_Volume else Known_Volume);
+      end if;
+      case selection is
+         when Known_Volume =>
+            declare
+               volume : constant Volume_Index := Volume_Index (reference);
+               admission : Admission_Result;
+            begin
+               ensureVolume (volume, admission);
+               if admission /= Admitted then
+                  sendReply (owner, Labels.Admission_Label (admission), 0);
+                  return;
+               end if;
+               declare
+                  fs : Ext2.Filesystem renames Contexts (volume).Fs;
+                  free : constant Unsigned_64 := Unsigned_64 (fs.sb.freeBlocks);
+                  total : constant Unsigned_64 := Unsigned_64 (fs.sb.blockCount);
+               begin
+                  item.Kind := (if (fs.sb.compatibleFeatures and Ext2_Support.Compat_Has_Journal) /= 0
+                                then VD.Ext3 else VD.Ext2);
+                  item.Flags :=
+                    (if fs.writeQuarantined or else
+                        CuBit.Block_Devices.Is_Read_Only (fs.device.description)
+                     then VD.Read_Only else 0) +
+                    (if fs.journal.Active and then item.Kind = VD.Ext3 then VD.Journaled else 0) +
+                    (if CuBit.Block_Devices.Can_Persist (fs.device.description)
+                     then VD.Durable_Flush else 0);
+                  item.Block := VD.Block_Size'Max (VD.Smallest_Block,
+                                  VD.Block_Size'Min (VD.Largest_Block, fs.blkSize));
+                  item.Total_Blocks := total;
+                  item.Free_Blocks := Unsigned_64'Min (free, total);
+                  item.Releasing_Blocks :=
+                    Unsigned_64'Min (Unsigned_64 (fs.pendingCount), total - item.Free_Blocks);
+                  item.Total_Inodes := Unsigned_64 (fs.sb.inodeCount);
+                  item.Free_Inodes := Unsigned_64'Min (Unsigned_64 (fs.sb.freeInodes), item.Total_Inodes);
+                  setName (Volume_List.Name (Volumes, volume));
+               end;
+            end;
+         when Boot_Archive =>
+            if not cpioOk then
+               sendReply (owner, REPLY_NOT_FOUND, 0);
+               return;
+            end if;
+            item := (Kind => VD.Boot_Archive, Flags => VD.Read_Only, Block => VD.Smallest_Block,
+                     Total_Blocks => (cpioArchive.size + VD.Smallest_Block - 1) / VD.Smallest_Block,
+                     others => <>);
+            setName (Volume_List.Boot_Archive_Name);
+         when Optical_Volume =>
+            declare
+               blocks : Unsigned_64;
+               mounted : Boolean;
+            begin
+               ISO9660.Describe (blocks, mounted);
+               if not mounted then
+                  sendReply (owner, REPLY_NOT_FOUND, 0);
+                  return;
+               end if;
+               item := (Kind => VD.ISO_9660, Flags => VD.Read_Only,
+                        Block => ISO_Records.Block_Bytes, Total_Blocks => blocks, others => <>);
+               setName (Volume_List.Optical_Name);
+            end;
+         when Unqualified | Unknown_Volume | Invalid_Path =>
+            sendReply (owner, REPLY_NOT_FOUND, 0);
+            return;
+      end case;
+      if not VD.Valid (item) then
+         sendReply (owner, REPLY_ERR, 0);
+         return;
+      end if;
+      VD.Encode (item, bytes);
+      declare
+         target : VD.Record_Image with Import, Address => curArena;
+      begin
+         target := bytes;
+      end;
+      sendReply (owner, REPLY_OK, VD.Record_Bytes);
+   end handleDescribeVolume;
+
+   procedure handleListPlaces (owner : Process_ID; rangeBytes : Unsigned_64) is
+      package FA renames CuBit.File_Access;
+      package FP renames CuBit.Filesystem_Places;
+      wire : FA.Wire_Bytes (1 .. FA.Maximum_Entries * FA.Wire_Entry_Bytes);
+      scopeCount : Natural;
+      --  Every registered volume, the boot archive and the optical disc.
+      FIXED_STORES : constant := 2;
+      present : FP.Root_Table (1 .. Natural (Count (Volumes)) + FIXED_STORES);
+      used : Natural := 0;
+      needed : Natural;
+
+      procedure add (name : String) is
+      begin
+         if name'Length in FP.Volume_Name_Length and then used < present'Last then
+            used := used + 1;
+            present (used) := FP.Make_Root (name);
+         end if;
+      end add;
+   begin
+      scopesOf (owner, wire, scopeCount);
+      for v in 1 .. Count (Volumes) loop
+         if CuBit.Handles.Valid (Binding (Volumes, v).Endpoint) then
+            declare
+               admission : Admission_Result;
+            begin
+               ensureVolume (v, admission);
+               if admission = Admitted then
+                  add (Volume_List.Name (Volumes, v));
+               end if;
+            end;
+         end if;
+      end loop;
+      if cpioOk then
+         add (Volume_List.Boot_Archive_Name);
+      end if;
+      declare
+         blocks : Unsigned_64;
+         mounted : Boolean;
+      begin
+         ISO9660.Describe (blocks, mounted);
+         if mounted then
+            add (Volume_List.Optical_Name);
+         end if;
+      end;
+      needed := FP.Count_Places (wire, scopeCount, present (1 .. used));
+      if Unsigned_64 (needed) * FA.Wire_Entry_Bytes > rangeBytes then
+         sendReply (owner, REPLY_NO_SPACE, Unsigned_64 (needed));
+         return;
+      end if;
+      declare
+         target : FP.Place_Bytes (1 .. needed * FA.Wire_Entry_Bytes)
+           with Import, Address => curArena;
+         written : Natural;
+      begin
+         FP.Select_Places (wire, scopeCount, present (1 .. used), target, written);
+         sendReply (owner, REPLY_OK, Unsigned_64 (written));
+      end;
+   end handleListPlaces;
+
+   procedure commitTick is
+      status : Ext2.Flush_Status;
+   begin
+      for q in clientQueues'Range loop
+         if clientQueues (q).owner /= No_Process then
+            harvestOwner (q);
+         end if;
+      end loop;
+      for slot in files'Range loop
+         if files (slot).active and then files (slot).objectKind = FILE_OBJECT then
+            reportModified (slot);
+         end if;
+      end loop;
+      settleWatches;
+      for V in Contexts'Range loop
+         if Contexts (V).Status = Admitted and then Ext2.dirtyBlocks (Contexts (V).Fs) then
+            Ext2.Flush (Contexts (V).Fs, status);
+            if status /= Ext2.Flush_Complete then
+               debugPrint ("FS: periodic commit failed" & LF);
+            end if;
+         end if;
+      end loop;
+   end commitTick;
+
+   --  Volumes a stop committed and detached: never written or reported
+   --  again by a later one (the storage stage, then the service's Stop).
+   Detached : array (Volume_Index) of Boolean := [others => False];
+
+   --  Every client's buffered writes, then each admitted writable volume
+   --  not yet detached, committed and detached.
+   procedure commitForStop (Committed, Failed, Passed : out Natural) is
+      status : Ext2.Flush_Status;
+   begin
+      Committed := 0;
+      Failed := 0;
+      Passed := 0;
+      for q in clientQueues'Range loop
+         if clientQueues (q).owner /= No_Process then
+            harvestOwner (q);
+         end if;
+      end loop;
+      for slot in files'Range loop
+         if files (slot).active and then files (slot).objectKind = FILE_OBJECT then
+            reportModified (slot);
+         end if;
+      end loop;
+      settleWatches;
+      for V in 1 .. Volume_List.Count (Volumes) loop
+         if Contexts (V).Status = Admitted and then not Detached (V) then
+            declare
+               fs : Ext2.Filesystem renames Contexts (V).Fs;
+               Name : constant String := Volume_List.Name (Volumes, V);
+            begin
+               if fs.writeQuarantined
+                 or else CuBit.Block_Devices.Is_Read_Only (fs.device.description)
+                 or else not CuBit.Block_Devices.Can_Persist (fs.device.description)
+               then
+                  --  Nothing it holds can be made durable here.
+                  Passed := Passed + 1;
+                  debugPrint ("FS: stop: " & Name & " passed over (read-only or volatile)" & LF);
+               else
+                  Ext2.Detach (fs, status);
+                  if status = Ext2.Flush_Complete then
+                     Committed := Committed + 1;
+                     --  Detached: nothing more is written to it.
+                     fs.writeQuarantined := True;
+                     Detached (V) := True;
+                     debugPrint ("FS: stop: " & Name & " committed and detached" &
+                                 (if (fs.sb.compatibleFeatures and Ext2_Support.Compat_Has_Journal) /= 0
+                                  then " (journal empty, needs_recovery clear)" else "") & LF);
+                  else
+                     Failed := Failed + 1;
+                     debugPrint ("FS: stop: " & Name & " commit FAILED (" &
+                                 Ext2.Flush_Status'Image (status) & "); its journal replays at the next boot" &
+                                 LF);
+                  end if;
+               end if;
+            end;
+         end if;
+      end loop;
+   end commitForStop;
+
+   procedure handleStorageStop (sender : Process_ID; msg : Message) is
+      package STP renames CuBit.System_Stops;
+      Committed, Failed, Passed : Natural := 0;
+      Outcome : STP.Storage_Outcome := STP.Storage_Refused;
+      Answer : Message := NULL_MESSAGE;
+      Ignore : Unsigned_64;
+   begin
+      if sender /= No_Process and then sender = Registered_Driver (DRIVER_PROCMGR)
+        and then msg.tag.length = STP.Storage_Request_Words
+        and then msg.words (STP.Request_Word) /= 0
+      then
+         commitForStop (Committed, Failed, Passed);
+         Outcome := (if Failed > 0 then STP.Partly_Committed
+                     elsif Committed = 0 then STP.Nothing_Written
+                     else STP.Committed);
+         debugPrint ("FS: stop: storage " & STP.Name (Outcome) & ":" & Natural'Image (Committed) &
+                     " committed," & Natural'Image (Failed) & " failed," & Natural'Image (Passed) &
+                     " passed over" & LF);
+      else
+         debugPrint ("FS: stop refused (not procmgr, or malformed)" & LF);
+      end if;
+      Answer.tag := (label => STP.Storage_Operation, length => STP.Storage_Reply_Words,
+                     protocol => 0, ipc => <>, reserved => 0);
+      Answer.words (STP.Reply_Request_Word) := msg.words (STP.Request_Word);
+      Answer.words (STP.Storage_Status_Word) := STP.Storage_Outcome'Enum_Rep (Outcome);
+      Answer.words (STP.Volumes_Word) := STP.Counts_Word (Committed, Failed, Passed, 0);
+      --  ABI-002: these lines reach logstore before procmgr hears the
+      --  outcome, so its lines (and the console mirror) follow them.
+      CuBit.Console_Route.Flush;
+      Ignore := reply (sender, Answer);
+   end handleStorageStop;
+
+   procedure commitOnStop is
+      Committed, Failed, Passed : Natural;
+   begin
+      commitForStop (Committed, Failed, Passed);
+      if Committed + Failed + Passed > 0 then
+         debugPrint ("FS: Stop: storage committed on the way out:" & Natural'Image (Committed) &
+                     " committed," & Natural'Image (Failed) & " failed," & Natural'Image (Passed) &
+                     " passed over" & LF);
+      end if;
+   end commitOnStop;
+
+end Fs_Server.Storage;

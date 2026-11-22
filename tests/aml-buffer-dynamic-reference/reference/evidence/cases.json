@@ -1,0 +1,85 @@
+[
+  {
+    "name": "return-arg",
+    "question": "Return Buffer(Arg0), caller observes allocated size",
+    "required_disassembly_terms": [
+      "Arg0"
+    ],
+    "manual_disassembly_requirement": "Confirm Buffer count TermArg remains dynamic and exact nested opcode/target structure is retained; token presence alone is insufficient."
+  },
+  {
+    "name": "store-local",
+    "question": "Store Buffer(Local0) and distinguish initialized prefix",
+    "required_disassembly_terms": [
+      "Local0"
+    ],
+    "manual_disassembly_requirement": "Confirm Buffer count TermArg remains dynamic and exact nested opcode/target structure is retained; token presence alone is insufficient."
+  },
+  {
+    "name": "count-method",
+    "question": "Count method executes once for expression Buffer",
+    "required_disassembly_terms": [
+      "CNTM"
+    ],
+    "manual_disassembly_requirement": "Confirm Buffer count TermArg remains dynamic and exact nested opcode/target structure is retained; token presence alone is insufficient."
+  },
+  {
+    "name": "count-add",
+    "question": "Nonconstant Add count preserves target effect",
+    "required_disassembly_terms": [
+      "Local0",
+      "MARK"
+    ],
+    "manual_disassembly_requirement": "Confirm Buffer count TermArg remains dynamic and exact nested opcode/target structure is retained; token presence alone is insufficient."
+  },
+  {
+    "name": "nested-buffer",
+    "question": "Nested Buffer count coerces resulting bytes to integer",
+    "required_disassembly_terms": [
+      "Local0"
+    ],
+    "manual_disassembly_requirement": "Confirm Buffer count TermArg remains dynamic and exact nested opcode/target structure is retained; token presence alone is insufficient."
+  },
+  {
+    "name": "method-actual",
+    "question": "Dynamic Buffer is a method actual",
+    "required_disassembly_terms": [
+      "Local0",
+      "SIZE"
+    ],
+    "manual_disassembly_requirement": "Confirm Buffer count TermArg remains dynamic and exact nested opcode/target structure is retained; token presence alone is insufficient."
+  },
+  {
+    "name": "raw-initializer",
+    "question": "Opcode-looking initializer remains eight raw bytes",
+    "required_disassembly_terms": [
+      "Local0"
+    ],
+    "manual_disassembly_requirement": "Confirm Buffer count TermArg remains dynamic and exact nested opcode/target structure is retained; token presence alone is insufficient."
+  },
+  {
+    "name": "count-failure",
+    "question": "Count side effect survives divide-by-zero failure",
+    "required_disassembly_terms": [
+      "FAIL"
+    ],
+    "manual_disassembly_requirement": "Confirm Buffer count TermArg remains dynamic and exact nested opcode/target structure is retained; token presence alone is insufficient."
+  },
+  {
+    "name": "target-failure",
+    "question": "Observe count effects and invalid Index target ordering",
+    "required_disassembly_terms": [
+      "CNTM",
+      "Index"
+    ],
+    "manual_disassembly_requirement": "Confirm Buffer count TermArg remains dynamic and exact nested opcode/target structure is retained; token presence alone is insufficient."
+  },
+  {
+    "name": "numeric-prefix",
+    "question": "Dynamic Buffer converted to integer by Add",
+    "required_disassembly_terms": [
+      "Local0"
+    ],
+    "manual_disassembly_requirement": "Confirm Buffer count TermArg remains dynamic and exact nested opcode/target structure is retained; token presence alone is insufficient."
+  }
+]

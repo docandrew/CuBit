@@ -1,0 +1,101 @@
+{
+  "scope": "Internal idle Ready owner append prerequisite; no Load/LoadTable opcode or native admission",
+  "append": {
+    "checks": 848,
+    "checks_per_profile": 424,
+    "processes": 20,
+    "commands": 30,
+    "output": "/home/doc/cubit-build-tmp/aml-ready-module-append-vhh1ct"
+  },
+  "startup": {
+    "output": "/home/doc/cubit-build-tmp/aml-append-startup-regression-szprUT",
+    "checks": 78,
+    "commands": 2,
+    "profile": "assertion-enabled",
+    "alis": 76,
+    "inputs_revalidated": true,
+    "evidence": {
+      "/home/doc/cubit-build-tmp/aml-append-startup-regression-szprUT/COMPLETE.json": "0b7ec3f022c510b7b5ae3f0e8039134e8c6148bd7938823c184e9ef7f93ac297",
+      "/home/doc/cubit-build-tmp/aml-append-startup-regression-szprUT/commands.json": "4ccc1a8b6f727b817f0091a43983c0583896e45f4cf62571215271e1c5b5d5a3",
+      "/home/doc/cubit-build-tmp/aml-append-startup-regression-szprUT/inputs.json": "6c72a07ae0d67a306825f3a4ed0940f20a8c9d3cb5a1f2b8a8b765a866341989",
+      "/home/doc/cubit-build-tmp/aml-append-startup-regression-szprUT/checked.gpr": "7c26cf410ea9945a72dfbeccea8e30ce2409da7bb9e14df5064609528995a963",
+      "/home/doc/cubit-build-tmp/aml-append-startup-regression-szprUT/checked-build.log": "6c6415d5b90c49be973759e91247ed5993d34261d0ead95063575ee463bc37c4",
+      "/home/doc/cubit-build-tmp/aml-append-startup-regression-szprUT/checked-run.log": "a2404eb93a240a9875ee5b50c4b08adc72fb4edc76d79076a71fac981021c19c"
+    }
+  },
+  "field": {
+    "results": {
+      "fatal_result_tests": {
+        "checked": 555,
+        "release": 555
+      },
+      "module_operation_region": {
+        "checked": 1121,
+        "release": 1121
+      }
+    },
+    "commands": 8,
+    "checks_per_profile": 1676,
+    "hosted": true,
+    "new_proof": false,
+    "native_executed": false,
+    "hardware_validated": false,
+    "output": "/home/doc/cubit-build-tmp/aml-append-field-regression-R67KPN"
+  },
+  "entry": {
+    "checked": {
+      "directory": "/home/doc/git/.acpi-proof-work/ready-module-append-work/candidate/tests/acpi-native-entry/results/checked-iwsvcDm1",
+      "selections": 36,
+      "alis": 35,
+      "objects": 0
+    },
+    "release": {
+      "directory": "/home/doc/git/.acpi-proof-work/ready-module-append-work/candidate/tests/acpi-native-entry/results/release-xuELI3ox",
+      "selections": 36,
+      "alis": 35,
+      "objects": 0
+    }
+  },
+  "metadata": {
+    "changed_catalogs": 129,
+    "closed_suites": [
+      "tests/acpi-native-server-loop",
+      "tests/acpi-native-startup",
+      "tests/acpi-battery",
+      "tests/acpi-native-entry",
+      "tests/acpi-hid-transport-integration",
+      "tests/acpi-snapshot-startup"
+    ],
+    "deferred_proof_catalogs": [
+      {
+        "path": "tests/aml-bank-namespace-proof/source-manifest.json",
+        "reason": "historical proof input pin retained; no new proof claimed"
+      },
+      {
+        "path": "tests/aml-buffer-update-proof/source-manifest.json",
+        "reason": "historical proof input pin retained; no new proof claimed"
+      },
+      {
+        "path": "tests/acpi-passive-query/sources.json",
+        "reason": "historical proof input pin retained; no new proof claimed"
+      },
+      {
+        "path": "tests/acpi-query-admission/sources.json",
+        "reason": "historical proof input pin retained; no new proof claimed"
+      }
+    ],
+    "scope": "input selection and mirrors only; no runtime/proof refresh for unexecuted suites"
+  },
+  "failure_runs": [
+    "/home/doc/cubit-build-tmp/aml-ready-module-append-aGB53C",
+    "/home/doc/cubit-build-tmp/aml-ready-module-append-t18JEw",
+    "/home/doc/cubit-build-tmp/aml-ready-module-append-SGRrUF",
+    "/home/doc/cubit-build-tmp/aml-ready-module-append-0wXVfw",
+    "/home/doc/cubit-build-tmp/aml-append-field-regression-Qno2W5"
+  ],
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

@@ -1,0 +1,57 @@
+{
+  "hosted": {
+    "directory": "/home/doc/cubit-build-tmp/acpi-native-power-076Ko8",
+    "checks_per_profile": 504,
+    "processes_per_profile": 28,
+    "commands": 76,
+    "first_matrix": "/home/doc/cubit-build-tmp/acpi-native-power-lCkwzq:446checks before exception-latch regression",
+    "initial_compile_error": "/home/doc/cubit-build-tmp/acpi-native-power-JQtm21:ordinary test conditional syntax corrected"
+  },
+  "suites": {
+    "acpi-native-startup": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-power-detection-work/candidate/tests/acpi-native-startup/results/checked-67KdUxG1",
+        "time": 1793122636639.6348,
+        "alis": 103,
+        "checks": 1168
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-power-detection-work/candidate/tests/acpi-native-startup/results/release-qLoE188s",
+        "time": 1793122680532.1973,
+        "alis": 103,
+        "checks": 1168
+      }
+    },
+    "acpi-native-entry": {
+      "checked": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-power-detection-work/candidate/tests/acpi-native-entry/results/checked-HaAynTne",
+        "time": 1793123247659.4104,
+        "alis": 27,
+        "selections": 28
+      },
+      "release": {
+        "directory": "/home/doc/git/.acpi-proof-work/native-power-detection-work/candidate/tests/acpi-native-entry/results/release-MM3SxTcG",
+        "time": 1793123265026.6248,
+        "alis": 27,
+        "selections": 28
+      }
+    }
+  },
+  "component_metadata": "Current CCL reader accepts process-manager acpi.svc with lid/power source directories; metadata only",
+  "reference": {
+    "directory": "/home/doc/git/.acpi-proof-work/native-power-detection-work/oracle",
+    "new_run": true,
+    "scope": "Direct lid/PSR/presence/BST values only; not our whole BIX collector,owner gate,fuel or native/hardware correctness",
+    "clean_tool_logs": false,
+    "qualified_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  "point_battery_admission": "Successful device initialization required; no notification readiness,configuration or cache publication. Existing cached battery admission unchanged.",
+  "unexpected_exception_policy": "Owner_Error latched before work; recovery conservatively true while calls are in flight. Logging exception cannot replay AML.",
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

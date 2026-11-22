@@ -1,0 +1,9 @@
+# Headless fixture for late introduction (ABI-002, CuBit.Late_Introduction;
+# tests/headless late-introduction): started before logstore, its optional
+# logstore request is Absent at launch; procmgr introduces logstore when it
+# starts, and the program's queued debug text then reaches logstore.
+(Executable_Manifest
+  identity => "com.cubit.late-intro-check"
+  version => "0.1.0"
+  requests => [(service "logstore" "logstore")]
+  optional => ["logstore"])

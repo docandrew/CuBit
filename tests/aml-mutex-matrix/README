@@ -1,0 +1,1 @@
+Exact 24-table public Core Mutex oracle replay. See snapshot PLAN.txt, golden.json, origins.json and source-check.json. No CuBit execution yet. Main requires reviewed Mutex_Not_Acquired status integration.

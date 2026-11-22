@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",2,"CUBIT","BUFIELDS",1){Name(MARK,Zero) Name(BUFF,Buffer(){42}) Method(CTRL,0){Return(One)} Method(WIDT,0){Return(ShiftRight(Ones,32))} Method(TEST,0){CreateByteField(BUFF,Zero,FLD0) CopyObject(Buffer(){7},BUFF) Store(99,FLD0) Return(Add(Multiply(DerefOf(Index(BUFF,Zero)),256),FLD0))}}

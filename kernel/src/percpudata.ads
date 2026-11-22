@@ -1,0 +1,269 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2019 Jon Andrew
+--
+-- @summary
+-- Per-CPU Data Region
+--
+-- @description
+-- Contains info about the currently running process.
+-- The address of the Per-CPU Data Region is always available at KERNEL_GS_BASE
+-------------------------------------------------------------------------------
+with Interfaces;
+with System; use System;
+
+pragma Warnings (Off);
+with System.Secondary_Stack; use System.Secondary_Stack;
+pragma Warnings (On);
+
+with Config;
+with Interrupt_State;
+with Process;
+with Segment;
+with Util;
+
+-- Running_Context: which thread this CPU is running, as the running code
+-- sees it. It is not volatile to that code: whichever CPU it runs on, the
+-- current thread is itself, and a thread's process never changes. Only the
+-- scheduler and the context switch (outside SPARK) change it.
+package PerCPUData with
+    Abstract_State => Running_Context
+is
+    ---------------------------------------------------------------------------
+    -- Each CPU has one of these data structures associated with it.
+    -- @field cpuNum - the CPU number this record is for
+    -- @field runningPID - PID currently running on this CPU
+    -- @field savedRSP - the stack pointer into our process' kernel stack when
+    --  we entered user mode
+    -- @field gdt - a Global Descriptor Table
+    -- @field gdtPointer - a GDT Pointer structure containing the size and
+    --  address of the gdt here
+    --
+    -- @field tss - Task Switch Segment for this CPU
+    --
+    -- @field oldContext - saved stack location of previously running thread
+    -- @field currentContext - currently running stack on this CPU
+    -- @field schedulerContext - stack for the scheduling thread on this CPU
+    --
+    -- @field exclusion - Proved nesting and IF-restoration state. The depth
+    --  remains CPU-local across a Process.lock handoff; the saved restoration
+    --  policy follows the suspended context. It is not the hardware IF value.
+    --
+    -- @WARNING Make sure these match the offsets in cubit.inc, this record is
+    --  accessed from assembly code!
+    ---------------------------------------------------------------------------
+    type PerCPUData is
+    record
+        cpuNum              : Natural range 0..Config.MAX_CPUS - 1;
+        -- The thread running on this CPU (its process: getCurrentPID).
+        currentThread       : Process.ThreadID;
+        savedProcessRSP     : System.Address;
+        savedKernelRSP      : System.Address;
+
+        -- The per-CPU GDT
+        gdt                 : Segment.GDT;
+        gdtPointer          : Segment.GDTPointer;
+
+        -- These contain the per-CPU stack pointers
+        -- for both user and kernel modes.
+        tss                 : Segment.TaskSwitchSegment;
+
+        -- Saved context pointers (stack locations for where we left off)
+        oldContext          : System.Address;
+        currentContext      : System.Address;
+        schedulerContext    : System.Address;
+
+        exclusion           : Interrupt_State.State := Interrupt_State.Initial_State;
+
+        -- NMI tracking for lock-free NMI handler
+        nmiCount            : Natural := 0;
+        nmiInProgress       : Boolean := False;
+
+        -- Set by Process.ready() when a higher-priority process is readied;
+        -- checked at interrupt return to trigger immediate preemption.
+        needReschedule      : Boolean := False;
+
+        -- PID whose eagerly-restored FPU state is currently live in the
+        -- hardware registers. Used for diagnostics and invariant checking;
+        -- user transitions do not rely on lazy #NM restoration.
+        fpuOwner            : Process.ProcessID := Process.NO_PROCESS;
+    end record;
+
+    -- Alignment of fields needs to be precisely specified because we're going
+    -- to access some of these from assembly.
+    for PerCPUData use
+    record
+        cpuNum              at 0    range 0..31;
+        currentThread       at 4    range 0..31;
+        savedProcessRSP     at 8    range 0..63;
+        savedKernelRSP      at 16   range 0..63;
+        gdt                 at 24   range 0..511;
+        gdtPointer          at 88   range 0..79;
+        tss                 at 98   range 0..831;
+        oldContext          at 202  range 0..63;
+        currentContext      at 210  range 0..63;
+        schedulerContext    at 218  range 0..63;
+        exclusion           at 226  range 0..63;
+        nmiCount            at 234  range 0..31;
+        nmiInProgress       at 238  range 0..7;
+        needReschedule      at 239  range 0..7;
+        fpuOwner            at 240  range 0..31;
+    end record;
+
+    -- If the secondary stack is used before per-CPU data is set up, this
+    -- exception will be raised.
+    SecondaryStackNotAvailable : exception;
+
+    ---------------------------------------------------------------------------
+    -- setup
+    -- On boot, we're using the bootstrap GDT set up in boot.asm. This function
+    -- creates a new GDT with Kernel Code+Data segments and User Code+Data
+    -- Segments. It will also install a pointer to this per-CPU data into the
+    -- KERNEL_GS_BASE MSR, which can be used with the SWAPGS instruction.
+    --
+    -- This function must be called once by each CPU during boot.
+    --
+    -- @TODO consider adding a ghost initialized flag here, though this may be
+    --  infeasible because we would need one per-CPU, to make sure that this
+    --  function is called before use.
+    ---------------------------------------------------------------------------
+    procedure setup (cpuNum          : in Natural;
+                     cpuData         : in out PerCPUData;
+                     cpuDataAddr     : in System.Address;
+                     gdtAddr         : in System.Address;
+                     gdtPointerAddr  : in System.Address;
+                     tssAddr         : in System.Address) with
+        Pre => (cpuNum < Config.MAX_CPUS and
+                cpuDataAddr /= System.Null_Address and
+                gdtAddr /= System.Null_Address and
+                gdtPointerAddr /= System.Null_Address and
+                tssAddr /= System.Null_Address);
+
+    ---------------------------------------------------------------------------
+    -- getPerCPUData returns the address of the per-CPU data structure.
+    --
+    -- WARNING: setupPerCPUData _must_ be called on each CPU prior to using
+    --  this.
+    ---------------------------------------------------------------------------
+    function getPerCPUDataAddr return System.Address;
+
+    ---------------------------------------------------------------------------
+    -- getCPUNumber
+    -- @return the number of the CPU the caller is running on.
+    ---------------------------------------------------------------------------
+    function getCPUNumber return Natural;
+
+    ---------------------------------------------------------------------------
+    -- getCurrentPID
+    -- Convenience function for getting the currently-running Process ID on
+    -- this CPU.
+    ---------------------------------------------------------------------------
+    -- The process of the thread running on this CPU (the caller's identity
+    -- for capabilities, IPC and memory).
+    function getCurrentPID return Process.ProcessID with
+        Global  => (Input => Running_Context),
+        Depends => (getCurrentPID'Result => Running_Context);
+
+    -- The thread running on this CPU (for scheduling and blocking).
+    function getCurrentThread return Process.ThreadID with
+        Global  => (Input => Running_Context),
+        Depends => (getCurrentThread'Result => Running_Context);
+
+    ---------------------------------------------------------------------------
+    -- IST (Interrupt Stack Table) stacks for critical exceptions.
+    -- Each CPU gets its own set of small stacks so that NMI, Double Fault,
+    -- and Machine Check exceptions get a known-good stack regardless of
+    -- what the CPU was doing when the exception fired.
+    --
+    -- IST 1 = NMI, IST 2 = Double Fault, IST 3 = Machine Check
+    --
+    -- These exceptions can arrive anywhere, including the instructions
+    -- between SYSCALL and SWAPGS or between SWAPGS and SYSRET, where the
+    -- saved CS no longer says which GS base is live (and user code sets its
+    -- own GS base with WRGSBASE). Their entry stubs therefore never guess:
+    -- they save the live GS base, load this CPU's from the slot at the top of
+    -- the IST stack, and restore the saved value exactly on return. Each
+    -- stack is aligned to its own size, so the stub finds the slot from RSP
+    -- alone. IST_STACK_SIZE and IST_CPU_DATA_OFFSET must match cubit.inc.
+    ---------------------------------------------------------------------------
+    IST_STACK_SIZE      : constant := 4096;  -- 4 KiB per IST stack
+    IST_SLOT_BYTES      : constant := 16;    -- keeps the frame top 16-aligned
+    IST_FRAME_BYTES     : constant := IST_STACK_SIZE - IST_SLOT_BYTES;
+    IST_CPU_DATA_OFFSET : constant := IST_FRAME_BYTES;
+
+    type ISTFrames is array (1 .. IST_FRAME_BYTES) of Interfaces.Unsigned_8;
+
+    type ISTStack is record
+        frames      : ISTFrames;              -- exception frames grow down
+        cpuDataAddr : Interfaces.Unsigned_64; -- this CPU's PerCPUData
+        reserved    : Interfaces.Unsigned_64;
+    end record with Alignment => IST_STACK_SIZE;
+
+    for ISTStack use record
+        frames      at 0 range 0 .. IST_FRAME_BYTES * 8 - 1;
+        cpuDataAddr at IST_CPU_DATA_OFFSET range 0 .. 63;
+        reserved    at IST_CPU_DATA_OFFSET + 8 range 0 .. 63;
+    end record;
+    for ISTStack'Size use IST_STACK_SIZE * 8;
+
+    type ISTStacks is record
+        nmiStack          : ISTStack;   -- IST 1
+        doubleFaultStack  : ISTStack;   -- IST 2
+        machineCheckStack : ISTStack;   -- IST 3
+        debugStack        : ISTStack;   -- IST 4 (#DB, DBG-001)
+    end record;
+
+    -- One set of IST stacks per CPU
+    allISTStacks : array (0..Config.MAX_CPUS - 1) of ISTStacks;
+
+    InterruptException : exception;
+
+    ---------------------------------------------------------------------------
+    -- intsEnabled
+    -- Returns the outer critical section's IF-restoration policy, not live IF.
+    ---------------------------------------------------------------------------
+    function intsEnabled return Boolean;
+
+    ---------------------------------------------------------------------------
+    -- numCLI
+    -- @return depth of CLI (interrupt disable) instructions for nested locks.
+    ---------------------------------------------------------------------------
+    function numCLI return Integer;
+
+    ---------------------------------------------------------------------------
+    -- pushCLI
+    -- Disable interrupts on this CPU and increase the CLI depth by one.
+    --
+    -- Heavily inspired by Xv6 and Linux' enable_irq / disable_irq
+    ---------------------------------------------------------------------------
+    procedure pushCLI;
+
+    ---------------------------------------------------------------------------
+    -- popCLI
+    -- Undoes the effect of one call to pushCLI, decreases the CLI depth by one.
+    -- If the CLI depth reaches 0 (i.e. all pushCLIs have been matched), then
+    -- interrupts are restored to the outermost entry's policy.
+    -- @raise InterruptException if interrupts not previously disabled prior to
+    --  this call.
+    -- @raise InterruptException if this is called without a previous matching
+    --  call to pushCLI
+    ---------------------------------------------------------------------------
+    procedure popCLI;
+
+    -- Trusted boundary: validate hardware IF and CPU ownership of the single
+    -- handed-off Process.lock before invoking the proved state transition.
+    function captureHandoff return Interrupt_State.Context;
+    procedure resumeHandoff (saved : Interrupt_State.Context);
+
+    ---------------------------------------------------------------------------
+    -- Used to get pointers to the per-CPU secondary stacks.
+    ---------------------------------------------------------------------------
+    function getSecondaryStack return SS_Stack_Ptr
+        with Export, Convention => C,
+            External_Name => "__gnat_get_secondary_stack";
+
+private
+    syscallEntryPoint : Util.Symbol
+        with Import => True, Convention => C, External_Name => "syscallEntry";
+
+end PerCPUData;

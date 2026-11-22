@@ -1,0 +1,10 @@
+project Benchmark is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("benchmark.adb", "free_block_set.ads", "free_block_set.adb");
+   for Object_Dir use "build-release";
+   for Exec_Dir use "build-release";
+   for Main use ("benchmark.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnatp", "-O2", "-g");
+   end Compiler;
+end Benchmark;

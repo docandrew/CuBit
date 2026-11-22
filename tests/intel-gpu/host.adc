@@ -1,0 +1,2 @@
+--  Host-only tests deliberately do not inherit kernel/gnat.adc restrictions.
+pragma Assertion_Policy (Check);

@@ -1,0 +1,105 @@
+Input file /home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/base2.aml, Length 0x2A (42) bytes
+Input file /home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/copy2.aml, Length 0x1A6 (422) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005773442BB180 000024 (v02 Intel )
+ACPI: XSDT 0x000057737D4CC150 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005773442BAFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x000057737D4C6D90 00002A (v02 CUBIT  OSIBASE  00000001 INTL 20260408)
+ACPI: FACS 0x00005773442BB140 000040
+
+ACPI table initialization:
+Table [DSDT: OSIBASE ] (id 01) -    1 Objects with   0 Devices,   0 Regions,    0 Methods (0/0/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 10 (0xA) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Initializing Device/Processor/Thermal objects and executing _INI/_STA methods:
+    Executed 0 _INI methods requiring 0 _STA executions (examined 2 objects)
+CuBitProbeSupported
+AnotherTestString
+Windows 2000
+Windows 2001
+Windows 2001 SP1
+Windows 2001.1
+Windows 2001 SP2
+Windows 2001.1 SP1
+Windows 2006.1
+Windows 2006 SP1
+Windows 2006 SP2
+Windows 2009
+Windows 2012
+Windows 2013
+Windows 2015
+Windows 2016
+Windows 2017
+Windows 2017.2
+Windows 2018
+Windows 2018.2
+Windows 2019
+Windows 2020
+Windows 2021
+Windows 2022
+Extended Address Space Descriptor
+ACPI: Host-directed Dynamic ACPI Table Load:
+ACPI: SSDT 0x00007AD40C196010 0001A6 (v02 CUBIT  OSICOPY  00000001 INTL 20260408)
+ACPI Exec: Table Event INSTALL, [SSDT] 0x7ad40c196010
+Table [SSDT: OSICOPY ] (id 05) -   14 Objects with   0 Devices,   0 Regions,   13 Methods (0/13/0 Serial/Non/Cvt)
+ACPI Exec: Table Event LOAD, [SSDT] 0x7ad40c196010
+Final data object initialization: Namespace contains 26 (0x1A) objects
+Acpi table [SSDT] successfully installed and loaded
+Evaluating \PRAW
+Evaluation of \PRAW returned object 0x57737d4c6dd0, external buffer length 30
+  [Package] Contains 1 Elements:
+    [Integer] = FFFFFFFFFFFFFFFF
+
+Evaluating \PDRE
+Evaluation of \PDRE returned object 0x57737d4c6dd0, external buffer length 18
+  [Integer] = FFFFFFFFFFFFFFFF
+
+Evaluating \PAFT
+Evaluation of \PAFT returned object 0x57737d4c6dd0, external buffer length 30
+  [Package] Contains 1 Elements:
+    [Integer] = FFFFFFFFFFFFFFFF
+
+Evaluating \PLOC
+Evaluation of \PLOC returned object 0x57737d4c6dd0, external buffer length 30
+  [Package] Contains 1 Elements:
+    [Integer] = FFFFFFFFFFFFFFFF
+
+Evaluating \CLOC
+Evaluation of \CLOC returned object 0x57737d4c6dd0, external buffer length 18
+  [Integer] = FFFFFFFFFFFFFFFF
+
+Evaluating \CEXP
+Evaluation of \CEXP returned object 0x57737d4c6dd0, external buffer length 18
+  [Integer] = FFFFFFFFFFFFFFFF
+
+Evaluating \CSRC
+Evaluation of \CSRC returned object 0x57737d4c6dd0, external buffer length 18
+  [Integer] = FFFFFFFFFFFFFFFF
+
+Evaluating \CDST
+Evaluation of \CDST returned object 0x57737d4c6dd0, external buffer length 18
+  [Integer] = FFFFFFFFFFFFFFFF
+
+Evaluating \PASS
+Evaluation of \PASS returned object 0x57737d4c6dd0, external buffer length 18
+  [Integer] = FFFFFFFFFFFFFFFF
+
+Evaluating \DRET
+Evaluation of \DRET returned object 0x57737d4c6dd0, external buffer length 18
+  [Integer] = FFFFFFFFFFFFFFFF
+
+0x57737d4ccd80 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x57737d4ccd20 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x57737d4ccbe0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x57737d4cca30 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

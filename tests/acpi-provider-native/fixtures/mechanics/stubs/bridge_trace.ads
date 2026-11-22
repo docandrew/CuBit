@@ -1,0 +1,22 @@
+pragma Ada_2022;
+with Interfaces; use Interfaces;
+with CuBit.Messages;
+with Firmware_Tables;
+package Bridge_Trace is
+ type Event is (Allocation, Grant_Create, IPC_Call, Grant_Revoke, Retirement_Query);
+ type Events is array(Positive range 1..64) of Event;
+ Log : Events := [others=>Allocation]; Used : Natural := 0;
+ procedure Note(E : Event);
+ Buffer : aliased Firmware_Tables.Bytes(1..8192) := [others=>16#CC#];
+ for Buffer'Alignment use 4096;
+ Now : Unsigned_64 := 100;
+ Created_OK : Boolean := True; Hidden_Creation : Boolean := False;
+ Hidden_Live : Boolean := False;
+ Revoked_OK : Boolean := True; Retired : Boolean := True;
+ Timeout : Boolean := False; Kernel_Error : Boolean := False;
+ Last_Message : CuBit.Messages.Message;
+ Last_Deadline : Unsigned_64 := 0;
+ Last_Read_Write : Boolean := True;
+ Last_Pages : Natural := 0;
+ Creates, Calls, Revokes, Queries : Natural := 0;
+end Bridge_Trace;

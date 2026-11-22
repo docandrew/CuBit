@@ -1,0 +1,24 @@
+[package]
+name = "cubit"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# Threads (spawn/join) need a global allocator.
+alloc = []
+# The program's start code keeps the launch block length in
+# __cubit_launch_block_length (the shared userspace/runtime/start/cubit_start.S):
+# startup::Table::from_start reads it.
+start-symbols = []
+# A program without the std runtime (the Rust probe) takes its entry from
+# here: the shared userspace/runtime/start/cubit_start.S, in this crate's
+# own object, apart from the program's generated startup check.
+start = ["start-symbols"]
+# A program that links the CuBit Ada run time (CuBit.Messages.Console_Put,
+# C cubit_console_put): debug_write puts its text there, into the program's
+# logstore ring once the Ada side routes (ABI-002: no kernel console).
+console = []

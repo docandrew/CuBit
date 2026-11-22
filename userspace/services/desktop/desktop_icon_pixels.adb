@@ -1,0 +1,61 @@
+with Desktop_Icon_Store;
+package body Desktop_Icon_Pixels with SPARK_Mode is
+   --  Application icons come from the atlas loaded at startup
+   --  (Desktop_Icon_Store: its built-in fallback glyph until then, or if it
+   --  is unavailable). The window-control table is a small constant: only
+   --  Control_Pixel names it, so the provers see it only for the index check.
+   function Application_Pixel
+     (Icon : Desktop_Icons.Icon_ID; Edge : Desktop_Icons.Edge_Index; X, Y : Natural)
+     return Interfaces.Unsigned_32
+     with Pre => X < Desktop_Icons.Edges (Edge) and Y < Desktop_Icons.Edges (Edge);
+   function Application_Pixel
+     (Icon : Desktop_Icons.Icon_ID; Edge : Desktop_Icons.Edge_Index; X, Y : Natural)
+     return Interfaces.Unsigned_32 is
+   begin
+      return Desktop_Icon_Store.Pixel (Icon, Edge, X, Y);
+   end Application_Pixel;
+
+   function Control_Pixel
+     (Icon : Desktop_Window_Icons.Icon_ID; Index : Natural) return Interfaces.Unsigned_32
+     with Pre => Index < Desktop_Window_Icons.ICON_SIZE * Desktop_Window_Icons.ICON_SIZE;
+   function Control_Pixel
+     (Icon : Desktop_Window_Icons.Icon_ID; Index : Natural) return Interfaces.Unsigned_32 is
+   begin
+      return Desktop_Window_Icons.Pixels (Icon) (Index);
+   end Control_Pixel;
+
+   function Pixel (Item : Asset; X, Y : Natural) return Interfaces.Unsigned_32 is
+   begin
+      case Item.Kind is
+         when Application =>
+            return Application_Pixel (Item.Icon, Item.Edge, X, Y);
+         when Window_Control =>
+            return Control_Pixel (Item.Control, Y * Desktop_Window_Icons.ICON_SIZE + X);
+      end case;
+   end Pixel;
+   procedure Copy_Chunk (Item : Asset; Target : in out Pixels;
+      Plan : U.Plan; Complete : out Boolean) is
+      use type U.Pixel_Format;
+      A : constant U.Rectangle := U.Area (Plan);
+      Stride : constant Natural := (if U.Row_Length (Plan) = 0 then A.Width else U.Row_Length (Plan));
+   begin
+      Complete := False;
+      if not U.Valid (Plan) or else U.Format (Plan) /= U.BGRA8 or else
+        U.Image_Width (Plan) /= Size (Item) or else U.Image_Height (Plan) /= Size (Item) or else
+        U.Capacity (Plan) > Target'Length * 4 then return; end if;
+      -- Check the complete destination span before the first store. Wide
+      -- arithmetic also covers malformed row lengths without machine overflow.
+      if Long_Long_Integer (U.Buffer_Offset (Plan)) / 4 +
+        Long_Long_Integer (A.Height - 1) * Long_Long_Integer (Stride) +
+        Long_Long_Integer (A.Width) > Long_Long_Integer (Target'Length)
+      then return; end if;
+      for Y in 0 .. A.Height - 1 loop
+         for X in 0 .. A.Width - 1 loop
+            Target (Natural (Long_Long_Integer (U.Buffer_Offset (Plan)) / 4 +
+              Long_Long_Integer (Y) * Long_Long_Integer (Stride) + Long_Long_Integer (X))) :=
+              Pixel (Item, A.X + X, A.Y + Y);
+         end loop;
+      end loop;
+      Complete := True;
+   end Copy_Chunk;
+end Desktop_Icon_Pixels;

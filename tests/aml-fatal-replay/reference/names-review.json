@@ -1,0 +1,12 @@
+{
+  "parent": "/home/doc/git/.acpi-proof-work/aml-fatal-normal-oracle-plan-so6rn9_7",
+  "ASL_changes": [
+    "nested-r1.asl",
+    "nested-r2.asl",
+    "once-r1.asl",
+    "once-r2.asl"
+  ],
+  "replacement": "ARG0 reserved token -> MARG neutral method name and calls",
+  "lexer": "/nix/store/9b5mw7ra2bm5z5d4pdkh7flj8f5dykyq-source/source/compiler/aslcompiler.l",
+  "scope": "Source-only correction; tool/runner/helper bytes and classification hypotheses unchanged; no execution."
+}

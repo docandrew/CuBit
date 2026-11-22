@@ -1,0 +1,93 @@
+{
+  "purpose": "Review overlay against frozen71ae source only; not current shared Main",
+  "files": [
+    {
+      "path": "userspace/services/desktop/main.adb",
+      "before_sha256": "4780ba41e384aa73aceb0e91c8a830e962296e375f34f99339350cad135adf5b",
+      "after_sha256": "6799029abbabe472dc4a079313679242db28ba43f5132498cad9144ed7af1ddd"
+    },
+    {
+      "path": "userspace/services/desktop/desktop_breadcrumbs.ads",
+      "before_sha256": null,
+      "after_sha256": "0d65878f29d41836739d07e14690c59e136721f02b9e6a485af3b2894c6a265e"
+    },
+    {
+      "path": "userspace/services/desktop/desktop_breadcrumbs.adb",
+      "before_sha256": null,
+      "after_sha256": "e868769b7aa3f3a1456671eac0bf1080fecd1110ac2e4720269e5f93f4d32b76"
+    }
+  ],
+  "patch_sha256": "908172b97bef54cd5a09032ff83688e7b9e1c7c22ab49dfb54d158119dcac3b5",
+  "handoff": {
+    "artifact_directory": "/tmp/cubit-desktop-visible-build-2",
+    "binary_sha256": "a9a9965e5f548e793c5dae0bf182ecb94a67675a28e4c89f497445efff860ab4",
+    "status": "DIAGNOSTIC_HANDOFF",
+    "hardware_validated": false,
+    "evidence": {
+      "/tmp/cubit-desktop-visible-native-2/result.json": "02116a43dc5f5c08fec01baeff36c447cdc3d2dd1104ad28958da1655030599d",
+      "/tmp/cubit-desktop-bootstrap-capture-native-1/result.json": "29c06ccf5762ad43e669bf922ab065126472538365207c69b3ef815797562b9b",
+      "/tmp/cubit-desktop-bootstrap-lost-native-1/result.json": "cf00326eaee2c5ea7d6b2b8bba06044c6ed895612256f685a362a012265fa0b2",
+      "/tmp/cubit-desktop-log-observer-native-1/logsvc-result.json": "8cd4ae485d5e0947d0417abcb0d2a98ef190e8e6c051d5ae03a726a2b58d717d",
+      "/tmp/cubit-bootstrap-fault-matrix-1/delay/native/result.json": "6f8c4e5edd2a47b0d7b12398f44593a3d96a9d53e421b48c9cc92fbf03159686",
+      "/tmp/cubit-bootstrap-fault-matrix-1/rejected/native/result.json": "f1bf3b76f2a51b348a05cc05094463bc10f66d92e1dd4bea4e9526e4f14da645",
+      "/tmp/cubit-bootstrap-fault-matrix-1/stale/native/result.json": "a28efd54f58dfc0baadc65a1fe2da570b82dde790ab1ddbb353cc9ef696a7b32",
+      "/tmp/cubit-bootstrap-fault-matrix-1/unavailable/native/result.json": "d5506799c1d6d4e79baf137b87664aa0c039d034fc85d024e31f7222321553bd",
+      "/tmp/cubit-bootstrap-fault-matrix-1/frozen/native/result.json": "e57dd4dad01c263703780403a3e3e3598b8b2abfcdc6e085e77c3589e0ad0ef6",
+      "/tmp/cubit-bootstrap-fault-matrix-1/backward/native-confirmed/result.json": "86dc7d596c067a3d3c4d49fb9f494f2ee2d95b901652a7f59388a9b4560a5769"
+    },
+    "source_manifest_sha256": "ccbae6ffad9200f50a2a1df0da86ee828613db8d02c2d4c3a89ea9c0342a42e6",
+    "limits": [
+      "Exact candidate passed native software transition; fault, capture and observer tests use explicitly altered fixtures.",
+      "Static screen proves Desktop reached only when visibly observed; authenticated release does not prove photons.",
+      "Clock faults bound polling attempts assuming system calls return.",
+      "Rate-limited or lost logs do not establish stall location.",
+      "Native GPU initialization, physical NUC diagnosis, 240Hz and 1ms latency remain unverified.",
+      "Packaging and exact-image USB/UEFI boots remain Graphics-owned follow-up."
+    ]
+  },
+  "proof_boundary": "Native-tested Main/FFI adapters; policy proofs conditional on authentic observations. No whole-service proof.",
+  "publisher_page_bytes": 90112,
+  "saved_results": {
+    "evidence/0-cubit-desktop-visible-native-2-result.json": {
+      "original_path": "/tmp/cubit-desktop-visible-native-2/result.json",
+      "sha256": "02116a43dc5f5c08fec01baeff36c447cdc3d2dd1104ad28958da1655030599d"
+    },
+    "evidence/1-cubit-desktop-bootstrap-capture-native-1-result.json": {
+      "original_path": "/tmp/cubit-desktop-bootstrap-capture-native-1/result.json",
+      "sha256": "29c06ccf5762ad43e669bf922ab065126472538365207c69b3ef815797562b9b"
+    },
+    "evidence/2-cubit-desktop-bootstrap-lost-native-1-result.json": {
+      "original_path": "/tmp/cubit-desktop-bootstrap-lost-native-1/result.json",
+      "sha256": "cf00326eaee2c5ea7d6b2b8bba06044c6ed895612256f685a362a012265fa0b2"
+    },
+    "evidence/3-cubit-desktop-log-observer-native-1-logsvc-result.json": {
+      "original_path": "/tmp/cubit-desktop-log-observer-native-1/logsvc-result.json",
+      "sha256": "8cd4ae485d5e0947d0417abcb0d2a98ef190e8e6c051d5ae03a726a2b58d717d"
+    },
+    "evidence/4-native-result.json": {
+      "original_path": "/tmp/cubit-bootstrap-fault-matrix-1/delay/native/result.json",
+      "sha256": "6f8c4e5edd2a47b0d7b12398f44593a3d96a9d53e421b48c9cc92fbf03159686"
+    },
+    "evidence/5-native-result.json": {
+      "original_path": "/tmp/cubit-bootstrap-fault-matrix-1/rejected/native/result.json",
+      "sha256": "f1bf3b76f2a51b348a05cc05094463bc10f66d92e1dd4bea4e9526e4f14da645"
+    },
+    "evidence/6-native-result.json": {
+      "original_path": "/tmp/cubit-bootstrap-fault-matrix-1/stale/native/result.json",
+      "sha256": "a28efd54f58dfc0baadc65a1fe2da570b82dde790ab1ddbb353cc9ef696a7b32"
+    },
+    "evidence/7-native-result.json": {
+      "original_path": "/tmp/cubit-bootstrap-fault-matrix-1/unavailable/native/result.json",
+      "sha256": "d5506799c1d6d4e79baf137b87664aa0c039d034fc85d024e31f7222321553bd"
+    },
+    "evidence/8-native-result.json": {
+      "original_path": "/tmp/cubit-bootstrap-fault-matrix-1/frozen/native/result.json",
+      "sha256": "e57dd4dad01c263703780403a3e3e3598b8b2abfcdc6e085e77c3589e0ad0ef6"
+    },
+    "evidence/9-native-confirmed-result.json": {
+      "original_path": "/tmp/cubit-bootstrap-fault-matrix-1/backward/native-confirmed/result.json",
+      "sha256": "86dc7d596c067a3d3c4d49fb9f494f2ee2d95b901652a7f59388a9b4560a5769"
+    }
+  },
+  "test_correction": "Backward-clock first screenshot preceded Display completion. Corrected observer waits matching withheld completion before stable-frame comparison. Candidate unchanged; failed run remains in original private evidence."
+}

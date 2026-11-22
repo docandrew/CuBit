@@ -1,0 +1,15 @@
+project Planes is
+   --  Hosted copies of the freestanding sources (see prepare.sh): do not
+   --  shadow the hosted GNAT runtime with freestanding system units.
+   for Source_Dirs use (".", "build/source");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("plane_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Planes;

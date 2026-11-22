@@ -1,0 +1,2 @@
+(Component name => "launch-gate-greedy" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

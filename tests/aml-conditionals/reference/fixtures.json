@@ -1,0 +1,362 @@
+[
+  {
+    "name": "chain01",
+    "sha256": "7be9d1ebdac7e792f691e3e1a5383b196395724fff3f34e73772e7ed1d67c3b5",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 10,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "chain501",
+    "sha256": "7be9d1ebdac7e792f691e3e1a5383b196395724fff3f34e73772e7ed1d67c3b5",
+    "argument": 50,
+    "status": "Returned",
+    "expected": 60,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "chain991",
+    "sha256": "7be9d1ebdac7e792f691e3e1a5383b196395724fff3f34e73772e7ed1d67c3b5",
+    "argument": 99,
+    "status": "Returned",
+    "expected": 109,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "chain2001",
+    "sha256": "7be9d1ebdac7e792f691e3e1a5383b196395724fff3f34e73772e7ed1d67c3b5",
+    "argument": 200,
+    "status": "Returned",
+    "expected": 7,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "tailtrue1",
+    "sha256": "5027e29723d11323b31291e404932c41d08624cb4cbaffd8bfb7cc2e5dedf737",
+    "argument": 1,
+    "status": "Returned",
+    "expected": 11,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "tailfalse1",
+    "sha256": "5027e29723d11323b31291e404932c41d08624cb4cbaffd8bfb7cc2e5dedf737",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 22,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "trailing1",
+    "sha256": "fbf718e5b0a8724eb5555c2507bd3525d520555bbefbe233a02d341b31853a63",
+    "argument": 1,
+    "status": "Returned",
+    "expected": 14,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "whilecontinue1",
+    "sha256": "ff875ce3b9980cd9dd99044863b4fe9170d17341891694ce2267e2638bfa910f",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 4,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "whilerestart1",
+    "sha256": "33cdc80f0c0ef7e311563f229230c04dad6a221b6c21d0ff226aab15407d321b",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 5,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "effects1",
+    "sha256": "e8e86d41b0a696da9ee6b58a1a8cd5823da4fcc9c6ba9df8d12643b15989abf1",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 1,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "empty1",
+    "sha256": "e34dfc72a21b942c9d3f63f9183b8ca643698413b49e1a2a75ec5008e947d18d",
+    "argument": 1,
+    "status": "Returned",
+    "expected": 3,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "chain02",
+    "sha256": "7be9d1ebdac7e792f691e3e1a5383b196395724fff3f34e73772e7ed1d67c3b5",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 10,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "chain502",
+    "sha256": "7be9d1ebdac7e792f691e3e1a5383b196395724fff3f34e73772e7ed1d67c3b5",
+    "argument": 50,
+    "status": "Returned",
+    "expected": 60,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "chain992",
+    "sha256": "7be9d1ebdac7e792f691e3e1a5383b196395724fff3f34e73772e7ed1d67c3b5",
+    "argument": 99,
+    "status": "Returned",
+    "expected": 109,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "chain2002",
+    "sha256": "7be9d1ebdac7e792f691e3e1a5383b196395724fff3f34e73772e7ed1d67c3b5",
+    "argument": 200,
+    "status": "Returned",
+    "expected": 7,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "tailtrue2",
+    "sha256": "5027e29723d11323b31291e404932c41d08624cb4cbaffd8bfb7cc2e5dedf737",
+    "argument": 1,
+    "status": "Returned",
+    "expected": 11,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "tailfalse2",
+    "sha256": "5027e29723d11323b31291e404932c41d08624cb4cbaffd8bfb7cc2e5dedf737",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 22,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "trailing2",
+    "sha256": "fbf718e5b0a8724eb5555c2507bd3525d520555bbefbe233a02d341b31853a63",
+    "argument": 1,
+    "status": "Returned",
+    "expected": 14,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "whilecontinue2",
+    "sha256": "ff875ce3b9980cd9dd99044863b4fe9170d17341891694ce2267e2638bfa910f",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 4,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "whilerestart2",
+    "sha256": "33cdc80f0c0ef7e311563f229230c04dad6a221b6c21d0ff226aab15407d321b",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 5,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "effects2",
+    "sha256": "e8e86d41b0a696da9ee6b58a1a8cd5823da4fcc9c6ba9df8d12643b15989abf1",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 1,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "empty2",
+    "sha256": "e34dfc72a21b942c9d3f63f9183b8ca643698413b49e1a2a75ec5008e947d18d",
+    "argument": 1,
+    "status": "Returned",
+    "expected": 3,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "nonTail64",
+    "sha256": "439b35330d4b45f69fc0473a76a6702a5b663b6c63a20f0e4ca945274886e874",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 1,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "nonTail64",
+    "sha256": "439b35330d4b45f69fc0473a76a6702a5b663b6c63a20f0e4ca945274886e874",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 1,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "nonTail65",
+    "sha256": "58190cf243aff8d6b93dd1538f24f5bab3849be5caaa57fbb3f4df351c4840e7",
+    "argument": 0,
+    "status": "Block_Limit",
+    "expected": 1,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "nonTail65",
+    "sha256": "58190cf243aff8d6b93dd1538f24f5bab3849be5caaa57fbb3f4df351c4840e7",
+    "argument": 0,
+    "status": "Block_Limit",
+    "expected": 1,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "rawTail0",
+    "sha256": "1b51307ddb536094952bf6f60f09eb73d334b854c55a8d6c17b1b7ae6dd72d8e",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 0,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "rawTail0",
+    "sha256": "1b51307ddb536094952bf6f60f09eb73d334b854c55a8d6c17b1b7ae6dd72d8e",
+    "argument": 0,
+    "status": "Returned",
+    "expected": 0,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "rawTail50",
+    "sha256": "1b51307ddb536094952bf6f60f09eb73d334b854c55a8d6c17b1b7ae6dd72d8e",
+    "argument": 50,
+    "status": "Returned",
+    "expected": 50,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "rawTail50",
+    "sha256": "1b51307ddb536094952bf6f60f09eb73d334b854c55a8d6c17b1b7ae6dd72d8e",
+    "argument": 50,
+    "status": "Returned",
+    "expected": 50,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "rawTail99",
+    "sha256": "1b51307ddb536094952bf6f60f09eb73d334b854c55a8d6c17b1b7ae6dd72d8e",
+    "argument": 99,
+    "status": "Returned",
+    "expected": 99,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "rawTail99",
+    "sha256": "1b51307ddb536094952bf6f60f09eb73d334b854c55a8d6c17b1b7ae6dd72d8e",
+    "argument": 99,
+    "status": "Returned",
+    "expected": 99,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "rawTail200",
+    "sha256": "1b51307ddb536094952bf6f60f09eb73d334b854c55a8d6c17b1b7ae6dd72d8e",
+    "argument": 200,
+    "status": "Returned",
+    "expected": 201,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "rawTail200",
+    "sha256": "1b51307ddb536094952bf6f60f09eb73d334b854c55a8d6c17b1b7ae6dd72d8e",
+    "argument": 200,
+    "status": "Returned",
+    "expected": 201,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "emptyTail",
+    "sha256": "ad1af3aad50d1f4ad3b8e4a82a9919b7a0751803945c3a78b33063ce7f9460ef",
+    "argument": 0,
+    "status": "No_Return",
+    "expected": 0,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "emptyTail",
+    "sha256": "ad1af3aad50d1f4ad3b8e4a82a9919b7a0751803945c3a78b33063ce7f9460ef",
+    "argument": 1,
+    "status": "No_Return",
+    "expected": 0,
+    "budget": 10000,
+    "revision": 1
+  },
+  {
+    "name": "fuel",
+    "sha256": "1b51307ddb536094952bf6f60f09eb73d334b854c55a8d6c17b1b7ae6dd72d8e",
+    "argument": 200,
+    "status": "Budget_Exceeded",
+    "expected": 0,
+    "budget": 2,
+    "revision": 1
+  },
+  {
+    "name": "emptyTail",
+    "sha256": "ad1af3aad50d1f4ad3b8e4a82a9919b7a0751803945c3a78b33063ce7f9460ef",
+    "argument": 0,
+    "status": "No_Return",
+    "expected": 0,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "emptyTail",
+    "sha256": "ad1af3aad50d1f4ad3b8e4a82a9919b7a0751803945c3a78b33063ce7f9460ef",
+    "argument": 1,
+    "status": "No_Return",
+    "expected": 0,
+    "budget": 10000,
+    "revision": 2
+  },
+  {
+    "name": "fuel",
+    "sha256": "1b51307ddb536094952bf6f60f09eb73d334b854c55a8d6c17b1b7ae6dd72d8e",
+    "argument": 200,
+    "status": "Budget_Exceeded",
+    "expected": 0,
+    "budget": 2,
+    "revision": 2
+  }
+]

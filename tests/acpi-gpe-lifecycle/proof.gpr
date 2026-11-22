@@ -1,0 +1,8 @@
+project Proof is
+   for Source_Dirs use (".");
+   for Source_Files use ("gpe_flow_instance.ads", "acpi_gpe_lifecycle.ads", "acpi_gpe_lifecycle.adb");
+   for Object_Dir use "proof/obj";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Proof;

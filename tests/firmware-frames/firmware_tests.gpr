@@ -1,0 +1,10 @@
+project Firmware_Tests is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("main.adb", "firmware_frames.ads", "firmware_frames.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-g");
+   end Compiler;
+end Firmware_Tests;

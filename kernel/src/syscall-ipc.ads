@@ -1,0 +1,134 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2020 Jon Andrew
+--
+-- Syscall IPC, memory, and process creation handlers.
+-------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
+
+with Process;
+
+package Syscall.IPC with
+    SPARK_Mode => Off
+is
+
+    -- SPAWN (CAP-002): arg0 = spawn authority (a CAP_PROCESS handle with
+    -- RIGHT_EXECUTE naming every process), arg1 = address of a
+    -- Capability_ABI.Spawn_Request, arg2 = address of a
+    -- Capability_ABI.Spawn_Result. Creates the process suspended. The
+    -- parent is the caller or a process the authority holds Grant over; the
+    -- returned handles carry at most the authority's rights, the endpoint and
+    -- CSPACE only with Grant (Spawn_Admission). Returns 0, or a refusal code.
+    procedure handleSpawn (callerPID : Process.ProcessID;
+                           arg0, arg1, arg2 : Unsigned_64;
+                           retval     : out Unsigned_64);
+
+    -- MAP_DEVICE: arg4 = the CAP_DEVICE_MEM handle covering the pages:
+    -- device memory (untagged) maps uncached, firmware memory (the ACPI
+    -- hardware grant's NVS runs and FACS page) write-back, and PCI segment
+    -- 0 bus 0 configuration (the grant's ECAM slice) uncached, read-only.
+    -- Through a platform-pool capability (Platform_Pool_ABI): mapped
+    -- uncached inside one pool interval clear of every claim, arg5 = the
+    -- address of a refusal record to fill (0: none); 0 or a refusal code.
+    procedure handleMapDevice (callerPID : Process.ProcessID;
+                               arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+                               retval    : out Unsigned_64);
+
+    -- ALLOC_DMA: arg3 = the mode word (shared/launch DMA_Allocation_ABI),
+    -- arg5 = a process handle with RIGHT_GRANT for the target, arg6 (a
+    -- device-bound request only) = the caller's CAP_IOPORT covering the PCI
+    -- configuration mechanism, the authority to name a PCI function's IOMMU
+    -- domain (IOMMU-001).
+    procedure handleAllocDma (callerPID : Process.ProcessID;
+                              arg0, arg1, arg2, arg3, arg4, arg5, arg6 : Unsigned_64;
+                              retval    : out Unsigned_64);
+
+    -- MAP_INTO: arg5 = a process handle with RIGHT_GRANT for the target,
+    -- arg6 = the CAP_DEVICE_MEM handle (device kind only).
+    procedure handleMapInto (callerPID : Process.ProcessID;
+                             arg0, arg1, arg2, arg3,
+                             arg4, arg5, arg6 : Unsigned_64;
+                             retval    : out Unsigned_64);
+
+    procedure handleSbrk (callerPID : Process.ProcessID;
+                          arg0      : Unsigned_64;
+                          retval    : out Unsigned_64);
+
+    -- MAPFB: arg0 = the CAP_DEVICE_MEM handle covering the framebuffer.
+    procedure handleMapFB (callerPID : Process.ProcessID;
+                           arg0      : Unsigned_64;
+                           retval    : out Unsigned_64);
+
+    procedure handleGetOwnedGrantGeneration
+      (arg0   : Unsigned_64;
+       retval : out Unsigned_64);
+
+    procedure handleAcquireGrant
+      (arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       retval : out Unsigned_64);
+
+    procedure handleAcquireGrantViaCap
+      (callerPID : Process.ProcessID;
+       arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       retval : out Unsigned_64);
+
+    procedure handleReturnGrant
+      (arg0, arg1 : Unsigned_64;
+       retval : out Unsigned_64);
+
+    procedure handleRevokeGrantReference
+      (arg0, arg1 : Unsigned_64;
+       retval : out Unsigned_64);
+
+    procedure handleReply (arg0, arg1, arg2, arg3,
+                           arg4, arg5 : Unsigned_64;
+                           retval     : out Unsigned_64);
+
+    procedure handleReplyCap (arg0, arg1, arg2, arg3,
+                              arg4, arg5 : Unsigned_64;
+                              retval     : out Unsigned_64);
+
+    -- REPLY_WITH_CAPABILITY: arg0 = requester identity, arg1 = reply
+    -- message address, arg2 = Capability_ABI.Derivation address. Returns the
+    -- handle word in the requester's table, or a refusal code.
+    procedure handleReplyWithCap (callerPID : Process.ProcessID;
+                                  arg0, arg1, arg2 : Unsigned_64;
+                                  retval : out Unsigned_64);
+
+    -- REPLY_SAVED_WITH_CAPABILITY: arg0 = saved reply handle, arg1 = reply
+    -- message address, arg2 = Capability_ABI.Derivation address.
+    procedure handleReplySavedWithCap (callerPID : Process.ProcessID;
+                                       arg0, arg1, arg2 : Unsigned_64;
+                                       retval : out Unsigned_64);
+
+    -- SEND_EVENT: arg6 = the authority handle (a notification with
+    -- RIGHT_READ covering a role the destination is registered for, or an
+    -- endpoint with RIGHT_WRITE to it).
+    procedure handleSendEvent (callerPID : Process.ProcessID;
+                               arg0, arg1, arg2, arg3,
+                               arg4, arg5, arg6 : Unsigned_64;
+                               retval     : out Unsigned_64);
+
+    -- WAIT (ABI-002 slice 2, Wait_ABI): arg0 the Sources word, arg1 the
+    -- deadline, arg2 .. arg4 the source's parameters A, B, C.
+    procedure handleWait (sources, deadline, a, b, c, wakeWord : Unsigned_64;
+                          retval : out Unsigned_64);
+
+    procedure handleGrant (callerPID : Process.ProcessID;
+                           arg0, arg1, arg2, arg3 : Unsigned_64;
+                           retval : out Unsigned_64);
+
+    procedure handleRevoke (callerPID : Process.ProcessID;
+                            arg0      : Unsigned_64;
+                            retval    : out Unsigned_64);
+
+    procedure handleDeriveGrantViaCap
+      (callerPID : Process.ProcessID;
+       arg0, arg1, arg2, arg3, arg4, arg5 : Unsigned_64;
+       retval : out Unsigned_64);
+
+    procedure handleGrantViaCap (callerPID : Process.ProcessID;
+                                  arg0, arg1, arg2, arg3 : Unsigned_64;
+                                  retval : out Unsigned_64);
+
+end Syscall.IPC;

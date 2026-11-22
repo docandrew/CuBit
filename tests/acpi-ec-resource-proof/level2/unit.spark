@@ -1,0 +1,1088 @@
+{
+  "assumptions": [
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 3,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 4,
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "arg": 1,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 1,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 2,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 4,
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "arg": 1,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 1,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 2,
+        "predicate": "CLAIM_AORTE"
+      }
+    }
+  ],
+  "entities": {
+    " 1": {
+      "name": "ACPI_EC_Boot_Resources.Descriptions_Agree",
+      "sloc": [
+        {
+          "file": "acpi_ec_boot_resources.ads",
+          "line": 28
+        }
+      ]
+    },
+    " 2": {
+      "name": "ACPI_EC_Boot_Resources.Compare",
+      "sloc": [
+        {
+          "file": "acpi_ec_boot_resources.ads",
+          "line": 48
+        }
+      ]
+    },
+    " 3": {
+      "name": "ACPI_EC_Boot_Resources",
+      "sloc": [
+        {
+          "file": "acpi_ec_boot_resources.ads",
+          "line": 9
+        }
+      ]
+    },
+    " 4": {
+      "name": "ACPI_EC_Boot_Table.Decode",
+      "sloc": [
+        {
+          "file": "acpi_ec_boot_table.ads",
+          "line": 26
+        }
+      ]
+    },
+    " 5": {
+      "name": "ACPI_EC_Boot_Table.Check_Registers",
+      "sloc": [
+        {
+          "file": "acpi_ec_boot_table.ads",
+          "line": 57
+        }
+      ]
+    },
+    " 6": {
+      "name": "ACPI_EC_Resources.Describe",
+      "sloc": [
+        {
+          "file": "acpi_ec_resources.ads",
+          "line": 35
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 1,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "flow",
+      "line": 28,
+      "msg_id": 0,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 18,
+      "entity": 1,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "flow",
+      "line": 41,
+      "msg_id": 1,
+      "rule": "GLOBAL_WRONG",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 7,
+      "entity": 2,
+      "file": "acpi_ec_boot_resources.adb",
+      "how_proved": "flow",
+      "line": 8,
+      "msg_id": 2,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 2,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "flow",
+      "line": 48,
+      "msg_id": 3,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 11,
+      "entity": 2,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "flow",
+      "line": 49,
+      "msg_id": 4,
+      "rule": "GLOBAL_WRONG",
+      "severity": "info"
+    }
+  ],
+  "pragma_assume": [
+  ],
+  "progress": "PROGRESS_PROOF",
+  "proof": [
+    {
+      "check_col": 61,
+      "check_file": "acpi_ec_boot_resources.ads",
+      "check_line": 34,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.07300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 61,
+      "entity": 1,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "prover",
+      "line": 34,
+      "msg_id": 5,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 7.07300007343292E-03
+        }
+      }
+    },
+    {
+      "check_col": 82,
+      "check_file": "acpi_ec_boot_resources.ads",
+      "check_line": 34,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.61300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 82,
+      "entity": 1,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "prover",
+      "line": 34,
+      "msg_id": 6,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 8.61299969255924E-03
+        }
+      }
+    },
+    {
+      "check_col": 22,
+      "check_file": "acpi_ec_boot_resources.ads",
+      "check_line": 35,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.02900000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 22,
+      "entity": 1,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "prover",
+      "line": 35,
+      "msg_id": 7,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 6.02900004014373E-03
+        }
+      }
+    },
+    {
+      "check_col": 70,
+      "check_file": "acpi_ec_boot_resources.ads",
+      "check_line": 36,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.52800000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 70,
+      "entity": 1,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "prover",
+      "line": 36,
+      "msg_id": 8,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 7.52800004556775E-03
+        }
+      }
+    },
+    {
+      "check_col": 93,
+      "check_file": "acpi_ec_boot_resources.ads",
+      "check_line": 36,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.13000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 93,
+      "entity": 1,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "prover",
+      "line": 36,
+      "msg_id": 9,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 8.12999997287989E-03
+        }
+      }
+    },
+    {
+      "check_col": 22,
+      "check_file": "acpi_ec_boot_resources.ads",
+      "check_line": 37,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.83300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 22,
+      "entity": 1,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "prover",
+      "line": 37,
+      "msg_id": 10,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 5.83299994468689E-03
+        }
+      }
+    },
+    {
+      "check_col": 31,
+      "check_file": "acpi_ec_boot_resources.ads",
+      "check_line": 38,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.39700000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 31,
+      "entity": 1,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "prover",
+      "line": 38,
+      "msg_id": 11,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 9.39700007438660E-03
+        }
+      }
+    },
+    {
+      "check_col": 32,
+      "check_file": "acpi_ec_boot_resources.ads",
+      "check_line": 39,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.41700000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 32,
+      "entity": 1,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "prover",
+      "line": 39,
+      "msg_id": 12,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 9.41700022667646E-03
+        }
+      }
+    },
+    {
+      "check_col": 28,
+      "check_file": "acpi_ec_boot_resources.ads",
+      "check_line": 40,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.11200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 28,
+      "entity": 1,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "prover",
+      "line": 40,
+      "msg_id": 13,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 7.11200013756752E-03
+        }
+      }
+    },
+    {
+      "check_col": 70,
+      "check_file": "acpi_ec_boot_resources.adb",
+      "check_line": 22,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.06380000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.01250000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 70,
+      "entity": 2,
+      "file": "acpi_ec_boot_resources.adb",
+      "how_proved": "prover",
+      "line": 22,
+      "msg_id": 14,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.06380004435778E-02
+        }
+      }
+    },
+    {
+      "check_col": 86,
+      "check_file": "acpi_ec_boot_resources.adb",
+      "check_line": 22,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.39890000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.69200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 86,
+      "entity": 2,
+      "file": "acpi_ec_boot_resources.adb",
+      "how_proved": "prover",
+      "line": 22,
+      "msg_id": 15,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.39889996498823E-02
+        }
+      }
+    },
+    {
+      "check_col": 42,
+      "check_file": "acpi_ec_boot_resources.adb",
+      "check_line": 23,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.43790000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.10610000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 42,
+      "entity": 2,
+      "file": "acpi_ec_boot_resources.adb",
+      "how_proved": "prover",
+      "line": 23,
+      "msg_id": 16,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.43790002912283E-02
+        }
+      }
+    },
+    {
+      "check_col": 70,
+      "check_file": "acpi_ec_boot_resources.adb",
+      "check_line": 32,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.12380000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 65,
+              "time": 1.50500000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 70,
+      "entity": 2,
+      "file": "acpi_ec_boot_resources.adb",
+      "how_proved": "prover",
+      "line": 32,
+      "msg_id": 17,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 65,
+          "max_time": 1.50499995797873E-02
+        }
+      }
+    },
+    {
+      "check_col": 86,
+      "check_file": "acpi_ec_boot_resources.adb",
+      "check_line": 32,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 138,
+              "time": 1.54680000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.89300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 86,
+      "entity": 2,
+      "file": "acpi_ec_boot_resources.adb",
+      "how_proved": "prover",
+      "line": 32,
+      "msg_id": 18,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 138,
+          "max_time": 1.54680004343390E-02
+        }
+      }
+    },
+    {
+      "check_col": 42,
+      "check_file": "acpi_ec_boot_resources.adb",
+      "check_line": 33,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 113,
+              "time": 1.46860000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 46,
+              "time": 1.47170000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 42,
+      "entity": 2,
+      "file": "acpi_ec_boot_resources.adb",
+      "how_proved": "prover",
+      "line": 33,
+      "msg_id": 19,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 113,
+          "max_time": 1.47169996052980E-02
+        }
+      }
+    },
+    {
+      "check_col": 10,
+      "check_file": "acpi_ec_boot_resources.ads",
+      "check_line": 51,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1560,
+              "time": 1.34206000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1579,
+              "time": 1.30964000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1542,
+              "time": 1.29966000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1586,
+              "time": 1.28483000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1588,
+              "time": 1.30114000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1586,
+              "time": 1.28463000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1627,
+              "time": 1.33881000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1627,
+              "time": 1.31834000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1586,
+              "time": 1.35569000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1627,
+              "time": 1.32316000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1586,
+              "time": 1.31402000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 2107,
+              "time": 1.42945000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 2083,
+              "time": 1.48571000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1291,
+              "time": 1.13161000000000E-01
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 10,
+      "entity": 2,
+      "file": "acpi_ec_boot_resources.ads",
+      "how_proved": "prover",
+      "line": 51,
+      "msg_id": 20,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 14,
+          "max_steps": 2107,
+          "max_time": 1.48570999503136E-01
+        },
+        "Trivial": {
+          "count": 4,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    }
+  ],
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all",
+    " 2": "all",
+    " 3": "all"
+  },
+  "stop_reason": "STOP_REASON_NONE",
+  "timings": {
+    " 1": {
+      "gnat2why.vc_generation": 2.95190989971161E-01,
+      "gnatwhy3.init": 2.81841009855270E-01,
+      "gnatwhy3.register_vcs": 1.31480004638433E-02,
+      "gnatwhy3.run_vcs": 7.99900044512469E-06,
+      "gnatwhy3.save_session": 3.32299899309874E-03,
+      "gnatwhy3.schedule_vcs": 1.31525993347168E-01,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 7.91199877858162E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 9.45998996030539E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 3.99900000047637E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 1.35399901773781E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 6.28100009635091E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 1.28800002858043E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 1.16500002332032E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 1.45600002724677E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 1.30999903194606E-03,
+      "gnatwhy3.transformations.eliminate_literal": 1.75799895077944E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 1.49900000542402E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 3.00000010611257E-06,
+      "gnatwhy3.transformations.inline_trivial": 7.02819973230362E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 7.00000009601354E-06,
+      "gnatwhy3.transformations.remove_unused": 2.23779994994402E-02,
+      "gnatwhy3.transformations.simplify_formula": 1.91099895164371E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 9.06299892812967E-03
+    },
+    " 2": {
+      "gnat2why.vc_generation": 1.43683001399040E-01,
+      "gnatwhy3.init": 3.75652998685837E-01,
+      "gnatwhy3.register_vcs": 4.01959002017975E-01,
+      "gnatwhy3.run_vcs": 3.40000005962793E-05,
+      "gnatwhy3.save_session": 7.02169984579086E-02,
+      "gnatwhy3.schedule_vcs": 1.78918004035950E-01,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 6.47780001163483E-02,
+      "gnatwhy3.transformations.detect_polymorphism": 1.31379989907146E-02,
+      "gnatwhy3.transformations.discriminate_if_poly": 2.09989993891213E-05,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 1.69649980962276E-02,
+      "gnatwhy3.transformations.eliminate_builtin": 1.55999986454844E-02,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 1.11499987542629E-02,
+      "gnatwhy3.transformations.eliminate_epsilon": 2.10309997200966E-02,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 2.03760005533695E-02,
+      "gnatwhy3.transformations.eliminate_inductive": 1.05379987508059E-02,
+      "gnatwhy3.transformations.eliminate_literal": 1.93189997226000E-02,
+      "gnatwhy3.transformations.eliminate_projections_sums": 1.23650003224611E-02,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 1.70000002981396E-05,
+      "gnatwhy3.transformations.inline_trivial": 3.15272003412247E-01,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 2.40000008489005E-05,
+      "gnatwhy3.transformations.remove_unused": 1.13100998103619E-01,
+      "gnatwhy3.transformations.simplify_formula": 2.00769994407892E-02,
+      "gnatwhy3.transformations.split_goal_wp_conj": 2.19659999012947E-01
+    },
+    "global": {
+      "flow analysis": 1.49743005633354E-01,
+      "globals (advanced)": 4.21199994161725E-03,
+      "globals (basic)": 1.33379995822906E-02,
+      "init_why_sections": 2.68469993025064E-02,
+      "marking": 1.04219997301698E-02,
+      "properties (advanced)": 5.53000019863248E-04,
+      "translation of standard": 4.12419997155666E-02
+    }
+  }
+}

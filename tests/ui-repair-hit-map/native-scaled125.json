@@ -1,0 +1,34 @@
+{
+  "status": "PASS",
+  "gpu_enabled": false,
+  "scope": "Native CuBit software composition at125% on1024x768; real Settings scale change, maximized Files resize, scrollbar, Refresh click and F5",
+  "binary_sha256": "e1134d1ecb65b996960437149e969e16aba4259b7c27557f52c30b3fcf748b1d",
+  "memory": "1G",
+  "render_approved": false,
+  "render_attempts": [
+    [
+      "4294967329",
+      "TRUE"
+    ]
+  ],
+  "software_fallback": "PASS",
+  "hardware_validated": false,
+  "files_scrollbar": true,
+  "files_refresh_after_scroll": true,
+  "files_keyboard_refresh": true,
+  "native_scale": [
+    5,
+    4
+  ],
+  "initial_pixels_unchanged": true,
+  "negative_run": "/home/doc/git/compositor-test-artifacts/ui-hit-map-native-114",
+  "negative_failure": "Original initial-size minimum leaves scrollbar outside output; same sequence times out waiting for scroll",
+  "oracle_difference": "Files artifact only",
+  "native_files_sha256": "af751b1dfdbb3b1240fa233b606256e19733666cebdcb9a93fbb26be6e239230",
+  "formal_proof": false,
+  "native_inputs_manifest": {
+    "path": "/home/doc/git/compositor-test-artifacts/ui-hit-map-native-116/inputs.json",
+    "sha256": "2ebf09d14c7b2065955911c3058e3a932862f90430fe9c32e6ee85f3da0e49c3"
+  },
+  "ui_patch_sha256": "ad988206df6529440fb7cdb0ea9e5b78ac7bbe2c0b7c5e6b7eea3be7c55d5971"
+}

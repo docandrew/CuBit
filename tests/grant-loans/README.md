@@ -1,0 +1,256 @@
+# Bounded derived-loan lifetime core
+
+`Memory_Grants.Loans` is a pure SPARK state machine for one forwarding scope
+bound to a generation-checked parent grant. The native forwarding syscall now
+connects it to parent lifetime and receiver teardown through a separate kernel
+forwarding hold. The pure proof does not prove that native adapter.
+Existing grant creation remains nonforwardable by default, and display mapping
+behavior remains unchanged. The desktop still uses its copying path.
+
+`Open_Forwarding`, `Close_Forwarding`, and `Release_Forwarding` join scope
+transitions with the parent's kernel forwarding hold. Opening requires an
+ordinary acquisition and unused forwarding retention; rejection leaves both
+states unchanged. Closing prevents new children but does not itself return
+the parent acquisition. Release checks the stored parent reference, a closed
+empty scope and the retained hold. Children must first finish actual unmap and
+acknowledged shootdown through the native adapter; calling the policy method
+alone is not that evidence. Parent authentication, generation association and
+owner-selected forwarding permission remain mandatory adapter responsibilities.
+
+`parent_scope_test` composes both state machines through revoke/return orderings,
+receiver death, stale identity, child readers and pending shootdown. The joined
+operations live in the invariant-owning package because GNATprove does not
+support this generic child-package instantiation with the parent's invariant.
+No invariant was removed to accommodate the prover.
+
+```
+nix develop -c make -C kernel test-grant-loans prove-grant-loans
+```
+
+The first supported shape is an explicitly forwardable driver -> display loan,
+with terminal display -> compositor children. A child cannot itself authorize
+another forwarding scope. This deliberately does not claim a general recursive
+grant graph. The rules can be extended later without relaxing ordinary grants'
+prohibition on treating borrowed addresses as owned memory.
+
+## Security and state
+
+The parent owner chooses `No_Forwarding` or `Forward_Once`. Native grant creation
+now stores the owner's explicit forwarding opt-in on the kernel grant record;
+invalidation clears it. A borrower's unchecked derivation field must never
+substitute for that stored authority.
+Read access is not permission to delegate a live mapping. This restriction does
+not prevent copying data that a process already has authority to read.
+
+Creation wire flags use bit 0 for writable and bit 1 for forwardable. Unknown
+bits and page counts outside 1..4096 are rejected before argument narrowing.
+The runtime exposes `Create_Forwardable_Via_Capability` as an explicit opt-in;
+ordinary APIs retain flags 0/1. Creation still requires owned source pages and
+rejects received grant mappings. This stores policy only: no native child loan,
+forwarding hold, or derived mapping is created by setting the flag. The native
+adapter and capability-checked syscall now exist; the three-party native fixture
+is in `tests/grant-forward`.
+
+One dedicated kernel parent hold is retained for the whole scope. Child loans
+are nonempty page subranges and cannot add write permission. There are at most
+16 children in the native/default instance; this per-parent fanout is the
+independent `Maximum_Children` generic parameter, not `Grants_Per_Process`.
+Growing the grant namespace must not implicitly enlarge every forwarding scope.
+Hosted tests also fill 1- and 64-child instances, retain readers across closure,
+and check full-table rejection, delayed retirement, reuse and stale references.
+The proof audit requires the lifetime contracts in both additional instances.
+This does not increase the native kernel's 16-grant owner limit or implement
+dynamic kernel grant storage. Reservation counters never wrap. References bind parent slot and
+generation, child slot and reservation sequence. Rejected operations preserve
+the complete state. A scope is configured once, cannot reopen after retirement,
+and must never be reset or recreated under the same parent grant identity.
+
+Child phases:
+
+```
+Mapping -> Available -> Draining -> Unmapping -> Absent
+   |            |                       ^
+   +------------+--- revoke, no readers -+
+```
+
+Reserve before mapping so partial mapping failures also retain the parent.
+Publish only after all mappings succeed. Acquisitions are admitted only while
+available. Revocation closes admission; the last reader return allows unmapping,
+but does not itself retire the mapping or release the parent. Mapping rollback
+also needs explicit retirement confirmation, even if zero pages were installed.
+
+Parent close stops every new reservation, publication and acquisition. It does
+not release memory, erase readers or declare DMA quiescent. Only after every
+child is unmapped/retired may `Release_Parent` emit its one-shot release
+obligation. Ordinary reader returns cannot consume that parent hold.
+
+The private Ghost invariant ties every live child to a held parent, enforces
+range/access attenuation, nonzero bounded reservation identity, zero readers
+while mapping/unmapping, and positive readers while draining. Runtime branches
+handle real request rejection; Ghost invariants/contracts are proof scaffolding,
+not a requirement to turn on kernel runtime assertions.
+
+## Parent hold implementation (2026-09-21)
+
+`Memory_Grants.Lifecycle`, the actual parent state used in the kernel, now
+distinguishes ordinary acquisitions from one dedicated forwarding hold.
+`Retain_Forwarding_Hold` is one-shot per initialized grant lifetime and only
+works while available. The separate `Release_Forwarding_Hold` is a kernel
+operation, not a userspace syscall; ordinary `Record_Return` cannot reach it.
+Retaining does not consume any of the 127 user-acquisition slots. Owner-selected
+forwarding permission and scope/identity authentication are still adapter work.
+
+`Force_Close` was removed, not kept as a compatibility alias. Its replacement,
+`Close_Receiver`, clears a dead receiver's ordinary acquisitions but preserves
+the forwarding hold and pending revocation. Native receiver teardown unmaps
+and acknowledges shootdown while page tables still exist, then sets installed
+page count to zero. It invalidates the grant identity only if no hold remains.
+A retained identity cannot be acquired or reused; later retirement of its
+zero-page mapping must not touch the dead receiver's page tables.
+
+**Frame pins and a forwarding hold are different.** Each derived mapping will
+need its own pins on root-owned physical frames. The parent hold preserves
+grant identity and deferred owner resources (notably whole DMA allocations),
+not a dead intermediary's virtual address space. Before a native forwarding
+syscall is enabled, scope closure must be integrated with parent revocation
+and receiver exit, and each child mapping must get independent pins. The new
+held-receiver branch is not reachable through today's native grant syscalls.
+
+Validated: 6,084,701 additional hosted checks against an independent model,
+including all seven-event histories from available/inactive states, every
+ordinary-reader count through 127, duplicate returns/releases, receiver exit,
+and parent/child model composition through acknowledged-retirement boundaries.
+The combined proof gate passes 197 diagnostics, checking that every new hold
+operation is actually covered, with no skips or assumptions. This proves the
+pure state transitions, not the native unmap/shootdown implementation.
+
+The native kernel builds without enabling runtime assertions. The state fields
+are grouped to use existing padding: GNAT reports an 8-byte `Lifecycle` on this
+target, the same as before the forwarding hold. Four-vCPU KVM regressions passed
+for `display-grants-virtio-vga` and `desktop-protocol`, including dead-client
+buffer release. Those exercise existing native grants, not yet a live forwarded
+child. The final-layout one-vCPU loaded virtio input fixture also passed integrity;
+latency remains above target. Measurements are in the ignored local directory
+`tests/performance/results/forwarding-holds/`, separate from the earlier GPU
+wakeup experiment. No pixel copies were removed by this lifetime change.
+
+## Integration obligations before exposing a syscall
+
+Native `Process.IPC.deriveGrant` connects the policy to independent page pins,
+mapping rollback and generation-bound child links. It requires an acquired,
+available, owner-forwardable root grant; children are terminal and only narrow
+the page range and access. It rechecks recipient generation and process closing
+state under `grantLock`. Syscall 122 authenticates the recipient endpoint
+capability before supplying its PID and generation to this internal API.
+
+Native acquisition/return also updates the parent scope's child reader count.
+Revocation closes child admission, and receiver death drains its reader count
+before acknowledged mapping retirement. Parent mapping removal on intermediary
+death leaves independent child pins and the parent hold intact. Final child
+retirement can then release the hold and finish deferred owner teardown. Scope
+tables live outside process records/kernel stacks and reset only on invalidation
+of their associated grant identity. Ordinary-grant regressions do not establish
+these child paths are correct; use the separate three-party native fixture.
+
+`Grant_Page_Installation` is now used by native `Process.IPC.createGrant` for
+the page installation/rollback sequence. A derived adapter can reuse it with
+an authenticated parent source while retaining independent pins on root-owned
+frames. A failed pin retires only the previously mapped prefix; a failed map
+first releases the unpublished pin, then retires that prefix. Publication stays
+outside the transaction and is reached only on full success. Native retirement
+still removes mappings, acknowledges TLB shootdown and only then drops pins.
+
+`mapping_test` injects pin and mapping failures at every position in short
+ranges, plus full 4096-page success and last-page failure. Distinct and aliased
+physical frames exercise per-mapping pin accounting and preserve a simulated
+parent pin. These are hosted callback-order tests, not a proof of page-table
+operations, physical TLB behavior, or the allocator's pin capacity.
+
+1. Authenticate the caller, parent reference and intended recipient through the
+   existing endpoint/reply authority rules, checking process generations and
+   closing state under the existing lock/lifetime discipline. The pure model
+   accepts already-authorized inputs; it does not prove identity or capability
+   enforcement in the kernel adapter.
+2. Add explicit owner-controlled forwarding metadata with a deny-by-default
+   value. Derived grants are terminal. Reject creation from a parent pending
+   revocation, even if an existing acquisition still keeps its mapping alive.
+3. Retain a dedicated, **non-user-returnable** parent hold. Do not mix
+   scope holds into the existing scalar count in a way that ordinary
+   `returnGrant` calls can drain them. Do not rely on a caller promising to keep
+   its normal acquisition. The parent bookkeeping exists now; the scope adapter
+   must acquire/release it exactly once and enforce owner-controlled permission.
+4. Reserve under serialization, install mappings with attenuated permissions,
+   and publish only on success. Partial failure must remove installed mappings
+   and acknowledge TLB shootdown before retirement. Pixel memory is shared;
+   the state machine introduces no pixel copying.
+5. Parent revocation/owner exit must close associated scopes. Receiver exit
+   must retire children before releasing their ancestor hold. The existing
+   `revokeAllGrantsTo` now preserves the parent hold and closes associated child
+   scopes; native owner/intermediary-death coverage is still required. Child mapping pins must
+   survive removal of a dead intermediary's mappings. Do not wait for readers
+   while holding the global grant spinlock.
+6. Invoke `Finish_Retirement` only after real unmap/shootdown evidence. Release
+   the parent acquisition only after all children retire; commit the model's
+   release transition only when the real return succeeds. The model's output
+   is an obligation, not evidence that the kernel performed it.
+7. Device work needs driver-owned completion/quiescence evidence in addition to
+   CPU mapping retirement. Process death and a userspace message cannot prove
+   a GPU has stopped reading. Quarantine uncertain storage.
+8. Add native three-process tests: actual aliasing with no data copy, denied
+   forwarding/escalation, partial-map rollback, parent revocation, borrower
+   and intermediate-service death, slot/PID reuse and SMP shootdown. Only then
+   enable the display/compositor buffer path.
+
+## Tests and proof boundary
+
+### Multi-output composition tests
+
+`output_lifetime_test` combines the production grant/hold model with a concrete
+instance of the production `CuBit.Presentation_State` model. This is a hosted
+test of their intended composition, not a new display subsystem or native
+multi-output implementation.
+
+In six scenarios, output A stops while queued, being read, or held by scanout;
+output B completes 128 further frames. Mappings cover either separate pages of
+one arena or overlapping read-only pages. Closing A cannot close B or consume
+the parent hold; A's reader survives until the test supplies explicit final-use
+evidence. Delayed duplicate returns are rejected. Reusing A's loan slot does not
+make its stale reference valid. Closing the whole parent subsequently prevents
+new work on B and waits for all mappings to retire.
+
+The test explicitly shows that two sessions can both have frame ID 1. Output,
+service incarnation and session authentication must precede frame dispatch in
+the future native adapter. The generic frame state alone is not an identity or
+authorization check. Likewise the test's backend-quiescence and unmap events
+are simulated observations; real unplugging must never synthesize them.
+
+Validated in Nix on 2026-09-21: **14,926 additional hosted checks**, with the
+existing 4,532,184 loan checks and 6,084,701 parent checks still passing. The
+combined component proof gate now passes **200 diagnostics**, including actual
+postconditions for the concrete presentation instance. The cross-component
+scenario is regression-tested, not itself SPARK-proved. No scheduling, refresh,
+pixel correctness, DMA or latency guarantee follows from this hosted test.
+
+Native `display-discovery-multi-output` was rerun on KVM successfully: CuBit
+discovers 1024x768, 1920x1080 and portrait 1080x1920 virtio outputs. The last two
+remain `Detected_Only`; the fixture does **not** show a desktop on all outputs.
+
+### Original loan core
+
+Initial loan-only validation on 2026-09-21 in Nix: **4,532,184 hosted checks** and **195 proof
+diagnostics** across the loan instances and existing parent grant policy, with
+no assumptions, skips or unproved obligations. The generic also compiles against
+the freestanding kernel runtime with `-gnatp` and without `-gnata`. This is
+compiler compatibility evidence, not a native syscall or QEMU integration test.
+
+Hosted tests check permission combinations, boundary ranges up to 4096 pages,
+16-child capacity, all 127 reader counts, stale handles, foreign parent slots
+and generations, sequence exhaustion, reset rejection, mapping rollback and
+every seven-event sequence of publish/acquire/return/revoke/unmap/close/release
+against an independently represented reader/boolean model.
+
+The generic is proved for both its production sequence bound and a three-entry
+sequence budget to exercise exhaustion. `check-proof.py` rejects missing proof
+obligations, assumptions, skips and unproved checks. Proven properties concern
+this serialized state machine, **not** live mapping, TLBs, DMA, scheduling,
+process identity, a recursive grant graph or the future native integration.

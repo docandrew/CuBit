@@ -1,0 +1,17 @@
+project Boot_Timeline_Tests is
+   for Source_Dirs use (".", "../../kernel/src", "../../shared/boot",
+                        "../../userspace/lib/display", "../../userspace/apps/boot-timeline",
+                        "../../userspace/runtime/gnat");
+   for Source_Files use ("boot_timeline_records.ads", "boot_timeline_records.adb",
+                         "boot_timeline_layout.ads", "boot_timeline_report.ads",
+                         "boot_timeline_report.adb", "cubit.ads",
+                         "cubit-boot_milestone_codes.ads", "boot_timeline_tests.adb");
+   for Object_Dir use "build/test";
+   for Main use ("boot_timeline_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-Es");
+   end Binder;
+end Boot_Timeline_Tests;

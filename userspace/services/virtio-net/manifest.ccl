@@ -1,0 +1,23 @@
+# virtio-net.drv's authority (docs/ccl-driver-manifests.md, CAP-002).
+# devmgr answers every binding when it launches the driver: the legacy
+# register ports (or it maps the modern BAR itself), the interrupt (an
+# allocated vector), netstack's endpoint and its endpoint to devmgr. The DMA
+# region is devmgr's (its address is in the launch configuration).
+(Executable_Manifest
+  identity => "com.cubit.virtio-net"
+  version => "0.1.0"
+  # Transitional (0x1000) and modern (0x1041) virtio-net.
+  drives => [(Device_Match.PCI_IDs (PCI_IDs 0x1AF4 0x1000 0x1000))
+            (Device_Match.PCI_IDs (PCI_IDs 0x1AF4 0x1041 0x1041))]
+  requests => [
+    (io-ports "registers" 0 32)
+    # RX, TX and configuration changes share MSI-X entry 0.
+    (interrupt "device" Interrupt_Mode.MSI_X 1)
+    (dma "rings" 131072)
+    # netstack's endpoint, badged as the network driver's authority.
+    (service "network-stack" "netstack")
+    (service "device-manager" "ready")
+    # ABI-002: its debug text, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  # A modern device's BAR is mapped by devmgr: no legacy ports then.
+  optional => ["registers" "logstore"])

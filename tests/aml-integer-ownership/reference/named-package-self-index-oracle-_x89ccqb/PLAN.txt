@@ -1,0 +1,3 @@
+14normal-ASL cases:7directions bothwidths,6scalar/status observations each. No forced AML. Retain compiler process failures separately from syntax diagnosis. Exact restored ACPICAtools pins, sequential5s/128MiBAS/8MiBstack/1MiBlog+file caps, nice19. Outcomes hypotheses, no semantic fix assumed. Original failing12replay unchanged.
+
+Added explicit retained Index self-assignment discriminator; old index value compared against newnamed leaf mutation.

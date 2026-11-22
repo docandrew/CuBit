@@ -1,0 +1,55 @@
+{
+  "baseline_accepted": true,
+  "cases": [
+    {
+      "name": "empty-SPARK",
+      "rejected": true,
+      "reason": "SPARK coverage"
+    },
+    {
+      "name": "non-SPARK",
+      "rejected": true,
+      "reason": "SPARK coverage"
+    },
+    {
+      "name": "empty-proof",
+      "rejected": true,
+      "reason": "Proof"
+    },
+    {
+      "name": "missing-post",
+      "rejected": true,
+      "reason": "Proof"
+    },
+    {
+      "name": "unproved",
+      "rejected": true,
+      "reason": "Proof"
+    },
+    {
+      "name": "skipped",
+      "rejected": true,
+      "reason": "Assume/skipped/incomplete analysis"
+    },
+    {
+      "name": "explicit-assume",
+      "rejected": true,
+      "reason": "Assume/skipped/incomplete analysis"
+    },
+    {
+      "name": "stopped",
+      "rejected": true,
+      "reason": "Assume/skipped/incomplete analysis"
+    },
+    {
+      "name": "invalid-attempt",
+      "rejected": true,
+      "reason": "Proof"
+    },
+    {
+      "name": "unreviewed-helper",
+      "rejected": true,
+      "reason": "Unreviewed modular dependency"
+    }
+  ]
+}

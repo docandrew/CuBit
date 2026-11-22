@@ -1,0 +1,83 @@
+with CuBit.Display_Geometry;
+with CuBit.UI_Metrics;
+package Compositor_Glyph_Layout with SPARK_Mode, Pure is
+   package G renames CuBit.Display_Geometry;
+   use type G.Scale_Component;
+   -- Bundled-font raster request. Metrics and outline parsing are foreign;
+   -- storage geometry and the selected density are compositor policy. The
+   -- em at a density is Base_Em * Numerator / Denominator: a multiple of
+   -- the base em (CuBit.UI_Metrics), the font engine's check too.
+   Base_Em : constant := CuBit.UI_Metrics.Base_Em;
+   -- Faces by the font engine's face number (CuBit.Fonts.Face'Pos): the
+   -- bundled Sans, Monospace and emphasis face Sans_Semibold, then the
+   -- reading-face slots a program fills itself (APP-005).
+   Face_Count : constant := 6;
+   Bundled_Face_Count : constant := 3;
+   subtype Face_Index is Natural range 0 .. Face_Count - 1;
+   Sans_Face : constant Face_Index := 0;
+   Semibold_Face : constant Face_Index := 2;
+   -- Rasterized code points: printable ASCII, and for the reading face the
+   -- Windows-1252 upper half (16#80# .. 16#FF#; the font engine draws '?'
+   -- for any other face's).
+   First_Code : constant := 32;
+   Last_ASCII : constant := 126;
+   Last_Code : constant := 255;
+   subtype Code_Point is Natural range First_Code .. Last_Code;
+   Code_Count : constant := Last_ASCII - First_Code + 1;
+   -- Every bundled face's whole printable set at one density: the most
+   -- distinct glyph keys one Desktop frame (one output density) can draw.
+   Repertoire : constant := Bundled_Face_Count * Code_Count;
+   Base_Line : constant := CuBit.UI_Metrics.Line_Height;
+   Base_Width_Bound : constant := CuBit.UI_Metrics.Glyph_Width_Bound;
+   Row_Alignment : constant := 16;
+   -- Horizontal subpixel phases (UI-026): a mask holds one raster per phase,
+   -- stacked: phase P is rows P * Height .. P * Height + Height - 1, its ink
+   -- shifted right by P / Phases of a pixel of the raster's density. Glyph
+   -- pens are in 1/Pen_Unit logical pixel (Glyph_Pen.Unit).
+   Phases : constant := 4;
+   Pen_Unit : constant := 64;
+   subtype Phase is Natural range 0 .. Phases - 1;
+   -- A glyph origin's fraction of a logical pixel, in 1/Pen_Unit.
+   subtype Subpixel is Natural range 0 .. Pen_Unit - 1;
+   Last_Width : constant := Base_Width_Bound * Positive (G.Scale_Component'Last);
+   Last_Height : constant := Base_Line * Positive (G.Scale_Component'Last);
+   Maximum_Bytes : constant := Last_Width * Last_Height * Phases;
+   subtype Raster_Width is Positive range 1 .. Last_Width;
+   subtype Raster_Height is Positive range 1 .. Last_Height;
+   subtype Byte_Length is Positive range 1 .. Maximum_Bytes;
+   -- One mask's bytes at density 2: owners that budget every slot at this
+   -- size keep the whole printable set resident up to 2x.
+   Dense_Scale : constant := 2;
+   Dense_Bytes : constant :=
+     ((Base_Width_Bound * Dense_Scale + Row_Alignment - 1) / Row_Alignment) * Row_Alignment *
+     Base_Line * Dense_Scale * Phases;
+   type Layout is record
+      Em_Numerator : Positive range Base_Em .. Base_Em * Positive (G.Scale_Component'Last);
+      Em_Denominator : G.Scale_Component;
+      Width : Raster_Width;
+      Height : Raster_Height;
+      Pitch : Raster_Width;
+      Bytes : Byte_Length;
+   end record;
+   function Valid (L : Layout) return Boolean is
+     (L.Pitch >= L.Width and then L.Pitch mod Row_Alignment = 0 and then
+      L.Pitch - L.Width < Row_Alignment and then L.Bytes = L.Pitch * L.Height * Phases);
+   -- One phase's raster, and the rows of the whole stacked mask.
+   function Phase_Bytes (L : Layout) return Positive is (L.Pitch * L.Height)
+     with Pre => Valid (L), Post => Phase_Bytes'Result * Phases = L.Bytes;
+   function Strip_Height (L : Layout) return Positive is (L.Height * Phases)
+     with Post => Strip_Height'Result <= Last_Height * Phases;
+   function Same_Raster (Left, Right : Layout) return Boolean is
+     (Left.Width = Right.Width and Left.Height = Right.Height and
+      Left.Pitch = Right.Pitch and Left.Bytes = Right.Bytes and
+      Left.Em_Numerator * Positive (Right.Em_Denominator) =
+        Right.Em_Numerator * Positive (Left.Em_Denominator));
+   function Plan (Scale : G.UI_Scale) return Layout
+     with Post => Valid (Plan'Result) and then
+       Plan'Result.Em_Numerator = Base_Em * Positive (Scale.Numerator) and then
+       Plan'Result.Em_Denominator = Scale.Denominator and then
+       (Plan'Result.Width - 1) * Positive (Scale.Denominator) < Base_Width_Bound * Positive (Scale.Numerator) and then
+       Plan'Result.Width * Positive (Scale.Denominator) >= Base_Width_Bound * Positive (Scale.Numerator) and then
+       (Plan'Result.Height - 1) * Positive (Scale.Denominator) < Base_Line * Positive (Scale.Numerator) and then
+       Plan'Result.Height * Positive (Scale.Denominator) >= Base_Line * Positive (Scale.Numerator);
+end Compositor_Glyph_Layout;

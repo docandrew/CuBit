@@ -1,0 +1,16 @@
+--  Hosted tests of the automatic display scale (Desktop_Auto_Scale).
+project Tests is
+   for Source_Dirs use (".", "../../userspace/services/desktop", "../../userspace/lib/display",
+     "../../userspace/ccl/runtime-shared");
+   for Source_Files use
+     ("auto_scale_tests.adb", "desktop_auto_scale.ads", "desktop_auto_scale.adb",
+      "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb",
+      "cubit-display_layouts.ads", "cubit-display_layouts.adb",
+      "cubit-display_arrangement.ads", "cubit-display_arrangement.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("auto_scale_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-O1");
+   end Compiler;
+end Tests;

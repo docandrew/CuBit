@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Build a generated ext2 development disk, then verify every payload byte.
+
+debugfs can exit successfully on ENOSPC; file size alone is not evidence that
+the payload was written. Publish only a completely populated, checked image.
+"""
+import argparse
+import hashlib
+import os
+from pathlib import Path, PurePosixPath
+import subprocess
+import tempfile
+
+import image_debug
+
+
+def sha256(path):
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').digest()
+
+
+def build(output, files, debug_dir=None):
+    payloads = {}
+    for destination, source in files:
+        path = PurePosixPath(destination)
+        if (path.is_absolute() or not path.parts or '..' in path.parts
+                or str(path) != destination
+                or any(not (c.isalnum() or c in '/._-') for c in destination)
+                or destination in payloads):
+            raise ValueError(f'invalid/duplicate image path: {destination}')
+        if not source.is_file():
+            raise ValueError(f'missing payload: {source}')
+        payloads[destination] = source
+    image_debug.refuse_stale_programs(payloads)
+    # Metadata, future app overlays, and a useful writable workspace. This is
+    # image capacity, not guest RAM consumption (the image stays disk-backed).
+    quantum = 64 * 1024 * 1024
+    size = max(2 * quantum, ((sum(p.stat().st_size for p in payloads.values())
+                              * 2 + quantum - 1) // quantum) * quantum)
+    output = output.resolve()
+    # Executables are staged without debug information; the debug files go
+    # to the host (tools/image_debug.py, docs/image-debug-info.md).
+    splitter = image_debug.Splitter(debug_dir or output.parent / 'debug', output.name)
+    with tempfile.TemporaryDirectory(prefix='.cubit-disk-', dir=output.parent) as tmp:
+        root = Path(tmp)
+        stage = root / 'root'
+        (stage / 'work').mkdir(parents=True)
+        # Apps' recovery places (CuBit.UI.Recovery, @system/Recovery/): unsaved
+        # work at shutdown. The development disk is @system in its boots.
+        (stage / 'Recovery' / 'com.cubit.text').mkdir(parents=True)
+        expected = {}
+        for destination, source in payloads.items():
+            target = stage / destination
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(splitter.split(destination, source.read_bytes()))
+            target.chmod(source.stat().st_mode & 0o777)
+            expected[destination] = sha256(target)
+        candidate = root / 'disk.img'
+        with candidate.open('wb') as stream:
+            stream.truncate(size)
+        # 4 KiB blocks: CuBit's ext2 reads single and double indirect blocks,
+        # which reach ~4 GiB per file at this block size (~64 MiB at 1 KiB;
+        # Servo's cubitshell.app alone is 85 MB).
+        subprocess.run(['mke2fs', '-q', '-t', 'ext2', '-b', '4096', '-F',
+                        '-d', str(stage), str(candidate)], check=True)
+        subprocess.run(['e2fsck', '-fn', str(candidate)], check=True,
+                       stdout=subprocess.DEVNULL)
+        dumped = root / 'payload'
+        for destination, digest in expected.items():
+            dumped.unlink(missing_ok=True)
+            result = subprocess.run(
+                ['debugfs', '-R', f'dump /{destination} "{dumped}"', str(candidate)],
+                capture_output=True, text=True, check=True)
+            if not dumped.is_file() or sha256(dumped) != digest:
+                raise RuntimeError(f'image payload mismatch: {destination}\n{result.stderr}')
+        os.replace(candidate, output)
+    summary = splitter.summary()
+    manifest = splitter.write_manifest()
+    print(f'ext2: {len(payloads)} payloads verified, {size // (1024 * 1024)} MiB image; '
+          f'{summary["binaries"]} executables {summary["input_bytes"]} -> '
+          f'{summary["staged_bytes"]} bytes, build-ids: {manifest}')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('output', type=Path)
+    parser.add_argument('--boot', type=Path, nargs='*', default=[])
+    parser.add_argument('--file', action='append', default=[], metavar='DEST=SOURCE')
+    parser.add_argument('--debug-dir', type=Path,
+                        help='host directory for separated debug files (default: debug/ next to the output)')
+    args = parser.parse_args()
+    files = [(path.name, path) for path in args.boot]
+    for item in args.file:
+        destination, source = item.split('=', 1)
+        files.append((destination, Path(source)))
+    build(args.output, files, args.debug_dir)
+
+
+if __name__ == '__main__':
+    main()

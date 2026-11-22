@@ -1,0 +1,8 @@
+project Checked is
+ for Source_Dirs use (".", "models", "../../userspace/services/acpi/native-clock", "../../userspace/services/acpi/lib", "../../shared/firmware");
+ for Source_Files use ("window_tests.adb", "domain_tests.adb", "native_delay_tests.adb", "acpi_native_delays.ads", "acpi_native_delays.adb", "acpi_delay_domains.ads", "acpi_delay_domains.adb", "acpi_delay_waits.ads", "acpi_delay_waits.adb", "aml_delays.ads", "aml_delays.adb", "aml_decode.ads", "aml_decode.adb", "firmware_tables.ads", "firmware_tables.adb", "acpi_clock_source.ads", "acpi_clock_source.adb", "acpi_native_startup_timing.ads", "acpi_native_startup_timing.adb", "cubit.ads", "cubit-kernel_abi.ads", "cubit-kernel_calls.ads", "cubit-kernel_calls.adb", "delay_test_clock.ads");
+ for Main use ("native_delay_tests.adb", "domain_tests.adb", "window_tests.adb");
+ for Object_Dir use external ("DELAY_BUILD") & "/obj";
+ for Exec_Dir use external ("DELAY_BUILD") & "/bin";
+ package Compiler is for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato"); end Compiler;
+end Checked;

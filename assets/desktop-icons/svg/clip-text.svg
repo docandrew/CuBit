@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3eaf5"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c9d6ec"/><stop offset="1" stop-color="#9fb2d4"/></linearGradient></defs>
+<polygon points="10.00,5.00 30.00,5.00 38.00,13.00 38.00,43.00 10.00,43.00" fill="url(#g1)" stroke="#13284f" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="30.00,5.00 30.00,13.00 38.00,13.00" fill="url(#g2)" stroke="#13284f" stroke-width="1.4" stroke-linejoin="round"/>
+<polyline points="15.00,19.00 33.00,19.00" fill="none" stroke="#2f7cf6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="15.00,25.00 37.00,25.00" fill="none" stroke="#2f7cf6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="15.00,31.00 29.00,31.00" fill="none" stroke="#2f7cf6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="15.00,37.00 35.00,37.00" fill="none" stroke="#2f7cf6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

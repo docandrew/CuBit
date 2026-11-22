@@ -1,0 +1,14 @@
+project Paths_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../gnat");
+   for Source_Files use
+     ("main.adb", "cubit.ads", "cubit-directory_paths.ads",
+      "cubit-directory_paths.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+   end Compiler;
+end Paths_Tests;

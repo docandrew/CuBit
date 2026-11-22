@@ -1,0 +1,29 @@
+GNAT run-time library on musl (userspace/ports/gcc/build.sh): getpt is a
+glibc extension, and posix_openpt (O_RDWR | O_NOCTTY) its POSIX
+equivalent; static musl programs have no _r_debug, which the Linux module
+name lookup for symbolic tracebacks reads.
+
+--- a/gcc/ada/Makefile.rtl
++++ b/gcc/ada/Makefile.rtl
+@@ -3376,3 +3376,10 @@
+ g-debpoo.o: g-debpoo.adb g-debpoo.ads
+ 	$(ADAC) -c $(ALL_ADAFLAGS) $(NO_REORDER_ADAFLAGS) $(ADA_INCLUDES) \
+ 	  $< $(OUTPUT_OPTION)
++
++# musl: static programs have no _r_debug (only musl's dynamic linker
++# defines it), so module names for symbolic tracebacks come from the
++# generic System.Traceback.Symbolic.Module_Name, which finds none.
++ifneq ($(filter %musl,$(target_os)),)
++  LIBGNAT_TARGET_PAIRS := $(filter-out s-tsmona.adb<%,$(LIBGNAT_TARGET_PAIRS))
++endif
+--- a/gcc/ada/terminals.c
++++ b/gcc/ada/terminals.c
+@@ -1198,7 +1198,7 @@
+    char *slave_name = NULL;
+ 
+ #ifdef USE_GETPT
+-  master_fd = getpt ();
++  master_fd = posix_openpt (O_RDWR | O_NOCTTY);
+ #elif defined (USE_OPENPTY)
+   status = openpty (&master_fd, &slave_fd, NULL, NULL, NULL);
+ #elif defined (USE_CLONE_DEVICE)

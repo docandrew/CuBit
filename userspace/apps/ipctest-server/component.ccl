@@ -1,0 +1,3 @@
+(Component name => "ipctest-server" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/apps/ipctest-server/channel"])))

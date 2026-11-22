@@ -1,0 +1,411 @@
+------------------------------------------------------------------------------
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--
+--  @summary
+--  Userspace PS/2 keyboard + mouse driver.
+--
+--  Handles both PS/2 keyboard (IRQ 33) and mouse (IRQ 44) in a single
+--  process. Receives IRQ events from the kernel, reads PS/2 ports via
+--  port I/O syscalls, and forwards decoded events to registered consumer
+--  processes (shell, DOOM, etc.) via sendEvent.
+--
+--  Event format matches the former kernel services:
+--    Keyboard: label=1, words(0) = scancode
+--    Mouse:    label=2, words(0) = packed(buttons|dx|dy|dz|flags)
+------------------------------------------------------------------------------
+with CuBit.Console_Route;
+with CuBit.Waits;
+with Interfaces; use Interfaces;
+with System; use System;
+
+with CuBit.Messages; use CuBit.Messages;
+with CuBit.Control_Events;
+with CuBit.Handles;
+with Startup;
+with PS2_Boot_Probe;
+with Pointer_Pending;
+with Input_Sources;
+with CuBit.Monotonic;
+
+procedure main is
+   use ASCII;
+
+   --  PS/2 controller ports
+   DATA_PORT    : constant Unsigned_16 := 16#60#;
+   STATUS_PORT  : constant Unsigned_16 := 16#64#;
+   COMMAND_PORT : constant Unsigned_16 := 16#64#;
+
+   --  Mouse packet state
+   packetBuf : array (0 .. 3) of Unsigned_8 := (others => 0);
+   byteIdx   : Natural := 0;
+   hasWheel  : Boolean := False;
+   packetLen : Natural := 3;
+
+   --  The two input sources (DEV-002): each its own ring to Desktop.
+   package Keyboards renames Input_Sources.Keyboards;
+   package Pointers renames Input_Sources.Relative_Pointers;
+   Keyboard : Keyboards.Source;
+   Mouse : Pointers.Source;
+   --  Device flag carried in pointer reports: the mouse negotiated a wheel.
+   POINTER_HAS_WHEEL : constant Pointer_Pending.Device_Flags := 1;
+
+   ---------------------------------------------------------------------------
+   --  outb / inb wrappers
+   ---------------------------------------------------------------------------
+   --  The data port and the status/command port each have a handle
+   --  (its manifest's data and command bindings).
+   function Ports_For (port : Unsigned_16) return CuBit.Handles.IO_Ports is
+     (if port = DATA_PORT then Startup.Data else Startup.Command);
+
+   procedure outb (port : Unsigned_16; val : Unsigned_8) is
+      ignore : Unsigned_64;
+   begin
+      ignore := portOutp8 (Ports_For (port), port, val);
+   end outb;
+
+   function inb (port : Unsigned_16) return Unsigned_8 is
+   begin
+      return Unsigned_8 (portInp8 (Ports_For (port), port) and 16#FF#);
+   end inb;
+
+   ---------------------------------------------------------------------------
+   --  waitForInput - poll until controller input buffer is empty
+   ---------------------------------------------------------------------------
+   procedure waitForInput is
+      status : Unsigned_8;
+   begin
+      for i in 1 .. 10_000 loop
+         status := inb (STATUS_PORT);
+         if (status and 2) = 0 then
+            return;
+         end if;
+      end loop;
+   end waitForInput;
+
+   ---------------------------------------------------------------------------
+   --  waitForOutput - poll until controller output buffer has data
+   ---------------------------------------------------------------------------
+   procedure waitForOutput is
+      status : Unsigned_8;
+   begin
+      for i in 1 .. 10_000 loop
+         status := inb (STATUS_PORT);
+         if (status and 1) /= 0 then
+            return;
+         end if;
+      end loop;
+   end waitForOutput;
+
+   ---------------------------------------------------------------------------
+   --  mouseWrite - send a byte to the mouse via the PS/2 controller
+   ---------------------------------------------------------------------------
+   procedure mouseWrite (val : Unsigned_8) is
+      ack : Unsigned_8;
+   begin
+      --  Tell controller: next byte goes to auxiliary device (mouse)
+      waitForInput;
+      outb (COMMAND_PORT, 16#D4#);
+
+      --  Send the byte
+      waitForInput;
+      outb (DATA_PORT, val);
+
+      --  Read ACK (0xFA)
+      waitForOutput;
+      ack := inb (DATA_PORT);
+   end mouseWrite;
+
+   ---------------------------------------------------------------------------
+   --  mouseRead - read a byte from the mouse
+   ---------------------------------------------------------------------------
+   function mouseRead return Unsigned_8 is
+   begin
+      waitForOutput;
+      return inb (DATA_PORT);
+   end mouseRead;
+
+   ---------------------------------------------------------------------------
+   --  setSampleRate - set mouse sample rate (used for wheel detection)
+   ---------------------------------------------------------------------------
+   procedure setSampleRate (rate : Unsigned_8) is
+   begin
+      mouseWrite (16#F3#);  --  Set Sample Rate command
+      mouseWrite (rate);
+   end setSampleRate;
+
+   ---------------------------------------------------------------------------
+   --  initMouse - enable auxiliary PS/2 port and configure mouse
+   ---------------------------------------------------------------------------
+   procedure initMouse is
+      config   : Unsigned_8;
+      deviceID : Unsigned_8;
+   begin
+      --  Enable auxiliary device (mouse port)
+      waitForInput;
+      outb (COMMAND_PORT, 16#A8#);
+
+      --  Read controller configuration byte
+      waitForInput;
+      outb (COMMAND_PORT, 16#20#);
+      waitForOutput;
+      config := inb (DATA_PORT);
+
+      --  Enable IRQ12 (bit 1) and clear auxiliary disable (bit 5)
+      config := (config or 2) and (not 16#20#);
+
+      --  Write updated configuration
+      waitForInput;
+      outb (COMMAND_PORT, 16#60#);
+      waitForInput;
+      outb (DATA_PORT, config);
+
+      --  Reset mouse to defaults
+      mouseWrite (16#F6#);
+
+      --  Try to enable Intellimouse wheel extension:
+      --  Magic sequence: sample rates 200, 100, 80, then read device ID
+      setSampleRate (200);
+      setSampleRate (100);
+      setSampleRate (80);
+
+      --  Read device ID to check for wheel support
+      mouseWrite (16#F2#);
+      deviceID := mouseRead;
+
+      --  The protocol selected by the magic sequence determines the packet
+      --  length.  Record it before enabling streaming: querying the ID again
+      --  after F4 races with live motion bytes and can make a four-byte wheel
+      --  mouse look like a three-byte mouse, corrupting all later framing.
+      hasWheel := deviceID = 3 or else deviceID = 4;
+      packetLen := (if hasWheel then 4 else 3);
+
+      --  Enable data reporting
+      mouseWrite (16#F4#);
+
+      if deviceID = 3 or else deviceID = 4 then
+         debugPrint ("ps2: Intellimouse detected (wheel support)" & LF);
+      else
+         debugPrint ("ps2: Standard PS/2 mouse detected" & LF);
+      end if;
+   end initMouse;
+
+   package Boot_Probe is new PS2_Boot_Probe (inb);
+
+   ---------------------------------------------------------------------------
+   --  The sources' upkeep after every wake: rings (re)established, room
+   --  taken back, kernel events (a ring's end) handed to them.
+   ---------------------------------------------------------------------------
+   procedure serviceSources is
+   begin
+      Keyboards.Service (Keyboard, Startup.Ready);
+      Pointers.Service (Mouse, Startup.Ready);
+   end serviceSources;
+
+   procedure noteEvent (event : Message) is
+      Item : constant CuBit.Control_Events.Event :=
+        CuBit.Control_Events.Decode
+          (event.tag.label, event.tag.length, event.words (0), event.words (1), event.words (2));
+      Ended : Boolean;
+   begin
+      Keyboards.Note_Event (Keyboard, Item, Ended);
+      Pointers.Note_Event (Mouse, Item, Ended);
+   end noteEvent;
+
+   function sourcesDeadline return Unsigned_64 is
+     (Unsigned_64'Min (Keyboards.Next_Deadline (Keyboard), Pointers.Next_Deadline (Mouse)));
+
+   procedure handleKeyboard (code : Unsigned_8) is
+   begin
+      --  The acquisition stamp (LAT-002): the byte was read just now.
+      Keyboards.Publish (Keyboard, code, CuBit.Monotonic.Microseconds);
+   end handleKeyboard;
+
+   ---------------------------------------------------------------------------
+   --  handleMouse - accumulate mouse bytes into packet, forward when complete
+   ---------------------------------------------------------------------------
+   procedure handleMouse (code : Unsigned_8) is
+      --  Nine-bit two's complement: the packet's sign bits extend byte 1/2.
+      SIGN_EXTENSION : constant Integer := 256;
+      X_SIGN : constant Unsigned_8 := 16#10#;
+      Y_SIGN : constant Unsigned_8 := 16#20#;
+      WHEEL_MASK : constant Unsigned_8 := 16#0F#;
+      WHEEL_NEGATIVE_FIRST : constant Unsigned_8 := 8;
+      WHEEL_FIELD : constant Integer := 16;
+      BUTTON_MASK : constant Unsigned_8 := 7;
+      wheelRaw : Unsigned_8;
+      report : Pointer_Pending.Report;
+   begin
+      --  Sync check: byte 0 has an always-one bit.  Overflow reports cannot
+      --  express a trustworthy displacement, so discard them as well.  This
+      --  also lets the decoder recover cleanly if an unexpected fourth wheel
+      --  byte arrives after a protocol-negotiation failure: positive wheel
+      --  bytes fail the sync bit and negative ones carry both overflow bits.
+      if byteIdx = 0 then
+         if (code and 8) = 0 or else (code and 16#C0#) /= 0 then
+            return;
+         end if;
+      end if;
+
+      packetBuf (byteIdx) := code;
+      byteIdx := byteIdx + 1;
+
+      if byteIdx >= packetLen then
+         --  Complete packet received, decode and forward
+         byteIdx := 0;
+
+         if Pointers.Established (Mouse) then
+            report.Buttons := packetBuf (0) and BUTTON_MASK;
+            report.X := Integer (packetBuf (1)) -
+              (if (packetBuf (0) and X_SIGN) /= 0 then SIGN_EXTENSION else 0);
+            report.Y := Integer (packetBuf (2)) -
+              (if (packetBuf (0) and Y_SIGN) /= 0 then SIGN_EXTENSION else 0);
+
+            if hasWheel then
+               --  IntelliMouse encodes the wheel as a signed four-bit value.
+               --  Device ID 4 uses upper bits for buttons 4/5, so treating
+               --  the whole byte as signed would turn an extra-button state
+               --  into an enormous scroll delta.  PS/2 positive is toward
+               --  the user (down); CuBit's UI convention is positive away
+               --  from the user (up), so normalize direction at the driver
+               --  boundary.
+               wheelRaw := packetBuf (3) and WHEEL_MASK;
+               report.Wheel :=
+                 (if wheelRaw >= WHEEL_NEGATIVE_FIRST
+                  then WHEEL_FIELD - Integer (wheelRaw)
+                  else -Integer (wheelRaw));
+               report.Flags := POINTER_HAS_WHEEL;
+            else
+               report.Wheel := 0;
+               report.Flags := 0;
+            end if;
+
+            Pointers.Publish (Mouse, report, CuBit.Monotonic.Microseconds);
+         end if;
+      end if;
+   end handleMouse;
+
+   --  Main loop variables
+   event  : Message;
+   status : Unsigned_8;
+   code   : Unsigned_8;
+   ignore : Unsigned_64;
+
+   --  An IRQ notification means "controller work may be pending", not
+   --  "consume exactly one byte". Work is drained in bounded decode batches;
+   --  if a batch fills, the controller is checked again before blocking so
+   --  coalesced IRQs cannot strand a partial mouse packet in port 0x60.
+   MAX_INPUT_BYTES_PER_BATCH : constant Positive := 64;
+
+begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
+   debugPrint ("ps2: starting" & LF);
+
+   --  Discard firmware/bootloader residue before enabling live reports.  A
+   --  flush after F4 could consume only the first byte of a packet and leave
+   --  the streaming decoder permanently out of phase.
+   declare
+      use type Boot_Probe.Probe_Result;
+      Probe : Boot_Probe.Probe_Result;
+      OP_NOT_PRESENT : constant Unsigned_32 := 16#FF01#;
+      Ready_Result : MessageTag;
+   begin
+      Boot_Probe.Drain (Probe);
+      if Probe /= Boot_Probe.Quiescent then
+         if Probe = Boot_Probe.Controller_Unavailable then
+            debugPrint ("ps2: controller unavailable (status FF); skipping" & LF);
+         else
+            debugPrint ("ps2: controller drain limit reached; skipping" & LF);
+         end if;
+         Ready_Result := capSend (Startup.Ready,
+           (tag => (label => OP_NOT_PRESENT, length => 0,
+                    protocol => 0, ipc => <>, reserved => 0),
+            authorityTag => 0, words => (others => 0)), CuBit.Messages.Wait_Forever);
+         ignore := syscall (SYSCALL_EXIT);
+         return;
+      end if;
+   end;
+
+   --  Initialize PS/2 mouse
+   initMouse;
+
+   --  Signal devmgr that we are ready
+   declare
+      OP_READY       : constant Unsigned_32 := 16#FF00#;
+      rdyIgnore : MessageTag;
+   begin
+      rdyIgnore := capSend (Startup.Ready,
+         (tag      => (label => OP_READY, length => 0,
+                       protocol => 0, ipc => <>, reserved => 0),
+          authorityTag => 0,
+          words    => (others => 0)), CuBit.Messages.Wait_Forever);
+   end;
+
+   --  Wait for Desktop before starting: the sources look for it (through
+   --  devmgr) until a ring opens. Not a bare sleep: events are read
+   --  meanwhile, so a Stop (a system without a desktop is shut down before
+   --  one runs) ends the driver here. The controller keeps its byte for
+   --  the event loop.
+   loop
+      serviceSources;
+      exit when Keyboards.Established (Keyboard) or else Pointers.Established (Mouse);
+      declare
+         Event : Message;
+         Woke : constant Activity_Result := Wait_For_Activity_Until (sourcesDeadline);
+         pragma Unreferenced (Woke);
+      begin
+         --  What woke the wait (a Stop ends the driver in Poll_Event).
+         while Poll_Event (Event) loop
+            noteEvent (Event);
+         end loop;
+      end;
+   end loop;
+
+   debugPrint ("ps2: input source rings open, entering event loop" & LF);
+
+   --  Main event loop: input is interrupt-driven (the interrupt event wakes
+   --  the wait); a source without a ring looks for Desktop again by its
+   --  deadline, and Desktop wakes a source waiting for room.
+   loop
+      declare
+         activity : Activity_Result;
+      begin
+         activity := Wait_For_Activity_Until (sourcesDeadline);
+         if activity = Unavailable then
+            ignore := CuBit.Waits.Sleep_For (1);
+         end if;
+         for I in 1 .. MAX_INPUT_BYTES_PER_BATCH loop
+            exit when not Poll_Event (event);
+            noteEvent (event);
+         end loop;
+      end;
+
+      serviceSources;
+
+      loop
+         for i in 1 .. MAX_INPUT_BYTES_PER_BATCH loop
+            status := inb (STATUS_PORT);
+            exit when (status and 16#01#) = 0;
+
+            --  Read each byte exactly once, then route it according to the
+            --  auxiliary-data bit in the same status sample.
+            code := inb (DATA_PORT);
+            if (status and 16#20#) = 0 then
+               --  Bit 5 clear: keyboard data
+               handleKeyboard (code);
+            else
+               --  Bit 5 set: mouse data
+               handleMouse (code);
+            end if;
+         end loop;
+
+         status := inb (STATUS_PORT);
+         exit when (status and 16#01#) = 0;
+      end loop;
+   end loop;
+end main;

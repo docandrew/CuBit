@@ -1,0 +1,5 @@
+--  netstack's configuration pragmas.
+--  The runtime gives a process one secondary stack, at a fixed address,
+--  shared by all its threads. netstack must never use it, so that several
+--  of its threads can run at once; the compiler rejects any code that would.
+pragma Restrictions (No_Secondary_Stack);

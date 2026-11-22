@@ -1,0 +1,144 @@
+pragma Ada_2022;
+with Interfaces; use Interfaces;
+with CuBit.Log_Records;
+package CuBit.Log_Protocol with Pure, SPARK_Mode is
+   Observer_Service_Role : constant Unsigned_64 := 21;
+   --  Records an observer's queue in logstore holds (including boot replay),
+   --  beyond what its stream ring holds. A reader that falls further behind
+   --  loses the oldest and is told how many in an explicit Gap entry; part
+   --  of the observer contract.
+   Observer_Queue_Records : constant := 512;
+   --  Subscribe's words: (0) the minimum severity, (1) the publishing process
+   --  to keep (Every_Source: all of them). Its reply: (0) the handle, (1) the
+   --  source filter applied.
+   Every_Source : constant Unsigned_64 := 0;
+   --  The log-control role: changes what logstore keeps (Set_Minimum).
+   Control_Service_Role : constant Unsigned_64 := 27;
+   Control_Tag_Base : constant Unsigned_64 := 16#4C4F_4300_0000_0000#;
+   Publisher_Tag_Base : constant Unsigned_64 := 16#4C4F_5000_0000_0000#;
+   Observer_Tag_Base : constant Unsigned_64 := 16#4C4F_4700_0000_0000#;
+   --  Issuer-selected pool, never a producer-controlled message field.
+   subtype Budget_Id is Unsigned_64 range 1 .. 15;
+   Bootstrap_Budget : constant Budget_Id := 1;
+   subtype Publication_Issuance is Unsigned_64 range 1 .. 16#0FFF_FFFF#;
+   function Publisher_Tag
+     (Budget : Budget_Id; Issuance : Publication_Issuance)
+      return Unsigned_64 is
+     (Publisher_Tag_Base + Budget * 16#1000_0000# + Issuance);
+   Publisher_Authority_Tag : constant Unsigned_64 :=
+     Publisher_Tag_Base + Bootstrap_Budget * 16#1000_0000# + 1;
+   Observer_Authority_Tag : constant Unsigned_64 := Observer_Tag_Base + 1;
+   function Is_Observer (Tag : Unsigned_64) return Boolean is
+     ((Tag and 16#FFFF_FFFF_0000_0000#) = Observer_Tag_Base and then
+      (Tag and 16#FFFF_FFFF#) /= 0);
+   function Control_Tag (Issuance : Publication_Issuance) return Unsigned_64 is
+     (Control_Tag_Base + Issuance);
+   function Is_Control (Tag : Unsigned_64) return Boolean is
+     ((Tag and 16#FFFF_FFFF_0000_0000#) = Control_Tag_Base and then
+      (Tag and 16#FFFF_FFFF#) /= 0);
+   function Is_Publisher (Tag : Unsigned_64) return Boolean is
+     ((Tag and 16#FFFF_FFFF_0000_0000#) = Publisher_Tag_Base and then
+      (Tag and 16#F000_0000#) /= 0 and then
+      (Tag and 16#0FFF_FFFF#) /= 0);
+   function Publication_Budget (Tag : Unsigned_64) return Budget_Id is
+     ((Tag / 16#1000_0000#) mod 16)
+     with Pre => Is_Publisher (Tag);
+   --  Publishing is a channel a publisher opens (CuBit.Log_Publish_Rings,
+   --  CuBit.Channel_Protocol), not an operation.
+   type Operation is (Subscribe, Close, Set_Minimum, Get_Minimum, List_Sources);
+   for Operation use
+     (Subscribe => 16#0C01#, Close => 16#0C03#,
+      Set_Minimum => 16#0C04#, Get_Minimum => 16#0C05#, List_Sources => 16#0C06#);
+   --  The node an event was published on: a 16-byte identity, stamped by the
+   --  logstore that ingested it, never by the publisher. This_Node (zero)
+   --  until nodes have identities; ingestion from other nodes keeps theirs.
+   type Node_Id is record
+      High, Low : Unsigned_64 := 0;
+   end record;
+   This_Node : constant Node_Id := (High => 0, Low => 0);
+   type Event is record
+      Source : Unsigned_64 := 0;
+      Node : Node_Id := This_Node;
+      Publication_Tag : Unsigned_64 := 0;
+      Monotonic_Ms : Unsigned_64 := 0;
+      Data : CuBit.Log_Records.Log_Record := CuBit.Log_Records.Empty_Record;
+   end record;
+   --  What a reader was not given (LOG-005), as a gap in its stream
+   --  (CuBit.Log_Streams) or just before a replayed record:
+   --  - Lost: this reader fell behind (its queue in logstore gave up its
+   --    oldest), or records it was due went from logstore before it read
+   --    them; Source is Every_Source.
+   --  - Not_Retained: Source's records logstore's retained history gave up
+   --    (its ceilings, Log_Fanout) between the record before and the next;
+   --    counted at every severity, whatever the reader's filter.
+   --  Counts saturate at Unsigned_64'Last.
+   type Omission is record
+      Source : Unsigned_64 := Every_Source;
+      Lost : Unsigned_64 := 0;
+      Not_Retained : Unsigned_64 := 0;
+   end record;
+   No_Omission : constant Omission := (others => <>);
+   function Omits (Item : Omission) return Boolean is
+     (Item.Lost /= 0 or else Item.Not_Retained /= 0);
+   --  One source's accounting in logstore (LOG-005), reported after a
+   --  replay that asked for it (Replay_Report): every record it published
+   --  is either Retained now or Not_Retained (Published = Retained +
+   --  Not_Retained, proved in Log_Fanout); Over_Budget and Publisher_Full
+   --  were shed before publication, by logstore's publication budget
+   --  (Log_Budgets) and by the publisher when its ring was full.
+   type Source_Tally is record
+      Source : Unsigned_64 := Every_Source;
+      Published, Retained, Not_Retained : Unsigned_64 := 0;
+      Over_Budget, Publisher_Full : Unsigned_64 := 0;
+   end record;
+   --  Subscribe's word 3: whether the replay ends with a Source_Tally for
+   --  each source it covers.
+   type Replay_Report is (Records_Only, With_Tallies);
+   for Replay_Report use (Records_Only => 0, With_Tallies => 1);
+   --  Summary: a reader's read gave a Source_Tally, not a record.
+   type Status is (OK, Denied, Invalid_Request, Exhausted, Empty, Gap,
+                   Unavailable, Rate_Limited, Below_Minimum, Summary);
+   for Status use
+     (OK => 16#F000#, Denied => 16#F002#, Invalid_Request => 16#F003#,
+      Exhausted => 16#F004#, Empty => 16#F005#, Gap => 16#F006#,
+      Unavailable => 16#F007#, Rate_Limited => 16#F008#,
+      Below_Minimum => 16#F009#, Summary => 16#F00A#);
+   --  Rate_Limited: all-zero words, no acquisition and no record accepted.
+   --  All requests/replies: length four, zero flags/reserved.
+   --  Publishing (publisher role, May_Publish): a channel opened to
+   --    logstore with CuBit.Log_Publish_Rings.CONTRACT; opening again
+   --    replaces the caller's previous channel.
+   --  Set_Minimum (log-control only): the new minimum's 'Pos, zeroes. OK
+   --    reply: the previous minimum, zeroes.
+   --  Get_Minimum (any logstore role): zeroes. OK reply: the minimum, zeroes.
+   --  Subscribe: minimum severity (Log_Records.Severity'Pos, zero = all),
+   --    source (Every_Source: all), the reader's stream channel (its number
+   --    at logstore: CuBit.Log_Streams.CONTRACT, opened consuming first),
+   --    the Replay_Report'Enum_Rep. logstore writes the reader's events into
+   --    it: the retained history first, each record after a gap entry for
+   --    what was not retained before it, then (With_Tallies) a tally entry
+   --    per source the replay covered; then live records. Reading takes no
+   --    IPC. OK reply: subscription handle, the
+   --    source filter applied, zero, zero. Repeating it (same owner and
+   --    authority) renews the lease and updates the filter; it keeps the
+   --    stream.
+   --  Close: subscription, zero, zero, zero. logstore stops writing into
+   --    the stream; the reader then closes its channel.
+   --  List_Sources (observer, LOG-003): a memory grant reference (generation
+   --    << 32 | slot) of one writable page the reader owns, the sources to
+   --    skip (newest first), zero, zero. logstore fills the page with
+   --    CuBit.Log_Sources entries: who each source it knows was, live or
+   --    exited. OK reply: entries written, sources in total, zero, zero.
+   --  Tags are kernel-stamped; knowing these numeric values grants nothing.
+   --  Whether a publishing channel may be opened with this tag.
+   function May_Publish (Authority_Tag : Unsigned_64) return Boolean is
+     (Is_Publisher (Authority_Tag));
+
+   function May_Invoke
+     (Authority_Tag : Unsigned_64; Op : Operation) return Boolean is
+     (case Op is
+         when Set_Minimum => Is_Control (Authority_Tag),
+         when Get_Minimum =>
+           Is_Publisher (Authority_Tag) or else Is_Observer (Authority_Tag) or else Is_Control (Authority_Tag),
+         when Subscribe | Close | List_Sources => Is_Observer (Authority_Tag));
+end CuBit.Log_Protocol;

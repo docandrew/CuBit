@@ -1,0 +1,283 @@
+with Servo_Page_Fonts;
+with Servo_Session;
+with CuBit.System_Facts;
+with CuBit.Settings.Codecs;
+with CuBit.Settings.Writable;
+with Servo_Agent_Settings;
+with Startup;
+package body Servo_Shell is
+   --  The sandbox probe: Penny's own setting reads, writes and deletes;
+   --  keys outside its "browser.servo" scope are refused by Config. The
+   --  foreign keys are deliberately not catalog instances of this program.
+   function Config_Scope_Check return Unsigned_32 is
+      use type CuBit.Settings.Outcome;
+      use type CuBit.Settings.Change_Outcome;
+      package Own renames Startup.Settings.Browser_Servo_Sandbox_Probe;
+      Value : constant String := "penny-config-canary";
+      Result : CuBit.Settings.Change_Outcome;
+      generic
+         Foreign_Key : String;
+      function Denied return Boolean;
+      function Denied return Boolean is
+         package Foreign is new CuBit.Settings.Writable
+           (CuBit.Settings.Codecs.Text_Codec.Value, Foreign_Key, Startup.Config,
+            CuBit.Settings.Codecs.Text_Codec.Decode, CuBit.Settings.Codecs.Text_Codec.Encode);
+      begin
+         if Foreign.Read.Kind /= CuBit.Settings.Denied then return False; end if;
+         Foreign.Write (CuBit.Settings.To_Text (Value), Result);
+         if Result /= CuBit.Settings.Refused then return False; end if;
+         Foreign.Delete (Result);
+         return Result = CuBit.Settings.Refused;
+      end Denied;
+      function Escape_Denied is new Denied ("browser.servo_escape.sandbox_probe");
+      function Desktop_Denied is new Denied ("desktop.penny_sandbox_probe");
+   begin
+      if Own.Read.Kind /= CuBit.Settings.Absent then return 1; end if;
+      Own.Write (CuBit.Settings.To_Text (Value), Result);
+      if Result /= CuBit.Settings.Done then return 2; end if;
+      declare
+         Readback : constant Own.Reading := Own.Read;
+      begin
+         if Readback.Kind /= CuBit.Settings.Present then return 3; end if;
+         if CuBit.Settings.Image (Readback.Item) /= Value then return 4; end if;
+      end;
+      Own.Delete (Result);
+      if Result /= CuBit.Settings.Done then return 5; end if;
+      if not Escape_Denied then return 6; end if;
+      if not Desktop_Denied then return 7; end if;
+      return 0;
+   end Config_Scope_Check;
+
+   function User_Agent return Unsigned_32 is
+      package Setting renames Startup.Settings.Browser_Servo_User_Agent;
+      Stored : constant Setting.Reading := Setting.Read;
+   begin
+      return (case Stored.Kind is
+                when CuBit.Settings.Present => Servo_Agent_Settings.Presentation'Pos (Stored.Item),
+                when CuBit.Settings.Absent => Agent_Absent,
+                when others => Agent_Unreadable);
+   end User_Agent;
+
+   function Site_Agents (Visit : Site_Visit; Context : System.Address) return Unsigned_32 is
+      use type CuBit.Settings.Outcome;
+      package Family renames Startup.Settings.Browser_Servo_Site_Agent;
+      procedure Each (Member : String) is
+         Stored : constant Family.Reading := Family.Read (Member);
+      begin
+         Visit (Context, Member'Address, Member'Length,
+                (if Stored.Kind = CuBit.Settings.Present
+                 then Servo_Agent_Settings.Presentation'Pos (Stored.Item) else Agent_Unreadable));
+      end Each;
+      procedure List is new Family.Members.For_Each (Each);
+      Result : CuBit.Settings.Outcome;
+   begin
+      if Visit = null then return 1; end if;
+      List (Result);
+      return (if Result = CuBit.Settings.Present then 0 else 1);
+   end Site_Agents;
+
+   --  This process's own frames in bytes (its readiness page).
+   function Memory_Owned return Unsigned_64 is (CuBit.System_Facts.Owned_Bytes);
+   package S1 is new Servo_Session;
+   package S2 is new Servo_Session;
+   package S3 is new Servo_Session;
+   package S4 is new Servo_Session;
+   subtype Slot is Positive range 1 .. 4;
+   Selected : Slot := 1;
+   Lease : Natural range 0 .. 4 := 0;
+   Used, Retiring : array (Slot) of Boolean := [others => False];
+   function Select_Window (ID : Unsigned_32) return Unsigned_32 is
+   begin
+      if ID not in 1 .. 4 or else not Used (Slot (ID)) or else
+        Retiring (Slot (ID)) or else (Lease /= 0 and then Lease /= Natural (ID))
+      then return 0; end if;
+      Selected := Slot (ID); return 1;
+   end Select_Window;
+
+   procedure Retry_Close (I : Slot) is
+   begin
+      case I is
+         when 1 => S1.Close; Used (I) := S1.Is_Open;
+         when 2 => S2.Close; Used (I) := S2.Is_Open;
+         when 3 => S3.Close; Used (I) := S3.Is_Open;
+         when 4 => S4.Close; Used (I) := S4.Is_Open;
+      end case;
+      Retiring (I) := Used (I);
+   end Retry_Close;
+   function Open return Unsigned_32 is
+      Opened : Unsigned_32;
+   begin
+      if Lease /= 0 then return 0; end if;
+      for I in Slot loop
+         if Retiring (I) then Retry_Close (I); end if;
+         if not Used (I) then
+            case I is
+               when 1 => Opened := S1.Open;
+               when 2 => Opened := S2.Open;
+               when 3 => Opened := S3.Open;
+               when 4 => Opened := S4.Open;
+            end case;
+            if Opened /= 0 then
+               Used (I) := True; Selected := I; return Unsigned_32 (I);
+            end if;
+         end if;
+      end loop;
+      return 0;
+   end Open;
+   procedure Input_Statistics (Result : access Input_Stats) is
+   begin
+      case Selected is
+         when 1 => S1.Input_Statistics (Result);
+         when 2 => S2.Input_Statistics (Result);
+         when 3 => S3.Input_Statistics (Result);
+         when 4 => S4.Input_Statistics (Result);
+      end case;
+   end Input_Statistics;
+   procedure Metrics (Result : access Viewport) is
+   begin
+      case Selected is
+         when 1 => S1.Metrics (Result);
+         when 2 => S2.Metrics (Result);
+         when 3 => S3.Metrics (Result);
+         when 4 => S4.Metrics (Result);
+      end case;
+   end Metrics;
+   procedure Begin_Input is
+   begin
+      case Selected is
+         when 1 => S1.Begin_Input;
+         when 2 => S2.Begin_Input;
+         when 3 => S3.Begin_Input;
+         when 4 => S4.Begin_Input;
+      end case;
+   end Begin_Input;
+   function Poll (Result : access Event) return Unsigned_32 is
+   begin
+      case Selected is
+         when 1 => return S1.Poll (Result);
+         when 2 => return S2.Poll (Result);
+         when 3 => return S3.Poll (Result);
+         when 4 => return S4.Poll (Result);
+      end case;
+   end Poll;
+   function Location (Text : System.Address; Capacity : Unsigned_32) return Unsigned_32 is
+   begin
+      case Selected is
+         when 1 => return S1.Location (Text, Capacity);
+         when 2 => return S2.Location (Text, Capacity);
+         when 3 => return S3.Location (Text, Capacity);
+         when 4 => return S4.Location (Text, Capacity);
+      end case;
+   end Location;
+   procedure State
+     (URL : System.Address; URL_Length : Unsigned_32;
+      Title : System.Address; Title_Length : Unsigned_32;
+      Flags : Unsigned_32) is
+   begin
+      case Selected is
+         when 1 => S1.State (URL, URL_Length, Title, Title_Length, Flags);
+         when 2 => S2.State (URL, URL_Length, Title, Title_Length, Flags);
+         when 3 => S3.State (URL, URL_Length, Title, Title_Length, Flags);
+         when 4 => S4.State (URL, URL_Length, Title, Title_Length, Flags);
+      end case;
+   end State;
+   procedure Security (Text : System.Address; Length : Unsigned_32) is
+   begin
+      case Selected is
+         when 1 => S1.Security (Text, Length);
+         when 2 => S2.Security (Text, Length);
+         when 3 => S3.Security (Text, Length);
+         when 4 => S4.Security (Text, Length);
+      end case;
+   end Security;
+   function Tab_Capacity return Unsigned_32 is
+   begin
+      case Selected is
+         when 1 => return S1.Tab_Capacity;
+         when 2 => return S2.Tab_Capacity;
+         when 3 => return S3.Tab_Capacity;
+         when 4 => return S4.Tab_Capacity;
+      end case;
+   end Tab_Capacity;
+   function Update_Tabs (Value : access constant Servo_Tab_Projection.Snapshot) return Unsigned_32 is
+   begin
+      case Selected is
+         when 1 => return S1.Update_Tabs (Value);
+         when 2 => return S2.Update_Tabs (Value);
+         when 3 => return S3.Update_Tabs (Value);
+         when 4 => return S4.Update_Tabs (Value);
+      end case;
+   end Update_Tabs;
+   procedure Navigation_Error is
+   begin
+      case Selected is
+         when 1 => S1.Navigation_Error;
+         when 2 => S2.Navigation_Error;
+         when 3 => S3.Navigation_Error;
+         when 4 => S4.Navigation_Error;
+      end case;
+   end Navigation_Error;
+   function Prepare return Unsigned_32 is
+      Ready : Unsigned_32;
+   begin
+      if Lease /= 0 then return 0; end if;
+      case Selected is
+         when 1 => Ready := S1.Prepare;
+         when 2 => Ready := S2.Prepare;
+         when 3 => Ready := S3.Prepare;
+         when 4 => Ready := S4.Prepare;
+      end case;
+      if Ready /= 0 then Lease := Selected; end if; return Ready;
+   end Prepare;
+   procedure Cancel is
+   begin
+      case Selected is
+         when 1 => S1.Cancel;
+         when 2 => S2.Cancel;
+         when 3 => S3.Cancel;
+         when 4 => S4.Cancel;
+      end case;
+      Lease := 0;
+   end Cancel;
+   function Present
+     (BGRA : System.Address; Length : Unsigned_64;
+      Width, Height, Source_Pitch : Unsigned_32) return Unsigned_32 is
+      Result : Unsigned_32;
+   begin
+      if Lease /= Selected then return 0; end if;
+      case Selected is
+         when 1 => Result := S1.Present (BGRA, Length, Width, Height, Source_Pitch);
+         when 2 => Result := S2.Present (BGRA, Length, Width, Height, Source_Pitch);
+         when 3 => Result := S3.Present (BGRA, Length, Width, Height, Source_Pitch);
+         when 4 => Result := S4.Present (BGRA, Length, Width, Height, Source_Pitch);
+      end case;
+      Lease := 0; return Result;
+   end Present;
+   function Pending return Unsigned_32 is
+   begin
+      case Selected is
+         when 1 => return S1.Pending;
+         when 2 => return S2.Pending;
+         when 3 => return S3.Pending;
+         when 4 => return S4.Pending;
+      end case;
+   end Pending;
+   procedure Fonts_Missing is
+   begin
+      Servo_Page_Fonts.State := Servo_Page_Fonts.Missing;
+   end Fonts_Missing;
+
+   procedure Window_Error is
+   begin
+      case Selected is
+         when 1 => S1.Window_Error;
+         when 2 => S2.Window_Error;
+         when 3 => S3.Window_Error;
+         when 4 => S4.Window_Error;
+      end case;
+   end Window_Error;
+   procedure Close is
+   begin
+      Cancel; Retiring (Selected) := True; Retry_Close (Selected);
+   end Close;
+end Servo_Shell;

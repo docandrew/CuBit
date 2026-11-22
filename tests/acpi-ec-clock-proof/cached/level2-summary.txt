@@ -1,0 +1,38 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+---------------------------------------------------------------------------------
+SPARK Analysis results        Total       Flow     Provers   Justified   Unproved
+---------------------------------------------------------------------------------
+Data Dependencies                 2          2           .           .          .
+Flow Dependencies                 .          .           .           .          .
+Initialization                    .          .           .           .          .
+Non-Aliasing                      .          .           .           .          .
+Run-time Checks                   8          .    8 (CVC5)           .          .
+Assertions                        .          .           .           .          .
+Functional Contracts              2          .    2 (CVC5)           .          .
+LSP Verification                  .          .           .           .          .
+Termination                       2          2           .           .          .
+Concurrency                       .          .           .           .          .
+---------------------------------------------------------------------------------
+Total                            14    4 (29%)    10 (71%)           .          .
+
+
+max steps used for successful proof: 1
+
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit acpi_ec_clock_policy, 3 subprograms and packages out of 3 analyzed
+  ACPI_EC_Clock_Policy at acpi_ec_clock_policy.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  ACPI_EC_Clock_Policy.Decode at acpi_ec_clock_policy.ads:16 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  ACPI_EC_Clock_Policy.Slice at acpi_ec_clock_policy.ads:30 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (6 checks)

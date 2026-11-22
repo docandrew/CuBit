@@ -1,0 +1,6 @@
+# Test-local catalog for the UNMODIFIED production viewer main: its startup
+# bindings (gpu-probe, device-manager) both name the owner fixture (ipc-test).
+(service-catalog v1
+  (service ipc-test 14 read-write)
+  (service desktop 15 read-write)
+  (notification ipc-test-registration 14 publish-and-manage))

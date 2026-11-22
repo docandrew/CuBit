@@ -1,0 +1,56 @@
+{
+  "assumptions": [
+  ],
+  "entities": {
+    " 1": {
+      "name": "GPIO_Channel_Badges.Valid",
+      "sloc": [
+        {
+          "file": "gpio_channel_badges.ads",
+          "line": 20
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 1,
+      "file": "gpio_channel_badges.ads",
+      "how_proved": "flow",
+      "line": 20,
+      "msg_id": 0,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    }
+  ],
+  "pragma_assume": [
+  ],
+  "progress": "PROGRESS_PROOF",
+  "proof": [
+  ],
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all"
+  },
+  "stop_reason": "STOP_REASON_NONE",
+  "timings": {
+    " 1": {
+      "gnat2why.vc_generation": 1.28393992781639E-01
+    },
+    "global": {
+      "flow analysis": 7.28499982506037E-03,
+      "globals (advanced)": 8.46999988425523E-04,
+      "globals (basic)": 1.11899999901652E-02,
+      "init_why_sections": 8.97799991071224E-03,
+      "marking": 8.32900032401085E-03,
+      "properties (advanced)": 2.32999998843297E-04,
+      "translation of standard": 4.22459989786148E-02
+    }
+  }
+}

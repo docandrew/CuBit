@@ -1,0 +1,8 @@
+(executable-manifest v1
+  (identity "com.cubit.boot-logs")
+  (version "0.1.0")
+  (request-service desktop read-write desktop)
+  (request-service log-observer read-write log-observer)
+  # Its own debug text goes into its logstore ring (ABI-002); it never
+  # shows its own records back (that would echo them again).
+  (request-service logstore read-write logstore))

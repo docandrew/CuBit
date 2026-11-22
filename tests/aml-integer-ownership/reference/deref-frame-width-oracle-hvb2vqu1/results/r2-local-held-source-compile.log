@@ -1,0 +1,12 @@
+/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-held.asl      3: Method (HELP, 1) { Store (Arg0, Local0) Store (RefOf (Local0), Local1) DerefOf (Local1) Return (Local0) }
+Error    6114 -                                                                                                                           Result is not used, operator has no effect ^ 
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-held.asl -     259 bytes      8 keywords      0 source lines
+
+Compilation failed. 1 Errors, 0 Warnings, 0 Remarks
+No AML files were generated due to compiler error(s)

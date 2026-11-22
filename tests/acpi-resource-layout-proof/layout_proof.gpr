@@ -1,0 +1,18 @@
+project Layout_Proof is
+ for Source_Dirs use ("../../userspace/services/acpi/resource-data", "../../shared/firmware", "../../userspace/services/acpi/lib");
+ for Source_Files use ("acpi_resource_data.ads", "acpi_resource_data.adb",
+   "acpi_resource_data-basic_descriptors.ads", "acpi_resource_data-basic_descriptors.adb",
+   "acpi_resource_data-extended_interrupts.ads", "acpi_resource_data-extended_interrupts.adb",
+   "acpi_resource_data-address_spaces.ads", "acpi_resource_data-address_spaces.adb",
+   "acpi_resource_data-address_spaces-geometry.ads", "acpi_resource_data-address_spaces-geometry.adb",
+   "acpi_resource_data-memory_ranges.ads", "acpi_resource_data-memory_ranges.adb",
+   "acpi_resource_data-generic_registers.ads", "acpi_resource_data-generic_registers.adb",
+   "acpi_resource_data-dma_descriptors.ads", "acpi_resource_data-dma_descriptors.adb",
+   "acpi_resource_data-dependent_groups.ads", "acpi_resource_data-dependent_groups.adb",
+   "acpi_resource_data-address_spaces-extended_descriptors.ads", "acpi_resource_data-address_spaces-extended_descriptors.adb",
+   "firmware_tables.ads", "firmware_tables.adb", "acpi_fadt.ads", "acpi_fadt.adb");
+ for Object_Dir use external ("LAYOUT_PROOF_OBJECTS");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Layout_Proof;

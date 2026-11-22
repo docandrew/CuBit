@@ -1,0 +1,13 @@
+# MET-002's app: metrics.svc first, so every later program's declared
+# com.cubit-os.stdmetric outlet is wired to it; Desktop publishes LAT-002's
+# display latency; the Metrics app, started last (focused), reads those
+# series and its own through its metrics-observer endpoint and scopes
+# (tests/headless/run.sh --test metricsview --accel kvm).
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "metrics.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "metricsview.app" (priority 3))
+)

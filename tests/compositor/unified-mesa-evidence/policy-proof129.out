@@ -1,0 +1,181 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+--------------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total         Flow                                Provers   Justified   Unproved
+--------------------------------------------------------------------------------------------------------------
+Data Dependencies                74           74                                      .           .          .
+Flow Dependencies                 1            1                                      .           .          .
+Initialization                  121          121                                      .           .          .
+Non-Aliasing                      3            3                                      .           .          .
+Run-time Checks                  41            .                   41 (CVC5 7%, Z3 93%)           .          .
+Assertions                       33            .     33 (CVC5 18%, Trivial 12%, Z3 71%)           .          .
+Functional Contracts            176            .    176 (CVC5 58%, Trivial 20%, Z3 22%)           .          .
+LSP Verification                  .            .                                      .           .          .
+Termination                      63           63                                      .           .          .
+Concurrency                       .            .                                      .           .          .
+--------------------------------------------------------------------------------------------------------------
+Total                           512    262 (51%)                              250 (49%)           .          .
+
+
+max steps used for successful proof: 9196
+
+============================
+Most difficult proved checks
+============================
+
+desktop_vulkan_startup.ads:144:16: postcondition proved in max 1 seconds
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 4 units
+in unit compositor_damage, 16 subprograms and packages out of 16 analyzed
+  Compositor_Damage at compositor_damage.ads:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Damage.Add at compositor_damage.ads:51 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (11 checks)
+  Compositor_Damage.Bounds at compositor_damage.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Damage.Capture at compositor_damage.ads:34 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Damage.Clear at compositor_damage.ads:29 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Damage.Contains at compositor_damage.ads:13 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Damage.Count at compositor_damage.ads:23 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Damage.Covers at compositor_damage.ads:28 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Compositor_Damage.Envelope at compositor_damage.ads:19 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Damage.Item at compositor_damage.ads:25 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Damage.Merge_Local at compositor_damage.adb:18 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (8 checks)
+  Compositor_Damage.Overlaps at compositor_damage.ads:16 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Damage.Restore at compositor_damage.ads:43 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (6 checks)
+  Compositor_Damage.State at compositor_damage.ads:60 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Damage.Valid at compositor_damage.ads:11 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Damage.Valid at compositor_damage.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+in unit desktop_readback_output, 17 subprograms and packages out of 17 analyzed
+  Desktop_Readback_Output at desktop_readback_output.ads:11 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.Acknowledge at desktop_readback_output.ads:74 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Readback_Output.Add_Bytes at desktop_readback_output.adb:4 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Readback_Output.Advance at desktop_readback_output.ads:64 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (13 checks)
+  Desktop_Readback_Output.Begin_Copy at desktop_readback_output.ads:57 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Readback_Output.Begin_Region_Transfer at desktop_readback_output.ads:45 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (8 checks)
+  Desktop_Readback_Output.Begin_Transfer at desktop_readback_output.ads:34 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Desktop_Readback_Output.CPU_Bytes at desktop_readback_output.ads:25 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.Cancel at desktop_readback_output.ads:70 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Readback_Output.Counters_Saturated at desktop_readback_output.ads:26 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.Current at desktop_readback_output.ads:20 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.GPU_Bytes at desktop_readback_output.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.Matches at desktop_readback_output.ads:29 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.Poll_Transfer at desktop_readback_output.ads:54 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Readback_Output.Rows_Copied at desktop_readback_output.ads:28 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Readback_Output.State at desktop_readback_output.ads:77 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Readback_Output.Valid at desktop_readback_output.ads:19 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+in unit desktop_vulkan_startup, 89 subprograms and packages out of 89 analyzed
+  Desktop_Vulkan_Startup at desktop_vulkan_startup.ads:15 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Admit_Capture at desktop_vulkan_startup.ads:204 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Allocate_Backing at desktop_vulkan_startup.ads:88 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (9 checks)
+  Desktop_Vulkan_Startup.Backing_Lease at desktop_vulkan_startup.ads:83 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Backing_Phase at desktop_vulkan_startup.ads:81 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Begin_Write at desktop_vulkan_startup.ads:114 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Desktop_Vulkan_Startup.Bind_Glyph at desktop_vulkan_startup.ads:140 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Desktop_Vulkan_Startup.Can_Prepare_Targets at desktop_vulkan_startup.ads:34 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Can_Produce at desktop_vulkan_startup.adb:340 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Can_Retire_Readers at desktop_vulkan_startup.ads:155 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Cancel_Capture at desktop_vulkan_startup.ads:217 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Cancel_Presentation at desktop_vulkan_startup.ads:306 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Cancel_Write at desktop_vulkan_startup.ads:123 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Capture_Glyph at desktop_vulkan_startup.ads:147 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Capture_Repaint at desktop_vulkan_startup.ads:212 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Charged_Bytes at desktop_vulkan_startup.ads:57 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Check_Health at desktop_vulkan_startup.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Configure_Readback at desktop_vulkan_startup.ads:267 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Configure_Targets at desktop_vulkan_startup.ads:46 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Desktop_Vulkan_Startup.Configure_Upload at desktop_vulkan_startup.ads:67 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Configured_Limit at desktop_vulkan_startup.ads:58 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Confirm_Presentation at desktop_vulkan_startup.ads:298 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Current at desktop_vulkan_startup.ads:21 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Damage_Output at desktop_vulkan_startup.ads:232 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Frame_Pending at desktop_vulkan_startup.ads:235 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Glyph_Source at desktop_vulkan_startup.ads:138 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Import_Backing at desktop_vulkan_startup.ads:129 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Desktop_Vulkan_Startup.Import_Owned_Source at desktop_vulkan_startup.ads:188 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Import_Prepared_Source at desktop_vulkan_startup.adb:288 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Import_Source at desktop_vulkan_startup.ads:180 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Initialize at desktop_vulkan_startup.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Pin_Source at desktop_vulkan_startup.ads:167 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Pipeline_Ready at desktop_vulkan_startup.ads:63 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Poll_Frame at desktop_vulkan_startup.ads:227 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Poll_Readback at desktop_vulkan_startup.ads:261 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Desktop_Vulkan_Startup.Poll_Upload at desktop_vulkan_startup.ads:229 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Desktop_Vulkan_Startup.Prepare_Pipeline at desktop_vulkan_startup.ads:61 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Prepare_Targets at desktop_vulkan_startup.ads:35 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Presentation_Faulted at desktop_vulkan_startup.ads:242 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Presentation_Front at desktop_vulkan_startup.ads:241 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Presentation_Pending at desktop_vulkan_startup.ads:240 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Readback_Capacity at desktop_vulkan_startup.ads:248 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Readback_Layout_Matches at desktop_vulkan_startup.ads:251 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Readback_Mapping at desktop_vulkan_startup.ads:265 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Readback_Pending at desktop_vulkan_startup.ads:245 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Reader_Held at desktop_vulkan_startup.ads:163 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Release_Backing at desktop_vulkan_startup.ads:98 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Release_Readback_Storage at desktop_vulkan_startup.ads:270 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Release_Source at desktop_vulkan_startup.ads:195 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Release_Upload at desktop_vulkan_startup.ads:74 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Render at desktop_vulkan_startup.ads:224 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (6 checks)
+  Desktop_Vulkan_Startup.Reserve_Capture at desktop_vulkan_startup.ads:209 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Desktop_Vulkan_Startup.Restart_Content at desktop_vulkan_startup.ads:126 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Retire_Presentation at desktop_vulkan_startup.ads:312 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Retire_Readback at desktop_vulkan_startup.ads:281 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Desktop_Vulkan_Startup.Source_Held at desktop_vulkan_startup.ads:156 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Source_Pinned at desktop_vulkan_startup.ads:165 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Source_Reader at desktop_vulkan_startup.ads:320 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Stop at desktop_vulkan_startup.ads:316 flow analyzed (0 errors, 0 checks, 4 warnings and 0 pragma Assume statements) and proved (10 checks)
+  Desktop_Vulkan_Startup.Submit_Readback at desktop_vulkan_startup.ads:253 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (7 checks)
+  Desktop_Vulkan_Startup.Submit_Region_Readback at desktop_vulkan_startup.ads:257 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (7 checks)
+  Desktop_Vulkan_Startup.Submit_Write at desktop_vulkan_startup.ads:120 flow analyzed (0 errors, 0 checks, 1 warnings and 0 pragma Assume statements) and proved (11 checks)
+  Desktop_Vulkan_Startup.Take_Presentation at desktop_vulkan_startup.ads:290 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Take_Readback at desktop_vulkan_startup.ads:274 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Target_Phase at desktop_vulkan_startup.ads:55 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Unpin_Source at desktop_vulkan_startup.ads:170 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Upload_Capacity at desktop_vulkan_startup.ads:72 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Pending at desktop_vulkan_startup.ads:231 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Phase at desktop_vulkan_startup.ads:73 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Progress at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Active at compositor_upload_progress.ads:21, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Begin_Image at compositor_upload_progress.ads:27, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Begin_Write at compositor_upload_progress.ads:32, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Can_Write at compositor_upload_progress.ads:22, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Cancel at compositor_upload_progress.ads:60, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Completed_Rows at compositor_upload_progress.ads:18, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Current at compositor_upload_progress.ads:16, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Height at compositor_upload_progress.ads:19, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Observe at compositor_upload_progress.ads:49, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Publishable at compositor_upload_progress.ads:23, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Sequence at compositor_upload_progress.ads:20, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Source_Identity at compositor_upload_progress.ads:17, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.State at compositor_upload_progress.ads:68, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Submitted at compositor_upload_progress.ads:42, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Ticket at compositor_upload_progress.ads:66, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Upload_Progress.Valid at compositor_upload_progress.ads:15, instantiated at desktop_vulkan_startup.ads:104 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Valid at desktop_vulkan_startup.ads:20 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Write_Active at desktop_vulkan_startup.ads:107 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Desktop_Vulkan_Startup.Write_Ticket at desktop_vulkan_startup.ads:325 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit vulkan_owned_targets, 21 subprograms and packages out of 21 analyzed
+  Vulkan_Owned_Targets at vulkan_owned_targets.ads:12 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Vulkan_Owned_Targets.Allocate at vulkan_owned_targets.ads:75 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (16 checks)
+  Vulkan_Owned_Targets.Attach at vulkan_owned_targets.ads:80 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Vulkan_Owned_Targets.Bindings at vulkan_owned_targets.ads:85 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Vulkan_Owned_Targets.Can_Attach at vulkan_owned_targets.ads:43 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Vulkan_Owned_Targets.Can_Close at vulkan_owned_targets.ads:87 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Vulkan_Owned_Targets.Close at vulkan_owned_targets.ads:61 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Vulkan_Owned_Targets.Close at vulkan_owned_targets.ads:88 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Vulkan_Owned_Targets.Current at vulkan_owned_targets.ads:40 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Vulkan_Owned_Targets.Free_Backing at vulkan_owned_targets.adb:102 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (8 checks)
+  Vulkan_Owned_Targets.Initialize at vulkan_owned_targets.ads:50 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (6 checks)
+  Vulkan_Owned_Targets.Output_Epoch at vulkan_owned_targets.ads:41 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Vulkan_Owned_Targets.Parent_Held at vulkan_owned_targets.ads:46 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Vulkan_Owned_Targets.Prepare_Frame at vulkan_owned_targets.ads:70 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Vulkan_Owned_Targets.Ready at vulkan_owned_targets.ads:44 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Vulkan_Owned_Targets.Record_Readback at vulkan_owned_targets.ads:23 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Vulkan_Owned_Targets.Record_Readback_Regions at vulkan_owned_targets.ads:30 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  Vulkan_Owned_Targets.Same_Parent at vulkan_owned_targets.ads:47 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Vulkan_Owned_Targets.Same_Submission at vulkan_owned_targets.ads:45 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Vulkan_Owned_Targets.State at vulkan_owned_targets.ads:96 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Vulkan_Owned_Targets.Untouched at vulkan_owned_targets.ads:42 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)

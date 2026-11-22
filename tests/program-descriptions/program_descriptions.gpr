@@ -1,0 +1,15 @@
+--  Hosted tests and proofs for program descriptions (run.sh).
+project Program_Descriptions is
+   for Source_Dirs use (".", "../../userspace/runtime/gnat");
+   for Source_Files use ("cubit.ads", "cubit-launch_grants.ads",
+                         "cubit-launch_grants.adb", "cubit-launch_arguments.ads",
+                         "cubit-launch_arguments.adb", "cubit-program_descriptions.ads",
+                         "cubit-program_descriptions.adb", "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+end Program_Descriptions;

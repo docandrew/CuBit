@@ -1,0 +1,143 @@
+with CCL.Interfaces.Logs;
+with CCL.Binding_Blocks;
+with CCL.Objects;
+with CCL.Objects.Holders;
+with CCL.Objects.Views;
+with CCL_Log_IO;
+with CuBit.Failures;
+package body CCL_Log_Bindings is
+   use type Interfaces.Unsigned_32;
+   use type CCL.Catalog.Catalog_Error;
+   use type CCL.Catalog.Grant_Result;
+   use type CCL.Host_Values.Value_Kind;
+   package Logs renames CCL.Interfaces.Logs;
+   package Views renames CCL.Objects.Views;
+   package Failures renames CuBit.Failures;
+   FIRST_BINDING : constant Interfaces.Unsigned_32 :=
+     CCL.Binding_Blocks.First (CCL.Binding_Blocks.Log);
+   function Binding_Of (Op : Logs.Operation) return Interfaces.Unsigned_32 is
+     (FIRST_BINDING + Logs.Operation'Pos (Op));
+   --  The List<LogItem>, Severity and LogWindow bindings as this catalog
+   --  resolved them.
+   Contract, Severity_Contract, Window_Contract : CCL.Objects.Binding;
+   function Handles (Binding : Interfaces.Unsigned_32) return Boolean is
+     (Binding in FIRST_BINDING .. Binding_Of (Logs.Operation'Last));
+   procedure Install
+     (Catalog : in out CCL.Catalog.Interface_Catalog;
+      Grants : in out CCL.Catalog.Granted_Bindings; Success : out Boolean)
+   is
+      Error : CCL.Catalog.Catalog_Error;
+      Grant : CCL.Catalog.Grant_Result;
+      Resolved : CCL.Catalog.Resolved_Operation;
+      Found : Boolean;
+   begin
+      Success := True;
+      --  Even discovery is gated. Without logstore, logs is simply absent.
+      if not CCL_Log_IO.Available then return; end if;
+      CCL.Interfaces.Logs.Publish (Catalog, Error);
+      Success := Error = CCL.Catalog.Catalog_Valid;
+      if not Success then return; end if;
+      CCL.Catalog.Resolve_Schema (Catalog, Logs.SCHEMA_KEY, Contract);
+      CCL.Catalog.Resolve_Schema (Catalog, Logs.SEVERITY_KEY, Severity_Contract);
+      CCL.Catalog.Resolve_Schema (Catalog, Logs.WINDOW_KEY, Window_Contract);
+      Success := CCL.Objects.Is_Bound (Contract) and then CCL.Objects.Is_Bound (Severity_Contract)
+        and then CCL.Objects.Is_Bound (Window_Contract);
+      for Op in Logs.Operation loop
+         exit when not Success;
+         CCL.Catalog.Resolve (Catalog, "logs." & Logs.Name (Op), Resolved, Found);
+         Success := Found;
+         if Success then
+            CCL.Catalog.Install (Grants, Resolved, Binding_Of (Op), Grant);
+            Success := Grant = CCL.Catalog.Grant_Added;
+         end if;
+      end loop;
+   end Install;
+   --  (logs.between (LogWindow service from to)): the window, checked
+   --  before logstore is asked. A window that ends before it starts, or
+   --  starts or ends before boot, is refused as such (Invalid_Argument).
+   procedure Between (Argument : CCL.Host_Values.Value; Reply : in out CCL.Host_Values.Call_Result) is
+      use type Interfaces.Integer_64;
+      Object : Views.Snapshot;
+      Captured : Boolean := False;
+      Image : CCL.Objects.Holders.Holder;
+   begin
+      if Argument.Kind = CCL.Host_Values.Object_Value then
+         Views.Capture (Object, Window_Contract, Argument.Object, Captured);
+      end if;
+      if not Captured then return; end if;
+      declare
+         Window : constant Views.Cursor := Views.Root (Object);
+         function Field (Which : Logs.Window_Field) return Views.Cursor is
+           (Views.Field (Object, Window, Logs.Window_Field'Pos (Which) + 1));
+         Service : constant String := Views.Text (Object, Field (Logs.Service_Field));
+         From : constant Interfaces.Integer_64 :=
+           CCL.Objects.Integer_Of (Views.Scalar (Object, Field (Logs.From_Field)));
+         To : constant Interfaces.Integer_64 :=
+           CCL.Objects.Integer_Of (Views.Scalar (Object, Field (Logs.To_Field)));
+      begin
+         if Service'Length not in 1 .. Logs.MAX_SERVICE_NAME then
+            Reply.Why := Failures.Failed
+              (Failures.Invalid_Argument, "a LogWindow names one service in 1 to" &
+               Natural'Image (Logs.MAX_SERVICE_NAME) & " characters");
+         elsif From < 0 or else To < 0 then
+            Reply.Why := Failures.Failed
+              (Failures.Invalid_Argument, "a LogWindow's from and to are milliseconds since boot (0 or more)");
+         elsif From > To then
+            Reply.Why := Failures.Failed
+              (Failures.Invalid_Argument,
+               "the LogWindow ends (to" & Interfaces.Integer_64'Image (To) & ") before it starts (from" &
+               Interfaces.Integer_64'Image (From) & ")",
+               "give from <= to");
+         else
+            CCL_Log_IO.Between
+              (Service, (From => Interfaces.Unsigned_64 (From), To => Interfaces.Unsigned_64 (To)), Contract,
+               Image, Reply.Success, Reply.Why);
+            if Reply.Success then
+               Reply.Value := CCL.Host_Values.Object_Constant (Image);
+            end if;
+         end if;
+      end;
+   end Between;
+
+   procedure Invoke
+     (Binding : Interfaces.Unsigned_32; Argument : CCL.Host_Values.Value;
+      Reply : out CCL.Host_Values.Call_Result)
+   is
+      Image : CCL.Objects.Image;
+      Held : CCL.Objects.Holders.Holder;
+      Level, Previous : Logs.Severity;
+      Found, Built : Boolean;
+      --  A Severity result, or the failure to build one.
+      procedure Answer (Value : Logs.Severity) is
+      begin
+         Logs.Severity_Value (Severity_Contract, Value, Image, Built);
+         Reply.Success := Reply.Success and then Built;
+         if Reply.Success then
+            Reply.Value := CCL.Host_Values.Object_Constant (Image);
+         end if;
+      end Answer;
+   begin
+      Reply := (Value => CCL.Host_Values.Integer_Constant (0), Success => False, Why => <>);
+      if not Handles (Binding) then return; end if;
+      case Logs.Operation'Val (Binding - FIRST_BINDING) is
+         when Logs.Recent =>
+            if Argument.Kind /= CCL.Host_Values.Text_Value then return; end if;
+            CCL_Log_IO.Recent (Argument.Content.Data (1 .. Argument.Content.Length), Contract, Held, Reply.Success,
+                               Reply.Why);
+            if Reply.Success then
+               Reply.Value := CCL.Host_Values.Object_Constant (Held);
+            end if;
+         when Logs.Between =>
+            Between (Argument, Reply);
+         when Logs.Minimum =>
+            CCL_Log_IO.Minimum (Level, Reply.Success, Reply.Why);
+            Answer (Level);
+         when Logs.Set_Minimum =>
+            if Argument.Kind /= CCL.Host_Values.Object_Value then return; end if;
+            Logs.Severity_Of (Severity_Contract, CCL.Objects.Holders.Page (Argument.Object), Level, Found);
+            if not Found then return; end if;
+            CCL_Log_IO.Set_Minimum (Level, Previous, Reply.Success, Reply.Why);
+            Answer (Previous);
+      end case;
+   end Invoke;
+end CCL_Log_Bindings;

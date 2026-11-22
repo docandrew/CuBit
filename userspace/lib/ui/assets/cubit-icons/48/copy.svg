@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M4 2 L19 2 L27 10 L27 31 L4 31Z" transform="translate(3 3)"/>
+  <path d="M4 2 L19 2 L27 10 L27 31 L4 31Z" transform="translate(2 2)"/>
+  <path d="M4 2 L19 2 L27 10 L27 31 L4 31Z" transform="translate(1 1)"/>
+  <path d="M4 2 L19 2 L27 10 L27 31 L4 31Z"/>
+</g>
+<path d="M4 2 L19 2 L27 10 L27 31 L4 31Z" fill="#959db3" transform="translate(3 3)"/>
+<path d="M4 2 L19 2 L27 10 L27 31 L4 31Z" fill="#959db3" transform="translate(2 2)"/>
+<path d="M4 2 L19 2 L27 10 L27 31 L4 31Z" fill="#959db3" transform="translate(1 1)"/>
+<path d="M4 2 L19 2 L27 10 L27 31 L4 31Z" fill="url(#paper)"/>
+<path d="M19 2 L19 10 L27 10Z" fill="#c6cddd"/>
+<path d="M19 2 L19 10 L27 10" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.45"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M15 11 L31 11 L39 19 L39 41 L15 41Z" transform="translate(3 3)"/>
+  <path d="M15 11 L31 11 L39 19 L39 41 L15 41Z" transform="translate(2 2)"/>
+  <path d="M15 11 L31 11 L39 19 L39 41 L15 41Z" transform="translate(1 1)"/>
+  <path d="M15 11 L31 11 L39 19 L39 41 L15 41Z"/>
+</g>
+<path d="M15 11 L31 11 L39 19 L39 41 L15 41Z" fill="#959db3" transform="translate(3 3)"/>
+<path d="M15 11 L31 11 L39 19 L39 41 L15 41Z" fill="#959db3" transform="translate(2 2)"/>
+<path d="M15 11 L31 11 L39 19 L39 41 L15 41Z" fill="#959db3" transform="translate(1 1)"/>
+<path d="M15 11 L31 11 L39 19 L39 41 L15 41Z" fill="url(#paper)"/>
+<path d="M31 11 L31 19 L39 19Z" fill="#c6cddd"/>
+<path d="M31 11 L31 19 L39 19" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.45"/>
+<path d="M20 21 L34 21" fill="none" stroke="#0e8f99" stroke-width="2" stroke-linecap="butt"/>
+<path d="M20 26 L34 26" fill="none" stroke="#0e8f99" stroke-width="2" stroke-linecap="butt"/>
+<path d="M20 31 L29 31" fill="none" stroke="#0e8f99" stroke-width="2" stroke-linecap="butt"/>
+<path d="M20 36 L34 36" fill="none" stroke="#0e8f99" stroke-width="2" stroke-linecap="butt"/>
+</svg>

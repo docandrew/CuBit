@@ -1,0 +1,30 @@
+--  ACPI-POOL-001: platform-pool cache classes (pool_cache_tests): the FACS page
+--  and PCI configuration pages are never admitted through the uncached pool.
+--  Pool_Mappable_Bytes is proved with Physical_Ranges (device-memory-authority).
+project Pool_Cache is
+   for Source_Dirs use (".", "../../kernel/src",
+     "../../shared/publications", "../../shared/time",
+     "../../shared/capabilities", "../../shared/interrupts", "../../shared/firmware");
+   --  Capability_Install (and what it needs): the PCI-configuration tests
+   --  check that no derivation retags, widens or adds a write right.
+   for Source_Files use ("pool_cache_tests.adb", "capabilities.ads", "device_memory_admission.ads",
+     "device_memory_publication.ads", "clock_publication.ads", "clock_publication.adb",
+     "physical_ranges.ads", "physical_ranges.adb",
+     "device_memory_authority.ads", "device_memory_authority.adb",
+     "capability_install.ads", "capability_install.adb",
+     "capability_abi.ads", "capability_abi.adb",
+     "realtime_admission.ads", "realtime_admission.adb",
+     "device_vector_abi.ads", "device_vector_abi.adb", "firmware_pci_admission.ads", "firmware_pci_admission.adb", "firmware_tables.ads", "firmware_tables.adb", "firmware_tables-mcfg.ads", "firmware_tables-mcfg.adb", "firmware_tables-pci_windows.ads", "firmware_tables-pci_windows.adb");
+   for Object_Dir use "build-pool-cache";
+   for Exec_Dir use "build-pool-cache";
+   for Main use ("pool_cache_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use
+        ("--level=2", "--prover=cvc5,z3", "--checks-as-errors=on",
+         "--report=fail", "-j2");
+   end Prove;
+end Pool_Cache;

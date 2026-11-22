@@ -1,0 +1,1578 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2019 Jon Andrew
+--
+-- CuBitOS Processes
+--
+-- We use slightly different terminology here from other OSes. A process that
+-- is "sleeping" is waiting purely for a time-based wakeup. "Waiting" means a
+-- resource the process needs is busy.
+--
+-- The term process and thread will be synonomous in CuBit once shared address
+-- spaces and per-thread stacks are implemented (@TODO)
+--
+-- The main data structure here is an array of processes, the Proctab or
+-- "process table". Every process can be on at most one of several lists - the
+-- READY list for processes that are runnable, the SLEEPING list for processes
+-- that are waiting for a time delay, or a per-process list for threads waiting
+-- to send a message to that process, or threads waiting to receive messages
+-- destined for that process.
+--
+-- SUSPENDED processes are not a part of any list. INVALID processes are not
+-- active on any list either.
+--
+-- These lists are woven throughout the proctab itself, using the next and prev
+-- fields of each Process object. By starting at one of the list heads and
+-- utilizing these fields, the individual lists can be traversed.
+--
+-- The proctab itself is protected by a lock (Process.lock) which ensures the
+-- proctab can be manipulated by only a single thread at a time.
+-------------------------------------------------------------------------------
+pragma Ada_2022;
+with System; use System;
+with System.Storage_Elements; use System.Storage_Elements;
+with Interfaces; use Interfaces;
+
+with BuddyAllocator;
+with Capabilities;
+with Capability_ABI;
+with Process_Capabilities;
+with Config;
+with Descriptors;
+with Device_Vector_ABI;
+with Execution_Accounting;
+with Process_Launch;
+with Process_Layout;
+with Owned_Memory_Layout;
+with Clock_Publication;
+with Launch_Configuration;
+with Process_Identities;
+with Kernel_Controls;
+with Kernel_Credits;
+with Futex_Keys;
+with IPC_Request_Ids;
+with LinkedLists;
+with Memory_Grants;
+with Grant_Windows;
+with Object_Table;
+with Retained_Record_Blocks;
+with Quiescent_Reclamation;
+with Page_Allocation;
+with Process_Frames;
+with Readiness_Pages;
+with Readiness_Publication;
+with Thread_Slots;
+with Process_Lifetime;
+with Scheduling_Shadow;
+with Scheduling_Turns;
+with Scheduling_Budgets;
+with Realtime_Admission;
+with Virtual_Deadlines;
+limited with Process.Queues;
+with Spinlocks;
+with Stackframe;
+with StoragePools;
+with TextIO;
+with Time;
+with Util;
+with Virtmem;
+
+Pragma Elaborate_All (Virtmem);
+Pragma Elaborate_All (Descriptors);
+
+package Process is
+    pool : StoragePools.StoragePool;
+
+    ProcessException : exception;
+
+    subtype ProcessName is String(1..16);
+
+    -- Process ID is just an index into the process table, address table and
+    -- mail table.
+    subtype ProcessID is Natural range 0..255;
+
+    NO_PROCESS : constant ProcessID := 0;
+
+    -- A thread: the schedulable part of a process (see type Thread).
+    type ThreadID is range 0 .. 1023;
+    NO_THREAD : constant ThreadID := 0;
+
+    -- Execution time is charged to the thread that ran.
+    package Accounting is new Execution_Accounting (ThreadID, NO_THREAD);
+
+    -- Limit a user-mode process to 256GiB of memory space. Later we'll add
+    --  ASLR, and make the process' stack top some random negative offset
+    --  from here.
+    PROCESS_STACK_TOP_VIRT : constant System.Address := To_Address (Process_Layout.Stack_Top);
+
+    -- The device-mapping arena (Process_Layout.Device_Mapping_First ..
+    -- Device_Mapping_Limit) is the user range a program places its own
+    -- MAP_DEVICE mappings in. Everything the kernel places by itself lies
+    -- below it (checked here, where the kernel sees every layout unit):
+    -- received grants, the owned-memory aperture, the clock page, the
+    -- launch argument block and the boot image. The main stack lies above
+    -- it (checked in Process_Layout). MAP_FB maps the boot framebuffer at
+    -- the arena's base only for a program that asks for it.
+    pragma Compile_Time_Error
+      (Memory_Grants.Received_Region_Limit > Process_Layout.Device_Mapping_First,
+       "received grants must lie below the device-mapping arena (Process_Layout)");
+    pragma Compile_Time_Error
+      (Owned_Memory_Layout.Limit > Process_Layout.Device_Mapping_First,
+       "owned memory must lie below the device-mapping arena (Process_Layout)");
+    pragma Compile_Time_Error
+      (Clock_Publication.Page_Address + Clock_Publication.Page_Bytes >
+         Process_Layout.Device_Mapping_First,
+       "the clock page must lie below the device-mapping arena (Process_Layout)");
+    pragma Compile_Time_Error
+      (Launch_Configuration.Block_Address >= Process_Layout.Device_Mapping_First
+         or else Launch_Configuration.Boot_Image_Address >= Process_Layout.Device_Mapping_First,
+       "the launch block and boot image must lie below the device-mapping arena");
+
+    -- Every userspace ELF must declare its primary-stack reservation in its
+    -- PT_GNU_STACK program header.  These are loader policy limits, not a
+    -- runtime-adjustable limit analogous to a Unix ulimit.
+    MIN_USER_STACK_SIZE : constant Storage_Count := Virtmem.PAGE_SIZE;
+    MAX_USER_STACK_SIZE : constant Storage_Count := 256 * 1024 * 1024;
+    subtype UserStackSize is Storage_Count
+        range MIN_USER_STACK_SIZE .. MAX_USER_STACK_SIZE;
+
+    -- The bootstrap process is a raw binary embedded in the kernel rather
+    -- than an ELF, so its stack reservation is necessarily kernel-owned.
+    INIT_PROCESS_STACK_SIZE : constant UserStackSize := Process_Layout.Initial_Stack_Bytes;
+
+    -- Initial tracking headroom, separate from the ELF image and declared
+    -- stack. sbrk extends it on demand; it is neither a BSS nor a heap quota.
+    INITIAL_HEAP_FRAME_HEADROOM : constant Natural :=
+        Natural (16 * 1024 * 1024 / Virtmem.FRAME_SIZE);
+
+    BAD_HEAP_ADDRESS       : constant System.Address := To_Address (16#DEAD_DEAD_DEAD_DEAD#);
+
+    -- The user runtime's secondary stacks are not in any primary stack:
+    -- each thread's is in its own owned-memory region (Owned_Memory
+    -- Reserve/Change_Range), which the runtime makes and grows itself.
+
+    subtype ProcessPriority is Integer range -1..100;
+
+    -- Latency contracts are scheduler-facing intent, not authority by
+    -- themselves. They let services tell the kernel what kind of wakeup and
+    -- budget behavior they need before we commit to a hard real-time policy.
+    type LatencyClass is (
+        LATENCY_BACKGROUND,   -- Batch work; latency is not user-visible.
+        LATENCY_NORMAL,       -- Default fair scheduling behavior.
+        LATENCY_INTERACTIVE,  -- Input/compositor/UI work; avoid queue buildup.
+        LATENCY_REALTIME      -- Bounded-period multimedia or driver work.
+    );
+
+    type LatencyContract is record
+        class    : LatencyClass := LATENCY_NORMAL;
+        periodUs : Unsigned_32  := 0;  -- Repeating service period, 0 = none.
+        budgetUs : Unsigned_32  := 0;  -- Expected CPU budget per period.
+        flags    : Unsigned_32  := 0;  -- Reserved for admission/enforcement.
+    end record;
+
+    type ProcessState is (
+        INVALID,                    -- Entry in proctab does not refer to process
+        READY,                      -- Process can be made active
+        RUNNING,                    -- Active process
+        SLEEPING,                   -- Waiting for time to elapse
+        WAITING,                    -- Waiting on resource @TODO replace this
+        WAITINGFOREVENT,            -- Waiting on an event
+        SENDING,                    -- Queued for message delivery
+        RECEIVING,                  -- Queued for message receipt
+        WAITINGFORREPLY,            -- Receiver got message, sender waiting for reply
+        WAITINGFORCOMPLETION,       -- Blocked in waitCompletion()
+        SUSPENDED,                  -- Suspended until a resume call.
+        FUTEXWAITING,               -- Blocked in FUTEX_WAIT (Process.Futex)
+        VMHALTED                    -- A vCPU's guest halted (VM_Objects, VMM-001)
+    );
+
+    -- Wait channels are just a pointer to some resource that a process is
+    -- waiting on.
+    --@TODO replace this with IPC primitives
+
+    type ProcessMode is (KERNEL, USER);
+    type Readiness_Origin is (Rescheduled, Awakened);
+
+    type ExitCode is new Natural;
+
+    ---------------------------------------------------------------------------
+    -- Saved state of the process (registers) during context switch
+    --  Caller-saved registers are already saved and on the stack, pushed there
+    --  by the scheduler in the call to switch();
+    ---------------------------------------------------------------------------
+    type SavedState is
+    record
+        r15 : Unsigned_64 := 0;
+        r14 : Unsigned_64 := 0;
+        r13 : Unsigned_64 := 0;
+        r12 : Unsigned_64 := 0;
+        r11 : Unsigned_64 := 0;
+        rbx : Unsigned_64 := 0;
+        rbp : Unsigned_64 := 0;
+        rip : System.Address := To_Address(0);
+        -- rflags : Unsigned_64; ?
+        -- TODO: Add space for XSAVE state (when FP is used), or just
+        -- use a separate memory area for FP state.
+    end record with Size => 64 * 8;
+
+    for SavedState use
+    record
+        r15 at 0  range 0..63;
+        r14 at 8  range 0..63;
+        r13 at 16 range 0..63;
+        r12 at 24 range 0..63;
+        r11 at 32 range 0..63;
+        rbx at 40 range 0..63;
+        rbp at 48 range 0..63;
+        rip at 56 range 0..63;
+    end record;
+
+    ---------------------------------------------------------------------------
+    -- A thread's user FP/SIMD state image: the XSAVE layout (FXSAVE uses its
+    -- first 512 bytes), one page, page aligned, kept outside the kernel stack
+    -- so a stack overflow reaches the guard page, never this state.
+    -- A page holds every component CuBit enables (x87, SSE, AVX) with room
+    -- for AVX-512; setup checks CPUID 0Dh against it.
+    ---------------------------------------------------------------------------
+    XSAVE_AREA_BYTES : constant := 4096;
+    type FPUState is array (1 .. XSAVE_AREA_BYTES) of Unsigned_8 with
+        Convention => C,
+        Alignment  => 64;
+
+    --  A thread's kernel memory: an unmapped guard page, the kernel stack,
+    --  then the FP/SIMD state page. Allocated as one 4-page buddy block.
+    KERNEL_STACK_PAGES : constant := 2;
+    KERNEL_BLOCK_ORDER : constant := 2;
+
+    ---------------------------------------------------------------------------
+    -- The ProcessKernelStack is KERNEL_STACK_PAGES pages of memory in the Kernel's
+    --  address space. Our process will use the kernel stack during system
+    --  calls, and when it is being scheduled. This structure represents the
+    --  _initial_ state of the kernel stack. We have to set up the fields here
+    --  to look like we have previously interrupted and context switched to the
+    --  process, so when we start the process for the first time it will
+    --  "switch back" to the process.
+    --
+    -- We need the interrupt frame at the top addresses of this record, so we
+    -- use filler at the "bottom." The alternative is blitting bytes and work
+    -- backwards from the top of the stack, but Ada doesn't make that easy.
+    --
+    -- @CAUTION
+    -- Pay attention to GNAT error messages about unused bytes here if the size
+    -- of any of the structures in the initial kernel stack are changed.
+    -- If there are unused bytes, adjust the size of PKStackFiller accordingly.
+    --
+    ---------------------------------------------------------------------------
+    type PKStackFiller is array (1..7936) of Unsigned_8;
+    pragma Pack (PKStackFiller);
+
+    KSTACK_CANARY : constant Unsigned_64 := 16#1BAD_CA11_D37EC7ED#;
+
+    ---------------------------------------------------------------------------
+    -- @field canary - @TODO will be used to detect kernel stack overflow
+    ---------------------------------------------------------------------------
+    type ProcessKernelStack is
+    record
+        canary          : Unsigned_64 := KSTACK_CANARY;
+        filler          : PKStackFiller;
+        context         : SavedState;       -- used in switch
+        returnAddress   : System.Address;   -- when switch returns the first
+                                            -- time, it returns here
+        interruptFrame  : Stackframe.InterruptStackFrame;
+    end record with Size => virtmem.FRAME_SIZE * 8 * KERNEL_STACK_PAGES;
+
+    type ProcessKernelStackPtr is access ProcessKernelStack;
+    for ProcessKernelStackPtr'Simple_Storage_Pool use pool;
+
+    -- Keep a list of the frames used by this process.
+    package FrameLists is new LinkedLists (Virtmem.PhysAddress, TextIO.print);
+
+    ---------------------------------------------------------------------------
+    -- Process Queues. See package Process.Queues for use and more information.
+    -- Head/Tail of each of the various lists a process can be on
+    ---------------------------------------------------------------------------
+    type ProcQueue is
+    record
+        lock : Spinlocks.Spinlock;
+        head : ThreadID := NO_THREAD;
+        tail : ThreadID := NO_THREAD;
+    end record;
+
+    -- generationOf
+    -- The capability generation of PID: capabilities, reply capabilities and
+    -- process references made for an earlier object with this ID carry an
+    -- older generation. Every generation check reads it through here, so its
+    -- backing can move out of the record (docs/threads.md).
+    function generationOf (pid : ProcessID) return Capabilities.Generation;
+
+    -- identityOf
+    -- The identity of PID's current life (KERN-003, docs/process-objects.md):
+    -- the one word that names a process across the kernel boundary.
+    -- NO_PROCESS gives Process_Identities.No_Identity.
+    function identityOf (pid : ProcessID) return Process_Identities.Identity;
+
+    -- resolveIdentity
+    -- The process an identity names, and its generation, or NO_PROCESS: an
+    -- identity for an earlier life of the slot names nothing, so a stale
+    -- word can never reach the slot's next occupant. A lock-free snapshot;
+    -- operations that must not race a teardown pass the generation to
+    -- their own check under the target's lock.
+    procedure resolveIdentity (id         : Process_Identities.Identity;
+                               pid        : out ProcessID;
+                               generation : out Capabilities.Generation);
+    function processOfIdentity (id : Process_Identities.Identity) return ProcessID;
+
+    -- threadGenerationOf
+    -- The generation of thread TID, from the thread table's ledger. A
+    -- synchronous reply capability names the waiting thread and carries it.
+    function threadGenerationOf (tid : ThreadID) return Capabilities.Generation;
+
+    -- stealableWorkElsewhere
+    -- True if another CPU's ready list holds work this CPU may take.
+    -- Caller holds Process.lock.
+    function stealableWorkElsewhere (cpu : Natural) return Boolean;
+
+    -- Per-CPU ready lists. Each CPU dequeues from its own list; an idle CPU
+    -- may take unpinned work from another's (Build.Work_Stealing).
+    cpuReadyLists : array (0..Config.MAX_SMP_CPUS - 1) of ProcQueue :=
+        (others => (lock => <>,
+                    head => NO_THREAD, tail => NO_THREAD));
+
+    sleepListLockName : aliased String := "Sleep List";
+    sleepList : ProcQueue := (
+        lock => <>,
+        head => NO_THREAD,
+        tail => NO_THREAD
+    );
+
+    ---------------------------------------------------------------------------
+    -- IPC Message Types
+    --
+    -- Multi-word register-based messages (L4/seL4 style).
+    -- MessageTag fits in a single register (64 bits). The full Message
+    -- carries the tag plus 4 data words, fitting in 5 registers total.
+    ---------------------------------------------------------------------------
+    type MessageTag is record
+        label    : Unsigned_32;   -- Protocol-defined operation code
+        length   : Unsigned_8;    -- Number of valid words (0-4)
+        -- The tag's flag byte: the protocol's low nibble and the IPC
+        -- layer's high nibble (Capability_ABI).
+        protocol : Capability_ABI.Protocol_Flags := 0;
+        ipc      : Capability_ABI.IPC_Flags := Capability_ABI.No_IPC_Flags;
+        reserved : Unsigned_16;   -- Not authenticated; never an authority tag
+    end record with Size => 64;
+
+    for MessageTag use record
+        label    at 0 range 0..31;
+        length   at 4 range 0..7;
+        protocol at 5 range 0..3;
+        ipc      at 5 range 4..7;
+        reserved at 6 range 0..15;
+    end record;
+
+    NULL_TAG : constant MessageTag :=
+      (label => 0, length => 0, protocol => 0,
+       ipc => Capability_ABI.No_IPC_Flags, reserved => 0);
+
+    type MessageWords is array (0..3) of Unsigned_64;
+
+    -- A process's pending device vectors, as its IRQ doorbell event carries
+    -- them (Device_Vector_ABI: bit B of word W is vector First_Vector +
+    -- 64 * W + B).
+    type Device_Vector_Words is
+      array (Device_Vector_ABI.Pending_Word_Index) of Unsigned_64;
+
+    type Message is record
+        tag      : MessageTag;
+        authorityTag : Unsigned_64 := 0;  -- Kernel-stamped 64-bit authority tag
+        words    : MessageWords;
+    end record;
+    -- Total: 48 bytes (tag:8 + authority tag:8 + words:32)
+    pragma Compile_Time_Error (Message'Size /= 48 * 8,
+                               "IPC message ABI must remain 48 bytes");
+
+    NULL_MESSAGE : constant Message := (
+        tag      => NULL_TAG,
+        authorityTag => 0,
+        words    => (others => 0));
+
+    ---------------------------------------------------------------------------
+    -- Async I/O Completion Queue Types
+    --
+    -- Completion queues allow clients to submit async IPC requests and
+    -- harvest completions later. Each process has a completion queue that
+    -- reply() enqueues into when the sender used submit() instead of send().
+    ---------------------------------------------------------------------------
+    COMPLETION_QUEUE_SIZE  : constant := 64;
+    MAX_PENDING_ASYNC      : constant := 16;
+    NO_COMPLETION_TOKEN    : constant Unsigned_64 := Unsigned_64'Last;
+    NO_REQUEST_ID          : constant Unsigned_64 := 0;
+
+    COMPLETION_OK              : constant Unsigned_64 := 0;
+    COMPLETION_TARGET_DIED     : constant Unsigned_64 := 1;
+    COMPLETION_CANCELLED       : constant Unsigned_64 := 2;
+    COMPLETION_QUEUE_OVERFLOW  : constant Unsigned_64 := 3;
+
+    subtype CompletionIndex is Natural range 0 .. COMPLETION_QUEUE_SIZE - 1;
+
+    type CompletionPadding is array (0 .. 6) of Unsigned_8
+        with Component_Size => 8, Size => 56;
+
+    type CompletionEntry is record
+        requestId : Unsigned_64;        -- Kernel-generated request identity
+        token : Unsigned_64;        -- Client-chosen opaque ID (like io_uring user_data)
+        msg   : Message;            -- Reply from server
+        from  : Unsigned_64;        -- Wire PID, not the internal PID subtype
+        status : Unsigned_64 := COMPLETION_OK;
+        valid : Boolean := False;
+        reserved : CompletionPadding := (others => 0);
+    end record;
+    for CompletionEntry use record
+        requestId at 0 range 0 .. 63;
+        token at 8 range 0 .. 63;
+        msg at 16 range 0 .. 383;
+        from at 64 range 0 .. 63;
+        status at 72 range 0 .. 63;
+        valid at 80 range 0 .. 7;
+        reserved at 81 range 0 .. 55;
+    end record;
+    for CompletionEntry'Size use 88 * 8;
+    for CompletionEntry'Alignment use 8;
+
+    type CompletionRing is array (CompletionIndex) of CompletionEntry;
+
+    NULL_COMPLETION : constant CompletionEntry := (
+        requestId => NO_REQUEST_ID,
+        token => 0,
+        msg   => NULL_MESSAGE,
+        from  => Unsigned_64 (NO_PROCESS),
+        status => COMPLETION_OK,
+        valid => False,
+        reserved => (others => 0)
+    );
+
+    type CompletionOwners is array (CompletionIndex) of ThreadID;
+
+    -- The entries (5.8 KiB): allocated when the process first reserves a
+    -- completion (an async submit), kept with its slot from then on.
+    type CompletionSlots is record
+        ring   : CompletionRing;
+        -- Kernel-only: the thread each entry belongs to (the submitter).
+        -- A thread's wait or poll returns only its own completions.
+        owners : CompletionOwners;
+    end record;
+    type CompletionSlotsAccess is access all CompletionSlots;
+
+    type CompletionQueue is record
+        -- null until the first async submit; count = 0 while null.
+        slots : CompletionSlotsAccess := null;
+        head  : CompletionIndex := 0;   -- Consumer reads here
+        tail  : CompletionIndex := 0;   -- Producer writes here
+        count : Natural := 0;
+    end record;
+
+    -- Tracks outstanding async requests so reply() can find the token
+    type PendingRequest is record
+        dest      : ProcessID   := NO_PROCESS;
+        requestId : Unsigned_64 := NO_REQUEST_ID;
+        token     : Unsigned_64 := 0;
+        thread    : ThreadID    := NO_THREAD;   -- the submitting thread
+    end record;
+
+    NO_PENDING : constant PendingRequest := (NO_PROCESS, NO_REQUEST_ID, 0, NO_THREAD);
+
+    type PendingArray is array (0 .. MAX_PENDING_ASYNC - 1) of PendingRequest;
+
+    ---------------------------------------------------------------------------
+    -- DMA Allocation Tracking
+    --
+    -- Tracks DMA memory allocated via ALLOC_DMA so it can be freed on kill().
+    ---------------------------------------------------------------------------
+    -- Stable dynamically backed records live in Process.DMA, independently
+    -- of this process-table slot, including retained orphan allocations.
+
+    ---------------------------------------------------------------------------
+    -- Resource Quota
+    --
+    -- Per-process resource limits populated from CAP_RESOURCE on resume.
+    -- maxFrames limits physical memory; cpuQuotaUs/cpuPeriodUs limit CPU.
+    -- Zero values mean unlimited.
+    ---------------------------------------------------------------------------
+    type ResourceQuota is record
+        maxFrames       : Unsigned_64  := 0;  -- 0 = unlimited; capability width
+        cpuQuotaUs      : Unsigned_32  := 0;  -- max us per period (0 = unlimited)
+        cpuPeriodUs     : Unsigned_32  := 0;  -- period length in us
+        cpuUsedTicks    : Natural      := 0;  -- ticks consumed this period
+        periodStartTick : Unsigned_64  := 0;  -- msTicks at period start
+    end record;
+
+    ---------------------------------------------------------------------------
+    -- Shared Memory Grant Types
+    --
+    -- Grants map physical pages from the granter's address space into the
+    -- grantee's address space, enabling zero-copy I/O between client and
+    -- server processes.
+    ---------------------------------------------------------------------------
+    --  Grants one process may own at once (KERN-003 step 2: a quota, not a
+    --  namespace; the table is global, Memory_Grants.Maximum_Grants).
+    OWNER_GRANT_QUOTA : constant := Memory_Grants.Owner_Grant_Quota;
+    --  The grantee's whole received-window space (Memory_Grants): a 4K
+    --  scanout buffer is 33 MB. Owner memory quotas bound real grants.
+    --  Grant records and page tables are backed only as needed.
+    MAX_GRANT_PAGES        : constant := Memory_Grants.Maximum_Page_Count;
+
+    subtype StoredGrantPageCount is Natural range 0 .. MAX_GRANT_PAGES;
+
+    type GrantPermission is (GRANT_READ, GRANT_READWRITE);
+
+    type Grant is record
+        globalSlot   : Memory_Grants.Global_Slot := 0;
+        lifecycle    : Memory_Grants.Lifecycle :=
+          Memory_Grants.Inactive_Lifecycle;
+        reusable     : Boolean         := True;
+        generation   : Memory_Grants.Live_Grant_Generation :=
+          Memory_Grants.Initial_Generation;
+        granterPID   : ProcessID       := NO_PROCESS;
+        granteePID   : ProcessID       := NO_PROCESS;
+        -- Links in the owner's list of grants it owns (live, or retired
+        -- with an unread notice) and the grantee's list of grants it
+        -- receives (live): teardown and notices walk only these. A free
+        -- slot is on the free list through ownerNext.
+        ownerPrev, ownerNext     : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
+        granteePrev, granteeNext : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
+        -- Both parties' identities (KERN-003), taken when the grant is made,
+        -- so a notice read after either has ended names that life and not
+        -- a later occupant of its slot.
+        granterIdentity : Process_Identities.Identity := Process_Identities.No_Identity;
+        granteeIdentity : Process_Identities.Identity := Process_Identities.No_Identity;
+        -- Granter's virtual address range
+        granterAddr  : System.Address  := System.Null_Address;
+        -- Where it was mapped in grantee's space: the grantee's window
+        -- (Grant_Windows), held from creation until its pages are unmapped
+        -- and every CPU has flushed them.
+        granteeAddr  : System.Address  := System.Null_Address;
+        granteeWindow : Grant_Windows.Window := Grant_Windows.Window'First;
+        windowCount   : Grant_Windows.Run_Length := 1;
+        windowHeld    : Boolean := False;
+        -- Installed receiver pages. Zero after receiver death even if a
+        -- kernel forwarding hold retains the grant identity/resources.
+        numPages     : StoredGrantPageCount := 0;
+        permission   : GrantPermission := GRANT_READ;
+        -- Set only by the owner when creating this grant from owned pages.
+        -- A derived child must always clear this; ordinary acquisition does
+        -- not grant delegation authority.
+        forwardable  : Boolean := False;
+        -- Tell both parties when this grant ends (docs/ipc-delivery.md):
+        -- set by the owner at creation, inherited by derived children.
+        notify       : Boolean := False;
+        -- The grantee has not yet read that the owner revoked this grant
+        -- (set only while it holds an acquisition; cleared when it reads
+        -- the notice or returns the grant).
+        granteeNotice : Boolean := False;
+        -- On a retired record: the owner has not yet read that it ended.
+        -- The record keeps its slot until then; noticeGeneration and
+        -- noticePeer are the ended grant's generation and grantee identity.
+        ownerNotice      : Boolean := False;
+        noticeGeneration : Memory_Grants.Grant_Generation := 0;
+        noticePeer       : Process_Identities.Identity := Process_Identities.No_Identity;
+        -- This life ended (revoked, given back, retired, or a party died):
+        -- its shared-futex waiters are swept as Revoked (IPC-010) and no
+        -- wait or wake through it is accepted.
+        lifeEnded        : Boolean := False;
+    end record;
+
+
+    -- Grant virtual address region in lower-half user space
+    GRANT_REGION_BASE : constant Integer_Address :=
+        Integer_Address (Memory_Grants.Received_Region_First);
+    GRANT_REGION_END  : constant Integer_Address :=
+        Integer_Address (Memory_Grants.Received_Region_Limit);
+
+    ---------------------------------------------------------------------------
+    -- A receiver's queue (IPC-002 step 3, docs/ipc-delivery.md): requests
+    -- and published events, each a ring per sending process (Kernel_Credits),
+    -- so a flooding sender fills only its own ring. Each entry carries its
+    -- kind so receive paths can avoid consuming unrelated traffic.
+    ---------------------------------------------------------------------------
+    type RingEntryKind is (
+        RING_EMPTY,
+        RING_SYNC,
+        RING_ASYNC_REQUEST,
+        RING_ONEWAY,
+        RING_EVENT
+    );
+
+    type RingEntry is record
+        msg       : Message   := NULL_MESSAGE;
+        sender    : ProcessID := NO_PROCESS;
+        kind      : RingEntryKind := RING_EMPTY;
+        requestId : Unsigned_64 := NO_REQUEST_ID;
+        -- The sending thread of a RING_SYNC entry: the one blocked for the
+        -- reply. Servers see only sender; the kernel routes the reply.
+        senderThread : ThreadID := NO_THREAD;
+        -- Whose credit the entry uses: the sender, or a published event's
+        -- publisher (an event's visible sender is NO_PROCESS).
+        publisher : ProcessID := NO_PROCESS;
+        -- A RING_SYNC entry's call: the sender thread's call sequence when
+        -- it made it. Its reply is delivered only to that call (a caller
+        -- that timed out has moved on; docs/ipc-fastpath.md).
+        callSequence : Unsigned_64 := 0;
+    end record;
+
+    NULL_RING_ENTRY : constant RingEntry :=
+        (msg       => NULL_MESSAGE,
+         sender    => NO_PROCESS,
+         kind      => RING_EMPTY,
+         requestId => NO_REQUEST_ID,
+         senderThread => NO_THREAD,
+         publisher => NO_PROCESS,
+         callSequence => 0);
+
+    -- Each sender's credit per class, and how many senders' rings share one
+    -- allocated chunk of entries.
+    QUEUE_CREDIT      : constant := 16;
+    SENDERS_PER_CHUNK : constant := 8;
+    type Queue_Class is (Request_Class, Event_Class);
+    CHUNK_COUNT : constant :=
+        Kernel_Credits.Maximum_Senders / SENDERS_PER_CHUNK + 1;
+    type Chunk_Directory is array (0 .. CHUNK_COUNT - 1) of System.Address;
+    -- One class of a receiver's queue: its Kernel_Credits.Receiver_State
+    -- and its entry chunks, allocated when first needed (null until then).
+    type Class_Queue is record
+        state  : System.Address := System.Null_Address;
+        chunks : Chunk_Directory := (others => System.Null_Address);
+    end record;
+    type Class_Queues is array (Queue_Class) of Class_Queue;
+
+    ---------------------------------------------------------------------------
+    -- Process mailboxes for low-level IPC
+    -- @field sendQueue       - List of blocked senders waiting to send
+    --                          this mailbox a message.
+    -- @field recvQueue       - List of the blocked receivers waiting
+    --                          to receive a message destined for this mailbox
+    -- @field queues          - Requests and published events, a ring per sender
+    ---------------------------------------------------------------------------
+    type Receive_Lane is (Queued_Messages, Waiting_Senders, IRQ_Doorbell, Kernel_Notices);
+
+    type Mailbox is record
+        lock        : Spinlocks.spinlock;
+        closed      : Boolean := True;
+
+        -- Requests and published events, a ring per sender (step 3)
+        queues      : Class_Queues;
+        -- Which class mixed receive takes from first.
+        nextClass   : Queue_Class := Request_Class;
+        -- Protected by lock, shared by all receivers and receive variants.
+        -- Persistent round-robin prevents a hot synchronous caller from
+        -- starving queued async requests, one-way presents, or device work.
+        nextReceiveLane : Receive_Lane := Queued_Messages;
+
+        sendQueue   : ProcQueue;
+        recvQueue   : ProcQueue;
+        -- Threads of this mailbox's process blocked in WAITINGFOREVENT or
+        -- WAITINGFORCOMPLETION. Publishers wake all of them; each rechecks.
+        notifyQueue : ProcQueue;
+    end record;
+
+    ---------------------------------------------------------------------------
+    -- Entry in the process table.
+    --
+    -- @field next            - Process ID of the next process on whatever list
+    --                          this process belongs to.
+    -- @field prev            - Process ID of the previous process on whatever
+    --                          list this process belongs to.
+    -- @field queueKey        - For keeping elements in a queue in sorted order.
+    --                          This will be the process' priority for
+    --                          the ready list, or the delay for the sleep list.
+    --                          If this is a thread on another process' sendQueue
+    --                          or recvQueue, the queueKey will be that process' PID.
+    -- @field isThread        - True if this process is a child thread of some
+    --                          other parent process, sharing the parent's
+    --                          address space, descriptors and
+    -- @field pid             - Process ID of this process
+    -- @field ppid            - Parent Process ID
+    -- @field name            - short name of this process
+    -- @field state           - state of the process
+    -- @field mode            - KERNEL or USER mode
+    -- @field priority        - user specified priority for this
+    -- @field pgTable         - index to top-level page table for this process' address space.
+    -- @field context         - pointer to process' saved state
+    -- @field kernelStack     - pointer to the process' kernel-mode stack
+    -- @field frames          - list of physical frames this process has allocated
+    -- @field numStackFrames  - number of stack frames this process is using.
+    -- @field stackTop        - top of process' stack (lower-half address)
+    -- @field brk             - top of gap/heap space
+    -- @field numHeapFrames   - number of frames used for process' heap
+    -- These next two fields need to be set by the process loader.
+    -- @field iend            - end of the process' image (.text, .bss, .data)
+    -- @field istart          - start of the process' image
+    -- @field mail            - Index into the process' IPC mailbox
+    -- @field reply           - Return value of a send() call stored here
+    -- @field channel         - resource process may be waiting on
+    -- @field openDescriptors - list of descriptors for kernel resources
+    -- @field workingDirectory - what pwd would tell you
+    -- @field fpu             - Address of the initialized FPU/SSE state for a
+    --                          user process; null for scalar kernel threads.
+    ---------------------------------------------------------------------------
+    ---------------------------------------------------------------------------
+    -- A thread: the schedulable part of a process (docs/threads.md). Queue
+    -- links, scheduling state, saved context, kernel stack, FPU/FS state and
+    -- per-thread IPC state. Every process has a main thread.
+    ---------------------------------------------------------------------------
+
+    type Thread is
+    record
+        next                : ThreadID := NO_THREAD;
+        prev                : ThreadID := NO_THREAD;
+
+        queueKey            : Integer;
+        state               : ProcessState := INVALID;
+        lifetime            : Process_Lifetime.State :=
+                                Process_Lifetime.Initial_State with Atomic;
+        mode                : ProcessMode;
+
+        priority            : ProcessPriority;
+
+        -- Physical address of the guard page below this process' kernel
+        -- stack. Zero if no guard page (shouldn't happen after creation).
+        guardPage           : Virtmem.PhysAddress := 0;
+
+        -- The top of the process' kernel stack (higher-half)
+        kernelStackTop      : System.Address;
+        replyMsg            : Message := NULL_MESSAGE;
+        sendMsg             : Message := NULL_MESSAGE;
+        -- IPC fast path (IPC-003, docs/ipc-fastpath.md): a call handed
+        -- straight to this thread while it waited in receive with nothing
+        -- else pending. Taken before anything queued when it wakes.
+        handoffValid        : Boolean := False;
+        handoffItem         : RingEntry := NULL_RING_ENTRY;
+        -- Synchronous calls (docs/ipc-fastpath.md, "Call deadlines"): the
+        -- sequence of this thread's current or last call, and when it gives
+        -- up waiting (callDeadlineActive; Unsigned_64'Last is never).
+        callSequence        : Unsigned_64 := 0;
+        callDeadlineMs      : Unsigned_64 := 0;
+        callDeadlineActive  : Boolean := False with Atomic;
+        -- The server of the current or last call and when it began
+        -- (Time.msTicks), for the on-screen stuck-call report only.
+        callTarget          : ProcessID := NO_PROCESS;
+        callStartMs         : Unsigned_64 := 0;
+        -- User RIP at this thread's last timer interrupt in user mode,
+        -- for the stuck-call report: where a busy server is spinning.
+        sampledRIP          : Unsigned_64 := 0;
+        -- User FS base (thread-local storage), saved on switch-out because
+        -- user code may change it with WRFSBASE.
+        fsBase              : Unsigned_64 := 0;
+
+        -- CPU whose ready list this process joins when it becomes ready: the
+        -- CPU it last ran on or was placed on. Another CPU may take it from
+        -- there (Virtual_Deadlines.Choose) unless it is pinned.
+        cpu                 : Natural := 0;
+        -- Pinned processes never move between CPUs: kernel threads (each CPU's
+        -- idle thread, the reaper) and processes placed with SET_CPU.
+        pinned              : Boolean := False;
+
+        -- TSC timestamp from the most recent transition into READY. This is
+        -- benchmark-only scheduler telemetry used to measure wake-to-run
+        -- latency without serial output in the hot path.
+        readyTSC            : Unsigned_64 := 0;
+        -- TSC when this entry last joined a ready list (wakeup or requeue),
+        -- for the work-stealing age check.
+        queuedTSC           : Unsigned_64 := 0;
+        readiness           : Readiness_Origin := Rescheduled;
+        -- Where system call entry counts this thread's calls: the kernel
+        -- address of its line in its process's thread-count pages
+        -- (Readiness_Publication, "how many calls does this path take"),
+        -- or uncountedCalls for a thread without one. Only this thread
+        -- writes it. countSlot is the line's slot, given back at exit.
+        callCounter         : System.Address := System.Null_Address;
+        countSlot           : Thread_Slots.Slot := Readiness_Publication.Main_Thread_Slot;
+        -- The thread this one last readied with readySync (it is about to
+        -- block): when it blocks in a receive, it runs that thread next,
+        -- directly, if it still waits on this CPU (yieldToSyncWakee).
+        syncWakee           : ThreadID := NO_THREAD;
+        -- Virtual deadline (docs/scheduler.md): set when the thread gets a
+        -- fresh slice, kept while it sleeps with slice left.
+        runDeadline         : Virtual_Deadlines.Deadline := 0;
+        -- Its ready-list order key: runDeadline, or Idle_Key for the idle
+        -- thread (Process.Queues.insertByKey).
+        runKey              : Unsigned_64 := Virtual_Deadlines.Idle_Key;
+        -- Slice left: kept across sleeps as well as preemption.
+        savedTurn           : Scheduling_Turns.State;
+        turnCounters        : Scheduling_Turns.Counters := [others => 0];
+
+        -- Raw scheduled-residency ticks, including interrupts/syscalls within
+        -- the interval. Protected by Process.lock; reset only at PID creation.
+        execution           : Accounting.Totals;
+        -- Hypothetical demand ledger, not an admitted scheduling reservation.
+        shadow              : Scheduling_Shadow.Reservation;
+
+        --  A timed IPC receive remains on exactly one mailbox receive queue;
+        --  its deadline is separate metadata rather than a second intrusive
+        --  queue membership.  This permits an event or request to wake it
+        --  immediately while the timer provides a bounded deadline wake.
+        receiveDeadlineActive   : Boolean := False with Atomic;
+        -- Protected by the owning mailbox; activity waits do not dequeue.
+        waitsForIPCActivity     : Boolean := False;
+        receiveDeadlineMs       : Unsigned_64 := 0;
+        receiveDeadlineReceiver : ProcessID := NO_PROCESS;
+
+        -- Scheduler latency contract. This is intentionally advisory for
+        -- now; future scheduler policies can use it for admission control,
+        -- deadline ordering, priority inheritance, and overrun telemetry.
+        latency             : LatencyContract;
+        -- An admitted real-time reservation (setLatencyContract, REALTIME):
+        -- its share, counted in realtimeAdmitted, and its budget ledger.
+        rtAdmitted          : Boolean := False;
+        rtShare             : Realtime_Admission.Utilization := 0;
+        rtLedger            : Scheduling_Budgets.State;
+
+        context             : System.Address;   -- Pointer to the saved state
+        kernelStack         : ProcessKernelStackPtr;
+        -- Initialized FPU/SSE state image for a user thread (inside its
+        -- kernel stack); null for scalar kernel threads.
+        fpu                 : System.Address := System.Null_Address;
+
+        -- The process whose address space and authority this thread uses.
+        process             : ProcessID := NO_PROCESS;
+        -- Next thread of the same process (list headed by mainThread),
+        -- protected by Process.lock.
+        nextSibling         : ThreadID := NO_THREAD;
+
+        -- THREAD_EXIT was called: the reaper frees this thread alone.
+        exiting             : Boolean := False;
+        -- User word cleared and futex-woken at thread exit (join); 0: none.
+        clearTidAddress     : Unsigned_64 := 0;
+
+        -- Futex wait state (Process.Futex), protected by the bucket lock.
+        futexWaiting        : Boolean := False with Atomic;
+        futexBucket         : Futex_Keys.Bucket_Index := 0;
+        futexSlot           : Natural := 0;
+        futexInOverflow     : Boolean := False;
+        futexTimedOut       : Boolean := False;
+        -- The shared futex's grant life ended while waiting (IPC-010).
+        futexRevoked        : Boolean := False;
+        futexDeadlineActive : Boolean := False;
+        futexDeadlineMs     : Unsigned_64 := 0;
+
+        -- The one-use reply authority minted by this thread's most recent
+        -- request-bearing receive. Per thread, so concurrent receiving
+        -- threads of one server cannot clobber each other's reply. Protected
+        -- by the owning process's mailbox lock, like its capability table.
+        replyCap            : Capabilities.Capability :=
+                                Capabilities.NULL_CAPABILITY;
+
+        -- A capability this thread offers with the call it is making
+        -- (CALL_OFFERING_CAPABILITY, CAP-002): already derived from its
+        -- process's table, taken by the server only through
+        -- ACCEPT_OFFERED_CAPABILITY while it answers this call, dropped when
+        -- the call ends. Protected by the process's mailbox lock.
+        offeredCap          : Capabilities.Capability :=
+                                Capabilities.NULL_CAPABILITY;
+    end record;
+
+    type Process is
+    record
+        pid                 : ProcessID;        -- Index into the proctab
+        ppid                : ProcessID;        -- Parent process ID
+        svpid               : ProcessID := NO_PROCESS;  -- Supervisor PID
+        parentGeneration    : Capabilities.Generation := 0;
+
+        name                : ProcessName;
+        admitted            : Boolean := False with Atomic;
+
+        pgTable             : ProcessID;        -- Index into addrtab
+
+        frames              : FrameLists.List;
+        numStackFrames      : Natural := 0;
+
+        -- The top of the process' stack address (lower-half)
+        stackTop            : System.Address;
+
+        -- The bottom of the process' stack
+        stackBottom         : System.Address;
+
+        -- Immutable primary-stack reservation declared by the executable.
+        stackSize           : UserStackSize := MIN_USER_STACK_SIZE;
+
+        -- Heap
+        heapEnd             : System.Address;
+        heapStart           : System.Address;
+
+        -- Start and end of process' image (.text, .data, .bss).
+        iend                : System.Address := To_Address (0);
+        istart              : System.Address := To_Address (16#FFFF_FFFF_FFFF_FFFF#);
+
+        -- Async I/O: pending requests and grants
+        pendingRequests     : PendingArray :=
+                                  (others => NO_PENDING);
+        numPending          : Natural := 0;
+        requestSequence     : IPC_Request_Ids.Sequence :=
+                                IPC_Request_Ids.Initial_Sequence;
+        -- Process teardown retains the PID while an acquired grant still
+        -- names this owner.  The final return completes PID retirement.
+        grantTeardownPending : Boolean := False;
+        grantTeardownReady : Boolean := False;
+        pidReusableAfterGrants : Boolean := False;
+
+        -- The process's capability handles (CAP-002): kernel-placed
+        -- entries named by slot and generation, charged to memoryAccount,
+        -- edited only under mailtab (pid).lock. Configured at create;
+        -- released (every page) before the account closes. A saved reply is
+        -- an ordinary CAP_REPLY entry here.
+        caps                : Process_Capabilities.Tables.Table;
+        -- Its own endpoint and process handles, placed first at create, for
+        -- the spawner's startup table (SPAWN's result).
+        selfHandle          : Unsigned_64 := 0;
+        selfProcessHandle   : Unsigned_64 := 0;
+
+        -- Device IRQ delivery is a persistent doorbell, not a counted event.
+        -- Multiple interrupts may coalesce while the driver is runnable; the
+        -- bit is cleared only when the driver observes it and then drains its
+        -- authoritative device/controller state.
+        irqNotificationPending : Boolean := False;
+        -- The readiness page (KERN-013, Readiness_Pages): the kernel's
+        -- frame, mapped read-only at Readiness_Publication.Page_Address.
+        -- It also counts the events published to this process that were
+        -- refused because their publisher's ring here was full (the
+        -- publisher is told and keeps them): backpressure must be
+        -- observable, or a latency-sensitive consumer cannot tell a quiet
+        -- device from an overloaded input path.
+        readinessFrame : Virtmem.PhysAddress := 0;
+        -- Its thread-count pages, and which slots its live threads own
+        -- (Thread_Slots; changed with threadCount under lock).
+        threadCountFrames : Readiness_Pages.Count_Frames :=
+          Readiness_Pages.No_Count_Frames;
+        threadSlots : Thread_Slots.Slot_Set := [others => False];
+
+        -- Which of the process's message-signaled device vectors fired
+        -- since it last took the doorbell (Device_Vector_ABI layout). Set
+        -- with irqNotificationPending under the mailbox lock and handed
+        -- over with it, so a multi-vector driver knows which queues to
+        -- drain. Legacy lines set only the doorbell.
+        irqPendingVectors : Device_Vector_Words := (others => 0);
+
+        -- The kernel has notices for this process (grant ends, exit and
+        -- fault reports; docs/ipc-delivery.md). A doorbell under the
+        -- mailbox lock: the notices themselves are kept on their objects
+        -- until read, so this may be stale but never misses one.
+        kernelNoticePending : Boolean := False;
+
+        -- Its wake word (IPC-010 option B): the futex word its Ready wait
+        -- names (0: none). A futex wake of that word, by the process or by
+        -- a party of a grant of its page, wakes its Ready wait and its
+        -- receive like a doorbell: wakeWordPending, under the mailbox lock,
+        -- set by such a wake and cleared when the wait or a receive takes
+        -- it (one Channel_Wake_ABI notice).
+        wakeWord        : Unsigned_64 := 0;
+        wakeWordPending : Boolean := False;
+
+        -- Control messages kept for this process until it reads them, a
+        -- slot per sender (Kernel_Controls; Process.IPC.controlLock). All
+        -- zero is closed and empty.
+        controls : Kernel_Controls.Target_State;
+
+        -- Resource quota (populated from CAP_RESOURCE on resume)
+        quota               : ResourceQuota;
+        memoryAccount       : Unsigned_64 := 0;
+
+        -- The process's main thread (docs/threads.md). Scheduling, context
+        -- and per-thread IPC state live in its thread record.
+        mainThread          : ThreadID := NO_THREAD;
+        -- Live threads, the main thread included (Process.lock).
+        threadCount         : Natural := 0;
+
+        -- Serializes changes to this address space: page tables, the frame
+        -- list and the heap break (docs/threads.md). Threads of one process
+        -- fault, grow the heap and receive mappings concurrently. Ordered
+        -- after mailbox locks and grantLock; nothing but allocator and TLB
+        -- round locks may be taken while holding it.
+        addressSpaceLock    : Spinlocks.Spinlock;
+
+        -- Launch arguments may be installed only before the first resume
+        -- (Process_Launch). The termination report goes out in
+        -- EVENT_CHILD_EXIT; it starts as Stopped and SYSCALL_EXIT, unless
+        -- the process is already stopping, records Exited with its code.
+        launch              : Process_Launch.Launch_Phase :=
+                                  Process_Launch.Unstarted;
+        termination         : Process_Launch.Termination_Report;
+    end record;
+
+    -- Lock for protecting the proctab
+    lockname : aliased String := "Proctab";
+    lock : Spinlocks.Spinlock;
+
+    grantLockName : aliased String := "grants";
+    grantLock : Spinlocks.Spinlock;
+
+    ---------------------------------------------------------------------------
+    -- Proctab. Array of Process entries and master list of active processes in
+    -- CuBit.
+    ---------------------------------------------------------------------------
+    subtype ProctabRange is ProcessID range 1 .. ProcessID'Last;
+
+    ---------------------------------------------------------------------------
+    -- Process table: records in pages allocated on demand, with generations
+    -- in a proved ledger that outlives freed pages (Object_Table,
+    -- docs/threads.md). proctab (pid) keeps the old array syntax; an unused
+    -- PID reads as an empty record in the INVALID state. Never hold a record
+    -- reference across a quiescent point (the scheduler loop or idle).
+    ---------------------------------------------------------------------------
+    procedure resetProcessRecord (P : in out Process);
+    procedure lockAddressSpace (pid : ProcessID);
+    procedure unlockAddressSpace (pid : ProcessID);
+    procedure allocTablePage (Page_Bytes : Natural; Addr : out System.Address);
+    procedure freeTablePage (Page_Bytes : Natural; Addr : System.Address);
+    procedure lockProcessTable;
+    procedure unlockProcessTable;
+
+    package Process_Table is new Object_Table
+      (Element          => Process,
+       Max_Id           => ProcessID'Last,
+       Entries_Per_Page => 5,
+       Reserved_Last    => 15,
+       -- generationOf adds Capabilities.INITIAL_GENERATION: the ledger stops
+       -- one short so a capability generation never wraps to 0.
+       Generation_Limit => Unsigned_32'Last - Capabilities.INITIAL_GENERATION,
+       Reset            => resetProcessRecord,
+       Alloc_Page       => allocTablePage,
+       Free_Page        => freeTablePage,
+       Lock             => lockProcessTable,
+       Unlock           => unlockProcessTable);
+
+    function proctab (pid : ProcessID) return Process_Table.Element_Ref is
+      (Process_Table.Lookup (pid)) with Inline;
+
+    procedure resetThreadRecord (T : in out Thread);
+    procedure lockThreadTable;
+    procedure unlockThreadTable;
+
+    package Thread_Table is new Object_Table
+      (Element          => Thread,
+       Max_Id           => Natural (ThreadID'Last),
+       Entries_Per_Page => 8,
+       Reserved_Last    => 15,
+       -- generationOf adds Capabilities.INITIAL_GENERATION: the ledger stops
+       -- one short so a capability generation never wraps to 0.
+       Generation_Limit => Unsigned_32'Last - Capabilities.INITIAL_GENERATION,
+       Reset            => resetThreadRecord,
+       Alloc_Page       => allocTablePage,
+       Free_Page        => freeTablePage,
+       Lock             => lockThreadTable,
+       Unlock           => unlockThreadTable);
+
+    function threadtab (tid : ThreadID) return Thread_Table.Element_Ref is
+      (Thread_Table.Lookup (Natural (tid))) with Inline;
+
+    -- The main thread of a process (an empty INVALID record for an unused
+    -- PID). Transitional: until the scheduler and IPC work on ThreadIDs,
+    -- process-indexed code reaches thread state through this.
+    function threadOf (pid : ProcessID) return Thread_Table.Element_Ref is
+      (threadtab (proctab(pid).mainThread)) with Inline;
+
+    -- The only conversions between the two ID spaces (docs/threads.md).
+    function mainThreadOf (pid : ProcessID) return ThreadID is
+      (proctab(pid).mainThread) with Inline;
+    function processOf (tid : ThreadID) return ProcessID is
+      (threadtab(tid).process) with Inline;
+
+    -- CPUs that have entered their scheduler (for page reclamation).
+    cpuOnline : Quiescent_Reclamation.CPU_Set := [others => False];
+
+    -- The run key of the thread each CPU runs (Idle_Key while idle), kept by
+    -- the scheduler and directSwitch under Process.lock. Before a CPU first
+    -- schedules it is 0, which nothing preempts, so no work is placed there.
+    cpuRunningKey : array (0 .. Config.MAX_SMP_CPUS - 1) of Unsigned_64 :=
+        [others => 0] with Volatile;
+
+    -- The run key of a thread about to join a ready list.
+    function runKeyOf (tid : ThreadID) return Unsigned_64;
+
+    -- Scheduler_Timing.Preempt_Margin_Microseconds in TSC ticks.
+    function marginTicks return Unsigned_64;
+
+    -- Real-time reservations admitted across the system (Realtime_Admission).
+    realtimeAdmitted : Realtime_Admission.Total := 0;
+
+    -- Reserve real-time CPU for pid's main thread: Budget microseconds every
+    -- Period, if authority (the CAP_SCHEDULING its handle named) covers it
+    -- and the system total stays within Realtime_Admission's share. A previous
+    -- reservation is released first. Caller holds no Process lock.
+    procedure reserveRealtime
+      (pid      : ProcessID;
+       authority : Capabilities.Capability;
+       budgetUs : Unsigned_32;
+       periodUs : Unsigned_32;
+       granted  : out Boolean);
+
+    -- Where ready thread tid should join a ready list
+    -- (Virtual_Deadlines.Place over every CPU's running and first queued
+    -- keys). Caller holds Process.lock.
+    function placementFor (tid : ThreadID) return Natural;
+
+    -- Put ready thread tid on cpu's ready list as its home, and make that
+    -- CPU reschedule if tid should run there before what it runs now.
+    -- Caller holds Process.lock; tid is on no list.
+    procedure placeOn (tid : ThreadID; cpu : Natural);
+
+    -- Free process-table pages whose grace period has elapsed.
+    procedure reclaimTablePages;
+
+    ---------------------------------------------------------------------------
+    -- Per-process state (KERN-003 step 3, docs/process-objects.md): the root
+    -- page table, the mailbox and the completion queue, in one record per
+    -- slot. A slot's record is allocated when its PID is first allocated
+    -- and retained for the kernel's lifetime at a stable address, like the
+    -- grant table: a stale PID always reaches a real record, and a root
+    -- page another CPU may still hold in CR3 is never freed under it. Each
+    -- life resets what it uses, as the static arrays did.
+    --
+    -- addrtab, mailtab and completionTab keep the old array syntax. A slot
+    -- never allocated reads a shared record whose mailbox is closed; nothing
+    -- may write it except its lock.
+    ---------------------------------------------------------------------------
+    -- Grant bookkeeping for one process (Process.IPC, under grantLock):
+    -- its owned grants (live, or retired with an unread notice) and
+    -- received grants (live), linked through the grant records; its
+    -- received-grant windows; whether this life is told of grant ends and
+    -- its unread notice counts; and its link on the list of processes to
+    -- ring once grantLock is free.
+    type Grant_State is record
+        ownedHead, receivedHead   : Memory_Grants.Global_Slot := Memory_Grants.No_Slot;
+        ownedCount                : Natural := 0;
+        windows                   : Grant_Windows.Window_Set := Grant_Windows.Empty;
+        noticesOpen               : Boolean := False;
+        ownerNotices              : Natural := 0;
+        granteeNotices            : Natural := 0;
+        wakeQueued                : Boolean := False;
+        wakeNext                  : ProcessID := NO_PROCESS;
+    end record;
+
+    type Process_State is record
+        rootTable   : aliased Virtmem.P4;
+        inbox       : aliased Mailbox;
+        completions : aliased CompletionQueue;
+        grants      : aliased Grant_State;
+    end record;
+
+    function allocateStateBlock
+      (Bytes, Alignment : System.Storage_Elements.Storage_Count)
+       return System.Address;
+
+    package Process_States is new Retained_Record_Blocks
+      (Process_State, ProcessID'Last, 1, allocateStateBlock);
+
+    -- Make pid's state exist. False when memory is exhausted.
+    procedure ensureState (pid : ProcessID; ok : out Boolean);
+
+    type P4_Ref (P : not null access Virtmem.P4) is null record
+      with Implicit_Dereference => P;
+    type Mailbox_Ref (M : not null access Mailbox) is null record
+      with Implicit_Dereference => M;
+    type Completion_Ref (C : not null access CompletionQueue) is null record
+      with Implicit_Dereference => C;
+
+    function addrtab (pid : ProcessID) return P4_Ref with Inline;
+    function mailtab (pid : ProcessID) return Mailbox_Ref with Inline;
+    function completionTab (pid : ProcessID) return Completion_Ref with Inline;
+    type Grant_State_Ref (G : not null access Grant_State) is null record
+      with Implicit_Dereference => G;
+    function grantsOf (pid : ProcessID) return Grant_State_Ref with Inline;
+    -- The physical address of pid's root page table, for CR3. Roots live
+    -- in the direct map (allocated state); the never-allocated sentinel is
+    -- in the kernel image.
+    function rootPhysical (pid : ProcessID) return Virtmem.PhysAddress;
+
+    -- WIP: proctab replacement
+    type ProcPtr is access all Process;
+    -- for ProcPtr'Simple_Storage_Pool use pool;
+    -- package ProcLists is new LinkedLists (ProcPtr, Process.print);
+    -- allProcs : ProcLists.List;
+
+    ---------------------------------------------------------------------------
+    -- setup
+    -- Allocate storage used for the FrameList package
+    ---------------------------------------------------------------------------
+    procedure setup;
+
+    ---------------------------------------------------------------------------
+    -- addToProctab
+    -- Given a process object, add it to the process table.
+    ---------------------------------------------------------------------------
+
+
+    ---------------------------------------------------------------------------
+    -- startKernelThread
+    --
+    -- Starts a CuBit procedure in its own thread. Note, the PID must be
+    -- explicitly specified here for kernel tasks, so this can clobber other
+    -- processes if you're not careful.
+    ---------------------------------------------------------------------------
+    procedure startKernelThread (procStart  : in System.Address;
+                                 name       : in ProcessName;
+                                 pid        : in ProcessID;
+                                 priority   : in ProcessPriority;
+                                 homeCPU    : in Natural := 0);
+
+    ---------------------------------------------------------------------------
+    -- tryAddPage
+    --
+    -- Map a page into this process' address space at the specified virtual
+    -- address with the given flags. This procedure will allocate memory for
+    -- the page, which can be accessed via the storage param if bytes need to
+    -- be copied into it, zeroed out, etc. If the process given is a child thread,
+    -- the memory will be mapped into the parent process' memory space.
+    --
+    -- @param Process
+    -- @param mapTo - Process virtual address that this page should be mapped to
+    -- @param frame - the frame the process now owns (KERN-014: no kernel
+    --  address; the kernel writes into it only through Kernel_Window).
+    -- @param flags - Page Table flags for this mapping.
+    ---------------------------------------------------------------------------
+    type Page_Allocation_Result is new Page_Allocation.Result;
+
+    -- Expected resource failures do not raise. On failure frame is No_Frame;
+    -- no data frame or list node is leaked, and no leaf mapping is published.
+    -- Intermediate page tables may remain linked for reuse / normal teardown.
+    -- Requires serialized address-space mutation. Local runtime calls have an
+    -- execution pin and one executing member; privileged remote mapping paths
+    -- still need a common mutation-lock audit. Shared threads remain disabled.
+    procedure tryAddPage
+      (proc : in out Process; mapTo : System.Address;
+       frame : out Process_Frames.Process_Frame;
+       result : out Page_Allocation_Result;
+       flags : Unsigned_64 := Virtmem.PG_USERDATA);
+
+    ---------------------------------------------------------------------------
+    -- create:
+    --
+    -- Creates an unpublished process in the SUSPENDED state. Returns NO_PROCESS
+    -- on resource exhaustion/invalid geometry; shared threads are not supported.
+    -- Writes directly to proctab(pid) to avoid large stack allocations. The
+    -- builder must either publish it or discardUnpublished it after success.
+    --
+    -- @param procStart - the virtual process address where execution should
+    --  start.
+    -- @param ppid - parent PID
+    -- @param name - process name
+    -- @param procStack - the virtual process address for the top of its
+    --  stack (i.e. what the user code sees)
+    -- @param thread - If true, this process will share an address space with
+    --  the parent process (given via ppid). Ensure procStack is set up
+    --  appropriately.
+    -- @return : new ProcessID. If the returned PID is 0, creation failed,
+    --  perhaps due to PID exhaustion or a failure to allocate memory.
+    --
+    -- @TODO add an error code so it's apparent why process creation failed.
+    ---------------------------------------------------------------------------
+    function create (procStart    : in System.Address;
+                     ppid         : in ProcessID;
+                     name         : in ProcessName;
+                     priority     : in ProcessPriority;
+                     procStack    : in System.Address;
+                     stackSize    : in UserStackSize;
+                     imageFrames  : in Natural;
+                     handleLimit  : in Process_Capabilities.Tables.Handle_Limit;
+                     requestedPID : in ProcessID := NO_PROCESS) return ProcessID;
+
+    ---------------------------------------------------------------------------
+    -- yield
+    -- Yield this process' execution back to the scheduler.
+    -- Called by the running process itself after an interrupt.
+    ---------------------------------------------------------------------------
+    procedure yield;
+
+    -- Call only without grantLock/Process.lock. Pairs with the worker's
+    -- pending-work check under Process.lock to prevent a lost wakeup.
+    procedure notifyDMAWork;
+    -- Safe syscall/interrupt return, with no resource locks held. Revalidate
+    -- current ready priority before honoring a possibly stale reschedule IPI.
+    procedure serviceReschedule;
+    procedure serviceTimerPreemption;
+
+    ---------------------------------------------------------------------------
+    -- ready
+    -- Move a process into the ready list and change its state to READY
+    ---------------------------------------------------------------------------
+    -- The thread versions are the real ones; the process versions act on a
+    -- process's main thread (starting a process, the reaper).
+    procedure ready (tid : ThreadID);
+
+    -- ready, placed on this CPU (unless the thread must stay where it is):
+    -- for a waker that is about to block (Linux's WF_SYNC), so the woken
+    -- thread runs here when the waker sleeps, with no inter-processor wake.
+    -- It never preempts the waker (no reschedule, no slice alarm): it waits
+    -- in deadline order until the waker blocks (yieldToSyncWakee) or, if
+    -- the waker runs on, until a timer interrupt here finds it due (an
+    -- earlier deadline, or the waker's slice used up), as any queued thread.
+    procedure readySync (tid : ThreadID);
+
+    -- The calling thread blocks (already in its blocked state and queued
+    -- as a waiter): run the thread it last readied with readySync next, by
+    -- a direct switch (accounted as an IPC handoff), if that thread is
+    -- still READY on this CPU; otherwise the scheduler picks. The scheduler's
+    -- shortest path for "wake, then sleep" (the end of a server's turn).
+    -- Call without Process.lock.
+    procedure yieldToSyncWakee;
+
+    ---------------------------------------------------------------------------
+    -- setLatencyContract
+    --
+    -- Record a process' scheduling intent. The current skeleton does not
+    -- change queue ordering yet; it establishes the kernel-visible ABI and a
+    -- single place where future real-time admission and accounting will live.
+    ---------------------------------------------------------------------------
+    procedure setLatencyContract
+        (pid      : ProcessID;
+         class    : LatencyClass;
+         periodUs : Unsigned_32;
+         budgetUs : Unsigned_32;
+         flags    : Unsigned_32);
+
+    ---------------------------------------------------------------------------
+    -- suspend
+    -- Place the current PID in a SUSPENDED state and reschedule.
+    ---------------------------------------------------------------------------
+    procedure suspend;
+
+    ---------------------------------------------------------------------------
+    -- resume
+    -- Move the given PID from SUSPENDED to READY state
+    ---------------------------------------------------------------------------
+    procedure resume (pid : ProcessID);
+
+    ---------------------------------------------------------------------------
+    -- notify
+    -- Wake a blocked process by moving it to READY state
+    ---------------------------------------------------------------------------
+    procedure notify (tid : ThreadID);
+
+    ---------------------------------------------------------------------------
+    -- sleep
+    -- Put the running thread to sleep for us microseconds. It wakes at that
+    -- TSC deadline, expired by whichever CPU's timer fires first
+    -- (Queues.expireSleepers); this CPU arms its one-shot timer for it.
+    ---------------------------------------------------------------------------
+    procedure sleep (us : Time.Duration);
+
+    -- Arm this CPU's one-shot timer for the earliest sleeper whose home it
+    -- is, if that sleeper is due before the next regular timer opportunity
+    -- (one millisecond).
+    procedure armWakeAlarm;
+
+    ---------------------------------------------------------------------------
+    -- start
+    -- This procedure is set as the return address for new processes. A new
+    --  process first scheduling will context switch here.
+    -- This procedure releases the lock previously set by Scheduler.schedule
+    ---------------------------------------------------------------------------
+    procedure start with
+        Pre => Spinlocks.isLocked(lock);
+
+    ---------------------------------------------------------------------------
+    -- switch:
+    -- Changes the current process context. When the interrupt handler returns,
+    --  the new process will be running.
+    --
+    -- TODO: make separate type for a context address
+    ---------------------------------------------------------------------------
+    -- The outer critical section's interrupt restoration state belongs to
+    -- this execution context and must survive scheduler and direct IPC
+    -- handoffs, including resumption on a different CPU.
+    procedure switch (oldProc : in System.Address; newProc : in System.Address);
+
+    ---------------------------------------------------------------------------
+    -- createFirstProcess:
+    -- Since we can't call a syscall from kernel mode, we need to create a stub
+    -- for the first user process (init) here and it can perform the syscall to
+    -- load the actual init binary and start running it. See init.asm.
+    ---------------------------------------------------------------------------
+    procedure createFirstProcess;
+
+    ---------------------------------------------------------------------------
+    -- switchAddressSpace
+    -- Given a process ID, make the corresponding entry in the addrtab the
+    -- currently active table, changing the virtual memory address space in use.
+    -- With address-space tags (TLB_Context) the load keeps the process's
+    -- cached translations when this CPU last loaded them for its current
+    -- life. Called with interrupts disabled.
+    ---------------------------------------------------------------------------
+    procedure switchAddressSpace (pid : in ProcessID);
+
+    ---------------------------------------------------------------------------
+    -- restoreAddressSpace
+    -- An interrupt handler returning: load again the page tables it found in
+    -- CR3 (saved, as read), through the same tag bookkeeping. A process's
+    -- tables must still be the PID's (its thread is resuming, so it lives).
+    ---------------------------------------------------------------------------
+    procedure restoreAddressSpace (saved : in Unsigned_64);
+
+    ---------------------------------------------------------------------------
+    -- getParent
+    -- Given a process ID, return the parent process. If the process ID given
+    -- is a thread, then return the owning process' ID.
+    ---------------------------------------------------------------------------
+    function getParent (pid : in ProcessID) return ProcessID;
+
+    ---------------------------------------------------------------------------
+    -- killProcess
+    -- Close mailbox admission and request termination. True means accepted,
+    -- not yet reclaimed. The worker waits for CPU acknowledgement, then frees
+    -- resources on its own stack. A nonzero generation binds the request to
+    -- a specific PID incarnation (required for capability-authorized callers).
+    ---------------------------------------------------------------------------
+    function killProcess (pid : ProcessID;
+                          expectedGeneration : Capabilities.Generation := 0)
+                          return Boolean;
+    procedure startReaper;
+    -- Boot-only, like startReaper: a kernel thread pinned to CPU 0 (the
+    -- system call census's reporter, Syscall_Census).
+    procedure startWorker (procStart : System.Address; name : ProcessName);
+    procedure publish (pid : ProcessID);
+
+    -- Builder-only rollback: PID is exclusively owned by construction, has
+    -- never been published or dispatched, and has no external grants/handles.
+    -- Not a substitute for kill/retirement of an admitted process.
+    procedure discardUnpublished (pid : ProcessID);
+    -- Caller holds Process.lock. Execution presence spans IPC state changes.
+    procedure noteContextStarted (tid : ThreadID);
+    procedure noteContextStopped (tid : ThreadID);
+
+    type Accounting_Boundary is
+      (Scheduler_Start, IPC_Handoff, Scheduler_Stop, Accounting_Checkpoint);
+    -- Caller holds Process.lock with interrupts excluded. No new lock, heap
+    -- allocation, serial output or scheduling decision on this hot path.
+    procedure accountBoundary
+      (From_PID, To_PID : ThreadID; Boundary : Accounting_Boundary);
+    -- Existing trace-summary diagnostic: caller's own counters only. Takes a
+    -- short locked snapshot, then prints with the process lock released.
+    procedure printOwnAccounting;
+    -- Called at a completed syscall / user interrupt return boundary.
+    procedure checkTermination;
+
+    ---------------------------------------------------------------------------
+    -- kill
+    -- End this process and enter the scheduler (never returns).
+    -- Used for self-kill (SYSCALL_EXIT).
+    ---------------------------------------------------------------------------
+    procedure kill (pid : in ProcessID);
+
+    ---------------------------------------------------------------------------
+    -- recordExit
+    -- Record that pid asked to exit with code (SYSCALL_EXIT), unless it is
+    -- already stopping: the first ending wins. Called before kill.
+    ---------------------------------------------------------------------------
+    procedure recordExit (pid : ProcessID; code : Process_Launch.Exit_Code);
+
+    ---------------------------------------------------------------------------
+    -- Threads (docs/threads.md)
+    ---------------------------------------------------------------------------
+    -- Per-process thread quota, the main thread included. Thread creation
+    -- needs no capability; this bound keeps one process from exhausting the
+    -- system's thread IDs and kernel stacks.
+    -- One thread-count line each (Readiness_Publication.Maximum_Threads).
+    MAX_THREADS_PER_PROCESS : constant := Readiness_Publication.Maximum_Threads;
+
+    -- The count a thread without a line (a kernel thread, or one whose
+    -- process has no thread-count pages) increments; nobody reads it.
+    uncountedCalls : aliased Unsigned_64 := 0;
+
+    -- The process's own frames, in bytes, onto its readiness page: after
+    -- every change of its frame list, under the lock that change holds.
+    procedure publishOwnedBytes (pid : ProcessID);
+
+    -- Start a thread in the calling process at entryPoint, with userStack
+    -- as its stack pointer, argument in RDI, its thread-count slot in RSI
+    -- and fsBase as its FS base. At exit the kernel stores zero to the
+    -- 32-bit word at clearTidAddress (unless 0) and futex-wakes it, so a
+    -- joiner can wait on that word. Returns the new thread and its slot,
+    -- or NO_THREAD (invalid arguments, quota, no memory, or the process is
+    -- exiting).
+    procedure createThread (entryPoint, userStack : System.Address;
+                            argument, fsBase, clearTidAddress : Unsigned_64;
+                            tid : out ThreadID;
+                            slot : out Thread_Slots.Slot);
+
+    -- End the calling thread. The main thread ending ends the process.
+    procedure exitThread;
+
+    ---------------------------------------------------------------------------
+    -- getRunningProcess
+    ---------------------------------------------------------------------------
+    -- function getRunningProcess return ProcPtr
+    --;
+
+    ---------------------------------------------------------------------------
+    -- pageFault
+    -- When a page fault occurs, this procedure determines whether this is due
+    -- simply to a page that hasn't been demand-mapped yet, or an actual
+    -- violation. Call only for nonpresent data faults: instruction/protection
+    -- faults must be rejected by the interrupt dispatcher. Preserve Write.
+    ---------------------------------------------------------------------------
+    -- Error_Code: the CPU's, for the stop report (Process_Stops).
+    procedure pageFault (pid : ProcessID; addr : System.Address; Write : Boolean;
+                         Error_Code : Unsigned_64);
+
+    -- The instruction address of the most recent page fault, for fault
+    -- reports only (not per CPU; a concurrent fault may overwrite it).
+    lastFaultRIP : System.Address := System.Null_Address with Volatile;
+    lastFaultRSP : System.Address := System.Null_Address with Volatile;
+
+    -- The kernel faulted on a user address of pid while serving it (a
+    -- syscall writing an out-parameter to a stack page the program has not
+    -- touched yet). Map it if the program could have faulted it in itself;
+    -- handled is False otherwise, and the caller treats it as a kernel bug.
+    -- Never kills: the kernel may hold locks here.
+    procedure kernelUserFault (pid : ProcessID; addr : System.Address;
+                               Write : Boolean; handled : out Boolean);
+
+    ---------------------------------------------------------------------------
+    -- directSwitch
+    -- Direct context switch from one process to another without going through
+    -- the scheduler. Used by IPC fast path for send→receive and reply→sender.
+    -- Caller MUST hold Process.lock before calling.
+    ---------------------------------------------------------------------------
+    procedure directSwitch (fromT : ThreadID; toT : ThreadID);
+
+    ---------------------------------------------------------------------------
+    -- saveUserCPUState
+    -- Save a user process' CPU state that the kernel does not keep on its
+    -- kernel stack: the complete FPU/MMX/SSE state and the FS base. Called
+    -- before switching away from it. Scalar kernel threads are a no-op.
+    ---------------------------------------------------------------------------
+    procedure saveUserCPUState (tid : ThreadID);
+
+    ---------------------------------------------------------------------------
+    -- restoreUserCPUState
+    -- Restore that state before entering a user process, and clear the user
+    -- GS base (unsupported) so no other process' value can reach it. Scalar
+    -- kernel threads are a no-op.
+    ---------------------------------------------------------------------------
+    procedure restoreUserCPUState (tid : ThreadID);
+
+private
+    ---------------------------------------------------------------------------
+    -- Ring 3 entry point in interrupt.asm. Processes will initially set
+    -- their return address here, so when we "return" to the process, they'll
+    -- clean up the "interrupt" and begin executing in the process context
+    -- upon return from interrupt.
+    ---------------------------------------------------------------------------
+    interruptReturn : Util.Symbol
+        with Import, Convention => C, External_Name => "interruptReturn";
+
+    ---------------------------------------------------------------------------
+    -- PIDTracker
+    -- Package w/ bitmap and locks to safely allocate and free PIDs
+    -- In the pidMap, "True" means available, "False" means not available.
+    ---------------------------------------------------------------------------
+    package PIDTracker is
+        -- allocPID: lowest free PID above the reserved range, or 0.
+        procedure allocPID (pid : out ProcessID);
+        -- allocSpecificPID: a specific PID; raises if it is in use.
+        procedure allocSpecificPID (pid : in ProcessID);
+        procedure tryAllocSpecificPID (pid : ProcessID; success : out Boolean);
+        -- freePID: return a PID. invalidated: teardown already advanced its
+        -- generation (Process_Table.Invalidate), so do not advance it again.
+        procedure freePID (pid : in ProcessID; invalidated : Boolean := False);
+    end PIDTracker;
+
+end Process;

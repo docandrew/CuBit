@@ -1,0 +1,40 @@
+{
+  "scope": "Native CuBit synthetic backend delay comparison, not measured Intel latency or established NUC cause",
+  "cases": {
+    "pending": {
+      "result": {
+        "status": "PASS",
+        "gpu_enabled": false,
+        "scope": "synthetic pending backend call; native input/request progress",
+        "binary_sha256": "41b90714bc8137d6a2b903537fff8a88f3016e90bed30ed36fff0f496425904e",
+        "memory": "1G",
+        "render_approved": true,
+        "input_during_hold": 7,
+        "requests_during_hold": 49,
+        "hardware_validated": false
+      },
+      "serial_sha256": "8bb8b83d296057e831e72f7cdb3f3641a533371ca723a1bbcf764a34ba75854e",
+      "evidence_directory": "/tmp/cubit-dispatch-pending-native-1",
+      "after_return_input_and_requests_resume": true
+    },
+    "blocking": {
+      "result": {
+        "status": "PASS",
+        "gpu_enabled": false,
+        "scope": "synthetic blocking backend call; native input/request progress",
+        "binary_sha256": "4351d79dff8effdfa45e6c9120b72814f9c436b1193eb6b93d8e9922c72ee72c",
+        "memory": "1G",
+        "render_approved": true,
+        "input_during_hold": 0,
+        "requests_during_hold": 0,
+        "hardware_validated": false
+      },
+      "serial_sha256": "efffd277c09327e6645545bd8b3c5a101d3abba6e3fc62a325b8104d7f0fe525",
+      "evidence_directory": "/tmp/cubit-dispatch-blocking-native-1",
+      "after_return_input_and_requests_resume": true
+    }
+  },
+  "finding": "Cooperative Pending preserves dispatch; synchronous backend call prevents same-thread event/request dispatch until return. Existing admission budget cannot preempt FFI.",
+  "next_hardware_gate": "Compare software_ab2 with backend-indicator image; record selected backend and key/mouse/button/request/frame counters.",
+  "implementation_change": "None; do not infer retirement or switch renderer because a call takes too long."
+}

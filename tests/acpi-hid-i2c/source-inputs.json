@@ -1,0 +1,18 @@
+{
+  "shared/firmware/firmware_tables.adb": "120555c25910e45212c229526c232c0b1afae7f63effd04fdd54a5f567690cfa",
+  "shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+  "tests/acpi-field-remote/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
+  "tests/acpi-hid-i2c/README.md": "bb77a373ff673c22887ad3ab417d7c4398d2566605a1726c57aa35dbad68b6f3",
+  "tests/acpi-hid-i2c/capture_phase.py": "6a305152749fb706f0366659a0bd40705e4c92e0dca21acb49f8111c6d168880",
+  "tests/acpi-hid-i2c/check-proof.sh": "27fc6ecf15227b2b10f28f2a36c2e78c5383b9943339db5a4f14fa5e1cd2d34b",
+  "tests/acpi-hid-i2c/hid_resource_proof.gpr": "7c9c29a390b2f53d476002b7a758d372692520c9c37823980bf564792ef41c59",
+  "tests/acpi-hid-i2c/run-proof.sh": "cec2640c2dfa7b1716f0354fae9d61f6db8c11c518c0fa20f55d6fe4a4ee8c9a",
+  "userspace/services/acpi/hid-i2c/acpi_hid_i2c_resources.adb": "0662d302cd74f01bbbafd6cbeb1e4dfb98830f21641630d47a45793713eaf867",
+  "userspace/services/acpi/hid-i2c/acpi_hid_i2c_resources.ads": "cd3ed3fc3588ac18db6276dde1aec75e4793e2fc50965d19632f771bee9263dc",
+  "userspace/services/acpi/resource-data/acpi_resource_data-gpio_connections.adb": "2536574e481a7dc1d0b62ec3ce14e74281f647f3c6c6ea60b069b5e8474fe1c9",
+  "userspace/services/acpi/resource-data/acpi_resource_data-gpio_connections.ads": "a5e65894f7798743a43461e0755cd4f05a2fdbc3ff36b85dfab0e76c42a6453b",
+  "userspace/services/acpi/resource-data/acpi_resource_data-serial_connections.adb": "d455b628f613ecd7c93be68b655f450a9aaa647013698c4004512be6245beaa4",
+  "userspace/services/acpi/resource-data/acpi_resource_data-serial_connections.ads": "b4684deb47f4ac561d60a206a7d105b436d4ed1107ad13fdd7c612b373c91490",
+  "userspace/services/acpi/resource-data/acpi_resource_data.adb": "8ecf9d25b2f2984eea61216cdb290b4420ef1ce2d8c844ebccc9128c97263512",
+  "userspace/services/acpi/resource-data/acpi_resource_data.ads": "704a461f20c90cbde9e15c34fc457373b2fed6d3e948d4706daa2ffe55ee8532"
+}

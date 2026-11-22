@@ -1,0 +1,17 @@
+--  Hosted tests and proofs for SameBoy's Ada frontend
+--  (userspace/ports/sameboy, run.sh).
+project SameBoy_Port is
+   for Source_Dirs use (".", "../../userspace/runtime/gnat", "../../userspace/ports/sameboy");
+   for Source_Files use ("cubit.ads",
+                         "cubit-sameboy_keys.ads", "cubit-sameboy_keys.adb",
+                         "cubit-sameboy_frames.ads", "cubit-sameboy_frames.adb",
+                         "cubit-sameboy_batches.ads", "cubit-sameboy_batches.adb",
+                         "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+end SameBoy_Port;

@@ -1,0 +1,41 @@
+# The services and registration roles devmgr's children may name in their
+# manifests (docs/ccl-driver-manifests.md). Numbers are service roles; a
+# program gets its capabilities by binding name in its startup table
+# (CAP-002). Binding data only; no policy approval is implied.
+(service-catalog v1
+  (service network-stack 3 read-write)
+  (service filesystem 6 read-write)
+  (service device-manager 7 read-write)
+  (service mixer 9 read-write)
+  (service config 11 read-write (client Config))
+  (service gpu 17 read-write)
+  # A log publisher for a driver devmgr launches generically (HW-002): the
+  # endpoint is badged for that driver; optional, as logstore starts later.
+  (service logstore 13 read-write (client Logstore))
+  # An endpoint the launcher wires by binding name (devmgr answers it from
+  # what it prepared for that name): hda for mixer, the ramdisk for
+  # filesystem.
+  (service launcher-peer 30 read-write)
+  # metrics.svc's publisher endpoint: the startup entry a declared
+  # com.cubit-os.stdmetric outlet requests (MET-002). devmgr does not hold it
+  # yet, so a driver's outlet stays Absent.
+  (service metrics 24 read-write)
+  # wifi.svc (docs/wifi.md): Wi-Fi drivers attach to it; the console joins,
+  # leaves and stores passphrases through it.
+  (service wifi 33 read-write)
+  (notification keyboard 1 publish-and-manage)
+  (notification ata 2 publish-and-manage)
+  (notification nvme 5 publish-and-manage)
+  (notification hda 8 publish-and-manage)
+  (notification mixer 9 publish-and-manage)
+  (notification mouse 10 publish-and-manage)
+  (notification netstack 3 publish-and-manage)
+  (notification filesystem 6 publish-and-manage)
+  (notification config 11 publish-and-manage)
+  (notification netmgr 12 publish-and-manage)
+  (notification gpu 17 publish-and-manage)
+  (service i2c 32 read-write)
+  (notification i2c 32 publish-and-manage)
+  (notification wifi 33 publish-and-manage)
+  (service gpio 34 read-write)
+  (notification gpio 34 publish-and-manage))

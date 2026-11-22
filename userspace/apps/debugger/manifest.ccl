@@ -1,0 +1,26 @@
+# Debugger (DBG-001): attaches to a program that offers itself for debugging
+# (the debug-target service of CuBit.Debug_Stub: cooperative attach), or to
+# any process the user may observe (Attach to process...: Debug_Observe
+# that procmgr mints through the session's debug authority). Observe only:
+# it writes nothing into the target, reaches no network, and reads only
+# @system/Debug/.
+(Executable_Manifest
+  identity => "com.cubit.debugger"
+  version => "0.1.0"
+  requests => [
+    # One "started" record (CuBit.Logging.Announce) and its debug text.
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    # The target: a program that registered debug-target (the cooperative
+    # preview), when one runs.
+    (service "debug-target" "target")
+    # Attach to process...: what runs (procmgr's process-observer role),
+    # and Debug_Observe on the one picked (DBG-001): procmgr mints it
+    # within the user session's debug envelope; the target needs no stub.
+    (service "process-observer" "process-observer")
+    (service "debug-session" "debug-session")
+    # Its debug file and sources, by build-id (docs/image-debug-info.md).
+    (service "filesystem" "filesystem")]
+  optional => ["target" "process-observer" "debug-session"]
+  scopes => [
+    (filesystem [File_Right.Read] "@system/Debug/")])

@@ -1,0 +1,11 @@
+project Repaint is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("repaint_tests.adb", "compositor_repaint.ads", "compositor_repaint.adb",
+     "compositor_damage.ads", "compositor_damage.adb", "compositor_pool.ads", "compositor_pool.adb");
+   for Object_Dir use "build/repaint/obj";
+   for Exec_Dir use "build/repaint";
+   for Main use ("repaint_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Repaint;

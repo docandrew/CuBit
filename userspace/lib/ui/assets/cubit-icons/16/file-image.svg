@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+<defs>
+<linearGradient id="g9ff7ff1fb6d6" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#9ff7ff"/><stop offset="1" stop-color="#1fb6d6"/></linearGradient>
+<linearGradient id="gc8ff6a4e9a06" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#c8ff6a"/><stop offset="1" stop-color="#4e9a06"/></linearGradient>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M1 3 L14 3 L14 13 L1 13Z" transform="translate(1 1)"/>
+  <path d="M1 3 L14 3 L14 13 L1 13Z"/>
+</g>
+<path d="M1 3 L14 3 L14 13 L1 13Z" fill="#959db3" transform="translate(1 1)"/>
+<path d="M1 3 L14 3 L14 13 L1 13Z" fill="url(#paper)"/>
+<path d="M2 4 L13 4 L13 12 L2 12Z" fill="url(#g9ff7ff1fb6d6)"/>
+<path d="M8.6 6.4 A1.32 1.32 0 1 0 11.24 6.4 A1.32 1.32 0 1 0 8.6 6.4Z" fill="#ffa41f"/>
+<path d="M2 12 L2 10 L6 7 L9 10 L10 9 L13 11 L13 12Z" fill="url(#gc8ff6a4e9a06)"/>
+</svg>

@@ -1,0 +1,36 @@
+[
+  {
+    "key": "copy1",
+    "base": "cases/base1.asl",
+    "source": "cases/copy1.asl",
+    "methods": [
+      "PRAW",
+      "PDRE",
+      "PAFT",
+      "PLOC",
+      "CLOC",
+      "CEXP",
+      "CSRC",
+      "CDST",
+      "PASS",
+      "DRET"
+    ]
+  },
+  {
+    "key": "copy2",
+    "base": "cases/base2.asl",
+    "source": "cases/copy2.asl",
+    "methods": [
+      "PRAW",
+      "PDRE",
+      "PAFT",
+      "PLOC",
+      "CLOC",
+      "CEXP",
+      "CSRC",
+      "CDST",
+      "PASS",
+      "DRET"
+    ]
+  }
+]

@@ -1,0 +1,11 @@
+project Backdrop_Scene_Pixels extends "vulkan_submission.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Submission'Source_Files;
+   for Object_Dir use "build/backdrop-scene-pixels/obj";
+   for Exec_Dir use "build/backdrop-scene-pixels";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+      for Default_Switches ("C") use ("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+        "-DCUBIT_VULKAN_SUBMISSION_TEST=1", "-DCUBIT_VULKAN_BACKDROP_SCENE_TEST=1");
+   end Compiler;
+end Backdrop_Scene_Pixels;

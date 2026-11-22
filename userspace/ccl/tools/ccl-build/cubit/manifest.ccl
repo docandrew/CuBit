@@ -1,0 +1,45 @@
+# ccl-build on CuBit (docs/ccl-build.md, "On CuBit"): the CCL build tool,
+# with the full Ada runtime of the GCC port (userspace/ports/gcc) and the
+# CuBit libc. It reads the source checkout and the toolchain, and writes the
+# Storehouse; it exports products into the work place (--out).
+#
+# Steps run the toolchain's gcc driver and gnatbind (the driver runs gnat1,
+# as and ld itself, from its own launch table), and the manifest tool
+# installed at @system/tools (build-params.ccl; this program reads it to
+# name it in the step by its SHA-256), through the libc's
+# cubit_posix_spawn_places with each step's own places (CCL-004,
+# Build_Steps.Places): its directory in the Storehouse writable, and
+# read-only the toolchain and the trees it reads in place (the runtime's
+# composite tree, PERF-010); nothing else of the Storehouse, the source
+# checkout or the work place. A launcher delegates to this program the
+# Storehouse and the toolchain (and the source checkout and work place it
+# builds from and exports to); procmgr checks each step's places against
+# what this program holds.
+#
+# Paths, on the system volume (@system: the installed root, the live
+# medium's RAM root, or the development disk): @system/storehouse is the
+# Storehouse until FS-020's @system/Storehouse, @system/toolchain the GCC
+# port's tree as installed (--prefix=/toolchain, which the libc resolves
+# on @system), @system/cubit-src the source checkout, @system/work the
+# work place.
+(Executable_Manifest
+  identity => "com.cubit.ccl-build"
+  version => "0.1.0"
+  # logstore (ABI-002): the libc's debug text and reports (CuBit.Libc_Log).
+  requests => [(service "process-manager" "process-manager") (service "launch" "launch") (service "filesystem" "filesystem")
+               (service "logstore" "logstore")]
+  optional => ["logstore"]
+  scopes => [
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
+    (filesystem [File_Right.Read] "@system/toolchain")
+    (filesystem [File_Right.Read] "@system/tools")
+    (filesystem [File_Right.Read] "@system/cubit-src")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/work")]
+  may_launch => [
+    (Launch "toolchain/bin/gcc")
+    (Launch "toolchain/bin/gnatbind")
+    (Launch "tools/ccl-manifest.app")]
+  outlets => [
+    (Outlet "unix.stdout" Element.Text pages => 4)
+    (Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")])

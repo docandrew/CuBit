@@ -1,0 +1,56 @@
+{
+  "registered_deriver": "/nix/store/inj4cj400sk14ajamnf422ahz66zl26m-acpica-tools-20260408.drv",
+  "registered_deriver_present": false,
+  "query_command": "nix-store --query --deriver /nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408",
+  "query_exit": 0,
+  "query_chunk": "5f9737",
+  "available_alternative_derivation": "shhgrs518sxv5v6l3dp4rpkl0iqi35ry-acpica-tools-20260408.drv",
+  "alternative_declares_exact_output": true,
+  "alternative_source": "/nix/store/9b5mw7ra2bm5z5d4pdkh7flj8f5dykyq-source",
+  "patches": [],
+  "comparisons": [
+    {
+      "file": "components/dispatcher/dsargs.c",
+      "old_sha256": "0adf1e92e4e7f32df56ea51fe3da63a68b5d5edbf566121d029d2819ac35a15a",
+      "nix_sha256": "0adf1e92e4e7f32df56ea51fe3da63a68b5d5edbf566121d029d2819ac35a15a",
+      "equal": true
+    },
+    {
+      "file": "components/dispatcher/dsopcode.c",
+      "old_sha256": "6afb465a74a9ef51c1db08a422dde8058523326564b6360d060ab4785b24fc04",
+      "nix_sha256": "6afb465a74a9ef51c1db08a422dde8058523326564b6360d060ab4785b24fc04",
+      "equal": true
+    },
+    {
+      "file": "components/executer/exfield.c",
+      "old_sha256": "5afaf772d144badceb9e4ac663f2e95a78730a6df433743108f856b509e1af5e",
+      "nix_sha256": "5afaf772d144badceb9e4ac663f2e95a78730a6df433743108f856b509e1af5e",
+      "equal": true
+    },
+    {
+      "file": "components/executer/exfldio.c",
+      "old_sha256": "4c23c38942848592d19b24cd43d87d373b5b943fd37c9376e9bb9a8a8279544a",
+      "nix_sha256": "4c23c38942848592d19b24cd43d87d373b5b943fd37c9376e9bb9a8a8279544a",
+      "equal": true
+    },
+    {
+      "file": "tools/acpiexec/aehandlers.c",
+      "old_sha256": "1d980c8cb689d1d8a6287280e8cc338c7773f410c514e7402797d8449fb3777e",
+      "nix_sha256": "1d980c8cb689d1d8a6287280e8cc338c7773f410c514e7402797d8449fb3777e",
+      "equal": true
+    },
+    {
+      "file": "tools/acpiexec/aemain.c",
+      "old_sha256": "2f25ebc70324d526ba5abd0cfd315d9b47cbfb483aab2b28853b6292352670c7",
+      "nix_sha256": "2f25ebc70324d526ba5abd0cfd315d9b47cbfb483aab2b28853b6292352670c7",
+      "equal": true
+    },
+    {
+      "file": "tools/acpiexec/aeregion.c",
+      "old_sha256": "35f3f8e90f5a9aaf82ce1f377348fdc6d1936b85a423e34654b3ba37a209ba5e",
+      "nix_sha256": "35f3f8e90f5a9aaf82ce1f377348fdc6d1936b85a423e34654b3ba37a209ba5e",
+      "equal": true
+    }
+  ],
+  "scope": "Available derivation declares same installed output and source; registered derivation missing, so exact registered build recipe unconfirmed. No fetch/rebuild."
+}

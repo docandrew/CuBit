@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",2,"CUBIT","DELAY",1){ Name(NVAL,Zero) Name(BVAL,Buffer(){0}) Name(PVAL,Package(){Zero}) Name(EMP0,Package(1){}) Method(TEST,0){ Sleep(NVAL) Return(0x55)} Method(TST1,0){ Stall(NVAL) Return(0x66)}}

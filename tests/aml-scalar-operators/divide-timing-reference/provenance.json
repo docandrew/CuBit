@@ -1,0 +1,1318 @@
+{
+  "oracle": "/home/doc/git/.acpi-proof-work/divide-target-timing-oracle-6yxs83q4",
+  "cases": [
+    {
+      "case": 1,
+      "key": "r1-dividend-store-store",
+      "revision": 1,
+      "payload_sha256": "f057f4f67d81ed8fbf51ec82e4eb4781f6aea047563ff5e51a615572269198f5",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r1-dividend-store-store.asl": "3a7bf680bbf26dea41c8946716779307eea8ccf03562099d46ea60022caed09c",
+        "r1-dividend-store-store.aml": "1007dabd868dc591a673d4ad8a033cb99ef11cf84a5a0fedb9389ca205bd1af4",
+        "r1-dividend-store-store.dsl": "1c00f273d8dffa6cb2e575369536a06906e52a583cd2a511d79a5247895b4433",
+        "r1-dividend-store-store-compile.log": "363ed25069d7f4d79d2e34eb71bd83606c5bddb0a9549155148debf1a0587aca",
+        "r1-dividend-store-store-disassemble.log": "2b50a0d4e3b80b1fff4e4b95d611d9129998c814253e6dd9eb2a6144fedd36d4",
+        "r1-dividend-store-store-execute.log": "c95a0a755d15dab9a0cc6556ab4f41807372449c38ee79a78efa3a2780f8ac7f"
+      }
+    },
+    {
+      "case": 2,
+      "key": "r1-dividend-copyobject-copyobject",
+      "revision": 1,
+      "payload_sha256": "0e265e0b79e104f220ad1356b806a385af00acc7aae32fd6c76606dc08a2d46c",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r1-dividend-copyobject-copyobject.asl": "e695bb98827a0845c3aee8fdfcc1769d6a1fb4a71ce7d0d22ba8b975d91546d7",
+        "r1-dividend-copyobject-copyobject.aml": "722024fc9dd3f729ddbee748a444ff2dd6d66bb0175b6641cd066a04b3196f73",
+        "r1-dividend-copyobject-copyobject.dsl": "7b0c0bf969efc02803d7076b7336d9dd4cb79fe01d340df6532b95f18ca9e7e2",
+        "r1-dividend-copyobject-copyobject-compile.log": "b45b53263b3ae930df52b66cef787c6924e8447708da6189520dd5da32eead6e",
+        "r1-dividend-copyobject-copyobject-disassemble.log": "adfef397a4ebadbc12727abc7e745125b0f2af6d986aa243130027341ccde909",
+        "r1-dividend-copyobject-copyobject-execute.log": "e8a153610d97a031240b8741e671a0b5b94e26e45c88ec0eb16a549ff27039de"
+      }
+    },
+    {
+      "case": 3,
+      "key": "r1-dividend-store-copyobject",
+      "revision": 1,
+      "payload_sha256": "d6cbe0b503d39d5925d088c082a1b2270d9f8b01cb9185fe14568034080d7b64",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 16,
+          "hex": "0000000000000010"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 16,
+          "hex": "0000000000000010"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 16,
+          "hex": "0000000000000010"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 16,
+          "hex": "0000000000000010"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r1-dividend-store-copyobject.asl": "03ab8be051aa34fa55fde8443a479d78309fb28adf44be7183f903a9ad9cb88c",
+        "r1-dividend-store-copyobject.aml": "9bfebc601d00bf9d518d056971839dd4158329dded80d98832486b6fc77534ea",
+        "r1-dividend-store-copyobject.dsl": "acd5be4074b143f23f7a83c6896a9abc8262aab1a43d365b2b22653597b7cb3b",
+        "r1-dividend-store-copyobject-compile.log": "5d239937b05de5c82e03e3bf8f0afc399d6e3cfbedd20c418f65dd35203160b5",
+        "r1-dividend-store-copyobject-disassemble.log": "6d76bede1592403bc0a437e47733c16e00738f2735e878c2dc9250c6670f37ca",
+        "r1-dividend-store-copyobject-execute.log": "051cbaaf69d6c314913914fa028a718b05d321cc8a42688f92a8e6712ce44c03"
+      }
+    },
+    {
+      "case": 4,
+      "key": "r1-dividend-copyobject-store",
+      "revision": 1,
+      "payload_sha256": "61f3698b8e1d124fa951b7c7be0faa0db8cf57a2f5355565d24ea3f7b74b9d9b",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r1-dividend-copyobject-store.asl": "9273470d179e94be616962cf83feba72a7b2bdf74c7f911565589b1c37dd04ef",
+        "r1-dividend-copyobject-store.aml": "93af90a65bd17ca51830a97c4a989cde7daacd6fe81a478f923d1e7d5b710d45",
+        "r1-dividend-copyobject-store.dsl": "9770234c5ddc97e897bb2eeb2cec31402e81d6b3873090e2b5cbae6c323b9500",
+        "r1-dividend-copyobject-store-compile.log": "cc74437781a18e8220f8df3da59dacc38d5bbff7950cbdd878dd982c283e5b8f",
+        "r1-dividend-copyobject-store-disassemble.log": "4e0e4466e7d2b5a896c461df854c2b12ac5c748135a9a101a536375e1385188c",
+        "r1-dividend-copyobject-store-execute.log": "1b09a175616c588ceb747801bdf888150b702118899cbc186a8177fe4f935f9f"
+      }
+    },
+    {
+      "case": 5,
+      "key": "r1-divisor-store-store",
+      "revision": 1,
+      "payload_sha256": "34585e19b385c58346e624043df3efd31c076a581aa601d213ab2579490720a8",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 11,
+          "hex": "000000000000000B"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 2,
+          "hex": "0000000000000002"
+        },
+        {
+          "method": "QVAL",
+          "value": 11,
+          "hex": "000000000000000B"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 11,
+          "hex": "000000000000000B"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 2,
+          "hex": "0000000000000002"
+        },
+        {
+          "method": "QVAL",
+          "value": 11,
+          "hex": "000000000000000B"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r1-divisor-store-store.asl": "2d8b6bce0b076442a65067392359002a9fbcc641acdeb35fefbafb7b09488d25",
+        "r1-divisor-store-store.aml": "b11cf4f300ed48af60922560c8e1123532050069ec22417ad63bb870932102b1",
+        "r1-divisor-store-store.dsl": "31e8e9d3c96793f09382c7a974b1f147b5479ebc592c6f5e1dbffe6049e3407c",
+        "r1-divisor-store-store-compile.log": "ba5cb0f7031f52d8c7e0acab461f5db33563583aedbbc662904241ba4dfca603",
+        "r1-divisor-store-store-disassemble.log": "c0a921da2540178882fad60c2593013fb8022f881b71f489baf73a0f7f04ef1d",
+        "r1-divisor-store-store-execute.log": "48c687643e3d9f3ba9846424a8965ff8900526bc33187343a534f42fd8c4640a"
+      }
+    },
+    {
+      "case": 6,
+      "key": "r1-divisor-copyobject-copyobject",
+      "revision": 1,
+      "payload_sha256": "eae0711a74be7d6af1721720cc2abe3bf3664598d1128c2b6fd5aeef4489f6f6",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r1-divisor-copyobject-copyobject.asl": "806d5a5fea05b732a628503a24026e176513ca14b8cf1ab642e81683e5aa27d3",
+        "r1-divisor-copyobject-copyobject.aml": "e21b4b0c6525e1d6fd6455e381d7fec3617234ca9666eb9eb681233d501340bd",
+        "r1-divisor-copyobject-copyobject.dsl": "5f31e6d647d591968c31f16550f3809d66f679174100f1fee25137caad9109bc",
+        "r1-divisor-copyobject-copyobject-compile.log": "7f40731007c2ae4f968b2ea6302ecea3b5cbfc405b9acd1a1aaa9c2a01f339bf",
+        "r1-divisor-copyobject-copyobject-disassemble.log": "b54f318e05cd89cfe748080405c38600642e046860582bfd5402bda92296fa7a",
+        "r1-divisor-copyobject-copyobject-execute.log": "66458e7345bc702c5819ac210aa19028e35bf122a76d6023a8012ad86280087a"
+      }
+    },
+    {
+      "case": 7,
+      "key": "r1-divisor-store-copyobject",
+      "revision": 1,
+      "payload_sha256": "fe0544d90e59cf90882b2d42fd01cf01f44097e3491fdc2d005f1bb7ca8d8181",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 14,
+          "hex": "000000000000000E"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "QVAL",
+          "value": 14,
+          "hex": "000000000000000E"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 14,
+          "hex": "000000000000000E"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "QVAL",
+          "value": 14,
+          "hex": "000000000000000E"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r1-divisor-store-copyobject.asl": "4c067c89e5e40bb6b2d83c79a74ad4ce67fb8cd5cafc169fbc44a3a36edda1ad",
+        "r1-divisor-store-copyobject.aml": "d1c5402ecedf1638bf74a441b096d3808bc191d0a16f4599413dda615b29f007",
+        "r1-divisor-store-copyobject.dsl": "17b3491e9f34b058cd96aff97baebbc995289ec32a63059cf8aedc830ef671c7",
+        "r1-divisor-store-copyobject-compile.log": "a7df8e2bc176fac8cd9d86965ecbedbf64546cde7be90947527af24179af9d67",
+        "r1-divisor-store-copyobject-disassemble.log": "08e98820a6e4dc671aae3f64a233048ff59f45a9415753ef583ecc803647b958",
+        "r1-divisor-store-copyobject-execute.log": "d226c6892df6fe1e6262cbc197d39b16effab3ddcc47a955a08a1f2b7c6cc3f7"
+      }
+    },
+    {
+      "case": 8,
+      "key": "r1-divisor-copyobject-store",
+      "revision": 1,
+      "payload_sha256": "69f8bff88abfaf85c1b6d7a8196a050ec562aeb20cec1fee0edddb4123e1485f",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r1-divisor-copyobject-store.asl": "03730f253bc8c8641dda20be38d80f6b3e8ac365d3a835a60fa3ca11e955f4d4",
+        "r1-divisor-copyobject-store.aml": "cb2440067e312785f2d306a10711022b2743417a24a89de7f2fabc980d47d02a",
+        "r1-divisor-copyobject-store.dsl": "1b61a07b2b92652444384c7c5fb0de6164964ba18d55ffe8bf582a883b7b115e",
+        "r1-divisor-copyobject-store-compile.log": "af2cb0b9769db3477b450cd396e9244da8c6065c84682cc3dbc8779f5ec1b2d7",
+        "r1-divisor-copyobject-store-disassemble.log": "3286c4410e6c200fa54f4e1a500f05f3ba37ee761ddc161911c737328c32a36a",
+        "r1-divisor-copyobject-store-execute.log": "dee676d595213fd87fce128e7bb4aea08a5123085e447aeaf389530964df35c0"
+      }
+    },
+    {
+      "case": 9,
+      "key": "r2-dividend-store-store",
+      "revision": 2,
+      "payload_sha256": "f057f4f67d81ed8fbf51ec82e4eb4781f6aea047563ff5e51a615572269198f5",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r2-dividend-store-store.asl": "8834203c28cffcef4cc0922ddf336699858a29aa50ee9e32726ee275c5c8a35b",
+        "r2-dividend-store-store.aml": "350e4432050cf2966fe3cc42528ccd3cba9b4a57631467a8b78aace90566ad5d",
+        "r2-dividend-store-store.dsl": "8d87ceab0ca9b332abffcc53a3e2d1942569e12ad5fcaeaa1f08501cd56462e5",
+        "r2-dividend-store-store-compile.log": "f24f1d9a376ddc99632f7599f8477895d80f22a6ee1bf57610dc3806ec992d28",
+        "r2-dividend-store-store-disassemble.log": "cd3fc44e059dea2b2429d323173d93bb44662b2f388c4860f538312d3726dc7c",
+        "r2-dividend-store-store-execute.log": "3c17b35fcdb37ec8fbc8a08783b12d4340930ada0b2cb3b41d099da7327922c2"
+      }
+    },
+    {
+      "case": 10,
+      "key": "r2-dividend-copyobject-copyobject",
+      "revision": 2,
+      "payload_sha256": "0e265e0b79e104f220ad1356b806a385af00acc7aae32fd6c76606dc08a2d46c",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r2-dividend-copyobject-copyobject.asl": "4a6184613c57c06fe324655cec508e0d7b3a1b9b8f3b635051f2f15c588b52b1",
+        "r2-dividend-copyobject-copyobject.aml": "be3c8714a06eb2099970ea55a93e74cd0cf0ae64080ef6a7938f8256c8570bf9",
+        "r2-dividend-copyobject-copyobject.dsl": "d3f6edaa7ad66d344fc9ac52c8e51397dadd9895470e17cf0cb38d676c3bbf5f",
+        "r2-dividend-copyobject-copyobject-compile.log": "f7a2d1dcb6be57cf0e6e556126930a9f18755384faf749287ec0554134ad26c3",
+        "r2-dividend-copyobject-copyobject-disassemble.log": "55344fb8f65a2eb32293d8f2446b7b458f4ef3115f5a1d787e3822e6366919e6",
+        "r2-dividend-copyobject-copyobject-execute.log": "4c8d459e490dff3756e52b9233ac3d2df1d25faa760452cd97330a5c091823ae"
+      }
+    },
+    {
+      "case": 11,
+      "key": "r2-dividend-store-copyobject",
+      "revision": 2,
+      "payload_sha256": "d6cbe0b503d39d5925d088c082a1b2270d9f8b01cb9185fe14568034080d7b64",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 16,
+          "hex": "0000000000000010"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 16,
+          "hex": "0000000000000010"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 16,
+          "hex": "0000000000000010"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 16,
+          "hex": "0000000000000010"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r2-dividend-store-copyobject.asl": "776fc5d601b9833e1d5f4bdd2c9519f6f9da2625d337f6c89b97f80ef290634d",
+        "r2-dividend-store-copyobject.aml": "b6dd6448a8247723ae5d3d5d2038fe225a3933d0bb5eb1cd85e7385b53ea1f05",
+        "r2-dividend-store-copyobject.dsl": "5639ab25b8ccfa2b1696656405e66c8dfc07d3267bbb0b8b5eff472f49d69d3a",
+        "r2-dividend-store-copyobject-compile.log": "ab3178b7273880c6856b0cd122a2980497208e531f1347ad7a61cff980060859",
+        "r2-dividend-store-copyobject-disassemble.log": "e5b3a4dae38040417fbdbf9ce72607030ae854c984e0ae8484b632ff406a8c0b",
+        "r2-dividend-store-copyobject-execute.log": "4daa9b1d217f65213dd2c84961713f4b6eba7170cdcd704bf41985c341e9ffbe"
+      }
+    },
+    {
+      "case": 12,
+      "key": "r2-dividend-copyobject-store",
+      "revision": 2,
+      "payload_sha256": "61f3698b8e1d124fa951b7c7be0faa0db8cf57a2f5355565d24ea3f7b74b9d9b",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "SRCV",
+          "value": 57,
+          "hex": "0000000000000039"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 8,
+          "hex": "0000000000000008"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r2-dividend-copyobject-store.asl": "429c6eaac3a41a63f34a5c4b94cfa630da81c63f3ed1a1f397ba390777409799",
+        "r2-dividend-copyobject-store.aml": "926a7d0533e7dcf00984dbce62517a34733009ba5a841c3d4360b4e2f4e8569e",
+        "r2-dividend-copyobject-store.dsl": "2b49f11963002e43e2dda37446d9ac753a9249101f11b6dbdbe74b76620c102b",
+        "r2-dividend-copyobject-store-compile.log": "970d0a2f201c0537c5b5f40734200d30ac09fc65843686fd20bcdee02936479b",
+        "r2-dividend-copyobject-store-disassemble.log": "692ceb86d00a3301896e81201b15f98a68a5f246d168c0d40d456fe6d42d4366",
+        "r2-dividend-copyobject-store-execute.log": "a9310a743f5d156311a8b5178a74889e23c51e03840038820664236ff352446e"
+      }
+    },
+    {
+      "case": 13,
+      "key": "r2-divisor-store-store",
+      "revision": 2,
+      "payload_sha256": "34585e19b385c58346e624043df3efd31c076a581aa601d213ab2579490720a8",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 11,
+          "hex": "000000000000000B"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 2,
+          "hex": "0000000000000002"
+        },
+        {
+          "method": "QVAL",
+          "value": 11,
+          "hex": "000000000000000B"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 11,
+          "hex": "000000000000000B"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 2,
+          "hex": "0000000000000002"
+        },
+        {
+          "method": "QVAL",
+          "value": 11,
+          "hex": "000000000000000B"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r2-divisor-store-store.asl": "8cd968bfc8401c3ef7edf96c368a059a48ce80487e89601d34dfec786057001f",
+        "r2-divisor-store-store.aml": "6795f78e9d3d2cbaa568742de93f7d77175bcd74e29e137e1d0727accf795b1d",
+        "r2-divisor-store-store.dsl": "4eb8dbaa33bcbcb631cdc23e99aa4bdc298822984f5e2a58f399626ce845ca0d",
+        "r2-divisor-store-store-compile.log": "282c3e401b926ff583ea1831758a7f8237f2d2876869097048bd80a94c7c24e6",
+        "r2-divisor-store-store-disassemble.log": "30f34155e8c7d2abd9096ab2ab1cdb2e940096b531dc92cb69c42182c9ec13bb",
+        "r2-divisor-store-store-execute.log": "87224a07adfc25f6488e1b3f7be9339a9bad9ec60511190ab21d35d3935b0bb4"
+      }
+    },
+    {
+      "case": 14,
+      "key": "r2-divisor-copyobject-copyobject",
+      "revision": 2,
+      "payload_sha256": "eae0711a74be7d6af1721720cc2abe3bf3664598d1128c2b6fd5aeef4489f6f6",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r2-divisor-copyobject-copyobject.asl": "feae732065fb7c6a1459eaca042dd7fc5a3c941406b365e913e46f2e11903d73",
+        "r2-divisor-copyobject-copyobject.aml": "7aadf982369f2353ae11b2411a1b0ef0f2b7378a8aeccb6e49711e3d04120088",
+        "r2-divisor-copyobject-copyobject.dsl": "143ff59a48879d803547a45f87bfe9b7b12e9dd0b2d71f5f2c732d4e38b0686b",
+        "r2-divisor-copyobject-copyobject-compile.log": "ca97583945a4b8966170ccdf6519d32286f1f8391b6cba2ad6ff0be66c0eaf65",
+        "r2-divisor-copyobject-copyobject-disassemble.log": "cb769295720b8b5f33f16ac33d187c5a75715bdfacf11bee43c7a5bbea449be4",
+        "r2-divisor-copyobject-copyobject-execute.log": "a4cbccdc69db519bdfdd39e32d1abb0ed2bf8de16b329f0af1171a4663a31b62"
+      }
+    },
+    {
+      "case": 15,
+      "key": "r2-divisor-store-copyobject",
+      "revision": 2,
+      "payload_sha256": "fe0544d90e59cf90882b2d42fd01cf01f44097e3491fdc2d005f1bb7ca8d8181",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 14,
+          "hex": "000000000000000E"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "QVAL",
+          "value": 14,
+          "hex": "000000000000000E"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 14,
+          "hex": "000000000000000E"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 1,
+          "hex": "0000000000000001"
+        },
+        {
+          "method": "QVAL",
+          "value": 14,
+          "hex": "000000000000000E"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r2-divisor-store-copyobject.asl": "e54a23e0ee2cf28721571e05abb659e72be65c75b81cee0af34cda02cd5ffb01",
+        "r2-divisor-store-copyobject.aml": "be05321ad6aeea73157869ee1ff3dd8a2beda52d538b3a74be47d8d6b3e8dc98",
+        "r2-divisor-store-copyobject.dsl": "3bd6dc5d69f7563d76d0c0da723accdf2d6f5ab812d58d36ac611e152eebf39f",
+        "r2-divisor-store-copyobject-compile.log": "23b95e9d368db2b4257c30e427ebaff00bf940de3c0f9b14ec52449e3905c90b",
+        "r2-divisor-store-copyobject-disassemble.log": "62a756ee39230f2d26730aa4824b8d18581e03d690d9099a1c765602609f303c",
+        "r2-divisor-store-copyobject-execute.log": "5aa6480bd60b46dec0822699a8460da69f36d494eeb00a466a13396ccb7242ad"
+      }
+    },
+    {
+      "case": 16,
+      "key": "r2-divisor-copyobject-store",
+      "revision": 2,
+      "payload_sha256": "69f8bff88abfaf85c1b6d7a8196a050ec562aeb20cec1fee0edddb4123e1485f",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        },
+        {
+          "method": "TEST",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "SRCV",
+          "value": 5,
+          "hex": "0000000000000005"
+        },
+        {
+          "method": "RVAL",
+          "value": 0,
+          "hex": "0000000000000000"
+        },
+        {
+          "method": "QVAL",
+          "value": 19,
+          "hex": "0000000000000013"
+        },
+        {
+          "method": "MRKV",
+          "value": 12,
+          "hex": "000000000000000C"
+        }
+      ],
+      "marker_order": [
+        "A1",
+        "A2",
+        "A1",
+        "A2"
+      ],
+      "files": {
+        "r2-divisor-copyobject-store.asl": "f42126419d3ff033e0afa7d75ba59dfd9ad384b21afff7744ce8709199d3478c",
+        "r2-divisor-copyobject-store.aml": "24a29a3d8f21d48d6ec70aca86381b5ad1a5bd74a4ea7307950c71446b7676a7",
+        "r2-divisor-copyobject-store.dsl": "a0eaa536fcf64c8286bb146b28c86e99b4eb59644b0428458354abbcb7da24d7",
+        "r2-divisor-copyobject-store-compile.log": "75538dd108cf4e813022204eaf3d49996cd333eca94a9cf46e1217c7e620313b",
+        "r2-divisor-copyobject-store-disassemble.log": "484a14b459bc985c3369b889f6a763ec9f5962460182a51b2f988f6bac1b3d5f",
+        "r2-divisor-copyobject-store-execute.log": "0596016ab9023a7c07a21fdcc367d557f4bb03627f009b889266975d2784645e"
+      }
+    }
+  ],
+  "scope": "Exact16normal compiled AML bodies undermatching revision widths; quotient result/current source/remainder target/quotient target/SEQN observed twice. Original DebugA1A2 and cachewarnings retained in oraclelogs. CuBit fixture observesSEQN12 rather than interceptingdebug. Noexecutionyet."
+}

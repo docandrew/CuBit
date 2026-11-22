@@ -1,0 +1,14 @@
+with "fixture.gpr";
+project Reclamation_Tests is
+    for Source_Dirs use (".", "../../kernel/src");
+    for Source_Files use ("main.adb", "frame_pins.ads", "frame_pins.adb",
+                         "tlb_reclamation.ads", "tlb_reclamation.adb",
+                         "slaballocator.ads", "slaballocator.adb",
+                         "storagepools.ads", "storagepools.adb");
+    for Object_Dir use "build";
+    for Exec_Dir use "build";
+    for Main use ("main.adb");
+    package Compiler is
+        for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O2", "-g");
+    end Compiler;
+end Reclamation_Tests;

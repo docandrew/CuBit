@@ -1,0 +1,10 @@
+# Test-only stand-in for acpi.svc (tests/headless, firmware-snapshot): offers
+# the "acpi" catalog service exactly as acpi.svc does (registration
+# notification, then REGISTER_DRIVER for DRIVER_ACPI) and reports the badge
+# every request carries. Never part of a production image: procmgr lets
+# com.cubit.acpi register only from the startup plan.
+(Executable_Manifest
+  identity => "com.cubit.acpi"
+  version => "0.0.1"
+  requests => [
+    (notification "acpi" Notify_Access.Manage "registration")])

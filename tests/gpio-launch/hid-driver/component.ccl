@@ -1,0 +1,6 @@
+# The fixture probe (tests/gpio-launch/common) and the GPIO channel wire
+# (read-only) for the event its sink delivers.
+(Component name => "hid-launch-check" kind => Kind.Driver
+  source => (Source.Ada (Ada_Source
+    sources => ["tests/gpio-launch/common" "userspace/lib/gpio-admission"]
+    language => Ada_Language.Ada_2022)))

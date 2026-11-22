@@ -1,0 +1,106 @@
+--- a/src/intel/vulkan/anv_kmd_backend.h
++++ b/src/intel/vulkan/anv_kmd_backend.h
+@@ -78,6 +78,11 @@
+ };
+ 
+ struct anv_kmd_backend {
++   /* Mandatory before physical-device allocation. Normal destruction calls
++    * this after WSI/common cleanup and before freeing the Vulkan base.
++    * Failed construction remains the factory's responsibility.
++    */
++   void (*finish_physical)(struct anv_physical_device *device);
+    VkResult (*get_physical_parameters)(struct anv_physical_device *device);
+    VkResult (*init_memory_types)(struct anv_physical_device *device);
+    /* Optional platform external-memory operations. CuBit must not interpret
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -1800,6 +1800,7 @@
+                                         struct vk_physical_device **out);
+ 
+ void anv_physical_device_destroy(struct vk_physical_device *vk_device);
++void anv_drm_physical_device_finish(struct anv_physical_device *device);
+ /* Allocate/init only the shared Vulkan base; output unchanged on failure.
+  * free requires the caller to release all backend/common resources first.
+  */
+--- a/src/intel/vulkan/anv_physical_device_common.c
++++ b/src/intel/vulkan/anv_physical_device_common.c
+@@ -3,6 +3,7 @@
+  */
+ 
+ #include "anv_private.h"
++#include "anv_measure.h"
+ #include "common/intel_uuid.h"
+ #include "util/disk_cache.h"
+ #include "util/mesa-blake3.h"
+@@ -14,7 +15,7 @@
+                           const struct anv_kmd_backend *backend,
+                           struct anv_physical_device **out)
+ {
+-   if (backend == NULL)
++   if (backend == NULL || backend->finish_physical == NULL)
+       return vk_error(instance, VK_ERROR_INITIALIZATION_FAILED);
+ 
+    struct anv_physical_device *device =
+@@ -69,6 +70,19 @@
+    return backend->get_physical_parameters(device);
+ }
+ 
++void
++anv_physical_device_destroy(struct vk_physical_device *vk_device)
++{
++   struct anv_physical_device *device =
++      container_of(vk_device, struct anv_physical_device, vk);
++
++   anv_finish_wsi(device);
++   anv_measure_device_destroy(device);
++   anv_physical_device_finish_common(device);
++   device->kmd_backend->finish_physical(device);
++   anv_physical_device_free(device);
++}
++
+ VkResult
+ anv_physical_device_init_common(struct anv_physical_device *device)
+ {
+--- a/src/intel/vulkan/anv_physical_device_drm.c
++++ b/src/intel/vulkan/anv_physical_device_drm.c
+@@ -223,19 +223,12 @@
+ }
+ 
+ void
+-anv_physical_device_destroy(struct vk_physical_device *vk_device)
++anv_drm_physical_device_finish(struct anv_physical_device *device)
+ {
+-   struct anv_physical_device *device =
+-      container_of(vk_device, struct anv_physical_device, vk);
+-
+-   anv_finish_wsi(device);
+-   anv_measure_device_destroy(device);
+-   anv_physical_device_finish_common(device);
+    release_physical_device_budget(device->memory.heaps_budget);
+    intel_perf_free(device->perf);
+    intel_virtio_unref_fd(device->local_fd);
+    close(device->local_fd);
+    if (device->master_fd >= 0)
+       close(device->master_fd);
+-   anv_physical_device_free(device);
+ }
+--- a/src/intel/vulkan/i915/anv_kmd_backend.c
++++ b/src/intel/vulkan/i915/anv_kmd_backend.c
+@@ -358,6 +358,7 @@
+ anv_i915_kmd_backend_get(void)
+ {
+    static const struct anv_kmd_backend i915_backend = {
++      .finish_physical = anv_drm_physical_device_finish,
+       .get_physical_parameters = anv_i915_physical_device_get_parameters,
+       .init_memory_types = anv_i915_physical_device_init_memory_types,
+       .map_placed_slab = anv_drm_map_placed_slab,
+--- a/src/intel/vulkan/xe/anv_kmd_backend.c
++++ b/src/intel/vulkan/xe/anv_kmd_backend.c
+@@ -462,6 +462,7 @@
+ anv_xe_kmd_backend_get(void)
+ {
+    static const struct anv_kmd_backend xe_backend = {
++      .finish_physical = anv_drm_physical_device_finish,
+       .get_physical_parameters = anv_xe_physical_device_get_parameters,
+       .init_memory_types = anv_xe_physical_device_init_memory_types,
+       .map_placed_slab = anv_drm_map_placed_slab,

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Penny JavaScript benchmark</title>
+<style>body{font:16px sans-serif;max-width:58em;margin:2em auto;padding:0 1em}pre{white-space:pre-wrap}button{padding:.5em 1em}</style>
+<h1>JavaScript benchmark</h1>
+<p>Fixed workloads with checked results. This measures JavaScript execution, not overall browser speed. Record the browser build, execution mode, hardware and virtualization alongside the results.</p>
+<button id="start">Run benchmark</button>
+<pre id="status">Ready. One warmup and five measured samples per workload.</pre>
+<script src="js-benchmark.js"></script>
+<script>
+const expected={integer:3397622192,"typed-array":423362560,objects:39980000,json:3996000,regexp:3998000,sort:1431650304};
+const status=document.getElementById('status'),button=document.getElementById('start');
+async function run(){
+  button.disabled=true;status.textContent='Running…';
+  try{
+    const result=await PennyJSBenchmark.run(expected,(id,round,ms,checksum)=>{
+      status.textContent=id+' sample '+(round+1)+'/5: '+ms.toFixed(3)+' ms';
+      document.title='CuBitBrowserPerfJS:'+id+','+round+','+ms.toFixed(3)+','+checksum;
+    });
+    result.user_agent=navigator.userAgent;
+    status.textContent=JSON.stringify(result,null,2);
+    document.title='CuBitBrowserPerfJSDone';
+  }catch(error){status.textContent=String(error);document.title='CuBitBrowserPerfJSFailed';}
+  finally{button.disabled=false;}
+}
+button.onclick=run;
+// Native fixtures can opt into automatic execution; normal page opening waits.
+if(new URLSearchParams(location.search).get('autorun')==='1')run();
+</script>

@@ -1,0 +1,2 @@
+/home/doc/git/.acpi-proof-work/tobuffer-oracle-shj2ynql
+No old cases rerun. Targeted fixed-target conversion observations only.

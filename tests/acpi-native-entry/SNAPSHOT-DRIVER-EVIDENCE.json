@@ -1,0 +1,161 @@
+{
+  "portable": [
+    {
+      "path": "/home/doc/git/.acpi-proof-work/snapshot-driver-work-ovK8Ai/candidate/tests/acpi-snapshot-driver/results/checked-lyHSGF/RESULT.json",
+      "mode": "checked",
+      "checks": 1251,
+      "processes": 12,
+      "observations": [
+        {
+          "name": "default",
+          "checks": 5
+        },
+        {
+          "name": "normal",
+          "checks": 14
+        },
+        {
+          "name": "unavailable",
+          "checks": 12
+        },
+        {
+          "name": "evaluation-exception",
+          "checks": 8
+        },
+        {
+          "name": "barrier-exception",
+          "checks": 11
+        },
+        {
+          "name": "before-deadline",
+          "checks": 5
+        },
+        {
+          "name": "after-deadline",
+          "checks": 10
+        },
+        {
+          "name": "source-exception",
+          "checks": 6
+        },
+        {
+          "name": "module-fatal",
+          "checks": 8
+        },
+        {
+          "name": "snapshot_startup_tests",
+          "checks": 513
+        },
+        {
+          "name": "local_diagnostic_tests",
+          "checks": 258
+        },
+        {
+          "name": "startup_diagnostic_format_tests",
+          "checks": 401
+        }
+      ],
+      "source_files": 252,
+      "ACPICA_initializer_control": true,
+      "new_proof": false,
+      "native_execution": false,
+      "hardware_validated": false,
+      "scope": "Actual copied-table loader and controlled device initialization; modeled source/provider callbacks. Module hardware access and native provider provisioning are not implemented by this change."
+    },
+    {
+      "path": "/home/doc/git/.acpi-proof-work/snapshot-driver-work-ovK8Ai/candidate/tests/acpi-snapshot-driver/results/release-SBmooL/RESULT.json",
+      "mode": "release",
+      "checks": 1251,
+      "processes": 12,
+      "observations": [
+        {
+          "name": "default",
+          "checks": 5
+        },
+        {
+          "name": "normal",
+          "checks": 14
+        },
+        {
+          "name": "unavailable",
+          "checks": 12
+        },
+        {
+          "name": "evaluation-exception",
+          "checks": 8
+        },
+        {
+          "name": "barrier-exception",
+          "checks": 11
+        },
+        {
+          "name": "before-deadline",
+          "checks": 5
+        },
+        {
+          "name": "after-deadline",
+          "checks": 10
+        },
+        {
+          "name": "source-exception",
+          "checks": 6
+        },
+        {
+          "name": "module-fatal",
+          "checks": 8
+        },
+        {
+          "name": "snapshot_startup_tests",
+          "checks": 513
+        },
+        {
+          "name": "local_diagnostic_tests",
+          "checks": 258
+        },
+        {
+          "name": "startup_diagnostic_format_tests",
+          "checks": 401
+        }
+      ],
+      "source_files": 252,
+      "ACPICA_initializer_control": true,
+      "new_proof": false,
+      "native_execution": false,
+      "hardware_validated": false,
+      "scope": "Actual copied-table loader and controlled device initialization; modeled source/provider callbacks. Module hardware access and native provider provisioning are not implemented by this change."
+    }
+  ],
+  "startup": [
+    {
+      "path": "/home/doc/git/.acpi-proof-work/snapshot-driver-work-ovK8Ai/candidate/tests/acpi-native-startup/results/checked-xVT8AduQ",
+      "checks": 2193,
+      "processes": 89
+    },
+    {
+      "path": "/home/doc/git/.acpi-proof-work/snapshot-driver-work-ovK8Ai/candidate/tests/acpi-native-startup/results/release-RhbUjRzp",
+      "checks": 2193,
+      "processes": 89
+    }
+  ],
+  "api": [
+    {
+      "path": "/home/doc/git/.acpi-proof-work/snapshot-driver-work-ovK8Ai/candidate/tests/acpi-native-entry/results/checked-zpL6p7OB",
+      "selections": 59,
+      "ALIs": 56,
+      "objects": 0
+    },
+    {
+      "path": "/home/doc/git/.acpi-proof-work/snapshot-driver-work-ovK8Ai/candidate/tests/acpi-native-entry/results/release-n6cq66U1",
+      "selections": 59,
+      "ALIs": 56,
+      "objects": 0
+    }
+  ],
+  "checks": 6888,
+  "processes": 202,
+  "production_paths": 4,
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "scope": "Opt-in trusted copied-snapshot completion using the existing provisioned device driver. Source/provider callbacks modeled; actual AML initialization executed. Default native startup unchanged; module hardware and early native EC provisioning unfinished."
+}

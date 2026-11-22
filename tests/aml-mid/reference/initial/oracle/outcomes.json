@@ -1,0 +1,640 @@
+[
+  {
+    "group": "range",
+    "case": "string",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0014792110305279493
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.065525186015293
+    }
+  },
+  {
+    "group": "range",
+    "case": "buffer",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.001586943049915135
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0654888269491494
+    }
+  },
+  {
+    "group": "range",
+    "case": "emptystring",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003697911975905299
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655583690386266
+    }
+  },
+  {
+    "group": "range",
+    "case": "emptybuffer",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003672422026284039
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655090369982645
+    }
+  },
+  {
+    "group": "range",
+    "case": "outside",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0036528510972857475
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.065787780098617
+    }
+  },
+  {
+    "group": "range",
+    "case": "hugecount",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0036492819199338555
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.065609498997219
+    }
+  },
+  {
+    "group": "range",
+    "case": "hugeindex",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0036232720594853163
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655364179983735
+    }
+  },
+  {
+    "group": "range",
+    "case": "zero",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0036616319557651877
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655744690448046
+    }
+  },
+  {
+    "group": "range",
+    "case": "integer",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0035774509888142347
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655744689283893
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "coerce",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003503159969113767
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655737289926037
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "directindex",
+    "revision": 1,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.0035668000346049666
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "heldindex",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0035260490840300918
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0657466310076416
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "methodindex",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003574150032363832
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0656072400743142
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "heldref",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0035628409823402762
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655698790214956
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "deref",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0015055310213938355
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655015589436516
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "package",
+    "revision": 1,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.0037034829147160053
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "uninit",
+    "revision": 1,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.0035247700288891792
+    }
+  },
+  {
+    "group": "targets",
+    "case": "namedint",
+    "revision": 1,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.0034660189412534237
+    }
+  },
+  {
+    "group": "targets",
+    "case": "namedstr",
+    "revision": 1,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.0035023289965465665
+    }
+  },
+  {
+    "group": "targets",
+    "case": "namedbuf",
+    "revision": 1,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.003541419981047511
+    }
+  },
+  {
+    "group": "targets",
+    "case": "member",
+    "revision": 1,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.00350940995849669
+    }
+  },
+  {
+    "group": "targets",
+    "case": "byte",
+    "revision": 1,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.003486089059151709
+    }
+  },
+  {
+    "group": "targets",
+    "case": "same",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0013963300734758377
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0654720079619437
+    }
+  },
+  {
+    "group": "targets",
+    "case": "argref",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0014924509450793266
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655971089145169
+    }
+  },
+  {
+    "group": "order",
+    "case": "once",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0015402219723910093
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655150479869917
+    }
+  },
+  {
+    "group": "order",
+    "case": "badindex",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003549410030245781
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.065544618992135
+    }
+  },
+  {
+    "group": "order",
+    "case": "badsource",
+    "revision": 1,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0035676200641319156
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655294380849227
+    }
+  },
+  {
+    "group": "range",
+    "case": "string",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003848863998427987
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0658653629943728
+    }
+  },
+  {
+    "group": "range",
+    "case": "buffer",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003602490993216634
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.065723891952075
+    }
+  },
+  {
+    "group": "range",
+    "case": "emptystring",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0035716010024771094
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655591090908274
+    }
+  },
+  {
+    "group": "range",
+    "case": "emptybuffer",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0035509399604052305
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655819789972156
+    }
+  },
+  {
+    "group": "range",
+    "case": "outside",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0035722600296139717
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0654720780439675
+    }
+  },
+  {
+    "group": "range",
+    "case": "hugecount",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0036437109811231494
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655563189648092
+    }
+  },
+  {
+    "group": "range",
+    "case": "hugeindex",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0014850810403004289
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655433789361268
+    }
+  },
+  {
+    "group": "range",
+    "case": "zero",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0035981800174340606
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.065490446984768
+    }
+  },
+  {
+    "group": "range",
+    "case": "integer",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0035804409999400377
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655846600420773
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "coerce",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.001967887976206839
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0654919380322099
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "directindex",
+    "revision": 2,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.0035884210374206305
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "heldindex",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003551139961928129
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655594690470025
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "methodindex",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0035901800729334354
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0656316799577326
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "heldref",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003591530956327915
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0654484570259228
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "deref",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.001483440981246531
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0656123890075833
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "package",
+    "revision": 2,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.003587870975024998
+    }
+  },
+  {
+    "group": "resolve",
+    "case": "uninit",
+    "revision": 2,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.003535649972036481
+    }
+  },
+  {
+    "group": "targets",
+    "case": "namedint",
+    "revision": 2,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.0035084100672975183
+    }
+  },
+  {
+    "group": "targets",
+    "case": "namedstr",
+    "revision": 2,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.003486769972369075
+    }
+  },
+  {
+    "group": "targets",
+    "case": "namedbuf",
+    "revision": 2,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.0035029390128329396
+    }
+  },
+  {
+    "group": "targets",
+    "case": "member",
+    "revision": 2,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.003523100051097572
+    }
+  },
+  {
+    "group": "targets",
+    "case": "byte",
+    "revision": 2,
+    "compile": {
+      "returncode": 255,
+      "seconds": 0.003562099998816848
+    }
+  },
+  {
+    "group": "targets",
+    "case": "same",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.0014110200572758913
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0654682780150324
+    }
+  },
+  {
+    "group": "targets",
+    "case": "argref",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003663610899820924
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.065506038023159
+    }
+  },
+  {
+    "group": "order",
+    "case": "once",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003580640070140362
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0659376539988443
+    }
+  },
+  {
+    "group": "order",
+    "case": "badindex",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003555460018105805
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655710900900885
+    }
+  },
+  {
+    "group": "order",
+    "case": "badsource",
+    "revision": 2,
+    "compile": {
+      "returncode": 0,
+      "seconds": 0.003607291029766202
+    },
+    "execution": {
+      "returncode": 0,
+      "seconds": 1.0655697990441695
+    }
+  }
+]

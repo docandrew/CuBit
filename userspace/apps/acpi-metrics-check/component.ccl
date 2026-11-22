@@ -1,0 +1,2 @@
+(Component name => "acpi-metrics-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

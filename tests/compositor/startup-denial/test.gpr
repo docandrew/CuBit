@@ -1,0 +1,5 @@
+project Test is
+ for Source_Dirs use ("."); for Object_Dir use "obj";
+ for Main use ("startup_denial_tests.adb"); for Exec_Dir use ".";
+ package Compiler is for Default_Switches("Ada") use ("-gnat2022","-gnata","-O1"); end Compiler;
+end Test;

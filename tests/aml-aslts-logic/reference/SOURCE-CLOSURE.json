@@ -1,0 +1,11 @@
+{
+  "runtime/collections/functional/logic/MAIN.asl": "f115da01cc43e10f7a49c42c6f071b89eeb639a37e91812ef0cc39b30a5d53de",
+  "runtime/collections/functional/logic/RUN.asl": "64a231cbebaf05056abecfc444802f5b7952eaf7cdd7769b383aefbe5e9a9c7e",
+  "runtime/collections/functional/logic/DECL.asl": "d262f8856a002c2ec7be361b5ba8095fa8b569ede1759cca81cc79fb5ddcff7f",
+  "runtime/collections/functional/logic/logical.asl": "a4037b6a99f4d816d3c880b212bb055b7ee5f654fca433d53c96460e62050217",
+  "runtime/cntl/DECL.asl": "b3ff1f614dec31ba9f04738cabf1030b30a04a243571005bb64e5c69fdbcfd5b",
+  "runtime/cntl/ehandle.asl": "e92afd3b8719f60c1002b8007b4f039119c00e48e659abd5871baa27e7c9aa1a",
+  "runtime/cntl/runmode.asl": "c035beefb3cd160bdf072ff284484f1c857859d3d3e880aeff77c1b13bf4a279",
+  "runtime/cntl/runpoint.asl": "dfeab4846f9e9f72d4dcb3e746b74c32d852b1ba18b82a6835291ee661b1d110",
+  "runtime/cntl/common.asl": "69c630ec523fa63e8376930339ad5a701e7d3ecda3c6a921573e9d31539b9947"
+}

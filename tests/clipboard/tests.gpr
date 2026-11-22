@@ -1,0 +1,25 @@
+--  Hosted tests of the desktop clipboard (store, gestures, wire codec).
+project Tests is
+   Src := External ("CLIPBOARD_SRC", "../../userspace/services/desktop");
+   UI_Src := External ("CLIPBOARD_UI", "../../userspace/lib/ui");
+   for Source_Dirs use (".", Src, "../../userspace/lib/compositor", UI_Src, "build/source");
+   for Source_Files use
+     ("clipboard_tests.adb",
+      "clipboard_store.ads", "clipboard_store.adb",
+      "clipboard_gestures.ads", "clipboard_gestures.adb",
+      "clipboard_menu.ads", "clipboard_menu.adb",
+      "compositor_clipboard_protocol.ads", "compositor_clipboard_protocol.adb",
+      "clipboard_chords.ads", "clipboard_chords.adb",
+      "clipboard_text.ads", "clipboard_text.adb",
+      "cubit.ads", "cubit-desktop_protocol.ads", "cubit-desktop_protocol.adb",
+      "cubit-grant_references.ads");
+   for Object_Dir use External ("CLIPBOARD_OBJ", "build/obj");
+   for Exec_Dir use External ("CLIPBOARD_OBJ", "build");
+   for Main use ("clipboard_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O1");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-Es");
+   end Binder;
+end Tests;

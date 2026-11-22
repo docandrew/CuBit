@@ -1,0 +1,76 @@
+/*
+ * CuBit libc: launch arguments and child exits (docs/process-arguments.md).
+ *
+ * The kernel maps a process's launch block read-only at
+ * CUBIT_LAUNCH_ARGUMENTS_ADDRESS and starts it with its length in RDI; the
+ * start code (crt/crt1.c) builds argv and the environment from it. The
+ * layout and limits are CuBit.Launch_Arguments
+ * (userspace/runtime/gnat/cubit-launch_arguments.ads); blocks are checked
+ * with its proved validator, exported here.
+ */
+#ifndef _CUBIT_LAUNCH_H
+#define _CUBIT_LAUNCH_H
+#include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define CUBIT_LAUNCH_ARGUMENTS_ADDRESS 0x00005A0000000000UL
+#define CUBIT_LAUNCH_FORMAT_VERSION 4
+#define CUBIT_LAUNCH_HEADER_BYTES 16
+#define CUBIT_LAUNCH_MAXIMUM_BYTES (64 * 1024)
+#define CUBIT_LAUNCH_MAXIMUM_STRINGS 4096   /* the directory included */
+#define CUBIT_LAUNCH_MAXIMUM_DIRECTORIES 1
+#define CUBIT_LAUNCH_MAXIMUM_NAME_BYTES 255
+/* Header field offsets. */
+#define CUBIT_LAUNCH_VERSION_AT 0
+#define CUBIT_LAUNCH_DIRECTORY_COUNT_AT 2
+#define CUBIT_LAUNCH_ARGUMENTS_AT 4
+#define CUBIT_LAUNCH_ENVIRONMENT_AT 8
+#define CUBIT_LAUNCH_STRING_BYTES_AT 12
+
+/* 1 if the length bytes at block are a well-formed launch block (then its
+ * argument, environment and directory counts are stored), 0 otherwise. The
+ * strings are the arguments, then the environment, then the working
+ * directory (a qualified CuBit name, "@volume/..."), if there is one. */
+int __cubit_launch_arguments_validate(const void *block, uint32_t length,
+	uint32_t *arguments, uint32_t *environment, uint32_t *directory);
+
+/* OP_LAUNCH (procmgr) and its failure codes (CuBit.Launch_Arguments). */
+#define CUBIT_OP_LAUNCH 0x0106
+enum cubit_launch_failure {
+	CUBIT_LAUNCH_MALFORMED_REQUEST = 1,
+	CUBIT_LAUNCH_GRANT_UNAVAILABLE = 2,
+	CUBIT_LAUNCH_ARGUMENTS_REJECTED = 3,
+	CUBIT_LAUNCH_SPAWN_FAILED = 4,
+	/* The launcher's manifest does not name the program (no may-launch
+	 * entry), or the program asks for authority the launcher lacks. */
+	CUBIT_LAUNCH_NOT_GRANTED = 5,
+};
+
+/* posix_spawn, but the child gets exactly the places in the region at
+ * places (places_length bytes; a CuBit.Launch_Grants region,
+ * userspace/runtime/gnat/cubit-launch_grants.ads; none when 0) instead of
+ * the places this program's launcher delegated to it: a launcher gives each
+ * child only what it needs (ccl-build's steps). procmgr refuses the launch
+ * (EACCES) unless this program holds every entry with at least its rights;
+ * a malformed region is EINVAL. */
+int cubit_posix_spawn_places(int *pid, const char *path,
+	const void *file_actions, const void *attributes,
+	char *const argv[], char *const envp[],
+	const unsigned char *places, unsigned long places_length);
+
+/* EVENT_CHILD_EXIT (CuBit.Child_Exits): words PID, kind, code and the
+ * process's generation; OP_LAUNCH replies with PID and generation. PIDs
+ * are reused, so (PID, generation) names one process. */
+#define CUBIT_EVENT_CHILD_EXIT 0x0103
+#define CUBIT_CHILD_EXIT_WORDS 4
+enum cubit_termination_kind {
+	CUBIT_TERMINATION_EXITED = 1,   /* SYSCALL_EXIT with a code */
+	CUBIT_TERMINATION_STOPPED = 2,  /* killed, faulted, main thread ended */
+};
+
+#ifdef __cplusplus
+}
+#endif
+#endif

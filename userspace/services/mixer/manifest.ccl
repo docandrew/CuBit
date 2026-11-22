@@ -1,0 +1,15 @@
+# mixer.svc's authority (CAP-002): real-time CPU for one audio period
+# (1.5 ms of every 5 ms, docs/scheduler.md "Soft real time"), its role
+# registration, the HDA driver's endpoint ("hda", absent without audio
+# hardware) and its endpoint to devmgr.
+(Executable_Manifest
+  identity => "com.cubit.mixer"
+  version => "0.1.0"
+  requests => [
+    (scheduling "scheduling" 1500 5000)
+    (notification "mixer" Notify_Access.Manage "registration")
+    (service "launcher-peer" "hda")
+    (service "device-manager" "ready")
+    # ABI-002: its debug text, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["hda" "logstore"])

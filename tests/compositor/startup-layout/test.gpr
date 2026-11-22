@@ -1,0 +1,10 @@
+project Test is
+   for Source_Dirs use (".", "../../../userspace/services/desktop");
+   for Source_Files use ("layout_tests.adb", "desktop_startup_layout.ads", "desktop_startup_layout.adb");
+   for Main use ("layout_tests.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O1");
+   end Compiler;
+end Test;

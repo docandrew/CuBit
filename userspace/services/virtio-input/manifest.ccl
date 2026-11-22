@@ -1,0 +1,19 @@
+# virtio-input.drv's authority (docs/ccl-driver-manifests.md, CAP-002).
+# devmgr maps the register BAR and answers every binding when it launches
+# the driver: the register window, the interrupt (an allocated vector) and
+# its endpoint to devmgr. Its reports go to Desktop on a source ring
+# (IPC-009), opened through an endpoint devmgr hands it on request.
+(Executable_Manifest
+  identity => "com.cubit.virtio-input"
+  version => "0.1.0"
+  # 0x1AF4:0x1052, virtio-input (virtio-tablet-pci and siblings).
+  drives => [(Device_Match.PCI_IDs (PCI_IDs 0x1AF4 0x1052 0x1052))]
+  requests => [
+    (device-memory "registers" 4 65536 Access.Read_Write)
+    # The event queue uses MSI-X entry 0.
+    (interrupt "device" Interrupt_Mode.MSI_X 1)
+    (dma "events" 4096)
+    (service "device-manager" "ready")
+    # ABI-002: its debug text, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

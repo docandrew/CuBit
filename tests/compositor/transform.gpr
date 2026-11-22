@@ -1,0 +1,10 @@
+project Transform is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("transform_tests.adb", "compositor_transform.ads", "compositor_transform.adb", "compositor_affine.ads", "compositor_affine.adb", "compositor_sampling.ads", "compositor_sampling.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Object_Dir use "build/transform/obj";
+   for Exec_Dir use "build/transform";
+   for Main use ("transform_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Transform;

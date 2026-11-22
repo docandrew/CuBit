@@ -1,0 +1,2 @@
+(Component name => "firmware-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source sources => ["shared/acpi"])))

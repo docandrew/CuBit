@@ -1,0 +1,24 @@
+--  Hosted tests and proofs for IOMMU-001 (run.sh): the kernel's DMAR
+--  admission (shared/firmware Firmware_Tables.Remapping), the VT-d
+--  page-table arithmetic, the page-table walker over a model store, and the
+--  domain ledger.
+project IOMMU is
+   for Source_Dirs use (".", "../../shared/firmware", "../../kernel/src");
+   for Source_Files use
+     ("main.adb", "table_model.ads", "table_model.adb",
+      "firmware_tables.ads", "firmware_tables.adb",
+      "firmware_tables-remapping.ads", "firmware_tables-remapping.adb",
+      "io_page_tables.ads", "io_page_tables.adb",
+      "io_page_walk.ads", "io_page_walk.adb",
+      "iommu_domains.ads", "iommu_domains.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end IOMMU;

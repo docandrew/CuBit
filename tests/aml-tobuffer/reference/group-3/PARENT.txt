@@ -1,0 +1,2 @@
+/home/doc/git/.acpi-proof-work/tobuffer-target-oracle-42hjh8ts
+New12cases only. FreshInteger alias omitted in favor of Arg-frame target; no inference that source allocations share capture policy.

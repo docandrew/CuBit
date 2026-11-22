@@ -1,0 +1,21 @@
+(type ACPI_Profile (enum Neutral Known_Windows))
+(type ACPI_Firmware_Profile (record (kind ACPI_Profile)))
+# ACPI-ONE-001: the one ACPI service. It holds the ACPI hardware grant itself
+# (FADT fixed-hardware ports, FACS/NVS firmware memory, and with approval
+# the firmware-data endpoint that carries the platform-register pool) and
+# runs AML over it in-process. The PCI configuration broker is devmgr's
+# acpi-pci-windows service, approved for this entry only.
+(Executable_Manifest
+  parameters => (Parameter_Signature.Declared "ACPI_Firmware_Profile")
+  identity => "com.cubit.acpi"
+  version => "0.2.0"
+  requests => [
+    (service "logstore" "logstore")
+    (Request.Firmware_Snapshot "tables")
+    (Request.Publication "cpu-times")
+    (Request.ACPI_Hardware "hardware")
+    # KERN-004: named terminal S5/reset capability, gated by the launch plan.
+    (Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Platform_Power "power"))
+    (service "acpi-pci-windows" "pci-windows")
+    (notification "acpi" Notify_Access.Manage "registration")]
+  optional => ["pci-windows"])

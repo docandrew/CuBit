@@ -1,0 +1,70 @@
+[
+  {
+    "key": "1-fresh_integer_alias",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "b5008ac55bfcdddad224f6361755e88a52b787edea8f38ae7b24dace730473e6",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 4,
+    "hex": "09776655",
+    "classification": "returned"
+  },
+  {
+    "key": "1-byte_target_full",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "c0ac03095eb5dfbaf890ac9190a80ec34124e594cc89182997b6cb6c81bc922e",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 2,
+    "hex": "4108",
+    "classification": "returned"
+  },
+  {
+    "key": "2-fresh_integer_alias",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "059f358f147f36cf5d22903958462660517aaa32a8631f282130ce1e5986be42",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 8,
+    "hex": "0977665544332211",
+    "classification": "returned"
+  },
+  {
+    "key": "2-byte_target_full",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "95c2d2df0e6142ae95d371fc854bedf160f922acb42fe16bedf1dca9f9ee0d4b",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 2,
+    "hex": "4108",
+    "classification": "returned"
+  }
+]

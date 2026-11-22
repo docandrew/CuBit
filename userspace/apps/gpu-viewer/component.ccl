@@ -1,0 +1,5 @@
+(Component name => "gpu-viewer" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/mesa/anv"]
+    language => Ada_Language.Ada_2022
+    debug_info => false)))

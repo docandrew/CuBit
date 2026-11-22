@@ -1,0 +1,34 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2019 Jon Andrew
+--
+-- CuBitOS Entry Point / Main routine
+-------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
+
+package kmain is
+
+    ---------------------------------------------------------------------------
+    -- Our kernel's Ada entry point. Jumped to from boot.asm
+    ---------------------------------------------------------------------------
+    procedure kmain(magic : Unsigned_32; mbInfoPhysical : Unsigned_32)
+        with Export => True, Convention => C, External_Name => "kmain";
+
+    ---------------------------------------------------------------------------
+    -- Application Processor (AP) entry point, aka SMP entry point
+    ---------------------------------------------------------------------------
+    procedure apEnter(cpuNum : in Unsigned_32)
+        with Export => True, Convention => C, External_Name => "apEnter";
+    Pragma No_Return (apEnter);
+
+    ---------------------------------------------------------------------------
+    -- When we boot the other cores, we set this value so the CPU knows what
+    -- CPU number they are
+    ---------------------------------------------------------------------------
+    startingCPU : Unsigned_32 := 0
+        with Atomic, Export => True, External_Name => "startingCPU";
+    -- One AP starts at a time; written by trampoline/AP, read by BSP.
+    AP_Startup_Stage : Unsigned_32 := 0
+        with Atomic, Export => True, External_Name => "ap_startup_stage";
+
+end kmain;

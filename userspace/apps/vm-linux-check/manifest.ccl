@@ -1,0 +1,5 @@
+# The Linux guest check (VMM-001 slice 1, headless --test vm-linux). Requests
+# nothing: it runs in procmgr's place, from a test initrd only.
+(Executable_Manifest
+  identity => "com.cubit.test.vm-linux"
+  version => "1.0.0")

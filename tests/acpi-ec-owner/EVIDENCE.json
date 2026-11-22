@@ -1,0 +1,80 @@
+{
+  "hosted_run": "/home/doc/cubit-build-tmp/acpi-ec-owner-IYoQab",
+  "hosted_result": {
+    "counts": {
+      "checked": {
+        "1": {
+          "normal": 94,
+          "hardware": 16
+        },
+        "2": {
+          "normal": 94,
+          "hardware": 16
+        }
+      },
+      "release": {
+        "1": {
+          "normal": 94,
+          "hardware": 16
+        },
+        "2": {
+          "normal": 94,
+          "hardware": 16
+        }
+      }
+    },
+    "commands": 14,
+    "hosted": true,
+    "new_proof": false,
+    "native_executed": false,
+    "hardware_validated": false
+  },
+  "source_pins": 344,
+  "checks_per_profile": 220,
+  "reference": "/home/doc/cubit-build-tmp/ec-owner-oracle-hE0NKO",
+  "reference_result": {
+    "accepted": true,
+    "semantic_match": true,
+    "clean_tool_log": false,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "recognized_teardown": true,
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "-b",
+      "evaluate LID0._LID; evaluate AC00._PSR; execute EC00._Q01; evaluate LID0._LID; execute EC00._Q02; evaluate AC00._PSR; execute EC00._Q03; evaluate LID0._LID; evaluate AC00._PSR",
+      "/home/doc/cubit-build-tmp/acpi-ec-owner-IYoQab/bridge-r2.aml"
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "integers": [
+      0,
+      0,
+      1,
+      1,
+      2,
+      0
+    ],
+    "inputs": {
+      "/home/doc/cubit-build-tmp/acpi-ec-owner-IYoQab/bridge-r2.aml": "eb1eb72538ecec8b821dc46051e0295c92084ab061a6d989273e7894d1298fbf",
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe",
+      "/home/doc/git/.acpi-proof-work/ec-power-events-work/oracle.mjs": "7659c63825b17f2184ed3c4b8c23a8167558353ec764ab898bbc3a2eb2413183"
+    },
+    "scope": "Independent same-fixture Q01/Q02/Q03/Notify/LID/PSR semantic observations only. This ACPICA build reports four outstanding cache allocations on exit; no clean-tool-log, EC hardware, IPC, source-admission or CuBit broker/cache execution claim."
+  },
+  "oracle_implementation_sha256": "7659c63825b17f2184ed3c4b8c23a8167558353ec764ab898bbc3a2eb2413183",
+  "artifacts": {
+    "/home/doc/cubit-build-tmp/acpi-ec-owner-IYoQab/COMPLETE.json": "a388042d0e7be7c7ac36ad69183bb5c3cd340f62ebb84e65f1d3f79152cce41a",
+    "/home/doc/cubit-build-tmp/acpi-ec-owner-IYoQab/inputs.json": "3912926d062e07f7c453c2d1c652dcefa80f36f2daf1603ba0abea0468b17842",
+    "/home/doc/cubit-build-tmp/acpi-ec-owner-IYoQab/commands.json": "4e40c36cf9bb115eb1beabf407c2f1aab6a684eae29fbee52570daa9453608af",
+    "/home/doc/cubit-build-tmp/ec-owner-oracle-hE0NKO/RESULT.json": "3e1e6b7ecf0e8fa8b94d24ca3b84bfa176918da3d3d5351b428844eda356fb6f",
+    "/home/doc/cubit-build-tmp/ec-owner-oracle-hE0NKO/acpica.log": "7560c40216f402844fda72cd1efd4a882bb4181a391de3b10e7885144536495f"
+  },
+  "production_changed": false,
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "full_goal": "active and incomplete"
+}

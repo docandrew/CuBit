@@ -1,0 +1,14 @@
+--  KERN-014 slice 2: hosted test and proof of the user ranges the kernel
+--  accesses through the current process's own mapping
+--  (kernel/src/user_access_ranges).
+project User_Access_Ranges_Tests is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("main.adb", "user_access_ranges.ads", "user_access_ranges.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end User_Access_Ranges_Tests;

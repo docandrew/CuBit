@@ -1,0 +1,12 @@
+# The fetched-tree fixture's catalog (tests/ccl-build/run.sh replaces
+# @URL@ and the eight @W1@ .. @W8@ words of the pinned tree identity).
+(Build_Catalog
+  profiles => [
+    (Code_Profile "crate" (Ada_Code checks => Checks.Suppressed
+       value_range_propagation => false warnings => Warnings.Suppressed))]
+  libraries => [
+    (Library name => "greeting"
+      origin => (fetch_tar_gz "@URL@"
+        (SHA256_Digest @W1@ @W2@ @W3@ @W4@ @W5@ @W6@ @W7@ @W8@))
+      code => (Library_Code.Profile "crate")
+      sources => ["src"])])

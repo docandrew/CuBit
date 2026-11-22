@@ -1,0 +1,9 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/numeric-source-timing-oracle-scok9jqu/r2-named-add-left-copyobject.asl -     450 bytes     21 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/numeric-source-timing-oracle-scok9jqu/r2-named-add-left-copyobject.aml -     151 bytes     13 opcodes       8 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations

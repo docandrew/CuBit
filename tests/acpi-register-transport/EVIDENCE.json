@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "kind": "historical-hosted-runtime-and-API-receipts",
+  "checks_per_profile": 235,
+  "runtime": {
+    "release": {
+      "source": "/home/doc/git/.acpi-proof-work/register-transport-frozen-a54sakZS/source",
+      "output": "/home/doc/git/.acpi-proof-work/register-transport-frozen-a54sakZS/source/tests/acpi-register-transport/results/release-bpwd5qm6",
+      "mode": "release",
+      "inputs": 191,
+      "references": 0,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 1,
+      "artifacts": 87,
+      "stages": 2,
+      "logs": {
+        "register_transport_tests": "Register transport checks 235"
+      },
+      "ALI": 20,
+      "dependencies": 193,
+      "strict_commands": 19,
+      "audit_sha256": "d0d9f1112cc8bb06c73fd8619e967bfcec97604d17d94013606811e0d8f9b823",
+      "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+    },
+    "checked": {
+      "source": "/home/doc/git/.acpi-proof-work/register-transport-frozen-a54sakZS/source",
+      "output": "/home/doc/git/.acpi-proof-work/register-transport-frozen-a54sakZS/source/tests/acpi-register-transport/results/checked-b3okbwyq",
+      "mode": "checked",
+      "inputs": 191,
+      "references": 0,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 1,
+      "artifacts": 87,
+      "stages": 2,
+      "logs": {
+        "register_transport_tests": "Register transport checks 235"
+      },
+      "ALI": 20,
+      "dependencies": 276,
+      "strict_commands": 19,
+      "audit_sha256": "fb8943ac64d9db40e36f9613efc75b764bf60886a463d9589409ef7c0a4e1ca7",
+      "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+    }
+  },
+  "compile_only_API": {
+    "release": {
+      "source": "/home/doc/git/.acpi-proof-work/register-transport-frozen-a54sakZS/source",
+      "output": "/home/doc/git/.acpi-proof-work/register-transport-frozen-a54sakZS/source/tests/acpi-register-transport/results/release-j1n0xxir",
+      "mode": "release",
+      "inputs": 191,
+      "references": 0,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 0,
+      "artifacts": 8,
+      "stages": 1,
+      "logs": {},
+      "ALI": 1,
+      "dependencies": 24,
+      "strict_commands": 1,
+      "audit_sha256": "f467f6a0d51c99b39055c0cf41ec820fcf59f6582666cc3251757554ab33b3ef",
+      "scope": "Compile-only exact reached units and strict requested-profile flags. No link, runtime or proof."
+    },
+    "checked": {
+      "source": "/home/doc/git/.acpi-proof-work/register-transport-frozen-a54sakZS/source",
+      "output": "/home/doc/git/.acpi-proof-work/register-transport-frozen-a54sakZS/source/tests/acpi-register-transport/results/checked-q7pqk3bh",
+      "mode": "checked",
+      "inputs": 191,
+      "references": 0,
+      "tools": 5,
+      "runtime_sources": 1582,
+      "binaries": 0,
+      "artifacts": 8,
+      "stages": 1,
+      "logs": {},
+      "ALI": 1,
+      "dependencies": 26,
+      "strict_commands": 1,
+      "audit_sha256": "4f1d303614f12831969a0b094c7ab86ec4c07e8952033e70ca712d1241a7dc6f",
+      "scope": "Compile-only exact reached units and strict requested-profile flags. No link, runtime or proof."
+    }
+  },
+  "scope": "Production adapter/client with real backend policy/dispatcher; modeled clock, IPC and hardware. API declarations mirrored exactly from runtime. No native execution, kernel provisioning/backing/terminal evidence, new proof or whole-interpreter correctness claim. Original paths are provenance only; compiled source carry verified separately."
+}

@@ -1,0 +1,22 @@
+# power.svc (PWR-003): the power manager. Requests come from its
+# requesters' badges (power-desktop, power-console); presses from acpi.svc
+# (acpi-power: button watch and S5). It asks procmgr for the root stop,
+# then acpi.svc for S5, or halts. Graces and button policy are typed
+# parameters: nothing is defaulted.
+(type Stop_Grace (range 1 600000))
+(type Button_Policy (enum Power_Off Halt Ignore))
+(type Power_Parameters (record
+  (undeclared_grace_ms Stop_Grace)
+  (storage_deadline_ms Stop_Grace)
+  (driver_grace_ms Stop_Grace)
+  (button Button_Policy)))
+(Executable_Manifest
+  identity => "com.cubit.power"
+  version => "0.1.0"
+  requests => [
+    (service "logstore" "logstore")
+    (notification "power" Notify_Access.Manage "registration")
+    (service "process-manager" "process-manager")
+    (service "acpi-power" "acpi")]
+  optional => ["logstore" "acpi"]
+  parameters => (Parameter_Signature.Declared "Power_Parameters"))

@@ -1,0 +1,31 @@
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -1879,5 +1879,6 @@
+ struct anv_instance {
+     struct vk_instance                          vk;
++    struct anv_cubit_discovery                  *cubit_discovery;
+ 
+     struct anv_drirc                            drirc;
+ 
+--- a/src/intel/vulkan/anv_instance.c
++++ b/src/intel/vulkan/anv_instance.c
+@@ -215,3 +215,7 @@
++#if defined(__cubit__)
++#include "anv_cubit_physical.h"
++#endif
++
+ VkResult anv_CreateInstance(
+     const VkInstanceCreateInfo*                 pCreateInfo,
+     const VkAllocationCallbacks*                pAllocator,
+@@ -250,1 +254,5 @@
++#if defined(__cubit__)
++   instance->vk.physical_devices.enumerate = anv_cubit_enumerate_physical_devices;
++#else
+    instance->vk.physical_devices.try_create_for_drm = anv_physical_device_try_create;
++#endif
+@@ -302,2 +310,5 @@
+    vk_instance_finish(&instance->vk);
++#if defined(__cubit__)
++   anv_cubit_finish_discovery(instance);
++#endif
+    vk_free(&instance->vk.alloc, instance);

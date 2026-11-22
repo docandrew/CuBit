@@ -1,0 +1,72 @@
+# The CCL console: a full-window REPL over the same host environment as the
+# Workbench, so it requests the same authority. Requested authority only;
+# the launch path remains in control.
+(Executable_Manifest
+  identity => "com.cubit.ccl-console"
+  version => "0.1.0"
+  requests => [
+    # One "started" record (CuBit.Logging.Announce).
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    (service "clock" "clock")
+    # (logs.recent "service"): read-only log observation.
+    (service "log-observer" "log-observer")
+    # metrics.*: metrics.svc's series (MET-002), in the scope below.
+    (service "metrics-observer" "series")
+    # (logs.set-minimum ...) / the Logs "Keep" box: what logstore keeps.
+    (service "log-control" "log-control")
+    # :ps and (proc.list): see what runs, through procmgr's observer role.
+    (service "process-observer" "process-observer")
+    # Global non-secret Config read, never write/admin.
+    (service "config" "config")
+    (service "filesystem" "filesystem")
+    # Programs it may start with typed parameters (docs/ccl-launch-parameters.md).
+    (service "process-manager" "process-manager") (service "launch" "launch")
+    # (dict ..), (synonym ..), (thesaurus ..), (spell-check ..): lexicon.svc.
+    (service "lexicon" "lexicon")
+    # system.* (installer.svc, startup only)
+    (service "installer" "installer")
+    # (wifi.scan) reads netstack, inspection only.
+    (service "network-stack" "network-stack")
+    # (wifi.join) ... : wifi.svc.
+    (service "wifi" "wifi")
+    # (llm.ask ...): llm.svc, which alone holds the network scope and the
+    # use grant for the API key; the console never sees the key.
+    (service "llm" "llm")
+    # (secrets.set ...): stores a named secret through non-echoing entry;
+    # no operation reads a value back.
+    (service "secrets" "secrets")
+    # (power-off), (halt): power.svc, as the console's own requester badge
+    # (PWR-003; startup plan only).
+    (service "power-console" "power")
+    # debug.*: the debugger engine (DBG-001), Observe only: procmgr mints
+    # Debug_Observe within the user session's debug envelope.
+    (service "debug-session" "debug-session")]
+  # Without these the console runs; lexicon.*, system.*, wifi.*, llm.*,
+  # secrets.* and machine.* say why not (machine.* is then absent).
+  optional => ["series" "lexicon" "installer" "network-stack" "wifi" "llm" "secrets" "power" "debug-session"]
+  scopes => [
+    (config-all [File_Right.Read])
+    # Every series, read only.
+    (Scope.Metrics Scope_Place.Everything)
+    # :files, :save and :load; and the files handed to programs it starts.
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")
+    # The toolchain, read-only: handed to gcc (its toolchain parameter).
+    (filesystem [File_Right.Read] "@nvme:0/toolchain")
+    # bible.*: the Bible's translations (APP-005), read only.
+    (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-bible/")
+    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-bible/")
+    # Apps built on this machine (ccl-build's products, cubit-remote put):
+    # read only, the staging area alone, not the rest of @system/work.
+    (filesystem [File_Right.Read] "@system/work/remote/out")
+    # debug.*: targets' build-id debug files and sources, read only.
+    (filesystem [File_Right.Read] "@system/Debug/")]
+  # Each becomes a CCL interface generated from its description: as.run,
+  # ld.run, gcc.run (named by the last component), and their ports
+  # (as.unix.stderr ...). The staging directory admits the programs built
+  # beneath it (hello.run for out/userspace/apps/hello/build/hello.app),
+  # found again by (programs.refresh); procmgr starts one only with the
+  # read scope above and the Desktop's Allow app replacement switch on.
+  may_launch => [(Launch "as.app") (Launch "ld.app") (Launch "toolchain/bin/gcc")
+    (Launch "@system/work/remote/out/")])

@@ -1,0 +1,71 @@
+with CuBit.File_Selection;
+with CuBit.UI.Editor;
+with CuBit.UI.State;
+
+--  Reusable, application-modal selection UI. The caller supplies names and
+--  performs I/O after Submit; this widget cannot enumerate or grant access.
+package CuBit.UI.File_Dialogs is
+   type Dialog_Mode is (Open_File, Save_New_File, Unsaved_Changes);
+   type Dialog_Action is (No_Action, Submit, Save_Changes, Discard_Changes, Cancelled);
+   type Event_Kind is
+     (No_Event, Text_Input, Backspace, Delete, Left, Right, Home, End_Key,
+      Select_All, Up, Down, Page_Up, Page_Down, Enter, Escape, Tab,
+      Pointer_Down, Pointer_Drag, Pointer_Up, Double_Click,
+      Wheel_Up, Wheel_Down);
+   type Dialog_Event is record
+      Kind : Event_Kind := No_Event;
+      Character_Value : Character := ' ';
+      X, Y : Natural := 0;
+      Shift, Control : Boolean := False;
+   end record;
+   type Dialog_State is private;
+   --  Title, Kind (the type column) and Empty (the empty list's line)
+   --  name what the application keeps there; "" keeps the CCL source
+   --  wording.
+   MAXIMUM_CAPTION : constant := 64;
+   procedure Show
+     (State : out Dialog_State; Mode : Dialog_Mode;
+      Files : CuBit.File_Selection.File_List; Location : String;
+      Suggested_Name : String := "";
+      Title : String := ""; Kind : String := ""; Empty : String := "");
+   -- Returns a decision only; the caller owns saving and deferred opening.
+   procedure Confirm_Unsaved (State : out Dialog_State; Filename : String);
+   function Is_Open (State : Dialog_State) return Boolean;
+   function Mode (State : Dialog_State) return Dialog_Mode;
+   function Filename (State : Dialog_State) return String;
+   function Bounds (Width, Height : Natural) return Rect;
+   procedure Close (State : in out Dialog_State);
+   procedure Set_Error (State : in out Dialog_State; Message : String);
+   procedure Handle
+     (State : in out Dialog_State; Event : Dialog_Event;
+      Width, Height : Natural; Action : out Dialog_Action);
+   procedure Draw (C : Canvas; State : Dialog_State; Colors : Theme);
+   --  Copy and paste (docs/clipboard.md): Process runs on the name field
+   --  (a clipboard chord from the caller's clipboard), which takes focus.
+   generic
+      with procedure Process (Field : in out CuBit.UI.Editor.Edit_State; Changed : out Boolean);
+   procedure Edit_Name (State : in out Dialog_State);
+private
+   subtype Decision is Dialog_Action range Save_Changes .. Cancelled;
+   type Focus_Target is (File_List, Name_Field, Accept_Button, Cancel_Button);
+   type Press_Target is (No_Press, Accept_Press, Cancel_Press, Name_Press);
+   type Dialog_State is record
+      Visible : Boolean := False;
+      Operation : Dialog_Mode := Open_File;
+      Files : CuBit.File_Selection.File_List;
+      Selected : CuBit.File_Selection.File_Count := 0;
+      First_Row : Natural := 1;
+      Name : CuBit.UI.Editor.Edit_State;
+      Location_Text : String (1 .. 128) := [others => ' '];
+      Location_Length : Natural range 0 .. 128 := 0;
+      Error_Text : String (1 .. 128) := [others => ' '];
+      Error_Length : Natural range 0 .. 128 := 0;
+      Title_Text, Kind_Text, Empty_Text : String (1 .. MAXIMUM_CAPTION) := [others => ' '];
+      Title_Length, Kind_Length, Empty_Length : Natural range 0 .. MAXIMUM_CAPTION := 0;
+      Focus : Focus_Target := File_List;
+      Press : Press_Target := No_Press;
+      Decision_Focus : Decision := Save_Changes;
+      Decision_Press : Dialog_Action := No_Action;
+      Scroll_State : CuBit.UI.State.UI_State;
+   end record;
+end CuBit.UI.File_Dialogs;

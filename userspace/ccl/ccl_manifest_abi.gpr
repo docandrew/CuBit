@@ -1,0 +1,52 @@
+--  Host-build only the pure wire-ABI units (and CuBit.Failures), not the
+--  CuBit GNAT runtime.
+project CCL_Manifest_ABI is
+   for Source_Dirs use ("../runtime/gnat", "../../shared/publications", "../../shared/time");
+   for Source_Files use
+     ("cubit.ads", "cubit-render_authority.ads", "cubit-firmware_snapshot_authority.ads",
+      "cubit-acpi_hardware_authority.ads",
+      --  Kernel publication requests (KERN-002) and the layouts they name.
+      "cubit-publication_grants.ads", "system_publications.ads", "cpu_times_publication.ads",
+      --  The offerable self endpoint (UI-020).
+      "cubit-self_offers.ads",
+      --  The platform power object (KERN-004).
+      "cubit-platform_power_authority.ads",
+      --  The kernel trace object (Trace_ABI).
+      "cubit-trace_authority.ads",
+      --  The test console object (Test_Console_ABI).
+      "cubit-test_console_authority.ads",
+      --  The VM creation authority (VMM-001).
+      "cubit-vm_create_authority.ads",
+      "clock_publication.ads", "clock_publication.adb",
+      "cubit-network_authority.ads", "cubit-network_authority.adb",
+      "cubit-tls_scopes.ads", "cubit-tls_scopes.adb",
+      "cubit-failures.ads", "cubit-failures.adb",
+      --  The canonical-source readers the generated decoders use.
+      "cubit-canonical_readers.ads", "cubit-canonical_readers.adb",
+      --  The typed-parameter descriptor (.cubit.parameters).
+      "cubit-parameter_signatures.ads", "cubit-parameter_signatures.adb",
+      "cubit-launch_authority.ads", "cubit-launch_authority.adb",
+      "cubit-file_access.ads", "cubit-file_access.adb",
+      "cubit-launch_arguments.ads", "cubit-launch_arguments.adb",
+      "cubit-launch_grants.ads", "cubit-launch_grants.adb",
+      "cubit-program_descriptions.ads", "cubit-program_descriptions.adb",
+      "cubit-startup_tables.ads", "cubit-startup_tables.adb",
+      "cubit-channel_limits.ads", "cubit-channel_declarations.ads", "cubit-channel_declarations.adb",
+      --  Config scopes against the setting catalog (CAP-003).
+      "cubit-config_inspection.ads", "cubit-config_inspection.adb");
+   --  The full Ada runtime the including tool runs on: the Linux host's,
+   --  or the GCC port's libgnat on CuBit (ccl_manifest.gpr's cubit target).
+   type Tool_Targets is ("linux", "cubit");
+   Tool_Target : Tool_Targets := external ("CCL_TOOL_TARGET", "linux");
+   Target := ();
+   case Tool_Target is
+      when "linux" => for Object_Dir use "build/manifest-abi";
+      when "cubit" =>
+         for Object_Dir use "build/manifest-abi-cubit";
+         Target := ("-mno-red-zone");   --  native code has no red zone
+   end case;
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-I-") & Target;
+   end Compiler;
+end CCL_Manifest_ABI;

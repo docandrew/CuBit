@@ -1,0 +1,5 @@
+project Native_Objects extends "discovery.gpr" is
+   for Object_Dir use "build/native-objects";
+   for Exec_Dir use "build/native-objects";
+   for Main use ("native_object_tests.adb");
+end Native_Objects;

@@ -1,0 +1,14 @@
+[
+  {
+    "name": "ref-integer",
+    "body": "Store(RefOf(INT0),Local0) Notify(DEV0,Local0)"
+  },
+  {
+    "name": "index-buffer",
+    "body": "Notify(DEV0,Index(BUF0,Zero))"
+  },
+  {
+    "name": "index-package",
+    "body": "Notify(DEV0,Index(PKG0,Zero))"
+  }
+]

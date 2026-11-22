@@ -1,0 +1,21 @@
+project Format is
+   --  The pure ext2 core: on-disk format codecs, volume geometry and bitmap
+   --  allocation (SPARK), with its hosted tests.
+   Fs_Src := external ("FS_SRC", "../../userspace/services/filesystem");
+   Fs_Obj := external ("FS_OBJ", "build");
+   for Languages use ("Ada");
+   for Source_Dirs use (".", Fs_Src);
+   for Source_Files use
+     ("main.adb", "ext2_format.ads", "ext2_format.adb", "ext2_geometry.ads",
+      "ext2_geometry.adb", "ext2_bitmaps.ads", "ext2_bitmaps.adb");
+   for Object_Dir use Fs_Obj;
+   for Exec_Dir use Fs_Obj;
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--no-loop-unrolling");
+   end Prove;
+end Format;

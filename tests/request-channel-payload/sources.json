@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/runtime/gnat/cubit.ads",
+      "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-slot_rings.ads",
+      "sha256": "e06fcd777b33b586ac0bdb241f8adbb9a700aeb74e57c5bd5c025fbee64515ce"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-slot_rings.adb",
+      "sha256": "e7174ad4a2e406ad52dfec31650e5c8830f0d47dd686c51ab8e4d62b46aa23e3"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-submission_queues.ads",
+      "sha256": "d3625bfd8c669aa6cf3348c259b93eb35416891ca9f7e70924f98df1604fc964"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-submission_queues.adb",
+      "sha256": "df972bfd80032bf1f477d34ebc447875adcb533040a846ae401248ec68f25371"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_rings.ads",
+      "sha256": "94ca5b5057c120d751ee59f98dbdd9913333cec0bea87cc2dd9db295e46254a4"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_rings.adb",
+      "sha256": "2e2e118dee7b42c375ef8dc1a00f9e9edbdd99c73e88d6b4f1ddb554ac5a41af"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_contracts.ads",
+      "sha256": "0e8a8dff2110eee87f7280c179369bdfd52eed67b81d66e8f3c4e0b85b11ce8d"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-channel_contracts.adb",
+      "sha256": "578a023b2579a021e571690ce66d5166de84445cff0bbf8b9c08d850bfa8a532"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-protocols.ads",
+      "sha256": "eaa9989bb4cd8c8c59da36a1e468ec6405db1887188daf6099c9a68ec4ebf382"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-request_channels.ads",
+      "sha256": "743a0337642b85f42d3e5c952161abbcf775acfdd1e5c717eea06f1330664f15"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-request_channels.adb",
+      "sha256": "226bd16157b481608f04e70d5428033e8b51317be733f46ff9486ae101e54d75"
+    },
+    {
+      "path": "userspace/lib/lexicon/lexicon_wire.ads",
+      "sha256": "1b7da4cb03a7041b318b0c3ddb602915101ee80813842de05ed4a6443197054f"
+    },
+    {
+      "path": "userspace/lib/lexicon/lexicon_wire.adb",
+      "sha256": "e9da77aba3da2d607f1b3e940db3768f4c64779ba73857f83e785eefa00bf206"
+    },
+    {
+      "path": "userspace/lib/lexicon/lexicon_images.ads",
+      "sha256": "86bdb3b3739f7931578c98c5ba17a488014fc1c4621ff02c42cecb8d54704ef5"
+    },
+    {
+      "path": "userspace/lib/lexicon/lexicon_images.adb",
+      "sha256": "04687fb85f78370bcb741a49d216c60f6c15cd7320d719894123998328ddf9c7"
+    },
+    {
+      "path": "userspace/lib/lexicon/channel/lexicon_channel.ads",
+      "sha256": "363f5681919607887f202a2e8e2e67ea2496e5756258d5d0d8be4572a5615155"
+    },
+    {
+      "path": "userspace/apps/ipctest-server/channel/ipctest_channel.ads",
+      "sha256": "58f1fb0f2547d88dd8a1364f9d8576502b371ad6b0f46d803edf2f93bbb9c674"
+    }
+  ],
+  "local": [
+    {
+      "name": "layout.adb",
+      "sha256": "f799525449a1ef48c44aa8e8327b754985bfbe67d64060842503a2c9a469d35a"
+    },
+    {
+      "name": "tests.adb",
+      "sha256": "9ad63d3db2a0950b8b17e57946f96d7fa4cf11cd5fad7eb2f57769b7807e08bc"
+    },
+    {
+      "name": "host/cubit-messages.ads",
+      "sha256": "37b7eef8018c2a2330426e1c492d4b4be2d80a2410e59862710e063d10c70173"
+    },
+    {
+      "name": "baseline-layout.txt",
+      "sha256": "cfcdb236d79e971ed51bd749ed1c20a53e8177e0b0eca33a94e8eeb4b7fdf14a"
+    }
+  ],
+  "modeledConstant": {
+    "path": "userspace/runtime/gnat/cubit-messages.ads",
+    "sha256": "5821c8bfe49dca95b486dc76b93d4a43377edc3f9bf8a62c1d07d023c9eac2b2",
+    "value": 28
+  }
+}

@@ -1,0 +1,17 @@
+/home/doc/git/.acpi-proof-work/continuation-boundary-oracle-mfvl0kc0/boundary-r2.asl      3: Method (S032, 0) { Store (Zero, Local0) Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch
+[*** iASL: Very long input line, message below refers to column 12 ***]
+Remark   2119 -    Control Method marked Serialized (Due to use of Switch operator)
+
+/home/doc/git/.acpi-proof-work/continuation-boundary-oracle-mfvl0kc0/boundary-r2.asl      5: Method (S033, 0) { Store (Zero, Local0) Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch (Zero) { Case (Zero) { Switch
+[*** iASL: Very long input line, message below refers to column 12 ***]
+Remark   2119 -    Control Method marked Serialized (Due to use of Switch operator)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/continuation-boundary-oracle-mfvl0kc0/boundary-r2.asl -    7219 bytes    540 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/continuation-boundary-oracle-mfvl0kc0/results/boundary-r2.aml -    2802 bytes    535 opcodes       5 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 2 Remarks, 0 Optimizations

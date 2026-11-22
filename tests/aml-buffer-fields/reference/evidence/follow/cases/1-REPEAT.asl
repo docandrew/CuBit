@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",1,"CUBIT","FLDSMALL",1){Name(MARK,Zero) Name(BUFF,Buffer(8){0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48}) Method(INDX,0){Increment(MARK) Return(Zero)} Method(CTRL,0){Return(One)} Method(WIDT,0){Return(ShiftRight(Ones,32))} Method(TEST,0){Store(Zero,Local0) While(LLess(Local0,2)){CreateByteField(BUFF,INDX(),FLD0) Increment(Local0)} Return(FLD0)}}

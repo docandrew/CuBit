@@ -1,0 +1,19 @@
+# Requested authority only; the network scope needs (network approve-declared).
+(executable-manifest v1
+  (identity "com.cubit.tls")
+  (version "0.1.0")
+  # One "started" record (CuBit.Logging.Announce).
+  (request-service logstore read-write logstore)
+  (request-service config read-write config)
+  (request-service clock read-write clock)
+  (request-service filesystem read-write filesystem)
+  # tls.svc connects on behalf of clients whose own tls-scope names were
+  # checked first; it needs broad outbound TCP with DNS to do so.
+  (request-network tcp-connect (ipv4 "0.0.0.0" 0)
+    (ports 1 65535) (dns allow)
+    (connections 8) tcp)
+  # The trust store: the system volume (FS-033), then the optical live medium.
+  (filesystem-scope (rights read) "@system/tls/")
+  (filesystem-scope (rights read) "@cd:0/tls/")
+  (config-scope (rights read) "tls.")
+  (request-notification tls manage registration))

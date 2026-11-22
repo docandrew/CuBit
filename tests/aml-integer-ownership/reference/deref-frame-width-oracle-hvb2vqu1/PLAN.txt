@@ -1,0 +1,1 @@
+Twelve normal cases establish raw Arg and shared Store-created Local control, then explicit DerefOf via RefOf or held reference before reading original frame value. Existing fcq PRAW/PDRE/PAFT already covers package mutation and is not rerun. All expected outcomes hypotheses; compiler/runtime rejection explicit. Bounds same5s128MiB8MiB1MiB.

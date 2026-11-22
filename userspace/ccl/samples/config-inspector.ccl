@@ -1,0 +1,4 @@
+# Native CuBit Workbench only: its manifest requests read-only Config inspection.
+# No Config write, deletion, or authority administration is exposed by this API.
+# The Linux preview does not pretend to have a CuBit Config connection.
+(ui.output-append (config.keys ""))

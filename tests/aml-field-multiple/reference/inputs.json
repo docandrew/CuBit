@@ -1,0 +1,21 @@
+{
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/PLAN.txt": "8cb59c485d3102f8f2877e0ca7913294ef751e59576c1711436449aa5fa39b5e",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/predictions-not-goldens.json": "725d70d9e48446fd5a89a654e52d26f4448bfe139b211312dacefbbdc82fa931",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/reference-pins.json": "2231ed1708dde31e5efb4e186b5340f0fd61d0a94a1bf740331164662b2a0cef",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/tools.json": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/identity.json": "ccf45987ef795715ade0638f3fa599148a1d4be1e5bab5ddf6bbd47aa095bafd",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/multi8-r1.asl": "b687c957da03f490551bc937832a0fcacd466acadb036002c800e03fc613c072",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/multi32-r1.asl": "32d5e4a9178a59ec2011c35a285f0a5d9751e8f196db5aa78dfd7a1bea4be4e2",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/multi8-r2.asl": "64be4581303e34b936f86f583e8279fe4537ab085928c25130cbe4235ea9794d",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/run.py": "e6d7f796b62a177a165629ad34984e708adfcfc8e1c637c5852ec61e185f8b6e",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/bounded_tool.py": "6ffc31aeb807149b491cde9a065c75ca6935e04a996da1f2b47fa45c41e53fd9",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/multi16-r2.asl": "99c41475d8483de6ddb233a42f4e9041d39c5dc8ae59ab86a03789ec18a7e99e",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/multi16-r1.asl": "7561db00c020ed79b56d72f9378072755df87994b5f3e9c63ab670ff6c1b649d",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/cases.json": "f177de19f1cd7358ed6eb9153ae5c42c85119f9c0274f25b367a35962d3b1205",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/multi32-r2.asl": "7bd73fb966b54f13ebf0cd4b5f2e155c24e70927e1c8341d00ba7e38d370bd28",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/provenance/exfldio.c": "4c23c38942848592d19b24cd43d87d373b5b943fd37c9376e9bb9a8a8279544a",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/provenance/aemain.c": "2f25ebc70324d526ba5abd0cfd315d9b47cbfb483aab2b28853b6292352670c7",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/provenance/exfield.c": "5afaf772d144badceb9e4ac663f2e95a78730a6df433743108f856b509e1af5e",
+  "/home/doc/git/.acpi-proof-work/field-multiple-normal-oracle-ilbufegh/provenance/aehandlers.c": "1d980c8cb689d1d8a6287280e8cc338c7773f410c514e7402797d8449fb3777e"
+}

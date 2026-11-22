@@ -1,0 +1,13 @@
+# Requested authority only; the existing launch path remains in control.
+# The platform power object (KERN-004) is for the kernel-object Call phase:
+# the client only asks for S3, which the kernel refuses (Not_Yet) after the
+# whole Call path (handle resolution, message decode, admission, reply).
+(Executable_Manifest
+  identity => "com.cubit.bench.ipc.client"
+  version => "1.0.0"
+  requests => [(service "ipc-test" "ipc-test")
+               (Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Platform_Power "power"))
+               (Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Trace "trace"))
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

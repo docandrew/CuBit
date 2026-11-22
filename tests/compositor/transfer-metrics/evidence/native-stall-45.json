@@ -1,0 +1,52 @@
+{
+  "status": "PASS",
+  "gpu_enabled": false,
+  "scope": "native CuBit runtime-dispatch software fallback with explicit boot seeds",
+  "binary_sha256": "f276331193fa45150fd47ae58d9e060609b67864d6da664d3f19e6c12071d056",
+  "memory": "1G",
+  "render_approved": true,
+  "render_attempts": [
+    [
+      "4294967329",
+      "FALSE"
+    ],
+    [
+      "4294967330",
+      "TRUE"
+    ]
+  ],
+  "software_fallback": "PASS",
+  "hardware_validated": false,
+  "input_overlay": "off",
+  "cursor_moves": 32,
+  "cursor_roundtrips": 8,
+  "cursor_damage": "PASS exact restoration and no changes outside old/new footprints",
+  "overlay_click_pixels": "unchanged without HUD",
+  "scaled_cursor_moves": 16,
+  "scaled_cursor_roundtrips": 4,
+  "native_scales": [
+    [
+      5,
+      4
+    ]
+  ],
+  "output_pixels": [
+    1024,
+    768
+  ],
+  "metrics_stall": {
+    "held_page_checks": 600,
+    "menu_restorations_during_hold": 3,
+    "resumed_batches": 3,
+    "producer_dropped": 567
+  },
+  "log_channel": "PASS authenticated ordered startup/backend records and reader close",
+  "observer_sha256": "b04ccc9c30841f197e5d5c3623664ffce0652098848460e72232989d437a398e",
+  "menu_changed_pixels": [
+    106723,
+    106723,
+    106723
+  ],
+  "restored_cycles": 3,
+  "false_gpu_markers": 0
+}

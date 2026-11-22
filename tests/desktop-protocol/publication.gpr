@@ -1,0 +1,15 @@
+project Publication is
+   for Source_Dirs use (".", "build/publication/source");
+   for Source_Files use
+     ("publication_tests.adb", "cubit.ads", "cubit-grant_references.ads",
+      "cubit-desktop_protocol.ads", "cubit-desktop_protocol.adb",
+      "cubit-desktop_protocol-publication.ads",
+      "cubit-desktop_protocol-publication.adb");
+   for Object_Dir use "build/publication/obj";
+   for Exec_Dir use "build/publication";
+   for Main use ("publication_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Publication;

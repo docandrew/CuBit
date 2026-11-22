@@ -1,0 +1,12 @@
+project Input_Acknowledgment is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("input_acknowledgment_tests.adb",
+     "compositor_input_acknowledgment.ads", "compositor_input_acknowledgment.adb",
+     "compositor_input_queue.ads", "compositor_input_queue.adb");
+   for Object_Dir use "build/input-acknowledgment/obj";
+   for Exec_Dir use "build/input-acknowledgment";
+   for Main use ("input_acknowledgment_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Input_Acknowledgment;

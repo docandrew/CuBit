@@ -1,0 +1,19 @@
+project Rename_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use
+     (".", "../../userspace/services/filesystem", "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("main.adb", "directory_blocks.ads", "directory_blocks.adb",
+      "directory_commit.ads", "directory_commit.adb", "cubit.ads",
+      "cubit-directory_paths.ads", "cubit-directory_paths.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--no-loop-unrolling");
+   end Prove;
+end Rename_Tests;

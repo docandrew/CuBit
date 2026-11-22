@@ -1,0 +1,9 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/match-operand-oracle-qm5z23xn/r1-first-second-effect-reference-store.asl -     433 bytes     19 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/match-operand-oracle-qm5z23xn/r1-first-second-effect-reference-store.aml -     150 bytes     11 opcodes       8 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations

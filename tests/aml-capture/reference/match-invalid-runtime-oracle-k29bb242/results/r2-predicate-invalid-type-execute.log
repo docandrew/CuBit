@@ -1,0 +1,55 @@
+Input file /home/doc/git/.acpi-proof-work/match-invalid-runtime-oracle-k29bb242/r2-predicate-invalid-type.aml, Length 0x98 (152) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x000062F9E2DEA180 000024 (v02 Intel )
+ACPI: XSDT 0x000062FA0237A150 00003C (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x000062F9E2DE9FA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x000062F9E2DE8500 000024 (v02 Intel  Local    00000001 INTL 20090730)
+ACPI: FACS 0x000062F9E2DEA140 000040
+ACPI: SSDT 0x000062FA0237B160 000098 (v02 CUBIT  MATCHOP  00000001 INTL 20260408)
+
+ACPI table initialization:
+Table [DSDT: Local   ] (id 01) -    0 Objects with   0 Devices,   0 Regions,    0 Methods (0/0/0 Serial/Non/Cvt)
+Table [SSDT: MATCHOP ] (id 02) -    9 Objects with   0 Devices,   0 Regions,    6 Methods (0/6/0 Serial/Non/Cvt)
+ACPI: 2 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 18 (0x12) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Initializing Device/Processor/Thermal objects and executing _INI/_STA methods:
+    Executed 0 _INI methods requiring 0 _STA executions (examined 2 objects)
+Evaluating \PRE0
+Evaluation of \PRE0 returned object 0x62fa02374dd0, external buffer length 18
+  [Integer] = 0000000000000011
+
+Evaluating \TEST
+ACPI Debug:  0x00000000000000A1
+ACPI Error: Needed [Integer/String/Buffer], found [Package] 0x62fa0237c350 (20260408/exresop-635)
+ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [Match] (20260408/dswexec-613)
+Failed at AML Offset 00001, Opcode 0089: Match (PKG0, MEQ, -Return Value- (), MTR, Zero, -Return Value- ())
+No Local Variables are initialized for Method [TEST]
+
+No Arguments are initialized for method [TEST]
+
+ACPI Error: Aborting method \TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)
+ACPI Error: AE_AML_OPERAND_TYPE, while executing \TEST from AML Debugger (20260408/dbexec-334)
+Evaluation of \TEST failed with status AE_AML_OPERAND_TYPE
+Evaluating \POST
+Evaluation of \POST returned object 0x62fa02374dd0, external buffer length 18
+  [Integer] = 0000000000000011
+
+Evaluating \FLAG
+Evaluation of \FLAG returned object 0x62fa02374dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+0x62fa0237bbc0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x62fa0237acf0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x62fa0237abb0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x62fa0237aa00 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

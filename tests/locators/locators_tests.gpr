@@ -1,0 +1,19 @@
+project Locators_Tests is
+   Src := External ("LOC_SRC", "../../userspace/runtime/gnat");
+   for Source_Dirs use (".", Src);
+   for Source_Files use
+     ("main.adb", "cubit.ads", "cubit-net_address.ads",
+      "cubit-locators.ads", "cubit-locators.adb",
+      "cubit-net_locator.ads", "cubit-net_locator.adb");
+   for Object_Dir use External ("LOC_OBJ", "build");
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      --  Not the CuBit runtime's predefined units: -I- keeps the compiled
+      --  unit's directory out of the search (as tests/network-authority).
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1");
+   end Prove;
+end Locators_Tests;

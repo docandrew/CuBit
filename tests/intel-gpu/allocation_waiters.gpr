@@ -1,0 +1,8 @@
+project Allocation_Waiters is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use external ("ALLOCATION_WAITERS_OBJECT_DIR", "build-allocation-waiters");
+   for Main use ("allocation_waiters_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Allocation_Waiters;

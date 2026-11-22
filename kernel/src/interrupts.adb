@@ -1,0 +1,855 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2019 Jon Andrew
+--
+-- @description x86-64 interrupt handler routines and interrupt vector setup.
+-------------------------------------------------------------------------------
+with CPU_Parking;
+with Interfaces; use Interfaces;
+with System.Machine_Code; use System.Machine_Code;
+with System.Storage_Elements; use System.Storage_Elements;
+
+with Build;
+with Boot_Timer_Probe;
+with Boot_Diagnostics;
+with Config;
+with Device_Interrupts;
+with DMA_Remapping;
+with Device_Memory_Diagnostics;
+with Process_Stops;
+with Device_Memory_Publication;
+with Interrupt_Lines;
+with IPC_Labels;
+with InterruptNumbers; use InterruptNumbers;
+with Lapic;
+with Mem_mgr;
+with Debug_Exceptions;
+with Pic;
+with PerCpuData;
+with Process;
+with Process.IPC;
+with Serial;
+with Scheduler_Alarm;
+with TextIO; use TextIO;
+with Time;
+with Timer_Expiry_Probe;
+with TLB_Shootdown;
+with Virtmem;
+
+package body Interrupts with
+    SPARK_Mode => On
+    -- Refined_State => (InterruptServiceRoutines => (
+    --         isr0, isr1, isr2, isr3, isr4, isr5, isr6, isr7, isr8, isr9, 
+    --         isr10, isr11, isr12, isr13, isr14, isr16, isr17, isr18, isr19, 
+    --         isr32, isr33, isr34, isr35, isr36, isr37, isr38, isr39, isr40,
+    --         isr41, isr42, isr43, isr44, isr45, isr46, isr47,
+    --         isr127, isr128, isr255),
+    --         IDTState => (idt, idtp))
+is
+
+    -- The IDT itself, shared by all CPUs
+    idt : IDTType;
+
+    -- Pointer structure for our IDT
+    idtp : IDTPointer;
+
+    ---------------------------------------------------------------------------
+    -- printRegs
+    ---------------------------------------------------------------------------
+    procedure printRegs(frame : not null access constant Stackframe.InterruptStackFrame) is
+    begin
+        println;
+        --print("Exception:  "); println(Integer(frame.interruptNumber));
+        print ("error code: "); println (frame.errorCode);
+        print ("rip:    ");     println (frame.rip);
+        print ("rflags: ");     println (frame.rflags);
+        print ("rsp:    ");     println (frame.rsp);
+        print ("rbp:    ");     println (frame.rbp);
+        print ("cs:     ");     println (frame.cs);
+        print ("ss:     ");     println (frame.ss);
+        
+        print ("rax:    ");     println (frame.rax);
+        print ("rbx:    ");     println (frame.rbx);
+        print ("rcx:    ");     println (frame.rcx);
+        print ("rdx:    ");     println (frame.rdx);
+        print ("rsi:    ");     println (frame.rsi);
+        print ("rdi:    ");     println (frame.rdi);
+        print ("r8:     ");     println (frame.r8);
+        print ("r9:     ");     println (frame.r9);
+        print ("r10:    ");     println (frame.r10);
+        print ("r11:    ");     println (frame.r11);
+        print ("r12:    ");     println (frame.r12);
+        print ("r13:    ");     println (frame.r13);
+        print ("r14:    ");     println (frame.r14);
+        print ("r15:    ");     println (frame.r15);
+    end printRegs;
+
+    ---------------------------------------------------------------------------
+    -- eoi - handle end of interrupt, depending on the interrupt source. If
+    --  the interrupt controller has not been set up yet, this should not be
+    --  called, and will cause a kernel panic if it is.
+    ---------------------------------------------------------------------------
+    procedure eoi (num : x86Interrupt) with
+        SPARK_Mode => Off -- instantiate MMIO controller at live LAPIC address
+    is
+        NoInterruptController : Exception;
+        package myLapic is new lapic(lapicAddr);
+    begin
+        case intController is
+            when LEGACY_PIC =>
+                -- for PIC, no action necessary except for hardware IRQs
+                if num in TIMER..IDE2 then
+                    pic.finishIRQ (num);
+                end if;
+            when APIC =>
+                myLapic.finishIRQ;
+                -- When LAPIC is active but no IOAPIC (virtual wire mode),
+                -- PIC-sourced IRQs also need PIC EOI to allow the next
+                -- interrupt on that line.
+                if num in TIMER..IDE2 then
+                    pic.finishIRQ (num);
+                end if;
+            when X2APIC =>
+                null;
+            when NONE =>
+                println("FATAL: end-of-interrupt called with no interrupt controller.");
+                raise NoInterruptController;
+        end case;
+    end eoi;
+
+    ---------------------------------------------------------------------------
+    -- lineInterrupt
+    --
+    -- A legacy line (Interrupt_Lines): every owner is told. A level line is
+    -- masked before the EOI and stays masked until its owners acknowledge
+    -- (ACKNOWLEDGE_INTERRUPT_LINE) after clearing their source, so it cannot
+    -- re-fire while they work; an edge line is only EOIed. Legacy PCI INTx
+    -- is shareable: each owner checks its own device before acknowledging.
+    ---------------------------------------------------------------------------
+    procedure lineInterrupt (vector : Interrupt_Lines.Line_Vector) with
+        SPARK_Mode => On
+    is
+        recipients : Interrupt_Lines.Recipient_List;
+        dest : Interfaces.Unsigned_64;
+    begin
+        Interrupt_Lines.Deliver (vector, recipients);
+        eoi (vector);
+        for index in recipients'Range loop
+            dest := recipients (index);
+            if dest > 0 and then
+               dest <= Interfaces.Unsigned_64 (Process.ProcessID'Last)
+            then
+                Process.IPC.notifyIRQ (Process.ProcessID (dest));
+            end if;
+        end loop;
+    end lineInterrupt;
+
+    ---------------------------------------------------------------------------
+    -- Interrupt Handler - called from interrupt_handlers.asm. Note that this
+    --  function needs to know what (PIC, APIC, x2APIC) is generating these
+    --  interrupts.
+    ---------------------------------------------------------------------------
+    --  Fixed-size images for the on-screen panic banner: no allocation or
+    --  secondary stack in an exception handler.
+    Hex_Digits : constant String := "0123456789ABCDEF";
+    function hex64 (Value : Unsigned_64) return String is
+        Result : String (1 .. 18) := "0x0000000000000000";
+        V : Unsigned_64 := Value;
+    begin
+        for I in reverse 3 .. Result'Last loop
+            Result (I) := Hex_Digits (Natural (V and 16#F#) + 1);
+            V := Shift_Right (V, 4);
+        end loop;
+        return Result;
+    end hex64;
+
+    function decimal (Value : Natural) return String is
+        Result : String (1 .. 10) := (others => '0');
+        V : Natural := Value;
+        First : Positive := Result'Last;
+    begin
+        for I in reverse Result'Range loop
+            Result (I) := Character'Val (Character'Pos ('0') + V mod 10);
+            V := V / 10;
+            First := I;
+            exit when V = 0;
+        end loop;
+        return Result (First .. Result'Last);
+    end decimal;
+
+    ---------------------------------------------------------------------------
+    -- Probe_User_Access (test kernels, Build.Smap_Entry_Probe; headless
+    -- alignment-flag, SEC-026). Called by interruptHandler before it leaves
+    -- the interrupted address space. When the interrupt came from user code
+    -- that holds RFLAGS.AC set, read one byte of that code's own instruction
+    -- through its user address, as a kernel bug would. With SMAP on and the
+    -- entry stubs clearing AC the read must fault (recovered, isr14); a read
+    -- that succeeds means interrupt handlers run with SMAP off. Each outcome
+    -- is reported once: from user mode this CPU holds no TextIO lock.
+    ---------------------------------------------------------------------------
+    Probe_Read_Reported  : Boolean := False with Atomic;
+    Probe_Fault_Reported : Boolean := False with Atomic;
+
+    procedure Probe_User_Access
+        (frame : not null access constant Stackframe.InterruptStackFrame)
+        with SPARK_Mode => Off  -- reads a user address with fault recovery
+    is
+        function User_Read_Probe (Address : System.Address) return Unsigned_32
+            with Import, Convention => C, External_Name => "cubitUserReadProbe";
+        Kernel_Flags : Unsigned_64;
+    begin
+        if (frame.cs and 3) /= 3
+          or else (frame.rflags and x86.FLAGS_ALIGNMENT) = 0
+        then
+            return;
+        end if;
+        Asm ("pushfq" & ASCII.LF & ASCII.HT & "popq %0",
+             Outputs  => Unsigned_64'Asm_Output ("=r", Kernel_Flags),
+             Volatile => True);
+        if User_Read_Probe (frame.rip) = 0 then
+            if not Probe_Read_Reported then
+                Probe_Read_Reported := True;
+                println ("SMAP probe: an interrupt handler read user memory (kernel AC="
+                         & (if (Kernel_Flags and x86.FLAGS_ALIGNMENT) /= 0 then "1" else "0")
+                         & ")");
+            end if;
+        elsif not Probe_Fault_Reported then
+            Probe_Fault_Reported := True;
+            println ("SMAP probe: user memory faulted in an interrupt handler (kernel AC="
+                     & (if (Kernel_Flags and x86.FLAGS_ALIGNMENT) /= 0 then "1" else "0")
+                     & ")");
+        end if;
+    end Probe_User_Access;
+
+    procedure interruptHandler (frame : not null access constant Stackframe.InterruptStackFrame)
+        with SPARK_Mode => Off -- live CPU/process overlays and hardware dispatch
+    is
+        KernelFPUException : Exception;
+
+        interruptNumber : constant x86Interrupt := x86Interrupt(frame.interruptNumber);
+        oldCR3 : Integer_Address;
+        Measure_Boot_IRQ : constant Boolean := interruptNumber = TIMER
+          and then intController = LEGACY_PIC and then Boot_Timer_Probe.Enabled;
+        Boot_IRQ_Stamp : Unsigned_64 := 0;
+        -- NMI handler: lock-free, writes directly to the serial port. Do NOT
+        -- acquire any spinlocks here: an NMI can fire while a lock is held,
+        -- leading to instant deadlock. It runs before the address-space
+        -- switch below and never touches CR3: an NMI can land in user mode or
+        -- in kernel code working in a process's address space, and returning
+        -- with the kernel-only page tables would leave that code without its
+        -- mappings. The kernel is mapped in every address space.
+        procedure handleNMI is
+            perCPUAddr : constant System.Address := PerCPUData.getPerCPUDataAddr;
+            cpuData : PerCPUData.PerCPUData with
+                Import, Volatile, Address => perCPUAddr;
+            nmiMsg : constant String := "NMI on CPU " & ASCII.LF;
+        begin
+            -- Record NMI state per-CPU
+            cpuData.nmiCount := cpuData.nmiCount + 1;
+
+            if cpuData.nmiInProgress then
+                -- Nested NMI - just count and return
+                return;
+            end if;
+
+            cpuData.nmiInProgress := True;
+
+            -- Log directly to serial port (bypasses TextIO lock)
+            for C of nmiMsg loop
+                Serial.send (Config.serialMirrorPort, C);
+            end loop;
+
+            cpuData.nmiInProgress := False;
+        end handleNMI;
+    begin
+        if interruptNumber = NMI then
+            -- Runs on IST 1 and returns via iretq; no EOI needed.
+            handleNMI;
+            return;
+        end if;
+
+        -- A #DB in kernel mode (IST 4, GS-exact entry): a user data
+        -- breakpoint deferred onto a kernel instruction. Counted and
+        -- dismissed before anything else, like an NMI: no lock, no CR3
+        -- change, no reschedule from the IST stack.
+        if interruptNumber = DEBUG and then (frame.cs and 3) = 0 then
+            Debug_Exceptions.Handle_Kernel;
+            return;
+        end if;
+
+        if Build.Smap_Entry_Probe then
+            Probe_User_Access (frame);
+        end if;
+
+        if Measure_Boot_IRQ then
+            Boot_Timer_Probe.Enter_IRQ (Boot_IRQ_Stamp);
+        end if;
+        -- Save the old address space
+        oldCR3 := x86.getCR3;
+        --print("Saving old address space: "); println(oldCR3);
+
+        -- Switch page tables to kernel. If this interrupt happened during user-mode, the TSS
+        -- should ensure that the process' kernel stack is being used.
+        -- @TODO not sure this is necessary since kernel is mapped in each process.
+        Mem_mgr.switchAddressSpace;
+        --print("In kernel address space: "); println(x86.getCR3);
+
+        case interruptNumber is
+            when NMI =>
+                -- Handled before the address-space switch, above.
+                return;
+
+            when DOUBLE_FAULT =>
+                -- Double fault runs on IST 2. Unrecoverable.
+                println ("DOUBLE FAULT!");
+                printRegs (frame);
+                x86.halt;
+
+            when MACHINE_CHECK =>
+                -- Machine check runs on IST 3. Unrecoverable.
+                println ("MACHINE CHECK EXCEPTION!");
+                printRegs (frame);
+                x86.halt;
+
+            when NO_MATH_COPROCESSOR =>
+                -- FP/SIMD state is restored eagerly before entering userspace,
+                -- and kernel code is compiled without FP/SIMD. Reaching #NM
+                -- therefore means the isolation invariant was violated; never
+                -- recover by exposing whatever register state is still live.
+                raise KernelFPUException
+                    with "Unexpected #NM under eager FPU switching";
+
+            when PAGE_FAULT =>
+                -- Demand paging is ordinary execution, not a boot diagnostic.
+                -- Report only rejected accesses in the handlers below.
+                -- Diagnostics only: which instruction faulted.
+                Process.lastFaultRIP := frame.rip;
+                Process.lastFaultRSP := frame.rsp;
+                handlePageFault (frame.errorCode);
+
+            when TIMER =>
+                -- must finish IRQ first since any yield that happens
+                -- will eventually return to interruptReturn in
+                -- interrupt.asm, not here.
+                eoi (TIMER);
+                -- Where user code was running (Process.IPC.reportStuckCalls).
+                if Util.isBitSet (frame.cs, 0) or Util.isBitSet (frame.cs, 1) then
+                    declare
+                        tid : constant Process.ThreadID := PerCPUData.getCurrentThread;
+                    begin
+                        if Process."/=" (tid, Process.NO_THREAD) then
+                            Process.threadtab (tid).sampledRIP :=
+                              Unsigned_64 (Util.addrToNum (frame.rip));
+                        end if;
+                    end;
+                end if;
+                if PerCPUData.getCPUNumber = 0 then
+                    Boot_Diagnostics.Heartbeat;
+                    TextIO.drainStalledConsole;
+                end if;
+                if not Build.Test_Deadline_Timer or else
+                   not Timer_Expiry_Probe.Handle_Interrupt
+                then
+                    if not Build.OneShot_Scheduling or else intController /= APIC then
+                        Time.clockTick;
+                    elsif Scheduler_Alarm.Interrupt_Due then
+                        -- Rearm before any clock work can yield off this stack.
+                        Scheduler_Alarm.Request_Earlier (1_000);
+                        Time.clockTick;
+                    end if;
+                end if;
+                
+            when Interrupt_Lines.Line_Vector =>
+                lineInterrupt (interruptNumber);
+
+            when Device_Vector =>
+                --  A message-signaled vector with at most one owner
+                --  (docs/msi-interrupts.md). It is outside the legacy
+                --  PIC range so no physical IRQ line aliases it. EOI first:
+                --  the owner's doorbell stays set until it drains the
+                --  device, so a message arriving after this is not lost.
+                eoi (interruptNumber);
+                Device_Interrupts.deliver (interruptNumber);
+
+            when RESCHEDULE =>
+                eoi (RESCHEDULE);
+                -- IPI from another CPU: set needReschedule so the
+                -- checkPreempt block at interrupt return yields.
+                -- Also flush TLB if a grant revocation requires it.
+                reschedIPI : declare
+                    perCPUAddr2 : constant System.Address :=
+                        PerCPUData.getPerCPUDataAddr;
+                    cpuData2 : PerCPUData.PerCPUData with
+                        Import, Volatile, Address => perCPUAddr2;
+                    myCPU : constant Natural := cpuData2.cpuNum;
+                begin
+                    cpuData2.needReschedule := True;
+                    TLB_Shootdown.Service (myCPU);
+                    -- A platform power transition (KERN-004): stop here,
+                    -- interrupts off and no spinlock held, until released.
+                    if CPU_Parking.Requested and then myCPU <= CPU_Parking.CPU_Index'Last then
+                        CPU_Parking.Hold (myCPU);
+                    end if;
+                end reschedIPI;
+
+            when IOMMU_FAULT =>
+                -- DMA faults: drain every unit's fault records into typed
+                -- records (DMA_Remapping, IOMMU-001).
+                eoi (IOMMU_FAULT);
+                DMA_Remapping.Service_Faults;
+
+            when SPURIOUS =>
+                println ("Spurious Interrupt");
+
+            when KERNEL_PANIC =>
+                TextIO.stopAsynchronous;
+                println ("KERNEL PANIC!");
+                Boot_Diagnostics.Emergency
+                  (System.Null_Address, "panic interrupt RIP " & hex64 (Unsigned_64 (Util.addrToNum (frame.rip))));
+                printRegs (frame);
+                x86.halt;
+
+            when SYSCALL =>
+                print ("SYSCALL");
+
+            when others =>
+                -- A user fault's addresses and registers are for the console
+                -- only: the ring gets the typed report (LOG-004).
+                if Util.isBitSet (frame.cs, 0) or Util.isBitSet (frame.cs, 1) then
+                    TextIO.beginPrivate;
+                end if;
+                print ("EXCEPTION "); print (Integer(interruptNumber));
+                print (" at RIP "); print (frame.rip);
+                print (" PID "); println (PerCPUData.getCurrentPID);
+                if Util.isBitSet (frame.cs, 0) or Util.isBitSet (frame.cs, 1) then
+                    -- User-mode exception: notify supervisor, then kill
+                    print ("  Killing user process "); println (PerCPUData.getCurrentPID);
+                    printRegs (frame);
+                    TextIO.endPrivate;
+                    Process.IPC.notifySupervisor (
+                        pid        => PerCPUData.getCurrentPID,
+                        faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
+                        detail0    => Interfaces.Unsigned_64 (interruptNumber),
+                        detail1    => Util.addrToNum (frame.rip),
+                        detail2    => Interfaces.Unsigned_64 (frame.errorCode));
+                    Device_Memory_Diagnostics.Record_Kill
+                      (PerCPUData.getCurrentPID, Device_Memory_Publication.CPU_Exception,
+                       Interfaces.Unsigned_64 (interruptNumber), 0,
+                       Util.addrToNum (frame.rip));
+                    -- Why, typed, under the process's own identity (LOG-004).
+                    Process_Stops.Report_Exception
+                      (Victim     => PerCPUData.getCurrentPID,
+                       Vector     => Interfaces.Unsigned_64 (interruptNumber),
+                       Error_Code => Interfaces.Unsigned_64 (frame.errorCode),
+                       Address    => 0,
+                       RIP        => Util.addrToNum (frame.rip),
+                       RSP        => Util.addrToNum (frame.rsp));
+                    Process.kill (PerCPUData.getCurrentPID);
+                else
+                    TextIO.stopAsynchronous;
+                    -- Kernel exception: report on screen too (no serial on
+                    -- most hardware), then halt.
+                    Boot_Diagnostics.Emergency
+                      (System.Null_Address,
+                       "kernel exception " & decimal (Natural (interruptNumber)) &
+                       " RIP " & hex64 (Unsigned_64 (Util.addrToNum (frame.rip))) &
+                       " error " & hex64 (Unsigned_64 (frame.errorCode)));
+                    printRegs (frame);
+                    x86.halt;
+                end if;
+        end case;
+
+        -- If a higher-priority process was readied during this interrupt
+        -- (e.g. keyboard IRQ woke the keyboard service), preempt now.
+        -- Guard: only yield when a real process is running. If the timer
+        -- fires during the scheduler context (currentPID = NO_PROCESS),
+        -- skip — the scheduler will pick the highest-priority process.
+        Process.serviceReschedule;
+
+        if (frame.cs and 3) /= 0 then
+            Process.checkTermination;
+        end if;
+
+        -- If we return from this interrupt, put page tables back the way they
+        -- were, through the address-space tag bookkeeping (TLB_Context).
+        Process.restoreAddressSpace (Unsigned_64 (oldCR3));
+        if Measure_Boot_IRQ then
+            Boot_Timer_Probe.Leave_IRQ (Boot_IRQ_Stamp);
+        end if;
+    end interruptHandler;
+
+    ---------------------------------------------------------------------------
+    -- handlePageFault
+    ---------------------------------------------------------------------------
+    procedure handlePageFault (err : in Unsigned_64) with
+        SPARK_Mode => On
+    is
+        faultAddr : constant System.Address := Util.numToAddr (x86.getCR2);
+
+        pid : constant Process.ProcessID := PerCPUData.getCurrentPID;
+        
+        PageFaultException : exception;
+        NXEException       : exception;
+
+        -- what caused the page fault
+        present         : constant Boolean := Util.isBitSet (err, 0);
+        write           : constant Boolean := Util.isBitSet (err, 1);
+        userMode        : constant Boolean := Util.isBitSet (err, 2);
+        reservedWrite   : constant Boolean := Util.isBitSet (err, 3);
+        nxeViolation    : constant Boolean := Util.isBitSet (err, 4);
+
+        -- The kernel's record of the kill (Device_Memory_Diagnostics), so
+        -- it reaches logstore and the Desktop bootstrap screen.
+        procedure Record_Fault (Kind : Device_Memory_Publication.Kill_Kind) is
+            RIP : constant System.Address := Process.lastFaultRIP;
+        begin
+            Device_Memory_Diagnostics.Record_Kill
+              (pid, Kind, Unsigned_64 (InterruptNumbers.PAGE_FAULT), Util.addrToNum (faultAddr),
+               Util.addrToNum (RIP));
+            -- Why, typed, under the process's own identity (LOG-004).
+            Process_Stops.Report_Exception
+              (Victim     => pid,
+               Vector     => Unsigned_64 (InterruptNumbers.PAGE_FAULT),
+               Error_Code => err,
+               Address    => Util.addrToNum (faultAddr),
+               RIP        => Util.addrToNum (RIP),
+               RSP        => Util.addrToNum (Process.lastFaultRSP));
+        end Record_Fault;
+    begin
+        -- Reserved PTE bits indicate invalid paging structures, never a
+        -- demand-page request. Do not try to repair them by allocating RAM.
+        if reservedWrite then
+            raise PageFaultException with "Reserved bit in paging structure";
+            pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                             "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
+        end if;
+
+        -- Instruction fetches are never demand-backed by the data allocator.
+        if nxeViolation then
+            if userMode then
+                -- if it was a user process, then kill it.
+                TextIO.beginPrivate;
+                println("NXE violation in user process!");
+                TextIO.endPrivate;
+                Record_Fault (Device_Memory_Publication.Execute_Protection);
+                Process.kill (pid);
+                return;
+            else
+                -- if it was the kernel, we goofed up.
+                println("NXE violation in kernel!");
+                raise NXEException with "NXE violated in the kernel.";
+                pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                                 "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
+            end if;
+        end if;
+
+        -- decision tree based on flags set in the error code.
+        case present is
+            when True =>
+                case write is
+                    when True =>
+                        case userMode is
+                            when True =>
+                                -- user page-protection wr violation. kill it.
+                                TextIO.beginPrivate;
+                                println ("USER-MEMORY-FAULT: pid" &
+                                  Integer'Image (Integer (pid)) & " address" &
+                                  Unsigned_64'Image (Unsigned_64 (To_Integer (faultAddr))) &
+                                  " kind=write-protection");
+                                TextIO.endPrivate;
+                                Record_Fault (Device_Memory_Publication.Write_Protection);
+                                Process.kill (pid);
+                            when False =>
+                                -- kernel page-protection wr violation. we goofed.
+                                print ("Kernel page-protection write violation: ");
+                                println (faultAddr);
+                                raise PageFaultException with "Kernel tried to write non-writable page";
+                                pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                                                 "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
+                        end case;
+                    when False =>
+                        case userMode is
+                            when True =>
+                                -- user page-protection rd violation. kill it.
+                                TextIO.beginPrivate;
+                                println ("USER-MEMORY-FAULT: pid" &
+                                  Integer'Image (Integer (pid)) & " address" &
+                                  Unsigned_64'Image (Unsigned_64 (To_Integer (faultAddr))) &
+                                  " kind=read-protection");
+                                TextIO.endPrivate;
+                                Record_Fault (Device_Memory_Publication.Read_Protection);
+                                Process.kill (pid);
+                            when False =>
+                                -- kernel page-protection rd violation. we goofed.
+                                print ("Kernel page-protection read violation: ");
+                                println (faultAddr);
+                                raise PageFaultException with "Kernel tried to read non-readable page";
+                                pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                                                 "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
+                        end case;
+                end case;
+            when False =>
+                case write is
+                    when True =>
+                        case userMode is
+                            when True =>
+                                -- user wrote non-present page. see if it's in their
+                                -- allocated range and page in if it is. If it's not,
+                                -- then may be a stack overflow or OoM.
+                                Process.pageFault (pid, faultAddr, Write => write, Error_Code => err);
+                            when False =>
+                                -- kernel wrote non-present page. see if it's something
+                                -- that we should have, page it in if it is.
+                                -- A syscall writing or reading user memory the program
+                                -- has not touched yet: demand-page it as the program
+                                -- itself would.
+                                declare
+                                    handled : Boolean;
+                                begin
+                                    Process.kernelUserFault (pid, faultAddr, write, handled);
+                                    if handled then
+                                        return;
+                                    end if;
+                                end;
+                                print ("Kernel non-present page write: ");
+                                println (faultAddr);
+                                raise PageFaultException;
+                                pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                                                 "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
+                        end case;
+                    when False =>
+                        case userMode is
+                            when True =>
+                                -- user read non-present page. see if it's in their
+                                -- allocated range and page in if it is. If it's not,
+                                -- may be a stack overflow or OoM.
+                                Process.pageFault (pid, faultAddr, Write => write, Error_Code => err);
+                            when False =>
+                                -- kernel read non-present page. see if it's something
+                                -- that we should have. see if it's something that we should
+                                -- have, page it in if it is.
+                                -- A syscall writing or reading user memory the program
+                                -- has not touched yet: demand-page it as the program
+                                -- itself would.
+                                declare
+                                    handled : Boolean;
+                                begin
+                                    Process.kernelUserFault (pid, faultAddr, write, handled);
+                                    if handled then
+                                        return;
+                                    end if;
+                                end;
+                                print ("Kernel non-present page read: ");
+                                println (faultAddr);
+                                raise PageFaultException with "Kernel read non-present page.";
+                                pragma Annotate (GNATprove, Intentional, "unexpected exception might be raised",
+                                                 "a kernel fault the handler cannot repair: kernel panic, halts this CPU");
+                        end case;                    
+                end case;
+        end case;
+
+    end handlePageFault;
+
+    ---------------------------------------------------------------------------
+    -- 
+    ---------------------------------------------------------------------------
+    procedure setup is
+    begin
+        setupIDT;
+        loadIDT;
+    end setup;
+
+    ---------------------------------------------------------------------------
+    -- Install ISRs, load the IDT holding them all.
+    ---------------------------------------------------------------------------
+    procedure setupIDT with
+        SPARK_Mode => Off   -- due to 'Address
+    is
+    begin
+        createIDT;
+        idtp := calculateIDTP (idt'Address);
+        validIDT := True;
+    end setupIDT;
+
+    ---------------------------------------------------------------------------
+    -- Wrapper for lidt
+    ---------------------------------------------------------------------------
+    procedure loadIDT with
+        SPARK_Mode => Off   -- due to 'Address
+    is
+    begin
+        x86.lidt (idtp'Address);
+    end loadIDT;
+
+    ---------------------------------------------------------------------------
+    -- Set interrupt controller used
+    ---------------------------------------------------------------------------
+    procedure setInterruptController (cont : in InterruptController) with
+        SPARK_Mode => On
+    is
+    begin
+        intController := cont;
+        initialized := True;
+    end setInterruptController;
+
+    ---------------------------------------------------------------------------
+    -- Set LAPIC base address
+    ---------------------------------------------------------------------------        
+    procedure setLAPICBaseAddress (lapicBase : in virtmem.PhysAddress) with
+        SPARK_Mode => On
+    is
+    begin
+        lapicAddr := To_Address (virtmem.P2V(lapicBase));
+    end setLAPICBaseAddress;
+
+    ---------------------------------------------------------------------------
+    -- Compose the IDTPointer containing our IDTEntry size and the address to
+    -- the IDT itself.
+    ---------------------------------------------------------------------------
+    function calculateIDTP (idtPtr : in System.Address) return IDTPointer 
+        with SPARK_Mode => On
+    is
+        myidtp : IDTPointer;
+    begin
+        -- 'Size gives bits, so divide by 8 for bytes of entire IDT structure
+        myidtp.size := Unsigned_16((IDTEntry'Size * 256 / 8) - 1);
+        myidtp.base := Util.addrToNum (idtPtr);
+        return myidtp;
+    end calculateIDTP;
+
+    ---------------------------------------------------------------------------
+    -- Create a single IDT entry
+    -- Params:
+    --  handler: address of ISR
+    --  gdtSelector: GDT selector for our kernel
+    --  dpl: descriptor privilege level (Ring 0-3) for interrupt
+    ---------------------------------------------------------------------------
+    function createIDTEntry (handler     : in Unsigned_64;
+                             isTrap      : in Boolean;
+                             gdtSelector : in segment.GDTOffset;
+                             dpl         : in x86.PrivilegeLevel;
+                             ist         : in IST_Slot := 0) return IDTEntry
+        with SPARK_Mode => On
+    is
+        newidt : IDTEntry;
+    begin
+        newidt.offset1  := Unsigned_16(handler and 16#FFFF#);
+        newidt.selector := gdtSelector;
+        newidt.istIndex := ist;
+
+        newidt.istrap   := isTrap;
+        newidt.dpl      := dpl;
+        newidt.present  := True;
+
+        newidt.offset2  := Unsigned_16(Shift_Right(handler, 16) and 16#FFFF#);
+        newidt.offset3  := Unsigned_32(Shift_Right(handler, 32) and 16#FFFF_FFFF#);
+
+        return newidt;
+    end createIDTEntry;
+
+    ---------------------------------------------------------------------------
+    -- Creates IDT Entries for each interrupt handler and puts them in our IDT
+    -- Note: We have our GDT kernel segment selector at offset 8 (see boot.asm)
+    ---------------------------------------------------------------------------
+    procedure createIDT 
+        with SPARK_Mode => Off
+    is
+        use segment;
+        use x86;
+    begin
+        -- Exceptions
+        --textmode.print("createIDT ISR0 Address: ");
+        --textmode.println(isr0'Address);
+        idt(0)  := createIDTEntry(addrToNum(isr0'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        -- #DB uses IST 4: a data breakpoint deferred past MOV SS / POP SS can
+        -- fire on the first instruction of SYSCALL entry, still on the
+        -- user's stack pointer (CVE-2018-8897; isr1).
+        idt(1)  := createIDTEntry(addrToNum(isr1'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL, ist => 4);
+        -- NMI uses IST 1: dedicated stack so NMI during lock-hold doesn't corrupt kernel stack
+        idt(2)  := createIDTEntry(addrToNum(isr2'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL, ist => 1);
+        -- #BP at DPL 3: a user INT3 is a breakpoint (#BP), not a #GP.
+        idt(3)  := createIDTEntry(addrToNum(isr3'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_USER);
+        idt(4)  := createIDTEntry(addrToNum(isr4'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(5)  := createIDTEntry(addrToNum(isr5'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(6)  := createIDTEntry(addrToNum(isr6'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(7)  := createIDTEntry(addrToNum(isr7'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        -- Double Fault uses IST 2: must have its own stack to handle stack overflow
+        idt(8)  := createIDTEntry(addrToNum(isr8'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL, ist => 2);
+        idt(9)  := createIDTEntry(addrToNum(isr9'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(10) := createIDTEntry(addrToNum(isr10'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(11) := createIDTEntry(addrToNum(isr11'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(12) := createIDTEntry(addrToNum(isr12'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(13) := createIDTEntry(addrToNum(isr13'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(14) := createIDTEntry(addrToNum(isr14'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+
+        idt(16) := createIDTEntry(addrToNum(isr16'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(17) := createIDTEntry(addrToNum(isr17'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        -- Machine Check uses IST 3: hardware failure must not corrupt existing stack
+        idt(18) := createIDTEntry(addrToNum(isr18'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL, ist => 3);
+        idt(19) := createIDTEntry(addrToNum(isr19'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+
+        -- IRQs
+        idt(32) := createIDTEntry(addrToNum(isr32'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(33) := createIDTEntry(addrToNum(isr33'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(34) := createIDTEntry(addrToNum(isr34'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(35) := createIDTEntry(addrToNum(isr35'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(36) := createIDTEntry(addrToNum(isr36'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(37) := createIDTEntry(addrToNum(isr37'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(38) := createIDTEntry(addrToNum(isr38'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(39) := createIDTEntry(addrToNum(isr39'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(40) := createIDTEntry(addrToNum(isr40'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(41) := createIDTEntry(addrToNum(isr41'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(42) := createIDTEntry(addrToNum(isr42'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(43) := createIDTEntry(addrToNum(isr43'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(44) := createIDTEntry(addrToNum(isr44'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(45) := createIDTEntry(addrToNum(isr45'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(46) := createIDTEntry(addrToNum(isr46'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        idt(47) := createIDTEntry(addrToNum(isr47'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+
+        -- Device vectors: one shared IDT, loaded by every CPU (loadIDT), so
+        -- each CPU accepts every device vector.
+        if addrToNum (deviceVectorStubsEnd'Address) - addrToNum (deviceVectorStubs'Address) /=
+           Unsigned_64 (DEVICE_STUB_BYTES * (DEVICE_VECTOR_LAST - DEVICE_VECTOR_FIRST + 1))
+        then
+            println ("FATAL: device vector stubs do not match the device range");
+            x86.halt;
+        end if;
+        for v in Device_Vector loop
+            idt(v) := createIDTEntry
+              (addrToNum (deviceVectorStubs'Address) +
+                 Unsigned_64 (DEVICE_STUB_BYTES * (v - DEVICE_VECTOR_FIRST)),
+               False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        end loop;
+
+        -- Kernel Panic - don't want interrupts to happen here, because we're crashed.
+        idt(127) := createIDTEntry(addrToNum(isr127'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+
+        -- Syscall (old school, we use the actual syscall/sysret instructions in CuBit)
+        idt(128) := createIDTEntry(addrToNum(isr128'Address), True, GDT_OFFSET_KERNEL_CODE, DPL_USER);
+
+        -- Reschedule IPI
+        idt(249) := createIDTEntry(addrToNum(isr249'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+
+        -- IOMMU fault event
+        idt(250) := createIDTEntry(addrToNum(isr250'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+
+        -- Spurious Vector
+        idt(255) := createIDTEntry(addrToNum(isr255'Address), False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+    end createIDT;
+
+    ---------------------------------------------------------------------------
+    -- Shared LAPIC timer interval (BSP-calibrated, used by APs)
+    ---------------------------------------------------------------------------
+    lapicTimerInterval : Unsigned_32 := 0;
+
+    function getLAPICTimerInterval return Unsigned_32 is
+    begin
+        return lapicTimerInterval;
+    end getLAPICTimerInterval;
+
+    procedure setLAPICTimerInterval (interval : in Unsigned_32) is
+    begin
+        lapicTimerInterval := interval;
+    end setLAPICTimerInterval;
+
+end Interrupts;

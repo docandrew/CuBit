@@ -1,0 +1,14 @@
+{
+  "userspace/ccl/src/ccl-manifests-keywords.adb": {
+    "before_sha256": "31f7bdc647ca41a37a217b8296458b0dfa4afa4659f8cc378c32f4031ae16be8",
+    "after_sha256": "b48e293686b447c9ccf22af590e250e1eecfeec0c835d1c62435f68082c9bb20"
+  },
+  "userspace/ccl/src/ccl-manifests-typed.adb": {
+    "before_sha256": "032c8c91213252bde34d10137560ef452a7c9ff38ae24136c5267cd80249c87c",
+    "after_sha256": "52d11fd3a725dc59bd825a47957b852fab173867130ab64d3e05752a9e53c5f0"
+  },
+  "userspace/ccl/interfaces/executable-manifest.ccl": {
+    "before_sha256": "15bf0b8b8803f07a90482550825a3cff5ca85134d947c44040b9cef1064bae8e",
+    "after_sha256": "5f2b0432c64a12133e704b687973a3ab369d84b1b4ac35b3e5df7c231bfad286"
+  }
+}

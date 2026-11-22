@@ -1,0 +1,6 @@
+{
+  "tests/acpi-provider-native/evidence/composition.json": "7a8bcf301645af0334779733a3a28c16b25a8a3c8554d571d4e98f93d27d8346",
+  "tests/acpi-provider-native/evidence/mechanics.json": "b4cd1b69df005d54f60a7e5dce5f27df87decb77d3d6376307fe71cadec9380d",
+  "tests/acpi-provider-native/evidence/provider_api.json": "ae7cde93eae53502cc4c68fbfc22841571de8d59c3b69803326251cdf0c5787b",
+  "tests/acpi-provider-native/evidence/adapter_api.json": "e7067950f3b0380db077b08bff737998fea30a362ccb69206f11f3857d43c948"
+}

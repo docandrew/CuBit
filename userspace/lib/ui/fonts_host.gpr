@@ -1,0 +1,9 @@
+library project Fonts_Host is
+   for Externally_Built use "true";
+   for Languages use ("C");
+   for Source_Dirs use ();
+   for Object_Dir use "../../rust/build/font-host";
+   for Library_Dir use "../../rust/build/font-host";
+   for Library_Name use "cubit_fonts";
+   for Library_Kind use "static";
+end Fonts_Host;

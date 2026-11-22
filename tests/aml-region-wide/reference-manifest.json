@@ -1,0 +1,18 @@
+{
+  "tests/aml-region-wide/reference/region-compile.log": "f37778d88b6b5267c3688f9ef774ab8343d4d8d95ad9ad5888a8278d657eb79e",
+  "tests/aml-region-wide/reference/region-evidence.sha256": "f677d099034567d1a40327334290aa93089ec6dcef83bda905869010bb52da81",
+  "tests/aml-region-wide/reference/region-expected.tsv": "e1c259292e9702e80acfe75e8ff0296a2a4d63e78b500d698f2a8e646f5291e6",
+  "tests/aml-region-wide/reference/region-inputs.sha256": "f4de616f0fd2a01c54cb55e1673b6c1be5522719efd42cf3d7161100d77851d9",
+  "tests/aml-region-wide/reference/region-reference.log": "8ae5af2a4d1e7df001940264259ee9c386fe36078b2568707474ec9c1860e12a",
+  "tests/aml-region-wide/reference/region-status.tsv": "d2d70804ecd697d5a9c3ede742b29e5e7f86572fff79369985db325a6aba3d3a",
+  "tests/aml-region-wide/reference/region.aml": "b367ea5ebaa002fb5c1694f0919bd8e50266bb63e120c6c1109e7c2010749b98",
+  "tests/aml-region-wide/reference/region.asl": "4a54aff65033b8673c9150601e29a39d9f4d97cf7dcd898bf131fcad31409467",
+  "tests/aml-region-wide/reference/region32-compile.log": "51d9177c3987cab87f2c199b9126685cc42c11b607b1d8916c3655cf0ef208f9",
+  "tests/aml-region-wide/reference/region32-evidence.sha256": "c7797ab937ef1823cb7269dd9d123945c10f7757b465098122ce2359432ff50f",
+  "tests/aml-region-wide/reference/region32-expected.tsv": "e1c259292e9702e80acfe75e8ff0296a2a4d63e78b500d698f2a8e646f5291e6",
+  "tests/aml-region-wide/reference/region32-inputs.sha256": "9042b09518fd7cd5d81738a98bf19dce658cd5af35f44ae47d08568b6c8568d3",
+  "tests/aml-region-wide/reference/region32-reference.log": "f4782055dcc187da1570a761f04a627c2bd0e7c0690ab167ae62ddf08a4f8c8f",
+  "tests/aml-region-wide/reference/region32-status.tsv": "d2d70804ecd697d5a9c3ede742b29e5e7f86572fff79369985db325a6aba3d3a",
+  "tests/aml-region-wide/reference/region32.aml": "989295619a42061f0fa8b70eb7a9eb606fa8fc9dfe0a9555f9e42def67ae572c",
+  "tests/aml-region-wide/reference/region32.asl": "19d895623a042d3e2185c267c66a560980497f3a2c9d9f36fb53977c8b2cfcbf"
+}

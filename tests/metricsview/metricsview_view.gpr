@@ -1,0 +1,49 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+--  Hosted metrics viewer window (MET-002's app): the app's view and
+--  dashboard model (userspace/apps/metricsview), the charts core, the real
+--  toolkit and fonts, CCL for the dashboard type, and a synthetic store
+--  (view/synthetic_feeds) on Linux. VIEW_MODE: checked (assertions on),
+--  release (as the native app builds, component.ccl and build-catalog.ccl:
+--  -O3 with run-time checks on, the proved charts units -gnatp): the timings.
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Metricsview_View is
+   type Build_Mode is ("checked", "release");
+   Mode : Build_Mode := external ("VIEW_MODE", "checked");
+   for Languages use ("Ada");
+   for Source_Dirs use ("view", "build/source", "../../userspace/apps/metricsview",
+                        "../../userspace/lib/charts", "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/ccl/src");
+   --  The native entry point and the store's feed are not hosted.
+   for Excluded_Source_Files use ("main.adb", "dash_query_feeds.ads", "dash_query_feeds.adb");
+   for Exec_Dir use "build";
+   for Main use ("metricsview_view_tests.adb");
+   case Mode is
+      when "checked" => for Object_Dir use "build/view";
+      when "release" => for Object_Dir use "build/view-release";
+   end case;
+   package Builder is
+      case Mode is
+         when "release" => for Executable ("metricsview_view_tests.adb") use "metricsview_view_tests_release";
+         when "checked" => null;
+      end case;
+   end Builder;
+   package Compiler is
+      case Mode is
+         when "checked" =>
+            for Default_Switches ("Ada") use ("-O1", "-g", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ", "-gnatVa");
+         when "release" =>
+            for Default_Switches ("Ada") use ("-O3", "-g", "-gnat2022", "-gnatwa", "-gnatwJ");
+            for Switches ("charts_time_axis.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
+            for Switches ("charts_value_axis.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
+            for Switches ("charts_quantiles.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
+            for Switches ("charts_columns.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
+            for Switches ("charts_buckets.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
+            for Switches ("charts_palette.adb") use ("-O3", "-gnat2022", "-gnatp", "-fno-tree-vrp");
+      end case;
+      for Switches ("client_glyph_blend.adb") use ("-O3", "-gnat2022", "-gnatwa", "-fno-tree-vrp");
+      for Switches ("client_raster.adb") use ("-O3", "-gnat2022", "-gnatwa", "-fno-tree-vrp");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-Es");
+   end Binder;
+end Metricsview_View;

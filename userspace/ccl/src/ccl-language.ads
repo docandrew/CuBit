@@ -1,0 +1,651 @@
+with CCL.Held_Texts;
+with CCL.Streams;
+with CuBit.Failures;
+with CCL.Text_Operations;
+with CCL.List_Operations;
+with Interfaces;
+with CCL.Catalog;
+with CCL.VM;
+with CCL.Host_Values;
+with CCL.Types;
+with CCL.Types.Shapes;
+with CCL.Objects;
+with CCL.Resource_Policies;
+
+package CCL.Language with
+   SPARK_Mode => On
+is
+
+   --  One program's source and syntax tree: named ceilings (CAPACITY, the
+   --  most one analysis may hold) and the room of the default
+   --  Analysis_Result subtype. Storage is sized by the input
+   --  (Sized_Analysis's discriminants): Analysis_Of gives the source and
+   --  its literals' text exactly the source's length, and doubles the node
+   --  room from the default until the tree fits or the ceiling refuses it
+   --  (AST_Full, Source_Too_Long).
+   SOURCE_CEILING      : constant := 2 ** 24;
+   NODE_CEILING        : constant := 2 ** 20;
+   DEFAULT_SOURCE_ROOM : constant := 8_192;
+   DEFAULT_NODE_ROOM   : constant := 512;
+   MAX_NAME_LENGTH   : constant := CCL.Types.Maximum_Name_Length;
+   MAX_BINDINGS      : constant := 32;
+   MAX_NESTING       : constant := 32;
+   MAX_TEXT_BYTES    : constant := CCL.Host_Values.Maximum_Text_Length;
+   --  All string literals of one program together: bounded by its source.
+   MAX_PROGRAM_TEXT  : constant := SOURCE_CEILING;
+   MAX_FUNCTIONS     : constant := 16;
+   MAX_PARAMETERS    : constant := 8;
+   --  Enclosing values one anonymous function may capture.
+   MAX_CAPTURES      : constant := 4;
+   MAX_OBJECT_VALUES : constant := 16;
+   --  Records and variants with payloads that one evaluation builds live in
+   --  a bounded arena: nodes whose components are stored values, never
+   --  pointers (docs/ccl-driver-manifests.md, "Value model").
+   --  (CCL.VM's rooms: a run starts at CCL.VM.DEFAULT_VALUE_NODES and a
+   --  host's large value grows it.) Lists (docs/ccl-repl.md, "Lists"):
+   --  elements a scalar list result carries out.
+   MAX_LIST_RESULT   : constant := CCL.VM.MAX_LIST_RESULT;
+
+   --  Shared, bounded frontend representation.  Both direct interpretation
+   --  and CCLB compilation consume this tree, so syntax and type semantics
+   --  cannot silently diverge between the two execution modes.
+   subtype Node_Index is Natural range 0 .. NODE_CEILING - 1;
+   NO_NODE : constant Natural := NODE_CEILING;
+
+   subtype Node_Reference is Natural range 0 .. NO_NODE;
+   subtype Node_Count is Natural range 0 .. NODE_CEILING;
+   subtype Source_Position is Natural range 0 .. SOURCE_CEILING + 1;
+   --  The room of an analysis's source (a Sized_Analysis discriminant).
+   subtype Source_Room is Positive range 1 .. SOURCE_CEILING;
+
+   subtype Name_Buffer is String (1 .. MAX_NAME_LENGTH);
+
+   subtype Name is CCL.Types.Name;
+
+   function Names_Equal (Left, Right : Name) return Boolean;
+
+   type Node_Kind is
+     (Invalid_Node,
+      Integer_Literal,
+      Boolean_Literal,
+      String_Literal,
+      Name_Reference,
+      Add_Form,
+      Subtract_Form,
+      Multiply_Form,
+      Divide_Form,
+      Modulo_Form,
+      Equal_Form,
+      Not_Equal_Form,
+      Less_Form,
+      Less_Equal_Form,
+      Greater_Form,
+      Greater_Equal_Form,
+      Not_Form,
+      And_Form,
+      Or_Form,
+      If_Form,
+      Let_Form,
+      String_Length_Form,
+      String_Index_Form,
+      String_Concat_Form,
+      To_String_Form,
+      Host_Import_Form,
+      Type_Definition,
+      Variant_Literal,
+      Variant_Construct,
+      Record_Construct,
+      Field_Form,
+      Match_Form,
+      Match_Arm,
+      Function_Definition,
+      Function_Call,
+      Handler_Form,
+      List_Construct,
+      Lambda_Form,
+      Builtin_Form,
+      --  (stream T n): the session's stream n, whose elements are T
+      --  (docs/ccl-streams.md). Integer_Value holds n.
+      Stream_Reference);
+
+   subtype Static_Type is CCL.Types.Type_Reference;
+
+   --  Builtins over lists and functions (docs/ccl-repl.md, "Lists"). The
+   --  collection is the last argument, so a pipeline a | f x means (f x a).
+   type Builtin_Operation is
+     (No_Builtin, Each_Builtin, Where_Builtin, Fold_Builtin, Any_Builtin,
+      All_Builtin, First_Builtin, Sum_Builtin, Range_Builtin,
+      --  Lists, round 2.
+      Last_Builtin, Skip_Builtin, Reverse_Builtin, Sort_Builtin, Sort_By_Builtin,
+      Count_Builtin, Min_Builtin, Max_Builtin, Contains_Builtin,
+      --  Strings: the subject string is the last operand.
+      Upper_Builtin, Lower_Builtin, Trim_Builtin, Starts_With_Builtin,
+      Ends_With_Builtin, Index_Of_Builtin, Replace_Builtin, Split_Builtin,
+      Join_Builtin, Parse_Int_Builtin,
+      --  Views of a stream the session holds (docs/ccl-streams.md).
+      Latest_Builtin, Window_Builtin, Arrived_Builtin, Lost_Builtin,
+      --  A task's result (docs/control-language.md, Task<T>).
+      Wait_Builtin);
+   function Builtin_Name (Operation : Builtin_Operation) return String is
+     (case Operation is
+        when No_Builtin => "", when Each_Builtin => "each",
+        when Where_Builtin => "where", when Fold_Builtin => "fold",
+        when Any_Builtin => "any", when All_Builtin => "all",
+        when First_Builtin => "first", when Sum_Builtin => "sum",
+        when Range_Builtin => "range", when Last_Builtin => "last",
+        when Skip_Builtin => "skip", when Reverse_Builtin => "reverse",
+        when Sort_Builtin => "sort", when Sort_By_Builtin => "sort-by",
+        when Count_Builtin => "count", when Min_Builtin => "min",
+        when Max_Builtin => "max", when Contains_Builtin => "contains",
+        when Upper_Builtin => "upper", when Lower_Builtin => "lower",
+        when Trim_Builtin => "trim", when Starts_With_Builtin => "starts-with",
+        when Ends_With_Builtin => "ends-with", when Index_Of_Builtin => "index-of",
+        when Replace_Builtin => "replace", when Split_Builtin => "split",
+        when Join_Builtin => "join", when Parse_Int_Builtin => "parse-int",
+        when Latest_Builtin => "latest", when Window_Builtin => "window",
+        when Arrived_Builtin => "arrived", when Lost_Builtin => "lost",
+        when Wait_Builtin => "wait");
+   --  The stream views: the stream (or, for wait, the task) is the last
+   --  operand.
+   function Is_Stream_View (Operation : Builtin_Operation) return Boolean is
+     (Operation in Latest_Builtin .. Wait_Builtin);
+   function Stream_View_Of (Operation : Builtin_Operation) return CCL.Streams.View_Kind is
+     (case Operation is
+         when Latest_Builtin => CCL.Streams.Latest_View,
+         when Window_Builtin => CCL.Streams.Window_View,
+         when Arrived_Builtin => CCL.Streams.Arrived_View,
+         when Wait_Builtin => CCL.Streams.Wait_View,
+         when others => CCL.Streams.Lost_View)
+     with Pre => Is_Stream_View (Operation);
+   --  The string built-ins with a shared implementation (CCL.Text_Operations),
+   --  which the interpreter and compiled code both call. On a String subject
+   --  first, last, skip, reverse and contains are these; on a list they are
+   --  list built-ins. Split and join produce or take lists.
+   function Is_Text_Operation (Operation : Builtin_Operation) return Boolean is
+     (Operation in Upper_Builtin | Lower_Builtin | Trim_Builtin | Reverse_Builtin |
+        First_Builtin | Last_Builtin | Skip_Builtin | Contains_Builtin |
+        Index_Of_Builtin | Starts_With_Builtin | Ends_With_Builtin |
+        Replace_Builtin | Parse_Int_Builtin);
+   function Text_Operation_Of (Operation : Builtin_Operation)
+     return CCL.Text_Operations.Operation is
+     (case Operation is
+         when Upper_Builtin => CCL.Text_Operations.Upper,
+         when Lower_Builtin => CCL.Text_Operations.Lower,
+         when Trim_Builtin => CCL.Text_Operations.Trim,
+         when Reverse_Builtin => CCL.Text_Operations.Reverse_Text,
+         when First_Builtin => CCL.Text_Operations.First_Chars,
+         when Last_Builtin => CCL.Text_Operations.Last_Chars,
+         when Skip_Builtin => CCL.Text_Operations.Skip_Chars,
+         when Contains_Builtin => CCL.Text_Operations.Contains,
+         when Index_Of_Builtin => CCL.Text_Operations.Index_Of,
+         when Starts_With_Builtin => CCL.Text_Operations.Starts_With,
+         when Ends_With_Builtin => CCL.Text_Operations.Ends_With,
+         when Replace_Builtin => CCL.Text_Operations.Replace,
+         when others => CCL.Text_Operations.Parse_Int)
+     with Pre => Is_Text_Operation (Operation);
+   --  The list built-ins that take no function, with shared algorithms
+   --  (CCL.List_Operations), which compiled code runs too. On a String
+   --  subject first, last, skip, reverse and contains are text operations;
+   --  split takes a String subject and makes a list.
+   function Is_List_Operation (Operation : Builtin_Operation) return Boolean is
+     (Operation in First_Builtin | Last_Builtin | Skip_Builtin | Reverse_Builtin |
+        Sort_Builtin | Sum_Builtin | Min_Builtin | Max_Builtin | Contains_Builtin |
+        Join_Builtin | Range_Builtin | Split_Builtin);
+   function List_Operation_Of (Operation : Builtin_Operation)
+     return CCL.List_Operations.Operation is
+     (case Operation is
+         when First_Builtin => CCL.List_Operations.First_Items,
+         when Last_Builtin => CCL.List_Operations.Last_Items,
+         when Skip_Builtin => CCL.List_Operations.Skip_Items,
+         when Reverse_Builtin => CCL.List_Operations.Reverse_Items,
+         when Sort_Builtin => CCL.List_Operations.Sort_Items,
+         when Sum_Builtin => CCL.List_Operations.Sum_Items,
+         when Min_Builtin => CCL.List_Operations.Min_Items,
+         when Max_Builtin => CCL.List_Operations.Max_Items,
+         when Contains_Builtin => CCL.List_Operations.Contains_Item,
+         when Join_Builtin => CCL.List_Operations.Join_Items,
+         when Range_Builtin => CCL.List_Operations.Range_Items,
+         when others => CCL.List_Operations.Split_Text)
+     with Pre => Is_List_Operation (Operation);
+   --  The built-ins that apply a function to each element.
+   function Is_Apply_Operation (Operation : Builtin_Operation) return Boolean is
+     (Operation in Each_Builtin | Where_Builtin | Fold_Builtin | Any_Builtin | All_Builtin |
+        Count_Builtin | Sort_By_Builtin);
+   function Apply_Operation_Of (Operation : Builtin_Operation)
+     return CCL.List_Operations.Apply_Operation is
+     (case Operation is
+         when Each_Builtin => CCL.List_Operations.Each_Items,
+         when Where_Builtin => CCL.List_Operations.Where_Items,
+         when Fold_Builtin => CCL.List_Operations.Fold_Items,
+         when Any_Builtin => CCL.List_Operations.Any_Items,
+         when All_Builtin => CCL.List_Operations.All_Items,
+         when Count_Builtin => CCL.List_Operations.Count_Items,
+         when others => CCL.List_Operations.Sort_By_Items)
+     with Pre => Is_Apply_Operation (Operation);
+   function Builtin_Arity (Operation : Builtin_Operation) return Natural is
+     (case Operation is
+        when No_Builtin => 0,
+        when Sum_Builtin | Reverse_Builtin | Sort_Builtin | Min_Builtin | Max_Builtin |
+             Upper_Builtin | Lower_Builtin | Trim_Builtin | Parse_Int_Builtin |
+             Latest_Builtin | Arrived_Builtin | Lost_Builtin | Wait_Builtin => 1,
+        when Fold_Builtin | Replace_Builtin => 3,
+        when others => 2);
+   --  Builtins whose subject (last operand) may be a String as well as a list.
+   function Takes_Text (Operation : Builtin_Operation) return Boolean is
+     (Operation in First_Builtin | Last_Builtin | Skip_Builtin | Reverse_Builtin |
+        Contains_Builtin | Upper_Builtin .. Parse_Int_Builtin);
+   Invalid_Type : constant Static_Type := CCL.Types.Invalid_Type;
+   Integer_Type : constant Static_Type := CCL.Types.Integer_Type;
+   Boolean_Type : constant Static_Type := CCL.Types.Boolean_Type;
+   String_Type : constant Static_Type := CCL.Types.String_Type;
+   Character_Type : constant Static_Type := CCL.Types.Character_Type;
+   Handler_Type : constant Static_Type := CCL.Types.Handler_Type;
+   Unit_Type : constant Static_Type := CCL.Types.Unit_Type;
+
+   subtype Parameter_Count is Natural range 0 .. MAX_PARAMETERS;
+   subtype Parameter_Index is Positive range 1 .. MAX_PARAMETERS;
+   type Parameter is record
+      Identifier : Name;
+      Kind : Static_Type := Invalid_Type;
+      --  False for an anonymous function's parameter written without a type,
+      --  (fn (x) ...) / FUNCTION(x) ...: the checker infers it from context
+      --  and views print it as written.
+      Declared : Boolean := True;
+   end record;
+   type Parameter_Array is array (Parameter_Index) of Parameter;
+   subtype Capture_Count is Natural range 0 .. MAX_CAPTURES;
+   subtype Capture_Index is Positive range 1 .. MAX_CAPTURES;
+   type Capture_Array is array (Capture_Index) of Parameter;
+   type Argument_Array is array (Parameter_Index) of Node_Reference;
+   type Component_Node_Array is array (CCL.Types.Component_Index) of Node_Reference;
+   subtype Function_Index is Natural range 0 .. MAX_FUNCTIONS - 1;
+   type Function_Declaration is record
+      Identifier : Name;
+      Count : Parameter_Count := 0;
+      Parameters : Parameter_Array := [others => (others => <>)];
+      Result_Kind : Static_Type := Invalid_Type;
+      Body_Node : Node_Reference := NO_NODE;
+      --  An anonymous function's captured enclosing bindings. They are
+      --  bound, by value, ahead of the parameters (lambda lifting).
+      Captures : Capture_Array := [others => (others => <>)];
+      Captured : Capture_Count := 0;
+   end record;
+   type Function_Array is array (Function_Index) of Function_Declaration;
+
+   --  Per record field: how a construction gave it. The evaluator sees only
+   --  positional components; views use these to print the source's spelling.
+   type Field_Flags is array (CCL.Types.Component_Index) of Boolean with Pack;
+   type Node is record
+      Kind            : Node_Kind := Invalid_Node;
+      Static_Kind     : Static_Type := Invalid_Type;
+      Declared_Kind   : Static_Type := Invalid_Type;
+      Alternative    : CCL.Types.Component_Index := 1;
+      Source_Position : CCL.Language.Source_Position := 0;
+      Source_End_Position : CCL.Language.Source_Position := 0;
+      Integer_Value   : Interfaces.Integer_64 := 0;
+      Boolean_Value   : Boolean := False;
+      --  Inclusive slice bounds, including the canonical empty slice 1 .. 0.
+      --  Unlike independent offset/length fields, no sum can leave storage.
+      Text_First      : Positive range 1 .. MAX_PROGRAM_TEXT + 1 := 1;
+      Text_Last       : Natural range 0 .. MAX_PROGRAM_TEXT := 0;
+      Identifier      : Name;
+      Pattern         : Name;
+      First           : Node_Reference := NO_NODE;
+      Second          : Node_Reference := NO_NODE;
+      Third           : Node_Reference := NO_NODE;
+      Host_Call       : CCL.Catalog.Resolved_Operation := (others => <>);
+      --  Relevant only to function definitions, resolved calls and handlers.
+      --  Resolution failure is a diagnostic, not an out-of-table index.
+      Function_Id     : Function_Index := Function_Index'First;
+      Argument_Count  : Parameter_Count := 0;
+      Arguments       : Argument_Array := [others => NO_NODE];
+      Components      : Component_Node_Array := [others => NO_NODE];
+      --  Record_Construct: fields given as :name value, and fields left out
+      --  and filled from their defaults.
+      Named_Fields, Defaulted_Fields : Field_Flags := [others => False];
+      --  List_Construct: how many Components are elements.
+      Element_Count   : CCL.Types.Component_Count := 0;
+      --  Name_Reference naming a defined function (a function value), or a
+      --  Function_Call through a function-typed binding (Function_Id is then
+      --  taken from the value).
+      Names_Function  : Boolean := False;
+      Calls_Value     : Boolean := False;
+      --  Builtin_Form: which builtin; its operands are Arguments.
+      Builtin         : Builtin_Operation := No_Builtin;
+      --  A pipeline stage, (->> x (f a)) / x | f(a): its last argument (or
+      --  First, for length and to-string) is the stage before it. Checking
+      --  and evaluation see an ordinary call; views print the pipeline.
+      Piped           : Boolean := False;
+   end record;
+
+   type Node_Array is array (Node_Index range <>) of Node;
+
+   --  Room for Last_Node + 1 nodes and Text_Room bytes of literal text.
+   type Syntax_Tree (Last_Node : Node_Index; Text_Room : Source_Room) is record
+      Length : Node_Count := 0;
+      Nodes  : Node_Array (0 .. Last_Node) := [others => (others => <>)];
+      Root   : Node_Reference := NO_NODE;
+      Function_Count : Natural range 0 .. MAX_FUNCTIONS := 0;
+      Functions : Function_Array := [others => (others => <>)];
+      Types : CCL.Types.Registry;
+      Text_Bytes_Used : Natural range 0 .. MAX_PROGRAM_TEXT := 0;
+      Text_Data : String (1 .. Text_Room) :=
+        [others => Character'Val (0)];
+   end record;
+
+   type Interpretation_Status is
+     (Succeeded,
+      Parse_Failed,
+      Type_Check_Failed,
+      Evaluation_Fuel_Exhausted,
+      Evaluation_Overflow,
+      Evaluation_Division_By_Zero,
+      Evaluation_Index_Error,
+      --  A computed value outside the range type of its position.
+      Evaluation_Range_Error,
+      Evaluation_Text_Storage_Exhausted,
+      Evaluation_Object_Storage_Exhausted,
+      Host_Import_Required,
+      Host_Authority_Denied,
+      Host_Call_Failed,
+      Host_Result_Type_Mismatch,
+      Host_Argument_Out_Of_Bounds,
+      Host_Contract_Unsupported,
+      Evaluation_Depth_Exhausted,
+      Evaluation_List_Storage_Exhausted,
+      --  parse-int on text that is not a decimal integer.
+      Evaluation_Invalid_Number,
+      --  A REPL value binding whose value has no literal form to keep
+      --  (too long, or a kind the session cannot store).
+      Session_Value_Not_Kept,
+      --  A stream view the session could not answer: not a stream it holds,
+      --  latest before the first element, or a window outside
+      --  1 .. CCL.Streams.Maximum_Window.
+      Stream_Unavailable,
+      Stream_Empty,
+      Stream_Window_Out_Of_Range,
+      --  The session's elements do not have the type the evaluation named.
+      Stream_Element_Mismatch,
+      --  (wait t) on a task still pending: the evaluation stops, and the
+      --  session runs the entry again when the task completes, replaying
+      --  the host calls it already made (Waited_On names the task).
+      Waiting_On_Task,
+      --  A checked program the compiler or verifier refused (a size limit,
+      --  a form without bytecode yet). Diagnostic_Subject names the reason.
+      Not_Compiled,
+      --  A record or list whose literal is longer than a result carries
+      --  (CCL.VM.LITERAL_CEILING); a list's length is in List_Total. The
+      --  value was computed: take it in parts, (first k x) (last k x).
+      Result_Too_Large);
+
+   type Diagnostic_Code is
+     (No_Diagnostic,
+      Source_Too_Long,
+      Unexpected_End,
+      Unexpected_Token,
+      Unknown_Form,
+      Expected_Close,
+      Expected_Name,
+      Invalid_Integer,
+      --  A literal outside the range type of its position.
+      Value_Out_Of_Range,
+      Nesting_Too_Deep,
+      AST_Full,
+      Trailing_Input,
+      Unknown_Name,
+      Expected_Integer,
+      Expected_Boolean,
+      Expected_String,
+      Expected_Comparable,
+      Expected_Printable,
+      Expected_Stream,
+      Expected_Task,
+      Invalid_Type_Declaration,
+      Invalid_Variant_Payload,
+      Invalid_Match_Pattern,
+      Nonexhaustive_Match,
+      Duplicate_Match_Arm,
+      Branch_Type_Mismatch,
+      Too_Many_Bindings,
+      Unterminated_String,
+      Invalid_String_Escape,
+      Text_Storage_Full,
+      Expected_Type_Name,
+      Too_Many_Functions,
+      Too_Many_Parameters,
+      Duplicate_Declaration,
+      Function_Arity_Mismatch,
+      Function_Argument_Mismatch,
+      Function_Result_Mismatch,
+      Expected_Handler,
+      Invalid_Handler_Profile,
+      Handler_Result_Not_Exportable,
+      Host_Schema_Unavailable,
+      Unsupported_Host_Object,
+      Host_Object_Type_Mismatch,
+      --  A record field, or a host operation's argument, given a value of
+      --  another type: the result names the field or operation (subject)
+      --  and both types (Diagnostic_Expected, Diagnostic_Found).
+      Field_Type_Mismatch,
+      Argument_Type_Mismatch,
+      List_Element_Mismatch,
+      Unsupported_List_Element,
+      Unsupported_Stream_Element,
+      Stream_Not_Data,
+      Empty_List_Needs_Type,
+      Lambda_Parameter_Needs_Type,
+      Lambda_Capture_Unsupported,
+      Too_Many_Captures,
+      --  A record field's default is not a constant of the field's type.
+      Invalid_Field_Default,
+      --  Named construction (Type field => value ...).
+      Unknown_Field_Argument,
+      Repeated_Field_Argument,
+      Missing_Field_Argument,
+      Positional_After_Named,
+      --  A resource copied, used after it moved, or never released.
+      Resource_Ownership_Violation,
+      --  A type declaration: (range Low High) with Low above High, a type
+      --  name declared before, a field or alternative named twice.
+      Invalid_Range_Bounds,
+      Duplicate_Type_Name,
+      Duplicate_Component_Name);
+
+   type Text_Result is record
+      Length : Natural range 0 .. MAX_TEXT_BYTES := 0;
+      Data   : String (1 .. MAX_TEXT_BYTES) :=
+        [others => Character'Val (0)];
+   end record;
+   --  A result's CCL literal ((Process 1 "init" ...) and lists of them):
+   --  as long as the value, held on the heap (CCL.Held_Texts), up to
+   --  CCL.VM.LITERAL_CEILING.
+   subtype Literal_Text is CCL.Held_Texts.Text;
+
+   --  A type as source writes it: Integer, P, (List P).
+   MAX_TYPE_TEXT : constant := 128;
+   type Type_Text is record
+      Length : Natural range 0 .. MAX_TYPE_TEXT := 0;
+      Data : String (1 .. MAX_TYPE_TEXT) := [others => ' '];
+   end record;
+
+   --  A list result: its elements as values (Integer, Boolean; a Character
+   --  as its code; an enumeration member as its position) or, for strings,
+   --  as consecutive slices of List_Text ending at List_Text_Ends.
+   subtype List_Result_Count is CCL.VM.List_Result_Count;
+   subtype List_Result_Values is CCL.VM.List_Result_Values;
+   subtype List_Result_Ends is CCL.VM.List_Result_Ends;
+
+   type Analysis_Status is
+     (Analysis_Succeeded,
+      Analysis_Parse_Failed,
+      Analysis_Type_Check_Failed);
+
+   --  An analysis whose storage holds Source_Room bytes of source (and of
+   --  its literals' text) and Last_Node + 1 syntax nodes. Analysis_Result is
+   --  the default room; Analysis_Of sizes one by its source.
+   type Sized_Analysis (Source_Room : CCL.Language.Source_Room; Last_Node : Node_Index) is private;
+   subtype Analysis_Result is Sized_Analysis
+     (Source_Room => DEFAULT_SOURCE_ROOM, Last_Node => DEFAULT_NODE_ROOM - 1);
+   --  The node room after Room (Last_Node + 1) doubles, within the ceiling.
+   function Grown_Node_Room (Last_Node : Node_Index) return Node_Index is
+     (if Last_Node >= NODE_CEILING / 2 then NODE_CEILING - 1 else 2 * Last_Node + 1);
+
+   function Analysis_Status_Of
+     (Result : Sized_Analysis) return Analysis_Status;
+
+   function Analysis_Diagnostic
+     (Result : Sized_Analysis) return Diagnostic_Code;
+
+   function Analysis_Diagnostic_Position
+     (Result : Sized_Analysis) return Natural;
+
+   function Analysis_Node_Count
+     (Result : Sized_Analysis) return Node_Count;
+
+   function Analysis_Root
+     (Result : Sized_Analysis) return Node_Reference;
+   function Analysis_Diagnostic_Subject
+     (Result : Sized_Analysis) return Name;
+   --  For a type mismatch: the type wanted and the type given.
+   function Analysis_Diagnostic_Expected (Result : Sized_Analysis) return Name;
+   function Analysis_Diagnostic_Found (Result : Sized_Analysis) return Name;
+   function Analysis_Types (Result : Sized_Analysis) return CCL.Types.Registry;
+   function Analysis_Resource_Policies (Result : Sized_Analysis)
+     return CCL.Resource_Policies.Policy_Table;
+
+   --  The analysis's function table (named functions and lifted lambdas).
+   function Analysis_Function_Count (Result : Sized_Analysis) return Natural
+     with Post => Analysis_Function_Count'Result <= MAX_FUNCTIONS;
+   function Analysis_Function
+     (Result : Sized_Analysis; Id : Function_Index) return Function_Declaration;
+
+   function Analysis_Node
+     (Result : Sized_Analysis;
+      Index  : Node_Index) return Node;
+
+   --  The source the analysis read (empty when it was too long to keep).
+   function Analysis_Source (Result : Sized_Analysis) return String;
+
+   --  A string literal node's text (empty for any other node).
+   function Analysis_Literal
+     (Result : Sized_Analysis;
+      Index  : Node_Index) return String;
+
+   procedure Analyze
+     (Source : String;
+      Result : out Sized_Analysis);
+
+   procedure Analyze
+     (Source             : String;
+      Visible_Interfaces : CCL.Catalog.Interface_Catalog;
+      Result             : out Sized_Analysis);
+
+   --  Source analysed in storage sized by it: the source's own length (its
+   --  literals' text too), and a node room doubled from the default until
+   --  its tree fits. AST_Full and Source_Too_Long then mean a named
+   --  ceiling (NODE_CEILING, SOURCE_CEILING), never a fixed buffer.
+   function Analysis_Of
+     (Source : String; Visible_Interfaces : CCL.Catalog.Interface_Catalog) return Sized_Analysis;
+
+   --  The same, handing the analysis to Use_Analysis where it was built,
+   --  never copied out: one analysis on the stack, as a fixed room had.
+   generic
+      with procedure Use_Analysis (Analysis : Sized_Analysis);
+   procedure With_Analysis (Source : String; Visible_Interfaces : CCL.Catalog.Interface_Catalog);
+
+   type Interpretation_Result is record
+      Status         : Interpretation_Status := Parse_Failed;
+      Diagnostic     : Diagnostic_Code := No_Diagnostic;
+      --  One-based source position; zero means no source diagnostic.
+      Diagnostic_Position : Source_Position := 0;
+      --  The name a diagnostic is about, when it has one: the field a
+      --  record construction left out, named twice or does not have.
+      Diagnostic_Subject : Name;
+      --  For a type mismatch: the type wanted and the type given.
+      Diagnostic_Expected, Diagnostic_Found : Name;
+      Has_Value      : Boolean := False;
+      Has_Text       : Boolean := False;
+      Has_Character  : Boolean := False;
+      Variant_Type : Static_Type := Invalid_Type;
+      Variant_Type_Name : Name;
+      Variant_Member_Name : Name;
+      Variant_Payload_Type : Static_Type := Unit_Type;
+      Result_Value   : CCL.VM.Value := (others => <>);
+      Result_Text    : Text_Result := (others => <>);
+      Result_Character : Character := Character'Val (0);
+      --  A function value: the name of the function it refers to.
+      Has_Function : Boolean := False;
+      Function_Name : Name;
+      Has_List : Boolean := False;
+      List_Type : Static_Type := Invalid_Type;
+      List_Element_Type : Static_Type := Invalid_Type;
+      List_Length : List_Result_Count := 0;
+      --  The list's full length; List_Length elements (a prefix) are carried
+      --  out, so a result never fails just for being long.
+      List_Total : Natural range 0 .. CCL.VM.LIST_ELEMENT_CEILING := 0;
+      List_Values : List_Result_Values := [others => (others => <>)];
+      List_Text : Text_Result := (others => <>);
+      List_Text_Ends : List_Result_Ends := [others => 0];
+      --  A record or payload variant: its canonical CCL literal, which reads
+      --  back as the same value (for example (Pair 42 "hi")).
+      Has_Literal : Boolean := False;
+      Literal_Type : Static_Type := Invalid_Type;
+      Literal_Type_Name : Name;
+      Literal : Literal_Text := CCL.Held_Texts.Empty;
+      --  Its rows' record type and fields, for a table (Count = 0: none).
+      Literal_Shape : CCL.Types.Shapes.Row_Shape := (others => <>);
+      --  A stream the session holds: its handle, and its element type as
+      --  written. It has no literal; the session keeps it as (stream T n).
+      Has_Stream : Boolean := False;
+      Stream : CCL.Streams.Handle := CCL.Streams.No_Handle;
+      Stream_Element : Type_Text := (others => <>);
+      --  The handle is a task's (Task<T>, kept as (task T n)), not a
+      --  stream's: Stream_Element is then its result type.
+      Is_Task : Boolean := False;
+      --  A task's state when the evaluation ended, read without waiting:
+      --  Running, or Done with its result's literal in Task_Value (Erlang
+      --  style: look at a run without blocking on it).
+      Task_Done : Boolean := False;
+      Task_Value : Literal_Text := CCL.Held_Texts.Empty;
+      --  Waiting_On_Task: the task the evaluation waits for.
+      Waited_On : CCL.Streams.Handle := CCL.Streams.No_Handle;
+      --  A service call that produced no value (Host_Call_Failed,
+      --  Host_Authority_Denied): which operation, and why, with how to
+      --  allow it when the host says (docs/ccl-errors.md).
+      Failed_Operation : Name;
+      Failure : CuBit.Failures.Failure;
+      Fuel_Remaining : Natural := 0;
+   end record;
+
+   function Has_Scalar (Item : Interpretation_Result) return Boolean is
+     (Item.Status = Succeeded and then Item.Has_Value and then
+      not Item.Has_Text and then not Item.Has_Character and then
+      not Item.Has_List and then not Item.Has_Function and then
+      not Item.Has_Literal and then not Item.Has_Stream and then
+      CCL.Types."=" (Item.Variant_Type, Invalid_Type));
+
+   type Object_Interpretation_Result is record
+      Status : Interpretation_Status := Parse_Failed;
+      Diagnostic : Diagnostic_Code := No_Diagnostic;
+      Diagnostic_Position : Source_Position := 0;
+      Diagnostic_Subject : Name;
+      Diagnostic_Expected, Diagnostic_Found : Name;
+      Fuel_Remaining : Natural := 0;
+      Has_Value : Boolean := False;
+      Value : CCL.Objects.Image;
+   end record;
+private
+
+
+   type Sized_Analysis (Source_Room : CCL.Language.Source_Room; Last_Node : Node_Index) is record
+      Resource_Policies : CCL.Resource_Policies.Policy_Table := [others => (others => <>)];
+      Status              : Analysis_Status := Analysis_Parse_Failed;
+      Diagnostic          : Diagnostic_Code := No_Diagnostic;
+      Diagnostic_Position : Natural range 0 .. SOURCE_CEILING + 1 := 0;
+      Diagnostic_Subject  : Name;
+      Diagnostic_Expected, Diagnostic_Found : Name;
+      Tree                : Syntax_Tree (Last_Node, Source_Room);
+      Source_Length : Natural range 0 .. SOURCE_CEILING := 0;
+      Source_Text : String (1 .. Source_Room) := [others => ' '];
+   end record;
+end CCL.Language;

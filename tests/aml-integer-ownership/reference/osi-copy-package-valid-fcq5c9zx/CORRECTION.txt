@@ -1,0 +1,1 @@
+p3qg original rejected bothtables because CopyObject target Index is not accepted normalASL SimpleName syntax. Preserved rejection; remove only optionalCPKG declaration/unusedPKG1 in fresh successor to run allrequested supportedStorePackage/CopyLocal/CopyExpression/control cases. No force flags.

@@ -1,0 +1,7 @@
+# Definition load registry
+
+Inside pinned Nix, with TMPDIR=/home/doc/cubit-build-tmp exported before entering, run bash tests/aml-definition-loads/run.sh. This builds a small independent registry model in checked and release profiles. Each profile explores all 46 reachable states and 690 transitions for two slots and two consumable identities, with 108614 checks. A third expected-only identity checks mismatches. This is exhaustive for that finite model, not all registry capacities or values.
+
+The isolated registry source was SPARK proved at level 1 with solver timeout 5 seconds: 170 checks discharged (14 flow,156 prover), zero unproved/justified/Assume statements. Scope: default initialization, exact transition admission/results, unrelated-slot preservation, identity uniqueness, and the session-admission predicate. This does not prove caller token authenticity, VM, namespace, Core, lifetime, providers, or full ACPI semantics. The publication evidence records source and proof artifact hashes; no proof of the whole interpreter is claimed.
+
+To reproduce the isolated proof, copy aml_identity.ads and aml_definition_loads.ads/adb from userspace/services/acpi/lib into a private source directory, use an isolated project with that Source_Dirs and private Object_Dir/Proof_Dir, then run gnatprove -P registry.gpr -u aml_definition_loads.adb --level=1 --timeout=5 -j1 --report=all under a 180 second timeout in pinned Nix. Keep stack64MiB, core0, nice19 and logs below1MiB. Do not replace this with a whole-Core proof attempt.

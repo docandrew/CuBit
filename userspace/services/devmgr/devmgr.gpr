@@ -1,0 +1,239 @@
+project Devmgr is
+
+    for Languages use ("Ada");
+
+    for Object_Dir use "build";
+
+    for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv", "../../lib/display", "../../lib/logging", "../../../shared/acpi", "../../../shared/firmware",
+       "platform_quirks", "../../../shared/platform", "../../lib/i2c-admission", "../../lib/gpio-admission",
+       --  acpi.svc's host-bridge snapshot codec (PCI-BAR-001), read-only.
+       "../../lib/acpi-windows",
+       --  gpio.drv's admin wire (OP_GPIO_ADMIT_SINK), used read-only.
+       "../gpio/lib");
+
+    for Main use ("main.adb");
+
+    --  Explicit list excludes other service mains and hardware adapters.
+    for Source_Files use ("main.adb", "cpio.ads", "cpio.adb", "ccl.ads",
+       --  Warnings kept until logstore runs (CAP-001 diagnostics).
+       "deferred_warnings.ads", "driver_log_issuances.ads", "driver_log_issuances.adb", "deferred_warnings.adb",
+       --  Who each child is, for logstore (LOG-003).
+       "source_notices.ads", "source_notices.adb",
+       --  Children by name, for their exit lines.
+       "devmgr_children.ads", "devmgr_children.adb",
+       --  The root stop's driver stage (PWR-003).
+       "devmgr_driver_stops.ads", "devmgr_driver_stops.adb",
+       --  Message-signaled interrupts (docs/msi-interrupts.md).
+       "pci_message_interrupts.ads", "pci_message_interrupts.adb",
+       "pci_message_functions.ads", "pci_message_functions.adb",
+       --  The capability-list walk (MSI / MSI-X facts, PCI_Capabilities).
+       "pci_capabilities.ads", "pci_capabilities.adb",
+       --  Every BAR's extent, sized at enumeration (PCI_BAR_Extents).
+       "pci_bar_extents.ads", "pci_bar_extents.adb",
+       "pci_power_control.ads", "pci_power_control.adb",
+       "pci_bar_placement.ads", "pci_bar_placement.adb",
+       "pci_bar_assignment.ads", "pci_bar_assignment.adb",
+       "devmgr_host_windows.ads", "devmgr_host_windows.adb",
+       "host_bridge_rows.ads", "host_bridge_rows.adb",
+       "devmgr_host_bridge_consumer.ads", "devmgr_host_bridge_consumer.adb",
+       "acpi_host_bridge_snapshot.ads", "acpi_host_bridge_snapshot.adb",
+       "acpi_host_bridge_wire.ads",
+       "xhci_configure_reply.ads", "xhci_controller_identity.ads",
+       "driver_manifests.ads", "driver_manifests.adb",
+       --  Devices bound by their drivers' declared matches (HW-002).
+       "devmgr_bindings.ads", "devmgr_bindings.adb", "devmgr_windows.ads",
+       --  Which spans an ACPI-matched driver gets (docs/device-matching.md "ACPI launch").
+       "devmgr_acpi_windows.ads", "devmgr_acpi_windows.adb",
+       --  How a Consumer_Initialization_Complete is decided.
+       "devmgr_phase_declarations.ads", "devmgr_phase_declarations.adb",
+       --  How a HID offer (16#0252#) is decided, and its channel badges.
+       "devmgr_hid_offers.ads", "devmgr_hid_offers.adb",
+       "hid_offer_payload.ads", "hid_offer_payload.adb",
+       "i2c_channel_badges.ads", "i2c_channel_badges.adb",
+       "gpio_channel_badges.ads", "gpio_channel_badges.adb",
+       --  The GPIO sink admission devmgr offers the GPIO driver (SUP-001).
+       "gpio_admin_wire.ads", "gpio_admin_wire.adb",
+       "gpio_control_wire.ads", "gpio_control_wire.adb",
+       "ccl-device_sections.ads", "ccl-device_sections.adb",
+       "ccl-device_index.ads", "ccl-device_index.adb",
+       "intel_gpu_adln_devices.ads",
+       --  Launching children by handle (CAP-002).
+       "devmgr_launches.ads", "devmgr_launches.adb",
+       "devmgr_authority.ads", "devmgr_authority.adb",
+       "devmgr_port_claims.ads", "devmgr_port_claims.adb",
+       "devmgr_memory_claims.ads", "devmgr_memory_claims.adb",
+       --  The platform-register pool's discovery (ACPI-POOL-001).
+       "devmgr_platform_pool.ads", "devmgr_platform_pool.adb",
+       --  Platform quirks (hardware discovery): the table, the P2SB and
+       --  its sideband window, GPIO communities (platform_quirks/), on the
+       --  shared identity and table pattern (shared/platform).
+       "platform_identity.ads", "platform_identity.adb", "platform_quirk_tables.ads",
+       "platform_quirks.ads", "platform_quirks.adb",
+       "platform_quirks-intel_p2sb.ads", "platform_quirks-intel_p2sb.adb",
+       "platform_quirks-intel_gpio_communities.ads", "platform_quirks-intel_gpio_communities.adb",
+       "platform_quirks-sideband.ads", "platform_quirks-sideband.adb",
+       --  The GPIO bootstrap admission (ACPI-POOL-001 step 1b).
+       "gpio_bootstrap_payload.ads", "gpio_bootstrap_payload.adb",
+       "platform_quirks-gpio_bootstrap_admission.ads", "platform_quirks-gpio_bootstrap_admission.adb",
+       --  The ledgers and records on the heap (LIM-001b), firmware data.
+       "devmgr_growable.ads", "devmgr_growable.adb", "devmgr_heap.ads", "devmgr_heap.adb",
+       "devmgr_claim_ledgers.ads", "devmgr_claim_ledgers.adb",
+       -- Existing devmgr PCI broker and its pure shared table/protocol units.
+       "devmgr_pci_claims.ads",
+       "devmgr_pci_claims.adb",
+       "devmgr_claim_ledgers-pci.ads",
+       "devmgr_claim_ledgers-pci.adb",
+       "devmgr_pci_broker.ads",
+       "devmgr_pci_broker.adb",
+       "acpi_pci_window_exchange.ads",
+       "acpi_pci_window_exchange.adb",
+       "firmware_tables.ads",
+       "firmware_tables.adb",
+       "firmware_tables-mcfg.ads",
+       "firmware_tables-mcfg.adb",
+       "firmware_tables-pci_windows.ads",
+       "firmware_tables-pci_windows.adb",
+       "devmgr_data_windows.ads", "devmgr_data_windows.adb",
+       "fs_attachments.ads",
+       "ccl-resource_sections.ads", "ccl-resource_sections.adb",
+       "boot_rtc.ads", "boot_rtc.adb", "rtc_decode.ads", "rtc_decode.adb", "rtc_sampling.ads", "rtc_sampling.adb", "civil_time.ads", "civil_time.adb",
+       "intel_gpu_probe.ads", "intel_gpu_probe.adb",
+       "intel_gpu_broker_request.ads", "intel_gpu_broker_request.adb",
+       "intel_gpu_broker_launches.ads", "intel_gpu_broker_launches.adb",
+       "intel_gpu_render_sessions.ads", "intel_gpu_render_sessions.adb",
+       "intel_render_admission.ads", "intel_render_admission.adb",
+       "intel_render_admission_native.ads", "intel_render_admission_native.adb",
+       "intel_render_admission_dispatch.ads", "intel_render_admission_dispatch.adb",
+       "intel_render_broker.ads", "intel_render_broker.adb",
+       "native_gpu_probe_protocol.ads", "native_gpu_probe_protocol.adb",
+       "intel_gpu_resources.ads", "intel_gpu_resources.adb",
+       "intel_gpu_reset_pages.ads",
+       "intel_gpu_display_pages.ads",
+       "intel_gpu_pipe_pages.ads", "intel_gpu_modeset_pages.ads",
+       "intel_gpu_msi_enable.ads", "intel_gpu_msi_enable.adb",
+       "intel_gpu_phy_pages.ads", "intel_gpu_phy_pages.adb",
+       "intel_gpu_phy_registers.ads",
+       "intel_gpu_combo_phy.ads", "intel_gpu_combo_phy.adb",
+       "intel_gpu_ads_backing.ads",
+       "intel_gpu_buffer_backing.ads",
+       "intel_gpu_extent_allocator.ads", "intel_gpu_extent_allocator.adb",
+       "intel_gpu_extent_growth.ads", "intel_gpu_extent_growth.adb",
+       "intel_gpu_extent_directory.ads", "intel_gpu_extent_directory.adb",
+       "intel_gpu_record_store.ads", "intel_gpu_record_store.adb",
+       "intel_gpu_record_growth.ads", "intel_gpu_record_growth.adb",
+       "intel_gpu_allocation_growth.ads", "intel_gpu_allocation_growth.adb",
+       "intel_gpu_metadata_arena.ads", "intel_gpu_metadata_arena.adb",
+       "intel_gpu_metadata_initialize.ads", "intel_gpu_metadata_initialize.adb",
+       "intel_gpu_metadata_platform.ads", "intel_gpu_metadata_platform.adb",
+       "intel_gpu_va_placement.ads", "intel_gpu_va_placement.adb",
+       "intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb",
+       "intel_gpu_buffer_reply.ads", "intel_gpu_buffer_reply.adb",
+       "intel_gpu_display_claim.ads", "intel_gpu_display_claim.adb",
+       "intel_gpu_boot.ads", "intel_gpu_boot.adb",
+       "intel_gpu_pci_power.ads", "intel_gpu_pci_power.adb",
+       "intel_gpu_pci_interrupts.ads", "intel_gpu_pci_interrupts.adb",
+       "intel_gpu_pci_irq_disable.ads", "intel_gpu_pci_irq_disable.adb",
+       "intel_gpu_ggtt_access.ads", "intel_gpu_ggtt_access.adb",
+       "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb",
+       "xhci_dma_layout.ads", "xhci_dma_layout.adb",
+       "xhci_capabilities.ads", "xhci_capabilities.adb",
+       "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
+       "ccl-checked_arithmetic.ads", "ccl-checked_arithmetic.adb",
+       "ccl-execution_budgets.ads", "ccl-execution_budgets.adb",
+       "ccl-ownership.ads", "ccl-ownership.adb",
+       "ccl-imports.ads", "ccl-imports.adb",
+       "ccl-ownership-bytecode.ads", "ccl-ownership-bytecode.adb",
+       "ccl-secondary_stacks.ads", "ccl-secondary_stacks.adb",
+       "ccl-secondary_arrays.ads", "ccl-secondary_arrays.adb",
+       "ccl-vm.ads", "ccl-vm.adb",
+       "ccl-vm-machine.ads", "ccl-vm-machine.adb", "ccl-vm-operations.ads", "ccl-vm-operations.adb", "ccl-vm-scalar_ops.ads", "ccl-vm-scalar_ops.adb", "ccl-vm-text_ops.ads", "ccl-vm-text_ops.adb",
+       "ccl-vm-data_ops.ads", "ccl-vm-data_ops.adb", "ccl-vm-list_ops.ads", "ccl-vm-list_ops.adb", "ccl-vm-call_ops.ads", "ccl-vm-call_ops.adb", "ccl-vm-local_ops.ads", "ccl-vm-local_ops.adb",
+       "ccl-vm-results.ads", "ccl-vm-results.adb", "ccl-vm-verifier_state.ads", "ccl-vm-verifier_state.adb", "ccl-vm-verifier_values.ads", "ccl-vm-verifier_values.adb", "ccl-vm-verifier_texts.ads", "ccl-vm-verifier_texts.adb",
+       "ccl-vm-verifier_flow.ads", "ccl-vm-verifier_flow.adb", "ccl-vm-verifier_tables.ads", "ccl-vm-verifier_tables.adb", "ccl-vm-verifier_sweep.ads", "ccl-vm-verifier_sweep.adb",
+       "ccl-streams.ads", "ccl-types-shapes.ads", "ccl-types-shapes.adb",
+       "ccl-text_operations.ads", "ccl-text_operations.adb",
+       "ccl-list_operations.ads", "ccl-list_operations.adb",
+       "ccl-resources.ads", "ccl-resources.adb",
+       "ccl-resource_policies.ads", "ccl-resource_policies.adb",
+      "ccl-host_values.ads", "ccl-host_values.adb",
+      "ccl-handler_references.ads", "ccl-handler_references.adb",
+       "ccl-catalog.ads", "ccl-catalog.adb",
+       "ccl-language.ads", "ccl-language.adb",
+       "ccl-types.ads", "ccl-types.adb",
+       "ccl-types-correspondence.ads", "ccl-types-correspondence.adb",
+       "ccl-objects.ads", "ccl-objects.adb",
+       "ccl-objects-holders.ads", "ccl-objects-holders.adb",
+       "ccl-held_texts.ads", "ccl-held_texts.adb",
+       "ccl-objects-catalog.ads", "ccl-objects-catalog.adb",
+       "ccl-objects-values.ads", "ccl-objects-values.adb",
+       "ccl-objects-views.ads", "ccl-objects-views.adb",
+       "ccl-declarations.ads", "ccl-declarations.adb",
+       --  Declarations are evaluated compiled, on the VM (CCL.Evaluation).
+       "ccl-evaluation.ads", "ccl-evaluation.adb",
+       "ccl-compiler.ads", "ccl-compiler.adb",
+       "ccl-debug_maps.ads", "ccl-debug_maps.adb",
+       "ccl-vm-native_objects.ads", "ccl-vm-native_objects.adb",
+       "ccl-vm-resource_values.ads", "ccl-vm-resource_values.adb",
+       "ccl-scheduling_limits.ads",
+       "ccl-configurations.ads", "ccl-configurations.adb",
+       "ccl-typed_settings.ads", "ccl-typed_settings.adb", "ccl-typed_values.ads", "ccl-typed_values.adb", "ccl-diagnostics.ads", "ccl-diagnostics.adb",
+       "ccl-setting_codecs.ads", "ccl-setting_codecs-launch_entry.ads", "ccl-setting_codecs-launch_entry.adb", "ccl-setting_kinds.ads", "ccl-interfaces-desktop_input.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces-system_policy.ads", "ccl-interfaces-desktop_display.ads", "ccl-interfaces.ads",
+       "ccl-interfaces-desktop_launch.ads", "ccl-interfaces-desktop_launch-icons.ads",
+       "ccl-interfaces-calc_types.ads", "ccl-interfaces-net_interface.ads", "ccl-interfaces-log_retention.ads",
+       "ccl-interfaces-browser_agent.ads");
+
+    for Runtime ("Ada") use "../../runtime";
+
+    for Library_Dir use "";
+
+    -- For gprbuild
+    package Builder is
+
+        for Executable ("main.adb") use "devmgr.svc";
+
+        for Default_Switches ("Ada") use
+        (
+            "-g",
+            "-gnatwa",
+            "-gnatw.X",
+            "-s",
+            "-v",
+            "-nostdlib"
+        );
+    end Builder;
+
+    -- For compiler & assembler
+    package Compiler is
+        for Default_Switches ("Ada") use
+        (
+            "-O2", "-gnat2022",
+            "-fstack-usage",
+            "-fomit-frame-pointer",
+            "-mno-red-zone",
+            "-fno-pic"
+        );
+    end Compiler;
+
+    -- For binder
+    package Binder is
+        for Default_Switches ("Ada") use
+        (
+            "-d_C"
+        );
+    end Binder;
+
+    -- For linker (uses C runtime crt0 + linker script for _start entry)
+    package Linker is
+        for Default_Switches ("Ada") use
+        (
+            "-nostdlib",
+            "-static",
+            "-no-pie",
+            "-Wl,-z,stack-size=16777216",
+            "-lgnat-user",
+            "-T", "../../c/link.ld",
+            "../../c/build/crt0.o"
+        );
+    end Linker;
+
+end Devmgr;

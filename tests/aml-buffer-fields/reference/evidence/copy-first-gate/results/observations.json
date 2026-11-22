@@ -1,0 +1,17 @@
+[
+  {
+    "key": "1-BYTENAME",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "76806e6deeafa102a355a3b48a676f2f05ed4ee463aac0f6ffd3bafd74041503",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true
+  }
+]

@@ -1,0 +1,13 @@
+project VM_Commit is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use external ("VM_COMMIT_OBJECT_DIR", "build-vm-commit");
+   for Main use ("vm_commit_step_tests.adb", "vm_commit_integration_tests.adb",
+                 "vm_commit_walk_tests.adb", "vm_update_resume_tests.adb",
+                 "table_preflight_tests.adb", "vm_capture_step_tests.adb",
+                 "vm_validated_writer_tests.adb", "vm_removal_steps_tests.adb",
+                 "vm_removal_stream_tests.adb", "vm_removal_commit_tests.adb",
+                 "vm_removal_pipeline_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end VM_Commit;

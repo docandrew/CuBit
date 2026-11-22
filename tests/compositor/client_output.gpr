@@ -1,0 +1,10 @@
+project Client_Output is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("client_output_tests.adb", "desktop_composition.ads", "desktop_composition.adb", "compositor_client_output.ads", "compositor_client_output.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Object_Dir use "build/client-output/obj";
+   for Exec_Dir use "build/client-output";
+   for Main use ("client_output_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Client_Output;

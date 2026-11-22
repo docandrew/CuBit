@@ -1,0 +1,140 @@
+with CuBit.Handles;
+with Intel_GPU_Buffer_Views;
+generic
+   -- Trusted admission lookup, never request words: the saved reply of the
+   -- request being handled (memory is granted to the process it answers)
+   -- and the session's admitted identity, zero when not admitted.
+   with procedure Recipient_Of
+     (Sender, Stamp : Unsigned_64; Grantee : out CuBit.Handles.Reply;
+      Identity : out Unsigned_64);
+package Intel_GPU_Buffer_Requests.Sharing is
+   Initial_Capacity : constant := 64;
+   subtype Mapping_ID is Unsigned_32;
+   type Mapping_Table is limited private;
+   function Record_Capacity (Table : Mapping_Table) return Positive;
+   function Needs_Growth (Table : Mapping_Table) return Boolean;
+   -- Trusted, retained CPU metadata, disjoint from the table, BO backing and
+   -- every other registry. Stable base and committed prefix; at most64KiB
+   -- added per call. Initializes only new typed entries, never moves live
+   -- limited grant/pin tokens. Caller must serialize mutation and retain the
+   -- entire mapping for the table lifetime. Not a client-provided address.
+   procedure Extend_Storage
+     (Table : in out Mapping_Table; Base, Bytes : Unsigned_64;
+      Accepted : out Boolean);
+   Map_Label : constant Unsigned_32 := 16#0A23#;
+   Map_Read : constant Unsigned_64 := 0;
+   Map_Write : constant Unsigned_64 := 1;
+   Retire_Map : constant Unsigned_64 := 2;
+   Map_Presentation : constant Unsigned_64 := 3;
+   -- Read-only owner-opted-in forwarding, never implicit in Map_Read/Write.
+   Pending_Retirement : constant Unsigned_64 := 4;
+   -- Request [version | operation<<32, BO-handle, offset, bytes]; retirement
+   -- uses [version | 2<<32, mapping-ID, 0, 0]. Success response:
+   -- [OK, version, mapping-ID, grant-reference] for map, zero trailing words
+   -- for retirement. Other statuses also have zero trailing words; status4
+   -- means repeat RETIRE later, not repeat MAP. Map is never blindly retried.
+   -- A nonzero Created is a dispatcher cleanup ticket: if reply delivery
+   -- fails, call Reject_Delivery even though the app never saw the mapping ID.
+   procedure Handle
+     (Object : in out Service; Table : in out Mapping_Table;
+      Sender, Stamp : Unsigned_64; Request_Label : Unsigned_32;
+      Length, Flags : Unsigned_8; Reserved : Unsigned_16;
+      Request : Words; Response : out Words; Created : out Mapping_ID);
+   -- One table per driver incarnation. IDs never repeat or wrap. Confirmed
+   -- retired view slots may be recycled under a fresh ID; uncertain/live views
+   -- remain retained. Exhaustion fails without granting more.
+   procedure Map
+     (Object : in out Service; Table : in out Mapping_Table;
+      Sender, Stamp, ID, Offset, Bytes : Unsigned_64; Writable : Boolean;
+      Mapping : out Mapping_ID; Reference : out Unsigned_64;
+      Presentation : Boolean := False);
+   -- Authenticated client retirement/poll. Accepted=False for foreign/unknown
+   -- IDs. Retired means this grant is gone, NOT that GPU work/backing is free.
+   procedure Retire
+     (Object : in out Service; Table : in out Mapping_Table; Sender, Stamp : Unsigned_64;
+      Mapping : Mapping_ID; Accepted : out Boolean;
+      State : out Intel_GPU_Buffer_Views.View_State);
+   -- Trusted dispatcher lifecycle hooks, never application-supplied IDs.
+   procedure Reject_Delivery (Object : in out Service; Table : in out Mapping_Table; Mapping : Mapping_ID);
+   -- Close admission first so no subsequent request resolves this session.
+   -- This hook drains its grants; it does not edit the admission controller.
+   procedure Retire_Session (Object : in out Service; Table : in out Mapping_Table; Session : Unsigned_64);
+   -- Close admission before Begin. Pins the service/table roots and captures
+   -- the used prefix; no later mapping for Session may be admitted. Each Step
+   -- visits at most Poll_Budget entries. Complete means retirement requested,
+   -- NOT all grants drained; Observe_Retirement remains the separate gate.
+   type Mapping_Retirement is limited private;
+   procedure Begin_Retire_Session
+     (Object : in out Service; Table : in out Mapping_Table; Session : Unsigned_64;
+      State : in out Mapping_Retirement; Accepted : out Boolean);
+   procedure Retire_Session_Step
+     (Object : in out Service; Table : in out Mapping_Table;
+      State : in out Mapping_Retirement; Complete : out Boolean);
+   type Retirement_State is (Clear, Outstanding, Uncertain);
+   -- Trusted dispatcher observation, not caller authentication. Clear means
+   -- no outstanding grant in this table for Session, not closed admission,
+   -- completed GPU work, or permission to reclaim backing. Caller must first
+   -- close admission and serialize allocation/map completions with this read.
+   -- Failed views/table/ownership never become Clear just because polling ends.
+   function Observe_Retirement (Table : Mapping_Table; Session : Unsigned_64)
+      return Retirement_State;
+   -- Per-buffer counterpart for the trusted retirement coordinator. Includes
+   -- ordinary reads/writes AND forwardable presentation roots, regardless of
+   -- whether the buffer name is still open. Zero identities fail closed.
+   -- Clear is only a CPU-grant observation, not evidence of a valid BO or of
+   -- GPU unbinding/completion. The caller must authenticate the retained BO
+   -- generation and close mapping admission before using this observation.
+   function Observe_Buffer_Retirement
+     (Table : Mapping_Table; Session, Buffer_ID : Unsigned_64)
+      return Retirement_State;
+   -- Serialized dispatcher interlock: a presentation loan (including
+   -- uncertain/retiring grants) forbids new GPU submissions for this session.
+   -- A read-only grant alone is not a GPU-write exclusion mechanism.
+   -- CPU writer observation only; GPU producer completion is separate.
+   -- Covers this table only. Coordinator must account for any other aliases.
+   -- Pending/failed writable grants remain held until confirmed retired.
+   function Writable_Buffer_Held
+     (Table : Mapping_Table; Session, ID : Unsigned_64) return Boolean;
+   function Presentation_Held (Table : Mapping_Table; Session : Unsigned_64)
+      return Boolean;
+   procedure Quarantine (Object : in out Service; Table : in out Mapping_Table);
+   -- One bounded round-robin pass; repeated calls eventually visit every
+   -- entry. Retirement observers remain conservative until that entry polls.
+   Poll_Budget : constant := 16;
+   procedure Poll (Object : in out Service; Table : in out Mapping_Table);
+   -- Dispatcher-owned view; caller supplies only its BO handle and range.
+   -- Authenticate against the same registry that created the handle. No
+   -- backing address or mutable handle registry escapes this interface.
+   -- Serialized with allocation completion, close and session retirement.
+   -- The dispatcher must retire a successful view if reply delivery fails,
+   -- and track all live views through session teardown before reclaiming RAM.
+   procedure Share
+     (Object : in out Service; Sender, Stamp, ID, Offset, Bytes : Unsigned_64;
+      Writable : Boolean; View : in out Intel_GPU_Buffer_Views.View;
+      Accepted : out Boolean; Presentation : Boolean := False);
+private
+   type Mapping_Retirement is limited record
+      Origin, Table_Origin : System.Address := System.Null_Address;
+      Session : Unsigned_64 := 0;
+      Last, Cursor : Natural := 0;
+      Started, Done : Boolean := False;
+   end record;
+   type Mapping_Entry is limited record
+      ID : Mapping_ID := 0;
+      Session : Unsigned_64 := 0;
+      Buffer_ID : Unsigned_64 := 0;
+      Writable : Boolean := False;
+      Presentation : Boolean := False;
+      View : Intel_GPU_Buffer_Views.View;
+   end record;
+   type Entries is array (Positive range 1 .. Initial_Capacity) of Mapping_Entry;
+   type Mapping_Table is limited record
+      Used : Natural := 0;
+      Next_Poll : Positive := 1;
+      Available : Positive := Initial_Capacity;
+      Storage_Base, Storage_Bytes : Unsigned_64 := 0;
+      Last_ID : Mapping_ID := 0;
+      Failed : Boolean := False;
+      Items : Entries;
+   end record;
+end Intel_GPU_Buffer_Requests.Sharing;

@@ -1,0 +1,11 @@
+{
+  "name": "cubit-observatory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "preview": "node preview.mjs",
+    "test": "node --test preview.test.mjs wire.test.mjs highlight.test.mjs"
+  },
+  "dependencies": { "three": "0.180.0" }
+}

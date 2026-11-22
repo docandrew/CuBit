@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/field-client/transport/acpi_firmware_data_frontend_native.ads",
+      "sha256": "4c7e635540381803a151654694e63b64dd81e546cd19785ed429742adac3836a"
+    },
+    {
+      "path": "userspace/services/acpi/field-client/transport/acpi_firmware_data_frontend_native.adb",
+      "sha256": "015da0703f6000190885a317b21b4fc4f9878d6bf112c9b27ca6526a924bd865"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-monotonic.ads",
+      "sha256": "8903038c2ffd0a064d9df8b296a02ac887ecff5772bb6519c2c2f6619e53fc7b"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-monotonic.adb",
+      "sha256": "b45003d23cba5e35ef8000c5accbc9a6fd529bd21cd7dfbc3a6d9cf603cd40f8"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-published_clock.adb",
+      "sha256": "15558a382fb6b44e972c47db0a8e90a203c37afb8643b9844db2b8f3c7078817"
+    },
+    {
+      "path": "tests/acpi-firmware-data-clock/run.mjs",
+      "sha256": "490d9ba6f6b4ca1cc1817d26b43099107f123a914662321822f07b8a026a36a4"
+    },
+    {
+      "path": "tests/acpi-firmware-data-clock/run.sh",
+      "sha256": "e92253d9fe4c9820f6bf314d01962ecc161c1b76d3c6b87b0cdd2e99a5f51d1d"
+    },
+    {
+      "path": "tests/acpi-firmware-data-clock/README.md",
+      "sha256": "6049f0c1201157375f5855c5b945deaf00039a20814369623b825449d33a9786"
+    },
+    {
+      "path": "tests/acpi-firmware-data-clock/fixtures/before/acpi_firmware_data_frontend_native.adb",
+      "sha256": "78af42e9b94ccf9c6d9d9a5c10900161ef3665fd60d6cd7a3974c7e39421576f"
+    }
+  ]
+}

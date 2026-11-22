@@ -1,0 +1,8 @@
+project Image_Consumers is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-image-consumers";
+   for Main use ("image_consumers_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Image_Consumers;

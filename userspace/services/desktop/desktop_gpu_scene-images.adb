@@ -1,0 +1,70 @@
+with Desktop_GPU_Scene.Drawing;
+package body Desktop_GPU_Scene.Images with SPARK_Mode is
+   use type Registry.I.Outcome;
+   procedure Capture (Scene : in out State; Sources : in out Registry.State;
+      Key : Compositor_Source_Content.Source_Key;
+      Version : Compositor_Source_Content.Content_Version;
+      Image : Compositor_Formats.Image; Bytes : Natural;
+      Surface : V.A.G.Logical_Rectangle; Damage : V.A.G.Physical_Rectangle;
+      Accepted : out Boolean; Over : Boolean := False; Straight_Alpha : Boolean := False)
+   is
+      Ticket : V.V.Source_Ticket;
+      Result : Registry.I.Outcome;
+   begin
+      Accepted := False;
+      if Scene.Status /= Capturing or else Scene.Invalid then return; end if;
+      if Scene.Cold then
+         -- GPU-004: the scene is discarded anyway, but every other stale
+         -- image still stages its upload into the same batch, so one
+         -- transfer and one recapture cover them all. Nothing is drawn.
+         Registry.Ensure (Sources, Key, Version, Image, Bytes, Ticket, Result);
+         if Result = Registry.I.Unsafe then Scene.Status := Quarantined; end if;
+         return;
+      end if;
+      Registry.Ensure (Sources, Key, Version, Image, Bytes, Ticket, Result);
+      case Result is
+         when Registry.I.Available =>
+            Drawing.Image (Scene, Ticket, Surface, Damage, Accepted, Over, Straight_Alpha);
+         when Registry.I.Unaffordable =>
+            -- Permanent for this scene: every idle source was already
+            -- evicted. Transient states (cold, busy writer) never get here.
+            Note_Placeholder (Scene);
+            Drawing.Logical_Fill (Scene, Surface, Damage, Placeholder_Color, Accepted);
+         when Registry.I.Pending | Registry.I.Deferred => Scene.Cold := True;
+         when Registry.I.Rejected => Scene.Invalid := True;
+         when Registry.I.Unsafe => Scene.Status := Quarantined;
+      end case;
+   end Capture;
+   procedure Complete
+     (Scene : in out State; Sources : in out Registry.State;
+      Copy : in out Output.R.State; Target : Compositor_Formats.Image;
+      Bytes : Compositor_Formats.Byte_Count; Writer : Output.R.P.Ticket;
+      Poll_Only, Capture_Accepted : Boolean; Byte_Budget : Natural;
+      Result : out Output_Completion; Repair : Compositor_Damage.State)
+   is
+      Progress : Registry.I.Outcome;
+      Flushed : D.Source_Result;
+      use type D.Source_Result;
+   begin
+      Result := Output_Unsafe;
+      if Scene.Status = Quarantined then return; end if;
+      -- Uploads this capture staged go to the GPU in one submission.
+      D.Flush_Staged (Flushed);
+      if Flushed = D.Source_Unsafe then Scene.Status := Quarantined; return; end if;
+      if Registry.Upload_Work (Sources) then
+         if Poll_Only then
+            Registry.Poll (Sources, Progress);
+            if Progress = Registry.I.Unsafe then Scene.Status := Quarantined; return; end if;
+         end if;
+         Result := Output_Pending; return;
+      end if;
+      -- A failed cold capture has never submitted a frame. Once its external
+      -- uploads drain it must be discarded even on an observation-only turn.
+      if Scene.Status = Capturing and then (Scene.Cold or Scene.Invalid) then
+         Output.Pump (Scene, Copy, Target, Bytes, Writer, False, False, Byte_Budget, Result, Repair);
+      else
+         Output.Pump (Scene, Copy, Target, Bytes, Writer, Poll_Only,
+           Capture_Accepted, Byte_Budget, Result, Repair);
+      end if;
+   end Complete;
+end Desktop_GPU_Scene.Images;

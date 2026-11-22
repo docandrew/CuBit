@@ -1,0 +1,213 @@
+CCL-INTERFACE-DESCRIPTOR 1
+name 7:metrics
+version 1 0
+operations 16
+operation 0
+name 5:ready
+parameters 0
+argument integer
+result boolean
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 1
+name 5:count
+parameters 0
+argument integer
+result integer
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 2
+name 4:name
+parameters 1
+argument integer
+result string 32
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 3
+name 4:unit
+parameters 1
+argument integer
+result string 20
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 4
+name 6:source
+parameters 1
+argument integer
+result string 20
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 5
+name 9:publisher
+parameters 1
+argument integer
+result string 20
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 6
+name 7:samples
+parameters 1
+argument integer
+result string 20
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 7
+name 7:minimum
+parameters 1
+argument integer
+result string 20
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 8
+name 7:maximum
+parameters 1
+argument integer
+result string 20
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 9
+name 9:p50-upper
+parameters 1
+argument integer
+result string 20
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 10
+name 9:p99-upper
+parameters 1
+argument integer
+result string 20
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 11
+name 5:total
+parameters 1
+argument integer
+result string 20
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 12
+name 7:dropped
+parameters 1
+argument integer
+result string 20
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 13
+name 10:batch-gaps
+parameters 1
+argument integer
+result string 20
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 14
+name 5:lossy
+parameters 1
+argument integer
+result boolean
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+operation 15
+name 9:saturated
+parameters 1
+argument integer
+result boolean
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+end-interface

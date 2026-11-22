@@ -1,0 +1,205 @@
+{
+  "wide": [
+    {
+      "main": "tests/acpi-integration/timer_verification.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-buffer-fields/field_status_tests.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-core/readonly_input_tests.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-core/region_executor_tests.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-core/timer_executor_tests.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-core/timer_verification.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-debug/debug_target_tests.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-metadata-execute/metadata_executor_tests.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-notify/notify_executor_tests.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-references/timer_verification.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-retention/frame_root_tests.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-retention/result_handoff_tests.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-module-policy/module_policy_tests.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-module-loading/code_transport_tests.adb",
+      "kind": "semantic",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-osi/store_oracle_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-osi/owner_transition_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-staged-field-routing/staged_field_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-staged-lifetime/staged_lifetime_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-staged-sourcebuffer/source_buffer_replay.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-staged-sourcebuffer/source_buffer_gc_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-scalar-operators/region_selector_timing_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-region-selector-lifetime/region_selector_lifetime_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-name-reference-oracle/name_reference_oracle_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-named-package-oracle/named_package_oracle_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-name-capture-gc/name_capture_gc_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-store-ownership/nested_census_spy_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-store-ownership/compound_return_gc_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-retention/held_publication_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-store-edge/store_edge_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-deref-completion/deref_completion_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-deref-completion/legacy_deref_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    }
+  ],
+  "conversion": [
+    {
+      "main": "tests/aml-tointeger/explicit_coercion_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-tointeger/tointeger_owned_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-tointeger/tointeger_target_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-tointeger/tointeger_quota_tests.adb",
+      "kind": "runtime",
+      "extra_sources": [
+        "tests/aml-references"
+      ]
+    },
+    {
+      "main": "tests/aml-scalar-operators/scalar_operator_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-scalar-operators/named_source_timing_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    },
+    {
+      "main": "tests/aml-scalar-operators/reference_source_timing_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    }
+  ],
+  "completion": [
+    {
+      "main": "tests/aml-tointeger-completion/tointeger_completion_tests.adb",
+      "kind": "runtime",
+      "extra_sources": []
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+project Stealing is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("main.adb", "work_stealing.ads", "work_stealing.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Stealing;

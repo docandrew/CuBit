@@ -1,0 +1,9 @@
+{
+  "status": "NATIVE_SOFTWARE_FALLBACK_PASS",
+  "result": "/home/doc/git/compositor-test-artifacts/metrics-native-44/result.json",
+  "result_sha256": "94d1330ecf3e280b0633e75c1806eaad0db5180bbc923d441e94b7b36bd58278",
+  "serial_sha256": "2757d019c63ba86089e0fa7bad8ebc3b9f1d616daf2ba79bd301aaedd0e9d583",
+  "input_hashes_rechecked": 15,
+  "byte_schema": "Observer validated authenticated byte-unit declarations9/10 and zero samples/totals on software fallback",
+  "scope": "Real CuBit IPC/metricsvc,menu,cursor100/125%,log channel. No hardware GPU,240Hz or physical latency claim."
+}

@@ -1,0 +1,13 @@
+project Scopes_Tests is
+   for Source_Dirs use ("scopes", "../../userspace/runtime/gnat");
+   for Source_Files use ("scopes_main.adb", "cubit.ads", "cubit-tls_scopes.ads",
+                        "cubit-tls_scopes.adb");
+   for Object_Dir use "build/scopes";
+   for Exec_Dir use "build/scopes";
+   for Main use ("scopes_main.adb");
+   package Compiler is
+      --  Do not implicitly search the compiled unit's directory: the CuBit
+      --  runtime directory also contains target-only predefined Ada units.
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-I-");
+   end Compiler;
+end Scopes_Tests;

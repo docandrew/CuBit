@@ -1,0 +1,446 @@
+pragma Ada_2022;
+with CuBit.Waits;
+with System;
+with CuBit.GPU_Queue_Clients;
+with CuBit.GPU_Queues.Kinds;
+with CuBit.GPU_Sessions;
+with CuBit.Messages;
+with CuBit.Monotonic;
+with CuBit.Channel_Protocol;
+with Native_GPU_Calls;
+with CuBit.Handles;
+with Native_GPU_Job_Rules;
+
+package body Native_GPU_Queue is
+
+   package Sessions renames CuBit.GPU_Sessions;
+   package Clients renames CuBit.GPU_Queue_Clients;
+   package Rules renames Native_GPU_Job_Rules;
+   use type GQ.Timeline_Value, Sessions.Wait_Result;
+
+   pragma Compile_Time_Error
+     (Rules.Forever /= CuBit.Messages.Wait_Forever, "Rules.Forever must be Wait_Forever");
+
+   type Flag is new Boolean with Atomic;
+   type Value_Array is array (GQ.Context_Index) of GQ.Timeline_Value with Atomic_Components;
+
+   type Queue_State is limited record
+      Session : Sessions.Session;
+      --  A completion record or status line said the session failed (sticky).
+      Failed  : Flag := False;
+      --  The highest value a Completed record carried, per context: the
+      --  status line may still show less for a turn.
+      Reaped  : Value_Array := [others => GQ.No_Wait];
+      --  The last value submitted per context.
+      Last    : Value_Array := [others => GQ.No_Wait];
+      --  1 while a thread sleeps in this session's one OP_GPU_WAKE.
+      Waiter  : Unsigned_8 := 0 with Volatile;
+   end record;
+
+   --  One queue per render endpoint this process opened (CAP-002: keyed by
+   --  the endpoint handle, not a slot number). No binder elaborates Mesa's
+   --  Ada units (C imports them by name), so this table must need no
+   --  elaboration code: it starts zeroed, which is every entry free (Key 0
+   --  names no handle) and closed, and Open sets each field it uses before
+   --  use. Key is written once per entry, by Open, which callers serialize;
+   --  it is atomic so concurrent observers read it whole.
+   Queue_Capacity : constant := 8;
+   subtype Queue_Index is Positive range 1 .. Queue_Capacity;
+   type Key_Word is new Unsigned_64 with Atomic;
+   type Queue_Keys is array (Queue_Index) of Key_Word;
+   type Queue_Table is array (Queue_Index) of Queue_State;
+   pragma Suppress_Initialization (Queue_Table);
+   pragma Suppress_Initialization (Queue_Keys);
+   Queues : Queue_Table;
+   Keys  : Queue_Keys;
+
+   function Present (Endpoint : C_Endpoint) return Boolean is
+     (CuBit.Handles.Valid (CuBit.Handles.C_ABI.To_Endpoint (Endpoint)));
+
+   function Key_Of (Endpoint : C_Endpoint) return Key_Word is
+     (Key_Word (Endpoint.Opaque));
+
+   --  The entry Endpoint's queue was opened in, or 0.
+   function Find (Endpoint : C_Endpoint) return Natural is
+   begin
+      if not Present (Endpoint) then
+         return 0;
+      end if;
+      for I in Queue_Index loop
+         if Keys (I) = Key_Of (Endpoint) then
+            return I;
+         end if;
+      end loop;
+      return 0;
+   end Find;
+
+   function Exchange (Where : System.Address; Value : Unsigned_8; Order : Integer)
+     return Unsigned_8
+     with Import, Convention => Intrinsic, External_Name => "__atomic_exchange_1";
+   procedure Store (Where : System.Address; Value : Unsigned_8; Order : Integer)
+     with Import, Convention => Intrinsic, External_Name => "__atomic_store_1";
+   Sequentially_Consistent : constant := 5;   --  __ATOMIC_SEQ_CST
+
+   Completed_Status : constant Unsigned_32 := GQ.Completion_Status'Enum_Rep (GQ.Completed);
+   Execute_Code : constant Unsigned_32 := GQ.Opcode'Enum_Rep (GQ.Execute);
+   Signal_Code  : constant Unsigned_32 := GQ.Opcode'Enum_Rep (GQ.Signal);
+
+
+   function Valid_Context (C : Unsigned_32) return Boolean is
+     (C <= Unsigned_32 (GQ.Context_Index'Last));
+
+   --  Take every completion record waiting (at most a ring of them).
+   procedure Reap_All (State : in out Queue_State);
+   procedure Reap_All (State : in out Queue_State) is
+      Item : Clients.Q.Completion;
+      Got : Boolean;
+   begin
+      for Look in 1 .. GQ.Slots loop
+         Sessions.Reap (State.Session, Item, Got);
+         exit when not Got;
+         if Item.Answer.Status /= Completed_Status or else
+           not Valid_Context (Item.Answer.Context)
+         then
+            State.Failed := True;
+         elsif GQ.Timeline_Value (Item.Answer.Value) >
+           State.Reaped (GQ.Context_Index (Item.Answer.Context))
+         then
+            State.Reaped (GQ.Context_Index (Item.Answer.Context)) :=
+              GQ.Timeline_Value (Item.Answer.Value);
+         end if;
+      end loop;
+   end Reap_All;
+
+   function Open (Endpoint : C_Endpoint) return Queue_Status is
+      Opened : Boolean;
+      Open_Deadline : Unsigned_64;
+      Index : Natural := Find (Endpoint);
+   begin
+      if not Present (Endpoint) then
+         return Invalid;
+      end if;
+      if Index = 0 then
+         --  A free entry: never used, or its queue closed.
+         for I in Queue_Index loop
+            if Keys (I) = 0 or else not Sessions.Is_Open (Queues (I).Session) then
+               Index := I;
+               exit;
+            end if;
+         end loop;
+         if Index = 0 then
+            return Invalid;
+         end if;
+      end if;
+      declare
+         State : Queue_State renames Queues (Index);
+      begin
+         if Sessions.Is_Open (State.Session) then
+            return Invalid;
+         end if;
+         --  Bounded like every startup call of a process that bounds its
+         --  GPU calls (Desktop): a driver that never answers costs the GPU
+         --  path, never the process.
+         Open_Deadline := Native_GPU_Calls.Call_Deadline;
+         Keys (Index) := Key_Of (Endpoint);
+         Sessions.Open (State.Session, CuBit.Handles.C_ABI.To_Endpoint (Endpoint), Open_Deadline, Opened);
+         if not Opened then
+            if Open_Deadline /= CuBit.Messages.Wait_Forever and then
+              CuBit.Monotonic.Milliseconds >= Open_Deadline
+            then
+               Native_GPU_Calls.Note_Timeout (CuBit.Channel_Protocol.OP_OPEN_PRODUCING);
+            end if;
+            return Closed;
+         end if;
+         State.Failed := False;
+         Store (State.Waiter'Address, 0, Sequentially_Consistent);
+         for C in GQ.Context_Index loop
+            State.Reaped (C) := GQ.No_Wait;
+            --  Next_Signal is the status line's Last_Accepted + 1.
+            State.Last (C) := (if Sessions.Next_Signal (State.Session, C) = GQ.No_Wait then GQ.No_Wait
+                               else Sessions.Next_Signal (State.Session, C) - 1);
+         end loop;
+         return OK;
+      end;
+   end Open;
+
+   procedure Close (Endpoint : C_Endpoint) is
+      Index : constant Natural := Find (Endpoint);
+   begin
+      if Index /= 0 then
+         Sessions.Close (Queues (Index).Session);
+      end if;
+   end Close;
+
+   --  The job as the client submits it, or Valid False.
+   procedure Decode (Item : Job; Decoded : out Clients.Job; Valid : out Boolean);
+   procedure Decode (Item : Job; Decoded : out Clients.Job; Valid : out Boolean) is
+      function Wait_Of (W : Wait_Words) return Clients.Wait is
+        ((Context => (if W.Target = 0 then 0 else GQ.Context_Index (W.Context)),
+          Target  => GQ.Timeline_Value (W.Target)));
+      Waits_Valid : constant Boolean :=
+        (Item.First.Target = 0 or else Valid_Context (Item.First.Context)) and then
+        (Item.Second.Target = 0 or else Valid_Context (Item.Second.Context)) and then
+        Item.First.Reserved = 0 and then Item.Second.Reserved = 0;
+   begin
+      Decoded := (others => <>);
+      Valid := Item.Kinds <= CuBit.GPU_Queues.Kinds.Kinds_Mask and then Valid_Context (Item.Context) and then Waits_Valid and then
+        ((Item.Operation = Execute_Code and then
+            Rules.Valid_Batch (Item.Handle, Item.GPU, Item.Offset, Item.Bytes)) or else
+         (Item.Operation = Signal_Code and then Item.Handle = 0 and then Item.GPU = 0 and then
+            Item.Offset = 0 and then Item.Bytes = 0));
+      if not Valid then
+         return;
+      end if;
+      Decoded :=
+        (Operation => (if Item.Operation = Execute_Code then GQ.Execute else GQ.Signal),
+         Context   => GQ.Context_Index (Item.Context),
+         Handle    => Item.Handle,
+         GPU       => Item.GPU,
+         Offset    => Item.Offset,
+         Bytes     => Item.Bytes,
+         First     => Wait_Of (Item.First),
+         Second    => Wait_Of (Item.Second),
+         Deadline  => GQ.Deadline_Us (Item.Deadline_Us),
+         Kinds     => CuBit.GPU_Queues.Kinds.Job_Kinds (Item.Kinds));
+   end Decode;
+
+   function Submit
+     (Endpoint : C_Endpoint; Item : access constant Job; Signal : access Unsigned_64)
+      return Queue_Status
+   is
+      Decoded : Clients.Job;
+      Valid, Submitted : Boolean := False;
+      Tag : Clients.Token;
+      Value : GQ.Timeline_Value := GQ.No_Wait;
+      Ignore : Unsigned_64;
+   begin
+      if Signal /= null then
+         Signal.all := 0;
+      end if;
+      if Item = null or else Signal = null or else Find (Endpoint) = 0 then
+         return Invalid;
+      end if;
+      declare
+         State : Queue_State renames Queues (Find (Endpoint));
+      begin
+         if not Sessions.Is_Open (State.Session) then
+            return Closed;
+         end if;
+         Decode (Item.all, Decoded, Valid);
+         if not Valid then
+            return Invalid;
+         end if;
+         --  A full queue is backpressure: look again, without a call, until
+         --  room appears or the budget is spent.
+         for Look in 0 .. Room_Budget_Ms / Room_Pause_Ms loop
+            Reap_All (State);
+            exit when State.Failed;
+            Sessions.Submit (State.Session, Decoded, Tag, Value, Submitted);
+            exit when Submitted;
+            Ignore := CuBit.Waits.Sleep_For (Room_Pause_Ms);
+         end loop;
+         if Boolean (State.Failed) or else not Submitted then
+            State.Failed := True;
+            return Failed;
+         end if;
+         State.Last (Decoded.Context) := Value;
+         Signal.all := Unsigned_64 (Value);
+         return OK;
+      end;
+   end Submit;
+
+   function Observe
+     (Endpoint : C_Endpoint; Completed, Submitted : access Native_GPU_Timeline.Completed_Values)
+      return Queue_Status
+   is
+      Line : GQ.Status_Line;
+      Read : Boolean;
+      Healthy : Boolean := True;
+   begin
+      if Completed = null or else Submitted = null or else Find (Endpoint) = 0 then
+         return Invalid;
+      end if;
+      Completed.all := [others => GQ.No_Wait];
+      Submitted.all := [others => GQ.No_Wait];
+      declare
+         State : Queue_State renames Queues (Find (Endpoint));
+      begin
+         if not Sessions.Is_Open (State.Session) then
+            return Closed;
+         end if;
+         for C in GQ.Context_Index loop
+            Sessions.Read_Status (State.Session, C, Line, Read);
+            --  A line the driver kept rewriting is read again next time.
+            if Read and then not Rules.Healthy (Line.State) then
+               Healthy := False;
+            end if;
+            Completed (C) := State.Reaped (C);
+            if Read and then GQ.Timeline_Value (Line.Completed) > Completed (C) then
+               Completed (C) := GQ.Timeline_Value (Line.Completed);
+            end if;
+            Submitted (C) := State.Last (C);
+         end loop;
+         return (if Healthy and then not Boolean (State.Failed) then OK else Failed);
+      end;
+   end Observe;
+
+   function Wait
+     (Endpoint : C_Endpoint; Context : Unsigned_32; Target, Remaining_Ns : Unsigned_64)
+      return Queue_Status
+   is
+      Result : Sessions.Wait_Result;
+      Deadline : Unsigned_64;
+   begin
+      if Find (Endpoint) = 0 or else not Valid_Context (Context) then
+         return Invalid;
+      end if;
+      declare
+         State : Queue_State renames Queues (Find (Endpoint));
+      begin
+         if not Sessions.Is_Open (State.Session) then
+            return Closed;
+         elsif State.Failed then
+            return Failed;
+         end if;
+         Deadline := Rules.Bounded_Deadline
+           (CuBit.Monotonic.Milliseconds, Remaining_Ns, Native_GPU_Calls.Bound_Ms);
+         if Exchange (State.Waiter'Address, 1, Sequentially_Consistent) = 0 then
+            Sessions.Wait_Reached
+              (State.Session, GQ.Context_Index (Context), GQ.Timeline_Value (Target), Deadline, Result);
+            Store (State.Waiter'Address, 0, Sequentially_Consistent);
+         else
+            Sessions.Poll_Reached
+              (State.Session, GQ.Context_Index (Context), GQ.Timeline_Value (Target), Deadline, Result);
+         end if;
+         --  A wait for ever that the process bound ended: the GPU did not
+         --  answer within it, so the session is failed, not timed out.
+         if Result = Sessions.Deadline_Reached and then Remaining_Ns = Rules.No_Timeout_Ns then
+            Native_GPU_Calls.Note_Timeout (GQ.OP_GPU_WAKE);
+            State.Failed := True;
+            return Failed;
+         end if;
+         return (case Result is
+                   when Sessions.Reached_Target => OK,
+                   when Sessions.Context_Failed => Failed,
+                   when Sessions.Deadline_Reached => Timed_Out,
+                   when Sessions.Queue_Ended => Closed);
+      end;
+   end Wait;
+
+   --  The entry whose session holds the armed wake (one per process).
+   No_Armed_Entry : constant Natural := 0;
+   Armed_Entry : Natural := No_Armed_Entry;
+
+   function Arm_Idle_Wake (Token : Unsigned_64) return Wake_Arm is
+      Open_Count : Natural := 0;
+      Found : Queue_Index := Queue_Index'First;
+      Line : GQ.Status_Line;
+      Read, Accepted : Boolean;
+      Completed : GQ.Timeline_Value;
+      Render : constant GQ.Context_Index := 0;
+   begin
+      if Armed_Entry /= No_Armed_Entry then
+         return Unavailable;
+      end if;
+      for Item in Queues'Range loop
+         if Sessions.Is_Open (Queues (Item).Session) then
+            Open_Count := Open_Count + 1;
+            Found := Item;
+         end if;
+      end loop;
+      if Open_Count /= 1 then
+         return Unavailable;
+      end if;
+      declare
+         State : Queue_State renames Queues (Found);
+      begin
+         if Boolean (State.Failed) then
+            return Unavailable;
+         end if;
+         Completed := State.Reaped (Render);
+         Sessions.Read_Status (State.Session, Render, Line, Read);
+         if Read and then GQ.Timeline_Value (Line.Completed) > Completed then
+            Completed := GQ.Timeline_Value (Line.Completed);
+         end if;
+         if State.Last (Render) <= Completed then
+            return Idle;
+         end if;
+         --  The session's one driver wake: a thread in Wait would supersede it.
+         if Exchange (State.Waiter'Address, 1, Sequentially_Consistent) /= 0 then
+            return Unavailable;
+         end if;
+         Sessions.Arm_Wake (State.Session, Render, State.Last (Render), Token, Accepted);
+         if not Accepted then
+            Store (State.Waiter'Address, 0, Sequentially_Consistent);
+            return Unavailable;
+         end if;
+         Armed_Entry := Found;
+         return Armed;
+      end;
+   end Arm_Idle_Wake;
+
+   Last_Hint_Ms : Unsigned_64 := 0;
+   Hinted : Boolean := False;
+   function Boost_Hint return Unsigned_32 is
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+      Open_Count : Natural := 0;
+      Found : Queue_Index := Queue_Index'First;
+      Sent : Boolean;
+   begin
+      if Hinted and then Now >= Last_Hint_Ms and then Now - Last_Hint_Ms < Boost_Hint_Interval_Ms then
+         return 0;
+      end if;
+      for Item in Queues'Range loop
+         if Sessions.Is_Open (Queues (Item).Session) then
+            Open_Count := Open_Count + 1;
+            Found := Item;
+         end if;
+      end loop;
+      if Open_Count /= 1 or else Boolean (Queues (Found).Failed) then
+         return 0;
+      end if;
+      Sessions.Hint_Boost (Queues (Found).Session, Sent);
+      Last_Hint_Ms := Now; Hinted := True;
+      return (if Sent then 1 else 0);
+   end Boost_Hint;
+
+   function Boost_Policy (On : Unsigned_32) return Unsigned_32 is
+      Open_Count : Natural := 0;
+      Found : Queue_Index := Queue_Index'First;
+      Sent : Boolean;
+   begin
+      for Item in Queues'Range loop
+         if Sessions.Is_Open (Queues (Item).Session) then
+            Open_Count := Open_Count + 1;
+            Found := Item;
+         end if;
+      end loop;
+      if Open_Count /= 1 or else Boolean (Queues (Found).Failed) then
+         return 0;
+      end if;
+      Sessions.Set_Boost_Policy (Queues (Found).Session, On /= 0, Sent);
+      return (if Sent then 1 else 0);
+   end Boost_Policy;
+
+   function Collect_Wake (Receipt : System.Address) return Unsigned_32 is
+      Item : constant CuBit.Messages.CompletionEntry with Import, Address => Receipt;
+      Consumed : Boolean;
+      Result : GQ.Wake_Result;
+   begin
+      if Armed_Entry = No_Armed_Entry or else System."=" (Receipt, System.Null_Address) then
+         return 0;
+      end if;
+      declare
+         State : Queue_State renames Queues (Armed_Entry);
+      begin
+         Sessions.Complete_Wake (State.Session, Item, Consumed, Result);
+         if not Consumed then
+            return 0;
+         end if;
+         Armed_Entry := No_Armed_Entry;
+         Store (State.Waiter'Address, 0, Sequentially_Consistent);
+         return 1;
+      end;
+   end Collect_Wake;
+
+end Native_GPU_Queue;

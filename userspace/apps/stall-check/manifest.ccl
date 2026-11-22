@@ -1,0 +1,7 @@
+# Kernel stuck-call panel check: holds one call past the kernel's stuck-call
+# threshold, so the panel is drawn and then erased. No authority.
+(executable-manifest v1
+  (identity "com.cubit.stall-check")
+  (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore))

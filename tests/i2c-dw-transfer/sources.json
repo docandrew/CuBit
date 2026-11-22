@@ -1,0 +1,6 @@
+{
+  "userspace/services/i2c-dw/transfer/dw_i2c_transfer.ads": "39742ccc16ea7dac9538e19decba057bfa3b63ad223898596499ec55dddda660",
+  "userspace/services/i2c-dw/transfer/dw_i2c_transfer.adb": "afabf29664adf2c19266bfe135cd65a1a3c4aee46bdbfff62b109409539eb665",
+  "userspace/services/i2c-dw/transfer/dw_i2c_registers.ads": "bc489efad780b31a556acc96fec29822de8ae364a16ae4fdff357b749b6c411d",
+  "userspace/services/i2c-dw/transfer/dw_i2c_registers.adb": "835982d2793c24b6f27ed7a07f09cfa0f4b3f845b0c77e599b8e240548c75707"
+}

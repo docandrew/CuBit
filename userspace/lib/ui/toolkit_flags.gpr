@@ -1,0 +1,15 @@
+--  Compiler switches for the toolkit's proved pixel loops, shared by every
+--  native app that draws with CuBit.UI: each app's Compiler package extends
+--  this one. -O3 lets GCC vectorise them (user programs have SSE; only the
+--  kernel is built without it). -fno-tree-vrp: GCC's value-range
+--  propagation miscompiles some Ada in GNAT 15 and later.
+abstract project Toolkit_Flags is
+   for Source_Files use ();
+   Pixel_Loop_Switches :=
+     ("-O3", "-gnat2022", "-gnatwa", "-fstack-usage", "-fomit-frame-pointer",
+      "-mno-red-zone", "-fno-pic", "-fno-tree-vrp");
+   package Compiler is
+      for Switches ("client_raster.adb") use Pixel_Loop_Switches;
+      for Switches ("client_glyph_blend.adb") use Pixel_Loop_Switches;
+   end Compiler;
+end Toolkit_Flags;

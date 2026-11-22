@@ -1,0 +1,13 @@
+project Backdrop is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/runtime/gnat", "../../userspace/lib/display");
+   for Source_Files use ("backdrop_tests.adb", "compositor_backdrop.ads", "compositor_backdrop.adb",
+      "compositor_image_sampling.ads", "compositor_image_sampling.adb", "cubit.ads", "cubit-display_geometry.ads",
+      "cubit-display_geometry.adb", "vulkan_backdrop_binding.ads", "vulkan_backdrop_binding.adb",
+      "vulkan_backdrop_ffi.ads", "vulkan_backdrop_ffi.adb");
+   for Object_Dir use "build/backdrop/obj";
+   for Exec_Dir use "build/backdrop";
+   for Main use ("backdrop_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Backdrop;

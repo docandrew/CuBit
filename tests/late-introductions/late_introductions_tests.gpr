@@ -1,0 +1,14 @@
+--  Hosted tests of procmgr's late-introduction ledger (ABI-002). run.sh
+--  links the units into build/links.
+project Late_Introductions_Tests is
+   for Source_Dirs use (".", "build/links", "../../userspace/ccl/runtime-shared");
+   for Source_Files use
+     ("late_introductions_tests.adb", "cubit.ads", "cubit-late_introduction.ads",
+      "cubit-introduction_ledgers.ads", "cubit-introduction_ledgers.adb");
+   for Object_Dir use "build/tests";
+   for Exec_Dir use "build/tests";
+   for Main use ("late_introductions_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwa", "-g", "-O1");
+   end Compiler;
+end Late_Introductions_Tests;

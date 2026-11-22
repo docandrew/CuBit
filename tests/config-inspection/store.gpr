@@ -1,0 +1,11 @@
+project Store is
+   for Source_Dirs use (".", "../../userspace/services/config");
+   for Source_Files use ("store_tests.adb", "config_store.ads", "config_store.adb");
+   for Object_Dir use "build/store";
+   for Exec_Dir use "build/store";
+   for Main use ("store_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Store;

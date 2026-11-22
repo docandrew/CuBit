@@ -1,0 +1,15 @@
+/home/doc/git/.acpi-proof-work/match-operand-oracle-qm5z23xn/r2-predicate-invalid-type.asl      8:  Method (TEST, 0) {  Return (Match (PKG0, MEQ, Package (0) {}, MTR, Zero, MUT0 ())) }
+Remark   2095 -                                                                                                      Effective AML package length is zero ^ 
+
+/home/doc/git/.acpi-proof-work/match-operand-oracle-qm5z23xn/r2-predicate-invalid-type.asl      8:  Method (TEST, 0) {  Return (Match (PKG0, MEQ, Package (0) {}, MTR, Zero, MUT0 ())) }
+Error    6058 -                                                                                                                           Invalid type ^  ([Package] found, Match operator requires [Integer|String|Buffer])
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/match-operand-oracle-qm5z23xn/r2-predicate-invalid-type.asl -     406 bytes     16 keywords      0 source lines
+
+Compilation failed. 1 Errors, 0 Warnings, 1 Remarks
+No AML files were generated due to compiler error(s)

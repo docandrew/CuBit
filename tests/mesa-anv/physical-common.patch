@@ -1,0 +1,1104 @@
+--- a/src/intel/vulkan/anv_private.h
++++ b/src/intel/vulkan/anv_private.h
+@@ -1458,6 +1458,8 @@
+ 
+ struct anv_physical_device {
+     struct vk_physical_device                   vk;
++    /* Selected by discovery; immutable and alive for the device lifetime. */
++    const struct anv_kmd_backend *              kmd_backend;
+ 
+     /* Link in anv_instance::physical_devices */
+     struct list_head                            link;
+@@ -1798,6 +1800,25 @@
+                                         struct vk_physical_device **out);
+ 
+ void anv_physical_device_destroy(struct vk_physical_device *vk_device);
++/* Allocate/init only the shared Vulkan base; output unchanged on failure.
++ * free requires the caller to release all backend/common resources first.
++ */
++VkResult anv_physical_device_alloc(struct anv_instance *instance,
++                                   const struct anv_kmd_backend *backend,
++                                   struct anv_physical_device **out);
++void anv_physical_device_free(struct anv_physical_device *device);
++VkResult anv_physical_device_init_compiler(struct anv_physical_device *device);
++VkResult anv_physical_device_init_uuids(struct anv_physical_device *device);
++void anv_physical_device_init_disk_cache(struct anv_physical_device *device);
++void anv_physical_device_free_disk_cache(struct anv_physical_device *device);
++void anv_physical_device_init_queue_families(struct anv_physical_device *device);
++VkResult anv_physical_device_init_heaps(struct anv_physical_device *device);
++/* Requires initialized vk/instance/info and an opened backend transport.
++ * Failure frees compiler state acquired here; caller retains base/transport.
++ */
++VkResult anv_physical_device_init_common(struct anv_physical_device *device);
++void anv_physical_device_init_properties(struct anv_physical_device *device);
++void anv_update_meminfo(struct anv_physical_device *device);
+ 
+ static inline uint32_t
+ anv_physical_device_bindless_heap_size(const struct anv_physical_device *device,
+--- a/src/intel/vulkan/meson.build
++++ b/src/intel/vulkan/meson.build
+@@ -50,6 +50,8 @@
+   anv_flags += '-DANV_SUPPORT_RT=0'
+ endif
+ 
++# CuBit links Mesa into native applications; it has no shared ICD loader yet.
++if host_machine.system() != 'cubit'
+ icd_file_name = libname_prefix + 'vulkan_intel.' + libname_suffix
+ 
+ intel_icd = custom_target(
+@@ -87,6 +89,7 @@
+ )
+ 
+ devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
++endif
+ 
+ libanv_drirc_args = []
+ if with_platform_android
+@@ -214,6 +217,7 @@
+   'anv_nir_xe2_r11g11b10_atomic_wa.c',
+   'anv_perf.c',
+   'anv_physical_device.c',
++  'anv_physical_device_common.c',
+   'anv_pipeline_cache.c',
+   'anv_private.h',
+   'anv_queue.c',
+@@ -236,6 +240,7 @@
+ 
+ if host_machine.system() != 'cubit'
+   libanv_files += files(
++  'anv_physical_device_drm.c',
+   'i915/anv_batch_chain.c',
+   'i915/anv_batch_chain.h',
+   'i915/anv_device.c',
+@@ -307,9 +312,25 @@
+   dependencies : anv_deps
+ )
+ 
+-libvulkan_intel = shared_library(
++anv_platform_files = []
++if host_machine.system() == 'cubit'
++  anv_library_kwargs = {
++    'target_type' : 'static_library',
++    'install' : false,
++  }
++else
++  anv_platform_files += files('anv_gem.c')
++  anv_library_kwargs = {
++    'target_type' : 'shared_library',
++    'link_args' : [vulkan_icd_link_args, ld_args_build_id, ld_args_bsymbolic, ld_args_gc_sections],
++    'link_depends' : vulkan_icd_link_depends,
++    'install' : true,
++  }
++endif
++
++libvulkan_intel = build_target(
+   'vulkan_intel',
+-  [files('anv_gem.c'), anv_entrypoints[0], bvh_spv],
++  [anv_platform_files, anv_entrypoints[0], bvh_spv],
+   include_directories : [
+     inc_include, inc_src, inc_intel,
+   ],
+@@ -327,12 +348,10 @@
+   ],
+   c_args : anv_flags,
+   gnu_symbol_visibility : 'hidden',
+-  link_args : [vulkan_icd_link_args, ld_args_build_id, ld_args_bsymbolic, ld_args_gc_sections],
+-  link_depends : vulkan_icd_link_depends,
+-  install : true,
++  kwargs : anv_library_kwargs,
+ )
+ 
+-if with_symbols_check
++if with_symbols_check and host_machine.system() != 'cubit'
+   test(
+     'anv symbols check',
+     symbols_check,
+--- a/src/intel/vulkan/anv_physical_device_common.c
++++ b/src/intel/vulkan/anv_physical_device_common.c
+@@ -0,0 +1,738 @@
++/* Copyright © 2024 Intel Corporation
++ * SPDX-License-Identifier: MIT
++ */
++
++#include "anv_private.h"
++#include "common/intel_uuid.h"
++#include "util/disk_cache.h"
++#include "util/mesa-blake3.h"
++#include "util/os_misc.h"
++#include "common/intel_common.h"
++
++VkResult
++anv_physical_device_alloc(struct anv_instance *instance,
++                          const struct anv_kmd_backend *backend,
++                          struct anv_physical_device **out)
++{
++   if (backend == NULL)
++      return vk_error(instance, VK_ERROR_INITIALIZATION_FAILED);
++
++   struct anv_physical_device *device =
++      vk_zalloc(&instance->vk.alloc, sizeof(*device), 8,
++                VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
++   if (device == NULL)
++      return vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
++
++   struct vk_physical_device_dispatch_table dispatch_table;
++   vk_physical_device_dispatch_table_from_entrypoints(
++      &dispatch_table, &anv_physical_device_entrypoints, true);
++   vk_physical_device_dispatch_table_from_entrypoints(
++      &dispatch_table, &wsi_physical_device_entrypoints, false);
++
++   VkResult result = vk_physical_device_init(&device->vk, &instance->vk,
++                                            NULL, NULL, NULL,
++                                            &dispatch_table);
++   if (result != VK_SUCCESS) {
++      vk_free(&instance->vk.alloc, device);
++      return vk_error(instance, result);
++   }
++   device->instance = instance;
++   device->kmd_backend = backend;
++   *out = device;
++   return VK_SUCCESS;
++}
++
++void
++anv_physical_device_free(struct anv_physical_device *device)
++{
++   vk_physical_device_finish(&device->vk);
++   vk_free(&device->instance->vk.alloc, device);
++}
++
++static VkResult
++anv_physical_device_get_parameters(struct anv_physical_device *device)
++{
++   const struct anv_kmd_backend *backend =
++      device->kmd_backend;
++   if (backend == NULL || backend->get_physical_parameters == NULL)
++      return VK_ERROR_INITIALIZATION_FAILED;
++   return backend->get_physical_parameters(device);
++}
++
++VkResult
++anv_physical_device_init_common(struct anv_physical_device *device)
++{
++   struct anv_instance *instance = device->instance;
++   struct intel_device_info devinfo = device->info;
++   VkResult result;
++
++   if (devinfo.ver < 9) {
++      /* Silently fail here, hasvk should pick up this device. */
++      result = VK_ERROR_INCOMPATIBLE_DRIVER;
++      goto fail_base;
++   } else if (devinfo.probe_forced) {
++      /* If INTEL_FORCE_PROBE was used, then the user has opted-in for
++       * unsupported device support. No need to print a warning message.
++       */
++   } else if (devinfo.ver > 30) {
++      result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
++                         "Vulkan not yet supported on %s", devinfo.name);
++      goto fail_base;
++   }
++
++   /* Disable Wa_16013994831 on Gfx12.0 because we found other cases where we
++    * need to always disable preemption :
++    *    - https://gitlab.freedesktop.org/mesa/mesa/-/issues/5963
++    *    - https://gitlab.freedesktop.org/mesa/mesa/-/issues/5662
++    */
++   if (devinfo.verx10 == 120)
++      BITSET_CLEAR(devinfo.workarounds, INTEL_WA_16013994831);
++
++   if (!devinfo.has_context_isolation) {
++      result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
++                         "Vulkan requires context isolation for %s", devinfo.name);
++      goto fail_base;
++   }
++   device->info = devinfo;
++
++   result = anv_physical_device_get_parameters(device);
++   if (result != VK_SUCCESS)
++      goto fail_base;
++
++   const struct anv_kmd_backend *backend =
++      device->kmd_backend;
++   if (backend == NULL) {
++      result = VK_ERROR_INITIALIZATION_FAILED;
++      goto fail_base;
++   }
++
++   /* Avoid BTP+BTI RCC cache keying on non LSC platforms for now. On those
++    * not using the binding table is difficult.
++    */
++   const bool platform_supports_btp_bit_rcc =
++      devinfo.has_lsc &&
++      (device->info.kmd_type == INTEL_KMD_TYPE_I915 ||
++       device->info.xe_has_state_cache_perf_fix);
++
++   device->rt_change_needs_flush =
++      !instance->drirc.perf.state_cache_perf_fix ||
++      !platform_supports_btp_bit_rcc;
++
++   device->gtt_size = device->info.gtt_size ? device->info.gtt_size :
++                                              device->info.aperture_bytes;
++
++   if (device->gtt_size < (4ULL << 30 /* GiB */)) {
++      result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
++                "GTT size too small: 0x%016"PRIx64, device->gtt_size);
++      goto fail_base;
++   }
++
++   /* We currently only have the right bits for instructions in Gen12+. If the
++    * kernel ever starts supporting that feature on previous generations,
++    * we'll need to edit genxml prior to enabling here.
++    */
++   device->has_protected_contexts = device->info.ver >= 12 &&
++      backend->supports_protected_context != NULL &&
++      backend->supports_protected_context(device);
++
++   /* Just pick one; they're all the same */
++   device->has_astc_ldr =
++      isl_format_supports_sampling(&device->info,
++                                   ISL_FORMAT_ASTC_LDR_2D_4X4_FLT16);
++   if (!device->has_astc_ldr && instance->drirc.features.require_astc)
++      device->emu_astc_ldr = true;
++   if (devinfo.ver == 9 && !intel_device_info_is_9lp(&devinfo)) {
++      device->flush_astc_ldr_void_extent_denorms =
++         device->has_astc_ldr && !device->emu_astc_ldr;
++   }
++   device->disable_fcv = device->info.verx10 >= 125 ||
++                         instance->drirc.debug.disable_fcv;
++   device->brw_disable_subgroup_size_control =
++      !intel_use_jay(&device->info, MESA_SHADER_COMPUTE) &&
++      instance->drirc.debug.disable_subgroup_size_control;
++
++   result = anv_physical_device_init_heaps(device);
++   if (result != VK_SUCCESS)
++      goto fail_base;
++
++   device->has_cooperative_matrix =
++      device->info.has_systolic || debug_get_bool_option("INTEL_LOWER_DPAS", false);
++
++   /* Because of Xe2 PAT selected compression and the Vulkan spec requirement
++    * to always return the same memory types for Images with same properties
++    * we can't support EXT_image_compression_control on Xe2+.
++    */
++   device->has_compression_control = device->info.ver < 20;
++
++   /* Whether we want to expose the extension depends on DRIRC (for platforms
++    * that support this or fake on Xe2+ due to Android VP17 profile
++    * requirement).
++    */
++   device->expose_compression_control =
++      instance->drirc.features.compression_control_enabled &&
++      (device->info.ver < 20 ||
++       instance->drirc.features.fake_image_compression_control_xe2_plus);
++
++   if (backend->init_sync_types == NULL) {
++      result = VK_ERROR_INITIALIZATION_FAILED;
++      goto fail_base;
++   }
++   result = backend->init_sync_types(device);
++   if (result != VK_SUCCESS)
++      goto fail_base;
++
++   device->vk.pipeline_cache_import_ops = anv_cache_import_ops;
++
++   device->indirect_descriptors =
++      !intel_has_extended_bindless(&devinfo) ||
++      instance->drirc.debug.force_indirect_descriptors;
++
++   device->alloc_aux_tt_mem =
++      device->info.has_aux_map && device->info.verx10 >= 125;
++   /* Check if we can read the GPU timestamp register from the CPU */
++   device->has_reg_timestamp = backend->read_timestamp != NULL &&
++      backend->probe_timestamp != NULL &&
++      backend->probe_timestamp(device);
++
++   if (backend->init_addressing == NULL) {
++      result = VK_ERROR_INITIALIZATION_FAILED;
++      goto fail_base;
++   }
++   backend->init_addressing(device);
++
++   device->always_flush_cache = INTEL_DEBUG(DEBUG_STALL) ||
++      instance->drirc.debug.always_flush_cache;
++
++   /* The ring buffer mechanism for page fault reporting is not supported until
++    * PVC (unsupported by our Mesa driver), so we keep the scratch page enabled
++    * for anything before Xe2 since debugging it would be impossible.
++    */
++   device->has_scratch_page =
++      device->info.ver < 20 || device->info.kmd_type == INTEL_KMD_TYPE_I915 ||
++      instance->drirc.features.scratch_page;
++
++   device->can_get_vm_faults =
++      !device->has_scratch_page && backend->get_vm_faults != NULL &&
++      backend->supports_vm_faults != NULL &&
++      backend->supports_vm_faults(device);
++
++   result = anv_physical_device_init_compiler(device);
++   if (result != VK_SUCCESS)
++      goto fail_base;
++
++   isl_device_init(&device->isl_dev, &device->info);
++   device->isl_dev.buffer_length_in_aux_addr = !intel_needs_workaround(device->isl_dev.info, 14019708328);
++   device->isl_dev.sampler_route_to_lsc = instance->drirc.debug.sampler_route_to_lsc;
++   device->isl_dev.l1_storage_wt = instance->drirc.debug.storage_l1_wt;
++   device->isl_dev.requires_padding = !device->has_scratch_page;
++
++   result = anv_physical_device_init_uuids(device);
++   if (result != VK_SUCCESS)
++      goto fail_compiler;
++
++   os_get_page_size(&device->page_size);
++
++   anv_physical_device_init_va_ranges(device);
++
++   anv_physical_device_init_disk_cache(device);
++   return VK_SUCCESS;
++
++fail_compiler:
++   ralloc_free(device->compiler);
++   device->compiler = NULL;
++fail_base:
++   return result;
++}
++
++static VkResult MUST_CHECK
++anv_init_meminfo(struct anv_physical_device *device)
++{
++   const struct intel_device_info *devinfo = &device->info;
++
++   const struct anv_kmd_backend *backend =
++      device->kmd_backend;
++   if (backend == NULL || backend->restrict_sys_heap_size == NULL)
++      return VK_ERROR_INITIALIZATION_FAILED;
++
++   device->sys.region = &devinfo->mem.sram.mem;
++   device->sys.size =
++      backend->restrict_sys_heap_size(device, devinfo->mem.sram.mappable.size);
++   device->sys.available = devinfo->mem.sram.mappable.free;
++
++   device->vram_mappable.region = &devinfo->mem.vram.mem;
++   device->vram_mappable.size = devinfo->mem.vram.mappable.size;
++   device->vram_mappable.available = devinfo->mem.vram.mappable.free;
++
++   device->vram_non_mappable.region = &devinfo->mem.vram.mem;
++   device->vram_non_mappable.size = devinfo->mem.vram.unmappable.size;
++   device->vram_non_mappable.available = devinfo->mem.vram.unmappable.free;
++
++   return VK_SUCCESS;
++}
++
++void
++anv_update_meminfo(struct anv_physical_device *device)
++{
++   const struct anv_kmd_backend *backend =
++      device->kmd_backend;
++   if (backend == NULL || backend->refresh_memory_info == NULL ||
++       !backend->refresh_memory_info(device))
++      return;
++
++   const struct intel_device_info *devinfo = &device->info;
++   device->sys.available = devinfo->mem.sram.mappable.free;
++   device->vram_mappable.available = devinfo->mem.vram.mappable.free;
++   device->vram_non_mappable.available = devinfo->mem.vram.unmappable.free;
++}
++
++VkResult
++anv_physical_device_init_heaps(struct anv_physical_device *device)
++{
++   VkResult result = anv_init_meminfo(device);
++   if (result != VK_SUCCESS)
++      return result;
++
++   if (device->sys.size == 0)
++      return VK_ERROR_INITIALIZATION_FAILED;
++
++   if (anv_physical_device_has_vram(device)) {
++      /* We can create 2 or 3 different heaps when we have local memory
++       * support, first heap with local memory size and second with system
++       * memory size and the third is added only if part of the vram is
++       * mappable to the host.
++       */
++      device->memory.heap_count = 2;
++      device->memory.heaps[0] = (struct anv_memory_heap) {
++         /* If there is a vram_non_mappable, use that for the device only
++          * heap. Otherwise use the vram_mappable.
++          */
++         .size = device->vram_non_mappable.size != 0 ?
++                 device->vram_non_mappable.size : device->vram_mappable.size,
++         .flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT,
++         .is_local_mem = true,
++      };
++      device->memory.heaps[1] = (struct anv_memory_heap) {
++         .size = device->sys.size,
++         .flags = 0,
++         .is_local_mem = false,
++      };
++      /* Add an additional smaller vram mappable heap if we can't map all the
++       * vram to the host.
++       */
++      if (device->vram_non_mappable.size > 0) {
++         device->memory.heap_count++;
++         device->memory.heaps[2] = (struct anv_memory_heap) {
++            .size = device->vram_mappable.size,
++            .flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT,
++            .is_local_mem = true,
++         };
++      }
++   } else {
++      device->memory.heap_count = 1;
++      device->memory.heaps[0] = (struct anv_memory_heap) {
++         .size = device->sys.size,
++         .flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT,
++         .is_local_mem = false,
++      };
++   }
++
++   const struct anv_kmd_backend *backend =
++      device->kmd_backend;
++   if (backend == NULL || backend->init_memory_types == NULL)
++      return VK_ERROR_INITIALIZATION_FAILED;
++   result = backend->init_memory_types(device);
++   if (result != VK_SUCCESS)
++      return result;
++
++   if (device->has_protected_contexts) {
++      /* Add a memory type for protected buffers, local and not host
++       * visible.
++       */
++      device->memory.types[device->memory.type_count++] =
++         (struct anv_memory_type) {
++            .propertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
++                             VK_MEMORY_PROPERTY_PROTECTED_BIT,
++            .heapIndex = 0,
++      };
++   }
++
++   assert(device->memory.type_count < ARRAY_SIZE(device->memory.types));
++
++   /* Some games (e.g., Total War: WARHAMMER III) sometimes seem to expect to
++    * find memory types both with and without
++    * VK_MEMORY_TYPE_PROPERTY_DEVICE_LOCAL_BIT. So here we duplicate all our
++    * memory types just to make these games happy.
++    * This behavior is not spec-compliant as we still only have one heap that
++    * is now inconsistent with some of the memory types, but the game doesn't
++    * seem to care about it.
++    */
++   if (device->instance->drirc.debug.fake_nonlocal_mem &&
++       !anv_physical_device_has_vram(device)) {
++      const uint32_t base_types_count = device->memory.type_count;
++      for (int i = 0; i < base_types_count; i++) {
++         if (!(device->memory.types[i].propertyFlags &
++               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
++            continue;
++
++         assert(device->memory.type_count < ARRAY_SIZE(device->memory.types));
++         struct anv_memory_type *new_type =
++            &device->memory.types[device->memory.type_count++];
++         *new_type = device->memory.types[i];
++
++         device->memory.types[i].propertyFlags &=
++            ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
++      }
++   }
++
++   /* Replicate all non protected memory types for descriptor buffers because
++    * we want to identify memory allocations to place them in the right memory
++    * heap.
++    */
++   device->memory.default_buffer_mem_types =
++      BITFIELD_RANGE(0, device->memory.type_count);
++   device->memory.protected_mem_types = 0;
++   device->memory.dynamic_visible_mem_types = 0;
++   device->memory.compressed_mem_types = 0;
++
++   const uint32_t base_types_count = device->memory.type_count;
++   for (int i = 0; i < base_types_count; i++) {
++      bool skip = false;
++
++      if (device->memory.types[i].propertyFlags &
++          VK_MEMORY_PROPERTY_PROTECTED_BIT) {
++         device->memory.protected_mem_types |= BITFIELD_BIT(i);
++         device->memory.default_buffer_mem_types &= (~BITFIELD_BIT(i));
++         skip = true;
++      }
++
++      if (device->memory.types[i].compressed) {
++         device->memory.compressed_mem_types |= BITFIELD_BIT(i);
++         device->memory.default_buffer_mem_types &= (~BITFIELD_BIT(i));
++         skip = true;
++      }
++
++      if (skip)
++         continue;
++
++      device->memory.dynamic_visible_mem_types |=
++         BITFIELD_BIT(device->memory.type_count);
++
++      assert(device->memory.type_count < ARRAY_SIZE(device->memory.types));
++      struct anv_memory_type *new_type =
++         &device->memory.types[device->memory.type_count++];
++      *new_type = device->memory.types[i];
++      new_type->dynamic_visible = true;
++   }
++
++   assert(device->memory.type_count <= VK_MAX_MEMORY_TYPES);
++
++   for (unsigned i = 0; i < device->memory.type_count; i++) {
++      VkMemoryPropertyFlags props = device->memory.types[i].propertyFlags;
++      if ((props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
++          !(props & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
++#ifdef SUPPORT_INTEL_INTEGRATED_GPUS
++         device->memory.need_flush = true;
++#else
++         return vk_errorf(device, VK_ERROR_INITIALIZATION_FAILED,
++                          "Memory configuration requires flushing, but it's not implemented for this architecture");
++#endif
++   }
++
++   return VK_SUCCESS;
++}
++
++static void
++anv_override_engine_counts(int *gc_count, int *g_count, int *c_count, int *v_count, int *blit_count)
++{
++   int gc_override = -1;
++   int g_override = -1;
++   int c_override = -1;
++   int v_override = -1;
++   int blit_override = -1;
++   const char *env_ = os_get_option("ANV_QUEUE_OVERRIDE");
++
++   /* Override queues for Android HWUI that expects min 2 queues. */
++#if DETECT_OS_ANDROID
++   *gc_count = 2;
++#endif
++
++   if (env_ == NULL)
++      return;
++
++   char *env = strdup(env_);
++   char *save = NULL;
++   char *next = strtok_r(env, ",", &save);
++   while (next != NULL) {
++      if (strncmp(next, "gc=", 3) == 0) {
++         gc_override = strtol(next + 3, NULL, 0);
++      } else if (strncmp(next, "g=", 2) == 0) {
++         g_override = strtol(next + 2, NULL, 0);
++      } else if (strncmp(next, "c=", 2) == 0) {
++         c_override = strtol(next + 2, NULL, 0);
++      } else if (strncmp(next, "v=", 2) == 0) {
++         v_override = strtol(next + 2, NULL, 0);
++      } else if (strncmp(next, "b=", 2) == 0) {
++         blit_override = strtol(next + 2, NULL, 0);
++      } else {
++         mesa_logw("Ignoring unsupported ANV_QUEUE_OVERRIDE token: %s", next);
++      }
++      next = strtok_r(NULL, ",", &save);
++   }
++   free(env);
++   if (gc_override >= 0)
++      *gc_count = gc_override;
++   if (g_override >= 0)
++      *g_count = g_override;
++   if (*g_count > 0 && *gc_count <= 0 && (gc_override >= 0 || g_override >= 0))
++      mesa_logw("ANV_QUEUE_OVERRIDE: gc=0 with g > 0 violates the "
++                "Vulkan specification");
++   if (c_override >= 0)
++      *c_count = c_override;
++   if (v_override >= 0)
++      *v_count = v_override;
++   if (blit_override >= 0)
++      *blit_count = blit_override;
++}
++
++void
++anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
++{
++   uint32_t family_count = 0;
++   VkQueueFlags sparse_flags = pdevice->sparse_type != ANV_SPARSE_TYPE_NOT_SUPPORTED ?
++                               VK_QUEUE_SPARSE_BINDING_BIT : 0;
++   VkQueueFlags protected_flag = pdevice->has_protected_contexts ?
++                                 VK_QUEUE_PROTECTED_BIT : 0;
++
++   if (pdevice->engine_info) {
++      int gc_count =
++         intel_engines_count(pdevice->engine_info,
++                             INTEL_ENGINE_CLASS_RENDER);
++      int v_count =
++         intel_engines_count(pdevice->engine_info, INTEL_ENGINE_CLASS_VIDEO);
++      int g_count = 0;
++      int c_count = 0;
++      /* Not only the Kernel needs to have vm_control, but it also needs to
++       * have a new enough GuC and the interface to tell us so. This is
++       * implemented in the common layer by is_guc_semaphore_functional() and
++       * results in devinfo->engine_class_supported_count being adjusted,
++       * which we read below.
++       */
++      const bool kernel_supports_non_render_engines = pdevice->has_vm_control;
++      /* For now we're choosing to not expose non-render engines on i915.ko
++       * even when the Kernel allows it. We have data suggesting it's not an
++       * obvious win in terms of performance.
++       */
++      const bool can_use_non_render_engines =
++         kernel_supports_non_render_engines &&
++         pdevice->info.kmd_type == INTEL_KMD_TYPE_XE;
++
++      if (can_use_non_render_engines) {
++         c_count = pdevice->info.engine_class_supported_count[INTEL_ENGINE_CLASS_COMPUTE];
++      }
++
++      int blit_count = 0;
++      if (pdevice->info.verx10 >= 125 && can_use_non_render_engines) {
++         blit_count = pdevice->info.engine_class_supported_count[INTEL_ENGINE_CLASS_COPY];
++      }
++
++      anv_override_engine_counts(&gc_count, &g_count, &c_count, &v_count, &blit_count);
++
++      enum intel_engine_class compute_class =
++         pdevice->info.engine_class_supported_count[INTEL_ENGINE_CLASS_COMPUTE] &&
++         c_count >= 1 ? INTEL_ENGINE_CLASS_COMPUTE :
++                        INTEL_ENGINE_CLASS_RENDER;
++
++      if (gc_count > 0) {
++         pdevice->queue.families[family_count++] = (struct anv_queue_family) {
++            .queueFlags = VK_QUEUE_GRAPHICS_BIT |
++                          VK_QUEUE_COMPUTE_BIT |
++                          VK_QUEUE_TRANSFER_BIT |
++                          sparse_flags |
++                          protected_flag,
++            .queueCount = gc_count,
++            .engine_class = INTEL_ENGINE_CLASS_RENDER,
++            .supports_perf = true,
++         };
++      }
++      if (g_count > 0) {
++         pdevice->queue.families[family_count++] = (struct anv_queue_family) {
++            .queueFlags = VK_QUEUE_GRAPHICS_BIT |
++                          VK_QUEUE_TRANSFER_BIT |
++                          sparse_flags |
++                          protected_flag,
++            .queueCount = g_count,
++            .engine_class = INTEL_ENGINE_CLASS_RENDER,
++         };
++      }
++      if (c_count > 0) {
++         /* TODO: CCS don't support MI_SET_APPID instruction, that might be
++          * the reason some tests protected memory tests fail on CCS.
++          * Re-enable it if a workaround/solution is found.
++          */
++         pdevice->queue.families[family_count++] = (struct anv_queue_family) {
++            .queueFlags = VK_QUEUE_COMPUTE_BIT |
++                          VK_QUEUE_TRANSFER_BIT |
++                          sparse_flags,
++            .queueCount = c_count,
++            .engine_class = compute_class,
++         };
++      }
++      if (v_count > 0 && (ANV_DEBUG(VIDEO_DECODE) || ANV_DEBUG(VIDEO_ENCODE))) {
++         /* HEVC support on Gfx9 is only available on VCS0. So limit the number of video queues
++          * to the first VCS engine instance.
++          *
++          * We should be able to query HEVC support from the kernel using the engine query uAPI,
++          * but this appears to be broken :
++          *    https://gitlab.freedesktop.org/drm/intel/-/issues/8832
++          *
++          * When this bug is fixed we should be able to check HEVC support to determine the
++          * correct number of queues.
++          */
++         /* TODO: enable protected content on video queue */
++         pdevice->queue.families[family_count++] = (struct anv_queue_family) {
++            .queueFlags = (ANV_DEBUG(VIDEO_DECODE) ?
++                           VK_QUEUE_VIDEO_DECODE_BIT_KHR : 0) |
++                          (ANV_DEBUG(VIDEO_ENCODE) ?
++                           VK_QUEUE_VIDEO_ENCODE_BIT_KHR : 0),
++            .queueCount = pdevice->info.ver == 9 ? MIN2(1, v_count) : v_count,
++            .engine_class = INTEL_ENGINE_CLASS_VIDEO,
++         };
++      }
++      if (blit_count > 0) {
++         pdevice->queue.families[family_count++] = (struct anv_queue_family) {
++            .queueFlags = VK_QUEUE_TRANSFER_BIT |
++                          protected_flag,
++            .queueCount = blit_count,
++            .engine_class = INTEL_ENGINE_CLASS_COPY,
++         };
++      }
++   } else {
++      /* Default to a single render queue */
++      pdevice->queue.families[family_count++] = (struct anv_queue_family) {
++         .queueFlags = VK_QUEUE_GRAPHICS_BIT |
++                       VK_QUEUE_COMPUTE_BIT |
++                       VK_QUEUE_TRANSFER_BIT |
++                       sparse_flags,
++         .queueCount = 1,
++         .engine_class = INTEL_ENGINE_CLASS_RENDER,
++      };
++      family_count = 1;
++   }
++   assert(family_count <= ANV_MAX_QUEUE_FAMILIES);
++   pdevice->queue.family_count = family_count;
++}
++
++/* This is probably far to big but it reflects the max size used for messages
++ * in OpenGLs KHR_debug.
++ */
++#define MAX_DEBUG_MESSAGE_LENGTH    4096
++
++static void
++compiler_debug_log(void *data, UNUSED unsigned *id, const char *fmt, ...)
++{
++   char str[MAX_DEBUG_MESSAGE_LENGTH];
++   struct anv_device *device = (struct anv_device *)data;
++   UNUSED struct anv_instance *instance = device->physical->instance;
++
++   va_list args;
++   va_start(args, fmt);
++   (void) vsnprintf(str, MAX_DEBUG_MESSAGE_LENGTH, fmt, args);
++   va_end(args);
++
++   //vk_logd(VK_LOG_NO_OBJS(&instance->vk), "%s", str);
++}
++
++static void
++compiler_perf_log(UNUSED void *data, UNUSED unsigned *id, const char *fmt, ...)
++{
++   va_list args;
++   va_start(args, fmt);
++
++   if (INTEL_DEBUG(DEBUG_PERF))
++      mesa_logd_v(fmt, args);
++
++   va_end(args);
++}
++
++VkResult
++anv_physical_device_init_compiler(struct anv_physical_device *device)
++{
++   device->compiler = brw_compiler_create(NULL, &device->info);
++   if (device->compiler == NULL)
++      return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
++   device->compiler->shader_debug_log = compiler_debug_log;
++   device->compiler->shader_perf_log = compiler_perf_log;
++   device->compiler->spilling_rate = device->instance->drirc.debug.shader_spilling_rate;
++   return VK_SUCCESS;
++}
++
++VkResult
++anv_physical_device_init_uuids(struct anv_physical_device *device)
++{
++   const struct build_id_note *note =
++      build_id_find_nhdr_for_addr(anv_physical_device_init_uuids);
++   if (!note) {
++      return vk_errorf(device, VK_ERROR_INITIALIZATION_FAILED,
++                       "Failed to find build-id");
++   }
++
++   unsigned build_id_len = build_id_length(note);
++   if (build_id_len < BUILD_ID_EXPECTED_HASH_LENGTH) {
++      return vk_errorf(device, VK_ERROR_INITIALIZATION_FAILED,
++                       "build-id too short.  It needs to be a SHA");
++   }
++
++   copy_build_id_to_sha1(device->driver_build_sha1, note);
++
++   blake3_hasher blake3_ctx;
++   uint8_t blake3[BLAKE3_KEY_LEN];
++   STATIC_ASSERT(VK_UUID_SIZE <= sizeof(blake3));
++
++   /* The pipeline cache UUID is used for determining when a pipeline cache is
++    * invalid.  It needs both a driver build and the PCI ID of the device.
++    */
++   _mesa_blake3_init(&blake3_ctx);
++   _mesa_blake3_update(&blake3_ctx, build_id_data(note), build_id_len);
++   brw_device_blake3_update(&blake3_ctx, &device->info);
++   bool always_use_bindless = device->instance->drirc.features.always_bindless;
++   _mesa_blake3_update(&blake3_ctx, &always_use_bindless,
++                     sizeof(always_use_bindless));
++   _mesa_blake3_final(&blake3_ctx, blake3);
++   memcpy(device->pipeline_cache_uuid, blake3, VK_UUID_SIZE);
++
++   intel_uuid_compute_driver_id(device->driver_uuid, &device->info, VK_UUID_SIZE);
++   intel_uuid_compute_device_id(device->device_uuid, &device->info, VK_UUID_SIZE);
++
++   return VK_SUCCESS;
++}
++
++void
++anv_physical_device_init_disk_cache(struct anv_physical_device *device)
++{
++#ifdef ENABLE_SHADER_CACHE
++   char renderer[10];
++   ASSERTED int len = snprintf(renderer, sizeof(renderer), "anv_%04x",
++                               device->info.pci_device_id);
++   assert(len == sizeof(renderer) - 2);
++
++   char timestamp[BLAKE3_HEX_LEN];
++   _mesa_blake3_format(timestamp, device->driver_build_sha1);
++
++   const uint64_t driver_flags =
++      brw_get_compiler_config_value(device->compiler);
++   device->vk.disk_cache = disk_cache_create(renderer, timestamp, driver_flags);
++#endif
++}
++
++void
++anv_physical_device_free_disk_cache(struct anv_physical_device *device)
++{
++#ifdef ENABLE_SHADER_CACHE
++   if (device->vk.disk_cache) {
++      disk_cache_destroy(device->vk.disk_cache);
++      device->vk.disk_cache = NULL;
++   }
++#else
++   assert(device->vk.disk_cache == NULL);
++#endif
++}
+--- a/src/intel/vulkan/anv_physical_device_drm.c
++++ b/src/intel/vulkan/anv_physical_device_drm.c
+@@ -0,0 +1,245 @@
++/* Copyright © 2024 Intel Corporation
++ * SPDX-License-Identifier: MIT
++ */
++
++#include "anv_private.h"
++#include "anv_api_version.h"
++#include "anv_measure.h"
++
++#include "dev/intel_debug.h"
++#include "i915/anv_device.h"
++#include "xe/anv_device.h"
++
++#include "common/intel_common.h"
++#include "common/xe/intel_gem.h"
++#include "common/xe/intel_queue.h"
++
++#include "perf/intel_perf.h"
++
++#include "git_sha1.h"
++
++#include "util/os_misc.h"
++#include "util/mesa-blake3.h"
++#include "util/os_misc.h"
++
++#include <xf86drm.h>
++#include <fcntl.h>
++#ifdef MAJOR_IN_SYSMACROS
++#include <sys/sysmacros.h>
++#endif
++
++#include "vk_android.h"
++
++static simple_mtx_t physical_budgets_mutex = SIMPLE_MTX_INITIALIZER;
++static struct list_head physical_budgets = {&physical_budgets, &physical_budgets};
++
++static struct anv_memory_budget *
++get_physical_device_budget(int64_t local_major, int64_t local_minor)
++{
++   struct anv_memory_budget *budget = NULL;
++
++   simple_mtx_lock(&physical_budgets_mutex);
++
++   list_for_each_entry(struct anv_memory_budget, b, &physical_budgets, link) {
++      if (b->local_major == local_major &&
++          b->local_minor == local_minor) {
++         budget = b;
++         break;
++      }
++   }
++
++   if (budget == NULL) {
++      budget = calloc(1, sizeof(struct anv_memory_budget));
++      budget->ref_count = 1;
++      budget->local_major = local_major;
++      budget->local_minor = local_minor;
++      list_addtail(&budget->link, &physical_budgets);
++   } else {
++      budget->ref_count++;
++   }
++
++   simple_mtx_unlock(&physical_budgets_mutex);
++
++   return budget;
++}
++
++static void
++release_physical_device_budget(struct anv_memory_budget *budget)
++{
++   simple_mtx_lock(&physical_budgets_mutex);
++
++   if (--budget->ref_count == 0) {
++      list_del(&budget->link);
++      free(budget);
++   }
++
++   simple_mtx_unlock(&physical_budgets_mutex);
++}
++
++VkResult
++anv_physical_device_try_create(struct vk_instance *vk_instance,
++                               struct _drmDevice *drm_device,
++                               struct vk_physical_device **out)
++{
++   struct anv_instance *instance =
++      container_of(vk_instance, struct anv_instance, vk);
++
++   const char *primary_path = drm_device->nodes[DRM_NODE_PRIMARY];
++   const char *path = drm_device->nodes[DRM_NODE_RENDER];
++   VkResult result;
++   int fd;
++   int master_fd = -1;
++   int ret;
++
++   fd = open(path, O_RDWR | O_CLOEXEC);
++   if (fd < 0) {
++      if (errno == ENOMEM) {
++         return vk_errorf(instance, VK_ERROR_OUT_OF_HOST_MEMORY,
++                          "Unable to open device %s: out of memory", path);
++      }
++      return vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
++                       "Unable to open device %s: %m", path);
++   }
++
++   ret = intel_virtio_init_fd(fd);
++   if (ret < 0) {
++      result = VK_ERROR_INCOMPATIBLE_DRIVER;
++      goto fail_fd;
++   }
++
++   bool is_virtio = ret > 0;
++   if (!is_virtio) {
++      if (!(drm_device->available_nodes & (1 << DRM_NODE_RENDER)) ||
++         drm_device->bustype != DRM_BUS_PCI ||
++         drm_device->deviceinfo.pci->vendor_id != 0x8086) {
++         result = VK_ERROR_INCOMPATIBLE_DRIVER;
++         goto fail_fd;
++      }
++   }
++
++   struct intel_device_info devinfo;
++   if (!intel_get_device_info_from_fd(fd, &devinfo, 9, -1)) {
++      result = VK_ERROR_INCOMPATIBLE_DRIVER;
++      goto fail_fd;
++   }
++
++
++   struct anv_physical_device *device;
++   const struct anv_kmd_backend *backend = anv_kmd_backend_get(devinfo.kmd_type);
++   result = anv_physical_device_alloc(instance, backend, &device);
++   if (result != VK_SUCCESS)
++      goto fail_fd;
++
++   assert(strlen(path) < ARRAY_SIZE(device->path));
++   snprintf(device->path, ARRAY_SIZE(device->path), "%s", path);
++
++   device->info = devinfo;
++
++   device->local_fd = fd;
++   result = anv_physical_device_init_common(device);
++   if (result != VK_SUCCESS)
++      goto fail_base;
++
++   if (instance->vk.enabled_extensions.KHR_display) {
++      master_fd = open(primary_path, O_RDWR | O_CLOEXEC);
++      if (master_fd >= 0) {
++         /* fail if we don't have permission to even render on this device */
++         if (!intel_gem_can_render_on_fd(master_fd, device->info.kmd_type)) {
++            close(master_fd);
++            master_fd = -1;
++         }
++      }
++   }
++   device->master_fd = master_fd;
++
++   if (backend->init_engine_info == NULL) {
++      result = VK_ERROR_INITIALIZATION_FAILED;
++      goto fail_engine_info;
++   }
++   result = backend->init_engine_info(device);
++   if (result != VK_SUCCESS)
++      goto fail_engine_info;
++
++   anv_physical_device_init_queue_families(device);
++
++   anv_physical_device_init_perf(device, fd);
++
++   anv_shader_init_uuid(device);
++
++   /* Gather major/minor before WSI. */
++   struct stat st;
++
++   if (stat(primary_path, &st) == 0) {
++      device->has_master = true;
++      device->master_major = major(st.st_rdev);
++      device->master_minor = minor(st.st_rdev);
++   } else {
++      device->has_master = false;
++      device->master_major = 0;
++      device->master_minor = 0;
++   }
++
++   if (stat(path, &st) == 0) {
++      device->has_local = true;
++      device->local_major = major(st.st_rdev);
++      device->local_minor = minor(st.st_rdev);
++   } else {
++      device->has_local = false;
++      device->local_major = 0;
++      device->local_minor = 0;
++   }
++
++   anv_physical_device_init_properties(device);
++
++   device->memory.heaps_budget =
++      get_physical_device_budget(device->local_major, device->local_minor);
++
++   result = anv_init_wsi(device);
++   if (result != VK_SUCCESS)
++      goto fail_perf;
++
++   anv_measure_device_init(device);
++
++   anv_genX(&device->info, init_physical_device_state)(device);
++   anv_genX(&device->info, init_instructions)(device);
++
++   *out = &device->vk;
++
++   return VK_SUCCESS;
++
++fail_perf:
++   release_physical_device_budget(device->memory.heaps_budget);
++   intel_perf_free(device->perf);
++fail_engine_info:
++   free(device->engine_info);
++   anv_physical_device_free_disk_cache(device);
++   ralloc_free(device->compiler);
++fail_base:
++   anv_physical_device_free(device);
++fail_fd:
++   intel_virtio_unref_fd(fd);
++   close(fd);
++   if (master_fd != -1)
++      close(master_fd);
++   return result;
++}
++
++void
++anv_physical_device_destroy(struct vk_physical_device *vk_device)
++{
++   struct anv_physical_device *device =
++      container_of(vk_device, struct anv_physical_device, vk);
++
++   anv_finish_wsi(device);
++   anv_measure_device_destroy(device);
++   free(device->engine_info);
++   anv_physical_device_free_disk_cache(device);
++   ralloc_free(device->compiler);
++   release_physical_device_budget(device->memory.heaps_budget);
++   intel_perf_free(device->perf);
++   intel_virtio_unref_fd(device->local_fd);
++   close(device->local_fd);
++   if (device->master_fd >= 0)
++      close(device->master_fd);
++   anv_physical_device_free(device);
++}

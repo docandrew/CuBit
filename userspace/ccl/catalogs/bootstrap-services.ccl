@@ -1,0 +1,9 @@
+# Build-supplied bindings to today's procmgr registered-service ABI.
+# These are compatibility data, NOT compiler builtins, authenticated identities,
+# policy approvals, or evidence that an arbitrary runtime provider is trusted.
+# Numbers must match the services admitted by the system image composition.
+(service-catalog v1
+  (service filesystem 6 read-write)
+  (service desktop 15 read-write)
+  (service ccl-test-host 18 read-write)
+  (service clock 19 read-write))

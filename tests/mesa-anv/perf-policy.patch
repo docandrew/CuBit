@@ -1,0 +1,28 @@
+--- a/src/intel/vulkan/anv_perf.c
++++ b/src/intel/vulkan/anv_perf.c
+@@ -36,6 +36,17 @@
+ void
+ anv_physical_device_init_perf(struct anv_physical_device *device, int fd)
+ {
++#if defined(__cubit__)
++   /* No authorized OA counter-stream interface exists on CuBit yet.
++    * In particular, fd == -1 selects Mesa's offline metrics mode; it is
++    * not a substitute for native device discovery. A NULL perf config
++    * keeps both optional performance-query extensions unadvertised.
++    */
++   device->perf = NULL;
++   device->n_perf_query_commands = 0;
++   (void)fd;
++   return;
++#else
+    struct intel_perf_config *perf = intel_perf_new(NULL);
+ 
+    intel_perf_init_metrics(perf, &device->info, fd,
+@@ -86,6 +97,7 @@
+ 
+ err:
+    intel_perf_free(perf);
++#endif
+ }
+ 
+ void

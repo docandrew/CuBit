@@ -1,0 +1,103 @@
+Input file /home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/results/failure-r1.aml, Length 0xFA (250) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 0000FA (v01 CUBIT  INITIO   00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: INITIO  ] (id 01) -   14 Objects with   1 Devices,   1 Regions,    7 Methods (0/7/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 23 (0x17) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Initializing Device/Processor/Thermal objects and executing _INI/_STA methods:
+    Executed 0 _INI methods requiring 1 _STA executions (examined 3 objects)
+Evaluating \RSET
+Evaluation of \RSET returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \_SB.DVA0._STA
+Evaluation of \_SB.DVA0._STA returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000F
+
+Evaluating \_SB.DVA0._INI
+ACPI Error: Divide by zero (20260408/utmath-705)
+Failed at AML Offset 00010, Opcode 0078: Divide (One, Local0, Local1, Local2)
+
+
+Initialized Local Variables for Method [_INI]:
+    Local0: 0x5555556087d0 <Obj>             Integer 0000000000000000
+
+No Arguments are initialized for method [_INI]
+
+ACPI Error: Aborting method \_SB.DVA0._INI due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)
+ACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \_SB.DVA0._INI from AML Debugger (20260408/dbexec-334)
+Evaluation of \_SB.DVA0._INI failed with status AE_AML_DIVIDE_BY_ZERO
+Evaluating \OBS0
+Evaluation of \OBS0 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+Evaluating \PR01
+Evaluation of \PR01 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000F
+
+Evaluating \PR02
+Evaluation of \PR02 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000022
+
+Evaluating \PR03
+Evaluation of \PR03 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \RSET
+Evaluation of \RSET returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+Evaluating \_SB.DVA0._STA
+Evaluation of \_SB.DVA0._STA returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000F
+
+Evaluating \_SB.DVA0._INI
+ACPI Error: Divide by zero (20260408/utmath-705)
+Failed at AML Offset 00010, Opcode 0078: Divide (One, Local0, Local1, Local2)
+
+
+Initialized Local Variables for Method [_INI]:
+    Local0: 0x555555609370 <Obj>             Integer 0000000000000000
+
+No Arguments are initialized for method [_INI]
+
+ACPI Error: Aborting method \_SB.DVA0._INI due to previous error (AE_AML_DIVIDE_BY_ZERO) (20260408/psparse-688)
+ACPI Error: AE_AML_DIVIDE_BY_ZERO, while executing \_SB.DVA0._INI from AML Debugger (20260408/dbexec-334)
+Evaluation of \_SB.DVA0._INI failed with status AE_AML_DIVIDE_BY_ZERO
+Evaluating \OBS0
+Evaluation of \OBS0 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+Evaluating \PR01
+Evaluation of \PR01 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000F
+
+Evaluating \PR02
+Evaluation of \PR02 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000022
+
+Evaluating \PR03
+Evaluation of \PR03 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000000
+
+0x5555556096f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

@@ -1,0 +1,10 @@
+project Stall_Watch is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("compositor_stall_watch.ads", "compositor_stall_watch.adb", "stall_watch_tests.adb");
+   for Object_Dir use "build/stall-watch/obj";
+   for Exec_Dir use "build/stall-watch";
+   for Main use ("stall_watch_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Stall_Watch;

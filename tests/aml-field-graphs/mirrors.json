@@ -1,0 +1,4 @@
+{
+  "tests/aml-field-graphs/hosted_capture.py": "tests/acpi-resource-data/hosted_capture.py",
+  "tests/aml-field-graphs/source_guards.py": "tests/acpi-resource-data/source_guards.py"
+}

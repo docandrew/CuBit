@@ -1,0 +1,11 @@
+project Slab_Tests is
+   for Source_Dirs use (".", "../../userspace/allocator/src");
+   for Object_Dir use "build/slabs";
+   for Exec_Dir use "build/slabs";
+   for Main use ("slab_tests.adb", "extent_tests.adb");
+   package Compiler is
+      -- Runtime arithmetic/bounds checks stay on. Tests use explicit Check;
+      -- recursive Ghost induction lemmas are proved, not executed as tests.
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnato", "-O2", "-g");
+   end Compiler;
+end Slab_Tests;

@@ -1,0 +1,44 @@
+package CuBit.UI.Editor.Viewports with SPARK_Mode is
+   subtype Line_Number is Positive;
+
+   type Viewport is private;
+
+   procedure Initialize
+     (Value : out Viewport; Visible_Lines : Positive);
+   function First_Line (Value : Viewport) return Line_Number;
+   function Line_Capacity (Value : Viewport) return Positive;
+   function First_Column (Value : Viewport) return Positive;
+   function Column_Capacity (Value : Viewport) return Positive;
+   function Last_Visible_Line
+     (Value : Viewport; Document_Lines : Positive) return Line_Number;
+
+   procedure Set_Line_Capacity
+     (Value : in out Viewport; Visible_Lines, Document_Lines : Positive);
+
+   procedure Ensure_Visible
+     (Value : in out Viewport; Line, Document_Lines : Line_Number)
+   with Pre => Line <= Document_Lines;
+
+   procedure Scroll_Lines
+     (Value : in out Viewport; Amount : Integer;
+      Document_Lines : Positive);
+
+   procedure Set_Column_Capacity
+     (Value : in out Viewport; Visible_Columns, Document_Columns : Positive);
+
+   procedure Ensure_Column_Visible
+     (Value : in out Viewport; Column, Document_Columns : Positive)
+   with Pre => Column <= Document_Columns;
+
+   procedure Scroll_Columns
+     (Value : in out Viewport; Amount : Integer;
+      Document_Columns : Positive);
+
+private
+   type Viewport is record
+      First : Line_Number := 1;
+      Visible : Positive := 1;
+      First_Visible_Column : Positive := 1;
+      Visible_Columns : Positive := 1;
+   end record;
+end CuBit.UI.Editor.Viewports;

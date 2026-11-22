@@ -1,0 +1,19 @@
+--  BUG-003: hosted model tests and SPARK proofs of nvme.drv's pure parts
+--  (command identifier tracker, queue cursors, recovery state machine).
+project NVMe_Recovery_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/services/nvme");
+   for Source_Files use
+     ("main.adb",
+      "nvme_protocol.ads", "nvme_layout.ads",
+      "nvme_queue_cursors.ads", "nvme_queue_cursors.adb",
+      "nvme_command_ids.ads", "nvme_command_ids.adb",
+      "nvme_recovery.ads", "nvme_recovery.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-O1", "-g");
+   end Compiler;
+end NVMe_Recovery_Tests;

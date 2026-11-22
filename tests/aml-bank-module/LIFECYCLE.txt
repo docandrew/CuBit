@@ -1,0 +1,44 @@
+Decision for CuBit's current BankField lifecycle (explicit policy, not a claim
+that every firmware/ACPICA behavior has been matched): evaluate BankValue when
+the BankField declaration executes, retain the resulting Integer in every
+field in that group, and do not reexecute the selector during member sealing
+or later field reads/writes. Every access still selects the captured bank via
+trusted named-register authority. Module and method declarations use the same
+capture rule; a method loop's actual declaration executions capture fresh values.
+
+Basis and limits:
+- ACPI6.6 chapter20 grammar makes BankValue an Integer-valued TermArg; chapter19
+  describes writing that selection before field access. Chapter5 describes
+  definition-block population and object initialization. These support normal
+  expression evaluation/capture; none of the consulted text specifies replaying
+  the expression once per named banked field at a later sealing phase. The
+  no-replay lifecycle here is an implementation interpretation, not a quoted
+  normative scheduling guarantee. Full conformance still needs broader review.
+- Official primary references consulted via indexed text (direct fetch403):
+  https://uefi.org/sites/default/files/resources/ACPI_Spec_6.6.pdf
+  https://uefi.org/specs/ACPI/6.6/05_ACPI_Software_Programming_Model.html
+- Retained ACPICA primary source nsinit.c570+ explicitly calls its deferred
+  BankField initialization unnecessary (TBD removal). dsargs.c353+ reexecutes
+  the saved declaration if the individual field lacks DATA_VALID. This explains
+  observed extra effects, not a requirement to add the same effects to CuBit.
+
+Normal independent comparison oracle-module:
+236byteDSDT compiled0errors0warnings0remarks; runtimeprocess0,13Integerreturns.
+The module declares2fields atSEL0=3, recordsCNT0 inSEEN, then changesSEL0 to7.
+ACPICA: SEEN1,CNT3, bankselected7. After MOVE changesSEL0 to9, bankstill7 and
+CNTstill3. These are original preserved observations including allocationdiag.
+CuBit policy expects: SEEN1,CNT1, bankselected3; after MOVE bankstill3/CNTstill1.
+Data reads A5/5A and write/readbackC3 agree. Counter/bank differences are named
+intentional compatibility differences. Never count this fixture as all13
+ACPICA observations matching. No flag suppression or oracle forcing was used.
+
+Regression tests additionally require no provider dispatch for declaration,
+initialization or scalar queries, shared captured selector across bothfields,
+correct named-target traces, no extra retained roots, and refusal to replay
+member initialization/definition-block execution after Ready.
+
+Not resolved by this decision: field visibility during loading, forward refs,
+different-name collisions/old-reference semantics, AML depending on ACPICA's
+extra selector side effects, GlobalLock/concurrency and native hardware service
+provisioning. No automatic compatibility fallback that can silently duplicate
+hardware/AML effects is introduced. No new proof/native correctness claim.

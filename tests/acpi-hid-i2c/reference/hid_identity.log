@@ -1,0 +1,104 @@
+CuBit development shell
+  Build:  make -C kernel world
+  Test:   tests/headless/run.sh --test desktop-display
+  Run:    make -C kernel run-desktop
+hid_identity.asl     17:         If (LEqual (MODE, 4)) { Return (Package () {}) }
+Remark   2095 -                        Effective AML package length is zero ^ 
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     hid_identity.asl -    1878 bytes     78 keywords      0 source lines
+AML Output:    hid_identity.aml -     674 bytes     55 opcodes      23 named objects
+Hex Dump:      hid_identity.hex -    6764 bytes
+
+Compilation successful. 0 Errors, 0 Warnings, 1 Remarks, 5 Optimizations
+Input file hid_identity.aml, Length 0x2A2 (674) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 0002A2 (v02 CUBIT  HIDIDENT 00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: HIDIDENT] (id 01) -   23 Objects with   5 Devices,   0 Regions,    5 Methods (0/5/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 32 (0x20) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 20
+  [String] Length 07 = "PNP0C50"
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 00000000500CD041
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 78
+  [Package] Contains 3 Elements:
+    [String] Length 08 = "OTHER000"
+    [Integer] = 00000000500CD041
+    [String] Length 07 = "PNP0C51"
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 60
+  [Package] Contains 2 Elements:
+    [String] Length 08 = "OTHER000"
+    [String] Length 07 = "PNP0C51"
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 18
+  [Package] Contains 0 Elements:
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 80
+  [Package] Contains 3 Elements:
+    [String] Length 07 = "PNP0C50"
+    [String] Length 08 = "OTHER000"
+    [String] Length 07 = "PNP0C51"
+
+Evaluating \SETM
+No object was returned from evaluation of \SETM
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 50
+  [Package] Contains 2 Elements:
+    [String] Length 07 = "PNP0C50"
+    [Integer] = 00000000500CD041
+
+0x55555560c9f0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560c970 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560c4c0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560be80 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560bdd0 Length 0x0009  utobject-0450 [Not a Descriptor - too small]
+0x55555560bd00 Length 0x0009  utobject-0450 [Not a Descriptor - too small]
+0x555555609f30 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555609df0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x555555609d70 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x555555608840 Length 0x0008  utobject-0450 [Not a Descriptor - too small]
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607240 Length 0x0008  utobject-0450 [Not a Descriptor - too small]
+ACPI Error: 14 (0xE) Outstanding cache allocations (20260408/uttrack-902)

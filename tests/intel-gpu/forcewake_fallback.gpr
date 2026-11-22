@@ -1,0 +1,11 @@
+project Forcewake_Fallback is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("forcewake_fallback_tests.adb",
+     "intel_gpu_forcewake_fallback.ads", "intel_gpu_forcewake_fallback.adb",
+     "intel_gpu_forcewake.ads", "intel_gpu_forcewake.adb");
+   for Object_Dir use "build-forcewake-fallback";
+   for Main use ("forcewake_fallback_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Forcewake_Fallback;

@@ -1,0 +1,16 @@
+File appears to be binary: found 130 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file /home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1.aml, Length 0x14C (332) bytes
+ACPI: SSDT 0x0000000000000000 00014C (v01 CUBIT  PKGROOTS 00000001 INTL 20260408)
+Pass 1 parse of [SSDT]
+Pass 2 parse of [SSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+Disassembly completed
+ASL Output:    /home/doc/git/.acpi-proof-work/runtime-package-root-oracle-x4j04dl3/results/roots-r1.dsl - 4022 bytes

@@ -1,0 +1,26 @@
+project Fanout is
+   for Source_Dirs use (".", "build/source");
+   for Source_Files use ("main.adb", "cubit.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "cubit-log_protocol.ads",
+                        "cubit-authority_policy.ads", "cubit-protocols.ads",
+                        "cubit-channel_contracts.ads", "cubit-channel_contracts.adb",
+                        "cubit-process_observer.ads",
+                        "cubit-log_records.ads", "cubit-log_records.adb",
+                        "policy_proof.ads", "log_budgets.ads", "log_budgets.adb",
+                        "cubit-grant_references.ads",
+                        "retirement_proof.ads", "retirement_proof.adb",
+                        "policy_proof.adb", "log_fanout.ads", "log_fanout.adb",
+                        "heap_arrays.ads", "heap_arrays.adb",
+                        "cubit-channel_rings.ads", "cubit-channel_rings.adb",
+                        "cubit-datagram_rings.ads", "cubit-datagram_rings.adb",
+                        "cubit-log_streams.ads", "cubit-log_streams.adb",
+                        "cubit-log_sources.ads", "cubit-log_sources.adb", "cubit-log_sources-texts.ads",
+                        "source_identities.ads", "source_identities.adb",
+                        "cualloc_host.ads", "cualloc_host.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Fanout;

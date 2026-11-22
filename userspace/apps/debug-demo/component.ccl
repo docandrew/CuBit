@@ -1,0 +1,4 @@
+(Component name => "debug-demo" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/debug/stub"]
+    language => Ada_Language.Ada_2022)))

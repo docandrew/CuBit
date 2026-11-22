@@ -1,0 +1,194 @@
+[
+  {
+    "key": "1-SKIP",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "9475c97e6536c0f90085b251a6bde3c7437f7ac90c925c5cea69b5c796248163",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 4294967295,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-BADRETURN",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "96a4cf1ab0c6bdc4ffd16981e1ff007af3ee69d280308237e6d62455fff10ced",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: Needed [Integer/String/Buffer], found [Package] 0x555555609030 (20260408/exresop-635)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [Match] (20260408/dswexec-613)",
+      "Failed at AML Offset 00001, Opcode 0089: Match (PKG0, MTR, -Return Value- (), MTR, Zero, -Return Value- ())",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "1-PRIORITY",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "38de21a3109c6fd3d4854d342526f39c06a02ab9148a66638a0905fc9f9d6279",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: AE_AML_BUFFER_LIMIT, While resolving operands for [Match] (20260408/dswexec-613)",
+      "Failed at AML Offset 00001, Opcode 0089: Match (PKG0, MEQ, -Return Value- (), MTR, Zero, -Return Value- ())",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_BUFFER_LIMIT) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_BUFFER_LIMIT, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_BUFFER_LIMIT",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_BUFFER_LIMIT"
+  },
+  {
+    "key": "2-SKIP",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "511a6558641417ee7d2310280b8a66f3d909225c87aac593984c77bd1ba2fd9f",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 18446744073709551615,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-BADRETURN",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "ed5a91bf325773fc4fabfa232450af068c96f849de190c29a93c3d9d7ee61b4b",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: Needed [Integer/String/Buffer], found [Package] 0x555555609030 (20260408/exresop-635)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [Match] (20260408/dswexec-613)",
+      "Failed at AML Offset 00001, Opcode 0089: Match (PKG0, MTR, -Return Value- (), MTR, Zero, -Return Value- ())",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "2-PRIORITY",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "72fa0fb9094aeca30bdfbd8ae0406923a404f6d13336c8c37c66508553d3789e",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: AE_AML_BUFFER_LIMIT, While resolving operands for [Match] (20260408/dswexec-613)",
+      "Failed at AML Offset 00001, Opcode 0089: Match (PKG0, MEQ, -Return Value- (), MTR, Zero, -Return Value- ())",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_BUFFER_LIMIT) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_BUFFER_LIMIT, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_BUFFER_LIMIT",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_BUFFER_LIMIT"
+  }
+]

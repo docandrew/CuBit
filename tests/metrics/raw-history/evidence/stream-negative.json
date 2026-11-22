@@ -1,0 +1,5 @@
+{
+  "status": "PASS",
+  "negative": "compiled removal of endpoint identity guard rejected by streaming fixture",
+  "exit_code": 1
+}

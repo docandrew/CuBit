@@ -1,0 +1,9 @@
+project Input_Delivery extends "input_batch_wire.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "build/input-batch-wire/source");
+   for Source_Files use Input_Batch_Wire'Source_Files &
+     ("compositor_input_delivery.ads", "compositor_input_delivery.adb",
+      "input_delivery_proof.ads", "input_delivery_tests.adb");
+   for Object_Dir use "build/input-delivery/obj";
+   for Exec_Dir use "build/input-delivery";
+   for Main use ("input_delivery_tests.adb");
+end Input_Delivery;

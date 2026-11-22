@@ -1,0 +1,2 @@
+(Component name => "vm-hello-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

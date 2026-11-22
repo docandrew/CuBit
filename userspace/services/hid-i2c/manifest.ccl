@@ -1,0 +1,30 @@
+# Private HID launch interface draft. Every hardware/policy value is required.
+(type HID_Register (range 0 65535))
+(type HID_Milliseconds (range 1 9223372036854775807))
+(type HID_Gain_Numerator (range 1 65535))
+(type HID_Gain_Denominator (range 1 2147483647))
+(type HID_Contact_Limit (range 1 32))
+(type HID_Binding_Budget (range 1 4294967295))
+(type HID_Direction (enum As_Reported Reversed))
+(type HID_Confidence (enum Require_Confident Accept_Unknown))
+(type HID_Button (enum Ignore Primary_Button Secondary_Button Middle_Button Side_Button Extra_Button))
+(type HID_Axis (record
+  (numerator HID_Gain_Numerator) (denominator HID_Gain_Denominator)
+  (direction HID_Direction)))
+(type HID_Buttons (record (button_1 HID_Button) (button_2 HID_Button) (button_3 HID_Button)))
+(type HID_Timing (record
+  (startup HID_Milliseconds) (control HID_Milliseconds) (read HID_Milliseconds)
+  (cleanup HID_Milliseconds) (idle_backoff HID_Milliseconds)))
+(type HID_Parameters (record
+  (descriptor_register HID_Register)
+  (x HID_Axis) (y HID_Axis) (confidence HID_Confidence)
+  (buttons HID_Buttons) (contact_limit HID_Contact_Limit)
+  (binding_budget HID_Binding_Budget) (timing HID_Timing)))
+(Executable_Manifest
+  identity => "com.cubit.hid-i2c" version => "0.1.0"
+  drives => [(Device_Match.ACPI_ID "PNP0C50")]
+  requests => [(service "i2c" "i2c") (service "gpio" "gpio")
+    (notification "mouse" Notify_Access.Publish "mouse-events")
+    (service "device-manager" "ready") (service "logstore" "logstore")]
+  optional => ["logstore"]
+  parameters => (Parameter_Signature.Declared "HID_Parameters"))

@@ -1,0 +1,18 @@
+{
+  "state": "source text conversions tested; short identifier matching observations recorded separately",
+  "portable_checks_per_profile": 431,
+  "profiles": [
+    "checked",
+    "release"
+  ],
+  "normal_acpica_common_controls": 16,
+  "short_identifier_observations": 4,
+  "observed_selection_differences": 4,
+  "predecessor_hosted_checks": 10947,
+  "evidence": "/home/doc/git/.acpi-proof-work/loadtable-coercions-publication-work/PUBLICATION.json",
+  "new_proof": false,
+  "conversion_proved": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "goal": "active and incomplete"
+}

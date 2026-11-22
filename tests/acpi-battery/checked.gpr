@@ -1,0 +1,9 @@
+project Checked is
+ for Source_Dirs use (".", "../../userspace/services/acpi/power");
+ for Main use ("battery_status_tests.adb");
+ for Object_Dir use external ("BATTERY_STATUS_BUILD") & "/obj";
+ for Exec_Dir use external ("BATTERY_STATUS_BUILD") & "/bin";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Checked;

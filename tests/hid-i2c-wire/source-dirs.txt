@@ -1,0 +1,2 @@
+tests/hid-i2c-wire
+userspace/services/acpi/hid-i2c

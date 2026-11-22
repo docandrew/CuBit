@@ -1,0 +1,16 @@
+--  LAT-002 present timing codec: hosted tests (Linux) and level-2 proof.
+--    gprbuild -p -P tests/present-timing/present_timing.gpr && tests/present-timing/build/present_timing_tests
+--    gnatprove -P tests/present-timing/present_timing.gpr -u cubit-present_timing.adb --level=2
+project Present_Timing is
+   for Source_Dirs use (".", "../../userspace/runtime/gnat");
+   for Source_Files use ("present_timing_tests.adb", "cubit.ads",
+     "cubit-present_timing.ads", "cubit-present_timing.adb");
+   for Object_Dir use "build";
+   for Main use ("present_timing_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-gnatwa");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Present_Timing;

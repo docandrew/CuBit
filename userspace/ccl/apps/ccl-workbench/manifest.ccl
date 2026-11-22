@@ -1,0 +1,31 @@
+# Requested authority only; the existing launch path remains in control.
+(executable-manifest v1
+  (identity "com.cubit.ccl-workbench")
+  (version "0.1.0")
+  # One "started" record (CuBit.Logging.Announce).
+  (request-service logstore read-write logstore)
+  (request-service desktop read-write desktop)
+  # CCL's time built-ins; without clock.svc they report no wall time.
+  (request-service-optional clock read-write clock)
+  # The REPL's (logs.recent "service"): read-only log observation.
+  (request-service log-observer read-write log-observer)
+  # (logs.set-minimum ...) / the Logs "Keep" box: what logstore keeps.
+  (request-service log-control read-write log-control)
+  # (proc.list): see what runs, through procmgr's observer role.
+  (request-service process-observer read-write process-observer)
+  # Development inspector: global non-secret Config read, never write/admin.
+  (request-service config read-write config)
+  (config-scope (rights read) all)
+  # Typed Config playground: never write outside Workbench's own demo namespace.
+  (config-scope (rights read write) "com.cubit.ccl-workbench.demo")
+  # (dict ..), (synonym ..), (thesaurus ..), (spell-check ..): lexicon.svc.
+  (request-service-optional lexicon read-write lexicon)
+  # (wifi.scan): what the radios heard, through netstack's inspection
+  # operations (no network authority).
+  (request-service-optional network-stack read-write network-stack)
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@nvme:0/work")
+  (filesystem-scope (rights read write create) "@mem:0/work")
+  # bible.*: the Bible's translations (APP-005), read only.
+  (filesystem-scope (rights read) "@nvme:0/Assets/cubit-bible/")
+  (filesystem-scope (rights read) "@cd:0/Assets/cubit-bible/"))

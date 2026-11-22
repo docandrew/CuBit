@@ -1,0 +1,12 @@
+wide32.asl     26:     Method (ALOC, 0, Serialized) { Name (LBUF, Buffer (65536) {}) If (SizeOf (LBUF) != 65536) { Return (Zero) } Store (0x77, IDX0) Return (F080) }
+Remark   2173 -                                               ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\ALOC)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     wide32.asl -    1773 bytes     51 keywords      0 source lines
+AML Output:    wide32.aml -     534 bytes     26 opcodes      25 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 1 Remarks, 0 Optimizations

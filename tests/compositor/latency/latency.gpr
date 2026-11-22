@@ -1,0 +1,17 @@
+--  LAT-002 input-to-photon ledger: hosted tests (Linux) and level-2 proof.
+--    gprbuild -p -P tests/compositor/latency/latency.gpr && tests/compositor/latency/build/latency_tests
+--    gnatprove -P tests/compositor/latency/latency.gpr -u compositor_latency.adb --level=2
+project Latency is
+   for Source_Dirs use (".", "../../../userspace/lib/compositor", "../../../userspace/runtime/gnat");
+   for Source_Files use ("latency_tests.adb", "compositor_latency.ads", "compositor_latency.adb",
+     "cubit.ads", "cubit-present_timing.ads", "cubit-present_timing.adb",
+     "cubit-timing_histograms.ads", "cubit-timing_histograms.adb");
+   for Object_Dir use "build";
+   for Main use ("latency_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-gnatwa");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Latency;

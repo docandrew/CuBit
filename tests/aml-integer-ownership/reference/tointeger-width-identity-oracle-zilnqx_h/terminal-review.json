@@ -1,0 +1,9 @@
+{
+  "worker": 81340,
+  "terminal": 0,
+  "inputs": 20,
+  "artifacts": 71,
+  "executed": 10,
+  "compiler_rejections": 2,
+  "scope": "All10 execution logs have cache teardown warnings. Exact scalar success validated; process0 alone not criterion. Package owner path not independently observed by these rejected probes."
+}

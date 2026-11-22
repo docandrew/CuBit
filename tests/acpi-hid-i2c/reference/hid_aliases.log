@@ -1,0 +1,144 @@
+CuBit development shell
+  Build:  make -C kernel world
+  Test:   tests/headless/run.sh --test desktop-display
+  Run:    make -C kernel run-desktop
+hid_query.asl     54:     Method (ORC0, 0) { Return (\TPD0._DSM (ToUUID ("3CDFF6F7-4267-4555-AD05-B30A3D8938DE"), One, Zero, Package() {})) }
+Remark   2095 -                                                                                   Effective AML package length is zero ^ 
+
+hid_query.asl     55:     Method (ORC1, 0) { Return (\TPD0._DSM (ToUUID ("3CDFF6F7-4267-4555-AD05-B30A3D8938DE"), One, One, Package() {})) }
+Remark   2095 -                                                                                  Effective AML package length is zero ^ 
+
+hid_query.asl     56:     Method (ARQ0, 0) { Return (\ALDM._DSM (ToUUID ("3CDFF6F7-4267-4555-AD05-B30A3D8938DE"), One, Zero, Package() {})) }
+Remark   2095 -                                                                                   Effective AML package length is zero ^ 
+
+hid_query.asl     57:     Method (ARQ1, 0) { Return (\ALDM._DSM (ToUUID ("3CDFF6F7-4267-4555-AD05-B30A3D8938DE"), One, One, Package() {})) }
+Remark   2095 -                                                                                  Effective AML package length is zero ^ 
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     hid_query.asl -    2673 bytes    101 keywords      0 source lines
+AML Output:    hid_query.aml -     717 bytes     78 opcodes      23 named objects
+Hex Dump:      hid_query.hex -    7127 bytes
+
+Compilation successful. 0 Errors, 0 Warnings, 4 Remarks, 10 Optimizations
+Input file hid_query.aml, Length 0x2CD (717) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 0002CD (v02 CUBIT  HIDQUERY 00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: HIDQUERY] (id 01) -   23 Objects with   4 Devices,   0 Regions,    8 Methods (0/8/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 32 (0x20) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Evaluating \ARQ0
+Evaluation of \ARQ0 returned object 0x555555601dd0, external buffer length 20
+  [Buffer] Length 01 =     0000: 03                                               // .
+
+Evaluating \ARQ1
+Evaluation of \ARQ1 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000001234
+
+Evaluating \ORC0
+Evaluation of \ORC0 returned object 0x555555601dd0, external buffer length 20
+  [Buffer] Length 01 =     0000: 03                                               // .
+
+Evaluating \ORC1
+Evaluation of \ORC1 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000001234
+
+0x555555609830 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)
+hid_identity.asl     17:         If (LEqual (MODE, 4)) { Return (Package () {}) }
+Remark   2095 -                        Effective AML package length is zero ^ 
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     hid_identity.asl -    2023 bytes     82 keywords      0 source lines
+AML Output:    hid_identity.aml -     732 bytes     55 opcodes      27 named objects
+Hex Dump:      hid_identity.hex -    7289 bytes
+
+Compilation successful. 0 Errors, 0 Warnings, 1 Remarks, 5 Optimizations
+Input file hid_identity.aml, Length 0x2DC (732) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 0002DC (v02 CUBIT  HIDIDENT 00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: HIDIDENT] (id 01) -   27 Objects with   6 Devices,   0 Regions,    5 Methods (0/5/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 36 (0x24) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Evaluating \ALC0._CID
+0x2 Outstanding allocations after evaluation of \ALC0._CID
+Evaluation of \ALC0._CID returned object 0x555555601dd0, external buffer length 60
+  [Package] Contains 2 Elements:
+    [String] Length 08 = "OTHER000"
+    [String] Length 07 = "PNP0C50"
+
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 20
+  [String] Length 07 = "PNP0C50"
+
+0x55555560ce40 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560cdc0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560cb20 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560caa0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560ca20 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560c9e0 Length 0x0008  utobject-0450 [Not a Descriptor - too small]
+0x55555560c700 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560c5c0 Length 0x0008  utobject-0450 [Not a Descriptor - too small]
+0x55555560c570 Length 0x0009  utobject-0450 [Not a Descriptor - too small]
+0x55555560c4b0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560c460 Length 0x0009  utobject-0450 [Not a Descriptor - too small]
+0x55555560c420 Length 0x0008  utobject-0450 [Not a Descriptor - too small]
+0x55555560c3a0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560c350 Length 0x0009  utobject-0450 [Not a Descriptor - too small]
+0x55555560c2d0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560c220 Length 0x0009  utobject-0450 [Not a Descriptor - too small]
+0x55555560c1a0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560c150 Length 0x0009  utobject-0450 [Not a Descriptor - too small]
+0x55555560a380 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x55555560a1d0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x55555560a150 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x555555609e30 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x555555609db0 Length 0x0048   utcache-0453 [Operand Object]       String  RefCount 0x0001
+0x555555608880 Length 0x0008  utobject-0450 [Not a Descriptor - too small]
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607240 Length 0x0008  utobject-0450 [Not a Descriptor - too small]
+ACPI Error: 28 (0x1C) Outstanding cache allocations (20260408/uttrack-902)

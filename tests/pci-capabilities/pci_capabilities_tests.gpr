@@ -1,0 +1,20 @@
+--  Hosted tests and proof of devmgr's PCI capability walk (run.sh).
+project PCI_Capabilities_Tests is
+   for Source_Dirs use
+     (".", "../../userspace/services/devmgr", "../../shared/interrupts");
+   for Source_Files use
+     ("main.adb", "config_spaces.ads",
+      "pci_capabilities.ads", "pci_capabilities.adb",
+      "pci_message_interrupts.ads", "pci_message_interrupts.adb",
+      "device_vector_abi.ads", "device_vector_abi.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end PCI_Capabilities_Tests;

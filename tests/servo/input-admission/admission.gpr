@@ -1,0 +1,9 @@
+project Admission is
+   for Source_Dirs use (".", "../../../userspace/servo/native", "../../../userspace/lib/ui");
+   for Object_Dir use external ("ADMISSION_OBJECT_DIR", "build");
+   for Exec_Dir use external ("ADMISSION_OBJECT_DIR", "build");
+   for Main use ("admission_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Admission;

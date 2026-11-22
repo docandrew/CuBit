@@ -1,0 +1,180 @@
+{
+  "worker": 79965,
+  "exit_code": 0,
+  "attempts": 12,
+  "matches_independent_expected": 12,
+  "scope": "DataTableRegion field type,length,first/lastbyte samples; not complete buffer content equality",
+  "warnings": {
+    "1-threshold-33-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-unaligned-1025execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "1-unaligned-1025-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "1-aligned-1025-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "1-threshold-33execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-unaligned-1025-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-threshold-33-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "1-aligned-8192execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "1-masked-tail-1025execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-aligned-8192-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "1-unaligned-8192-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "1-aligned-1025execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-unaligned-8192execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-masked-tail-1025-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-masked-tail-1025execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "1-masked-tail-1025-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "1-aligned-8192-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "1-unaligned-1025execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-threshold-33execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "1-unaligned-8192execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-aligned-1025-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-aligned-8192execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-unaligned-8192-control.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "2-aligned-1025execute.log": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  "artifacts": {
+    "warnings.json": "a0db80ae7ab8f7a7816bf1fcc2ea13cffb8746ee9c83f5339869faa608305d0c",
+    "disassembly-review.json": "61b34bd40ca94bcdc8c6870592e49df0b7cd9aa5b8c3937be46d317a115c42c4",
+    "PLAN.txt": "c9e9bfbf46aa09b0c2096ce8986be273620174cf9a02106c2bebf07f6d45ebb3",
+    "expected-results.json": "c9cd79f6e09d88e02ae9ab9bc7614094730412e0e0b35c9baaa515374983a024",
+    "run-inputs.json": "7e51e95c2d2377990f02c1e02f105fb6f795c23467b33b29649b84786c3d8d95",
+    "run.py": "bf925a8222b3f5280cc815b3904a1a423027b4bf9edd17b356c2f4a5d6b0973d",
+    "tool-pins.json": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08",
+    "expected.py": "26405b8c83aaddebdf88b0f0169cc0caded85fc6062c049c1b31896d50fe0bed",
+    "cases.json": "c5208af10384d4b21ea9023db4fae36281e6df0a46126934e9012e6d764ed465",
+    "cases/2-aligned-1025.aml": "55d411b07b8994eddb6a8dbe0fa67fb08f4c4759778315cfb9f15eb24ad690fa",
+    "cases/1-aligned-1025.aml": "1c8b764bcb3eb5ca4850b9e4843deb76cf7a4267a4c1b355412bca890c58524e",
+    "cases/1-unaligned-8192.dsl": "d097336f690d0d552b186412ad8314cda5baabc0845915e064be7ac881b2a997",
+    "cases/1-unaligned-8192.asl": "ef62429a092e014f1225713a80bce9afbd0afe71462e54f897341e91db152826",
+    "cases/2-masked-tail-1025.asl": "65ba40bef153cbf436c6e7119a24575f7e59a705de13d85c0ae0152bbc444268",
+    "cases/2-masked-tail-1025.aml": "bf7f477a61600cdbd8cd5513a037289c0ca4c70548c079c4cee12290a8db7d4b",
+    "cases/1-aligned-8192.aml": "6ef32abc0f0df4c4316ef4243c37f030b15940157087f74a340fe2d41e548d06",
+    "cases/2-unaligned-8192.dsl": "c8a908f56288424c4c23f6bc892da875617e1430e2effe12028f235a1838e674",
+    "cases/2-aligned-8192.asl": "a2598e7f0d6d6349f5bafe733db82878a11883b9f1bc1c42f900fcdb110c13fe",
+    "cases/2-unaligned-8192.asl": "42e28ceb2afb6627d147ddb11ae7a204ce2c1ec5390d63a5b4801367a1930fe8",
+    "cases/2-unaligned-1025.dsl": "3c60a6e5026695b7567a05916e36dc4fec456492b4f3b9115365bc242a196a5e",
+    "cases/1-masked-tail-1025.dsl": "65e0d5f06b78762365a27cc72a9b136f5819c47482367aa36cb7bab33a84cdb6",
+    "cases/2-threshold-33.dsl": "e740634a05fb34a70bdac456d3e967ae8517c16924a5a83334c5a52dfb95d5b0",
+    "cases/2-aligned-8192.aml": "b0ba4c40cef43c45830aecaaf7b7e2f95c22c19ffaa27899cbedd7582a21e47e",
+    "cases/1-masked-tail-1025.aml": "d044d5cfffa295eca51e0d3d1f9ec07b013fc841a4ea162c14c96458ca96a1d0",
+    "cases/2-aligned-8192.dsl": "e6e168e913e6799c885c4f35e66b1b91ac3c9cf4ef5095dc0805e71d4046fdd4",
+    "cases/1-threshold-33.aml": "803b50300559595fee290360961be0d306199a8d53347c1647c53663e7a8078e",
+    "cases/1-aligned-1025.asl": "49a25ad11840b00aa553c26805f7381487e890d923c5a429758954e5dcfbb194",
+    "cases/1-aligned-1025.dsl": "84b5cdae118b417687ce689256c28b675885befbac30bce649ee685305fe7200",
+    "cases/1-masked-tail-1025.asl": "1d1804d238279f8a1e44cf48d70e2d811b14bf6673e30e021d3ae36f28df6923",
+    "cases/2-unaligned-1025.asl": "3bd42fa54876974e7b041e086df1243ce245173d0ec9cc6405296366708e8927",
+    "cases/1-unaligned-1025.dsl": "e21c1838678afccc514056ed81ca98017f20510a685d6ca24194284d55918a6c",
+    "cases/1-unaligned-1025.asl": "b504e6edb58754ef515321f12bb48e471e6c80bd2369eeb633c05809fccb6d45",
+    "cases/1-unaligned-8192.aml": "b27757eb93638cd441a3822bfbb04aeb68d1e08e47e78151b675bf5132a46d46",
+    "cases/2-aligned-1025.dsl": "a1d7ae51c10bf0df11d58ab6db97742e901f8be0407251a9dbe3d3406f55e3c2",
+    "cases/2-unaligned-1025.aml": "04cc29879472c0b4e60e331d2f325e01132c0fba5c030a5bd7d342eae6660e40",
+    "cases/2-threshold-33.asl": "5906e946fb6b9946f1ce50fb2850d1b58dd9bdb005d321862864ecfbf7026018",
+    "cases/1-threshold-33.dsl": "849583524373f87ee26c909129cb02e59504fcac69cd248e123f15a9448e9ae5",
+    "cases/2-masked-tail-1025.dsl": "06296093f0218b2b6b532aa00a5d79912a2dcd6c25dc511f1351abf15cd169d4",
+    "cases/1-aligned-8192.dsl": "d56af37d3e219759f4c10a3f0303c13e20eac9c55cc86ef7cc640d4939bd8f46",
+    "cases/1-aligned-8192.asl": "a98a0f73c01a203a98c17cdff45e4d3a2d719312e5c61aed1099bca778cf7120",
+    "cases/1-unaligned-1025.aml": "96cbb7654897fea1597602139d8661bde68f52e5d68c65b9798e80eefdb17ad8",
+    "cases/2-threshold-33.aml": "e822a676ca0d4ea7c10775329666bb3fc1fe2af5533fa124b48b28032be44e30",
+    "cases/2-unaligned-8192.aml": "12186bd583ef1dd12ad2a4dcc60dddabd1492295be21684078322fb30ee7d68e",
+    "cases/2-aligned-1025.asl": "9a1fafcd3de7160620f82715ce7a601316756ce316bae1b737940dc991250c96",
+    "cases/1-threshold-33.asl": "d1453e9a4c9bd69efedc2a5435372a5d30882ab53db849b59308e8c6a9baed84",
+    "results/1-threshold-33-control.log": "4a21deafd312dd52b9f3370d12adf89aacf752b1c8074d1e584a2cd9e22189d5",
+    "results/2-unaligned-1025execute.log": "f26950e8eaff6a490f61f81cfea454a91c2a8dc720c5b264e21fd038fd40ed78",
+    "results/1-unaligned-1025-control.log": "aa45f60b7404cb53c8ce312cc418a9441bf649d3d1b81b6ea21deb7f8fd725c9",
+    "results/1-masked-tail-1025-compile.log": "7e53f68c42e279fcdf84f4644dd745ffac919fa10aa2669daf2e1378b50b28a0",
+    "results/1-aligned-1025-control.log": "aeae20c1f812484a55a4e33e5b09598ca97b14485cfb7104b924552e2a8ca255",
+    "results/2-aligned-1025-compile.log": "0a4d8402d915fff9cf83c55eded84e0ebe92da79b08a9f2515a6b6dfd2489346",
+    "results/2-aligned-1025-disassemble.log": "271d45df91c89b34ed5f2e716894a89660a574700673e99113c1595aa50103de",
+    "results/1-threshold-33execute.log": "4bcf8348b68d5cfba9ebdb772ef6bea1f61f03f34882eee9990ad832941ee724",
+    "results/2-unaligned-1025-control.log": "a2757fbd6658955436b3276d323e45d6b1ebc302218cb4a541c853527fe4a0a1",
+    "results/observations.json": "5578aabaf98c55cf026479f09485a4b9efb8ce8d537ca5d9a7e0cba46800e0d6",
+    "results/1-unaligned-1025-compile.log": "95907a2324c7096706f4af1858790ce9a86a475150373621596c82fe56dfd202",
+    "results/2-threshold-33-control.log": "65f33fe9f6c043ad336cbb788d5cbfe3d3f8493a85c23005cc136243c05d2c9c",
+    "results/2-unaligned-1025-compile.log": "155dab027a380e44afb6d388597636647429abcffd34a0fbaebf3b831e2cdeb7",
+    "results/2-unaligned-8192-disassemble.log": "e73c385d30c71f965835908e5abdeabbac46a68f6b38006c6a254865441e20f6",
+    "results/1-aligned-1025-disassemble.log": "1fdeacd156695806df96748200b93c09bc6e35be64def4bc2b31bbc80d11062d",
+    "results/iasl-version.log": "4911816d4e6a4d863a7158965fb616fb5bcb1831acdf90f81b53c7f12b543968",
+    "results/1-threshold-33-compile.log": "4acf50770e36dafe33b55ab478d89ac27ae9f0d75926ebb5dec468a46afcdd79",
+    "results/1-masked-tail-1025-disassemble.log": "c41e7f779cd224817d339544e8244e6e82c5ad302739cbc2b44edadee4974f1e",
+    "results/1-aligned-8192execute.log": "2ef2cc7a9be7c592053d36abfe8067de55291d8588a57a4e3b995d41eb221317",
+    "results/1-masked-tail-1025execute.log": "fda6f68f6e15856b3d2b6c7e724ed95be5f7bb9deb4f87a89d91ceeb371fd508",
+    "results/2-masked-tail-1025-compile.log": "1055082c3f8eaac25ef490ff15f5b63fb545dcaa413816518fbb3079bfe8996b",
+    "results/2-unaligned-8192-compile.log": "3d3dbf0985b700adb395b9b79e118300bae89690f163936be3343ab06760c508",
+    "results/acpiexec-version.log": "a67be5cf6cb60ee508792de0ca6bdd3bce6b85126fcebe0cf3d462e864374cad",
+    "results/2-aligned-8192-control.log": "22d25aa4d046fdf83d3e32be90114b1ffe7d7927dd64b2e7fbcffba59383d834",
+    "results/1-unaligned-8192-disassemble.log": "ae1403e6e1599569e50f38f85d0d28afbcdce3057d25678d95b3782ba31c36ea",
+    "results/1-unaligned-1025-disassemble.log": "370fa5a9a3d803320164135858f8b656ee9a58a293b0041dfad596a761009dfa",
+    "results/summary.json": "98722603daeb125132d37bb518ae8f80a2e7687f2dacd6f7a52df387ad9f41a1",
+    "results/1-unaligned-8192-control.log": "1e6a3d041548463643d08a7bc6dc7362ef531ee6b2100914e800bd0ef273dc9d",
+    "results/1-unaligned-8192-compile.log": "597fbaa7be84d92b9e4c1fea6bd3e2c6a88eae37c34f155dadb9bc5a4675a4ce",
+    "results/1-aligned-1025execute.log": "fb5909c49d24d6892a8c4bf66b6f3ef796a69b89a745ef57674169f155257b36",
+    "results/2-unaligned-8192execute.log": "290b7ffc080602a76906c7bf6abacbf35ba2ae22da8309a6a197433f5e1598c6",
+    "results/1-aligned-8192-disassemble.log": "3ef96e5a82599d51db69d12a39078350de21f9cdfd8f18333e0317e962518137",
+    "results/2-aligned-8192-disassemble.log": "d1d5ac25f2b3d01ff918425af35b1eea1e947142e51dff09f3d0691e11c0fb4c",
+    "results/2-masked-tail-1025-control.log": "f6ca0498f741a5e105d94817dc9ef9a3f0deac21b604de5d3b293f3cba61df28",
+    "results/2-masked-tail-1025execute.log": "0e96d31d0c1707868e59c8067c377859fa00fa5d684ab4d3df0127e969874de4",
+    "results/1-masked-tail-1025-control.log": "ab5f2390eb96d6ffc22e154a1df69dfa42252c67e1828a7d3fabe63dd81997c9",
+    "results/1-threshold-33-disassemble.log": "a11e6856109d85238cad9fb88197a8b0450f65076162d344665a23cef66b3a63",
+    "results/1-aligned-8192-control.log": "2d50707b99dcddbe269f7271cb9c2a387dfb2d56c87b82b8905eddad4e0c97c1",
+    "results/1-aligned-1025-compile.log": "952e7fed9ff7ffc080c5ca19bea180e4ef5e9dd4d2ddcff2c3fc32712ba4ee05",
+    "results/1-unaligned-1025execute.log": "77aecba15b53d773ebfc2340faeed8e2bac612b4f4b3ca755d6737018a40951b",
+    "results/2-threshold-33execute.log": "ff263d2f38e742d44d5ea77ed72214cd56b795bc697b21adef39a15f53d6ecf6",
+    "results/1-unaligned-8192execute.log": "9e1c2e4a6aa024d4c5e136e80824293f364ce37a7fb9a088ffc9243004013dea",
+    "results/2-aligned-8192-compile.log": "093e07aed8f42215ae51f31d1407321c78438d6b019fd977bc3bfe4fdbb3cd08",
+    "results/2-aligned-1025-control.log": "b0915cc3a7116c46957cefe65a230f4ae4ab1b46445387e2303ad2c46871588a",
+    "results/2-aligned-8192execute.log": "40abc5d0ae5a08d6da52aa752180337e6277b4e3491e9cca03712560fa8b453d",
+    "results/1-aligned-8192-compile.log": "bc6d2c14e085c6c15f847351cdc92d454a75776fc3c6be57fe1d17f39d9e1a5d",
+    "results/2-threshold-33-compile.log": "80678833fa74e01b882c1df5ef0581b42c9330b590620efb57fa8ae6c707a9a8",
+    "results/2-threshold-33-disassemble.log": "6d80009938742769ccba980966ec81e86a1df463b9c75d8da5737de7ca49b620",
+    "results/2-masked-tail-1025-disassemble.log": "bfcfce2d504d7e2131442cecf551052edc4c73374941b0f75d0527f6233bf52a",
+    "results/2-unaligned-8192-control.log": "708a3d057d2de1d129a83b3e801df07cc08292084e7a8df879164a294213f14f",
+    "results/2-aligned-1025execute.log": "76b18c129b6de3284d7517546e0c7b68118d88f50d1f44b01cff477b78bfca17",
+    "results/2-unaligned-1025-disassemble.log": "238825f7a86a3c07c03645530829cb86f9b200471375c33ffa23b85dd947b8d6"
+  }
+}

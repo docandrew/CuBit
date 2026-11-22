@@ -1,0 +1,868 @@
+[
+  {
+    "key": "1-integer_high",
+    "expectation": {
+      "32": "88776655",
+      "64": "8877665544332211"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "a702fcfcc668ec55d8ec77355f0532643a2b625d06ab19cdff2588e63a8e0249",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 4,
+    "hex": "88776655",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-integer_zero",
+    "expectation": {
+      "32": "00000000",
+      "64": "0000000000000000"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "5bb102bf87377b16cfc442726eaa7bf6ecebce3867838782c37f1fc99e4a1a68",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 4,
+    "hex": "00000000",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-integer_ones",
+    "expectation": {
+      "32": "ffffffff",
+      "64": "ffffffffffffffff"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "3907e4a16d4b1f91e22f4dbd639f0767c966388d7efeb902424d7d7fbd3c4aad",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 4,
+    "hex": "ffffffff",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-string_empty",
+    "expectation": {
+      "32": "00",
+      "64": "00"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "7a9cde49e615e835ed7b4fcce008175ebb8bed74fab848a752456160bd7abc31",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 1,
+    "hex": "00",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-string_text",
+    "expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "f24cca40006a9664ea6762942fe77a9681ecacbedc7cc480f7f35a8c71308b3c",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "414200",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-string_embedded",
+    "expectation": {
+      "32": "41004300",
+      "64": "41004300"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "de892a6983e4eb134df70314283a3dad9141494c00c01f889ca469f186ef3f71",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 4,
+    "hex": "41004300",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-buffer_empty",
+    "expectation": {
+      "32": "",
+      "64": ""
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "d124f2622c8a8d01f07bf4aa9a9f6572929d99529e8cf5d9f628d9fd1533b419",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 0,
+    "hex": "",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-buffer_bytes",
+    "expectation": {
+      "32": "4100ff",
+      "64": "4100ff"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "c8332d573b67c9500359b4253a98d75001d734ceb55332344fe8592d777f1820",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "4100ff",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-local_target",
+    "expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "9aa08a7e51ab8a892883019509757e1e119f9631edfdb1b5fa5e202221a4a9ca",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "414200",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-named_target",
+    "expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "292d97025cea7fcd7d2312eeeaaa41fa03159ab202357d1122251129e953fa2b",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 1,
+    "hex": "41",
+    "classification": "returned",
+    "source_expectation_matches": false
+  },
+  {
+    "key": "1-same_buffer_target",
+    "expectation": {
+      "32": "4142",
+      "64": "4142"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "3decea07bf2f4338bf51d60e5b3da795dfb6a0dd8cff657bae4255424c15ede0",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 2,
+    "hex": "4142",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-identity_null",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "5730f562ece9a5a0215e1de5b26f8b9e9ad1d1adf9bc9be463a29585241f3491",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 2,
+    "hex": "0942",
+    "classification": "returned"
+  },
+  {
+    "key": "1-identity_local",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "bd4665fce69fe38c7156e77e138c4b588f820d9c6e9594ba1960a095b13e0ceb",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 2,
+    "hex": "4142",
+    "classification": "returned"
+  },
+  {
+    "key": "1-identity_named",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "ed8f14d52d0d8689118dd41486422347d8d49b757b5d38599cd0dbd281b24c22",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 2,
+    "hex": "4142",
+    "classification": "returned"
+  },
+  {
+    "key": "1-string_independence",
+    "expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "778607c49c70e548e82a83d416afd3c9836846b6d3eca180e5d665df27c8883e",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "414200",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-effect_order",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "dc6d0ab0c25100b541d23b507ff50c694238788f43ea99b3e21e563f28e052da",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 12,
+    "classification": "returned"
+  },
+  {
+    "key": "1-effect_named",
+    "expectation": {
+      "integer": 1
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "54b59aa6b4a007866f38fa7c6e07a7f72d00871f03d7ad8e9ce9ff3ebf689fd5",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 1,
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-source_package",
+    "expectation": null,
+    "compile_returncode": 255,
+    "classification": "compile_rejected"
+  },
+  {
+    "key": "1-aslts_m321_reduction",
+    "expectation": {
+      "32": "41424300",
+      "64": "41424300"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "3849ebae9b73582db672c8f96d91f66c912d315faf6c34bea7ce901bf1b59141",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 4,
+    "hex": "41424300",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "1-aslts_m322_0",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "bef7a686a5e6498a9f1f28c0639dff2dd520d0c7de75db17a674e02692f04001",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 0,
+    "hex": "",
+    "classification": "returned"
+  },
+  {
+    "key": "1-aslts_m322_513",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "eb2e88d4a7f07e1f2c0196b0233af78401b25702b052a422ec5033aff5331996",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 513,
+    "hex": "410000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "classification": "returned"
+  },
+  {
+    "key": "1-aslts_m322_0_dest",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "58cefd77e27a45ac0bf9462b72486ecd68b4159436852f4b7ac4a7a25cd8d1cf",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 0,
+    "hex": "",
+    "classification": "returned"
+  },
+  {
+    "key": "1-aslts_m322_513_dest",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "c655477b75c4601dee35d28d330f54435854b5754462f4876d85424f1162a3ad",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 513,
+    "hex": "410000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "classification": "returned"
+  },
+  {
+    "key": "2-integer_high",
+    "expectation": {
+      "32": "88776655",
+      "64": "8877665544332211"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "d0dc168785ffcb6f9c83c771b41bfaf638a0b193045e15a7aad3ead9c799adf2",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 8,
+    "hex": "8877665544332211",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-integer_zero",
+    "expectation": {
+      "32": "00000000",
+      "64": "0000000000000000"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "0602d9f137cc99c39df75a82945976f1c1d56849c32646935431078b2a42e59d",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 8,
+    "hex": "0000000000000000",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-integer_ones",
+    "expectation": {
+      "32": "ffffffff",
+      "64": "ffffffffffffffff"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "0bc8c3324469dcb078b46d3c09ff7a181128e5972e992307ba3d7f497172b2a8",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 8,
+    "hex": "ffffffffffffffff",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-string_empty",
+    "expectation": {
+      "32": "00",
+      "64": "00"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "422824b742fa430cc914c197e8860a1e8cab8fb2bf752762ab6c9e451f294093",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 1,
+    "hex": "00",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-string_text",
+    "expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "782439a73a3d9ce006e7e05f35b6435b97785f3509bc08bed939368d59f5591c",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "414200",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-string_embedded",
+    "expectation": {
+      "32": "41004300",
+      "64": "41004300"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "2e4d9fafbddd878367c7535349b1cd6abb11aa8e14231ab1b70bcb8961cd4744",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 4,
+    "hex": "41004300",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-buffer_empty",
+    "expectation": {
+      "32": "",
+      "64": ""
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "a3d18edefad836014e7735794642d122c703e4bd0dff4791da7542f88b2a7682",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 0,
+    "hex": "",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-buffer_bytes",
+    "expectation": {
+      "32": "4100ff",
+      "64": "4100ff"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "0f302cbc7df8d4c1d5f17c24af75585d3952a6063b9b37b5d3ee1bffff08b842",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "4100ff",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-local_target",
+    "expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "d8e19a108f2789187be7edd7df99fa6643d3bc4beb8b655a7bc2cd8318134666",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "414200",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-named_target",
+    "expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "3b2769bbfb9d2e805a75ece59c65b7465152facc6fce1fc347fc2c0cc79507f3",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 1,
+    "hex": "41",
+    "classification": "returned",
+    "source_expectation_matches": false
+  },
+  {
+    "key": "2-same_buffer_target",
+    "expectation": {
+      "32": "4142",
+      "64": "4142"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "e9318771c6214b1b03c7694297650472af6b63906f2a1b809374c4c6ce373765",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 2,
+    "hex": "4142",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-identity_null",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "390ebfca07310201b075419c048a77647203152d1e04147ff5f88a4bd0f27201",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 2,
+    "hex": "0942",
+    "classification": "returned"
+  },
+  {
+    "key": "2-identity_local",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "d428254f32f90c0c60faaa6253ea593d4d30911c76caa0b78c36ddfb546389c4",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 2,
+    "hex": "4142",
+    "classification": "returned"
+  },
+  {
+    "key": "2-identity_named",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "f50d55ceff8ade3893ddbfc4697c67e425ce7ffe81faff0a965c74d9301e1ec7",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 2,
+    "hex": "4142",
+    "classification": "returned"
+  },
+  {
+    "key": "2-string_independence",
+    "expectation": {
+      "32": "414200",
+      "64": "414200"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "23c7d9567a2fef27652d993aea4801dd6d30178c5c2a91ff04f07fb1415923ac",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "414200",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-effect_order",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "8aaef6c1fee1d4cf9962185e667273bfe2191443c12244ea89d046f5417d2253",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 12,
+    "classification": "returned"
+  },
+  {
+    "key": "2-effect_named",
+    "expectation": {
+      "integer": 1
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "9cda4b02c9a2914a8f4a2b2b2b7f072a66cc55759495f94d65484cf1b47997a0",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 1,
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-source_package",
+    "expectation": null,
+    "compile_returncode": 255,
+    "classification": "compile_rejected"
+  },
+  {
+    "key": "2-aslts_m321_reduction",
+    "expectation": {
+      "32": "41424300",
+      "64": "41424300"
+    },
+    "compile_returncode": 0,
+    "aml_sha256": "8b426b6b6542a757b14bb8bf9060a37bfa3127cd93ba393888842885cbfac798",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 4,
+    "hex": "41424300",
+    "classification": "returned",
+    "source_expectation_matches": true
+  },
+  {
+    "key": "2-aslts_m322_0",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "c6cbcec1465809b464e287913e7521642e511480ac202caaffb1ec787084ba40",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 0,
+    "hex": "",
+    "classification": "returned"
+  },
+  {
+    "key": "2-aslts_m322_513",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "2bcf3f3fc56aa7be89496ea90a467d4d7076c22d3fa38880fdd9b1c8db63f7c0",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 513,
+    "hex": "410000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "classification": "returned"
+  },
+  {
+    "key": "2-aslts_m322_0_dest",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "938c44816dd14509bc1d1cdceff30caa95264d592b1e92347bc01f706a16625d",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 0,
+    "hex": "",
+    "classification": "returned"
+  },
+  {
+    "key": "2-aslts_m322_513_dest",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "84060cf132988c4fae09ad7d3c5e58e2abe3476aa7ba151583761a7827294d66",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 513,
+    "hex": "410000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "classification": "returned"
+  }
+]

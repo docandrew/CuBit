@@ -1,0 +1,8 @@
+# Headless fixture for the WRITE retirement (ABI-002, tests/headless
+# console-route): routes its debug text into its logstore ring
+# (CuBit.Console_Route); the markers reach the serial console only through
+# test builds' logstore mirror (Test_Console_ABI).
+(Executable_Manifest
+  identity => "com.cubit.console-route-check"
+  version => "0.1.0"
+  requests => [(service "logstore" "logstore")])

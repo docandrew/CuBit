@@ -1,0 +1,12 @@
+project Native is
+ for Source_Dirs use ("native", "../../userspace/lib/observatory", "../../userspace/lib/compositor");
+ for Source_Files use ("compile_observer.adb", "observatory_metric_summaries.ads", "observatory_metric_summaries.adb",
+ "observatory_metric_queries.ads", "observatory_metric_queries.adb", "observatory_query_lifetime.ads", "observatory_query_lifetime.adb",
+ "observatory_metric_observer.ads", "observatory_metric_observer.adb", "compositor_requests.ads", "compositor_requests.adb");
+ for Object_Dir use "build/native/obj";
+ for Main use ("compile_observer.adb");
+ for Runtime ("Ada") use "../../userspace/runtime";
+ package Compiler is
+ for Default_Switches ("Ada") use ("-gnat2022", "-O2", "-fno-pic", "-mno-red-zone");
+ end Compiler;
+end Native;

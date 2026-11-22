@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<defs>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+<linearGradient id="teal" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#8af5e8"/><stop offset="1" stop-color="#1fc8c3"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M1 11.5 Q11.5 -1.5 22 11.5 Q11.5 24.5 1 11.5Z" transform="translate(1 1)"/>
+  <path d="M1 11.5 Q11.5 -1.5 22 11.5 Q11.5 24.5 1 11.5Z"/>
+</g>
+<path d="M1 11.5 Q11.5 -1.5 22 11.5 Q11.5 24.5 1 11.5Z" fill="#959db3" transform="translate(1 1)"/>
+<path d="M1 11.5 Q11.5 -1.5 22 11.5 Q11.5 24.5 1 11.5Z" fill="url(#paper)"/>
+<path d="M7 11.5 A4.5 4.5 0 1 0 16 11.5 A4.5 4.5 0 1 0 7 11.5Z" fill="url(#teal)"/>
+<path d="M9.25 11.5 A2.25 2.25 0 1 0 13.75 11.5 A2.25 2.25 0 1 0 9.25 11.5Z" fill="#1d1530"/>
+<path d="M8.94 9.93 A0.99 0.99 0 1 0 10.92 9.93 A0.99 0.99 0 1 0 8.94 9.93Z" fill="#ffffff"/>
+</svg>

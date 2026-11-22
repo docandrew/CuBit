@@ -1,0 +1,15 @@
+[
+  "tests/acpi-integration/timer_verification.adb",
+  "tests/aml-buffer-fields/field_status_tests.adb",
+  "tests/aml-core/readonly_input_tests.adb",
+  "tests/aml-core/region_executor_tests.adb",
+  "tests/aml-core/timer_executor_tests.adb",
+  "tests/aml-core/timer_verification.adb",
+  "tests/aml-debug/debug_target_tests.adb",
+  "tests/aml-metadata-execute/metadata_executor_tests.adb",
+  "tests/aml-notify/notify_executor_tests.adb",
+  "tests/aml-references/timer_verification.adb",
+  "tests/aml-retention/frame_root_tests.adb",
+  "tests/aml-retention/held_publication_tests.adb",
+  "tests/aml-retention/result_handoff_tests.adb"
+]

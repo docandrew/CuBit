@@ -1,0 +1,6 @@
+# KERN-014 A/B benchmark (tests/kern014-bench).
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "clock.svc" (priority 5))
+  (start "kern014-bench.app" (priority 3))
+)

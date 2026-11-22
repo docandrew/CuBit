@@ -1,0 +1,5 @@
+config-values v1.0
+open() -> ConfigCollection<Integer>
+read(borrowed-ro ConfigCollection<Integer>) -> CounterRead
+write(borrowed-rw ConfigCollection<Integer>, Integer) -> ConfigWrite
+close(must-handle ConfigCollection<Integer>) -> Integer; consumed on success or failure

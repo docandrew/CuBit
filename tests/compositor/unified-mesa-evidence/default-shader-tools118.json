@@ -1,0 +1,18 @@
+{
+  "status": "APPLIED",
+  "change": "Default Nix shell adds pinned glslang and spirv-tools required by default Vulkan compositor",
+  "baseline": "Both tools absent in original default shell",
+  "validation": "Production affine vertex/fragment and checker fragment compiled and spirv-val accepted for Vulkan1.0",
+  "shader_hashes": {
+    "test_defines": [],
+    "vulkan_affine.vert": "46054909fa7ee38e4d3c85a2b24f133a4e2f2f00142d311eed147098b6923089",
+    "vulkan_affine.vert.spv": "767e91cecabe16cb5feb2fe6bf990ad625ab9f498a4648319de3cb46b55a3d5c",
+    "vulkan_affine.frag": "f20d2aa81f54aa89020ad897167d53a5efc51eb437e7c58033c641f3f3de3c80",
+    "vulkan_affine.frag.spv": "fe87764bb10a59be8651b616b397534e591cd693611434356516d90dfe8aee68",
+    "vulkan_checker.frag": "4f2ed64f382fa4ee44dc1343a88503e32ec9e6ed9c3f3722df827c997d97f1ca",
+    "vulkan_checker.frag.spv": "24a2adb2d96aaba691f5b95536a0a209817f775d9f1129760cb8be1c2a8966d9"
+  },
+  "matches_existing_native_artifact": "/home/doc/git/compositor-test-artifacts/startup-stage-artifact-103",
+  "flake_sha256": "4312fbb0cddc4786a55f92dc0130c37d54839d356f21013552a1c276e5b033b2",
+  "scope": "Host shader build dependency; not a new native link or GPU execution result"
+}

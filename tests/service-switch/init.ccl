@@ -1,0 +1,26 @@
+# The service-switch test (tests/service-switch/service_switch.py drives it):
+# system generations switch running services through procmgr.
+# - lexicon.svc: (replace transparent), a service with no hardware or
+#   firmware state (its clients' channels end and they reconnect): switched,
+#   rolled back after a failed health window, and back to the image.
+# - clock.svc: (replace graceful), it must quiesce on Stop; it ends on Stop
+#   (PWR-003), so a switch with a stop grace replaces it without procmgr
+#   ending it.
+# - The ACPI pair is not here: its restart contract is reboot until its
+#   stop, rebind and health handshake is validated (coordination with the
+#   ACPI agent, 2026-11-07).
+# Plus the LAN remote session with builds granted, its work root on the
+# system volume, and a desktop, so the person's "Allow app replacement"
+# switch can be turned on by a click (ccl-remote's display-capture grant
+# shows that section).
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "clock.svc" (priority 5) (replace graceful))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "lexicon.svc" (priority 4) (replace transparent))
+  (start "ccl-remote.app" (priority 4) (network approve-declared) (test-console approve-declared) (display-capture approve-declared)
+    (arguments (Remote_Parameters listen => Remote_Listen.LAN
+      display => Pairing_Display.Test_Console work => "@system/work"
+      files => true builds => true mail => true)))
+)

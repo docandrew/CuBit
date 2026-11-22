@@ -1,0 +1,14 @@
+project Native_Scene_Pixels extends "vulkan_target_bundle.gpr" is
+   Extent := external ("NATIVE_SCENE_EXTENT", "64");
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Target_Bundle'Source_Files &
+     ("native_scene_bridge.ads", "native_scene_bridge.adb", "native_scene_bridge.h",
+      "native_scene_pixels.adb", "native_scene_pixels.h", "native_scene_transfer.h");
+   for Object_Dir use "build/native-scene-pixels-" & Extent & "/obj";
+   for Exec_Dir use "build/native-scene-pixels-" & Extent;
+   for Main use ("native_scene_pixels.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+      for Default_Switches ("C") use ("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-DCUBIT_NATIVE_SCENE_TEST=1", "-DCUBIT_NATIVE_SCENE_EXTENT=" & Extent);
+   end Compiler;
+end Native_Scene_Pixels;

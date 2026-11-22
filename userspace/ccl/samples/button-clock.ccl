@@ -1,0 +1,10 @@
+# F5 registers the button. Click it to read the clock; Stop closes it.
+# Close before replacing a registration. Editing this file alone leaves it intact.
+(define (clicked) Boolean
+  (ui.label-text
+    (concat "Uptime seconds: "
+      (to-string (/ (clock.monotonic-ms) 1000)))))
+
+(let ((closed (ui.button-close)))
+  (let ((caption (ui.button-text "Refresh")))
+    (ui.button-on-click (handler clicked))))

@@ -1,0 +1,58 @@
+#pragma once
+/* Mesa's GPU session queue (native_gpu_queue.ads; GPU-001 step 3). One
+ * queue per render endpoint endpoint, opened after the context registers. Open,
+ * close and submit are serialized per endpoint by the caller; observe and wait
+ * may run on any thread. Submit makes no blocking call: it reaps records,
+ * writes one descriptor and kicks only when the driver's wake word asks. */
+#include <stdint.h>
+#include "cubit_handles.h"
+#include "native_gpu_timeline.h"
+
+enum cubit_gpu_queue_status {
+   CUBIT_GPU_QUEUE_OK = 0,
+   CUBIT_GPU_QUEUE_FULL = 1,
+   CUBIT_GPU_QUEUE_FAILED = 2,     /* the session failed: device lost */
+   CUBIT_GPU_QUEUE_CLOSED = 3,
+   CUBIT_GPU_QUEUE_INVALID = 4,
+   CUBIT_GPU_QUEUE_TIMED_OUT = 5,
+};
+/* CuBit.GPU_Queues.Opcode */
+enum cubit_gpu_operation { CUBIT_GPU_EXECUTE = 1, CUBIT_GPU_SIGNAL = 2 };
+/* CuBit.GPU_Queues.Kind_*: what a job does, for the driver's per-kind
+ * GPU execution-time accounting. Any combination; 0 untagged. */
+enum cubit_gpu_kind {
+   CUBIT_GPU_KIND_UPLOAD = 1, CUBIT_GPU_KIND_RENDER = 2,
+   CUBIT_GPU_KIND_READBACK = 4, CUBIT_GPU_KIND_INTERNAL = 8,
+};
+#define CUBIT_GPU_KINDS_MASK 0xFu
+/* Absolute monotonic microseconds; none spelled out. */
+#define CUBIT_GPU_NO_DEADLINE UINT64_MAX
+/* Vulkan's no-timeout as remaining nanoseconds (Native_GPU_Job_Rules). */
+#define CUBIT_GPU_NO_TIMEOUT UINT64_MAX
+
+struct cubit_gpu_wait { uint32_t context, reserved; uint64_t target; /* 0: none */ };
+struct cubit_gpu_job {
+   uint32_t operation, context;
+   uint32_t handle, offset, bytes;             /* Execute: the batch within its BO */
+   uint32_t kinds;                             /* CUBIT_GPU_KIND_* bits (accounting) */
+   uint64_t gpu;                                /* raw 48-bit address of the batch */
+   struct cubit_gpu_wait first, second;
+   uint64_t deadline_us;
+};
+_Static_assert(sizeof(struct cubit_gpu_job) == 72, "Native_GPU_Queue.Job_Bytes");
+
+enum cubit_gpu_queue_status cubit_gpu_queue_open(cubit_endpoint endpoint);
+void cubit_gpu_queue_close(cubit_endpoint endpoint);
+/* *signal: the job's value on its context (that context's next). */
+enum cubit_gpu_queue_status cubit_gpu_queue_submit(cubit_endpoint endpoint,
+   const struct cubit_gpu_job *job, uint64_t *signal);
+/* Completed values (status lines and reaped records) and the last value
+ * submitted, per context. FAILED: a context faulted, hung or was lost. */
+enum cubit_gpu_queue_status cubit_gpu_queue_observe(cubit_endpoint endpoint,
+   struct native_gpu_values *completed, struct native_gpu_values *submitted);
+/* Block until context reaches target or remaining_ns pass. OK: reached. */
+enum cubit_gpu_queue_status cubit_gpu_queue_wait(cubit_endpoint endpoint, uint32_t context,
+   uint64_t target, uint64_t remaining_ns);
+/* The next vkQueueSubmit's job kinds (CUBIT_GPU_KIND_* bits), set by the
+ * client just before it submits (Desktop's recorder); taken by that submit. */
+void cubit_gpu_tag_next_submit(uint32_t kinds);

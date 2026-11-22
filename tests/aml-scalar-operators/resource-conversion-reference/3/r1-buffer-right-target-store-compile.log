@@ -1,0 +1,9 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/resource-integer-conversion-oracle-aj50y5tf/r1-buffer-right-target-store.asl -     899 bytes     37 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/resource-integer-conversion-oracle-aj50y5tf/r1-buffer-right-target-store.aml -     273 bytes     26 opcodes      11 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations

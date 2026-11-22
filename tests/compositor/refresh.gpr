@@ -1,0 +1,10 @@
+project Refresh is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("refresh_tests.adb", "refresh_proof.ads", "compositor_refresh.ads", "compositor_refresh.adb");
+   for Object_Dir use "build/refresh/obj";
+   for Exec_Dir use "build/refresh";
+   for Main use ("refresh_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Refresh;

@@ -1,0 +1,18 @@
+--  SPARK proof of the editor core's SPARK units (docs/text-editor.md):
+--  run.sh --prove (memory-capped, -j2, level 2).
+project Text_Proof is
+   for Source_Dirs use ("../../userspace/lib/text");
+   for Source_Files use
+     ("text_limits.ads", "text_stores.ads", "text_stores.adb", "text_utf8.ads", "text_utf8.adb",
+      "text_layout.ads", "text_layout.adb", "text_pieces.ads", "text_pieces.adb", "text_cursors.ads",
+      "text_cursors.adb", "text_marks.ads", "text_marks.adb", "text_history.ads", "text_history.adb",
+      "text_syntax.ads", "text_syntax.adb", "text_search.ads", "text_search.adb", "text_commands.ads",
+      "text_commands.adb", "text_modal.ads", "text_modal.adb");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--timeout=60");
+   end Prove;
+end Text_Proof;

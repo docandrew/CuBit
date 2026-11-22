@@ -1,0 +1,1 @@
+package ACPI_Native_Log is procedure Copied(Text:String;Peer_Quiet:Boolean;Success:Boolean:=False);end ACPI_Native_Log;

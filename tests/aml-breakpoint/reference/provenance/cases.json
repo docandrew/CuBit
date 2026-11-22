@@ -1,0 +1,58 @@
+[
+  {
+    "label": "direct-r1",
+    "source": "direct-r1.asl",
+    "batch": "execute TEST;execute READ;execute TEST;execute READ",
+    "revision": 1,
+    "scope": "normal ASL; no prescribed equivalence, preserve debugger/OS host effects and errors"
+  },
+  {
+    "label": "direct-r2",
+    "source": "direct-r2.asl",
+    "batch": "execute TEST;execute READ;execute TEST;execute READ",
+    "revision": 2,
+    "scope": "normal ASL; no prescribed equivalence, preserve debugger/OS host effects and errors"
+  },
+  {
+    "label": "nested-r1",
+    "source": "nested-r1.asl",
+    "batch": "execute TEST;execute READ;execute TEST;execute READ",
+    "revision": 1,
+    "scope": "normal ASL; no prescribed equivalence, preserve debugger/OS host effects and errors"
+  },
+  {
+    "label": "nested-r2",
+    "source": "nested-r2.asl",
+    "batch": "execute TEST;execute READ;execute TEST;execute READ",
+    "revision": 2,
+    "scope": "normal ASL; no prescribed equivalence, preserve debugger/OS host effects and errors"
+  },
+  {
+    "label": "skipped-r1",
+    "source": "skipped-r1.asl",
+    "batch": "execute TEST;execute READ;execute TEST;execute READ",
+    "revision": 1,
+    "scope": "normal ASL; no prescribed equivalence, preserve debugger/OS host effects and errors"
+  },
+  {
+    "label": "skipped-r2",
+    "source": "skipped-r2.asl",
+    "batch": "execute TEST;execute READ;execute TEST;execute READ",
+    "revision": 2,
+    "scope": "normal ASL; no prescribed equivalence, preserve debugger/OS host effects and errors"
+  },
+  {
+    "label": "module-r1",
+    "source": "module-r1.asl",
+    "batch": "execute TEST;execute READ;execute TEST;execute READ",
+    "revision": 1,
+    "scope": "normal ASL; no prescribed equivalence, preserve debugger/OS host effects and errors"
+  },
+  {
+    "label": "module-r2",
+    "source": "module-r2.asl",
+    "batch": "execute TEST;execute READ;execute TEST;execute READ",
+    "revision": 2,
+    "scope": "normal ASL; no prescribed equivalence, preserve debugger/OS host effects and errors"
+  }
+]

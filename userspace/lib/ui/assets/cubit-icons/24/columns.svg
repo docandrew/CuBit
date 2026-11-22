@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<defs>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+<linearGradient id="teal" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#8af5e8"/><stop offset="1" stop-color="#1fc8c3"/></linearGradient>
+<linearGradient id="violet" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#c3adff"/><stop offset="1" stop-color="#8457ff"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M1 3 L22 3 L22 20 L1 20Z" transform="translate(1 1)"/>
+  <path d="M1 3 L22 3 L22 20 L1 20Z"/>
+</g>
+<path d="M1 3 L22 3 L22 20 L1 20Z" fill="#7d879f" transform="translate(1 1)"/>
+<path d="M1 3 L22 3 L22 20 L1 20Z" fill="url(#paper)"/>
+<path d="M1 3 L22 3 L22 7 L1 7Z" fill="url(#violet)"/>
+<path d="M1 7.5 L22 7.5" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.6"/>
+<path d="M8.5 8 L8.5 20" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.7"/>
+<path d="M15.5 8 L15.5 20" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.7"/>
+<path d="M2 9 L8 9 L8 11 L2 11Z" fill="url(#teal)" opacity="0.9"/>
+<path d="M3 13.5 L7 13.5" fill="none" stroke="#959db3" stroke-width="1" stroke-linecap="butt"/>
+<path d="M3 16.5 L7 16.5" fill="none" stroke="#959db3" stroke-width="1" stroke-linecap="butt"/>
+<path d="M10 13.5 L14 13.5" fill="none" stroke="#959db3" stroke-width="1" stroke-linecap="butt"/>
+<path d="M10 16.5 L14 16.5" fill="none" stroke="#959db3" stroke-width="1" stroke-linecap="butt"/>
+<path d="M17 13.5 L21 13.5" fill="none" stroke="#959db3" stroke-width="1" stroke-linecap="butt"/>
+<path d="M17 16.5 L21 16.5" fill="none" stroke="#959db3" stroke-width="1" stroke-linecap="butt"/>
+</svg>

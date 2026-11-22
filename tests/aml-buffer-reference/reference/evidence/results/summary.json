@@ -1,0 +1,8 @@
+{
+  "attempts": 18,
+  "classes": {
+    "returned": 14,
+    "runtime_error": 4
+  },
+  "scope": "large Buffer normal ASL: recorded scalar observables and count side effects, no arbitrary-size allocation claim"
+}

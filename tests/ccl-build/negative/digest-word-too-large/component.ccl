@@ -1,0 +1,7 @@
+# A digest word is 32 bits: the type checker refuses a wider one.
+(Component name => "neg" kind => Kind.Application
+  source => (Source.Ada (Ada_Source))
+  embedded => [(Blob name => "blob-one"
+                 source => (vendored "firmware/i915/tgl_guc_70.bin"
+                   (SHA256_Digest 0x12f1f57a1 0xb23d186f 0x2592318d 0x1e07a136 0x59689328 0x41ccb3e7 0x177c516b 0xa006e2f6))
+                 licence => "firmware/LICENSE.i915")])

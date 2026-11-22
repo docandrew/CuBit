@@ -1,0 +1,1 @@
+Corrects eight normal iasl6114 unused-result rejections only: consume DerefOf as If predicate then read original cell. Originalfour controls remain64ones, not rerun. No Store added to result path. All expectations open.

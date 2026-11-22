@@ -1,0 +1,13 @@
+--  KERN-014 slice 1: hosted test and proof of the buddy allocator's
+--  out-of-band free-list link codes (kernel/src/free_link_codes).
+project Free_Link_Codes_Tests is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("main.adb", "free_link_codes.ads", "free_link_codes.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Free_Link_Codes_Tests;

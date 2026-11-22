@@ -1,0 +1,131 @@
+../../../../runtime/cntl/common.asl    390:     Method (RPT0, 0, NotSerialized)
+Remark   2120 -                                           ^ Control Method should be made Serialized due to creation of named objects within (\RPT0)
+
+../../../../runtime/cntl/common.asl    394:         Name (B000, Buffer (0x04){})
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RPT0)
+
+../../../../runtime/cntl/common.asl    917:         Name (LPN0, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\PRN0)
+
+../../../../runtime/cntl/common.asl    918:         Name (LPC0, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\PRN0)
+
+../../../../runtime/cntl/common.asl   1137:         Name (N000, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+../../../../runtime/cntl/common.asl   1138:         Name (NCUR, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+../../../../runtime/cntl/common.asl   1155:         Name (B000, Buffer (Local0){})
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+../../../../runtime/cntl/common.asl   1186:         Divide (Local1, 0x08, Local2, Local0)
+Warning  3144 -                            Method Local is set but never used ^  (Local2)
+
+../../../../runtime/cntl/common.asl   1201:         Name (PREV, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1202:         Name (MS00, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1203:         Name (MS01, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1204:         Name (MS02, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1205:         Name (MS03, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1206:         Name (TAIL, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1207:         Name (LBT0, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1210:         Name (LPN0, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1211:         Name (LPC0, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1214:         Name (NB01, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1217:         Name (NREG, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1220:         Name (NB08, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1223:         Name (NB09, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1226:         Name (REST, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1240:         Name (B000, Buffer (NB01){})
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+../../../../runtime/cntl/common.asl   1362:         Name (TMP0, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4C0)
+
+../../../../runtime/cntl/common.asl   1363:         Name (TMP1, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4C0)
+
+../../../../runtime/cntl/common.asl   1406:         Name (S000, " ")
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4A1)
+
+../../../../runtime/cntl/common.asl   1422:         DataTableRegion (HDR, "DSDT", "", "")
+Remark   2173 -                                                       ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\STRT)
+
+../../../../runtime/cntl/common.asl   2021:         Name (LPN0, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RERR)
+
+../../../../runtime/cntl/common.asl   2022:         Name (LPC0, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RERR)
+
+../../../../runtime/cntl/common.asl   2069:         Name (LPN0, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RRM0)
+
+../../../../runtime/cntl/common.asl   2070:         Name (LPC0, 0x00)
+Remark   2173 -                                             ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RRM0)
+
+../../../../runtime/cntl/common.asl   2159:     Method (TRC0, 3, NotSerialized)
+Remark   2146 -             Method Argument is never used ^  (Arg0)
+
+../../../../runtime/cntl/common.asl   2177:     Method (TRC1, 3, NotSerialized)
+Remark   2146 -             Method Argument is never used ^  (Arg0)
+
+../../../../runtime/cntl/common.asl   2240:         Divide (Local1, 0x000F4240, Local0, Local2)
+Warning  3144 -                                  Method Local is set but never used ^  (Local0)
+
+../../../../runtime/cntl/ehandle.asl    793:         Name (EBUF, Buffer (ISZC){})
+Remark   2173 -                                              ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\ST16)
+
+../../../../runtime/cntl/ehandle.asl    796:         Name (RBUF, Buffer (0x04){})
+Remark   2173 -                                              ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\ST16)
+
+../../../../runtime/cntl/ehandle.asl    917:     Method (CH06, 3, NotSerialized)
+Remark   2146 -              Method Argument is never used ^  (Arg1)
+
+../../../../runtime/cntl/ehandle.asl    934:     Method (CH07, 7, NotSerialized)
+Remark   2146 -              Method Argument is never used ^  (Arg4)
+
+../../../../runtime/cntl/ehandle.asl   1038:             Local7 = 0x01
+Warning  3144 -           Method Local is set but never used ^  (Local7)
+
+ASL Input:     MAIN.asl -    2109 bytes   1538 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/aslts-constant-normal-Gml9JjTP/results/constant-n64.aml -   18522 bytes   1119 opcodes     419 named objects
+Source Output: /home/doc/git/.acpi-proof-work/aslts-constant-normal-Gml9JjTP/results/constant-n64.src -  125821 bytes
+Preprocessor:  /home/doc/git/.acpi-proof-work/aslts-constant-normal-Gml9JjTP/results/constant-n64.i -    2109 bytes
+Listing File:  /home/doc/git/.acpi-proof-work/aslts-constant-normal-Gml9JjTP/results/constant-n64.lst -  485055 bytes
+Hex Dump:      /home/doc/git/.acpi-proof-work/aslts-constant-normal-Gml9JjTP/results/constant-n64.hex -  183274 bytes
+Namespace:     /home/doc/git/.acpi-proof-work/aslts-constant-normal-Gml9JjTP/results/constant-n64.nsp -   74090 bytes
+ASM Source:    /home/doc/git/.acpi-proof-work/aslts-constant-normal-Gml9JjTP/results/constant-n64.asm -  555329 bytes
+C Source:      /home/doc/git/.acpi-proof-work/aslts-constant-normal-Gml9JjTP/results/constant-n64.c -  630050 bytes
+C Include:     /home/doc/git/.acpi-proof-work/aslts-constant-normal-Gml9JjTP/results/constant-n64.h -   18526 bytes
+Offset Table:  /home/doc/git/.acpi-proof-work/aslts-constant-normal-Gml9JjTP/results/constant-n64.offset.h -   45675 bytes
+Device Map:    /home/doc/git/.acpi-proof-work/aslts-constant-normal-Gml9JjTP/results/constant-n64.map -     241 bytes
+
+Compilation successful. 0 Errors, 3 Warnings, 36 Remarks, 0 Optimizations

@@ -1,0 +1,9 @@
+--  Proof (gnatprove level 2) of the Grant_Sweeps protocol model.
+project Sweep_Model is
+   for Source_Dirs use (".");
+   for Source_Files use ("sweep_model.ads", "sweep_model.adb");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Sweep_Model;

@@ -1,0 +1,15 @@
+--  Proof of the toolkit's pure popup policy (placement, keyboard row
+--  choice, split lengths, tooltip timing): gnatprove -P popups_proof.gpr (level 2, every check).
+project Popups_Proof is
+   for Source_Dirs use ("../../userspace/lib/ui");
+   for Source_Files use ("client_popup_layout.ads", "client_popup_layout.adb",
+                         "client_split_layout.ads", "client_split_layout.adb",
+                         "client_tooltip_policy.ads", "client_tooltip_policy.adb");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail");
+   end Prove;
+end Popups_Proof;

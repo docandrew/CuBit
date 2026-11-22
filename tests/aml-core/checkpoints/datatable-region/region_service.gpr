@@ -1,0 +1,8 @@
+project Region_Service is
+ for Source_Dirs use ("lib", "firmware", "service", "test");
+ for Object_Dir use "build";
+ for Main use ("region_service_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+ end Compiler;
+end Region_Service;

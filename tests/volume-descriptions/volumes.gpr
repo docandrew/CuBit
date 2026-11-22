@@ -1,0 +1,15 @@
+--  Hosted tests and proof: Volume.Description.V1
+--  (docs/filesystem-protocol-v2.md step 7). VD_SRC: the unit's directory.
+project Volumes is
+   Vd_Src := external ("VD_SRC", "../../userspace/runtime/gnat");
+   for Source_Dirs use (".", Vd_Src, "../../userspace/runtime/gnat");
+   for Source_Files use ("main.adb", "cubit.ads", "cubit-volume_descriptions.ads",
+      "cubit-volume_descriptions.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe", "-O2");
+   end Compiler;
+end Volumes;

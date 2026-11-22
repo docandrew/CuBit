@@ -1,0 +1,9 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r2.asl -     690 bytes     18 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r2.aml -     220 bytes     11 opcodes       7 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations

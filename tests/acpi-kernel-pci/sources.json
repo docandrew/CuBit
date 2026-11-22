@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "inputs": {
+    "kernel/src/physical_ranges.ads": "632941627e0f3aaaa076fe85570d341f94d4bc250fc9c1743e163712412c129a",
+    "kernel/src/physical_ranges.adb": "4cfec5c69309ec9c589faf39f159eebe8aa6f4ad85867059fee688102424c798",
+    "kernel/src/physical_range_map.ads": "cb447959ef1e8fc509371176ca67801619f309629f207c6b3bc900d2a0ee2d5c",
+    "kernel/src/physical_range_map.adb": "49b259d23dd5f8d483b2e6d459e384395e20db12e17e56220a574cb185a66c3c",
+    "kernel/src/firmware_pci_admission.ads": "7cd85172586487647d0c5d72c991fb0432aecb4c18c4ce00ce1b1faa48565c50",
+    "kernel/src/firmware_pci_admission.adb": "96bf626ceeda3016c4f5698ff4d35fd87db1e1969a837dfca79c290030a90e8a",
+    "kernel/src/boot_modules.ads": "87ac16550a423e4d511df16f541c1bbc1ce80526eb5c35aaefa2652a0108e227",
+    "kernel/src/boot_modules.adb": "b251356bf159fa578c174f844cdc1a2c20cf76693aa7095630dada80b26fc6e5",
+    "kernel/src/multiboot_memory_map.ads": "c04b2f223052c59a960316929ab4bee583cb9259e0781ab84cc8b7c29aa73702",
+    "kernel/src/multiboot_memory_map.adb": "f2822e0698cf8a6745384a3feced159720fe064956cc5131f5e36eb98a984b32",
+    "kernel/src/root_export_admission.ads": "78b702d58dbf91b06cadb9a1f70fcba98bdcbd242347d35d73315a6063167d01",
+    "kernel/src/root_export_admission.adb": "f9bdb8242fb54a0f51448f14c4578b13cfc2e10cea4c9bd20f02c8c2a2c99476",
+    "shared/launch/launch_configuration.ads": "e7fda8ac885e0e848dec1a8e182eace75278097f7c4882290bad54aa5bc88143",
+    "shared/launch/launch_configuration.adb": "9b3262a63bc493e2d2730c618e717a60214d50b79ff6ca5e16cac3ac25a7d047",
+    "shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "shared/firmware/firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316",
+    "shared/firmware/firmware_tables-mcfg.ads": "ce7552ac25dfc446c9dc96cc3f1535e49ead6d44573d6bba3f57debb8df3775b",
+    "shared/firmware/firmware_tables-mcfg.adb": "0575d3019d73e663d9b1705bbb9be420183ef1bfe5d212f9e94338e757889428",
+    "shared/firmware/firmware_tables-pci_windows.ads": "e33605c8531126a4a9418654b3a44fe78f83fe98f909269213089f4e16f199b7",
+    "shared/firmware/firmware_tables-pci_windows.adb": "2d9efb29c16b2590a47c76b428efd81a6cff37c2643632be7315554ae681ff44",
+    "shared/firmware/firmware_tables-catalog.ads": "b550e04c14522c555e7c2dfa089b6e0bbffc741cbe1ab22c5b587eb91c221ce9",
+    "shared/firmware/firmware_tables-catalog.adb": "7a89dcd427ebb05391286998fae61937cf5e122e7c3ce74e7b87b8b2ba8b66b7",
+    "shared/firmware/firmware_tables-snapshots.ads": "6592bda9c605ec6c1e8fb63724dd3451037a14e0dadbcfdebb25870a089077fc",
+    "shared/firmware/firmware_tables-snapshots.adb": "11cd7bfb948d814b989ce01c8b6dd2ef51fd88af8131dca63b0e683afb37f9a5",
+    "shared/firmware/firmware_tables-copies.ads": "63bcce0e22df44e26f74a1f857bd1b129f1433d033ba233ab43af69b916f9795",
+    "shared/firmware/firmware_tables-copies.adb": "0f0481b27862270834650e4e87550aff40c5b942ca7a3bfdb4b88df2b4bf87e4",
+    "shared/time/clock_publication.ads": "37d2e81e63d2683884367156aa31e41b309a5256667632cd95d10e2f50c009aa",
+    "shared/time/clock_publication.adb": "2c5626ff25eca0ea9c3b57e4d6cb60ecf89655c8983fe4c16e3a24ada63f8690",
+    "shared/publications/device_memory_publication.ads": "3a4afcb1d2b2c921f1508b3747fa7641556f47c04bcfd6e990e2f1c7718d2275"
+  },
+  "fixtures": {
+    "adapter_tests.adb": "fa11ebec680a3b978ba600c39d0a6e9d06da5371b6a0448f1c7955f2bc646fd1",
+    "catalog_tests.adb": "8d002ab7c01981d801248f719617ea1737b519ea430da9c5c1dfaab71ff3f9f0",
+    "enumeration_cost.adb": "5a9e50cacc80e53e5ba4b282d5e01117b56642754dac5f158b94b9addf74f056",
+    "host/acpi.adb": "c4800c6edf333e8e3c0e3cfddb39a04c4a71baabd22327ec4e59deeb277f3d84",
+    "host/acpi.ads": "0bd7f15db3b2f60388a757950d66bcca4d9662f8e62a76248eb73094a267b334",
+    "host/config.ads": "d49d7a3f4f1c3215b2229de728aca7edde1e2ddc1827439836c4b80d31dbe417",
+    "host/multiboot.adb": "ae2d921a772372efdbbb9ddb5a40db7192e13cda4db8ee55c38b80138e5d4d0d",
+    "host/multiboot.ads": "66948448e2aa21452000c33e7e3e71c71d5d10019dfaa117f81835f2821b58fe",
+    "host/textio.adb": "487f9d64a78c4679c3579cb8caa5e24f1bfdcbf216d2f9c0d295b45395d6f4fa",
+    "host/textio.ads": "520562936ec08c47766d6df18901a2773f4ab744b5ab1a6dace05db5cd6877b8",
+    "host/virtmem.ads": "b96c3016fda5a7d6a7430adffad910cc5093e91e513ee1ca6c0631aa0cfabb35"
+  },
+  "references": {
+    "kernel/src/acpi.ads": "e6aaf1f474ac82b16c25c732c8d2e0bd0c02b29cab64b180e1a1a5eb1c372606",
+    "kernel/src/config.ads": "f2d5ca945d5318f278a5934cecffa8f8c37c8d45d8434a23a327632897eff628"
+  }
+}

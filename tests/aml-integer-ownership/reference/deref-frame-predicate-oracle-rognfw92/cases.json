@@ -1,0 +1,82 @@
+[
+  {
+    "key": "r1-arg-ref",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing"
+  },
+  {
+    "key": "r1-arg-held",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing"
+  },
+  {
+    "key": "r1-local-ref",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-local-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing"
+  },
+  {
+    "key": "r1-local-held",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-local-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing"
+  },
+  {
+    "key": "r2-arg-ref",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing"
+  },
+  {
+    "key": "r2-arg-held",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing"
+  },
+  {
+    "key": "r2-local-ref",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-local-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing"
+  },
+  {
+    "key": "r2-local-held",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-local-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing"
+  }
+]

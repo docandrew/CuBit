@@ -1,0 +1,9 @@
+{
+  "attempts": 28,
+  "classes": {
+    "compiler_rejected": 2,
+    "returned": 14,
+    "runtime_error": 12
+  },
+  "scope": "metadata value/reference discrimination only"
+}

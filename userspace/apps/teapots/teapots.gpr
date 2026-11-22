@@ -1,0 +1,33 @@
+--  CuBit Teapots (native). Compiled and bound by gprbuild; linked by
+--  tools/build_teapots.py against libc and the verified Mesa (ANV) bundle,
+--  like Desktop's Vulkan build.
+with "../../lib/ui/fonts_native.gpr";
+with "../../lib/ui/toolkit_flags.gpr";
+project Teapots is
+   for Languages use ("Ada");
+   for Object_Dir use "build";
+   for Source_Dirs use (".", "build/generated", "../../lib/ui", "../../lib/ui/gpu-native",
+                        "../../lib/theme", "../../lib/compositor", "../../lib/display",
+                        "../../mesa", "../../allocator/src");
+   for Main use ("main.adb");
+   for Runtime ("Ada") use "../../runtime";
+   for Library_Dir use "";
+
+   package Builder is
+      for Executable ("main.adb") use "teapots.app";
+      for Default_Switches ("Ada") use ("-g", "-gnatwa", "-gnatw.X", "-s", "-v", "-nostdlib");
+   end Builder;
+
+   package Compiler extends Toolkit_Flags.Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic");
+      --  Proved (tests/gpu-canvas/run.sh --prove, level 2): no run-time checks.
+      Proved := ("-O3", "-gnatp", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
+                 "-mno-red-zone", "-fno-pic", "-fno-tree-vrp");
+      for Switches ("gpu_canvas_slots.adb") use Proved;
+   end Compiler;
+
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+end Teapots;

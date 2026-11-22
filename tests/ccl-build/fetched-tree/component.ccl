@@ -1,0 +1,5 @@
+# ccl-build's fetched-tree fixture (tests/ccl-build/run.sh). Its library is
+# declared in fetched-tree/build-catalog.ccl, which the test fills in with
+# its local server's URL and the tree's identity.
+(Component name => "tree-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source libraries => ["greeting"])))

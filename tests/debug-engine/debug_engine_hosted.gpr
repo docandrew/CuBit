@@ -1,0 +1,20 @@
+--  Hosted checks of the debugger engine (DBG-001) against the real
+--  debug-demo ELF: tests/debug-engine/run.sh.
+project Debug_Engine_Hosted is
+   for Source_Dirs use (".", "../../userspace/lib/debug", "../../userspace/lib/debug/hosted",
+                         "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("hosted_check.adb", "cubit.ads", "cubit-debug.ads", "cubit-debug.adb",
+      "cubit-debug-bytes.ads", "cubit-debug-bytes.adb", "cubit-debug-elf.ads", "cubit-debug-elf.adb",
+      "cubit-debug-dwarf.ads", "cubit-debug-dwarf.adb", "cubit-debug-cfi.ads", "cubit-debug-cfi.adb",
+      "cubit-debug-expressions.ads", "cubit-debug-expressions.adb",
+      "cubit-debug-demangle.ads", "cubit-debug-demangle.adb", "cubit-debug-rust_names.ads", "cubit-debug-rust_names.adb",
+      "cubit-debug_target.ads", "cubit-debug_target.adb", "cubit-debug_protocol.ads");
+   for Main use ("hosted_check.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-g", "-O1", "-gnata", "-gnatwa",
+                                        "-gnatw.X", "-gnatyN");
+   end Compiler;
+end Debug_Engine_Hosted;

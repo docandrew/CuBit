@@ -1,0 +1,12 @@
+/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-package.asl      5: Method (TEST, 0) { Return (ToInteger (Index (PKG0, Zero))) }
+Error    6058 -                                                                                                                        Invalid type ^  ([Reference] found, ToInteger operator requires [Integer|String|Buffer])
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-package.asl -     306 bytes     11 keywords      0 source lines
+
+Compilation failed. 1 Errors, 0 Warnings, 0 Remarks
+No AML files were generated due to compiler error(s)

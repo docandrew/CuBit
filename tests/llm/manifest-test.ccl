@@ -1,0 +1,19 @@
+# TEST VARIANT of userspace/services/llm/manifest.ccl for the headless
+# llm-mock regression: the same program, whose one tls-scope names the
+# host-side mock Messages API (tests/llm/mock_server.py) instead of
+# api.anthropic.com:443. Built as llm-test.svc and installed only by that
+# test; keep everything but the scope identical to the production manifest.
+(type Llm_Service_Parameters (record
+  (endpoint String)
+  (api_key_secret String)))
+(Executable_Manifest
+  identity => "com.cubit.llm"
+  version => "0.1.0"
+  requests => [
+    (service "logstore" "logstore")
+    (service "tls" "tls")
+    (service "secrets" "secrets")
+    # Registers the "llm" role; clients request the service by name.
+    (notification "llm" Notify_Access.Manage "registration")]
+  scopes => [(tls "llm-mock.cubit.internal:18490")]
+  parameters => (Parameter_Signature.Declared "Llm_Service_Parameters"))

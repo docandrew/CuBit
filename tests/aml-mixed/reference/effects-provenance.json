@@ -1,0 +1,7 @@
+{
+  "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb",
+  "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe",
+  "/home/doc/git/.acpi-proof-work/aml-mixed-compare-oracle-nb0gemy7/audit.json": "289ff443ac7ac951b8422e5667663fcb97fdb2d8a8b7ff9c9b04fc30bcd945cf",
+  "/home/doc/git/.acpi-proof-work/aml-mixed-compare-oracle-nb0gemy7/report.json": "9fa923eb1dc6c9e1161e3836c9b1fcc108557d72b751b52ff386eac4f3c40ce7",
+  "/home/doc/git/.acpi-proof-work/aml-mixed-compare-oracle-nb0gemy7/provenance.json": "d8dfa860a9f30474a38046942d839e63704d95bb12dda20cb56e481a48b97c7e"
+}

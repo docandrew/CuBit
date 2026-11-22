@@ -1,0 +1,14 @@
+--  gnatprove for Penny's SPARK glue (penny_ecdsa_digest): level 2,
+--  absence of runtime errors and the postcondition.
+--    alr exec -- gnatprove -P penny_crypto_prove.gpr -u penny_ecdsa_digest.adb --level=2 -j2
+project Penny_Crypto_Prove is
+   Crates := external ("CUBIT_SPARK_CRATES");
+   for Languages use ("Ada");
+   for Source_Dirs use (".", Crates & "sparknacl/src");
+   for Source_Files use ("penny_ecdsa_digest.ads", "penny_ecdsa_digest.adb",
+                         "sparknacl.ads", "sparknacl.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Penny_Crypto_Prove;

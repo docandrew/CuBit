@@ -1,0 +1,114 @@
+[
+  {
+    "label": "direct-r1",
+    "AML_sha256": "a9a2a4c2700596e6cf85b4f92505546f83d925e409518a4214dde9b49dd69a3c",
+    "revision": 1,
+    "expected_full_argument": "0x33",
+    "basis": "literal",
+    "expected_hook_low32": "0x33"
+  },
+  {
+    "label": "direct-r2",
+    "AML_sha256": "2583f521edec0d574ac8e61123f0ed35628f22d68966e758aa35f42318814eca",
+    "revision": 2,
+    "expected_full_argument": "0x33",
+    "basis": "literal",
+    "expected_hook_low32": "0x33"
+  },
+  {
+    "label": "nested-r1",
+    "AML_sha256": "ced90454ebf6980f8a6c50f3d0c05524cdae8436ad6f95a5007fee076c8d87ab",
+    "revision": 1,
+    "expected_full_argument": "0x44",
+    "basis": "inner literal44; outer never completes",
+    "expected_hook_low32": "0x44"
+  },
+  {
+    "label": "nested-r2",
+    "AML_sha256": "c90141f93560718f7a1713f80265075a56f8994749ef199597563694aa4087c5",
+    "revision": 2,
+    "expected_full_argument": "0x44",
+    "basis": "inner literal44; outer never completes",
+    "expected_hook_low32": "0x44"
+  },
+  {
+    "label": "once-r1",
+    "AML_sha256": "d487d0e9ec42255d56f72c6d304164952be9afef13473e94bbc6f56e9ef18d51",
+    "revision": 1,
+    "expected_full_argument": "0x55",
+    "basis": "MARG literal55 once",
+    "expected_hook_low32": "0x55"
+  },
+  {
+    "label": "once-r2",
+    "AML_sha256": "ea929e3a90592748fe6b28ef3540956500ce5c6747e4cc1a83fc94781c59225a",
+    "revision": 2,
+    "expected_full_argument": "0x55",
+    "basis": "MARG literal55 once",
+    "expected_hook_low32": "0x55"
+  },
+  {
+    "label": "string-r1",
+    "AML_sha256": "b0cec74cef62d64ce5adbd2853ca2988e53e420480857f579ac520b4f22595cc",
+    "revision": 1,
+    "expected_full_argument": "0x12345678",
+    "basis": "width-bounded hexadecimal conversion; observed r1prefix12345678/r2hook9abcdef0",
+    "expected_hook_low32": "0x12345678"
+  },
+  {
+    "label": "string-r2",
+    "AML_sha256": "3b05ae2818f19042c1703e76698c10312fb336058d63197f83ee5558ea474011",
+    "revision": 2,
+    "expected_full_argument": "0x123456789abcdef0",
+    "basis": "width-bounded hexadecimal conversion; observed r1prefix12345678/r2hook9abcdef0",
+    "expected_hook_low32": "0x9abcdef0"
+  },
+  {
+    "label": "buffer-r1",
+    "AML_sha256": "ee5097bd3627e14c6785ea94d36aeef70034acbc3c351c92d08930b5c2fdb56f",
+    "revision": 1,
+    "expected_full_argument": "0x76543210",
+    "basis": "little-endian first width bytes",
+    "expected_hook_low32": "0x76543210"
+  },
+  {
+    "label": "buffer-r2",
+    "AML_sha256": "6986c2e628cca4e05fcec99a904fd3f53d37192bb6609e5dd97551e2d626342a",
+    "revision": 2,
+    "expected_full_argument": "0xfedcba9876543210",
+    "basis": "little-endian first width bytes",
+    "expected_hook_low32": "0x76543210"
+  },
+  {
+    "label": "wide-r1",
+    "AML_sha256": "9e0d391054fe87422a5974524362d154e65beb9bbc760970d5e847594e52c4ef",
+    "revision": 1,
+    "expected_full_argument": "0x76543210",
+    "basis": "exact emitted literal; r1compiler truncation warning retained",
+    "expected_hook_low32": "0x76543210"
+  },
+  {
+    "label": "wide-r2",
+    "AML_sha256": "1db426aa7796a6e1ae0060895fd706907d773afb2fcdb52e186245ee1a584ce7",
+    "revision": 2,
+    "expected_full_argument": "0xfedcba9876543210",
+    "basis": "exact emitted literal; r1compiler truncation warning retained",
+    "expected_hook_low32": "0x76543210"
+  },
+  {
+    "label": "osi-r1",
+    "AML_sha256": "f8a29afeb4907934479e527b86ce334f918c09d529e0c10ddec1653298698414",
+    "revision": 1,
+    "expected_full_argument": "0xffffffffffffffff",
+    "basis": "separate RAWV raw observation all64ones, explicitly configured same supported interface",
+    "expected_hook_low32": "0xffffffff"
+  },
+  {
+    "label": "osi-r2",
+    "AML_sha256": "e9aca1dd1a90432f1e17bd5a1155e475922f09091ecc881c95e3584fc3188d34",
+    "revision": 2,
+    "expected_full_argument": "0xffffffffffffffff",
+    "basis": "separate RAWV raw observation all64ones, explicitly configured same supported interface",
+    "expected_hook_low32": "0xffffffff"
+  }
+]

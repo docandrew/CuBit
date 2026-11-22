@@ -1,0 +1,85 @@
+;------------------------------------------------------------------------------
+; CuBitOS
+; Copyright (C) 2020 Jon Andrew
+;
+; Variables and offsets from the CuBit SPARK code. In most cases, these need
+; to match the equivalent variable from either a SPARK/Ada file or the linker,
+; and should be annotated accordingly.
+;------------------------------------------------------------------------------
+
+; offsets from the PerCPUData base address - make sure these match the
+; PerCPUData record layout
+SAVED_PROCESS_RSP       equ 8
+SAVED_KERNEL_RSP        equ 16
+
+; IST stacks - make sure these match IST_STACK_SIZE and IST_CPU_DATA_OFFSET
+; in percpudata.ads. Each IST stack is aligned to its size; this CPU's
+; PerCPUData address sits at IST_CPU_DATA_OFFSET from the stack's base.
+IST_STACK_SIZE          equ 4096
+IST_CPU_DATA_OFFSET     equ 4080
+
+; GS base MSR - make sure this matches x86.MSRs.GS_BASE
+MSR_GS_BASE             equ 0xC0000101
+
+; GDT segment offsets - make sure these match those in segment.ads
+GDT_OFFSET_KERNEL_CODE  equ 8
+GDT_OFFSET_KERNEL_DATA  equ 16
+GDT_OFFSET_USER_CODE    equ 24
+GDT_OFFSET_USER_DATA    equ 32
+
+; The user selectors SYSRET loads (STAR, PerCPUData) and an interrupt from
+; ring 3 pushes: segment.ads's GDT_OFFSET_USER_DATA (24) and
+; GDT_OFFSET_USER_CODE (32), with RPL 3 (Process.initializeUserEntry).
+USER_SS_SELECTOR        equ 24 | 3
+USER_CS_SELECTOR        equ 32 | 3
+
+; The error-code word of a frame SYSCALL entry builds (Stackframe.
+; System_Call_Frame_Tag): no CPU error code reaches 2 ** 31.
+SYSCALL_FRAME_TAG       equ 0x53595343
+
+; Make sure this matches linker.ld
+KERNEL_BASE             equ 0xFFFF_FFFF_8000_0000
+LINEAR_BASE             equ 0xFFFF_8000_0000_0000
+
+; Make sure this matches virtmem.ads
+STACK_TOP               equ 0xFFFF_8000_0100_0000
+STACK_BOTTOM            equ 0xFFFF_8000_0080_0000
+
+; Make sure this matches config.ads, also percpudata.adb
+MAX_CPUS                equ 128
+PER_CPU_STACK_SIZE      equ (STACK_TOP - STACK_BOTTOM) / MAX_CPUS
+
+; Make sure this matches s-parame.ads in the runtime
+SEC_STACK_SIZE          equ 2048
+
+; Syscall numbers (rax) - make sure this matches syscall.ads
+SYSCALL_EXIT            equ 0
+SYSCALL_KILL            equ 7
+SYSCALL_SBRK            equ 8
+SYSCALL_WRITE           equ 12
+
+SYSCALL_INFO            equ 15
+SYSCALL_REPLY           equ 18
+SYSCALL_SEND_EVENT      equ 19
+SYSCALL_RECEIVE_EVENT   equ 20
+SYSCALL_SET_LATENCY_CONTRACT equ 81
+SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY equ 52
+
+SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID equ 102
+SYSCALL_REVOKE_SHARED_MEMORY_GRANT equ 103
+SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION equ 108
+SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT equ 109
+SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE equ 110
+SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION equ 111
+
+; Useful constants for init.asm
+STDIN                   equ 0
+STDOUT                  equ 1
+STDERR                  equ 2
+
+; Device interrupt vectors - make sure these match
+; shared/interrupts/device_vector_abi.ads (First_Vector, Vector_Count) and
+; interrupts.adb (DEVICE_STUB_BYTES). createIDT checks the stub table size.
+DEVICE_VECTOR_FIRST     equ 48
+DEVICE_VECTOR_COUNT     equ 79
+DEVICE_STUB_BYTES       equ 32

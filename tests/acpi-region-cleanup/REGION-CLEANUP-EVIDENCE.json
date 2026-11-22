@@ -1,0 +1,22 @@
+{
+  "portable": {
+    "path": "/home/doc/cubit-build-tmp/acpi-region-cleanup-dZSzTy/COMPLETE.json",
+    "sha256": "2559e9b622c1bf01e97f5bfe06f81fc64a8db6ab37f9414b1732edca38e7e09e",
+    "checks": 948,
+    "processes": 40
+  },
+  "legacy": {
+    "path": "/home/doc/git/.acpi-proof-work/region-cleanup-20261029/publication/../LEGACY-VALIDATED.json",
+    "sha256": "69112127a148c916a3d3b3ce1ddd021ccc324255e310e9aafffe166883146eb3",
+    "checks": 3668,
+    "processes": 94
+  },
+  "negative": {
+    "path": "/home/doc/git/.acpi-proof-work/region-cleanup-20261029/publication/../NEGATIVE.json",
+    "sha256": "ec1f5c919d472f0bacb282b3c21de022f1952acb58e3334f1ec37e9ccacca171",
+    "expected_status": 1
+  },
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false
+}

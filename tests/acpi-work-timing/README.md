@@ -1,0 +1,7 @@
+# AML internal work timing diagnostics
+
+In the Nix development environment, export TMPDIR=/home/doc/cubit-build-tmp before entering Nix, then run `bash tests/acpi-work-timing/run.sh`. `--validate-only` checks the frozen production/fixture hashes without compiling. Test outputs go to a fresh TMPDIR directory.
+
+These are small checked/release timing-policy and actual native reporter models with a simulated clock/logger. They check internal work accounting, exact scope-edge wall-gap labels, malformed/overflow/missing-clock incompleteness and once-only output after collection stops. They do not generate code for the whole AML interpreter, run native kernel IPC or establish hardware performance or SPARK proofs. The paired optional observer hooks grant no authority and do not alter fuel, deadlines, allocation policy or AML results; observation overhead can affect wall time and must be considered when reading a hardware timing run.
+
+Internal durations include nested work. `external_us` is the union of nested external RPC/delay intervals. Do not add nested buckets or treat wall time as CPU time. WORK_ALLOCATION includes root census and reclamation, not just allocator calls. Largest-gap labels identify consecutive instrumented scope edges, not proof of scheduler starvation or a specific blocking syscall. There is no thread CPU-time API in this diagnostic. No per-opcode names or complete blocking-call census is claimed.

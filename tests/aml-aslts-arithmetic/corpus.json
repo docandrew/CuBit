@@ -1,0 +1,39 @@
+{
+  "cases": [
+    {
+      "case": "arithmetic-n32",
+      "aml": "tests/aml-aslts-arithmetic/reference/arithmetic-n32.aml",
+      "aml_sha256": "6c3a97b3811f9227ea08b147471b4fcad2cf5b501ad9528ffbaa120f2d2a73e0",
+      "expected_MN00": 0,
+      "expected_ERRS": 0,
+      "repeats": 2,
+      "expected_RMRC": [
+        17,
+        34
+      ],
+      "expected_records": [
+        ":STST:functional:arithmetic:ADD0:PASS:",
+        ":STST:functional:arithmetic:SUB0:PASS:",
+        ":STST:functional:arithmetic:MTP0:PASS:",
+        ":STST:functional:arithmetic:DVD0:PASS:",
+        ":STST:functional:arithmetic:ICR0:PASS:",
+        ":STST:functional:arithmetic:DCR0:PASS:",
+        ":STST:functional:arithmetic:AND0:PASS:",
+        ":STST:functional:arithmetic:NAN0:PASS:",
+        ":STST:functional:arithmetic:NOR0:PASS:",
+        ":STST:functional:arithmetic:NOT0:PASS:",
+        ":STST:functional:arithmetic:OR00:PASS:",
+        ":STST:functional:arithmetic:XOR0:PASS:",
+        ":STST:functional:arithmetic:MOD0:PASS:",
+        ":STST:functional:arithmetic:SHL0:PASS:",
+        ":STST:functional:arithmetic:SHR0:PASS:",
+        ":STST:functional:arithmetic:FSL0:PASS:",
+        ":STST:functional:arithmetic:FSR0:PASS:"
+      ]
+    }
+  ],
+  "not_run": [
+    "Other modes/collections and checked profile"
+  ],
+  "oracle_receipt": "tests/aml-aslts-arithmetic/reference/OBSERVATIONS.json"
+}

@@ -1,0 +1,7 @@
+project Backdrop_Scene extends "backdrop_submission.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Backdrop_Submission'Source_Files & ("backdrop_scene_tests.adb");
+   for Main use ("backdrop_scene_tests.adb");
+   for Object_Dir use "build/backdrop-scene/obj";
+   for Exec_Dir use "build/backdrop-scene";
+end Backdrop_Scene;

@@ -1,0 +1,20 @@
+# Hosted tests of Penny's SPARK rustls provider (userspace/rust/penny-crypto):
+# known-answer vectors and in-memory handshakes against rustls's aws-lc
+# provider as the server, for every suite, group and certificate key type,
+# plus the handshake and bulk throughput A/B. Run with run.sh.
+[package]
+name = "penny-tls-provider-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "penny-tls-provider-tests"
+path = "src/main.rs"
+
+[dependencies]
+penny-crypto = { path = "../../../userspace/rust/penny-crypto" }
+rustls = { version = "0.23", features = ["aws_lc_rs", "tls12"] }
+rcgen = { version = "0.13", features = ["aws_lc_rs"] }
+
+[workspace]

@@ -1,0 +1,65 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+Summary logged in /home/doc/cubit-build-tmp/aml-copied-table-proof-VeSBFl/level1/obj/gnatprove/gnatprove.out
+firmware_tables.adb:5:13: info: implicit aspect Always_Terminates on "U32" has been proved, subprogram will terminate
+firmware_tables.adb:7:37: info: overflow check proved
+firmware_tables.adb:7:37: info: index check proved
+firmware_tables.adb:8:49: info: overflow check proved
+firmware_tables.adb:8:58: info: overflow check proved
+firmware_tables.adb:8:58: info: index check proved
+firmware_tables.adb:9:49: info: overflow check proved
+firmware_tables.adb:9:58: info: overflow check proved
+firmware_tables.adb:9:58: info: index check proved
+firmware_tables.adb:10:49: info: overflow check proved
+firmware_tables.adb:10:58: info: overflow check proved
+firmware_tables.adb:10:58: info: index check proved
+firmware_tables.adb:11:58: info: range check proved
+firmware_tables.adb:13:13: info: implicit aspect Always_Terminates on "Sum" has been proved, subprogram will terminate
+firmware_tables.adb:25:07: info: initialization of "Revision" proved
+firmware_tables.adb:26:07: info: initialization of "Length" proved
+firmware_tables.adb:27:07: info: initialization of "Extent" proved
+firmware_tables.adb:28:07: info: initialization of "Address" proved
+firmware_tables.adb:34:30: info: overflow check proved
+firmware_tables.adb:34:34: info: overflow check proved
+firmware_tables.adb:34:34: info: index check proved
+firmware_tables.adb:38:15: info: range check proved
+firmware_tables.adb:38:46: info: overflow check proved
+firmware_tables.adb:41:36: info: overflow check proved
+firmware_tables.adb:41:36: info: index check proved
+firmware_tables.adb:43:36: info: precondition proved
+firmware_tables.adb:47:34: info: range check proved
+firmware_tables.adb:54:36: info: precondition proved
+firmware_tables.adb:60:27: info: range check proved
+firmware_tables.adb:61:66: info: range check proved
+firmware_tables.adb:64:30: info: assertion proved
+firmware_tables.adb:64:73: info: range check proved
+firmware_tables.adb:65:15: info: range check proved
+firmware_tables.adb:65:46: info: overflow check proved
+firmware_tables.adb:68:31: info: precondition proved
+firmware_tables.adb:69:34: info: precondition proved
+firmware_tables.adb:71:34: info: range check proved
+firmware_tables.adb:73:33: info: precondition proved
+firmware_tables.adb:77:31: info: range check proved
+firmware_tables.adb:83:07: info: initialization of "Length" proved
+firmware_tables.adb:84:07: info: initialization of "Extent" proved
+firmware_tables.adb:90:30: info: overflow check proved
+firmware_tables.adb:90:34: info: overflow check proved
+firmware_tables.adb:90:34: info: index check proved
+firmware_tables.adb:94:36: info: precondition proved
+firmware_tables.adb:100:27: info: range check proved
+firmware_tables.adb:101:58: info: range check proved
+firmware_tables.adb:104:30: info: assertion proved
+firmware_tables.adb:104:65: info: range check proved
+firmware_tables.adb:105:15: info: range check proved
+firmware_tables.adb:105:46: info: overflow check proved
+firmware_tables.adb:108:50: info: overflow check proved
+firmware_tables.adb:108:50: info: index check proved
+firmware_tables.ads:39:13: info: implicit aspect Always_Terminates on "Read_Root" has been proved, subprogram will terminate
+firmware_tables.ads:41:08: info: postcondition proved
+firmware_tables.ads:42:27: info: discriminant check proved
+firmware_tables.ads:42:48: info: range check proved
+firmware_tables.ads:43:13: info: implicit aspect Always_Terminates on "Read_Table" has been proved, subprogram will terminate
+firmware_tables.ads:46:08: info: postcondition proved
+firmware_tables.ads:47:28: info: discriminant check proved
+firmware_tables.ads:47:64: info: range check proved

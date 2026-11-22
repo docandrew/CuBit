@@ -1,0 +1,8 @@
+project GuC_Status is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-guc-status";
+   for Main use ("guc_status_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end GuC_Status;

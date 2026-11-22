@@ -1,0 +1,9 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     bank.asl -     744 bytes     16 keywords      0 source lines
+AML Output:    bank.aml -     222 bytes      6 opcodes      10 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations

@@ -1,0 +1,10 @@
+project Vulkan_Upload_Recording extends "vulkan_upload_owner.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Upload_Owner'Source_Files &
+      ("compositor_upload.ads", "compositor_upload.adb", "vulkan_upload_record_ffi.ads", "vulkan_upload_record_ffi.adb",
+       "vulkan_upload_recording.ads", "vulkan_upload_recording.adb", "vulkan_upload_record_mock.c",
+       "vulkan_upload_recording_tests.adb", "compositor_upload_tests.adb");
+   for Object_Dir use "build/vulkan-upload-recording/obj";
+   for Exec_Dir use "build/vulkan-upload-recording";
+   for Main use ("vulkan_upload_recording_tests.adb", "compositor_upload_tests.adb");
+end Vulkan_Upload_Recording;

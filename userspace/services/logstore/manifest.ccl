@@ -1,0 +1,12 @@
+# Requested authority only; the existing launch path remains in control.
+(executable-manifest v1
+  (identity "com.cubit.logstore")
+  (version "1.0.0")
+  # logs.minimum-level: the least severe record kept at startup.
+  (request-service config read-write config)
+  (config-scope (rights read) "logs.")
+  # storage.system-volume: the installed root, where the log persists.
+  (config-scope (rights read) "storage.")
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@ufs:0/logstore.log")
+  (request-notification logstore manage registration))

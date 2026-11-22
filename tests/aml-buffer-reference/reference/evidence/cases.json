@@ -1,0 +1,38 @@
+[
+  {
+    "name": "static-8192",
+    "question": "static Name admits8192,zero tail andsize"
+  },
+  {
+    "name": "package-1025",
+    "question": "package child preserves1025bytes,firstbyte"
+  },
+  {
+    "name": "return-store-8192",
+    "question": "returned large buffer stored andzero tail"
+  },
+  {
+    "name": "runtime-count-8192",
+    "question": "runtime named count method executes once,then bufferpublishes"
+  },
+  {
+    "name": "initializer-extends",
+    "question": "1025initializer extendszero andlastbyte survives"
+  },
+  {
+    "name": "uint32-mask",
+    "question": "count masksUINT32 beforeallocation;never allocate4GiB"
+  },
+  {
+    "name": "integer-prefix",
+    "question": "ToInteger uses widthprefix despite8192effectivebytes"
+  },
+  {
+    "name": "count-divide-zero",
+    "question": "count failure beforepublication,marker retainscountsideeffect"
+  },
+  {
+    "name": "count-empty-buffer",
+    "question": "count coercion failure vsbufferconstruction,not inferredfromreturnstatus"
+  }
+]

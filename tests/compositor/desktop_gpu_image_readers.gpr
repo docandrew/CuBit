@@ -1,0 +1,7 @@
+project Desktop_GPU_Image_Readers extends "desktop_gpu_scene.gpr" is
+   for Source_Dirs use Desktop_GPU_Scene'Source_Dirs;
+   for Source_Files use Desktop_GPU_Scene'Source_Files & ("desktop_gpu_image_reader_tests.adb");
+   for Main use ("desktop_gpu_image_reader_tests.adb");
+   for Object_Dir use "build/desktop-gpu-image-readers/obj";
+   for Exec_Dir use "build/desktop-gpu-image-readers";
+end Desktop_GPU_Image_Readers;

@@ -1,0 +1,3 @@
+# The image's debugging gate check (DBG-001, headless --test debug-gate-*).
+(Component name => "debug-gate-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

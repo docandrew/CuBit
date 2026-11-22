@@ -1,0 +1,14 @@
+[package]
+name = "rust-args-check"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Built with CuBit's Unix-family std over the libc
+# (userspace/rust/std/unix/cargo-cubit-unix.sh); see ../build.sh.
+[workspace]
+
+[profile.release]
+panic = "abort"
+opt-level = 2
+debug = 1

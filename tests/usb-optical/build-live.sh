@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/../.." && pwd)
+cd "$root/kernel"
+# The observer record buffer is a compiled IPC contract. Refresh both ends:
+# a new logstore plus an old statically-linked viewer silently rejects reads.
+rom_args=()
+platform_args=()
+output=cubit_laptop_usb.img
+profile=../images/laptop-usb.ccl
+extra_inputs=()
+if [[ ${2:-} == --uefi ]]; then
+    platform_args=(--grub-directory "${CUBIT_GRUB_EFI_DIR:?run in nix develop}")
+    output=cubit_live_uefi.img
+elif [[ -n ${2:-} ]]; then
+    echo 'Expected optional --uefi' >&2
+    exit 2
+fi
+if [[ ${3:-} == --render-session ]]; then
+    profile=../images/render-session.ccl
+    output=cubit_live_render_session.img
+elif [[ ${3:-} == --mesa-device ]]; then
+    profile=../images/mesa-device.ccl
+    output=cubit_live_mesa_device.img
+elif [[ ${3:-} == --mesa-triangle ]]; then
+    profile=../images/mesa-triangle.ccl
+    output=cubit_live_mesa_triangle.img
+elif [[ ${3:-} == --mesa-triangle-window ]]; then
+    profile=../images/mesa-triangle-window.ccl
+    output=cubit_live_mesa_triangle_window.img
+elif [[ ${3:-} == --desktop-mesa-startup ]]; then
+    profile=../images/desktop-mesa-startup.ccl
+    output=cubit_live_desktop_mesa_startup.img
+    desktop_candidate=$(python3 ../tests/hardware/verify-desktop-mesa-startup.py \
+        "${CUBIT_DESKTOP_MESA_DIR:?explicit verified Desktop candidate directory required}")
+    extra_inputs=(--input "desktop-mesa-startup=$desktop_candidate")
+elif [[ ${3:-} == --desktop-vulkan-compositor ]]; then
+    # Same explicit render approval, but a drawing-enabled artifact rather
+    # than the historical initialization-only Desktop checkpoint.
+    profile=../images/desktop-mesa-startup.ccl
+    output=cubit_live_desktop_vulkan_compositor.img
+    desktop_candidate=$(python3 ../tools/verify_desktop_vulkan_compositor.py \
+        "${CUBIT_DESKTOP_VULKAN_DIR:?explicit verified Vulkan compositor directory required}")
+    extra_inputs=(--input "desktop-mesa-startup=$desktop_candidate")
+elif [[ ${3:-} == --preview ]]; then
+    # RELEASE-001: the public preview image (no development-only programs).
+    profile=../images/preview.ccl
+    output=cubit_preview_uefi.img
+elif [[ ${3:-} == --vmm ]]; then
+    # VMM-001 slice 1: the live image plus vmm.app (tests/hardware/vmm-laptop-build.sh).
+    profile=../images/laptop-usb-vmm.ccl
+    output=cubit_live_uefi_vmm.img
+    make vmm
+elif [[ ${3:-} == --install ]]; then
+    # SYS-001: the installer's live medium. The realizer adds the install
+    # payload (@cd:0/install) from the plan: this loader, the installed
+    # system's bootstrap archive, and the optical closure as the root.
+    profile=../images/laptop-install.ccl
+    output=cubit_laptop_install_uefi.img
+    make install-efi installed-initrd installer
+    extra_inputs=(--install-efi isodir/boot/install-bootx64.efi
+                  --install-initrd isodir/boot/installed-initrd.img
+                  --install-startup ../tests/hardware/init-installed.ccl)
+elif [[ ${3:-} == --device-build || ${3:-} == --device-build-test ]]; then
+    # SELF-002: the live medium that builds apps on the device. Its live
+    # RAM root is the device-build payload (tests/device-builds/build.sh,
+    # make device-build-root); its install payload carries the image
+    # closure and that RAM root's files onto the installed root, whose
+    # startup plan grants builds too. --device-build-test is the same
+    # image with the pairing code on the kernel console (QEMU's serial),
+    # for tests/device-builds/run-live.sh.
+    profile=../images/laptop-build.ccl
+    output=cubit_live_build_uefi.img
+    installed_startup=../tests/hardware/init-installed-build.ccl
+    if [[ ${3:-} == --device-build-test ]]; then
+        profile=../images/laptop-build-test.ccl
+        output=cubit_live_build_test_uefi.img
+        installed_startup=../tests/device-builds/init-installed-build-test.ccl
+    fi
+    make install-efi installed-initrd installer ccl-build-app
+    test -s ../tests/device-builds/build/root.ext2 || {
+        echo 'missing the device-build payload; run make -C kernel device-build-root first' >&2
+        exit 1
+    }
+    extra_inputs=(--install-efi isodir/boot/install-bootx64.efi
+                  --install-initrd isodir/boot/installed-initrd.img
+                  --install-startup "$installed_startup" --install-live-root)
+elif [[ -n ${3:-} ]]; then
+    echo 'Expected --preview, --install, --device-build, --device-build-test, --render-session, --mesa-device, --mesa-triangle, --mesa-triangle-window, --desktop-mesa-startup or --desktop-vulkan-compositor after the platform option' >&2
+    exit 2
+fi
+if [[ -n ${SAMEBOY_ROMS_DIR:-} ]]; then
+    rom_args=(--private-rom-dir "$SAMEBOY_ROMS_DIR")
+fi
+# Keep named hardware checkpoints without replacing an image being tested.
+# Limit overrides to a filename in kernel/, never an arbitrary path.
+if [[ -n ${CUBIT_LIVE_OUTPUT:-} ]]; then
+    case "$CUBIT_LIVE_OUTPUT" in
+        *[!a-zA-Z0-9._-]*|.*|-*) echo 'Invalid CUBIT_LIVE_OUTPUT basename' >&2; exit 2 ;;
+        *.img) output=$CUBIT_LIVE_OUTPUT ;;
+        *) echo 'CUBIT_LIVE_OUTPUT must end in .img' >&2; exit 2 ;;
+    esac
+fi
+# This wrapper supplies local build inputs, not image membership or shell code
+# from CCL. The checked image profile owns every bootstrap/optical placement.
+make logstore boot-logs logs ccl-console laptop_live_rw.img
+# SIGN-001: the programs just rebuilt must be signed again, or the image
+# trust list refuses them (ccl-console.app: NOT_SIGNED).
+make sign-programs
+intel_blob=$(nix eval --raw --file ../tests/intel-gpu/firmware-source.nix blob)
+intel_license=$(nix eval --raw --file ../tests/intel-gpu/firmware-source.nix license)
+mesa_notices=$(cat ../userspace/mesa/build/notice-path)
+test -s "$mesa_notices/MESA-SOURCE.tar.gz"
+if [[ $profile == ../images/mesa-triangle-window.ccl || $profile == ../images/desktop-mesa-startup.ccl ]]; then
+    # This diagnostic slot can contain the teapot probe as well as triangles.
+    # Retain the geometry's upstream license alongside Mesa's source notices.
+    # Never mutate the original notice bundle (it may be in the Nix store).
+    combined_notices=$(mktemp -d)
+    cp -a "$mesa_notices/." "$combined_notices/"
+    cp ../tests/mesa-teapot/teapot-control-points.h "$combined_notices/FreeGLUT-teapot.h"
+    mesa_notices=$combined_notices
+fi
+python3 ../userspace/ccl/tools/ccl-image/realize.py "$profile" \
+    --input "intel-guc=$intel_blob" \
+    --input "intel-firmware-license=$intel_license" \
+    --input "doom-wad=${1:?DOOM WAD path required}" \
+    --input "sameboy-license=${SAMEBOY_SRC:?run in nix develop}/LICENSE" \
+    --input "openlibm-notices=${SAMEBOY_LIBM_NOTICES:?run in nix develop}" \
+    --input "mesa-notices=$mesa_notices" \
+    "${extra_inputs[@]}" \
+    --import "cubit-signing-ca=${CUBIT_SIGNING:?the signing directory (make -C kernel signing-key)}/builder-ca.der" \
+    "${rom_args[@]}" "${platform_args[@]}" --audit-usb --output "$output"

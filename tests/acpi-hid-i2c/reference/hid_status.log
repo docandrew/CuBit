@@ -1,0 +1,53 @@
+CuBit development shell
+  Build:  make -C kernel world
+  Test:   tests/headless/run.sh --test desktop-display
+  Run:    make -C kernel run-desktop
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     hid_status.asl -    1195 bytes     53 keywords      0 source lines
+AML Output:    hid_status.aml -     358 bytes     34 opcodes      19 named objects
+Hex Dump:      hid_status.hex -    3756 bytes
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 2 Optimizations
+Input file hid_status.aml, Length 0x166 (358) bytes
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555608160 000166 (v02 CUBIT  HIDSTA   00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: HIDSTA  ] (id 01) -   19 Objects with   4 Devices,   0 Regions,    6 Methods (0/6/0 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 28 (0x1C) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Evaluating \STA0._STA
+Evaluation of \STA0._STA returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000F
+
+Evaluating \NAM0._STA
+Evaluation of \NAM0._STA returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000D
+
+Evaluating \ORCL
+Evaluation of \ORCL returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 000000000000000F
+
+0x5555556095d0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)

@@ -1,0 +1,107 @@
+{
+  "status": "PASS",
+  "scope": "Hosted exact observer control flow with injected Query data/syscalls; does not prove kernel transport authentication",
+  "cases": [
+    {
+      "case": "good",
+      "expected": "PASS",
+      "exit": 0
+    },
+    {
+      "case": "good_zero_loss",
+      "expected": "PASS",
+      "exit": 0
+    },
+    {
+      "case": "denied",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "empty",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "wrong_source",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "bad_authority",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "bad_kind",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "bad_unit",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "bad_name",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "series_rejected",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "source_rejected",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "batch_gap",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "no_samples",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "no_growth",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "no_input",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "no_draw",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "no_submit",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "missing_byte_schema",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "unexpected_readback",
+      "expected": "REJECT",
+      "exit": 1
+    },
+    {
+      "case": "loss_decreased",
+      "expected": "REJECT",
+      "exit": 1
+    }
+  ],
+  "observer_sha256": "42d79642bf3ade2544e5475f709b2fcf7dab1ee9030339448587b1bb536ce444"
+}

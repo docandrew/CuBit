@@ -1,0 +1,1 @@
+Twelve normal cases: no-op integer ToInteger returns direct OSI, original rawArg/sharedStore-createdLocal, explicit target original/destination, plus rawPackage before/ToInteger(Index)/after without explicitDeref. RawArg/Local baselines already proven hvb and rawdirect fcq, not rerun. Target outcomes hypotheses; strict ordinary compiler noforce. All perprocessbounds unchanged.

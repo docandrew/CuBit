@@ -1,0 +1,14 @@
+# Address-space tags (PCIDs), headless --test tlb-tags: the checker. Registers
+# the IPC test service, launches tlb-probe life after life (one PID reused
+# again and again) and grants it pages it then revokes, launching through its
+# Launch badge (CAP-012). The probe asks only for the IPC test service.
+(Executable_Manifest
+  identity => "com.cubit.tlb-check"
+  version => "1.0.0"
+  requests => [
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")
+    (notification "ipc-test-registration" Notify_Access.Manage "registration")
+    (service "process-manager" "process-manager") (service "launch" "launch")]
+  optional => ["logstore"]
+  may_launch => [(Launch "tlb-probe.app")])

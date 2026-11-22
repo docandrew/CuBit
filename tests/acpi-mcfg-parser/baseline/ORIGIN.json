@@ -1,0 +1,16 @@
+{
+  "firmware_tables-mcfg.ads": {
+    "source": "/home/doc/git/.acpi-proof-work/ec-channel-health-v1117/tree/shared/firmware/firmware_tables-mcfg.ads",
+    "sha256": "56534b2d7d58fdc1e34fbb9a12a5cb525beff22be24282420ffd79e8262979b6",
+    "target": "tests/acpi-mcfg-parser/baseline/firmware_tables-mcfg_original.ads",
+    "renamed_sha256": "f55f69be502faf78a816ed2ccd747b80b6496cafa63bc1286340697e24bc60be",
+    "transformation": "Only child unit name Firmware_Tables.MCFG -> Firmware_Tables.MCFG_Original; wire signature unchanged"
+  },
+  "firmware_tables-mcfg.adb": {
+    "source": "/home/doc/git/.acpi-proof-work/ec-channel-health-v1117/tree/shared/firmware/firmware_tables-mcfg.adb",
+    "sha256": "b92746f6d4aa270dab0175e49206c47253bae434bfaaf122a56fc147b0e053d9",
+    "target": "tests/acpi-mcfg-parser/baseline/firmware_tables-mcfg_original.adb",
+    "renamed_sha256": "2c6627856ca55341274aafc31b127246f6311240bd9b81607a15832aa93e7db4",
+    "transformation": "Only child unit name Firmware_Tables.MCFG -> Firmware_Tables.MCFG_Original; wire signature unchanged"
+  }
+}

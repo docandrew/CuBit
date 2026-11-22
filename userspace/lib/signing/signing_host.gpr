@@ -1,0 +1,30 @@
+--  SPDX-License-Identifier: GPL-3.0-or-later
+--
+--  Signed admission and the program signer (SIGN-001, docs/signed-binaries.md)
+--  for Linux-hosted tools: ccl-sign, ccl-build's sign step and ccl-image's
+--  gate. The decision units are SPARK and proved (tests/signed-admission run.sh
+--  --prove), so they build without run-time checks, like the crates.
+--  CUBIT_SPARK_CRATES names the crates (nix develop exports the pinned set).
+with "../tls/sparktls_host.gpr";
+with "../../ccl/cubit_shared.gpr";
+project Signing_Host is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "host");
+   type Tool_Targets is ("linux", "cubit");
+   Tool_Target : Tool_Targets := external ("CCL_TOOL_TARGET", "linux");
+   Target := ();
+   case Tool_Target is
+      when "linux" => for Object_Dir use "build/host";
+      when "cubit" =>
+         for Object_Dir use "build/host-cubit";
+         Target := ("-mno-red-zone");   --  native code has no red zone
+   end case;
+   --  Host_Signing only reads and writes files: it keeps its checks.
+   --  -fno-tree-vrp, as sparktls_host.gpr and SPARKX509's own project use:
+   --  GCC's value-range propagation miscompiles code of this kind at -O2
+   --  with GNAT 15 (SPARKX509 e63397b: SHA-256 digests wrong at -O2/-O3).
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatp", "-fno-tree-vrp", "-gnatQ", "-gnatws") & Target;
+      for Switches ("host_signing.adb") use ("-O2", "-gnat2022", "-gnata", "-fno-tree-vrp", "-gnatwa", "-gnatwe") & Target;
+   end Compiler;
+end Signing_Host;

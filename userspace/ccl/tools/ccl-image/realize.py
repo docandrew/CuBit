@@ -1,0 +1,732 @@
+#!/usr/bin/env python3
+"""Linux image realization boundary; CCL produces data, never command strings.
+
+All inputs are snapshotted and checked before archive/ISO tools run. This is
+not a hermetic builder or source build-graph executor. It is the build-time
+half of signed admission (SIGN-001): every executable placed must verify,
+with ccl-sign's proved verifier, against the image's own trust list.
+"""
+import argparse
+from dataclasses import dataclass
+import hashlib
+import json
+import os
+import re
+from pathlib import Path
+import shutil
+import stat
+import struct
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "tools"))
+import image_debug  # noqa: E402  (tools/image_debug.py, docs/image-debug-info.md)
+import install_payload  # noqa: E402  (tools/install_payload.py, SYS-001)
+CCL = ROOT / "userspace/ccl/build/image/ccl-image"
+CONFIG = ROOT / "userspace/ccl/build/config/ccl-config"
+DEVICE_INDEX = ROOT / "userspace/ccl/build/image/ccl-device-index"
+# The verifier the gate runs (userspace/ccl/tools/ccl-sign, SIGN-001).
+SIGN_TOOL = ROOT / "userspace/ccl/build/sign/ccl-sign"
+# A trust list anchor: one DER certificate (CuBit.Signed_Admission's ceiling).
+MAX_ANCHOR = 4096
+PLAN_FORMAT = "CCL-IMAGE-2"
+ELF_MAGIC = b"\x7fELF"
+ELF_PROGRAM_TYPES = (2, 3)   # ET_EXEC, ET_DYN
+# The generated driver index devmgr binds devices by (docs/device-matching.md).
+DEVICE_INDEX_NAME = "devices.index"
+DRIVER_SUFFIX = ".drv"
+# One placed file. A named ceiling, not a fit: the device-build live RAM
+# root (live-rw.ext2 carrying the toolchain, a Storehouse and the source
+# subset, tests/device-builds/build.sh) is about 350 MiB; LIM-001.
+MAX_FILE = 512 * 1024 * 1024
+# The whole resolved image (every placed input together). A named ceiling,
+# not a fit: the laptop live image passed 512 MiB once it carried the agent
+# path (llm, secrets, tls, agent.app) beside Servo; LIM-001.
+MAX_TOTAL = 2 * 1024 * 1024 * 1024
+MAX_FILES = 512
+# A catalog or profile document: CCL.Declarations.MAX_SOURCE.
+MAX_SOURCE = 16 * 1024
+
+
+@dataclass(frozen=True)
+class File:
+    region: str
+    role: str
+    artifact: str
+    destination: str
+    data: bytes
+    private: bool = False
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def read_regular(path, limit=MAX_FILE):
+    # Reject devices/FIFOs before opening; these are artifact inputs, not I/O.
+    if not stat.S_ISREG(path.stat().st_mode):
+        raise ValueError(f"not a regular artifact: {path}")
+    with path.open("rb") as source:
+        data = source.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError(f"artifact exceeds {limit}-byte bound: {path}")
+    return data
+
+
+def safe_destination(path):
+    return (bool(path) and len(path) <= 192 and not path.startswith("/")
+            and all(part and not part.endswith(".") for part in path.split("/"))
+            and all(c.isascii() and (c.isalnum() or c in "._-/") for c in path))
+
+
+def conflict(left, right):
+    # Native optical name lookup must not encounter case aliases either.
+    a, b = left.casefold(), right.casefold()
+    return a == b or a.startswith(b + "/") or b.startswith(a + "/")
+
+
+def compile_plan(catalog, profile):
+    header, rows, _, sources = compile_plan_with_builders(catalog, profile)
+    return header, rows, sources
+
+
+def compile_plan_with_builders(catalog, profile):
+    """The plan's header, placement rows, trust list (BUILDER rows: kind,
+    import name, ceiling, identity prefixes) and source hashes."""
+    # Compile exact snapshots, so a later source edit cannot change the
+    # meaning of a realization recorded under an earlier source hash.
+    documents = [read_regular(p, MAX_SOURCE) for p in (catalog, profile)]
+    with tempfile.TemporaryDirectory(prefix="ccl-image-source.") as directory:
+        paths = [Path(directory) / name for name in ("catalog.ccl", "profile.ccl")]
+        for path, data in zip(paths, documents):
+            path.write_bytes(data)
+        result = subprocess.run([CCL, *paths], capture_output=True, text=True,
+                                timeout=30)
+    if result.returncode:
+        raise ValueError(result.stderr.strip())
+    lines = result.stdout.splitlines()
+    header = lines[0].split("\t") if lines else []
+    if len(header) != 4 or header[0] != PLAN_FORMAT:
+        raise ValueError("unsupported CCL plan encoding")
+    if header[1] not in ("BOOTSTRAP_ONLY", "OPTICAL_IMAGE"):
+        raise ValueError("unsupported layout")
+    fields = [line.split("\t") for line in lines[1:]]
+    builders = [row[1:] for row in fields if row and row[0] == "BUILDER"]
+    rows = [row for row in fields if not row or row[0] != "BUILDER"]
+    if not builders or any(len(builder) != 4 for builder in builders):
+        raise ValueError("invalid trust list")
+    # Sized by the profile: every driver is in every image (HW-002).
+    if not rows or any(len(row) != 6 for row in rows):
+        raise ValueError("invalid placement list")
+    return header, rows, builders, [digest(data) for data in documents]
+
+
+def is_program(data):
+    """An ELF executable or shared object: what a spawner or mapper loads."""
+    return (data[:4] == ELF_MAGIC and len(data) >= 18
+            and struct.unpack_from("<H", data, 16)[0] in ELF_PROGRAM_TYPES)
+
+
+def load_anchors(builders, imports):
+    """Each builder's CA certificate, from the --import naming it."""
+    anchors = []
+    for kind, name, ceiling, identities in builders:
+        if name not in imports:
+            raise ValueError(f"builder {name} ({kind.lower()}) needs --import {name}=PATH to its CA certificate")
+        anchors.append(imports[name])
+        read_regular(imports[name], MAX_ANCHOR)
+    unused = set(imports) - {name for _, name, _, _ in builders}
+    if unused:
+        raise ValueError("unused imports: " + ", ".join(sorted(unused)))
+    return anchors
+
+
+def refuse_unsigned(files, anchors, sign_tool):
+    """The ccl-image gate (SIGN-001): every program placed verifies against
+    the image's trust list, so a built image cannot hold unsigned code.
+    The kernel is the boot trusted base, outside this claim."""
+    with tempfile.TemporaryDirectory(prefix="ccl-image-gate.") as directory:
+        refused = []
+        for index, item in enumerate(files):
+            if item.role == "KERNEL" or not is_program(item.data):
+                continue
+            path = Path(directory) / str(index)
+            path.write_bytes(item.data)
+            command = [sign_tool, "verify"]
+            for anchor in anchors:
+                command += ["--anchor", anchor]
+            result = subprocess.run([*command, path], capture_output=True, text=True, timeout=120)
+            if result.returncode:
+                verdict = (result.stdout.strip() or result.stderr.strip()).splitlines()
+                refused.append(f"{item.region.lower()}/{item.destination} "
+                               f"({verdict[0] if verdict else 'not verified'})")
+            path.unlink()
+        if refused:
+            raise ValueError("executables that do not verify against the image's trust list "
+                             "(sign them: make -C kernel sign-programs): " + "; ".join(refused))
+
+
+def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROOT,
+            imports=None, sign_tool=SIGN_TOOL):
+    header, rows, builders, sources = compile_plan_with_builders(catalog, profile)
+    anchors = load_anchors(builders, imports or {})
+    if release and private_roms is not None:
+        raise ValueError("release images cannot include private cartridges")
+    files, used, total = [], set(), 0
+    root = root.resolve()
+
+    def add(region, role, artifact, destination, data, private=False):
+        nonlocal total
+        if region not in ("BOOTSTRAP", "OPTICAL") or not safe_destination(destination):
+            raise ValueError("invalid resolved placement")
+        if any(old.region == region and conflict(old.destination, destination) for old in files):
+            raise ValueError(f"overlapping destination: {region}/{destination}")
+        if len(files) == MAX_FILES or total + len(data) > MAX_TOTAL:
+            raise ValueError("resolved image input bound exceeded")
+        total += len(data)
+        files.append(File(region, role, artifact, destination, data, private))
+
+    # Reserve whole tree destinations, including presently empty directories.
+    for index, row in enumerate(rows):
+        region, role, artifact, kind, source, destination = row
+        if role not in ("CONTENT", "STARTUP", "SETTINGS", "KERNEL", "BOOT_MENU"):
+            raise ValueError("unknown placement role")
+        if not safe_destination(destination):
+            raise ValueError("invalid destination")
+        if any(other[0] == region and conflict(destination, other[5]) for other in rows[:index]):
+            raise ValueError("overlapping placement roots")
+        if kind in ("REPOSITORY_FILE", "REPOSITORY_TREE"):
+            path = (root / source).resolve(strict=True)
+            if not path.is_relative_to(root):
+                raise ValueError("repository artifact escapes repository")
+        elif kind in ("SUPPLIED_FILE", "SUPPLIED_TREE"):
+            if source not in inputs:
+                raise ValueError(f"missing explicit input: {source}")
+            used.add(source)
+            path = inputs[source].resolve(strict=True)
+        else:
+            raise ValueError("unknown artifact source kind")
+        if kind in ("SUPPLIED_TREE", "REPOSITORY_TREE"):
+            if region != "OPTICAL" or role != "CONTENT" or not path.is_dir():
+                raise ValueError("invalid tree input")
+            children = []
+            for child in path.rglob("*"):
+                if len(children) == MAX_FILES:
+                    raise ValueError("tree input bound exceeded")
+                children.append(child)
+            children.sort()
+            count = 0
+            for child in children:
+                if child.is_symlink():
+                    raise ValueError("symlinks are not supported in supplied trees")
+                if child.is_dir():
+                    continue
+                add(region, role, artifact,
+                    destination + "/" + child.relative_to(path).as_posix(),
+                    read_regular(child))
+                count += 1
+            if not count:
+                raise ValueError("empty tree input")
+        else:
+            add(region, role, artifact, destination, read_regular(path))
+    if set(inputs) != used:
+        raise ValueError("unused supplied inputs: " + ", ".join(sorted(set(inputs) - used)))
+    refuse_unsigned(files, anchors, sign_tool)
+
+    if private_roms is not None:
+        if header[1] != "OPTICAL_IMAGE" or not any(
+                f.region == "OPTICAL" and f.destination == "apps/sameboy/00.gb" for f in files):
+            raise ValueError("private cartridges require the optical SameBoy profile")
+        if not private_roms.is_dir():
+            raise ValueError("private cartridge directory does not exist")
+        cartridges = []
+        for candidate in private_roms.iterdir():
+            if candidate.suffix.lower() in (".gb", ".gbc"):
+                if len(cartridges) == 15:
+                    raise ValueError("at most 15 private cartridges are supported")
+                cartridges.append(candidate)
+        cartridges.sort(key=lambda p: p.name)
+        for index, cartridge in enumerate(cartridges, 1):
+            data = read_regular(cartridge, 8 * 1024 * 1024)
+            if len(data) < 0x150:
+                raise ValueError("private cartridge is too small")
+            add("OPTICAL", "CONTENT", f"private-cartridge-{index:02d}",
+                f"apps/sameboy/{index:02d}.gb", data, True)
+
+    # Every driver in the image, indexed by the devices it declares; the
+    # tool refuses an image whose drivers match one device equally well.
+    if any(f.region == "BOOTSTRAP" and f.destination == DEVICE_INDEX_NAME for f in files):
+        raise ValueError(f"{DEVICE_INDEX_NAME} is generated, not placed")
+    with tempfile.TemporaryDirectory(prefix="ccl-image-drivers.") as directory:
+        bindings = []
+        for index, item in enumerate(files):
+            if item.destination.endswith(DRIVER_SUFFIX):
+                path = Path(directory) / f"{index}.drv"
+                path.write_bytes(item.data)
+                bindings.append(f"{item.destination.rsplit('/', 1)[-1]}={path}")
+        output = Path(directory) / DEVICE_INDEX_NAME
+        result = subprocess.run([DEVICE_INDEX, "--output", output, *bindings],
+                                text=True, capture_output=True, timeout=60)
+        if result.returncode:
+            raise ValueError(result.stderr.strip())
+        add("BOOTSTRAP", "CONTENT", "device-index", DEVICE_INDEX_NAME, output.read_bytes())
+
+    # Validate native CCL inputs with the same frontend used during boot.
+    with tempfile.TemporaryDirectory(prefix="ccl-image-config.") as directory:
+        for index, item in enumerate(files):
+            if item.role not in ("STARTUP", "SETTINGS"):
+                continue
+            path = Path(directory) / f"{index}.ccl"
+            path.write_bytes(item.data)
+            mode = "--dump-startup" if item.role == "STARTUP" else "--dump-system"
+            result = subprocess.run([CONFIG, path, mode], text=True, capture_output=True, timeout=30)
+            if result.returncode:
+                raise ValueError(f"invalid {item.role.lower()} input: {result.stderr.strip()}")
+            if item.role == "STARTUP":
+                for line in result.stdout.splitlines():
+                    # One entry per unindented line; a multi-line typed
+                    # argument continues on indented lines.
+                    if not line.strip() or line[0].isspace():
+                        continue
+                    executable = line.split()[0]
+                    if not any((f.region == "BOOTSTRAP" and f.destination == executable)
+                               or (f.region == "OPTICAL" and f.destination == "apps/" + executable)
+                               for f in files):
+                        raise ValueError(f"startup executable absent from image: {executable}")
+
+    report = {
+        "format": "ccl-image-realization-1", "layout": header[1],
+        "catalog": header[2], "provider": header[3],
+        "catalog_sha256": sources[0], "profile_sha256": sources[1],
+        "builders": [{"kind": kind, "import": name, "ceiling": ceiling,
+                      "identities": identities.split(","),
+                      "sha256": digest(read_regular(anchor, MAX_ANCHOR))}
+                     for (kind, name, ceiling, identities), anchor in zip(builders, anchors)],
+        "private_inputs": any(f.private for f in files),
+        "files": [{"region": f.region, "role": f.role, "artifact": f.artifact,
+                   "destination": f.destination, "size": len(f.data),
+                   "sha256": digest(f.data), "private": f.private}
+                  for f in sorted(files, key=lambda f: (f.region, f.destination))],
+    }
+    return files, report
+
+
+def stage(files, directory):
+    bootstrap, optical = directory / "bootstrap", directory / "iso"
+    bootstrap.mkdir()
+    optical.mkdir()
+    for item in files:
+        base = bootstrap if item.region == "BOOTSTRAP" else optical
+        path = base / item.destination
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(item.data)
+        path.chmod(0o644)
+        os.utime(path, (0, 0))
+    for path in sorted(bootstrap.rglob("*"), reverse=True):
+        if path.is_dir():
+            os.utime(path, (0, 0))
+    return bootstrap, optical
+
+
+def check_cpio(path, expected):
+    """Independently check archive bytes, not just the staging directory."""
+    blob = path.read_bytes()
+    offset, actual = 0, {}
+    while True:
+        if blob[offset:offset + 6] != b"070701":
+            raise ValueError("invalid generated CPIO")
+        size = int(blob[offset + 54:offset + 62], 16)
+        length = int(blob[offset + 94:offset + 102], 16)
+        mode = int(blob[offset + 14:offset + 22], 16)
+        name = blob[offset + 110:offset + 110 + length - 1].decode("ascii")
+        if name == "TRAILER!!!":
+            break
+        start = (offset + 110 + length + 3) & ~3
+        if not safe_destination(name) or start + size > len(blob):
+            raise ValueError("invalid CPIO member")
+        if stat.S_ISREG(mode):
+            if name in actual:
+                raise ValueError("duplicate CPIO file")
+            actual[name] = blob[start:start + size]
+        elif not stat.S_ISDIR(mode):
+            raise ValueError("unsupported CPIO member type")
+        offset = (start + size + 3) & ~3
+    if actual != {f.destination: f.data for f in expected if f.region == "BOOTSTRAP"}:
+        raise ValueError("generated CPIO disagrees with checked plan")
+
+
+def publish(source, output):
+    # Never truncate an existing working image before validation completes.
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix=output.name + ".", dir=output.parent,
+                                     delete=False) as temporary:
+        pending = Path(temporary.name)
+        try:
+            with source.open("rb") as data:
+                shutil.copyfileobj(data, temporary)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        except BaseException:
+            pending.unlink()
+            raise
+    try:
+        os.replace(pending, output)
+    finally:
+        pending.unlink(missing_ok=True)
+
+
+def generated_loader(name, efi=False):
+    if name.startswith("boot/grub/") or name == "boot.catalog":
+        return True
+    if not efi:
+        return False
+    # Only the specific x86-64 EFI/Apple compatibility files GRUB generates.
+    # Do not exempt whole EFI/System trees: undeclared apps must still fail.
+    return name in {
+        "efi.img", "efi/boot/bootx64.efi", "mach_kernel",
+        "System/Library/CoreServices/boot.efi",
+        "System/Library/CoreServices/.disk_label",
+        "System/Library/CoreServices/.disk_label.contentDetails",
+        "System/Library/CoreServices/SystemVersion.plist",
+    } or re.fullmatch(r"\.disk/[0-9]{4}(?:-[0-9]{2}){6}\.uuid", name) is not None
+
+
+def check_iso(path, expected, efi=False):
+    """Check declared bytes in the primary ISO9660 tree CuBit actually reads."""
+    blob = path.read_bytes()
+    visited, actual = set(), {}
+
+    def dual32(offset):
+        if offset + 8 > len(blob):
+            raise ValueError("truncated ISO field")
+        little = struct.unpack_from("<I", blob, offset)[0]
+        if little != struct.unpack_from(">I", blob, offset + 4)[0]:
+            raise ValueError("inconsistent ISO byte orders")
+        return little
+
+    def record(offset, end):
+        size = blob[offset]
+        if size < 34 or offset + size > end or offset % 2048 + size > 2048:
+            raise ValueError("invalid ISO directory record")
+        length = blob[offset + 32]
+        if 33 + length > size:
+            raise ValueError("truncated ISO name")
+        name = blob[offset + 33:offset + 33 + length].decode("ascii").removesuffix(";1")
+        # Match CuBit's ISO_Records.Matches: no-extension ISO identifiers
+        # may carry a terminal dot (e.g. cubit_kernel.;1).
+        name = name.removesuffix(".")
+        sector, size_bytes = dual32(offset + 2), dual32(offset + 10)
+        if sector * 2048 + size_bytes > len(blob) or blob[offset + 25] & 0x80:
+            raise ValueError("invalid or multi-extent ISO file")
+        return name, sector, size_bytes, bool(blob[offset + 25] & 2), size
+
+    def directory(sector, size, prefix="", depth=0):
+        if sector in visited or depth > 16 or len(visited) > 1024:
+            raise ValueError("cyclic or oversized ISO directory tree")
+        visited.add(sector)
+        offset, end = sector * 2048, sector * 2048 + size
+        seen = set()
+        while offset < end:
+            if blob[offset] == 0:
+                offset = (offset // 2048 + 1) * 2048
+                continue
+            name, child, length, is_directory, consumed = record(offset, end)
+            offset += consumed
+            if name in ("\x00", "\x01"):
+                continue
+            # GRUB's generated locale filenames include '@'; they need not
+            # use the smaller alphabet accepted for CCL-declared paths.
+            valid_name = (bool(name) and name not in (".", "..") and "/" not in name
+                          and all(" " < c <= "~" and c != "\\" for c in name))
+            if not valid_name or name.casefold() in seen:
+                raise ValueError(f"ambiguous ISO name: {prefix + name!r}")
+            seen.add(name.casefold())
+            full = prefix + name
+            if is_directory:
+                directory(child, length, full + "/", depth + 1)
+            else:
+                actual[full] = blob[child * 2048:child * 2048 + length]
+
+    primary = next((i * 2048 for i in range(16, min(48, len(blob) // 2048))
+                    if blob[i * 2048:i * 2048 + 7] == b"\x01CD001\x01"), None)
+    if primary is None:
+        raise ValueError("ISO primary volume descriptor absent")
+    _, sector, size, is_directory, _ = record(primary + 156, primary + 2048)
+    if not is_directory:
+        raise ValueError("ISO root is not a directory")
+    directory(sector, size)
+    for destination, data in expected.items():
+        if actual.get(destination) != data:
+            observed = actual.get(destination)
+            raise ValueError(f"ISO bytes disagree with plan: {destination} "
+                             f"(expected {len(data)}, found "
+                             f"{len(observed) if observed is not None else 'missing'})")
+    # GRUB may generate loader files and its El Torito catalog, not app payload.
+    extras = {name for name in actual if name not in expected
+              and not generated_loader(name, efi)}
+    if extras:
+        raise ValueError("undeclared ISO payload: " + ", ".join(sorted(extras)))
+
+
+def split_debug(files, report, splitter):
+    """Stage executables without debug information (tools/image_debug.py);
+    the plan then records the bytes actually staged and their build-ids."""
+    staged = []
+    for item in files:
+        data = splitter.split(item.destination, item.data)
+        staged.append(item if data is item.data else File(
+            item.region, item.role, item.artifact, item.destination, data, item.private))
+    identities = {r["destination"]: r for r in splitter.records}
+    for entry, item in zip(report["files"], sorted(staged, key=lambda f: (f.region, f.destination))):
+        entry["size"], entry["sha256"] = len(item.data), digest(item.data)
+        record = identities.get(item.destination)
+        if record is not None and record["build_id"]:
+            entry["build_id"] = record["build_id"]
+            entry["unstripped_sha256"] = record["input_sha256"]
+    report["debug"] = splitter.summary()
+    return staged
+
+
+# The install payload's place on the live medium: @cd:0/install (the
+# optical filesystem is rooted at apps/).
+INSTALL_PAYLOAD = "apps/install/"
+APPLICATIONS = "apps/"
+# procmgr reads the startup plan by this name, the installed root's here.
+INSTALLED_STARTUP = "init.ccl"
+# The live RAM root: the bootstrap file ramdisk.drv serves as @mem:0.
+LIVE_ROOT_FILE = "live-rw.ext2"
+LIVE_ROOT_VOLUME = "@mem:0"
+EXECUTE_BITS = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+
+
+def live_root_files(files):
+    """The regular files of the plan's live RAM root (an ext2 image), by
+    path below its root, each with whether it runs (any execute bit), and
+    its directories (the installer makes empty ones too), read
+    from the image itself with debugfs. Only directories and regular files:
+    the installer lays out nothing else."""
+    images = [f.data for f in files if f.region == "BOOTSTRAP" and f.destination == LIVE_ROOT_FILE]
+    directories = []
+    if len(images) != 1:
+        raise ValueError(f"--install-live-root needs exactly one bootstrap {LIVE_ROOT_FILE}")
+    names = []
+    with tempfile.TemporaryDirectory(prefix="ccl-image-live-root.") as directory:
+        image = Path(directory) / LIVE_ROOT_FILE
+        image.write_bytes(images[0])
+        pending = [""]
+        while pending:
+            parent = pending.pop()
+            listing = subprocess.run(["debugfs", "-R", f"ls -p /{parent}", str(image)],
+                                     capture_output=True, text=True, timeout=60, check=True)
+            for line in listing.stdout.splitlines():
+                # /inode/mode/uid/gid/name/size/
+                fields = line.split("/")
+                if len(fields) < 7 or fields[5] in ("", ".", "..", "lost+found"):
+                    continue
+                mode, name = int(fields[2], 8), fields[5]
+                path = f"{parent}/{name}" if parent else name
+                if stat.S_ISDIR(mode):
+                    pending.append(path)
+                    directories.append(path)
+                elif stat.S_ISREG(mode):
+                    names.append((path, bool(mode & EXECUTE_BITS)))
+                else:
+                    raise ValueError(f"live root holds a file the installer cannot lay out: {path}")
+    return sorted(names), sorted(directories)
+
+
+def add_install_payload(files, efi, initrd, startup, live_root=False):
+    """The payload installer.svc installs from (tools/install_payload.py),
+    derived from the checked plan: the root closure is every optical file
+    (minus the live medium's own boot files and private cartridges) at its
+    path below the optical root, named in INDEX where it already is (not
+    stored twice); the ESP the loader, this plan's kernel and the installed
+    system's bootstrap archive; and the installed system's startup plan,
+    init.ccl on the installed root. With live_root, the installed root
+    also gets every file of the live RAM root (the device-build tree:
+    toolchain, Storehouse, workspace), named in INDEX by its @mem:0 name:
+    installer.svc reads it from the running live system."""
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / INSTALLED_STARTUP
+        path.write_bytes(startup)
+        result = subprocess.run([CONFIG, path, "--dump-startup"], text=True, capture_output=True, timeout=30)
+        if result.returncode:
+            raise ValueError(f"invalid installed startup plan: {result.stderr.strip()}")
+    kernels = [f.data for f in files if f.role == "KERNEL"]
+    if len(kernels) != 1:
+        raise ValueError("the install payload needs exactly one kernel in the plan")
+    on_medium = {}
+    digests = {}
+    for item in files:
+        if item.region != "OPTICAL" or item.private or item.role != "CONTENT":
+            continue
+        if not item.destination.startswith(APPLICATIONS):
+            continue   # outside the optical filesystem's root: not readable there
+        name = item.destination[len(APPLICATIONS):]
+        on_medium[name] = name
+        # Programs are components: the installer also stores them by
+        # content in the installed storehouse, checked against this digest.
+        if install_payload.is_component(item.data):
+            digests[name] = hashlib.sha256(item.data).hexdigest()
+    executable, directories = set(), frozenset()
+    if live_root:
+        names, directories = live_root_files(files)
+        directories = frozenset(directories)
+        for name, runs in names:
+            if name in on_medium or name == INSTALLED_STARTUP:
+                raise ValueError(f"live root file shadows the image closure: {name}")
+            on_medium[name] = f"{LIVE_ROOT_VOLUME}/{name}"
+            if runs:
+                executable.add(name)
+    added = []
+    for name, data in install_payload.entries(efi, kernels[0], initrd, {INSTALLED_STARTUP: startup}, on_medium,
+                                              frozenset(executable), directories, digests).items():
+        added.append(File("OPTICAL", "CONTENT", "install-payload", INSTALL_PAYLOAD + name, data))
+    return files + added
+
+
+def realize(files, report, output, audit_usb=False, grub_directory=None, debug_dir=None,
+            install_efi=None, install_initrd=None, install_startup=None, install_live_root=False,
+            keep_staging=False):
+    optical_layout = report["layout"] == "OPTICAL_IMAGE"
+    # Layout comes from the checked CCL plan, not the burner's preferred
+    # filename. Optical images may use .img without changing their contents.
+    extensions = (".iso", ".img") if optical_layout else (".img",)
+    if output.suffix not in extensions:
+        raise ValueError("output extension must match the declared layout")
+    splitter = image_debug.Splitter(debug_dir or output.parent / "debug", output.name)
+    files = split_debug(files, report, splitter)
+    if install_efi is not None:
+        if report["layout"] != "OPTICAL_IMAGE" or install_initrd is None or install_startup is None:
+            raise ValueError("an install payload needs an optical image, --install-initrd and --install-startup")
+        files = add_install_payload(files, read_regular(install_efi), read_regular(install_initrd),
+                                    read_regular(install_startup), install_live_root)
+        report["install_payload"] = True
+        report["install_live_root"] = install_live_root
+    elif install_live_root:
+        raise ValueError("--install-live-root needs --install-efi")
+    # Staging is a full copy of the image (2+ GB): remove it once the image
+    # is checked and published (plan.json beside the output keeps the input
+    # hashes). A failed build keeps it for inspection; so does --keep-staging.
+    directory = Path(tempfile.mkdtemp(prefix="cubit-ccl-image."))
+    try:
+        realize_staged(directory, files, report, output, optical_layout, audit_usb,
+                       grub_directory, splitter)
+    except BaseException:
+        print(f"ccl-image: build failed; staging kept at {directory}", file=sys.stderr)
+        raise
+    if keep_staging:
+        print(f"Staging kept: {directory}")
+    else:
+        shutil.rmtree(directory)
+
+
+def realize_staged(directory, files, report, output, optical_layout, audit_usb, grub_directory,
+                   splitter):
+    bootstrap, optical = stage(files, directory)
+    archive = directory / "initrd.img"
+    names = sorted(p.relative_to(bootstrap).as_posix() for p in bootstrap.rglob("*"))
+    with archive.open("wb") as destination:
+        subprocess.run(["cpio", "--null", "--reproducible", "--owner=0:0", "-o", "-H", "newc"],
+                       input=("\0".join(names) + "\0").encode("ascii"), cwd=bootstrap,
+                       stdout=destination, check=True)
+    check_cpio(archive, files)
+    result = archive
+    if optical_layout:
+        target = optical / "boot/initrd.img"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(archive, target)
+        result = directory / "image.iso"
+        platform_args = [] if grub_directory is None else ["--directory", str(grub_directory)]
+        subprocess.run(["grub-mkrescue", *platform_args, "-o", result, optical,
+                        "-iso-level", "3", "-full-iso9660-filenames", "-allow-lowercase",
+                        "-allow-multidot", "-relaxed-filenames"], check=True)
+        expected = {f.destination: f.data for f in files if f.region == "OPTICAL"}
+        expected["boot/initrd.img"] = archive.read_bytes()
+        check_iso(result, expected, efi=grub_directory is not None)
+        if audit_usb:
+            records = directory / "debug-split.json"
+            # Programs signed before staging were stripped by sign_programs.py
+            # (SIGN-001); its records say what each payload was built as.
+            signed = Path(splitter.debug_dir) / "images" / "sign-programs.build-ids.json"
+            signer = json.loads(signed.read_text()).get("binaries", []) if signed.is_file() else []
+            records.write_text(json.dumps(splitter.records + signer))
+            subprocess.run(["python3", ROOT / "tests/usb-optical/check-image.py", result, records],
+                           check=True)
+    report["output_sha256"] = digest(result.read_bytes())
+    if grub_directory is not None:
+        report["grub_module_directory"] = str(grub_directory)
+    report_path = directory / "plan.json"
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    publish(result, output)
+    publish(report_path, output.with_name(output.name + ".plan.json"))
+    manifest = splitter.write_manifest(report["output_sha256"])
+    summary = report["debug"]
+    print(f"CCL image: {output}\nChecked plan and staging\n"
+          f"Debug files: {splitter.debug_dir} ({summary['binaries']} executables, "
+          f"{summary['input_bytes']} -> {summary['staged_bytes']} bytes staged); "
+          f"build-ids: {manifest}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("profile", type=Path)
+    parser.add_argument("--catalog", type=Path, default=ROOT / "images/artifacts.ccl")
+    parser.add_argument("--input", action="append", default=[], metavar="NAME=PATH")
+    parser.add_argument("--import", dest="imports", action="append", default=[], metavar="NAME=PATH",
+                        help="a builder's CA certificate, by the import name the profile gives it (SIGN-001)")
+    parser.add_argument("--sign-tool", type=Path, default=SIGN_TOOL,
+                        help="the ccl-sign that verifies every placed executable")
+    parser.add_argument("--private-rom-dir", type=Path)
+    parser.add_argument("--release", action="store_true")
+    parser.add_argument("--check-only", action="store_true")
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--audit-usb", action="store_true")
+    parser.add_argument("--debug-dir", type=Path,
+                        help="host directory for separated debug files (default: debug/ next to the output)")
+    parser.add_argument("--grub-directory", type=Path,
+                        help="trusted build input: explicit GRUB platform module directory")
+    parser.add_argument("--install-efi", type=Path,
+                        help="add an install payload (SYS-001) with this UEFI fallback loader")
+    parser.add_argument("--install-initrd", type=Path,
+                        help="the installed system's bootstrap archive for the install payload")
+    parser.add_argument("--install-startup", type=Path,
+                        help="the installed system's startup plan (init.ccl on its root)")
+    parser.add_argument("--keep-staging", action="store_true",
+                        help="keep the staging directory after a successful build (for inspection)")
+    parser.add_argument("--install-live-root", action="store_true",
+                        help="the installed root also gets the live RAM root's files (live-rw.ext2, "
+                             "read from @mem:0 at install time)")
+    args = parser.parse_args()
+    inputs = {}
+    try:
+        for binding in args.input:
+            name, path = binding.split("=", 1)
+            if not name or not path or name in inputs:
+                raise ValueError("invalid or duplicate input binding")
+            inputs[name] = Path(path)
+        imports = {}
+        for binding in args.imports:
+            name, path = binding.split("=", 1)
+            if not name or not path or name in imports:
+                raise ValueError("invalid or duplicate import binding")
+            imports[name] = Path(path)
+        if not args.check_only and args.output is None:
+            raise ValueError("--output is required for realization")
+        files, report = prepare(args.catalog, args.profile, inputs,
+                                args.private_rom_dir, args.release,
+                                imports=imports, sign_tool=args.sign_tool)
+        if args.check_only:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        else:
+            realize(files, report, args.output, args.audit_usb, args.grub_directory, args.debug_dir,
+                    args.install_efi, args.install_initrd, args.install_startup,
+                    args.install_live_root, args.keep_staging)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        parser.exit(1, f"ccl-image: {error}\n")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,4 @@
+{
+  "tests/aml-table-region-import/hosted_capture.py": "tests/acpi-resource-data/hosted_capture.py",
+  "tests/aml-table-region-import/source_guards.py": "tests/acpi-resource-data/source_guards.py"
+}

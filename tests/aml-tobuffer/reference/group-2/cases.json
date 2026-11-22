@@ -1,0 +1,100 @@
+[
+  {
+    "name": "integer_target",
+    "declarations": "Name (DEST, 9)",
+    "body": "ToBuffer (\"AB\", DEST) Return (DEST)",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "integer_type",
+    "declarations": "Name (DEST, 9)",
+    "body": "ToBuffer (\"AB\", DEST) Return (ObjectType (DEST))",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "integer_expression",
+    "declarations": "Name (DEST, 9)",
+    "body": "Return (ToBuffer (\"AB\", DEST))",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "string_target",
+    "declarations": "Name (DEST, \"XYZ\")",
+    "body": "ToBuffer (\"AB\", DEST) Return (DEST)",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "string_type",
+    "declarations": "Name (DEST, \"XYZ\")",
+    "body": "ToBuffer (\"AB\", DEST) Return (ObjectType (DEST))",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "string_expression",
+    "declarations": "Name (DEST, \"XYZ\")",
+    "body": "Return (ToBuffer (\"AB\", DEST))",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "buffer_target",
+    "declarations": "Name (DEST, Buffer (1) {9})",
+    "body": "ToBuffer (\"AB\", DEST) Return (DEST)",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "buffer_type",
+    "declarations": "Name (DEST, Buffer (1) {9})",
+    "body": "ToBuffer (\"AB\", DEST) Return (ObjectType (DEST))",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "buffer_expression",
+    "declarations": "Name (DEST, Buffer (1) {9})",
+    "body": "Return (ToBuffer (\"AB\", DEST))",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "local_integer",
+    "declarations": "",
+    "body": "Store (9, Local0) ToBuffer (\"AB\", Local0) Return (Local0)",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "local_string",
+    "declarations": "",
+    "body": "Store (\"XYZ\", Local0) ToBuffer (\"AB\", Local0) Return (Local0)",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "arg_integer",
+    "declarations": "Method (HELP,1) { ToBuffer (\"AB\", Arg0) Return (Arg0) }",
+    "body": "Return (HELP (9))",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "arg_reference",
+    "declarations": "Name (DEST,9) Method (HELP,1) { ToBuffer (\"AB\", Arg0) Return (Zero) }",
+    "body": "HELP (RefOf (DEST)) Return (DEST)",
+    "source_expectation": null,
+    "observed": false
+  },
+  {
+    "name": "effects_integer",
+    "declarations": "Name (DEST,9) Name (MARK,Zero) Method (SRC0,0) { Increment (MARK) Return (\"AB\") }",
+    "body": "ToBuffer (SRC0 (), DEST) Return (MARK)",
+    "source_expectation": null,
+    "observed": false
+  }
+]

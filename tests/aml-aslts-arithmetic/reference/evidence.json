@@ -1,0 +1,86 @@
+{
+  "run": "/home/doc/git/.acpi-proof-work/aslts-arithmetic32-hosted-TpqfNu/root/tests/aml-aslts-arithmetic/results-release-arithmetic-n32",
+  "audit_sha256": "27363b87e91cad526d380348befda99e7c0f65384faf44da278193c9254c6e77",
+  "oracle": "/home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw",
+  "oracle_observations_sha256": "5c28dae5c5ba7e584cb9840ceb0ce902a5f99194d84684488a15c5261bc64aab",
+  "original_AML_sha256": "6c3a97b3811f9227ea08b147471b4fcad2cf5b501ad9528ffbaa120f2d2a73e0",
+  "source_archive_sha256": "91addf34cf6f00c310dcff1d456c2e04629c2b45efe409385068e9fc5e9fe43b",
+  "tools": {
+    "iasl": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "sha256": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb"
+    },
+    "acpiexec": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "sha256": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
+    },
+    "stdbuf": {
+      "path": "/nix/store/97d5ygrvqj55f4nx1x34wfdcc7qn11c0-coreutils-9.11/bin/stdbuf",
+      "sha256": "f5afcbdd8db007620ba82a36a21c07bf66a6b737c062101b6aa16f81f587c8a6"
+    },
+    "libstdbuf": {
+      "path": "/nix/store/97d5ygrvqj55f4nx1x34wfdcc7qn11c0-coreutils-9.11/libexec/coreutils/libstdbuf.so",
+      "sha256": "6e2d8d224c0a11165e4d56d1ebea837cc833c98e5469fecdb4125d3a35ba9d66"
+    }
+  },
+  "scope": {
+    "status": "original-ASLTS-arithmetic-n32-release-passed",
+    "directory": "/home/doc/git/.acpi-proof-work/aslts-arithmetic32-hosted-TpqfNu",
+    "run": "/home/doc/git/.acpi-proof-work/aslts-arithmetic32-hosted-TpqfNu/root/tests/aml-aslts-arithmetic/results-release-arithmetic-n32",
+    "oracle": "/home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw",
+    "original_AML_bytes": 26070,
+    "original_AML_sha256": "6c3a97b3811f9227ea08b147471b4fcad2cf5b501ad9528ffbaa120f2d2a73e0",
+    "original_expected_results": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "groups_per_invocation": 17,
+    "invocations_same_arena": 2,
+    "completion_records": [
+      17,
+      34
+    ],
+    "method_charges": [
+      18509,
+      18764
+    ],
+    "retained_cleanup_tested": true,
+    "profile": "release",
+    "checked_run": false,
+    "new_proof": false,
+    "native_executed": false,
+    "hardware_validated": false,
+    "source_unchanged": true,
+    "compiler_rejected_collections": [
+      {
+        "directory": "/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H",
+        "entry": "/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/name/MAIN.asl",
+        "status": "compiler-rejected-no-AML",
+        "error_codes": [
+          6141,
+          6163
+        ],
+        "summary": "Compilation failed. 155 Errors, 14 Warnings, 467 Remarks",
+        "log_sha256": "52640cae09700e8e8163bb1b55785a097c792c9f6ecf263c975c947c89473309",
+        "cubit_executed": false,
+        "compiler_crash": false
+      },
+      {
+        "directory": "/home/doc/git/.acpi-proof-work/aslts-descriptor-original-FJYs8f",
+        "entry": "/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/descriptor/MAIN.asl",
+        "status": "compiler-rejected-no-AML",
+        "error_codes": [
+          6141
+        ],
+        "summary": "Compilation failed. 5 Errors, 64 Warnings, 45 Remarks",
+        "log_sha256": "b3c124d2b251b72c8edf0eab68c4b544c4cf1123fb9cd4e24c7a3997100c152d",
+        "cubit_executed": false,
+        "compiler_crash": false
+      }
+    ],
+    "landed": false,
+    "remaining": "Other ASLTS collections/modes, checked runtime completion, complete AML/service SPARK proof and native/hardware integration"
+  }
+}

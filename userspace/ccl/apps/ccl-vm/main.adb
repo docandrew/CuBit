@@ -1,0 +1,490 @@
+with CCL.Evaluation;
+with Interfaces; use Interfaces;
+
+with CCL.Catalog;
+with CuBit.Handles;
+with Startup;
+with CCL.Compiler;
+with CCL.Interfaces.Clock;
+with CCL.Language;
+with CCL.Scheduler;
+with CCL.Format;
+with CuBit.Protocols;
+with CCL.Ownership;
+with CCL.VM; use CCL.VM;
+with CuBit.Messages; use CuBit.Messages;
+
+procedure Main is
+   use ASCII;
+   use type CCL.Catalog.Catalog_Error;
+   use type CCL.Catalog.Grant_Result;
+   use type CCL.Catalog.Link_Result;
+   use type CCL.Compiler.Compilation_Status;
+   use type CCL.Language.Analysis_Status;
+   use type CCL.Language.Interpretation_Status;
+   use type CCL.Scheduler.Event_Kind;
+   use type CCL.Format.Format_Error;
+
+   Candidate : Program;
+   Checked   : Validated_Program;
+   Error     : Validation_Error;
+   VM_Result : Execution_Result;
+   Source_Result : CCL.Language.Interpretation_Result;
+   All_Passed : Boolean := True;
+begin
+   debugPrint ("ccl-vm: starting" & LF);
+
+   Candidate.Length := 4;
+   Candidate.Code (0) :=
+     (Op => Push_Integer, Immediate => 20, others => <>);
+   Candidate.Code (1) :=
+     (Op => Push_Integer, Immediate => 22, others => <>);
+   Candidate.Code (2) :=
+     (Op => Add_Integer, others => <>);
+   Candidate.Code (3) :=
+     (Op => Halt, others => <>);
+
+   Verify (Candidate, Checked, Error);
+   if Error /= Valid then
+      debugPrint ("ccl-vm: bytecode verification failed" & LF);
+      return;
+   end if;
+
+   Execute (Checked, 16, VM_Result);
+   if VM_Result.Status = Completed and then
+     VM_Result.Has_Value and then
+     VM_Result.Result_Value.Kind = Integer_Value and then
+     VM_Result.Result_Value.Integer = 42
+   then
+      debugPrint ("ccl-vm: bytecode PASS" & LF);
+   else
+      debugPrint ("ccl-vm: bytecode FAIL" & LF);
+      All_Passed := False;
+   end if;
+
+   declare
+      Data : CCL.Format.Byte_Array;
+      Length : CCL.Format.Module_Length;
+      Limits : constant CCL.Format.Resource_Limits :=
+        (Fuel => 16, Memory => 4_096, In_Flight => 1);
+      Decoded_Limits : CCL.Format.Resource_Limits;
+      Format_Error : CCL.Format.Format_Error;
+      Decoded : Validated_Program;
+   begin
+      CCL.Format.Encode
+        (Candidate, Limits, Data, Length, Format_Error, Error);
+      if Format_Error = CCL.Format.Format_Valid then
+         CCL.Format.Decode
+           (Data, Length, Decoded, Decoded_Limits, Format_Error, Error);
+      end if;
+      if Format_Error = CCL.Format.Format_Valid then
+         Execute (Decoded, Decoded_Limits.Fuel, VM_Result);
+      end if;
+      if Format_Error = CCL.Format.Format_Valid and then
+        VM_Result.Status = Completed and then VM_Result.Has_Value and then
+        VM_Result.Result_Value.Integer = 42
+      then
+         debugPrint ("ccl-vm: module PASS" & LF);
+      else
+         debugPrint ("ccl-vm: module FAIL" & LF);
+         All_Passed := False;
+      end if;
+   end;
+
+   CCL.Evaluation.Evaluate
+     ("(let ((answer (+ 20 22))) (= answer 42))", 64, Source_Result);
+   if Source_Result.Status = CCL.Language.Succeeded and then
+     Source_Result.Has_Value and then
+     Source_Result.Result_Value.Kind = Boolean_Value and then
+     Source_Result.Result_Value.Boolean
+   then
+      debugPrint ("ccl-vm: source PASS" & LF);
+   else
+      debugPrint ("ccl-vm: source FAIL" & LF);
+      All_Passed := False;
+   end if;
+
+   CCL.Evaluation.Evaluate
+     ("(type Color (enum Red Blue Green)) " &
+      "(define (caption (color Color)) String (to-string color)) " &
+      "(caption (if (= Color.Red Color.Blue) Color.Red Color.Green))",
+      64, Source_Result);
+   if Source_Result.Status = CCL.Language.Succeeded and then
+     Source_Result.Has_Text and then
+     Source_Result.Result_Text.Data (1 .. Source_Result.Result_Text.Length) = "Green"
+   then
+      debugPrint ("ccl-vm: enum source PASS" & LF);
+   else
+      debugPrint ("ccl-vm: enum source FAIL" & LF);
+      All_Passed := False;
+   end if;
+   CCL.Evaluation.Evaluate
+     ("(type Color (enum Red)) (type Other (enum Red)) (= Color.Red Other.Red)",
+      64, Source_Result);
+   if Source_Result.Status = CCL.Language.Type_Check_Failed then
+      debugPrint ("ccl-vm: enum isolation PASS" & LF);
+   else
+      debugPrint ("ccl-vm: enum isolation FAIL" & LF);
+      All_Passed := False;
+   end if;
+
+   declare
+      Source : constant String :=
+        "(type Reading (variant (Value Integer) (Unavailable))) " &
+        "(match (Reading.Value 41) ((Reading.Value n) (+ n 1)) ((Reading.Unavailable) 0))";
+      Analysis : CCL.Language.Analysis_Result;
+      Compiled : CCL.Compiler.Compilation_Result;
+      Data : CCL.Format.Byte_Array;
+      Length : CCL.Format.Module_Length;
+      Format_Error : CCL.Format.Format_Error;
+      Limits : CCL.Format.Resource_Limits;
+      Passed : Boolean;
+   begin
+      CCL.Evaluation.Evaluate (Source, 256, Source_Result);
+      Passed := Source_Result.Status = CCL.Language.Succeeded and then
+        Source_Result.Result_Value.Integer = 42;
+      CCL.Language.Analyze (Source, Analysis);
+      CCL.Compiler.Compile (Analysis, Compiled);
+      Passed := Passed and then Compiled.Status = CCL.Compiler.Compilation_Succeeded;
+      if Passed then
+         CCL.Format.Encode (Compiled.Program, (256, 4096, 1), Data, Length, Format_Error, Error);
+         Passed := Format_Error = CCL.Format.Format_Valid;
+      end if;
+      if Passed then
+         CCL.Format.Decode (Data, Length, Checked, Limits, Format_Error, Error);
+         Passed := Format_Error = CCL.Format.Format_Valid;
+      end if;
+      if Passed then
+         Execute (Checked, 256, VM_Result);
+         Passed := VM_Result.Status = Completed and then VM_Result.Has_Value and then
+           VM_Result.Result_Value.Kind = Integer_Value and then VM_Result.Result_Value.Integer = 42;
+      end if;
+      if Passed then debugPrint ("ccl-vm: variant bytecode PASS" & LF);
+      else debugPrint ("ccl-vm: variant bytecode FAIL" & LF); All_Passed := False;
+      end if;
+   end;
+
+   declare
+      Import_Service : constant CuBit.Handles.Endpoint := Startup.Test_Host;
+      OP_INCREMENT : constant Unsigned_32 :=
+        CuBit.Protocols.CCL_TEST_OP_INCREMENT;
+      REPLY_OK : constant Unsigned_32 := 16#F000#;
+      State : Machine_State;
+      Request : Message := NULL_MESSAGE;
+      Completions : CompletionRing := [others => NULL_COMPLETION];
+      Completion_Count : Unsigned_64;
+      Submit_OK : Boolean;
+      IMPORT_TOKEN : constant Unsigned_64 := 16#CC10_0001#;
+   begin
+      Candidate := Empty_Program;
+      Candidate.Imports_Length := 1;
+      Candidate.Imports (0) :=
+        (Argument => Integer_Value,
+         Result => Integer_Value,
+         Authority => Observe_Authority,
+         Binding => Unsigned_32 (DRIVER_CCL_TEST), others => <>);
+      Candidate.Length := 3;
+      Candidate.Code (0) :=
+        (Op => Push_Integer, Immediate => 41, others => <>);
+      Candidate.Code (1) := (Op => Invoke_Import, Import => 0, others => <>);
+      Candidate.Code (2) := (Op => Halt, others => <>);
+
+      Verify (Candidate, Checked, Error);
+      if Error = Valid then
+         Initialize (Checked, 16, State);
+         Continue_Execution (Checked, State, VM_Result);
+      end if;
+
+      if Error /= Valid or else VM_Result.Status /= Waiting_For_Host or else
+        VM_Result.Requested_Authority /= Observe_Authority or else
+        VM_Result.Requested_Binding /= Unsigned_32 (DRIVER_CCL_TEST) or else
+        VM_Result.Request_Argument.Kind /= Integer_Value
+      then
+         debugPrint ("ccl-vm: import request FAIL" & LF);
+         All_Passed := False;
+      else
+         Request.tag :=
+           (label => OP_INCREMENT, length => 1, protocol => 0, ipc => <>, reserved => 0);
+         Request.words (0) := Unsigned_64 (VM_Result.Request_Argument.Integer);
+         Submit_OK := capSubmit (Import_Service, Request, IMPORT_TOKEN);
+         if Submit_OK then
+            Completion_Count :=
+              waitCompletion (Completions'Address, max => 1, min => 1);
+         else
+            Completion_Count := 0;
+         end if;
+         Complete_Host_Call
+           (Checked, State,
+            Integer_Constant (Integer_64 (Completions (0).msg.words (0))),
+            Completion_Count = 1 and then Completions (0).valid and then
+            Completions (0).status = COMPLETION_OK and then
+            Completions (0).token = IMPORT_TOKEN and then
+            Completions (0).msg.tag.label = REPLY_OK);
+         Continue_Execution (Checked, State, VM_Result);
+
+         if VM_Result.Status = Completed and then VM_Result.Has_Value and then
+           VM_Result.Result_Value.Kind = Integer_Value and then
+           VM_Result.Result_Value.Integer = 42
+         then
+            debugPrint ("ccl-vm: import IPC PASS" & LF);
+         else
+            debugPrint ("ccl-vm: import IPC FAIL" & LF);
+            All_Passed := False;
+         end if;
+      end if;
+   end;
+
+   declare
+      Clock_Service : constant CuBit.Handles.Endpoint := Startup.Clock;
+      --  Opaque index in this host adapter's binding table. It is deliberately
+      --  unrelated to Clock's temporary system-wide driver registration ID.
+      CLOCK_HOST_BINDING : constant Unsigned_32 := 1;
+      REPLY_OK : constant Unsigned_32 := 16#F000#;
+      Catalog : CCL.Catalog.Interface_Catalog;
+      Catalog_Error : CCL.Catalog.Catalog_Error;
+      Clock_Operation : CCL.Catalog.Resolved_Operation;
+      Found : Boolean;
+      Analysis : CCL.Language.Analysis_Result;
+      Compiled : CCL.Compiler.Compilation_Result;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Grant_Status : CCL.Catalog.Grant_Result;
+      Link_Status : CCL.Catalog.Link_Result;
+      Pipeline_Valid : Boolean := False;
+      State : Machine_State;
+      Request : Message := NULL_MESSAGE;
+      Completions : CompletionRing := [others => NULL_COMPLETION];
+      Completion_Count : Unsigned_64;
+      Submit_OK : Boolean;
+      IMPORT_TOKEN : constant Unsigned_64 := 16#CC10_0002#;
+      Response_Valid : Boolean;
+   begin
+      --  Native CuBit path: make an explicitly visible descriptor catalog,
+      --  compile an unresolved source import, and only then link it to the
+      --  endpoint authority supplied in Clock_Service.  No Clock driver number
+      --  or capability slot enters the language, compiler, or bytecode ABI.
+      CCL.Catalog.Initialize (Catalog);
+      CCL.Catalog.Initialize (Grants);
+      CCL.Interfaces.Clock.Publish (Catalog, Catalog_Error);
+      if Catalog_Error = CCL.Catalog.Catalog_Valid then
+         CCL.Interfaces.Clock.Resolve_Monotonic_Ms
+           (Catalog, Clock_Operation, Found);
+      else
+         Found := False;
+      end if;
+
+      if Found then
+         CCL.Language.Analyze ("(clock.monotonic-ms)", Catalog, Analysis);
+         if CCL.Language.Analysis_Status_Of (Analysis) =
+           CCL.Language.Analysis_Succeeded
+         then
+            CCL.Compiler.Compile (Analysis, Compiled);
+            if Compiled.Status = CCL.Compiler.Compilation_Succeeded then
+               CCL.Catalog.Install
+                 (Grants, Clock_Operation, CLOCK_HOST_BINDING,
+                  Grant_Status);
+               if Grant_Status = CCL.Catalog.Grant_Added then
+                  CCL.Catalog.Link_Program
+                    (Grants, Compiled.Linkage, Compiled.Program, Link_Status);
+                  Pipeline_Valid := Link_Status = CCL.Catalog.Link_Valid;
+               end if;
+            end if;
+         end if;
+      end if;
+
+      if Pipeline_Valid then
+         Verify (Compiled.Program, Checked, Error);
+      else
+         Error := Empty_Program;
+      end if;
+      if Pipeline_Valid and then Error = Valid then
+         Initialize (Checked, 16, State);
+         Continue_Execution (Checked, State, VM_Result);
+      end if;
+
+      if not Pipeline_Valid or else Error /= Valid or else
+        VM_Result.Status /= Waiting_For_Host or else
+        VM_Result.Requested_Authority /= Observe_Authority or else
+        VM_Result.Requested_Binding /= CLOCK_HOST_BINDING or else
+        VM_Result.Request_Argument.Kind /= Integer_Value or else
+        VM_Result.Request_Argument.Integer /= 0
+      then
+         debugPrint ("ccl-vm: clock request FAIL" & LF);
+         All_Passed := False;
+      else
+         debugPrint ("ccl-vm: clock source/link PASS" & LF);
+         Request.tag :=
+           (label => CuBit.Protocols.CLOCK_OP_MONOTONIC_MS, length => 1,
+            protocol => 0, ipc => <>, reserved => 0);
+         Request.words (0) := 0;
+         Submit_OK := capSubmit (Clock_Service, Request, IMPORT_TOKEN);
+         if Submit_OK then
+            Completion_Count :=
+              waitCompletion (Completions'Address, max => 1, min => 1);
+         else
+            Completion_Count := 0;
+         end if;
+         Response_Valid :=
+           Completion_Count = 1 and then Completions (0).valid and then
+           Completions (0).status = COMPLETION_OK and then
+           Completions (0).token = IMPORT_TOKEN and then
+           Completions (0).msg.tag.label = REPLY_OK and then
+           Completions (0).msg.tag.length = 1 and then
+           Completions (0).msg.words (0) <= Unsigned_64 (Integer_64'Last);
+         Complete_Host_Call
+           (Checked, State,
+            Integer_Constant
+              ((if Response_Valid then
+                   Integer_64 (Completions (0).msg.words (0))
+                else 0)),
+            Response_Valid);
+         Continue_Execution (Checked, State, VM_Result);
+
+         if VM_Result.Status = Completed and then VM_Result.Has_Value and then
+           VM_Result.Result_Value.Kind = Integer_Value and then
+           VM_Result.Result_Value.Integer >= 0
+         then
+            debugPrint ("ccl-vm: clock IPC PASS" & LF);
+         else
+            debugPrint ("ccl-vm: clock IPC FAIL" & LF);
+            All_Passed := False;
+         end if;
+      end if;
+   end;
+
+   declare
+      Import_Service : constant CuBit.Handles.Endpoint := Startup.Test_Host;
+      OP_INCREMENT : constant Unsigned_32 :=
+        CuBit.Protocols.CCL_TEST_OP_INCREMENT;
+      REPLY_OK : constant Unsigned_32 := 16#F000#;
+      Import_Program : Program;
+      Plain_Program : Program;
+      Import_Checked : Validated_Program;
+      Plain_Checked : Validated_Program;
+      Scheduler : CCL.Scheduler.Scheduler_State;
+      Event : CCL.Scheduler.Scheduler_Event;
+      Started : Boolean;
+      Import_Isolate : CCL.Scheduler.Isolate_Index;
+      Plain_Isolate : CCL.Scheduler.Isolate_Index;
+      Request : Message := NULL_MESSAGE;
+      Completions : CompletionRing := [others => NULL_COMPLETION];
+      Completion_Count : Unsigned_64;
+      Submitted : Boolean;
+      Matched : Boolean;
+   begin
+      Import_Program.Imports_Length := 1;
+      Import_Program.Imports (0) :=
+        (Argument => Integer_Value, Result => Integer_Value,
+         Authority => Observe_Authority,
+         Binding => Unsigned_32 (DRIVER_CCL_TEST), others => <>);
+      Import_Program.Length := 3;
+      Import_Program.Code (0) :=
+        (Op => Push_Integer, Immediate => 41, others => <>);
+      Import_Program.Code (1) :=
+        (Op => Invoke_Import, Import => 0, others => <>);
+      Import_Program.Code (2) := (Op => Halt, others => <>);
+      Verify (Import_Program, Import_Checked, Error);
+
+      Plain_Program.Length := 2;
+      Plain_Program.Code (0) :=
+        (Op => Push_Integer, Immediate => 7, others => <>);
+      Plain_Program.Code (1) := (Op => Halt, others => <>);
+      Verify (Plain_Program, Plain_Checked, Error);
+
+      CCL.Scheduler.Initialize (Scheduler);
+      CCL.Scheduler.Start
+        (Scheduler, Import_Checked, 8, Started, Import_Isolate);
+      if Started then
+         CCL.Scheduler.Start
+           (Scheduler, Plain_Checked, 8, Started, Plain_Isolate);
+      end if;
+      if Started then
+         CCL.Scheduler.Dispatch_One (Scheduler, Event);
+      end if;
+
+      if not Started or else Event.Kind /= CCL.Scheduler.Host_Request then
+         debugPrint ("ccl-vm: scheduler FAIL" & LF);
+         All_Passed := False;
+      else
+         Request.tag :=
+           (label => OP_INCREMENT, length => 1, protocol => 0, ipc => <>, reserved => 0);
+         Request.words (0) := Unsigned_64 (Event.Argument.Integer);
+         Submitted := capSubmit (Import_Service, Request, Event.Token);
+
+         --  Prove useful work can run before harvesting this completion.
+         CCL.Scheduler.Dispatch_One (Scheduler, Event);
+         if not Submitted or else
+           Event.Kind /= CCL.Scheduler.Isolate_Completed or else
+           Event.Isolate /= Plain_Isolate or else Event.Value.Integer /= 7
+         then
+            debugPrint ("ccl-vm: scheduler FAIL" & LF);
+            All_Passed := False;
+         else
+            Completion_Count :=
+              waitCompletion (Completions'Address, max => 1, min => 1);
+            CCL.Scheduler.Complete
+              (Scheduler, Completions (0).token,
+               Integer_Constant (Integer_64 (Completions (0).msg.words (0))),
+               Completion_Count = 1 and then Completions (0).valid and then
+               Completions (0).status = COMPLETION_OK and then
+               Completions (0).msg.tag.label = REPLY_OK,
+               Matched);
+            CCL.Scheduler.Dispatch_One (Scheduler, Event);
+            if Matched and then
+              Event.Kind = CCL.Scheduler.Isolate_Completed and then
+              Event.Isolate = Import_Isolate and then Event.Has_Value and then
+              Event.Value.Integer = 42
+            then
+               debugPrint ("ccl-vm: scheduler PASS" & LF);
+            else
+               debugPrint ("ccl-vm: scheduler FAIL" & LF);
+               All_Passed := False;
+            end if;
+         end if;
+      end if;
+   end;
+
+   declare
+      SEND : constant CCL.Ownership.Disposition_Id := 1;
+      Owned : Program;
+      Owned_Checked : Validated_Program;
+      Owned_Error : Validation_Error;
+      Owned_State : Machine_State;
+      Owned_Values : Local_Value_Array := [others => (others => <>)];
+      Accepted : Boolean;
+   begin
+      Owned.Types (2).Mode := CCL.Ownership.Must_Handle;
+      Owned.Types (2).Dispositions_Length := 1;
+      Owned.Types (2).Dispositions (0) :=
+        (Verb => SEND, Effect => CCL.Ownership.Consume, Next_Type => 0);
+      Owned.Locals_Length := 1;
+      Owned.Local_Types (0) := 2;
+      Owned.Length := 2;
+      Owned.Code (0) :=
+        (Op => Apply_Local_Disposition, Local => 0, Verb => SEND,
+         others => <>);
+      Owned.Code (1) := (Op => Halt, others => <>);
+      Verify (Owned, Owned_Checked, Owned_Error);
+      if Owned_Error = Valid then
+         Owned_Values (0) := With_Type (Integer_Constant (99), 2);
+         Initialize_With_Locals
+           (Owned_Checked, 4, Owned_Values, 1, Owned_State, Accepted);
+         if Accepted then
+            Continue_Execution (Owned_Checked, Owned_State, VM_Result);
+         end if;
+      end if;
+      Owned.Code (0) := (Op => Drop_Local, Local => 0, others => <>);
+      Verify (Owned, Owned_Checked, Owned_Error);
+      if Accepted and then VM_Result.Status = Completed and then
+        Owned_Error = Invalid_Ownership
+      then
+         debugPrint ("ccl-vm: ownership PASS" & LF);
+      else
+         debugPrint ("ccl-vm: ownership FAIL" & LF);
+         All_Passed := False;
+      end if;
+   end;
+
+   if All_Passed then
+      debugPrint ("ccl-vm: all tests passed" & LF);
+   end if;
+end Main;

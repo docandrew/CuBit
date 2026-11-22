@@ -1,0 +1,98 @@
+[
+  {
+    "name": "BIT",
+    "method_opcode": "CreateBitField",
+    "declarations": "Name(BUFF,Buffer(10){0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55})",
+    "body": "CreateBitField(BUFF,7,FLD0) Store(Ones,FLD0) Return(BUFF)"
+  },
+  {
+    "name": "BYTE",
+    "method_opcode": "CreateByteField",
+    "declarations": "Name(BUFF,Buffer(10){0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55})",
+    "body": "CreateByteField(BUFF,1,FLD0) Store(Ones,FLD0) Return(BUFF)"
+  },
+  {
+    "name": "WORD",
+    "method_opcode": "CreateWordField",
+    "declarations": "Name(BUFF,Buffer(10){0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55})",
+    "body": "CreateWordField(BUFF,1,FLD0) Store(Ones,FLD0) Return(BUFF)"
+  },
+  {
+    "name": "DWORD",
+    "method_opcode": "CreateDWordField",
+    "declarations": "Name(BUFF,Buffer(10){0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55})",
+    "body": "CreateDWordField(BUFF,1,FLD0) Store(Ones,FLD0) Return(BUFF)"
+  },
+  {
+    "name": "QWORD",
+    "method_opcode": "CreateQWordField",
+    "declarations": "Name(BUFF,Buffer(10){0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55})",
+    "body": "CreateQWordField(BUFF,0,FLD0) Store(Ones,FLD0) Return(BUFF)"
+  },
+  {
+    "name": "GEN",
+    "method_opcode": "CreateField",
+    "declarations": "Name(BUFF,Buffer(10){0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55})",
+    "body": "CreateField(BUFF,3,9,FLD0) Store(Ones,FLD0) Return(BUFF)"
+  },
+  {
+    "name": "ZERO",
+    "method_opcode": "CreateField",
+    "declarations": "Name(BUFF,Buffer(10){0x55})",
+    "body": "CreateField(BUFF,0,0,FLD0) Return(ToBuffer(FLD0))"
+  },
+  {
+    "name": "LAST",
+    "method_opcode": "CreateField",
+    "declarations": "Name(BUFF,Buffer(10){0x55})",
+    "body": "CreateField(BUFF,79,1,FLD0) Return(ToBuffer(FLD0))"
+  },
+  {
+    "name": "OVER",
+    "method_opcode": "CreateField",
+    "declarations": "Name(BUFF,Buffer(10){0x55})",
+    "body": "CreateField(BUFF,80,1,FLD0) Return(ToBuffer(FLD0))"
+  },
+  {
+    "name": "HUGE",
+    "method_opcode": "CreateField",
+    "declarations": "Name(BUFF,Buffer(10){0x55})",
+    "body": "CreateField(BUFF,Ones,1,FLD0) Return(ToBuffer(FLD0))"
+  },
+  {
+    "name": "SOLE",
+    "method_opcode": "CreateByteField",
+    "declarations": "Method(SRC0,0){Return(Buffer(){42})}",
+    "body": "CreateByteField(SRC0(),Zero,FLD0) Return(ToBuffer(FLD0))"
+  },
+  {
+    "name": "REBIND",
+    "method_opcode": "CreateByteField",
+    "declarations": "Name(BUFF,Buffer(){42})",
+    "body": "CreateByteField(BUFF,Zero,FLD0) CopyObject(Buffer(){7},BUFF) Store(99,FLD0) Return(Add(Multiply(DerefOf(Index(BUFF,Zero)),256),FLD0))"
+  },
+  {
+    "name": "TYPE",
+    "method_opcode": "CreateField",
+    "declarations": "Name(BUFF,Buffer(){42})",
+    "body": "CreateField(BUFF,Zero,8,FLD0) Return(ObjectType(FLD0))"
+  },
+  {
+    "name": "WIDE",
+    "method_opcode": "CreateField",
+    "declarations": "Name(BUFF,Buffer(){1,2,3,4,5,6,7,8,9})",
+    "body": "CreateField(BUFF,Zero,72,FLD0) Return(ToBuffer(FLD0))"
+  },
+  {
+    "name": "EFFECT",
+    "method_opcode": "CreateField",
+    "declarations": "Method(SRC0,0){Store(Add(Multiply(MARK,10),1),MARK) Return(Buffer(){0x55,0xAA})} Method(IDX0,0){Store(Add(Multiply(MARK,10),2),MARK) Return(3)} Method(CNT0,0){Store(Add(Multiply(MARK,10),3),MARK) Return(9)}",
+    "body": "CreateField(SRC0(),IDX0(),CNT0(),FLD0) Return(ToBuffer(FLD0))"
+  },
+  {
+    "name": "EMPTY",
+    "method_opcode": "CreateByteField",
+    "declarations": "Name(BUFF,Buffer(){})",
+    "body": "CreateByteField(BUFF,Zero,FLD0) Return(ToBuffer(FLD0))"
+  }
+]

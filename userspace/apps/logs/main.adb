@@ -1,0 +1,409 @@
+with CuBit.Console_Route;
+with Interfaces; use Interfaces;
+with CuBit.Messages; use CuBit.Messages;
+with CuBit.Logging;
+with CuBit.Handles.Services;
+with CuBit.Log_Protocol;
+with CuBit.Log_Records;
+with CuBit.Log_Sources;
+with CuBit.Log_Sources.Texts;
+with CuBit.Memory_Grants;
+with CuBit.Grant_References;
+with CuBit.Process_Observer;
+with CuBit.Desktop_Protocol;
+with CuBit.UI; use CuBit.UI;
+with CuBit.UI.App;
+with CuBit.UI.State;
+with CuBit.UI.Controls;
+with CuBit.UI.Input;
+with CuBit.UI.Clipboard;
+with CuBit.UI.Editor;
+with CuBit.UI.Editor_Clipboard;
+with Clipboard_Chords;
+with Clipboard_Text;
+with Log_View;
+with Startup;
+with CuBit.Monotonic;
+
+--  Logs (docs/logs-app.md): every service's records, live, through the
+--  log-observer role; sources named through procmgr's process-observer
+--  role. The view (Log_View) holds the records, filters and drawing.
+procedure Main is
+   package P renames CuBit.Log_Protocol;
+   package PO renames CuBit.Process_Observer;
+   use type P.Status;
+   use type CuBit.Messages.MessageTag;
+   use type Log_View.Key_Name;
+   use type Clipboard_Chords.Command;
+
+   KEY_BACKSPACE : constant Unsigned_64 := 16#0E#;
+   KEY_TAB : constant Unsigned_64 := 16#0F#;
+   KEY_ENTER : constant Unsigned_64 := 16#1C#;
+   KEY_SPACE : constant Unsigned_64 := 16#39#;
+   KEY_HOME : constant Unsigned_64 := 16#47#;
+   KEY_UP : constant Unsigned_64 := 16#48#;
+   KEY_PAGE_UP : constant Unsigned_64 := 16#49#;
+   KEY_LEFT : constant Unsigned_64 := 16#4B#;
+   KEY_RIGHT : constant Unsigned_64 := 16#4D#;
+   KEY_END : constant Unsigned_64 := 16#4F#;
+   KEY_DOWN : constant Unsigned_64 := 16#50#;
+   KEY_PAGE_DOWN : constant Unsigned_64 := 16#51#;
+   KEY_DELETE : constant Unsigned_64 := 16#53#;
+   KEY_F3 : constant Unsigned_64 := 16#3D#;
+   --  How often the stream ring is read, and the most records taken each
+   --  time (local memory: no IPC per record).
+   POLL_MS : constant := 100;
+   BATCH : constant := 1_024;
+   --  How often unnamed sources, and what logstore keeps, are looked up again.
+   NAMES_MS : constant := 2_000;
+   --  While records stream in, the window is redrawn at most this often;
+   --  records are still taken every POLL_MS.
+   STREAM_FRAME_MS : constant := 250;
+   WINDOW_WIDTH : constant := 880;
+   WINDOW_HEIGHT : constant := 600;
+
+   Win : CuBit.UI.App.Window;
+   UI : CuBit.UI.State.UI_State;
+   Controls : CuBit.UI.Controls.Control_Map;
+   Reader : CuBit.Logging.Reader := CuBit.Logging.Bound_To (Startup.Log_Observer);
+   Status : P.Status := P.Unavailable;
+   --  About 1.4 MiB of records, on the 16 MiB main stack (no heap here).
+   View : Log_View.View_State;
+   --  The two forms of a copied record (a record's text is far shorter).
+   COPY_CAPACITY : constant := 4_096;
+   Copy_Text_Form, Copy_Literal : Clipboard_Text.Builder (COPY_CAPACITY);
+   Due, Names_Due, Last_Frame : Unsigned_64 := 0;
+   --  The view revision last drawn.
+   Drawn : Unsigned_64 := 0;
+   Opened : Boolean;
+   --  A source seen since the names were last looked up.
+   Unnamed : Boolean := False;
+   Page : array (0 .. PO.Page_Bytes - 1) of Unsigned_8 := [others => 0] with Alignment => PO.Page_Bytes;
+
+   --  Names for every running process: its manifest identity, else its
+   --  name. procmgr lends a page of records at a time: every page is read.
+   procedure Refresh_Names is
+      --  Reply words: records written, processes in total.
+      Written_Word : constant := 1;
+      Total_Word : constant := 2;
+      First, Written : Natural := 0;
+      Total : Unsigned_64;
+   begin
+      loop
+         declare
+            Loan : CuBit.Memory_Grants.Grant_Reference;
+            Lent, Revoked : Boolean;
+            Request : Message := NULL_MESSAGE;
+            Reply_Tag : MessageTag;
+         begin
+            CuBit.Memory_Grants.Create_Via_Capability (Startup.Process_Observer, Page'Address, 1, True, Loan, Lent);
+            if not Lent then return; end if;
+            Request.tag := (label => PO.List_Label, length => PO.Paged_Request_Words, protocol => 0, ipc => <>,
+                            reserved => 0);
+            Request.words (0) := CuBit.Grant_References.Encode (Loan);
+            Request.words (PO.First_Record_Word) := Unsigned_64 (First);
+            Reply_Tag := capCall (Startup.Process_Observer, Request, CuBit.Messages.Wait_Forever);
+            CuBit.Memory_Grants.Revoke (Loan, Revoked);
+            if Reply_Tag.label /= Unsigned_32 (PO.Status'Enum_Rep (PO.OK)) then return; end if;
+            Written := Natural (Unsigned_64'Min (Request.words (Written_Word), PO.Page_Records));
+            Total := Request.words (Total_Word);
+         end;
+         for Index in 0 .. Written - 1 loop
+            declare
+               Base : constant Natural := Index * PO.Record_Bytes;
+               Pid : constant Unsigned_64 :=
+                 Unsigned_64 (Page (Base)) or Shift_Left (Unsigned_64 (Page (Base + 1)), 8) or
+                 Shift_Left (Unsigned_64 (Page (Base + 2)), 16) or Shift_Left (Unsigned_64 (Page (Base + 3)), 24);
+               Identity_Length : constant Natural :=
+                 Natural'Min (Natural (Page (Base + PO.Identity_Length_Offset)), PO.Identity_Bytes);
+               Name_Length : constant Natural := Natural'Min (Natural (Page (Base + PO.Name_Length_Offset)), PO.Name_Bytes);
+               Started : Unsigned_64 := 0;
+               Name : String (1 .. PO.Identity_Bytes);
+               Length : Natural := 0;
+            begin
+               for I in reverse 0 .. 7 loop
+                  Started := Shift_Left (Started, 8) or Unsigned_64 (Page (Base + PO.Started_Offset + I));
+               end loop;
+               if Identity_Length > 0 then
+                  for I in 1 .. Identity_Length loop
+                     Name (I) := Character'Val (Page (Base + PO.Identity_Offset + I - 1));
+                  end loop;
+                  Length := Identity_Length;
+               else
+                  for I in 1 .. Name_Length loop
+                     Name (I) := Character'Val (Page (Base + PO.Name_Offset + I - 1));
+                  end loop;
+                  Length := Name_Length;
+               end if;
+               if Length > 0 then
+                  Log_View.Name_Source (View, Pid, Name (1 .. Length), Started);
+               end if;
+            end;
+         end loop;
+         First := First + Written;
+         exit when Written = 0 or else Unsigned_64 (First) >= Total;
+      end loop;
+   end Refresh_Names;
+
+   --  Names logstore's launchers recorded (LOG-003): a source that has
+   --  exited keeps its name, marked as exited, which the running process
+   --  list above no longer has.
+   procedure Refresh_Logged_Names is
+      package LS renames CuBit.Log_Sources;
+      Listed : CuBit.Logging.Source_Page;
+      Written : LS.Page_Count;
+      Total, Skip : Natural := 0;
+      Result : P.Status;
+   begin
+      loop
+         CuBit.Logging.List_Sources (Reader, Skip, Listed, Written, Total, Result);
+         exit when Result /= P.OK or else Written = 0;
+         for Position in 1 .. Written loop
+            declare
+               use type LS.Entry_Kind;
+               Who : LS.Source_Identity renames Listed (Position).Who;
+               Name : constant String :=
+                 (if Who.Identity_Used > 0 then LS.Texts.Identity_Of (Who) else LS.Texts.Name_Of (Who));
+            begin
+               --  Running ones are named from the process list.
+               if Listed (Position).Kind = LS.Exited then
+                  Log_View.Name_Source (View, Who.Source, Name & " (exited)", Listed (Position).Seen_Ms);
+               end if;
+            end;
+         end loop;
+         Skip := Skip + Written;
+         exit when Skip >= Total;
+      end loop;
+   end Refresh_Logged_Names;
+
+   --  What logstore keeps, through the observer's endpoint.
+   procedure Refresh_Kept is
+      Level : CuBit.Log_Records.Severity;
+      Result : P.Status;
+   begin
+      CuBit.Logging.Get_Minimum
+        (Level, Result, CuBit.Handles.Services.Logstore.Handle (Startup.Logstore));
+      if Result = P.OK then
+         Log_View.Set_Kept (View, Level);
+      end if;
+   end Refresh_Kept;
+
+   --  A change the person chose in the keep box, through log-control.
+   procedure Apply_Keep_Request is
+      Level, Previous : CuBit.Log_Records.Severity;
+      Requested : Boolean;
+      Result : P.Status;
+   begin
+      Log_View.Take_Keep_Request (View, Level, Requested);
+      if not Requested then
+         return;
+      end if;
+      CuBit.Logging.Set_Minimum (Level, Previous, Result, Startup.Log_Control);
+      case Result is
+         when P.OK => null;
+         when P.Denied | P.Unavailable =>
+            Log_View.Set_Keep_Refused
+              (View, "Not changed: this program needs log-control (request-service log-control read-write log-control)");
+         when others =>
+            Log_View.Set_Keep_Refused (View, "Not changed: logstore refused the request");
+      end case;
+      Refresh_Kept;
+   end Apply_Keep_Request;
+
+   procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
+   begin
+      Log_View.Render (View, CuBit.UI.App.Canvas (Win, Damage), CuBit.UI.App.Full_Rect (Win), UI, Controls);
+   end Render;
+
+   procedure Handle_Event (Win : in out CuBit.UI.App.Window;
+     Event : CuBit.UI.App.Input_Event; Dirty : in out Rect; Running : in out Boolean)
+   is
+      Redraw : Boolean := False;
+      procedure Send (Item : Log_View.Event) is
+      begin
+         Log_View.Handle (View, Item, Controls, Redraw);
+      end Send;
+      Shift : constant Boolean := (Event.payload1 and CuBit.UI.App.KEYMOD_SHIFT) /= 0;
+      Control : constant Boolean := (Event.payload1 and CuBit.UI.App.KEYMOD_CTRL) /= 0;
+      function Key_Of (Code : Unsigned_64) return Log_View.Key_Name is
+        (if Code = CuBit.UI.App.KEY_ESC then Log_View.Escape
+         elsif Code = KEY_ENTER then Log_View.Enter
+         elsif Code = KEY_BACKSPACE then Log_View.Backspace
+         elsif Code = KEY_TAB then Log_View.Tab
+         elsif Code = KEY_SPACE then Log_View.Space
+         elsif Code = KEY_LEFT then Log_View.Left
+         elsif Code = KEY_RIGHT then Log_View.Right
+         elsif Code = KEY_DELETE then Log_View.Delete
+         elsif Code = KEY_UP then Log_View.Up
+         elsif Code = KEY_DOWN then Log_View.Down
+         elsif Code = KEY_PAGE_UP then Log_View.Page_Up
+         elsif Code = KEY_PAGE_DOWN then Log_View.Page_Down
+         elsif Code = KEY_HOME then Log_View.Home
+         elsif Code = KEY_END then Log_View.End_Key
+         elsif Code = KEY_F3 then Log_View.F3
+         else Log_View.No_Key);
+      Command : constant Clipboard_Chords.Command :=
+        (if Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN
+         then CuBit.UI.Clipboard.Command_Of (Event.payload0, Event.payload1)
+         else Clipboard_Chords.No_Command);
+
+      --  A clipboard chord on the search field: the toolkit's editor chords.
+      procedure Search_Chord (Field : in out CuBit.UI.Editor.Edit_State; Changed : out Boolean) is
+         R : constant CuBit.UI.Editor_Clipboard.Result :=
+           CuBit.UI.Editor_Clipboard.Handle_Key
+             (Field, CuBit.UI.App.Surface_ID (Win), Event.payload0, Event.payload1);
+      begin
+         Changed := R.Changed;
+         debugPrint ("logs: search chord " & CuBit.UI.Clipboard.Image (R.Outcome) & ASCII.LF);
+      end Search_Chord;
+      procedure Edit_Search is new Log_View.Edit_Search_Field (Search_Chord);
+
+      --  Copy, cut or paste with the table focused: the selected record is
+      --  copied as a typed LogEntry; a paste goes to the search field.
+      procedure Clipboard_Key is
+         Present : Boolean;
+         Result : CuBit.UI.Clipboard.Outcome;
+      begin
+         if Log_View.Search_Focused (View) or else Command = Clipboard_Chords.Paste_Command then
+            Edit_Search (View, Focus => True);
+            Redraw := True;
+         elsif Command in Clipboard_Chords.Copy_Command | Clipboard_Chords.Cut_Command then
+            Log_View.Selected_Copy (View, Copy_Text_Form, Copy_Literal, Present);
+            if Present then
+               CuBit.UI.Clipboard.Copy_Built
+                 (CuBit.UI.App.Surface_ID (Win), Log_View.LOG_ENTRY_TYPE, Copy_Text_Form, Copy_Literal, Result);
+               debugPrint ("logs: copy record " & CuBit.UI.Clipboard.Image (Result) & ASCII.LF);
+            end if;
+         end if;
+      end Clipboard_Key;
+   begin
+      if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
+         Running := False;
+      elsif Command /= Clipboard_Chords.No_Command and then
+        (Command /= Clipboard_Chords.Select_All_Command or else Log_View.Search_Focused (View))
+      then
+         Clipboard_Key;
+      elsif Event.kind = CuBit.UI.Input.INPUT_CONFIGURE then
+         Send ((Kind => Log_View.Resize, X => CuBit.UI.App.Width (Win), Y => CuBit.UI.App.Height (Win), others => <>));
+      elsif Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN then
+         if Key_Of (Event.payload0) /= Log_View.No_Key then
+            Send ((Kind => Log_View.Key_Event, Key => Key_Of (Event.payload0), Shift => Shift,
+                   Control => Control, others => <>));
+         end if;
+      elsif Event.kind = CuBit.UI.Input.INPUT_TEXT then
+         if (Event.payload0 and 16#FFFF_FFFF#) in 32 .. 126 then
+            Send ((Kind => Log_View.Text_Event,
+                   Character_Value => Character'Val (Event.payload0 and 16#FF#), others => <>));
+         end if;
+      elsif Event.kind in CuBit.UI.Input.INPUT_POINTER_DOWN | CuBit.UI.Input.INPUT_POINTER_UP |
+                          CuBit.UI.Input.INPUT_POINTER_MOVE
+      then
+         --  After App.Run's retained dispatch; the view handles what it means.
+         Send ((Kind => Log_View.Pointer_Event,
+                Action => (if Event.kind = CuBit.UI.Input.INPUT_POINTER_DOWN then CuBit.UI.Controls.Pointer_Press
+                           elsif Event.kind = CuBit.UI.Input.INPUT_POINTER_UP then CuBit.UI.Controls.Pointer_Release
+                           else CuBit.UI.Controls.Pointer_Move),
+                X => CuBit.UI.Input.Pointer_X (Event), Y => CuBit.UI.Input.Pointer_Y (Event), others => <>));
+      elsif Event.kind = CuBit.UI.Input.INPUT_POINTER_WHEEL then
+         Send ((Kind => Log_View.Wheel, Steps => CuBit.UI.Input.Pointer_Wheel_Delta (Event), others => <>));
+      end if;
+      Apply_Keep_Request;
+      if Redraw then Dirty := CuBit.UI.App.Full_Rect (Win); end if;
+   end Handle_Event;
+
+   function Deadline return Unsigned_64 is (Due);
+
+   --  A gap read just before the record it belongs before (Tick).
+   Held_Gap : P.Omission := P.No_Omission;
+
+   procedure Tick (Win : in out CuBit.UI.App.Window; Dirty : in out Rect; Running : in out Boolean) is
+      pragma Unreferenced (Running);
+      Event : P.Event;
+      Missing : P.Omission;
+      Tally : P.Source_Tally;
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+   begin
+      Due := Now + POLL_MS;
+      Log_View.Set_Time (View, Now);
+      if Status not in P.OK | P.Empty | P.Gap then
+         CuBit.Logging.Subscribe (Reader, Status);
+         Log_View.Set_Connection
+           (View, (if Status in P.OK | P.Empty | P.Gap then Log_View.Connected
+                       elsif Status = P.Denied then Log_View.Denied else Log_View.Unavailable));
+         Dirty := CuBit.UI.App.Full_Rect (Win);
+      end if;
+      if Status in P.OK | P.Empty | P.Gap then
+         for I in 1 .. BATCH loop
+            CuBit.Logging.Read_Next (Reader, Event, Missing, Tally, Status);
+            if Status = P.Gap and then Missing.Not_Retained > 0 and then Missing.Lost = 0 then
+               --  Records of a source not retained: shown just before its
+               --  next record, at that record's time.
+               Held_Gap := Missing;
+            elsif Status = P.Gap then
+               Log_View.Add_Gap (View, Missing.Lost, Missing.Not_Retained, Missing.Source);
+            elsif Status = P.OK then
+               if P.Omits (Held_Gap) then
+                  Log_View.Add_Gap (View, Held_Gap.Lost, Held_Gap.Not_Retained, Held_Gap.Source,
+                                    Event.Monotonic_Ms);
+                  Held_Gap := P.No_Omission;
+               end if;
+               Log_View.Add (View, Event.Monotonic_Ms, Event.Source, Event.Data, Event.Node);
+               Unnamed := True;
+            end if;
+            exit when Status not in P.OK | P.Gap;
+         end loop;
+         if Status not in P.OK | P.Empty | P.Gap then
+            Log_View.Set_Connection (View, Log_View.Unavailable);
+         end if;
+      end if;
+      if Now >= Names_Due then
+         if Unnamed then
+            Refresh_Names;
+            Unnamed := False;
+         end if;
+         --  Every time: a source that exits keeps its name, now marked.
+         Refresh_Logged_Names;
+         --  Another log-control holder may have changed what logstore keeps.
+         Refresh_Kept;
+         Names_Due := Now + NAMES_MS;
+      end if;
+      --  Only what changed, and not more often than STREAM_FRAME_MS.
+      if Log_View.Revision (View) /= Drawn and then Now >= Last_Frame + STREAM_FRAME_MS then
+         Dirty := CuBit.UI.Union_Rect (Dirty, Log_View.Content_Area (CuBit.UI.App.Full_Rect (Win)));
+         Drawn := Log_View.Revision (View);
+         Last_Frame := Now;
+      end if;
+   end Tick;
+
+   --  Run never blocks in a call to Desktop (Activity_Wait): its input
+   --  wait is submitted, and completes when input, or the deadline, arrives.
+   procedure Run is new CuBit.UI.App.Run
+     (UI, Controls, Render => Render, Handle_Event => Handle_Event,
+      Next_Deadline => Deadline, On_Deadline => Tick, Activity_Wait => True);
+begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
+   CuBit.Logging.Announce ("logs: started", Opened, Startup.Logstore);
+   Log_View.Initialize (View);
+   declare
+      Open_Outcome : CuBit.UI.App.Open_Result;
+   begin
+      CuBit.UI.App.Open (Win, WINDOW_WIDTH, WINDOW_HEIGHT,
+        CuBit.Desktop_Protocol.Feature_Bits
+          ([CuBit.Desktop_Protocol.Decorated | CuBit.Desktop_Protocol.Resizable |
+            CuBit.Desktop_Protocol.Minimizable | CuBit.Desktop_Protocol.Maximizable |
+            CuBit.Desktop_Protocol.Closeable | CuBit.Desktop_Protocol.Graceful_Close => True,
+            others => False]),
+        Open_Outcome, title => "Logs", protected_frames => True);
+      Opened := Open_Outcome in CuBit.UI.App.Opened;
+   end;
+   if Opened then
+      Log_View.Handle
+        (View, (Kind => Log_View.Resize, X => CuBit.UI.App.Width (Win), Y => CuBit.UI.App.Height (Win),
+                    others => <>), Controls, Opened);
+      Due := CuBit.Monotonic.Milliseconds + 1;
+      debugPrint ("logs: window ready" & ASCII.LF);
+      Run (Win);
+      CuBit.UI.App.Close (Win);
+   end if;
+end Main;

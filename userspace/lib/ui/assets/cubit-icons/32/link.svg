@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="teal" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#8af5e8"/><stop offset="1" stop-color="#1fc8c3"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M9.94 26.19 L16.44 19.69 A4.33 4.33 0 0 0 10.31 13.56 L3.81 20.06 A4.33 4.33 0 0 0 9.94 26.19Z" fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<path d="M9.94 26.19 L16.44 19.69 A4.33 4.33 0 0 0 10.31 13.56 L3.81 20.06 A4.33 4.33 0 0 0 9.94 26.19Z" fill="none" stroke="#1fc8c3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M19.69 16.44 L26.19 9.94 A4.33 4.33 0 0 0 20.06 3.81 L13.56 10.31 A4.33 4.33 0 0 0 19.69 16.44Z" fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<path d="M19.69 16.44 L26.19 9.94 A4.33 4.33 0 0 0 20.06 3.81 L13.56 10.31 A4.33 4.33 0 0 0 19.69 16.44Z" fill="none" stroke="url(#teal)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M19.69 16.44 L26.19 9.94 A4.33 4.33 0 0 0 20.06 3.81 L13.56 10.31 A4.33 4.33 0 0 0 19.69 16.44Z" fill="none" stroke="#8af5e8" stroke-width="1.33" stroke-linecap="butt"/>
+</svg>

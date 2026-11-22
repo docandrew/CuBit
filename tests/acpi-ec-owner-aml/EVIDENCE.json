@@ -1,0 +1,61 @@
+{
+  "hosted": {
+    "path": "/home/doc/cubit-build-tmp/ec-owner-aml-XqyFMY/COMPLETE.json",
+    "sha256": "c13521b1cc33716473296e1d76fc00aae083c92ad31572751c40d843578fb9f4",
+    "checks": 6336,
+    "runtime_processes": 76
+  },
+  "gpe_policy_proof": {
+    "path": "/home/doc/cubit-build-tmp/gpe-lifecycle-proof-TzTWZ2/COMPLETE.json",
+    "sha256": "b6d47bced133d1fbee3f1b222ee20ef853153b9ea15a28d4df939d86f0d30008",
+    "reports": [
+      {
+        "level": 1,
+        "entities": 16,
+        "full_spark_entities": 12,
+        "assumed_import_specs": [
+          "GPE_Flow_Instance.Clear",
+          "GPE_Flow_Instance.Enable",
+          "GPE_Flow_Instance.Invoke",
+          "GPE_Flow_Instance.Mask"
+        ],
+        "proof": 15,
+        "flow": 21,
+        "termination": 9,
+        "postconditions": 7,
+        "default_initialization": 1,
+        "client_default_assertion": 1,
+        "valid_CVC5": 264,
+        "valid_Trivial": 14,
+        "skips": 0,
+        "rejected_controls": 20
+      },
+      {
+        "level": 2,
+        "entities": 16,
+        "full_spark_entities": 12,
+        "assumed_import_specs": [
+          "GPE_Flow_Instance.Clear",
+          "GPE_Flow_Instance.Enable",
+          "GPE_Flow_Instance.Invoke",
+          "GPE_Flow_Instance.Mask"
+        ],
+        "proof": 15,
+        "flow": 21,
+        "termination": 9,
+        "postconditions": 7,
+        "default_initialization": 1,
+        "client_default_assertion": 1,
+        "valid_CVC5": 264,
+        "valid_Trivial": 14,
+        "skips": 0,
+        "rejected_controls": 20
+      }
+    ],
+    "scope": "Logical GPE lifecycle contracts only; four abstract imported callbacks assume effects/termination. Truthful hardware reports,exceptions,source ownership and serialized attribution remain external. No whole service/interpreter/hardware proof."
+  },
+  "new_proof": true,
+  "whole_service_proved": false,
+  "native_executed": false,
+  "hardware_validated": false
+}

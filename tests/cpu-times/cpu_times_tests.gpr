@@ -1,0 +1,24 @@
+--  Hosted tests and proofs for the per-CPU times publication
+--  (shared/publications/cpu_times_publication.ads) and its reader's load
+--  arithmetic (userspace/runtime/gnat/cubit-cpu_load.ads): run.sh.
+project CPU_Times_Tests is
+   for Source_Dirs use (".", "../../shared/publications", "../../shared/time",
+                        "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("clock_publication.ads", "clock_publication.adb",
+      "cpu_times_publication.ads",
+      "cpu_times_publication-sample.ads", "cpu_times_publication-sample.adb",
+      "cubit.ads", "cubit-cpu_load.ads", "cubit-cpu_load.adb",
+      "seqlock_model.ads", "seqlock_model.adb", "sample_instance.ads",
+      "racing_writer.ads", "racing_writer.adb", "main.adb");
+   for Object_Dir use external ("CPU_TIMES_OBJ", "build/obj");
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail");
+   end Prove;
+end CPU_Times_Tests;

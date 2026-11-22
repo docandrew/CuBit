@@ -1,0 +1,20 @@
+--  Hosted tests and proofs for CuBit.Path_Names (run.sh).
+project Path_Names is
+   Runtime_Src := external ("PATH_NAMES_SRC", "../../userspace/runtime/gnat");
+   for Source_Dirs use (".", Runtime_Src);
+   for Source_Files use ("cubit.ads", "cubit-path_names.ads",
+                         "cubit-path_names.adb",
+                         "cubit-path_names_c.ads", "cubit-path_names_c.adb",
+                         "cubit-directory_paths.ads", "cubit-directory_paths.adb",
+                         "main.adb");
+   for Object_Dir use external ("PATH_NAMES_OBJ", "build");
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Path_Names;

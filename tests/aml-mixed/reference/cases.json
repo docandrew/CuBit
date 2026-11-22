@@ -1,0 +1,542 @@
+[
+  {
+    "case": "matrix-II-1",
+    "aml": "matrix-II-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-IS-1",
+    "aml": "matrix-IS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-IB-1",
+    "aml": "matrix-IB-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-SI-1",
+    "aml": "matrix-SI-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-SS-1",
+    "aml": "matrix-SS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-SB-1",
+    "aml": "matrix-SB-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-BI-1",
+    "aml": "matrix-BI-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-BS-1",
+    "aml": "matrix-BS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-BB-1",
+    "aml": "matrix-BB-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-shortSI-1",
+    "aml": "matrix-shortSI-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 4,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-shortBI-1",
+    "aml": "matrix-shortBI-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-emptyIB-1",
+    "aml": "matrix-emptyIB-1.aml",
+    "expected_status": "EMPTY_BUFFER",
+    "expected_integer": null,
+    "classification": "EXPECTED_EMPTY_BUFFER_ERROR",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-emptySB-1",
+    "aml": "matrix-emptySB-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-emptyBS-1",
+    "aml": "matrix-emptyBS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-emptyIS-1",
+    "aml": "matrix-emptyIS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-badIS-1",
+    "aml": "matrix-badIS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-signIS-1",
+    "aml": "matrix-signIS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-prefixIS-1",
+    "aml": "matrix-prefixIS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-suffixIS-1",
+    "aml": "matrix-suffixIS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-widthIS-1",
+    "aml": "matrix-widthIS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-widthIB-1",
+    "aml": "matrix-widthIB-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-zeroSB-1",
+    "aml": "matrix-zeroSB-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-termBS-1",
+    "aml": "matrix-termBS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-highBB-1",
+    "aml": "matrix-highBB-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 4,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-prefixSS-1",
+    "aml": "matrix-prefixSS-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-emptyBI-1",
+    "aml": "matrix-emptyBI-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-II-2",
+    "aml": "matrix-II-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-IS-2",
+    "aml": "matrix-IS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-IB-2",
+    "aml": "matrix-IB-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-SI-2",
+    "aml": "matrix-SI-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-SS-2",
+    "aml": "matrix-SS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-SB-2",
+    "aml": "matrix-SB-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-BI-2",
+    "aml": "matrix-BI-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-BS-2",
+    "aml": "matrix-BS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-BB-2",
+    "aml": "matrix-BB-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-shortSI-2",
+    "aml": "matrix-shortSI-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 4,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-shortBI-2",
+    "aml": "matrix-shortBI-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-emptyIB-2",
+    "aml": "matrix-emptyIB-2.aml",
+    "expected_status": "EMPTY_BUFFER",
+    "expected_integer": null,
+    "classification": "EXPECTED_EMPTY_BUFFER_ERROR",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-emptySB-2",
+    "aml": "matrix-emptySB-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-emptyBS-2",
+    "aml": "matrix-emptyBS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-emptyIS-2",
+    "aml": "matrix-emptyIS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-badIS-2",
+    "aml": "matrix-badIS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-signIS-2",
+    "aml": "matrix-signIS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-prefixIS-2",
+    "aml": "matrix-prefixIS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-suffixIS-2",
+    "aml": "matrix-suffixIS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-widthIS-2",
+    "aml": "matrix-widthIS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-widthIB-2",
+    "aml": "matrix-widthIB-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-zeroSB-2",
+    "aml": "matrix-zeroSB-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 1,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-termBS-2",
+    "aml": "matrix-termBS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-highBB-2",
+    "aml": "matrix-highBB-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 4,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-prefixSS-2",
+    "aml": "matrix-prefixSS-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "matrix-emptyBI-2",
+    "aml": "matrix-emptyBI-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 2,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "effects-string-1",
+    "aml": "effects-string-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 9,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "effects-buffer-1",
+    "aml": "effects-buffer-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 9,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "effects-replace-1",
+    "aml": "effects-replace-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 10,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "effects-local-1",
+    "aml": "effects-local-1.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 4294967295,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "effects-string-2",
+    "aml": "effects-string-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 9,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "effects-buffer-2",
+    "aml": "effects-buffer-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 9,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "effects-replace-2",
+    "aml": "effects-replace-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 10,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  },
+  {
+    "case": "effects-local-2",
+    "aml": "effects-local-2.aml",
+    "expected_status": "RETURNED",
+    "expected_integer": 18446744073709551615,
+    "classification": "INTEGER_DIFFERENTIAL",
+    "compile_exit": 0,
+    "runtime_exit": 0
+  }
+]

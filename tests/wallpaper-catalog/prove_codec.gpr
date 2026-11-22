@@ -1,0 +1,13 @@
+--  The generated wallpaper catalog decoder (CCL.Asset_Codecs.Wallpaper) over
+--  the canonical token readers, for gnatprove (level 2; run.sh --prove).
+project Prove_Codec is
+   for Source_Dirs use ("../../userspace/ccl/src", "../../userspace/ccl/runtime-shared");
+   for Source_Files use
+     ("ccl.ads", "cubit.ads", "cubit-canonical_readers.ads", "cubit-canonical_readers.adb",
+      "cubit-launch_arguments.ads", "cubit-launch_arguments.adb",
+      "ccl-asset_codecs.ads", "ccl-asset_codecs-wallpaper.ads", "ccl-asset_codecs-wallpaper.adb");
+   for Object_Dir use "build/prove-codec";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Prove_Codec;

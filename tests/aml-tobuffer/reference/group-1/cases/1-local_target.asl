@@ -1,0 +1,5 @@
+DefinitionBlock ("", "DSDT", 1, "CUBIT", "TOBUFF", 1) {
+
+Method (CTRL,0) { Return (One) }
+Method (TEST,0) { ToBuffer ("AB", Local0) Return (Local0) }
+}

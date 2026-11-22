@@ -1,0 +1,23 @@
+--  KERN-004 platform power object: the SPARK proof (level 2) of the FADT
+--  register decoder (Firmware_Tables.Power_Registers), the object's policy
+--  (Platform_Power_Policy) and its wire ABI, and their hosted tests (run.sh).
+project Power is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../kernel/src", "../../shared/firmware",
+                        "../../shared/capabilities");
+   for Source_Files use
+     ("power_tests.adb",
+      "platform_power_abi.ads",
+      "platform_power_policy.ads", "platform_power_policy.adb",
+      "firmware_tables.ads", "firmware_tables.adb",
+      "firmware_tables-power_registers.ads", "firmware_tables-power_registers.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("power_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--timeout=60");
+   end Prove;
+end Power;

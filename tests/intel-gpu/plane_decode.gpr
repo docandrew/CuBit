@@ -1,0 +1,15 @@
+project Plane_Decode is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("plane_decode_tests.adb",
+     "intel_gpu_plane_control.ads",
+     "intel_gpu_plane_decode.ads", "intel_gpu_plane_decode.adb",
+     "intel_gpu_scanout_range.ads", "intel_gpu_scanout_range.adb",
+     "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb");
+   for Object_Dir use "build-plane-decode";
+   for Exec_Dir use "build-plane-decode";
+   for Main use ("plane_decode_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-O2");
+   end Compiler;
+end Plane_Decode;

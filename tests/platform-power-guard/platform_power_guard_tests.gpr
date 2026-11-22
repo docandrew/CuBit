@@ -1,0 +1,14 @@
+--  Hosted tests and proof of the kernel's platform power port guard (KERN-004, run.sh).
+project Platform_Power_Guard_Tests is
+   for Source_Dirs use (".", "../../kernel/src", "../../shared/firmware");
+   for Source_Files use ("main.adb", "platform_power_port_guard.ads", "platform_power_port_guard.adb",
+                         "firmware_tables.ads", "firmware_tables.adb", "firmware_tables-power_registers.ads",
+                         "firmware_tables-power_registers.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Platform_Power_Guard_Tests;

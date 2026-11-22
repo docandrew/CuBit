@@ -1,0 +1,21 @@
+--  Hosted (Linux) tests of the Messages API client core (userspace/lib/llm):
+--  request building, the streaming response decoder, budgets, costs and
+--  log redaction. Run from the repository root inside nix develop:
+--    gprbuild -p -P tests/llm/llm_tests.gpr && tests/llm/build/llm_main
+project Llm_Tests is
+   for Source_Dirs use (".", "../../userspace/lib/llm", "../../userspace/lib/agent", "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("llm_main.adb", "cubit.ads", "cubit-llm_protocol.ads",
+      "llm_costs.ads", "llm_costs.adb", "llm_requests.ads", "llm_requests.adb", "llm_json.ads", "llm_json.adb",
+      "llm_responses.ads", "llm_responses.adb", "llm_reports.ads", "llm_reports.adb",
+      "agent_blocks.ads", "agent_blocks.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("llm_main.adb");
+   package Compiler is
+      --  Checks on (-gnata, overflow and range checks are GNAT's default):
+      --  a decoder bug fails here instead of hiding. -I-: the CuBit runtime
+      --  directory also holds target-only predefined units.
+      for Default_Switches ("Ada") use ("-O1", "-g", "-gnat2022", "-gnata", "-gnatwa", "-I-");
+   end Compiler;
+end Llm_Tests;

@@ -1,0 +1,82 @@
+[
+  {
+    "mode": "normal",
+    "width": 1
+  },
+  {
+    "mode": "normal",
+    "width": 2
+  },
+  {
+    "mode": "fixed",
+    "width": 1
+  },
+  {
+    "mode": "fixed",
+    "width": 2
+  },
+  {
+    "mode": "no-match",
+    "width": 1
+  },
+  {
+    "mode": "no-match",
+    "width": 2
+  },
+  {
+    "mode": "notify",
+    "width": 1
+  },
+  {
+    "mode": "notify",
+    "width": 2
+  },
+  {
+    "mode": "not-ready",
+    "width": 1
+  },
+  {
+    "mode": "not-ready",
+    "width": 2
+  },
+  {
+    "mode": "clock-fail",
+    "width": 1
+  },
+  {
+    "mode": "clock-fail",
+    "width": 2
+  },
+  {
+    "mode": "clock-overflow",
+    "width": 1
+  },
+  {
+    "mode": "clock-overflow",
+    "width": 2
+  },
+  {
+    "mode": "alloc-fail",
+    "width": 1
+  },
+  {
+    "mode": "alloc-fail",
+    "width": 2
+  },
+  {
+    "mode": "retired-before",
+    "width": 1
+  },
+  {
+    "mode": "retired-before",
+    "width": 2
+  },
+  {
+    "mode": "close-fail",
+    "width": 1
+  },
+  {
+    "mode": "close-fail",
+    "width": 2
+  }
+]

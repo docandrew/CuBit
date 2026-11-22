@@ -1,0 +1,53 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+---------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                      Provers   Justified   Unproved
+---------------------------------------------------------------------------------------------------
+Data Dependencies                 .           .                            .           .          .
+Flow Dependencies                 .           .                            .           .          .
+Initialization                    7           7                            .           .          .
+Non-Aliasing                      .           .                            .           .          .
+Run-time Checks                  81           .    81 (CVC5 98%, Trivial 2%)           .          .
+Assertions                       23           .                    23 (CVC5)           .          .
+Functional Contracts             20           .    20 (CVC5 97%, Trivial 3%)           .          .
+LSP Verification                  .           .                            .           .          .
+Termination                       7           7                            .           .          .
+Concurrency                       .           .                            .           .          .
+---------------------------------------------------------------------------------------------------
+Total                           138    14 (10%)                    124 (90%)           .          .
+
+
+max steps used for successful proof: 5643
+
+============================
+Most difficult proved checks
+============================
+
+aml_copied_tables.ads:52:41: postcondition proved in max 1 seconds
+aml_copied_tables.ads:57:45: overflow check proved in max 1 seconds
+aml_copied_tables.ads:58:64: overflow check proved in max 1 seconds
+aml_copied_tables.ads:60:20: precondition proved in max 1 seconds
+aml_copied_tables.adb:103:25: assertion proved in max 1 seconds
+aml_copied_tables.adb:100:35: overflow check proved in max 1 seconds
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit aml_copied_tables, 13 subprograms and packages out of 13 analyzed
+  AML_Copied_Tables at aml_copied_tables.ads:7 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)
+  AML_Copied_Tables.Byte_At at aml_copied_tables.ads:30 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (6 checks)
+  AML_Copied_Tables.Copy_Window at aml_copied_tables.ads:67 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (27 checks)
+  AML_Copied_Tables.Count at aml_copied_tables.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Copied_Tables.Length at aml_copied_tables.ads:28 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  AML_Copied_Tables.Model at aml_copied_tables.ads:21 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  AML_Copied_Tables.Present at aml_copied_tables.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Copied_Tables.Retain at aml_copied_tables.ads:50 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (57 checks)
+  AML_Copied_Tables.Retain.Spend at aml_copied_tables.adb:31 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  AML_Copied_Tables.State at aml_copied_tables.ads:86 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  AML_Copied_Tables.Store_Model at aml_copied_tables.ads:81 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Copied_Tables.Used_Bytes at aml_copied_tables.ads:25 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  AML_Copied_Tables.Valid at aml_copied_tables.ads:26 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (17 checks)

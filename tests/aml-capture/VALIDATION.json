@@ -1,0 +1,70 @@
+{
+  "fresh_integrated_capture": [
+    {
+      "path": "/home/doc/git/.acpi-proof-work/capture-region-integrated-bo7zs2yi/tests/aml-capture/results/capture-release-dztq02jl/terminal-review.json",
+      "sha256": "a6f47e92dc9292a33feb059a93c4503cd968fde0b95bd8909d6fdc08b9500f0e",
+      "worker": 28385,
+      "profile": "release",
+      "checks": 13798,
+      "stages": 30
+    },
+    {
+      "path": "/home/doc/git/.acpi-proof-work/capture-region-integrated-bo7zs2yi/tests/aml-capture/results/capture-checked-1gfhnnb8/terminal-review.json",
+      "sha256": "629f307151173a009034f1b80a73fa11922db101a40e8f31a52b41f92b8ae6b8",
+      "worker": 42002,
+      "profile": "checked",
+      "checks": 13798,
+      "stages": 30
+    }
+  ],
+  "documentation_successor": "Historical region-integrated application documentation; subsequent package-slot raw integer attachment changes Namespace. Prior capture/compatibility receipts remain preserved predecessor-source evidence.",
+  "predecessor_results": {
+    "combined_checks_per_profile": 9062,
+    "legacy_checks_per_profile": 56430,
+    "startup_checks_per_profile": 344,
+    "scope": "Earlier production source, not fresh integrated-region results. Legacy includes8 carried release outcomes."
+  },
+  "carried_region": {
+    "checks_per_profile": [
+      270,
+      314
+    ],
+    "dependency_audit": "/home/doc/git/.acpi-proof-work/capture-region-closure-reuse-cnb7joir/reuse.json",
+    "sha256": "b6c35c30d08d45e325e16e150b3c99fa96e22c45e819fd058a7c61ba5978da72",
+    "scope": "97nonmain compiled local dependencies/profile identical; unchanged fixture mains external, notregistered; historical Nix/runtime/temporaryconfig assumptions retained."
+  },
+  "excluded": "later scalar relational contracts; native integration; logger changes",
+  "shared_application": {
+    "status": "Applied and postverified; preceding validation entries describe the pre-application source snapshots.",
+    "receipt": "/home/doc/git/.acpi-proof-work/acpi-applied-capture-region-4z1dvdlc/receipt.json",
+    "receipt_sha256": "28ba83ed4c9e1d5fb2b02e4322fce335d90d290702a1080ebf670b380d198211",
+    "changed_paths": 1422
+  },
+  "compatibility_complete": {
+    "receipts": {
+      "region-promotion-validation-timeout-5369ris8": {
+        "path": "/home/doc/git/.acpi-proof-work/region-promotion-validation-timeout-5369ris8/receipt.json",
+        "sha256": "417532220770a161cea24cf19dfbe031ab36e0594c8142b45c7de3b4c2287256"
+      },
+      "region-promotion-checked-blocks-final-nxegbpuh": {
+        "path": "/home/doc/git/.acpi-proof-work/region-promotion-checked-blocks-final-nxegbpuh/receipt.json",
+        "sha256": "e3352dc982f15708cba3bc379d615cc92189a129ce56cb0f465566255417de8c"
+      },
+      "typed-original-checked-final-b7n816zg": {
+        "path": "/home/doc/git/.acpi-proof-work/typed-original-checked-final-b7n816zg/receipt.json",
+        "sha256": "9303d1f41bb73f93f949f736df5d13f55d8e3dd844e31a7ab60a39c6f1580ebe"
+      }
+    },
+    "workers": [
+      12103,
+      19043,
+      9312
+    ],
+    "scope": "Composite13adapters bothprofiles and5runtime mains eachprofile, not one uninterrupted run. Original typed checked26138 at74.477s under one120s exception;30/60timeouts preserved, portable limits unchanged. Release bootstrap1317 printedcounter is not assertioncoverage; checked bootstrap1317 assertionspassed."
+  },
+  "package_store_followup": {
+    "change": "Package_Slot integer attachment copies raw Item.Number and Origin; no named/byte/completion change",
+    "validation": "tests/aml-package-store/evidence.json",
+    "scope": "Prior private exact local compiled closures and switches carried; portable source guard validation only, no fresh complete capture run. Historical copy_store_root_tests instrumentation fixture remains unsupported."
+  }
+}

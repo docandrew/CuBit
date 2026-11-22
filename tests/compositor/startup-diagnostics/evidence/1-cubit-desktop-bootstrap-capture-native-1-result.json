@@ -1,0 +1,30 @@
+{
+  "status": "PASS",
+  "gpu_enabled": false,
+  "scope": "native CuBit runtime-dispatch software fallback with explicit boot seeds",
+  "binary_sha256": "1b7bd3cb5d67b34b1dee001ac1c28cfbc707fc78a7558260212cb9fb7d4f6c59",
+  "memory": "1G",
+  "render_approved": true,
+  "render_attempts": [
+    [
+      "4294967328",
+      "FALSE"
+    ],
+    [
+      "8589934624",
+      "TRUE"
+    ]
+  ],
+  "software_fallback": "PASS",
+  "hardware_validated": false,
+  "cursor_moves": 32,
+  "cursor_roundtrips": 8,
+  "cursor_damage": "PASS exact restoration and no changes outside old/new footprints",
+  "menu_changed_pixels": [
+    115274,
+    115274,
+    115328
+  ],
+  "restored_cycles": 3,
+  "false_gpu_markers": 0
+}

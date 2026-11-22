@@ -1,0 +1,5 @@
+{
+  "path": "/home/doc/git/.acpi-proof-work/copy-index-oracle-i42fbwh3",
+  "audit_sha256": "b6824188cff51c81e44c9573cc0a50c87824c69c96a1a58a9c9b89a91a1d0a02",
+  "repair": "Accept observed ASL+ indexed operand spelling, still require actual CopyObject index source and DerefOf."
+}

@@ -1,0 +1,15 @@
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit aml_execution_limits, 2 subprograms and packages out of 2 analyzed
+flow analysis and proof skipped for this unit (only SPARK_Mode checking was requested)
+  AML_Execution_Limits at aml_execution_limits.ads:1 not analyzed
+  AML_Execution_Limits.Charged_Field_Work at aml_execution_limits.ads:20 not analyzed

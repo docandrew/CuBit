@@ -1,0 +1,10 @@
+project Client_Frame is
+   for Source_Dirs use (".", "../../userspace/lib/ui");
+   for Source_Files use ("client_frame_tests.adb", "client_frame_state.ads", "client_frame_state.adb");
+   for Object_Dir use "build/client-frame/obj";
+   for Exec_Dir use "build/client-frame";
+   for Main use ("client_frame_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Client_Frame;

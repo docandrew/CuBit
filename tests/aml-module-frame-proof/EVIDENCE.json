@@ -1,0 +1,43 @@
+{
+  "sources": {
+    "userspace/services/acpi/lib/aml_module_frames.ads": "162d3ea62200778411f1a27d77f185dbe79d05fae6ad321d4414cbc64260b512",
+    "userspace/services/acpi/lib/aml_module_frames.adb": "c0771ed73cf5230ea583ca81c0fa2052460f1d5c866968e5dd1fdb8f8d7d2c32",
+    "userspace/services/acpi/lib/aml_frame_handles.ads": "db70ab1e360b3887e8ccd0fd38c1b6a143472fd5309e5fa36d92d640c4a33f37",
+    "userspace/services/acpi/lib/aml_identity.ads": "95e1f372b2c7cecef6fcc75119cb616c2aa22eb9398e5997a250a1f6b342785f"
+  },
+  "artifacts": {
+    "source/aml_module_frames.ads": "162d3ea62200778411f1a27d77f185dbe79d05fae6ad321d4414cbc64260b512",
+    "source/aml_module_frames.adb": "c0771ed73cf5230ea583ca81c0fa2052460f1d5c866968e5dd1fdb8f8d7d2c32",
+    "source/aml_frame_handles.ads": "db70ab1e360b3887e8ccd0fd38c1b6a143472fd5309e5fa36d92d640c4a33f37",
+    "source/aml_identity.ads": "95e1f372b2c7cecef6fcc75119cb616c2aa22eb9398e5997a250a1f6b342785f",
+    "level1/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5",
+    "level2/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5",
+    "level1/proof.spark": "d31863a971dc655c1134a489321f4df3269fd891397822bd567bab3675d7d4e3",
+    "level1/prove.log": "e31d52430875c826a7a5e6d38a2f23b49315fd12b98d44fbc1415007a2f71e7d",
+    "level2/proof.spark": "de11ea6651adedbd8d7370e348c70d3ec70eb2d2a423a6c513fb95d4091f9082",
+    "level2/prove.log": "f103e9726102f74385069e03ec6cd048499a4b34bfb0bde15ce4b28f019fad39",
+    "original-report.json": "ad07afe8aeaea4bb290054ee082d29a6fd9d3a39d266ece91e5d6b4c0cd17dc4",
+    "PROOF-AUDIT.json": "cb6274e7fb68dc7a2babe3f73d32c9a5a4e1dca608dedb08efa0ae63cdd457a3"
+  },
+  "scripts": {
+    "run.mjs": "471779ae86314850c5ce1fc687731dfcf09c9882af9e3918c5d9bb73f6d28746",
+    "run.sh": "3e69ffe13604c91b2f60671a8b409ea3f582d56103d4e4ccf3247ead4e6b7a9d",
+    "check-proof.mjs": "745c3a7b46bd387a50d19f6819ab108dc8760d779ab9da12dd31aa9f2e46af55"
+  },
+  "input_map": {
+    "/home/doc/git/.acpi-proof-work/nested-module-frames-work/candidate/userspace/services/acpi/lib/aml_module_frames.ads": "source/aml_module_frames.ads",
+    "/home/doc/cubit-build-tmp/module-frames-proof-KYLkJb/source/aml_module_frames.ads": "source/aml_module_frames.ads",
+    "/home/doc/git/.acpi-proof-work/nested-module-frames-work/candidate/userspace/services/acpi/lib/aml_module_frames.adb": "source/aml_module_frames.adb",
+    "/home/doc/cubit-build-tmp/module-frames-proof-KYLkJb/source/aml_module_frames.adb": "source/aml_module_frames.adb",
+    "/home/doc/git/.acpi-proof-work/nested-module-frames-work/candidate/userspace/services/acpi/lib/aml_frame_handles.ads": "source/aml_frame_handles.ads",
+    "/home/doc/cubit-build-tmp/module-frames-proof-KYLkJb/source/aml_frame_handles.ads": "source/aml_frame_handles.ads",
+    "/home/doc/git/.acpi-proof-work/nested-module-frames-work/candidate/userspace/services/acpi/lib/aml_identity.ads": "source/aml_identity.ads",
+    "/home/doc/cubit-build-tmp/module-frames-proof-KYLkJb/source/aml_identity.ads": "source/aml_identity.ads",
+    "/home/doc/cubit-build-tmp/module-frames-proof-KYLkJb/level1/proof.gpr": "level1/proof.gpr",
+    "/home/doc/cubit-build-tmp/module-frames-proof-KYLkJb/level2/proof.gpr": "level2/proof.gpr"
+  },
+  "tools": {
+    "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove": "ef4dd76057294453d4cc43781aa0f25fad9b351533e380cc9a60a9b86fa797ef"
+  },
+  "scope": "Actual bounded module-frame stack functional postconditions and safety over full frame handles; imported identity/frame functions are actual pure dependencies; no namespace/Core or whole-service proof"
+}

@@ -1,0 +1,593 @@
+[
+  {
+    "label": "direct-r1",
+    "revision": 1,
+    "aml_sha256": "a9a2a4c2700596e6cf85b4f92505546f83d925e409518a4214dde9b49dd69a3c",
+    "aml_length": 98,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0x33"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0x33"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "direct-r2",
+    "revision": 2,
+    "aml_sha256": "2583f521edec0d574ac8e61123f0ed35628f22d68966e758aa35f42318814eca",
+    "aml_length": 98,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0x33"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0x33"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "nested-r1",
+    "revision": 1,
+    "aml_sha256": "ced90454ebf6980f8a6c50f3d0c05524cdae8436ad6f95a5007fee076c8d87ab",
+    "aml_length": 124,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xB6",
+        "0x11223344",
+        "0x44"
+      ],
+      [
+        "0xB6",
+        "0x11223344",
+        "0x44"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000001",
+      "0000000000000000",
+      "0000000000000002"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "nested-r2",
+    "revision": 2,
+    "aml_sha256": "c90141f93560718f7a1713f80265075a56f8994749ef199597563694aa4087c5",
+    "aml_length": 124,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xB6",
+        "0x11223344",
+        "0x44"
+      ],
+      [
+        "0xB6",
+        "0x11223344",
+        "0x44"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000001",
+      "0000000000000000",
+      "0000000000000002"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "once-r1",
+    "revision": 1,
+    "aml_sha256": "d487d0e9ec42255d56f72c6d304164952be9afef13473e94bbc6f56e9ef18d51",
+    "aml_length": 115,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0x55"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0x55"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000001",
+      "0000000000000000",
+      "0000000000000002"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "once-r2",
+    "revision": 2,
+    "aml_sha256": "ea929e3a90592748fe6b28ef3540956500ce5c6747e4cc1a83fc94781c59225a",
+    "aml_length": 115,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0x55"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0x55"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000001",
+      "0000000000000000",
+      "0000000000000002"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "string-r1",
+    "revision": 1,
+    "aml_sha256": "b0cec74cef62d64ce5adbd2853ca2988e53e420480857f579ac520b4f22595cc",
+    "aml_length": 114,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0x12345678"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0x12345678"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "string-r2",
+    "revision": 2,
+    "aml_sha256": "3b05ae2818f19042c1703e76698c10312fb336058d63197f83ee5558ea474011",
+    "aml_length": 114,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0x9ABCDEF0"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0x9ABCDEF0"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "buffer-r1",
+    "revision": 1,
+    "aml_sha256": "ee5097bd3627e14c6785ea94d36aeef70034acbc3c351c92d08930b5c2fdb56f",
+    "aml_length": 108,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0x76543210"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0x76543210"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "buffer-r2",
+    "revision": 2,
+    "aml_sha256": "6986c2e628cca4e05fcec99a904fd3f53d37192bb6609e5dd97551e2d626342a",
+    "aml_length": 108,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0x76543210"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0x76543210"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "wide-r1",
+    "revision": 1,
+    "aml_sha256": "9e0d391054fe87422a5974524362d154e65beb9bbc760970d5e847594e52c4ef",
+    "aml_length": 101,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0x76543210"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0x76543210"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000"
+    ],
+    "compiler_diagnostics": [
+      "Warning  3038 -                                                                                Truncating 64-bit constant found in 32-bit table ^ ",
+      "Compilation successful. 0 Errors, 1 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "wide-r2",
+    "revision": 2,
+    "aml_sha256": "1db426aa7796a6e1ae0060895fd706907d773afb2fcdb52e186245ee1a584ce7",
+    "aml_length": 105,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0x76543210"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0x76543210"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "osi-r1",
+    "revision": 1,
+    "aml_sha256": "f8a29afeb4907934479e527b86ce334f918c09d529e0c10ddec1653298698414",
+    "aml_length": 126,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0xFFFFFFFF"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0xFFFFFFFF"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "FFFFFFFFFFFFFFFF",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "label": "osi-r2",
+    "revision": 2,
+    "aml_sha256": "e9aca1dd1a90432f1e17bd5a1155e475922f09091ecc881c95e3584fc3188d34",
+    "aml_length": 126,
+    "checksum_valid": true,
+    "runtime_process_status": 0,
+    "fatal_payloads": [
+      [
+        "0xA5",
+        "0x12345678",
+        "0xFFFFFFFF"
+      ],
+      [
+        "0xA5",
+        "0x12345678",
+        "0xFFFFFFFF"
+      ]
+    ],
+    "method_failures": [
+      [
+        "TEST",
+        "AE_ERROR"
+      ],
+      [
+        "TEST",
+        "AE_ERROR"
+      ]
+    ],
+    "integers": [
+      "FFFFFFFFFFFFFFFF",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000",
+      "0000000000000000"
+    ],
+    "compiler_diagnostics": [
+      "Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations"
+    ],
+    "outstanding_cache_diagnostic": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  }
+]

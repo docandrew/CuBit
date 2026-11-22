@@ -1,0 +1,10 @@
+project Gradient is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("gradient_tests.adb", "compositor_gradient.ads", "compositor_gradient.adb");
+   for Object_Dir use "build/gradient/obj";
+   for Exec_Dir use "build/gradient";
+   for Main use ("gradient_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Gradient;

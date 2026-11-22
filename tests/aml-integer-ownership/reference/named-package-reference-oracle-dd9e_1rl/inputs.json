@@ -1,0 +1,18 @@
+{
+  "PLAN.txt": "d980fe8b92c6edb32595f117e863f7c11da2e7bef3b56348631c6e7490936de3",
+  "hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
+  "run.py": "b98795205a47f873eb2344967c97cb910867485e604ea78a0eb2fffc37790589",
+  "bounded_tool.py": "e437db8639dc573a5218ed5bf862298e84a0ac48fdf8ddc46bf0c795d89373c8",
+  "tool-pins.json": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08",
+  "cases.json": "ff87db0eb587566b3a09d237259c4a44dd77a05447512f46eae3c8df806bd709",
+  "cases/r1-arg-package.asl": "989f718956cd365e58f96795c9c61004aecd4049998be146f496d228ab7a36ab",
+  "cases/r1-ref-integer.asl": "b7e058ad5d2acedb049703ffe5e93ca83901533a57fcac740791044738717aba",
+  "cases/r2-ref-integer.asl": "27b41813798b40352f30907520ed53ed641fa060c6b878fce551f97fc3546202",
+  "cases/r1-ref-package.asl": "b963a6009b6f084be07ed8bea8dd83a568983ff6f2fce7aca1002af732707707",
+  "cases/r2-ref-package.asl": "e194fcdc882cfcd79b13cd92f2fde26c8395c35934f50326223785ee4e4cccf0",
+  "cases/r2-arg-integer.asl": "94808259c1936d6925c3c55f932b58ffc98b87f15098ae5ae54e307f76b0c889",
+  "cases/base1.asl": "6cfe7d358a7f930336d83c0478cc02f29c376b6ca9dbd73166345bd762e95256",
+  "cases/base2.asl": "0aafe49d2031ada16d799234abe1f4e8f64a2c377337d4587df3fbef161f1039",
+  "cases/r1-arg-integer.asl": "a1ae2d1b3ae5f3040f87ab60d06849dc913d8871b9b068ed9f2acf911db8d781",
+  "cases/r2-arg-package.asl": "798bf41f70e5ba3f26fbb967e534d26cf1d77e49c09b0e6e8e3363a3c77e267d"
+}

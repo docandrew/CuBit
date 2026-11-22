@@ -1,0 +1,45 @@
+{
+  "h": "/home/doc/git/.acpi-proof-work/aslts-logic-original-work",
+  "src": "/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src",
+  "entry": "/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/logic/MAIN.asl",
+  "archive": "/home/doc/git/cubit/tests/aml-core/build/aslts/source.tar.gz",
+  "archive_sha256": "91addf34cf6f00c310dcff1d456c2e04629c2b45efe409385068e9fc5e9fe43b",
+  "tools": {
+    "iasl": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "sha256": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb"
+    },
+    "acpiexec": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "sha256": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
+    },
+    "stdbuf": {
+      "path": "/nix/store/97d5ygrvqj55f4nx1x34wfdcc7qn11c0-coreutils-9.11/bin/stdbuf",
+      "sha256": "f5afcbdd8db007620ba82a36a21c07bf66a6b737c062101b6aa16f81f587c8a6"
+    },
+    "libstdbuf": {
+      "path": "/nix/store/97d5ygrvqj55f4nx1x34wfdcc7qn11c0-coreutils-9.11/libexec/coreutils/libstdbuf.so",
+      "sha256": "6e2d8d224c0a11165e4d56d1ebea837cc833c98e5469fecdb4125d3a35ba9d66"
+    }
+  },
+  "compiler_flags": [
+    "-oa",
+    "-r",
+    "2",
+    "-of",
+    "-cr",
+    "-vs",
+    "-l",
+    "-sc",
+    "-sa",
+    "-ic",
+    "-ta",
+    "-ts",
+    "-so",
+    "-lm",
+    "-ln",
+    "-ls",
+    "-li"
+  ],
+  "mode": "Unmodified full functional/logic n64, normal upstream flags, fresh repair-disabled reference, no forced AML/source changes/diagnostic suppression."
+}

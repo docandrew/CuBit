@@ -1,0 +1,11 @@
+# Requested authority only; the existing launch path remains in control.
+(Executable_Manifest
+  identity => "com.cubit.display-check"
+  version => "0.1.0"
+  requests => [
+    (service "display" "display")
+    # Scanout loans (UI-020), as Desktop: offered to display read-only.
+    (Request.Offerable_Self "self-offer")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

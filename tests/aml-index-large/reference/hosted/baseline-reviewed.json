@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-wide-bulk-benchmark-hunozlEl/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-wide-bulk-benchmark-hunozlEl/source/tests/aml-index-large/results/checked-kh3cingr",
+  "mode": "checked",
+  "inputs": 231,
+  "references": 8,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 315,
+  "stages": 2,
+  "logs": {
+    "index_width_tests-small": "Index width checks 2577 bytes 512"
+  },
+  "ALI": 77,
+  "dependencies": 1374,
+  "strict_commands": 76,
+  "audit_sha256": "6859db0c50ca57f58ac56fb2ed714ee43e46ec06c234f19d5b5d7b8bb86c54ec",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

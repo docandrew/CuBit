@@ -1,0 +1,1 @@
+[{"name": "fresh_integer_alias", "declarations": "", "body": "Store (9,Index(ToBuffer(0x1122334455667788,Local0),Zero)) Return(Local0)", "source_expectation": null}, {"name": "byte_target_full", "declarations": "Name(DEST,Buffer(2){9,8})", "body": "ToBuffer(\"AB\",Index(DEST,Zero)) Return(DEST)", "source_expectation": null}]

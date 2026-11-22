@@ -1,0 +1,12 @@
+/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/compound-r1.asl     25:                 Return (Buffer (2) {0xA5, 0x5A})
+Warning  3104 -                                                                    Reserved method should not return a value ^  (_INI)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/compound-r1.asl -    1038 bytes     29 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/results/compound-r1.aml -     249 bytes     16 opcodes      13 named objects
+
+Compilation successful. 0 Errors, 1 Warnings, 0 Remarks, 7 Optimizations

@@ -1,0 +1,38 @@
+--- a/src/intel/vulkan/anv_kmd_backend.h
++++ b/src/intel/vulkan/anv_kmd_backend.h
+@@ -108,6 +108,9 @@
+    /* Refresh measured availability; false retains the last valid snapshot. */
+    bool (*refresh_memory_info)(struct anv_physical_device *device);
++   /* Optional read-only snapshot path, bypassing mutable shared meminfo. */
++   void (*get_memory_budget)(struct anv_physical_device *device,
++                             VkPhysicalDeviceMemoryBudgetPropertiesEXT *out);
+    /* Publish only synchronization types implemented by this transport. */
+    VkResult (*init_sync_types)(struct anv_physical_device *device);
+    /* Any published engine_info uses the common free()-based ownership. */
+    VkResult (*init_engine_info)(struct anv_physical_device *device);
+--- a/src/intel/vulkan/anv_physical_device.c
++++ b/src/intel/vulkan/anv_physical_device.c
+@@ -313,3 +313,6 @@
+-      .EXT_memory_budget                     = (!device->info.has_local_mem ||
++      .EXT_memory_budget                     = DETECT_OS_CUBIT ?
++                                               (backend != NULL &&
++                                                backend->get_memory_budget != NULL) :
++                                               (!device->info.has_local_mem ||
+                                                 device->vram_mappable.available > 0) &&
+                                                device->sys.available,
+@@ -321,1 +324,1 @@
+-      .EXT_pci_bus_info                      = true,
++      .EXT_pci_bus_info                      = !DETECT_OS_CUBIT,
+@@ -2382,6 +2385,12 @@
+    if (!device->vk.supported_extensions.EXT_memory_budget)
+       return;
+ 
++   if (device->kmd_backend != NULL &&
++       device->kmd_backend->get_memory_budget != NULL) {
++      device->kmd_backend->get_memory_budget(device, memoryBudget);
++      return;
++   }
++
+    anv_update_meminfo(device);
+ 
+    VkDeviceSize total_sys_heaps_size = 0, total_vram_heaps_size = 0;

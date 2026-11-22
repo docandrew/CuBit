@@ -1,0 +1,15 @@
+/home/doc/git/.acpi-proof-work/runtime-package-excess-names-oracle-bxg15ztm/nested-count1-r2.asl      6:  Method (TEST, 0) { Store (Zero, MARK) Store (1, Local0) Store (Zero, Local1)
+Remark   2120 -                    Control Method should be made Serialized due to creation of named objects within ^  (\TEST)
+
+/home/doc/git/.acpi-proof-work/runtime-package-excess-names-oracle-bxg15ztm/nested-count1-r2.asl      7:  Name (P000, Package (Local0) { Package (Local1) { MISS, Buffer (Increment (MARK)) {} } })
+Remark   2173 -                                                                                                   ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\TEST)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/runtime-package-excess-names-oracle-bxg15ztm/nested-count1-r2.asl -     339 bytes     11 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/runtime-package-excess-names-oracle-bxg15ztm/results/nested-count1-r2.aml -     112 bytes      7 opcodes       4 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 2 Remarks, 1 Optimizations

@@ -1,0 +1,13 @@
+# ata.drv's authority (CAP-002): devmgr answers these bindings from its
+# platform catalog (the primary channel, line 14) when it launches it.
+(executable-manifest v1
+  (identity "com.cubit.ata")
+  (version "0.1.0")
+  (platform-device ata-primary)
+  (io-ports command-block (resource 0) (count 8))
+  (io-ports control (resource 1) (count 1))
+  (interrupt channel (resource 2))
+  (request-notification ata manage registration)
+  (request-service device-manager read-write ready)
+  # ABI-002: its debug text, once devmgr introduces logstore.
+  (request-service-optional logstore read-write logstore))

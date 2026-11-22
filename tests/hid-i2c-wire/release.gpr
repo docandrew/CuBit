@@ -1,0 +1,9 @@
+project Release is
+ for Source_Dirs use (".", "../../userspace/services/acpi/hid-i2c");
+ for Main use ("wire_tests.adb");
+ for Object_Dir use external ("HID_I2C_WIRE_BUILD") & "/obj";
+ for Exec_Dir use external ("HID_I2C_WIRE_BUILD") & "/bin";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
+ end Compiler;
+end Release;

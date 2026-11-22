@@ -1,0 +1,257 @@
+{
+  "assumptions": [
+  ],
+  "entities": {
+    " 1": {
+      "name": "AML_Field_Plans.Count",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 17
+        }
+      ]
+    },
+    " 10": {
+      "name": "AML_Field_Plans.Plan",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 32
+        }
+      ]
+    },
+    " 2": {
+      "name": "AML_Field_Plans.Prepare",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 18
+        }
+      ]
+    },
+    " 3": {
+      "name": "AML_Field_Plans.Matches",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 24
+        }
+      ]
+    },
+    " 4": {
+      "name": "AML_Field_Plans.Result_Form",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 27
+        }
+      ]
+    },
+    " 5": {
+      "name": "AML_Field_Plans.Rule",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 20
+        }
+      ]
+    },
+    " 6": {
+      "name": "AML_Field_Plans.Datum_At",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 21
+        }
+      ]
+    },
+    " 7": {
+      "name": "AML_Field_Plans.Valid",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 16
+        }
+      ]
+    },
+    " 8": {
+      "name": "AML_Field_Plans.Buffer_Length",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 29
+        }
+      ]
+    },
+    " 9": {
+      "name": "AML_Field_Plans",
+      "sloc": [
+        {
+          "file": "aml_field_plans.ads",
+          "line": 5
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 1,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 17,
+      "msg_id": 0,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 7,
+      "entity": 2,
+      "file": "aml_field_plans.adb",
+      "how_proved": "flow",
+      "line": 24,
+      "msg_id": 1,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 7,
+      "entity": 2,
+      "file": "aml_field_plans.adb",
+      "how_proved": "flow",
+      "line": 25,
+      "msg_id": 2,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 7,
+      "entity": 2,
+      "file": "aml_field_plans.adb",
+      "how_proved": "flow",
+      "line": 26,
+      "msg_id": 3,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 2,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 18,
+      "msg_id": 4,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 3,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 24,
+      "msg_id": 5,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 4,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 27,
+      "msg_id": 6,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 5,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 20,
+      "msg_id": 7,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 6,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 21,
+      "msg_id": 8,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 7,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 16,
+      "msg_id": 9,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 8,
+      "file": "aml_field_plans.ads",
+      "how_proved": "flow",
+      "line": 29,
+      "msg_id": 10,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    }
+  ],
+  "progress": "PROGRESS_FLOW",
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all",
+    " 10": "all",
+    " 2": "all",
+    " 3": "all",
+    " 4": "all",
+    " 5": "all",
+    " 6": "all",
+    " 7": "all",
+    " 8": "all",
+    " 9": "all"
+  },
+  "stop_reason": "STOP_REASON_FLOW_MODE",
+  "timings": {
+    "global": {
+      "flow analysis": 1.22374996542931E-01,
+      "globals (advanced)": 3.37500008754432E-03,
+      "globals (basic)": 1.49680003523827E-02,
+      "marking": 1.64519995450974E-02,
+      "properties (advanced)": 4.82000003103167E-04
+    }
+  }
+}

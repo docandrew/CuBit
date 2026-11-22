@@ -1,0 +1,394 @@
+[
+  {
+    "key": "r1-ref-package",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-ref-package.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML.",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base1.asl"
+        ],
+        "log": "results/r1-ref-package-base-compile.log",
+        "sha256": "071f4db969f0ca192090b6aeda8284c3ceafc83c9e23b839f0513ac318b327be"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-package.asl"
+        ],
+        "log": "results/r1-ref-package-source-compile.log",
+        "sha256": "ca0669296e0739b6dd2be5adcc8bc9074bfe50c4ffaf102401c2aae04e7d7243"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-package.aml;execute TEST;execute TYPE;execute SIZE",
+        "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base1.aml"
+      ],
+      "log": "results/r1-ref-package-execute.log",
+      "sha256": "5b6723bb9a34c7890594696e184f1fb93438b5221b606cd0a1d2ea07eb8ad73b"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-ref-integer",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-ref-integer.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML.",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base1.asl"
+        ],
+        "log": "results/r1-ref-integer-base-compile.log",
+        "sha256": "071f4db969f0ca192090b6aeda8284c3ceafc83c9e23b839f0513ac318b327be"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-integer.asl"
+        ],
+        "log": "results/r1-ref-integer-source-compile.log",
+        "sha256": "eda9d0b1f723b06aa99029d5339a3cb068b45ab6efbdd6cbbedffa50069aa909"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-integer.aml;execute TEST;execute TYPE;execute SIZE",
+        "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base1.aml"
+      ],
+      "log": "results/r1-ref-integer-execute.log",
+      "sha256": "204a6cfd23501e08b02c933eff52659d639463582e9acd1ce8438f951f02600b"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [
+      "AE_AML_TARGET_TYPE"
+    ]
+  },
+  {
+    "key": "r1-arg-package",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-package.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML.",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base1.asl"
+        ],
+        "log": "results/r1-arg-package-base-compile.log",
+        "sha256": "071f4db969f0ca192090b6aeda8284c3ceafc83c9e23b839f0513ac318b327be"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-package.asl"
+        ],
+        "log": "results/r1-arg-package-source-compile.log",
+        "sha256": "7911b014eeccddb51b87d55d100ffc6d690f4c56f2b5fc0f892b58a5180d0e67"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-package.aml;execute TEST;execute TYPE;execute SIZE",
+        "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base1.aml"
+      ],
+      "log": "results/r1-arg-package-execute.log",
+      "sha256": "bc02fa3e06078df687a390ea83af16bdc6bc05ffda98ac50250f2a28838d7edb"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-arg-integer",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-integer.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML.",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base1.asl"
+        ],
+        "log": "results/r1-arg-integer-base-compile.log",
+        "sha256": "071f4db969f0ca192090b6aeda8284c3ceafc83c9e23b839f0513ac318b327be"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-integer.asl"
+        ],
+        "log": "results/r1-arg-integer-source-compile.log",
+        "sha256": "7e09c4e425bd083bdeefc9dbfd9a765a7eb3ee6866cf4101e74a0fe95c730e4a"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-integer.aml;execute TEST;execute TYPE;execute SIZE",
+        "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base1.aml"
+      ],
+      "log": "results/r1-arg-integer-execute.log",
+      "sha256": "8c2b0f1ad3b330f2515f19f3dd2f58b7344eebe4a476905b44da0a25cef69f40"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [
+      "AE_AML_TARGET_TYPE"
+    ]
+  },
+  {
+    "key": "r2-ref-package",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-ref-package.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML.",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base2.asl"
+        ],
+        "log": "results/r2-ref-package-base-compile.log",
+        "sha256": "a78f22e0ced7e97021420b64f86ae3c72c8bef67bc853abfb60dd554041d5349"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-package.asl"
+        ],
+        "log": "results/r2-ref-package-source-compile.log",
+        "sha256": "1ea5fcafec210bd0051b4913d39ac39288e96806369514ebfbe76cfe299da03f"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-package.aml;execute TEST;execute TYPE;execute SIZE",
+        "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base2.aml"
+      ],
+      "log": "results/r2-ref-package-execute.log",
+      "sha256": "9e2e30ea532f0528c647b633f3a95850f60bb0b70ffde4a86165dc94a5ea7674"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-ref-integer",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-ref-integer.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML.",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base2.asl"
+        ],
+        "log": "results/r2-ref-integer-base-compile.log",
+        "sha256": "a78f22e0ced7e97021420b64f86ae3c72c8bef67bc853abfb60dd554041d5349"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-integer.asl"
+        ],
+        "log": "results/r2-ref-integer-source-compile.log",
+        "sha256": "a21c5d4ff2593641a3d33cad426fba58f695ac5f22a01100556af4795b146d69"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-integer.aml;execute TEST;execute TYPE;execute SIZE",
+        "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base2.aml"
+      ],
+      "log": "results/r2-ref-integer-execute.log",
+      "sha256": "6b20e2b5fe561554eb04bfa395bb32fb63079a86cdfa91a8c3d5ebfa4a5a40de"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [
+      "AE_AML_TARGET_TYPE"
+    ]
+  },
+  {
+    "key": "r2-arg-package",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-package.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML.",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base2.asl"
+        ],
+        "log": "results/r2-arg-package-base-compile.log",
+        "sha256": "a78f22e0ced7e97021420b64f86ae3c72c8bef67bc853abfb60dd554041d5349"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-package.asl"
+        ],
+        "log": "results/r2-arg-package-source-compile.log",
+        "sha256": "bf3b408a3fe86ff338fd52eade725fcc0f31a16b751c9a116ec637a8aac9a843"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-package.aml;execute TEST;execute TYPE;execute SIZE",
+        "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base2.aml"
+      ],
+      "log": "results/r2-arg-package-execute.log",
+      "sha256": "7130bfb48cab4cd0d742dcfacff9684adf20a990b1980e8f938342bc6dfb5cdb"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-arg-integer",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-integer.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML.",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base2.asl"
+        ],
+        "log": "results/r2-arg-integer-base-compile.log",
+        "sha256": "a78f22e0ced7e97021420b64f86ae3c72c8bef67bc853abfb60dd554041d5349"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-integer.asl"
+        ],
+        "log": "results/r2-arg-integer-source-compile.log",
+        "sha256": "8ed724737964f10b96834ba888fc1ca1658fec2e115143cddc763faa9be558d7"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-integer.aml;execute TEST;execute TYPE;execute SIZE",
+        "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base2.aml"
+      ],
+      "log": "results/r2-arg-integer-execute.log",
+      "sha256": "ae43a82890cf8c154a5198cf0198192f0f30218a237d85aad5179e8bb2c0adc6"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [
+      "AE_AML_TARGET_TYPE"
+    ]
+  }
+]

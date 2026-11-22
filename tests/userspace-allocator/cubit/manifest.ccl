@@ -1,0 +1,8 @@
+# CuAlloc benchmark on CuBit (tests/userspace-allocator/cubit): no
+# authority. It reports through the debug log.
+(Executable_Manifest
+  identity => "com.cubit.cualloc-bench"
+  version => "0.1.0"
+  # Its diagnostics (cubit_debug_write, the libc's records: CuBit.Libc_Log).
+  requests => [(service "logstore" "logstore")]
+  optional => ["logstore"])

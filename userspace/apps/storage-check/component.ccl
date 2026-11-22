@@ -1,0 +1,3 @@
+(Component name => "storage-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    language => Ada_Language.Ada_2022)))

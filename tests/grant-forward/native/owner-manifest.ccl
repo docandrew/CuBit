@@ -1,0 +1,7 @@
+# Test-only registration identity, isolated from the async-ipc profile.
+(executable-manifest v1
+  (identity "com.cubit.ipctest.server")
+  (version "1.0.0")
+  # The owner provides ipc-test and calls no other role: it asks for no
+  # service (the shared fixture's lookups find none).
+  (request-notification ipc-test-registration manage registration))

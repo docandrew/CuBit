@@ -1,0 +1,51 @@
+with CuBit.Handles.Startup;
+with CuBit.Startup_Tables;
+
+package body CCL_Native_Bindings is
+   package HS renames CuBit.Handles.Startup;
+
+   function Named (Label : String; Kind : CuBit.Startup_Tables.Capability_Kind :=
+                     CuBit.Startup_Tables.Endpoint) return CuBit.Handles.Endpoint is
+      Found : constant HS.Optional_Endpoint := HS.Optional_Endpoint_Named (Label, Kind);
+   begin
+      return (if Found.Present then Found.Value else CuBit.Handles.No_Endpoint);
+   end Named;
+
+   Clock_Entry            : constant CuBit.Handles.Endpoint := Named ("clock");
+   Logstore_Entry         : constant CuBit.Handles.Services.Logstore.Optional_Endpoint :=
+     CuBit.Handles.Services.Logstore.Optional_Named ("logstore");
+   Filesystem_Entry       : constant CuBit.Handles.Endpoint := Named ("filesystem");
+   Config_Entry           : constant CuBit.Handles.Endpoint := Named ("config");
+   Process_Observer_Entry : constant CuBit.Handles.Endpoint := Named ("process-observer");
+   Log_Observer_Entry     : constant CuBit.Handles.Services.Log_Observer.Optional_Endpoint :=
+     CuBit.Handles.Services.Log_Observer.Optional_Named ("log-observer");
+   Log_Control_Entry      : constant CuBit.Handles.Endpoint := Named ("log-control");
+   Network_Entry          : constant CuBit.Handles.Endpoint :=
+     Named ("network", CuBit.Startup_Tables.Network);
+   Lexicon_Entry          : constant CuBit.Handles.Endpoint := Named ("lexicon");
+   Installer_Entry        : constant CuBit.Handles.Endpoint := Named ("installer");
+   Network_Stack_Entry    : constant CuBit.Handles.Endpoint := Named ("network-stack");
+   Wifi_Entry             : constant CuBit.Handles.Endpoint := Named ("wifi");
+   Llm_Entry              : constant CuBit.Handles.Endpoint := Named ("llm");
+   Secrets_Entry          : constant CuBit.Handles.Endpoint := Named ("secrets");
+   Power_Entry            : constant CuBit.Handles.Endpoint := Named ("power");
+   Debug_Session_Entry    : constant CuBit.Handles.Endpoint := Named ("debug-session");
+
+   function Clock            return CuBit.Handles.Endpoint is (Clock_Entry);
+   function Logstore         return CuBit.Handles.Services.Logstore.Optional_Endpoint is (Logstore_Entry);
+   function Filesystem       return CuBit.Handles.Endpoint is (Filesystem_Entry);
+   function Config           return CuBit.Handles.Endpoint is (Config_Entry);
+   function Process_Observer return CuBit.Handles.Endpoint is (Process_Observer_Entry);
+   function Log_Observer     return CuBit.Handles.Services.Log_Observer.Optional_Endpoint is
+     (Log_Observer_Entry);
+   function Log_Control      return CuBit.Handles.Endpoint is (Log_Control_Entry);
+   function Network          return CuBit.Handles.Endpoint is (Network_Entry);
+   function Lexicon          return CuBit.Handles.Endpoint is (Lexicon_Entry);
+   function Installer        return CuBit.Handles.Endpoint is (Installer_Entry);
+   function Network_Stack    return CuBit.Handles.Endpoint is (Network_Stack_Entry);
+   function Wifi             return CuBit.Handles.Endpoint is (Wifi_Entry);
+   function Llm              return CuBit.Handles.Endpoint is (Llm_Entry);
+   function Secrets          return CuBit.Handles.Endpoint is (Secrets_Entry);
+   function Power            return CuBit.Handles.Endpoint is (Power_Entry);
+   function Debug_Session    return CuBit.Handles.Endpoint is (Debug_Session_Entry);
+end CCL_Native_Bindings;

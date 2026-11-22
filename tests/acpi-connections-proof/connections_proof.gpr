@@ -1,0 +1,12 @@
+project Connections_Proof is
+ for Source_Dirs use ("../../userspace/services/acpi/resource-data", "../../shared/firmware");
+ for Source_Files use ("acpi_resource_data.ads", "acpi_resource_data.adb",
+   "acpi_resource_data-serial_connections.ads", "acpi_resource_data-serial_connections.adb",
+   "acpi_resource_data-pin_descriptors.ads", "acpi_resource_data-pin_descriptors.adb",
+   "acpi_resource_data-clock_inputs.ads", "acpi_resource_data-clock_inputs.adb",
+   "firmware_tables.ads", "firmware_tables.adb");
+ for Object_Dir use external ("CONNECTIONS_PROOF_OBJECTS");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Connections_Proof;

@@ -1,0 +1,5 @@
+Welcome to CuBit Text.
+
+This file lives in @nvme:0/Documents/, the one place Text may write.
+Ctrl+Shift+P lists every command, F1 explains any key, Ctrl+S saves
+(the new file replaces the old one in a single rename).

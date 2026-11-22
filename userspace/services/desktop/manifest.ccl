@@ -1,0 +1,86 @@
+# Generated ELF metadata is tied to this executable; requests are not grants.
+(Executable_Manifest
+  identity => "com.cubit.desktop"
+  version => "0.1.0"
+  requests => [
+    (Request.Optional_Render "render")
+    (service "logstore" "logstore")
+    # The bootstrap screen shows recent Warning records (Desktop_Bootstrap_Logs).
+    (service "log-observer" "log-observer")
+    (service "config" "config")
+    (service "mixer-control" "mixer-control")
+    # The status area's network items (UI-027): wifi.svc (watch, join,
+    # passphrase, forget) and netmgr (watch, per-interface Apply, DNS).
+    # Absent on profiles without them; the items then stay hidden.
+    (service "wifi" "wifi")
+    (service "netmgr" "netmgr")
+    # Shut Down... in the Apps menu (PWR-003): power.svc as Desktop's own
+    # requester badge (CuBit.Power_Requests; startup plan only).
+    (service "power-desktop" "power")
+    # The status area's CPU and memory bars (UI-027): the kernel's per-CPU
+    # times page, mapped read-only (KERN-002); read without a system call.
+    (Request.Publication "cpu-times")
+    # The status bar's time; minimal profiles start Desktop without clock.
+    (service "clock" "clock")
+    (service "display" "display")
+    # Scanout loans (UI-020): display.svc derives a grant of each scanout
+    # buffer for Desktop, and the kernel needs an endpoint to Desktop for
+    # that. Desktop offers display a read-only copy of this one (read and
+    # grant, never write: no holder can call Desktop) with its first
+    # Lend_Buffer request. Without it Desktop copies frames to Display.
+    (Request.Offerable_Self "self-offer")
+    (service "process-manager" "process-manager")
+    # The Apps menu's launches (CAP-012, docs/authority-model.md 7.5): a
+    # Launch badge into the user session. Each program gets its approval
+    # within the session's envelope; Desktop holds none of it.
+    (service "launch" "launch")
+    # What runs (window owners alive, the launch entry of a window's
+    # program): procmgr's process-observer role, which alone holds the
+    # kernel's process-list object (Process_List_ABI).
+    (service "process-observer" "process-observer")
+    # Wallpapers and icons (docs/assets.md): read-only, exactly the wallpaper
+    # and icon packages on each image's system volume; system.assets.root
+    # names the asset root.
+    (service "filesystem" "filesystem")
+    (notification "keyboard" Notify_Access.Manage "keyboard")
+    (notification "mouse" Notify_Access.Manage "mouse")
+    (notification "desktop" Notify_Access.Manage "registration")]
+  optional => ["mixer-control" "wifi" "netmgr" "power" "clock"]
+  scopes => [
+    (config [File_Right.Read File_Right.Write] "desktop.appearance.")
+    # The Apps menu entries (Desktop_Launch).
+    (config [File_Right.Read] "desktop.launch.")
+    # Keyboard settings (desktop.input.key-repeat: Desktop_Key_Repeat_Settings).
+    (config [File_Right.Read] "desktop.input.")
+    # Settings > Date & Time (Desktop_Time_Zone_Setting).
+    (config [File_Right.Read File_Right.Write] "clock.time-zone")
+    # Settings > Displays and Monitor: the display scale and each monitor's
+    # chosen mode (Desktop_Display_Scale_Settings, Desktop_Display_Mode_Settings);
+    # the modeset soak gate is the operator's (read only).
+    (config [File_Right.Read File_Right.Write] "desktop.display.scale")
+    (config [File_Right.Read File_Right.Write] "desktop.display.mode.")
+    (config [File_Right.Read] "desktop.display.modeset")
+    # The GPU's waitboost policy Desktop sends the driver (Desktop_GPU_Power_
+    # Settings); without this scope the read was denied and taken as the
+    # default (CAP-003).
+    (config [File_Right.Read] "gpu.power.waitboost")
+    # Which processor composes the UI (Desktop_Composition_Settings,
+    # LAT-002): the operator's A/B switch (read only).
+    (config [File_Right.Read] "desktop.composition")
+    # The system volume's asset packages (FS-033: by alias, whichever disk
+    # booted), and the optical live medium's (its own store).
+    (filesystem [File_Right.Read] "@system/Assets/cubit-wallpapers/")
+    (filesystem [File_Right.Read] "@system/Assets/cubit-icons/")
+    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-wallpapers/")
+    (filesystem [File_Right.Read] "@cd:0/Assets/cubit-icons/")
+    (config [File_Right.Read] "system.assets.")]
+  # The Apps menu's programs (system.ccl desktop.launch.*): nothing else.
+  may_launch => [(Launch "ccl-workbench.app") (Launch "ccl-console.app") (Launch "logs.app")
+    (Launch "boot-logs.app") (Launch "metricsview.app") (Launch "agent.app") (Launch "doom.elf")
+    (Launch "devices.app") (Launch "cubitshell.app") (Launch "files.app") (Launch "text.app")
+    (Launch "calculator.app") (Launch "dictionary.app") (Launch "bible.app")
+    (Launch "sameboy.app") (Launch "config-inspector.app") (Launch "teapots.app")
+    (Launch "debugger.app")]
+  # LAT-002's display-latency samples and the frame-time series
+  # (Desktop_Metrics, CuBit.Metrics), into metrics.svc's store (MET-002).
+  outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)])

@@ -1,0 +1,142 @@
+{
+  "oracle": "/home/doc/git/.acpi-proof-work/resource-concat-timing-oracle-vr2k_4qi",
+  "cases": [
+    {
+      "case": 1,
+      "key": "r1-buffer-left-store",
+      "revision": 1,
+      "payload_sha256": "865070eb718d379e14796d413f8b89b62c506d5d18dd4e2859071ea7be567cbe",
+      "expected_hex": "84010022840100337900",
+      "source_hex": "840100227900",
+      "marker": 12,
+      "files": {
+        "r1-buffer-left-store.asl": "7e01f46cb6ab2a37e2afb2667858a2fb4985595ab8cfe37e0786ca96c8e79328",
+        "r1-buffer-left-store.aml": "a150d21bbb2633c53b741c2c709be95d333c1784d3f6b3321c33b16fd4fada2d",
+        "r1-buffer-left-store.dsl": "b60f338dc5111073fbf5460b789a3bf47ec5f3a260a72e1acb15f4196fb21ce4",
+        "r1-buffer-left-store-compile.log": "f34a51b00a3d38ea39970348589231985798400aa45aab68d7709add69b7f173",
+        "r1-buffer-left-store-disassemble.log": "a540901c279d1f4885cc11a3f04314cdae8063da1d234d16a12ef4cc4ef43d8f",
+        "r1-buffer-left-store-execute.log": "f9f86cd993dacc068cf8a20f373f257fd60139bdb60f6239bdc161abba0840ab"
+      }
+    },
+    {
+      "case": 2,
+      "key": "r1-buffer-left-copyobject",
+      "revision": 1,
+      "payload_sha256": "c73bfe7caf97755fa94a55dc014c04079f94b6e92e2318778c6de7f4eae20cb0",
+      "expected_hex": "84010011840100337900",
+      "source_hex": "840100227900",
+      "marker": 12,
+      "files": {
+        "r1-buffer-left-copyobject.asl": "f2cecacfa0c10ce8276178ee3446285b73c13b8ec55bf3afa7f51171e8e36b6c",
+        "r1-buffer-left-copyobject.aml": "14cc9920e91c67e4775b1f614e91fdf1d2a412da3645d57ffbdbc319e4f9e878",
+        "r1-buffer-left-copyobject.dsl": "46eb4660a3b561362bc75f01accaa958a7ac7457df86dca2bce9fc1133f0d89e",
+        "r1-buffer-left-copyobject-compile.log": "e10482bc01a8889dd4a955a6a30beb44c71b4638bfb8006642b88921c1cd94e9",
+        "r1-buffer-left-copyobject-disassemble.log": "c05a265fcd219e24652281a3a7c6063df9f4c788f11b7aad8581ab63340753ce",
+        "r1-buffer-left-copyobject-execute.log": "2b686d8b5124ec8590cede86473e6cb00398dfb635e6c04e1ddd7ec5cec3f7cc"
+      }
+    },
+    {
+      "case": 3,
+      "key": "r1-buffer-right-target-store",
+      "revision": 1,
+      "payload_sha256": "bc952f5a02e9eda51384f0f78c884e1cce0489429746ce17a34f791e591b9c21",
+      "expected_hex": "84010033840100227900",
+      "source_hex": "840100227900",
+      "marker": 2,
+      "files": {
+        "r1-buffer-right-target-store.asl": "47044c46251d1794e99a82af556074e6e812ff2f09ab4fce8e1eaf472b0ac47a",
+        "r1-buffer-right-target-store.aml": "1597287d79280c0d19da562cf2728e73fc8705e5a4bf56c5fb0b4045f6e7937e",
+        "r1-buffer-right-target-store.dsl": "66a58addeee1012c8f9f9513be80933e9aad11b8f79ef738c7029da52d826020",
+        "r1-buffer-right-target-store-compile.log": "512dcc30ee509d48230b8df9fe62478c791b23af869ee77233142f95e007ed2f",
+        "r1-buffer-right-target-store-disassemble.log": "fc18a704f85ac713e555f0823204f1f881d857daeb2aeac85eb7fe668cc6e631",
+        "r1-buffer-right-target-store-execute.log": "31c3212a06853331213dadeb83d229c750fcc9c34f089d47973f59f6bfcea293"
+      }
+    },
+    {
+      "case": 4,
+      "key": "r1-buffer-right-target-copyobject",
+      "revision": 1,
+      "payload_sha256": "ed95ddf790611a844fe4d33267bf41fd1639fecd069e3e29cd4cd4527afa6723",
+      "expected_hex": "84010033840100117900",
+      "source_hex": "840100227900",
+      "marker": 2,
+      "files": {
+        "r1-buffer-right-target-copyobject.asl": "5a2d354f144161c4660812aa3451c77a9c906feec8817a4272197e8290124be1",
+        "r1-buffer-right-target-copyobject.aml": "1c9a4709a462a0bd19949a7839b13c93b9e66905f9bbf9e4b5f18fa71fc153e6",
+        "r1-buffer-right-target-copyobject.dsl": "5394068999bfefb3004dcb5d056580b27ced2e934a2be877c6c7ac9ea85b9415",
+        "r1-buffer-right-target-copyobject-compile.log": "20951a771439fb4ef4b8a896ba178508b956e1d5c145f3262adbebedae86130c",
+        "r1-buffer-right-target-copyobject-disassemble.log": "d1a8213fbb870350921837a300c9dc7db9b9e327eafd2af102da6eb3f8187a06",
+        "r1-buffer-right-target-copyobject-execute.log": "dc643572b5c837753e57c0e90a66e01331d733210a303fa83d57d6f3015b35ce"
+      }
+    },
+    {
+      "case": 5,
+      "key": "r2-buffer-left-store",
+      "revision": 2,
+      "payload_sha256": "865070eb718d379e14796d413f8b89b62c506d5d18dd4e2859071ea7be567cbe",
+      "expected_hex": "84010022840100337900",
+      "source_hex": "840100227900",
+      "marker": 12,
+      "files": {
+        "r2-buffer-left-store.asl": "ac6725e05dc82a1302a32fa6621f4e18112f1c7bad56248210727b968be62508",
+        "r2-buffer-left-store.aml": "9a98fb543a0ff13df4c6736b5cce56ffc18f2e5472f1d1666aa23649b68bcb32",
+        "r2-buffer-left-store.dsl": "0d15592f5e18bd1ef505dda96bc9aaed7fd4df1cf2ec1aa39beccba738df892c",
+        "r2-buffer-left-store-compile.log": "ec1f70aed3a6492fbbc6e5509b897261f250f24296e35ffb0c59a034c06cfe36",
+        "r2-buffer-left-store-disassemble.log": "81e94bcb69f59da9d16bd2406646c30e8c673efb96fb1fa6f86b98b95b70aa96",
+        "r2-buffer-left-store-execute.log": "b508b2791856f12446105925a48aa3ac03ec8878ae260023b8c39d28f197b6eb"
+      }
+    },
+    {
+      "case": 6,
+      "key": "r2-buffer-left-copyobject",
+      "revision": 2,
+      "payload_sha256": "c73bfe7caf97755fa94a55dc014c04079f94b6e92e2318778c6de7f4eae20cb0",
+      "expected_hex": "84010011840100337900",
+      "source_hex": "840100227900",
+      "marker": 12,
+      "files": {
+        "r2-buffer-left-copyobject.asl": "0ccee01404fc65c88efab8e8c5110e6e29b8b2dcf12cdf946667f7e3d5ae83e3",
+        "r2-buffer-left-copyobject.aml": "927e197c88c9ef890a7b4c3b0373a11cd2ed0eaa2e5bea57de04cd8147bc7aa5",
+        "r2-buffer-left-copyobject.dsl": "1d9d98644e15e0a6f9775542ccc1b0b5a0b52302e299dceb1d4d62787eeebee2",
+        "r2-buffer-left-copyobject-compile.log": "825577e9c2f9e62a347e5d1d5e790652fb42a74944f794e4dcd03ff488f259a9",
+        "r2-buffer-left-copyobject-disassemble.log": "26cd373748cd2704374777207c6e32072995cc1a447acee94c96af4a396fe3d5",
+        "r2-buffer-left-copyobject-execute.log": "10b5e0b42f848a83c569cc88168466a6e71e8ca633c1b92235a5d8a2974309e0"
+      }
+    },
+    {
+      "case": 7,
+      "key": "r2-buffer-right-target-store",
+      "revision": 2,
+      "payload_sha256": "bc952f5a02e9eda51384f0f78c884e1cce0489429746ce17a34f791e591b9c21",
+      "expected_hex": "84010033840100227900",
+      "source_hex": "840100227900",
+      "marker": 2,
+      "files": {
+        "r2-buffer-right-target-store.asl": "f3c87f777f896bf3b4c5bb1dfb3450edc4dc78e59a382e2fbf4a596260c9f785",
+        "r2-buffer-right-target-store.aml": "6c9269a1cedd9e7195c7c30b98fab82c80d1693d077fc79ee3b34537234cf313",
+        "r2-buffer-right-target-store.dsl": "ff6e1ecbec34109da4fb806997a42eaf6592fa863b910f6b7ff9f77b4ffdc086",
+        "r2-buffer-right-target-store-compile.log": "0c8a65fbb7857d6f144fd85ab08f6cea1e647360950153e018d5b01ea3331ee9",
+        "r2-buffer-right-target-store-disassemble.log": "56140acc89127b4dddd1256c8100859c4398f3f613902897630aeff7e43dec82",
+        "r2-buffer-right-target-store-execute.log": "1a3db8f1103f6b09f7f581cda7f6a1c5489207a29319bae1d215dc043dfd4e0f"
+      }
+    },
+    {
+      "case": 8,
+      "key": "r2-buffer-right-target-copyobject",
+      "revision": 2,
+      "payload_sha256": "ed95ddf790611a844fe4d33267bf41fd1639fecd069e3e29cd4cd4527afa6723",
+      "expected_hex": "84010033840100117900",
+      "source_hex": "840100227900",
+      "marker": 2,
+      "files": {
+        "r2-buffer-right-target-copyobject.asl": "f7d6a988a4e1877ab9f9605f9770929178a05d598a722b61d7f747e182dc69c8",
+        "r2-buffer-right-target-copyobject.aml": "f310f75f65cf4d9f22eff4c61323770f2ec9422e2198e1add2dda6b802996cc4",
+        "r2-buffer-right-target-copyobject.dsl": "651b0fb9b3b83b45ad8514e5df0697d030ebde646f30f045fa2fa2a7c7f1b3f5",
+        "r2-buffer-right-target-copyobject-compile.log": "0ffd851fb4e5f36c395e4432abd327c2a381c954ef869f14bf2c4a44488c7113",
+        "r2-buffer-right-target-copyobject-disassemble.log": "6ae0076c3d263efa86ab130407079607534b81fdee693eda19b7194009357353",
+        "r2-buffer-right-target-copyobject-execute.log": "86910d39e79d9b6af856088ce369f411bfed57aad52cb6836ac8f668ecc442b0"
+      }
+    }
+  ],
+  "scope": "Eight successful original buffer cases only. Full returned/source/target bytes and marker order values repeated; both widths. Integer and String conversion are known outstanding functionality, not excluded by conformance policy. Original oracle teardown warnings retained. Source-only fixture."
+}

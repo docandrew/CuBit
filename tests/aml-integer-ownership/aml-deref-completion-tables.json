@@ -1,0 +1,226 @@
+[
+  {
+    "symbol": "Base_1",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.aml",
+    "sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+    "length": 42,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/base1.aml"
+  },
+  {
+    "symbol": "Code_1",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-control.aml",
+    "sha256": "85a3a9e6af28ef3f6cd109088d300d76760041b847fa8c1aeaa95b18e3067b0e",
+    "length": 93,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-control.aml"
+  },
+  {
+    "symbol": "Base_2",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.aml",
+    "sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+    "length": 42,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/base1.aml"
+  },
+  {
+    "symbol": "Code_2",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-control.aml",
+    "sha256": "57290b62f97e1ab6c2d9cc19bb3394cc3127b50740d56398e3c4e59e187b7a3c",
+    "length": 96,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-control.aml"
+  },
+  {
+    "symbol": "Base_3",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.aml",
+    "sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+    "length": 42,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/base2.aml"
+  },
+  {
+    "symbol": "Code_3",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-control.aml",
+    "sha256": "34db16392c2016db844e3358c322d18c43fcf35d5ec4c42394bf85f53b282e03",
+    "length": 93,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-control.aml"
+  },
+  {
+    "symbol": "Base_4",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.aml",
+    "sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+    "length": 42,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/base2.aml"
+  },
+  {
+    "symbol": "Code_4",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-control.aml",
+    "sha256": "88f2d2ac201760c3809d35ed551547d42703b750ca0c8f2531bc92a6d5973844",
+    "length": 96,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-control.aml"
+  },
+  {
+    "symbol": "Base_5",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.aml",
+    "sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+    "length": 42,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base1.aml"
+  },
+  {
+    "symbol": "Code_5",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-ref.aml",
+    "sha256": "6417362d3ec71df821e383779ad1261710142f0509ce8ca578312ab1d7c120e7",
+    "length": 99,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-ref.aml"
+  },
+  {
+    "symbol": "Base_6",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.aml",
+    "sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+    "length": 42,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base1.aml"
+  },
+  {
+    "symbol": "Code_6",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-held.aml",
+    "sha256": "1a524b00a2a7e5fdb2d8ebc101542f9c675571354656b380daf0be234043387f",
+    "length": 102,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-held.aml"
+  },
+  {
+    "symbol": "Base_7",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.aml",
+    "sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+    "length": 42,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base1.aml"
+  },
+  {
+    "symbol": "Code_7",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-local-ref.aml",
+    "sha256": "da46450e2635ee66ab4308b2101c1d413e4142aef24b53ee6ac4fed8cb5faf08",
+    "length": 102,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-local-ref.aml"
+  },
+  {
+    "symbol": "Base_8",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.aml",
+    "sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f",
+    "length": 42,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base1.aml"
+  },
+  {
+    "symbol": "Code_8",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-local-held.aml",
+    "sha256": "b5a94cb76fb83355315341dba89844a534658bbf41b0fb6e5126e844425fad81",
+    "length": 105,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-local-held.aml"
+  },
+  {
+    "symbol": "Base_9",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.aml",
+    "sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+    "length": 42,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base2.aml"
+  },
+  {
+    "symbol": "Code_9",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-ref.aml",
+    "sha256": "1f25bb33715af9053d4762e1adbac8d42e052574a19088e4eaa3c8e4838a90dc",
+    "length": 99,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-ref.aml"
+  },
+  {
+    "symbol": "Base_10",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.aml",
+    "sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+    "length": 42,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base2.aml"
+  },
+  {
+    "symbol": "Code_10",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-held.aml",
+    "sha256": "240e733e2672cc01efc28de30b43da553dcd3dedf991f7fbbb8514afb693c9a6",
+    "length": 102,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-held.aml"
+  },
+  {
+    "symbol": "Base_11",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.aml",
+    "sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+    "length": 42,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base2.aml"
+  },
+  {
+    "symbol": "Code_11",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-local-ref.aml",
+    "sha256": "4bcdcb7f738a48d176375d7ea2c5db8c1913c1b6eb04c0a6f15a86b394a202d8",
+    "length": 102,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-local-ref.aml"
+  },
+  {
+    "symbol": "Base_12",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.aml",
+    "sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd",
+    "length": 42,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base2.aml"
+  },
+  {
+    "symbol": "Code_12",
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-local-held.aml",
+    "sha256": "29c051235b138cb87943b4889e7db81e0088944826c57a186f68e0376fba0052",
+    "length": 105,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-local-held.aml"
+  },
+  {
+    "symbol": "Base_13",
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/base1.aml",
+    "sha256": "d396b03dbef0058f85a51a7c9e583f3610b0c234c5a3294e545b2d59dbc8509c",
+    "length": 42,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/base1.aml"
+  },
+  {
+    "symbol": "Code_13",
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/copy1.aml",
+    "sha256": "93c7e46676616d5ab0db44aab53fd5c0acb498d7d7dc74f79d423f4b76e91f54",
+    "length": 422,
+    "revision": 1,
+    "portable_path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/copy1.aml"
+  },
+  {
+    "symbol": "Base_14",
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/base2.aml",
+    "sha256": "c45382ebba94e2f7c6be38a0d988a7f1419c2b43a4577c388def2b4d07cab373",
+    "length": 42,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/base2.aml"
+  },
+  {
+    "symbol": "Code_14",
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/copy2.aml",
+    "sha256": "62dfaf04786372b640668ba256aa1e7a18c0f9e2e75ba601356302cdd1c76c2b",
+    "length": 422,
+    "revision": 2,
+    "portable_path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/copy2.aml"
+  }
+]

@@ -1,0 +1,20 @@
+pragma Ada_2022;
+with Interfaces; use Interfaces;
+with System;
+with CuBit.Handles;
+with CuBit.Grant_References;
+package CuBit.Memory_Grants is
+ PAGE_SIZE : constant Unsigned_64 := 4096;
+ MAXIMUM_GLOBAL_SLOT : constant Unsigned_64 := CuBit.Grant_References.Maximum_Slot;
+ subtype Grant_Reference is CuBit.Grant_References.Reference;
+ type Required_Access is (Read_Access, Write_Access);
+ procedure Create_Via_Capability(slot : CuBit.Handles.Endpoint;
+  localAddr : System.Address; numPages : Natural; readWrite : Boolean;
+  reference : out Grant_Reference; success : out Boolean; notify : Boolean := False);
+ procedure Acquire_Via_Capability(owner : CuBit.Handles.Endpoint;
+  reference : Grant_Reference; byteOffset,byteLength : Unsigned_64;
+  accessMode : Required_Access; localAddr : out System.Address; success : out Boolean);
+ procedure Return_Acquisition(reference : Grant_Reference; success : out Boolean);
+ procedure Revoke(reference : Grant_Reference; success : out Boolean);
+ function Retirement_Confirmed(reference : Grant_Reference) return Boolean;
+end CuBit.Memory_Grants;

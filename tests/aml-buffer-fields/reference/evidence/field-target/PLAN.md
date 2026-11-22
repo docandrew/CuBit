@@ -1,0 +1,7 @@
+# CopyObject index to buffer field oracle plan
+
+Twelve small normal-compile attempts: fixed8-bit CreateByteField and generic8-bit CreateField destinations, each with ByteSlot, populated PackageSlot and empty PackageSlot source, widths32/64. Source byte/value65; target backingBuffer2 bytesAA,BB. All indexes0, counts8. Slot1 confirmed free by package owner.
+
+MARK1 after creating field; CopyObject(Index(SRC0,0),FLD0); MARK2; capture ToInteger(FLD0) as Local0; replace source byte/package slot with66; MARK3; capture field Local1 and actual first backing byte Local2; MARK4; return metadata*2^24 + initial_field*2^16 + subsequent_field*2^8 + backing_byte. All expected values fit32bits. Value-copy hypothesis: metadata14, old65,new65,backing65 =>239157569 with MARK4. Reference-retarget hypothesis can change metadata, reflect66 after source replacement, or leave backingAA; exact result is recorded without forcing a hypothesis. Empty PackageSlot may fail during Copy with MARK1; record exact AML error and MARK. Compiler rejection retained separately.
+
+Bounded pinned ACPICA20260408 cached tools via Nix, nice19, per-subprocess5s/128MiBaddress/64MiBstack/1MiBdisk output. Verify actual width witness, disassembled CopyObject indexed source, field opcode and DerefOf. No forced compiler, huge inputs, new authority or native build. Preserve source hashes and all logs. Driver expected-value hypothesis unset deliberately; inspect/decode each result after execution.

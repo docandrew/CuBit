@@ -1,0 +1,30 @@
+with "../../../userspace/lib/ui/fonts_native.gpr";
+project Native_DPI_Client is
+   Root := Native_DPI_Client'Project_Dir & "../../../";
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../../userspace/lib/ui", "../../../userspace/lib/theme",
+     "../../../userspace/lib/compositor", "../../../userspace/lib/display",
+     "../../../userspace/allocator/src");
+   for Object_Dir use "build/client";
+   for Main use ("native_dpi_client.adb");
+   for Runtime ("Ada") use "../../../userspace/runtime";
+   package Builder is
+      for Executable ("native_dpi_client.adb") use "trace-publication.app";
+      for Default_Switches ("Ada") use ("-nostdlib");
+   end Builder;
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
+         "-mno-red-zone", "-fno-pic", "-mno-sse", "-mno-sse2");
+   end Compiler;
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("-nostdlib", "-static", "-no-pie", "-Wl,-z,stack-size=16777216",
+         "-lgnat-user", "-T", Root & "userspace/c/link.ld",
+         Root & "userspace/c/build/crt0.o",
+         "build/client/manifest.o");
+   end Linker;
+end Native_DPI_Client;

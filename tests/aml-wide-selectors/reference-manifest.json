@@ -1,0 +1,18 @@
+{
+  "tests/aml-wide-selectors/reference/region-compile.log": "fa41155289e8765282d68a387f495fcaa90684143e577d1f69e55f91ce180267",
+  "tests/aml-wide-selectors/reference/region-evidence.sha256": "a0aba190da07b627fd38ef7c088071288e005a56b73e709ada7973d7d334b69e",
+  "tests/aml-wide-selectors/reference/region-expected.tsv": "2423c15ca7ec4b21be06ac6594067d2399a8f7a6daddc2643dd297bca005cf66",
+  "tests/aml-wide-selectors/reference/region-inputs.sha256": "097824ffd5892679c52af89e5961c91259167b50d42fd322107c76f773b0c3cb",
+  "tests/aml-wide-selectors/reference/region-reference.log": "ac7a639bf05861b84c59c02a7e88a5e1021945a29fff5609e17d718b01d01e2e",
+  "tests/aml-wide-selectors/reference/region-status.tsv": "d2d70804ecd697d5a9c3ede742b29e5e7f86572fff79369985db325a6aba3d3a",
+  "tests/aml-wide-selectors/reference/region.aml": "adaaafab78b5a2e101540fe84482ccf72f9558aa35944e8b98df0cae3fa5f003",
+  "tests/aml-wide-selectors/reference/region.asl": "bf8585b7736a449e6815df41b5e26bf1c18b545e32e36ed89c2faa6512bdfe0d",
+  "tests/aml-wide-selectors/reference/region32-compile.log": "9462f260fc9ed98cf4889964d68e8763b8043c4ac34d294078e7306e41944a96",
+  "tests/aml-wide-selectors/reference/region32-evidence.sha256": "c0a95db26d079380cacddd919db4a7bc8d96156216e552d9f800a55e9d44f493",
+  "tests/aml-wide-selectors/reference/region32-expected.tsv": "97e3408a207e69dc2f59532345941842f230b15112cf345c3fda5eb761d51148",
+  "tests/aml-wide-selectors/reference/region32-inputs.sha256": "de6ca95b46e16419602787009a49480a3a13be33dbbfea829e21b31368fd5ea5",
+  "tests/aml-wide-selectors/reference/region32-reference.log": "42b167d536d950270a47431531423a3be0a2010151e161dc851133f623efee2c",
+  "tests/aml-wide-selectors/reference/region32-status.tsv": "d2d70804ecd697d5a9c3ede742b29e5e7f86572fff79369985db325a6aba3d3a",
+  "tests/aml-wide-selectors/reference/region32.aml": "746f39abab9f029e81c69b45449e71da7dfd8d41a4981e731009c57caa0afcea",
+  "tests/aml-wide-selectors/reference/region32.asl": "863b265468af46c390f2c2122036d8d365d5ae28102fe4868a4aa930e81ecf4f"
+}

@@ -1,0 +1,2 @@
+(Component name => "bench-audio" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

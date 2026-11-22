@@ -1,0 +1,8 @@
+project Client_Wakeup is
+   for Source_Dirs use ("../../userspace/lib/ui");
+   for Source_Files use ("client_frame_wakeup.ads");
+   for Object_Dir use "build/client-wakeup/obj";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Client_Wakeup;

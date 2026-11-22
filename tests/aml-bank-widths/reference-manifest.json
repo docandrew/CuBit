@@ -1,0 +1,13 @@
+{
+  "tests/aml-bank-widths/reference/compile.log": "5076bb1d854bc82f37b2b0d57920a46c284a3d518c525609e70053b28bf4e0f1",
+  "tests/aml-bank-widths/reference/evidence.sha256": "696bc1d395e1292bef3ffcdd322e6fe0349a3ebf3aa11ad25e8fddd36b4f06b2",
+  "tests/aml-bank-widths/reference/expected32.tsv": "35fc7b136a31d8bba1b42bb45725da937884dda274d4b2004ad61c27d636896c",
+  "tests/aml-bank-widths/reference/expected64.tsv": "25a2dc5d61519795677a2fbd837166be885ec8b3d5136380282febef4086247a",
+  "tests/aml-bank-widths/reference/inputs.sha256": "6f316e57284e7f78f9ce2b31bc2819c8985e0f6c02ef8a766bbc4481b2a9d65c",
+  "tests/aml-bank-widths/reference/status.tsv": "557666928fd1380ca8401272eebc86fff04bd8faf0f6d09fdab9e353f1aab4de",
+  "tests/aml-bank-widths/reference/widths.aml": "68e55e8949cab31023b146193b8bf613cec2e2b3a7dcbf2269ce1c5dde5f7467",
+  "tests/aml-bank-widths/reference/widths.asl": "0c602913958ab7e24203e25a4adc6a03848f147248cd491121f0130731d899d8",
+  "tests/aml-bank-widths/reference/widths.log": "920beca55197dc40efc9a1567ac5f7fc6df6a2726e39f9a047cdd64516a7195d",
+  "tests/aml-bank-widths/reference/widths32.aml": "5c290669d347b2450825d4dbcfcb8b34ff5298e74a51f6481ccd1a990629074e",
+  "tests/aml-bank-widths/reference/widths32.log": "4bb783a7a9b0a89e1b9b62c7a784af8702a2265e1a5032631ed9e9f93e22a6b1"
+}

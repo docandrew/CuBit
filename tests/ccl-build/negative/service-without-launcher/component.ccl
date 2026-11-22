@@ -1,0 +1,2 @@
+# A service says who launches it.
+(Component name => "neg" kind => Kind.Service source => (Source.Ada (Ada_Source)))

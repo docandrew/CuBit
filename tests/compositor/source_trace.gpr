@@ -1,0 +1,10 @@
+project Source_Trace is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("source_trace_tests.adb", "compositor_source_trace.ads", "compositor_source_trace.adb", "compositor_elapsed.ads");
+   for Object_Dir use "build/source-trace/obj";
+   for Exec_Dir use "build/source-trace";
+   for Main use ("source_trace_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Source_Trace;

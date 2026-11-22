@@ -1,0 +1,7 @@
+# Interrupt-entry alignment-check flag check: runs with RFLAGS.AC set while
+# timer interrupts and page faults enter the kernel. No authority.
+(executable-manifest v1
+  (identity "com.cubit.alignment-flag-check")
+  (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore))

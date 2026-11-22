@@ -1,0 +1,16 @@
+File appears to be binary: found 135 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file /home/doc/git/.acpi-proof-work/field-qword-reference-split-6Al2cF2d/results/shifted-Preserve-r2-a.aml, Length 0x265 (613) bytes
+ACPI: DSDT 0x0000000000000000 000265 (v02 CUBIT  QWORDIO  00000001 INTL 20260408)
+Pass 1 parse of [DSDT]
+Pass 2 parse of [DSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+Disassembly completed
+ASL Output:    /home/doc/git/.acpi-proof-work/field-qword-reference-split-6Al2cF2d/results/shifted-Preserve-r2-a.dsl - 3794 bytes

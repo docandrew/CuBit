@@ -1,0 +1,17 @@
+# ACPI-ONE-001: the one acpi.svc on q35's firmware plus the regression SSDT
+# (tests/headless/acpi/acpi-one-service-pool.asl, passed with -acpitable)
+# and QEMU's edu device, which makes devmgr declare its pool test profile.
+# acpi.svc holds the hardware grant, the platform-register pool (through its
+# firmware-data endpoint) and the PCI configuration broker itself; there is
+# no acpi-backend.svc. The SSDT's module-level code reads a register in a
+# BAR-backed CHIPSET_SHARED pool member that firmware data cannot serve:
+# the former pair refused exactly this (laptop image 11, MBAR).
+# acpi-metrics-check then reads the service through its observer endpoint.
+# q35 has no EC; this is not laptop validation.
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "acpi.svc" (priority 4) (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Neutral))
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (platform-power approve-declared)
+    (acpi-firmware-data approve-declared) (acpi-pci-config approve-declared))
+  (start "acpi-metrics-check.app" (priority 3))
+)

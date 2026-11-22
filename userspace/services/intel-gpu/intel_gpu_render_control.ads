@@ -1,0 +1,176 @@
+with Interfaces; use Interfaces;
+with Intel_GPU_Render_Sessions;
+package Intel_GPU_Render_Control with SPARK_Mode is
+   -- Supervisor-only control protocol. Bind once from trusted bootstrap;
+   -- Sender and Stamped_Tag must come from the kernel receive envelope.
+   Label : constant Unsigned_32 := 16#0A21#;
+   Close_Own_Label : constant Unsigned_32 := 16#0A2C#;
+   Retirement_Label : constant Unsigned_32 := 16#0A2D#;
+   Status_Label : constant Unsigned_32 := 16#0A2F#;
+   Retirement_Pending : constant Unsigned_64 := 4;
+   Version : constant Unsigned_64 := 1;
+   Reserve : constant Unsigned_64 := 0;
+   Activate : constant Unsigned_64 := 1;
+   Abort_Session : constant Unsigned_64 := 2;
+   OK : constant Unsigned_64 := 0;
+   Denied : constant Unsigned_64 := 1;
+   Bad_Request : constant Unsigned_64 := 2;
+   Unavailable : constant Unsigned_64 := 3;
+   Bad_State : constant Unsigned_64 := 4;
+   type Drain_Facts is record
+      Uncertain : Boolean := True;
+      Work_Pending : Boolean := True;
+      GPU_Stopped, Grants_Retired : Boolean := False;
+   end record;
+   -- Trusted observations, not request fields. OK is session quiescence, not
+   -- backing/ID reclamation; pending and uncertainty must never count as OK.
+   -- For a registered context, GPU_Stopped requires GuC deregistration done,
+   -- not scheduling disable alone. A never-registered session needs separate
+   -- proof that no registration was attempted or remains deferred.
+   function Drain_Status (Facts : Drain_Facts) return Unsigned_64 is
+     (if Facts.Uncertain then Unavailable
+      elsif Facts.Work_Pending or not Facts.GPU_Stopped or not Facts.Grants_Retired
+      then Retirement_Pending else OK)
+     with Post => (Drain_Status'Result = OK) =
+       (not Facts.Uncertain and not Facts.Work_Pending and
+        Facts.GPU_Stopped and Facts.Grants_Retired);
+   type Words is array (Natural range 0 .. 3) of Unsigned_64;
+   type Controller is limited private;
+   -- Issued-record metadata, including retired/quarantined records. This is
+   -- NOT authorization: authenticate the kernel envelope with Resolve before
+   -- admitting work. Zero rejects unissued identities, not just bad ranges.
+   function Storage_Index (Object : Controller; Tag : Unsigned_64)
+                          return Intel_GPU_Render_Sessions.Slot_Index;
+   function Issued_Tag
+     (Object : Controller; Index : Intel_GPU_Render_Sessions.Slot_Index)
+      return Unsigned_64
+     with Post => (if Issued_Tag'Result /= 0 then
+       Index /= 0 and Storage_Index (Object, Issued_Tag'Result) = Index);
+   -- Check the kernel sender/stamp before any backend MMIO observation.
+   function Is_Broker
+     (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Boolean;
+   procedure Bind
+     (Object : in out Controller; Broker, Broker_Tag : Unsigned_64);
+   -- Authenticate an activation. Returns the reserved incarnation, never
+   -- authority by itself.
+   function Activation_Identity
+     (Object : Controller; Sender, Stamped_Tag : Unsigned_64;
+      Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
+      Reserved : Unsigned_16; Request : Words) return Unsigned_64
+     with Post => (Activation_Identity'Result = 0 or else
+       (Activation_Identity'Result = Request (1) and
+        Request (2) > Intel_GPU_Render_Sessions.Tag_Base and
+        Request (2) <= Intel_GPU_Render_Sessions.Tag_Last));
+   -- Request [version, captured generation32/PID32, session-tag, operation].
+   -- Reserve uses tag zero. Activate follows successful endpoint delegation;
+   -- Abort retires a reservation/active session without freeing GPU backing.
+   -- Response [status, version, session-tag-or-zero, 0].
+   -- The driver holds no capability to the application (CAP-002): requests
+   -- are authenticated by the kernel sender and the session tag stamped by
+   -- the render endpoint the broker badged, and memory is granted to the
+   -- saved reply of the authenticated request itself.
+   -- Ready is supplied by the actual allocation/submission backend, not by
+   -- the request or by merely observing firmware/engine startup.
+   -- Lost/uncertain admission replies require Abort, never Activate as a
+   -- retry. Dispatch is serialized; this controller neither supplies IPC
+   -- transport nor revokes kernel caps.
+   -- Abort is idempotent for a known identity/tag, including after quarantine.
+   procedure Handle
+     (Object : in out Controller; Sender, Stamped_Tag : Unsigned_64;
+      Ready : Boolean; Request_Label : Unsigned_32;
+      Length, Flags : Unsigned_8; Reserved : Unsigned_16;
+      Request : Words; Response : out Words)
+     with Post => Response (3) = 0 and
+       (if Request (3) = Activate and not Ready then Response (0) /= OK);
+   function Resolve
+     (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64;
+   -- Active-session observation only: [version,0,0,0] -> [status,version,0,0].
+   -- Ready is trusted current driver/session state, never caller input or a
+   -- cached identity snapshot. Success is not a lease or permission to submit.
+   function Session_Status
+     (Object : Controller; Sender, Stamped_Tag : Unsigned_64; Ready : Boolean;
+      Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
+      Reserved : Unsigned_16; Request : Words) return Words
+     with Post =>
+       Session_Status'Result (0) <= Unavailable and
+       Session_Status'Result (1) = Version and
+       Session_Status'Result (2) = 0 and Session_Status'Result (3) = 0 and
+       (if Resolve (Object, Sender, Stamped_Tag) = 0 then
+          Session_Status'Result (0) = Denied) and
+       (if Session_Status'Result (0) = OK then
+          Ready and Resolve (Object, Sender, Stamped_Tag) /= 0 and
+          Request_Label = Status_Label and Length = 4 and Flags = 0 and
+          Reserved = 0 and Request = [Version, 0, 0, 0]);
+   -- Cleanup-status authentication only, never new-work authority. Caller
+   -- must pass the kernel envelope, not a tag returned in reply data.
+   function Resolve_Retired
+     (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64;
+   -- Trusted teardown precondition, not caller authority or GPU retirement.
+   -- Uses the controller's recorded recipient, never a supplied PID. Reserved,
+   -- active, unknown and quarantined sessions cannot satisfy this observation.
+   function Retired_Admission (Object : Controller; Tag : Unsigned_64) return Boolean;
+   -- Application endpoint: [version,0,0,0], no caller-selected target.
+   -- Authenticated ACTIVE sender/stamp: closes admission before returning
+   -- [OK,version,retired-tag,0]. Dispatcher must then retire its resources.
+   -- Success is NOT GPU disable completion, grant drain or backing release.
+   -- Idempotent for the session's own client: an already retired session
+   -- (closed by its queue's end, say) and a recycled one answer the same
+   -- [OK,version,tag,0] and change nothing. Anyone else is denied.
+   procedure Close_Own
+     (Object : in out Controller; Sender, Stamped_Tag : Unsigned_64;
+      Request_Label : Unsigned_32; Length, Flags : Unsigned_8;
+      Reserved : Unsigned_16; Request : Words; Response : out Words);
+   -- A request stamped with Stamped_Tag comes from a finished session whose
+   -- slot was recycled: everything it held was given back.
+   function Recycled (Object : Controller; Stamped_Tag : Unsigned_64) return Boolean;
+   -- Captured process incarnation for an authenticated ACTIVE session only.
+   -- This identity is not grant authority; never reconstruct a capability
+   -- from it or accept it from app words.
+   function Recipient_Identity
+     (Object : Controller; Sender, Stamped_Tag : Unsigned_64) return Unsigned_64
+     with Post =>
+       (if Resolve (Object, Sender, Stamped_Tag) = 0 then
+           Recipient_Identity'Result = 0);
+   -- Dispatcher-only retirement after an undelivered successful admission or
+   -- session mutation reply. Use the original captured identity and session
+   -- tag, never a later PID lookup. Idempotent; no mapping rollback, hardware
+   -- completion, capability revocation or backing release is implied.
+   procedure Reject_Delivery
+     (Object : in out Controller; Identity, Tag : Unsigned_64);
+   -- Dispatcher-only: the session's client ended its session through the
+   -- transport (its queue channel closed, or it died: the kernel's grant-end
+   -- notice). Closes admission like Reject_Delivery, by the recorded
+   -- identity. Idempotent; no hardware completion or release is implied.
+   procedure End_Session (Object : in out Controller; Tag : Unsigned_64);
+   -- The session table (Intel_GPU_Render_Sessions), for the dispatcher's
+   -- growth, resource holdings and recycling.
+   function Grown (Object : Controller) return Intel_GPU_Render_Sessions.Slot_Count;
+   function Free_Slot (Object : Controller) return Boolean;
+   procedure Grow (Object : in out Controller; To : Intel_GPU_Render_Sessions.Slot_Count)
+     with Pre => To >= Grown (Object),
+          Post => Grown (Object) = To;
+   function Retired (Object : Controller; Index : Intel_GPU_Render_Sessions.Slot_Index)
+     return Boolean;
+   function Holds
+     (Object : Controller; Index : Intel_GPU_Render_Sessions.Slot_Index;
+      What : Intel_GPU_Render_Sessions.Holding) return Boolean;
+   procedure Hold
+     (Object : in out Controller; Index : Intel_GPU_Render_Sessions.Slot_Index;
+      What : Intel_GPU_Render_Sessions.Holding);
+   procedure Release_Image
+     (Object : in out Controller; Index : Intel_GPU_Render_Sessions.Slot_Index);
+   procedure Acknowledge_Deregistration
+     (Object : in out Controller; Index : Intel_GPU_Render_Sessions.Slot_Index);
+   procedure Recycle
+     (Object : in out Controller; Index : Intel_GPU_Render_Sessions.Slot_Index;
+      Facts : Intel_GPU_Render_Sessions.Release_Facts; Accepted : out Boolean);
+   procedure Quarantine (Object : in out Controller);
+private
+   -- All defaults are zero bits (see Intel_GPU_Render_Sessions); the
+   -- session table is last, so the driver commits a prefix of the object.
+   type Controller is limited record
+      Bound : Boolean := False;
+      Broker, Broker_Tag : Unsigned_64 := 0;
+      Sessions : Intel_GPU_Render_Sessions.Registry;
+   end record;
+end Intel_GPU_Render_Control;

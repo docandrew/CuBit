@@ -1,0 +1,3 @@
+# ACPI reference manifests checksum the exact cached bytes.
+aml-*/reference/** -text
+acpi-*/reference/** -text

@@ -1,0 +1,1110 @@
+[
+  {
+    "key": "1-named-value",
+    "revision": 1,
+    "question": "Copy metadata versus explicitreference into existingInteger name.",
+    "compile_rc": 0,
+    "aml_sha256": "fdab604d2054b11664e6a34b35ca25d23b99f8d11e5a7da52a64aa9573141359",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "b9a509c540035152e3a45fc50bd0345a7fe46634ca6373c2e5c615119f4a1a3f",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000029A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-named-reference",
+    "revision": 1,
+    "question": "Copy metadata versus explicitreference into existingInteger name.",
+    "compile_rc": 0,
+    "aml_sha256": "491fd1af254498d6cdbaa09cf4c98a4395cbb00120b3d9b1e1d17ae69e185c68",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "a2045994bc47007ac82fdd6c49daa15be20eb45b17cb468662ee295efaa1fda9",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000029A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-named-overwrite",
+    "revision": 1,
+    "question": "Mutable variable holding metadata can be replaced separately from original Device.",
+    "compile_rc": 0,
+    "aml_sha256": "8e320ebb7b785162ae9afd383da8d186f40c08650f403006d45b719e852f60d7",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "a63e98a819df0289aed3123ef5ed697b5baf06aaf7221b9aacdaa164466db8e6",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000000002A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-original-device-overwrite",
+    "revision": 1,
+    "question": "CopyObject destination originalDevice vs metadata-valued variable; preserve exact normal outcome.",
+    "compile_rc": 0,
+    "aml_sha256": "4782bde2d1fbc3a0008f4d0551d08dda61cf00d137eb6ba7cdc4e893f06dbfd9",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "65ac3ab2088ec8155e2f8001560eceb6ecea72aa36307c44fddc9b692e013557",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000263"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-arg-value-to-value",
+    "revision": 1,
+    "question": "CopyObject Arg source/destination metadata vs explicitreference; return10*Arg1type+DST0type.",
+    "compile_rc": 0,
+    "aml_sha256": "898d547ae3297c2391eb4f1d338778d069b2b7c7c696c3b7b4739d4c5d7cf5b5",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "d2d518a11b2641ccfa5992ba98f9ba4a1bdbb6488142c567fd491384795a1bb1",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000042"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-arg-value-to-reference",
+    "revision": 1,
+    "question": "CopyObject Arg source/destination metadata vs explicitreference; return10*Arg1type+DST0type.",
+    "compile_rc": 0,
+    "aml_sha256": "9db31988ac3eaffe36a37496b985348e070b8fda7048355145e876b5621716b2",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "fe79c88323925b1a2361a890aa2f09d0f4cf23917b76c2e2566db383af8ff749",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000042"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-arg-reference-to-value",
+    "revision": 1,
+    "question": "CopyObject Arg source/destination metadata vs explicitreference; return10*Arg1type+DST0type.",
+    "compile_rc": 0,
+    "aml_sha256": "e378c105eabd390a4cba02992a40b97cff59d4d4b7e0de635916c679b76b295b",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "e36c5179fa07b8912d8d59c2a221c6b05d10e0fbea356670611515ceb7ba6820",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000042"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-arg-reference-to-reference",
+    "revision": 1,
+    "question": "CopyObject Arg source/destination metadata vs explicitreference; return10*Arg1type+DST0type.",
+    "compile_rc": 0,
+    "aml_sha256": "73954427dcb24e2d78fee8a10b5fa5430416a77b77a035b18b08c573c4408204",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "dcfd2df4d5fd0d0c51ba9d748d10e99da05cbd96da23cb1da435beef123f76bd",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000042"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-arg-integer-to-root-ref",
+    "revision": 1,
+    "question": "Explicit rootreference Arg destination must follow observed CopyObject semantics, not silently slotreplace.",
+    "compile_rc": 0,
+    "aml_sha256": "b0e9387f386a8fac64a07ad49a6667dac5b07ead3282ca3f6aeefe83f0472272",
+    "actual_revision": 1,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "8f238e7d8d38f05714395c49177d9b1b66a006d52e4a3f7a65a9668dcb846402",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-named-value",
+    "revision": 2,
+    "question": "Copy metadata versus explicitreference into existingInteger name.",
+    "compile_rc": 0,
+    "aml_sha256": "c777561bda7abe761fa2ef28d8171828f8e6174d64ccdd1e326f325d64363908",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "cb3facbfb85284fb04c2c02f65bc0bab989119f101ea5b16d10fdabd2c2a33d2",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000029A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-named-reference",
+    "revision": 2,
+    "question": "Copy metadata versus explicitreference into existingInteger name.",
+    "compile_rc": 0,
+    "aml_sha256": "fe84ad97dfcbbac91f2156b48b0a86351d2805239a2c983378046cdce4b9dc8f",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "8342ba4578695d1f22b52a930a9385589cbfab54c628cb516abca4bc85a13b1e",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000006"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000029A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-named-overwrite",
+    "revision": 2,
+    "question": "Mutable variable holding metadata can be replaced separately from original Device.",
+    "compile_rc": 0,
+    "aml_sha256": "99164c254eb642a6954e36cabd1b3a9e7819a0f67e17332b2130abae91dbdfc4",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "8eb0e1f6d9862894d71cc396c84c0c6193063372ea6686b987a8e84c10db972e",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "000000000000002A"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-original-device-overwrite",
+    "revision": 2,
+    "question": "CopyObject destination originalDevice vs metadata-valued variable; preserve exact normal outcome.",
+    "compile_rc": 0,
+    "aml_sha256": "2361817aba7e15c5c829aaca2d0cd54af5ab38476bced7dca9bd71ad0668f931",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "08ae44862c2d13cb42f192ffeffe7b1b7700ac2d1c78b7883a0823669430c25f",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000002"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000263"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-arg-value-to-value",
+    "revision": 2,
+    "question": "CopyObject Arg source/destination metadata vs explicitreference; return10*Arg1type+DST0type.",
+    "compile_rc": 0,
+    "aml_sha256": "462681674298a9dd18f0362c1f0acd876fb2df3eb50fc9cbf12857a80f36fd9a",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "cfd6a5f8569251e02d9634902fc2a5e0af4348619282cec2090f82678f95302a",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000042"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-arg-value-to-reference",
+    "revision": 2,
+    "question": "CopyObject Arg source/destination metadata vs explicitreference; return10*Arg1type+DST0type.",
+    "compile_rc": 0,
+    "aml_sha256": "9ad91795cb015a5858a7bf95ff2b95d959934bb63a978968ef5c9c4a78d57795",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "23a8154f3816fef8b2921feaedba562d950dcabe1669845a2aa024000fa08295",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000042"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-arg-reference-to-value",
+    "revision": 2,
+    "question": "CopyObject Arg source/destination metadata vs explicitreference; return10*Arg1type+DST0type.",
+    "compile_rc": 0,
+    "aml_sha256": "481e4d990750d822934ab0fdf4a58147d29e5d488a7f5fbfa7c09c4ecd5a30a2",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "04995b8dc86ed07a1050f95b0501aa029b36ddd7f8263d76eca908161ccfb989",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000042"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-arg-reference-to-reference",
+    "revision": 2,
+    "question": "CopyObject Arg source/destination metadata vs explicitreference; return10*Arg1type+DST0type.",
+    "compile_rc": 0,
+    "aml_sha256": "87ce9a66e0aee98055579b91a74ddbc935661d9a707444c607e2d0fc742fdce5",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "aa7e3e3988d3bd6ccf736e36d3dcf1e66398b019127d40fcec43ddd5aea48c71",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000042"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-arg-integer-to-root-ref",
+    "revision": 2,
+    "question": "Explicit rootreference Arg destination must follow observed CopyObject semantics, not silently slotreplace.",
+    "compile_rc": 0,
+    "aml_sha256": "3042cb62c4ed81c18586312243d4120415efdf8b1a792c11789858f8ecaf4211",
+    "actual_revision": 2,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "8a45506f2e9e7997e7d5ab12aec2ed8b445dcc3247184020f20797ec1c2e43d0",
+    "disassembled_operations": [
+      "Alias",
+      "CopyObject",
+      "ObjectType",
+      "RefOf"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000295"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  }
+]

@@ -1,0 +1,910 @@
+with CuBit.Console_Route;
+with CuBit.Waits;
+with CuBit.Readiness;
+with CuBit.Handles;
+with Startup;
+with Channel_Tests;
+------------------------------------------------------------------------------
+--  CuBit headless IPC regression client
+--
+--  Submits multiple async capability calls and verifies completions preserve
+--  request identity, token identity, and reply payload identity.
+------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
+with System.Machine_Code; use System.Machine_Code;
+
+with CuBit.Messages; use CuBit.Messages;
+with CuBit.Monotonic;
+
+procedure main is
+   use ASCII;
+
+   IPC_Test : constant CuBit.Handles.Endpoint := Startup.Ipc_Test;
+   --  No capability at all: the kernel must refuse it.
+   No_Capability   : constant CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+
+   OP_ASYNC_ECHO     : constant Unsigned_32 := 16#0901#;
+   OP_REVERSE_ECHO   : constant Unsigned_32 := 16#0902#;
+   OP_ONEWAY_PROBE   : constant Unsigned_32 := 16#0903#;
+   OP_DOUBLE_REPLY   : constant Unsigned_32 := 16#0904#;
+   OP_STATUS         : constant Unsigned_32 := 16#0905#;
+   OP_PRESSURE_HOLD  : constant Unsigned_32 := 16#0906#;
+   OP_PRESSURE_RELEASE : constant Unsigned_32 := 16#0907#;
+   OP_DIE            : constant Unsigned_32 := 16#0908#;
+   OP_OCCUPIED_HOLD  : constant Unsigned_32 := 16#0909#;
+   OP_OCCUPIED_PROBE : constant Unsigned_32 := 16#090A#;
+   OP_RETIRE_DEPARTED : constant Unsigned_32 := 16#090D#;
+   OP_FAIR_BEGIN : constant Unsigned_32 := 16#090E#;
+   OP_FAIR_POLL : constant Unsigned_32 := 16#090F#;
+   OP_FAIR_QUEUED : constant Unsigned_32 := 16#0910#;
+   OP_FAIR_END : constant Unsigned_32 := 16#0911#;
+   OP_DEADLINE_SILENT : constant Unsigned_32 := 16#0912#;
+   OP_DEADLINE_LATE   : constant Unsigned_32 := 16#0913#;
+   OP_DEADLINE_BUSY   : constant Unsigned_32 := 16#0914#;
+   OP_DEADLINE_QUEUED : constant Unsigned_32 := 16#0915#;
+   OP_DEADLINE_STATUS : constant Unsigned_32 := 16#0916#;
+   OP_RESTORE_ECHO    : constant Unsigned_32 := 16#0917#;
+   OP_DISPLACE_FIRST  : constant Unsigned_32 := 16#0920#;
+   OP_DISPLACE_SECOND : constant Unsigned_32 := 16#0921#;
+   OP_DISPLACE_ASYNC  : constant Unsigned_32 := 16#0922#;
+   OP_DISPLACE_STATUS : constant Unsigned_32 := 16#0923#;
+   --  Long enough that a stranded call is told apart from an ended one:
+   --  ended, it returns at once; stranded (BUG-004), only at this deadline.
+   DISPLACE_DEADLINE_MS : constant Unsigned_64 := 2_000;
+   DISPLACE_TOKEN : constant Unsigned_64 := 16#D15C_A5D0#;
+   --  A server's own reply with label 0 (and this word): a normal answer,
+   --  never read as the kernel's REPLY_ENDED.
+   OP_ZERO_LABEL_REPLY : constant Unsigned_32 := 16#0924#;
+   ZERO_LABEL_WORD : constant Unsigned_64 := 16#2E40_0000#;
+   RESTORE_WORD       : constant Unsigned_64 := 5;
+   RESTORE_DEADLINE_MS : constant Unsigned_64 := 1_000;
+   DEADLINE_MS : constant Unsigned_64 := 50;
+   --  The server's busy time (300 ms) less a margin: a timeout must come
+   --  from the deadline, not from the server getting round to the call.
+   DEADLINE_LATEST_MS : constant Unsigned_64 := 250;
+   LATE_TOKEN : constant Unsigned_64 := 16#1A7E_0001#;
+   RETIRE_TOKEN : constant Unsigned_64 := 16#D1ED_0003#;
+   REPLY_OK          : constant Unsigned_32 := 16#F000#;
+
+   REQUEST_COUNT : constant Natural := 3;
+   PRESSURE_COUNT : constant Natural := 16;
+   TOKEN_BASE    : constant Unsigned_64 := 16#A510_0000#;
+   DOUBLE_TOKEN  : constant Unsigned_64 := 16#D0B1_E000#;
+   PRESSURE_TOKEN_BASE : constant Unsigned_64 := 16#BEEF_0000#;
+   RECOVERY_TOKEN : constant Unsigned_64 := 16#BEEF_F00D#;
+   DEATH_TOKEN    : constant Unsigned_64 := 16#DEAD_D1ED#;
+   OCCUPIED_HOLD_TOKEN  : constant Unsigned_64 := 16#0CC0_0001#;
+   OCCUPIED_PROBE_TOKEN : constant Unsigned_64 := 16#0CC0_0002#;
+   XOR_MAGIC     : constant Unsigned_64 := 16#C0B1_7000#;
+   FPU_SENTINEL  : constant Unsigned_64 := 16#C11E_17F0_CAFE_5AFE#;
+
+   seen       : array (1 .. REQUEST_COUNT) of Boolean := (others => False);
+   pressureSeen : array (1 .. PRESSURE_COUNT) of Boolean :=
+      (others => False);
+   completed  : Natural := 0;
+   pressureCompleted : Natural := 0;
+   ok         : Boolean := True;
+   submitOk   : Boolean;
+   completion : CompletionEntry;
+   ret        : Unsigned_64;
+   --  KERN-013: the readiness page's completion count before the death request.
+   Death_Counted : CuBit.Readiness.Count := 0;
+   use type CuBit.Readiness.Count;
+   firstReverseValue : Unsigned_64 := 0;
+   occupiedCompleted : Natural := 0;
+   occupiedHoldSeen  : Boolean := False;
+   occupiedProbeSeen : Boolean := False;
+   --  The first FP/SIMD read's verdict (fpu-initial-isolation).
+   Initial_FPU_Clear : Boolean := False;
+
+   procedure fail (reason : String) is
+   begin
+      debugPrint ("TEST: FAIL async-ipc ");
+      debugPrint (reason);
+      debugPrint (LF & "");
+      ok := False;
+   end fail;
+
+   procedure loadFPUProbe is
+   begin
+      --  XMM0 carries this context-isolation probe. The program is built
+      --  with SSE, so set it just before the system call under test and
+      --  read it just after.
+      Asm ("movq %0, %%xmm0",
+           Inputs   => Unsigned_64'Asm_Input ("r", FPU_SENTINEL),
+           Volatile => True);
+   end loadFPUProbe;
+
+   function readFPUProbe return Unsigned_64 is
+      value : Unsigned_64;
+   begin
+      Asm ("movq %%xmm0, %0",
+           Outputs  => Unsigned_64'Asm_Output ("=r", value),
+           Volatile => True);
+      return value;
+   end readFPUProbe;
+
+begin
+   --  This must be the first explicit FP/SIMD access made by the process,
+   --  before any other code of its own runs (routing below copies records
+   --  through XMM registers). A zero result proves that the initialized
+   --  process image was restored, rather than exposing XMM state left by
+   --  the previously running server. Its verdict is printed once routed.
+   Initial_FPU_Clear := readFPUProbe = 0;
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
+   if not Initial_FPU_Clear then
+      fail ("fpu-initial-isolation");
+   end if;
+
+   debugPrint ("ipctest-client: starting" & LF);
+
+   --  An endpoint cannot be used as reply authority: the handle types keep
+   --  it from being passed as one (and the kernel checks the kind).
+
+   declare
+      msg : Message := NULL_MESSAGE;
+   begin
+      msg.tag := (label  => OP_ASYNC_ECHO,
+                  length => 1,
+                  protocol  => 0, ipc => <>,
+                  reserved  => 0);
+      msg.words (0) := 99;
+      submitOk := capSubmit (No_Capability, msg, TOKEN_BASE + 99);
+      if submitOk then
+         fail ("cap-denial");
+      end if;
+   end;
+
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+      begin
+         msg.tag := (label  => OP_ONEWAY_PROBE,
+                     length => 1,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         msg.words (0) := 77;
+         submitOk := capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN);
+         if not submitOk then
+            fail ("oneway-submit");
+         end if;
+      end;
+   end if;
+
+   if ok then
+      ret := CuBit.Waits.Sleep_For (50);
+      completion := NULL_COMPLETION;
+      ret := Poll_Completion (completion'Address);
+      if ret /= 0 then
+         fail ("oneway-completion");
+      end if;
+   end if;
+
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+      begin
+         msg.tag := (label  => OP_DOUBLE_REPLY,
+                     length => 1,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         msg.words (0) := 42;
+         submitOk := capSubmit (IPC_Test, msg, DOUBLE_TOKEN);
+         if not submitOk then
+            fail ("double-submit");
+         end if;
+      end;
+   end if;
+
+   for attempt in 1 .. 300 loop
+      exit when not ok;
+
+      completion := NULL_COMPLETION;
+      ret := Poll_Completion (completion'Address);
+
+      if ret = 1 then
+         if completion.status /= COMPLETION_OK then
+            fail ("double-status");
+         elsif completion.token /= DOUBLE_TOKEN then
+            fail ("double-token");
+         elsif completion.msg.tag.label /= REPLY_OK then
+            fail ("double-label");
+         elsif completion.msg.words (0) /= 42 then
+            fail ("double-payload");
+         end if;
+         exit;
+      else
+         ret := CuBit.Waits.Sleep_For (10);
+      end if;
+
+      if attempt = 300 then
+         fail ("double-timeout");
+      end if;
+   end loop;
+
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+      begin
+         msg.tag := (label  => OP_OCCUPIED_HOLD,
+                     length => 1,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         msg.words (0) := 501;
+         submitOk := capSubmit
+           (IPC_Test, msg, OCCUPIED_HOLD_TOKEN);
+         if not submitOk then
+            fail ("occupied-hold-submit");
+         end if;
+
+         msg.tag.label := OP_OCCUPIED_PROBE;
+         msg.words (0) := 502;
+         submitOk := capSubmit
+           (IPC_Test, msg, OCCUPIED_PROBE_TOKEN);
+         if not submitOk then
+            fail ("occupied-probe-submit");
+         end if;
+      end;
+   end if;
+
+   for attempt in 1 .. 300 loop
+      exit when occupiedCompleted = 2 or not ok;
+
+      completion := NULL_COMPLETION;
+      ret := Poll_Completion (completion'Address);
+      if ret = 1 then
+         if completion.status /= COMPLETION_OK or else
+            completion.msg.tag.label /= REPLY_OK
+         then
+            fail ("occupied-completion-status");
+         elsif completion.token = OCCUPIED_HOLD_TOKEN then
+            if occupiedHoldSeen or else completion.msg.words (0) /= 501 then
+               fail ("occupied-held-authority");
+            else
+               occupiedHoldSeen := True;
+               occupiedCompleted := occupiedCompleted + 1;
+            end if;
+         elsif completion.token = OCCUPIED_PROBE_TOKEN then
+            if occupiedProbeSeen or else completion.msg.words (0) /= 502 then
+               fail ("occupied-current-authority");
+            else
+               occupiedProbeSeen := True;
+               occupiedCompleted := occupiedCompleted + 1;
+            end if;
+         else
+            fail ("occupied-token");
+         end if;
+      else
+         ret := CuBit.Waits.Sleep_For (10);
+      end if;
+
+      if attempt = 300 then
+         fail ("occupied-timeout");
+      end if;
+   end loop;
+
+   for i in 1 .. PRESSURE_COUNT loop
+      if ok then
+         declare
+            msg : Message := NULL_MESSAGE;
+         begin
+            msg.tag := (label  => OP_PRESSURE_HOLD,
+                        length => 1,
+                        protocol  => 0, ipc => <>,
+                        reserved  => 0);
+            msg.words (0) := Unsigned_64 (i);
+
+            submitOk := capSubmit (
+               IPC_Test,
+               msg,
+               PRESSURE_TOKEN_BASE + Unsigned_64 (i));
+
+            if not submitOk then
+               fail ("pressure-submit");
+            end if;
+         end;
+      end if;
+   end loop;
+
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+      begin
+         msg.tag := (label  => OP_PRESSURE_HOLD,
+                     length => 1,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         msg.words (0) := Unsigned_64 (PRESSURE_COUNT + 1);
+
+         submitOk := capSubmit (
+            IPC_Test,
+            msg,
+            PRESSURE_TOKEN_BASE + Unsigned_64 (PRESSURE_COUNT + 1));
+
+         if submitOk then
+            fail ("pressure-overflow");
+         end if;
+      end;
+   end if;
+
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+      begin
+         msg.tag := (label  => OP_PRESSURE_RELEASE,
+                     length => 0,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         --  The held requests may still fill this client's credit at the
+         --  server (docs/ipc-delivery.md, step 3): then the release is
+         --  refused as busy, kept, and sent again once the server drains.
+         for attempt in 1 .. 500 loop
+            submitOk := capSubmit (
+               IPC_Test,
+               msg,
+               NO_COMPLETION_TOKEN);
+            exit when submitOk;
+            ret := CuBit.Waits.Sleep_For (1);
+         end loop;
+         if not submitOk then
+            fail ("pressure-release-submit");
+         end if;
+      end;
+   end if;
+
+   for attempt in 1 .. 500 loop
+      exit when pressureCompleted = PRESSURE_COUNT or not ok;
+
+      completion := NULL_COMPLETION;
+      ret := Poll_Completion (completion'Address);
+
+      if ret = 1 then
+         if completion.status /= COMPLETION_OK then
+            fail ("pressure-status");
+         elsif completion.msg.tag.label /= REPLY_OK then
+            fail ("pressure-label");
+         elsif completion.requestId = 0 then
+            fail ("pressure-request-id");
+         elsif completion.token <= PRESSURE_TOKEN_BASE or else
+               completion.token >
+                  PRESSURE_TOKEN_BASE + Unsigned_64 (PRESSURE_COUNT)
+         then
+            fail ("pressure-token");
+         else
+            declare
+               idx : constant Natural :=
+                  Natural (completion.token - PRESSURE_TOKEN_BASE);
+            begin
+               if completion.msg.words (0) /= Unsigned_64 (idx) then
+                  fail ("pressure-payload");
+               elsif completion.msg.words (1) /=
+                     (Unsigned_64 (idx) xor XOR_MAGIC)
+               then
+                  fail ("pressure-check");
+               elsif pressureSeen (idx) then
+                  fail ("pressure-duplicate");
+               else
+                  pressureSeen (idx) := True;
+                  pressureCompleted := pressureCompleted + 1;
+               end if;
+            end;
+         end if;
+      else
+         ret := CuBit.Waits.Sleep_For (10);
+      end if;
+   end loop;
+
+   if ok and then pressureCompleted /= PRESSURE_COUNT then
+      fail ("pressure-timeout");
+   end if;
+
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+      begin
+         msg.tag := (label  => OP_ASYNC_ECHO,
+                     length => 1,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         msg.words (0) := 123;
+         submitOk := capSubmit (IPC_Test, msg, RECOVERY_TOKEN);
+         if not submitOk then
+            fail ("pressure-recovery-submit");
+         end if;
+      end;
+   end if;
+
+   for attempt in 1 .. 300 loop
+      exit when not ok;
+
+      completion := NULL_COMPLETION;
+      ret := Poll_Completion (completion'Address);
+
+      if ret = 1 then
+         if completion.status /= COMPLETION_OK then
+            fail ("pressure-recovery-status");
+         elsif completion.token /= RECOVERY_TOKEN then
+            fail ("pressure-recovery-token");
+         elsif completion.msg.tag.label /= REPLY_OK then
+            fail ("pressure-recovery-label");
+         elsif completion.msg.words (0) /= 123 then
+            fail ("pressure-recovery-payload");
+         end if;
+         exit;
+      else
+         ret := CuBit.Waits.Sleep_For (10);
+      end if;
+
+      if attempt = 300 then
+         fail ("pressure-recovery-timeout");
+      end if;
+   end loop;
+
+   for i in 1 .. REQUEST_COUNT loop
+      if ok then
+         declare
+            msg : Message := NULL_MESSAGE;
+         begin
+            msg.tag := (label  => OP_REVERSE_ECHO,
+                        length => 1,
+                        protocol  => 0, ipc => <>,
+                        reserved  => 0);
+            msg.words (0) := Unsigned_64 (i);
+            msg.words (1) := 16#1122_3344_5566_7788#;
+            msg.words (2) := 16#8877_6655_4433_2211#;
+            msg.words (3) := 16#FEDC_BA98_7654_3210#;
+
+            submitOk := capSubmit (
+               IPC_Test,
+               msg,
+               TOKEN_BASE + Unsigned_64 (i));
+
+            if not submitOk then
+               fail ("submit");
+            end if;
+         end;
+      end if;
+   end loop;
+
+   for attempt in 1 .. 300 loop
+      exit when completed = REQUEST_COUNT or not ok;
+
+      completion := NULL_COMPLETION;
+      ret := Poll_Completion (completion'Address);
+
+      if ret = 1 then
+         if completion.status /= COMPLETION_OK then
+            fail ("reply-status");
+         elsif completion.msg.tag.label /= REPLY_OK then
+            fail ("reply-label");
+         elsif completion.requestId = 0 then
+            fail ("request-id");
+         elsif completion.token <= TOKEN_BASE or else
+               completion.token > TOKEN_BASE + Unsigned_64 (REQUEST_COUNT)
+         then
+            fail ("token-range");
+         else
+            declare
+               idx : constant Natural :=
+                  Natural (completion.token - TOKEN_BASE);
+            begin
+               if completion.msg.words (0) /= Unsigned_64 (idx) then
+                  fail ("payload-id");
+               elsif completion.msg.words (1) /=
+                     (Unsigned_64 (idx) xor XOR_MAGIC)
+               then
+                  fail ("payload-check");
+               elsif seen (idx) then
+                  fail ("duplicate");
+               else
+                  seen (idx) := True;
+                  completed := completed + 1;
+                  if completed = 1 then
+                     firstReverseValue := completion.msg.words (0);
+                  end if;
+               end if;
+            end;
+         end if;
+      else
+         ret := CuBit.Waits.Sleep_For (10);
+      end if;
+   end loop;
+
+   if ok and then completed /= REQUEST_COUNT then
+      fail ("timeout");
+   end if;
+
+   if ok and then firstReverseValue /= Unsigned_64 (REQUEST_COUNT) then
+      fail ("reverse-order");
+   end if;
+
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+         tag : MessageTag;
+      begin
+         msg.tag := (label  => OP_STATUS,
+                     length => 0,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         loadFPUProbe;
+         tag := capCall (IPC_Test, msg, CuBit.Messages.Wait_Forever);
+         if readFPUProbe /= FPU_SENTINEL then
+            fail ("fpu-direct-switch");
+         elsif tag.label /= REPLY_OK then
+            fail ("status-label");
+         elsif msg.words (0) /= 1 then
+            fail ("oneway-reply-cap");
+         elsif msg.words (1) /= 1 then
+            fail ("reply-cap-single-use");
+         elsif msg.words (2) /= 0 then
+            fail ("reverse-pending");
+         end if;
+      end;
+   end if;
+
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+         seenRetirement : Boolean := False;
+      begin
+         msg.tag := (label => OP_RETIRE_DEPARTED, length => 1,
+                     protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := 77;
+         if not capSubmit (IPC_Test, msg, RETIRE_TOKEN) then
+            fail ("retire-submit");
+         else
+            for attempt in 1 .. 300 loop
+               completion := NULL_COMPLETION;
+               ret := Poll_Completion (completion'Address);
+               if ret = 1 then
+                  seenRetirement := True;
+                  if completion.token /= RETIRE_TOKEN or else
+                     completion.status /= COMPLETION_OK or else
+                     completion.msg.tag.label /= REPLY_OK or else
+                     completion.msg.words (0) /= 77 or else
+                     completion.msg.words (1) /= (77 xor XOR_MAGIC)
+                  then
+                     fail ("retire-slot-reuse-completion");
+                  end if;
+                  exit;
+               end if;
+               ret := CuBit.Waits.Sleep_For (10);
+            end loop;
+            if not seenRetirement then fail ("retire-timeout"); end if;
+         end if;
+      end;
+   end if;
+
+   -- Call deadlines (docs/ipc-fastpath.md, "Call deadlines").
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+         tag : MessageTag;
+         started, elapsed : Unsigned_64;
+      begin
+         -- A server that never answers: the call ends at its deadline.
+         msg.tag := (label => OP_DEADLINE_SILENT, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         started := CuBit.Monotonic.Milliseconds;
+         tag := capCall (IPC_Test, msg, Deadline_After (DEADLINE_MS));
+         elapsed := CuBit.Monotonic.Milliseconds - started;
+         if tag.label /= REPLY_TIMEOUT then
+            fail ("deadline-silent-not-timed-out");
+         elsif elapsed < DEADLINE_MS or else elapsed >= DEADLINE_LATEST_MS then
+            fail ("deadline-silent-timing");
+         end if;
+
+         -- The server now answers the timed-out call while this thread
+         -- waits in its next call: only this call's own reply arrives.
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_DEADLINE_LATE, length => 1,
+                     protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := LATE_TOKEN;
+         tag := capCall (IPC_Test, msg, Wait_Forever);
+         if tag.label /= REPLY_OK or else msg.words (0) /= LATE_TOKEN then
+            fail ("deadline-late-reply-delivered");
+         elsif msg.words (1) /= 1 then
+            fail ("deadline-late-reply-accepted");
+         elsif msg.words (2) /= 1 then
+            fail ("deadline-forged-kernel-label");
+         end if;
+
+         -- Timed out while queued (the server was busy, not receiving):
+         -- the server never sees the request.
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_DEADLINE_BUSY, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         if not capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN) then
+            fail ("deadline-busy-submit");
+         end if;
+         -- Let the server take the busy request first.
+         ret := CuBit.Waits.Sleep_For (10);
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_DEADLINE_QUEUED, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         started := CuBit.Monotonic.Milliseconds;
+         tag := capCall (IPC_Test, msg, Deadline_After (DEADLINE_MS));
+         elapsed := CuBit.Monotonic.Milliseconds - started;
+         if tag.label /= REPLY_TIMEOUT then
+            fail ("deadline-queued-not-timed-out");
+         elsif elapsed < DEADLINE_MS or else elapsed >= DEADLINE_LATEST_MS then
+            fail ("deadline-queued-timing");
+         end if;
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_DEADLINE_STATUS, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         tag := capCall (IPC_Test, msg, Wait_Forever);
+         if tag.label /= REPLY_OK then
+            fail ("deadline-status");
+         elsif msg.words (0) /= 0 then
+            fail ("deadline-queued-request-seen");
+         end if;
+         if ok then
+            debugPrint ("ipctest-client: call deadlines PASS" & LF);
+         end if;
+      end;
+   end if;
+
+   --  A reply capability saved and restored (RESTORE_REPLY_CAPABILITY)
+   --  answers the call it came with.
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+         tag : MessageTag;
+      begin
+         msg.tag := (label => OP_RESTORE_ECHO, length => 1,
+                     protocol => 0, ipc => <>, reserved => 0);
+         msg.words (0) := RESTORE_WORD;
+         tag := capCall (IPC_Test, msg, Deadline_After (RESTORE_DEADLINE_MS));
+         if tag.label /= REPLY_OK or else msg.words (0) /= (RESTORE_WORD xor XOR_MAGIC) then
+            fail ("restore-reply-answer");
+         else
+            debugPrint ("ipctest-client: restored reply capability PASS" & LF);
+         end if;
+      end;
+   end if;
+
+   --  BUG-004 (IPC-000 rule 3, "every request ends"): a server that
+   --  receives again before answering ends the request it held. The call
+   --  gets REPLY_ENDED at once (not REPLY_TIMEOUT at its deadline); an
+   --  asynchronous request completes COMPLETION_CANCELLED.
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+         tag : MessageTag;
+         started, elapsed : Unsigned_64;
+         cancelled : Boolean := False;
+      begin
+         -- Keep the server busy (300 ms) so that both requests below are
+         -- queued when it next receives: the call first (blocked senders
+         -- follow queued messages in the receive rotation), then the
+         -- one-way request its second receive takes.
+         msg.tag := (label => OP_DEADLINE_BUSY, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         if not capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN) then
+            fail ("displace-busy-submit");
+         end if;
+         ret := CuBit.Waits.Sleep_For (10);
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_DISPLACE_SECOND, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         if not capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN) then
+            fail ("displace-second-submit");
+         end if;
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_DISPLACE_FIRST, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         started := CuBit.Monotonic.Milliseconds;
+         tag := capCall (IPC_Test, msg, Deadline_After (DISPLACE_DEADLINE_MS));
+         elapsed := CuBit.Monotonic.Milliseconds - started;
+         if tag.label = REPLY_TIMEOUT then
+            fail ("displaced-call-stranded-until-deadline");
+         elsif tag.label /= REPLY_ENDED or else Ending_Of (tag) /= Call_Ended then
+            fail ("displaced-call-not-reply-ended");
+         elsif elapsed >= DISPLACE_DEADLINE_MS then
+            fail ("displaced-call-ended-late");
+         end if;
+
+         -- A server's own label-0 answer is that answer, not an end.
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_ZERO_LABEL_REPLY, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         tag := capCall (IPC_Test, msg, Deadline_After (DISPLACE_DEADLINE_MS));
+         if tag.label /= 0 or else Ending_Of (tag) = Call_Ended
+           or else msg.words (0) /= ZERO_LABEL_WORD
+         then
+            fail ("zero-label-reply-not-an-answer");
+         end if;
+
+         -- An asynchronous request left unanswered, then two calls: in
+         -- either receive order, a later receive displaces it.
+         msg := NULL_MESSAGE;
+         msg.tag := (label => OP_DISPLACE_ASYNC, length => 0,
+                     protocol => 0, ipc => <>, reserved => 0);
+         if not capSubmit (IPC_Test, msg, DISPLACE_TOKEN) then
+            fail ("displace-async-submit");
+         end if;
+         for round in 1 .. 2 loop
+            msg := NULL_MESSAGE;
+            msg.tag := (label => OP_DISPLACE_STATUS, length => 0,
+                        protocol => 0, ipc => <>, reserved => 0);
+            tag := capCall (IPC_Test, msg, Deadline_After (DISPLACE_DEADLINE_MS));
+            if tag.label /= REPLY_OK then
+               fail ("displace-status");
+            end if;
+         end loop;
+         if msg.words (0) = 1 then
+            debugPrint ("ipctest-client: displaced call: second request received while held" & LF);
+         elsif msg.words (1) = 1 then
+            debugPrint ("ipctest-client: displaced call: second request taken first, empty poll displaced" & LF);
+         else
+            fail ("displace-second-never-received");
+         end if;
+         for attempt in 1 .. 10 loop
+            completion := NULL_COMPLETION;
+            ret := Poll_Completion (completion'Address);
+            exit when ret /= 1;
+            if completion.token = DISPLACE_TOKEN then
+               cancelled := completion.status = COMPLETION_CANCELLED and then
+                            completion.msg = NULL_MESSAGE;
+               if not cancelled then
+                  fail ("displaced-async-status");
+               end if;
+               exit;
+            end if;
+         end loop;
+         if ok and then not cancelled then
+            fail ("displaced-async-stranded");
+         end if;
+         if ok then
+            debugPrint ("ipctest-client: displaced reply ended PASS" & LF);
+         end if;
+      end;
+   end if;
+
+   if ok then
+      declare
+         msg : Message := NULL_MESSAGE;
+      begin
+         -- All shared request receive variants must service the queued
+         -- message despite repeated synchronous calls from this process.
+         for mode in Unsigned_64 range 0 .. 4 loop
+            declare
+               tag : MessageTag;
+               served : Boolean := False;
+            begin
+               msg := NULL_MESSAGE;
+               msg.tag := (label => OP_FAIR_BEGIN, length => 1,
+                           protocol => 0, ipc => <>, reserved => 0);
+               msg.words (0) := mode;
+               tag := capCall (IPC_Test, msg, CuBit.Messages.Wait_Forever);
+               if tag.label /= REPLY_OK then fail ("fairness-begin"); end if;
+               if mode = 4 then
+                  -- Server has entered an infinite activity wait before the
+                  -- one-way submission, then again before the synchronous call.
+                  ret := CuBit.Waits.Sleep_For (50);
+               end if;
+               msg := NULL_MESSAGE;
+               msg.tag := (label => OP_FAIR_QUEUED, length => 0,
+                           protocol => 0, ipc => <>, reserved => 0);
+               if not capSubmit (IPC_Test, msg, NO_COMPLETION_TOKEN) then
+                  fail ("fairness-submit");
+               end if;
+               if mode = 4 then ret := CuBit.Waits.Sleep_For (50); end if;
+               for poll in 1 .. 2 loop
+                  msg := NULL_MESSAGE;
+                  msg.tag := (label => OP_FAIR_POLL, length => 0,
+                              protocol => 0, ipc => <>, reserved => 0);
+                  tag := capCall (IPC_Test, msg, CuBit.Messages.Wait_Forever);
+                  if tag.label /= REPLY_OK then fail ("fairness-poll"); end if;
+                  served := served or else msg.words (0) = 1;
+               end loop;
+               if not served then fail ("queued-request-starved"); end if;
+            end;
+         end loop;
+         declare
+            tag : MessageTag;
+         begin
+            msg := NULL_MESSAGE;
+            msg.tag := (label => OP_FAIR_END, length => 0, protocol => 0, ipc => <>, reserved => 0);
+            tag := capCall (IPC_Test, msg, CuBit.Messages.Wait_Forever);
+            if tag.label /= REPLY_OK then fail ("fairness-end"); end if;
+         end;
+         if ok then
+            debugPrint ("ipctest-client: four receive fairness paths PASS" & LF);
+            debugPrint ("ipctest-client: activity request wake PASS" & LF);
+         end if;
+
+         -- Completion-aware idle waits must wake without consuming the
+         -- completion; repeated readiness checks must preserve its identity.
+         declare
+            event : Message;
+            found : Boolean;
+            started : Unsigned_64;
+         begin
+            loop
+               found := Poll_Event (event);
+               exit when not found;
+            end loop;
+            if Wait_For_Activity_Until (CuBit.Monotonic.Milliseconds + 10) /=
+              Deadline_Reached
+            then fail ("activity-empty-deadline"); end if;
+            msg := NULL_MESSAGE;
+            msg.tag := (label => OP_ASYNC_ECHO, length => 1,
+                        protocol => 0, ipc => <>, reserved => 0);
+            msg.words (0) := 123;
+            started := CuBit.Monotonic.Milliseconds;
+            if not capSubmit (IPC_Test, msg, 16#AC71#) then
+               fail ("activity-submit");
+            end if;
+            if Wait_For_Activity_Until (started + 5000) /=
+              Work_Available
+            then fail ("activity-completion-wake"); end if;
+            if CuBit.Monotonic.Milliseconds - started >= 2500 then
+               fail ("activity-completion-only-woke-at-deadline");
+            end if;
+            if Wait_For_Activity_Until (CuBit.Monotonic.Milliseconds) /=
+              Work_Available
+            then fail ("activity-ready-does-not-consume"); end if;
+            ret := Poll_Completion (completion'Address);
+            if ret /= 1 or else not completion.valid or else
+              completion.status /= COMPLETION_OK or else
+              completion.token /= 16#AC71# or else
+              completion.msg.tag.label /= REPLY_OK or else
+              completion.msg.words (0) /= 123
+            then fail ("activity-completion-identity"); end if;
+            if ok then debugPrint ("ipctest-client: activity wait PASS" & LF); end if;
+         end;
+         --  Channels (CAP-002 step 3), before the server is told to die.
+         Channel_Tests (IPC_Test, ok);
+         msg.tag := (label  => OP_DIE,
+                     length => 0,
+                     protocol  => 0, ipc => <>,
+                     reserved  => 0);
+         Death_Counted := CuBit.Readiness.Produced (CuBit.Readiness.Completions);
+         submitOk := capSubmit (IPC_Test, msg, DEATH_TOKEN);
+         if not submitOk then
+            fail ("death-submit");
+         end if;
+      end;
+   end if;
+
+   if ok then
+      declare
+         started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+      begin
+         if Wait_For_Activity_Until (started + 5000) /= Work_Available then
+            fail ("activity-death-wake");
+         elsif CuBit.Monotonic.Milliseconds - started >= 2500 then
+            fail ("activity-death-only-woke-at-deadline");
+         end if;
+         completion := NULL_COMPLETION;
+         ret := Poll_Completion (completion'Address);
+         if ret /= 1 then
+            fail ("death-completion-missing");
+         elsif completion.token /= DEATH_TOKEN then
+            fail ("death-token");
+         elsif completion.status /= COMPLETION_TARGET_DIED then
+            fail ("death-status");
+         elsif completion.from = 0 then
+            fail ("death-from");
+         elsif CuBit.Readiness.Produced (CuBit.Readiness.Completions) - Death_Counted /= 1 then
+            --  KERN-013: the target-died completion is counted once.
+            fail ("death-completion-not-counted");
+         end if;
+         if ok then
+            debugPrint ("ipctest-client: activity target death wake PASS" & LF);
+         end if;
+      end;
+   end if;
+
+   if ok then
+      debugPrint ("TEST: PASS async-ipc" & LF);
+   end if;
+
+   loop
+      ret := CuBit.Waits.Sleep_For (1000);
+   end loop;
+end main;

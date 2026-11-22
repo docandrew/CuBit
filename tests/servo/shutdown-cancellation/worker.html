@@ -1,0 +1,1 @@
+<body style='background:#fff'><title>ShutdownWorkerRegression</title><p>Close during worker importScripts.</p><script>const code="postMessage('ready');importScripts('data:text/javascript,while(true){}');";const w=new Worker(URL.createObjectURL(new Blob([code],{type:'text/javascript'})));w.onmessage=()=>{document.title='CuBitBrowserSpinStarted';};</script></body>

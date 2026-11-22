@@ -1,0 +1,6 @@
+# LOG-003: publishes a few records and exits; its records must keep its
+# name (tests/headless/run.sh, CCL_CONSOLE_DEMO=log-exited).
+(executable-manifest v1
+  (identity "com.cubit.log-exit-probe")
+  (version "0.1.0")
+  (request-service logstore read-write logstore))

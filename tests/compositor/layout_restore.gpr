@@ -1,0 +1,10 @@
+project Layout_Restore is
+ for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+ for Source_Files use ("layout_restore_tests.adb", "compositor_layout_restore.ads", "compositor_layout_restore.adb", "cubit.ads", "cubit-display_layouts.ads", "cubit-display_layouts.adb", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+ for Object_Dir use "build/layout-restore/obj";
+ for Exec_Dir use "build/layout-restore";
+ for Main use ("layout_restore_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+ end Compiler;
+end Layout_Restore;

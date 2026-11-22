@@ -1,0 +1,11 @@
+--  SCSI command blocks and response decoding: hosted tests and SPARK proof.
+project SCSI_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/lib/scsi");
+   for Source_Files use ("main.adb", "scsi.ads", "scsi.adb");
+   for Object_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end SCSI_Tests;

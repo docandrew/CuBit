@@ -1,0 +1,8 @@
+project ADS_Initialization is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-ads-initialization";
+   for Main use ("ads_initialization_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end ADS_Initialization;

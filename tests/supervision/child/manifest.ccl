@@ -1,0 +1,19 @@
+# supervision-child (headless supervision, SUP-001): started by
+# supervision-check through procmgr's Start_Child with typed parameters;
+# logs exactly the value it decoded, then exits with the code its mode
+# names, or lingers until procmgr reaps it when its supervisor ends.
+(type Child_Label (enum First Lingering))
+(type Child_Count (range 1 1000))
+(type Child_Exit_Code (range 0 255))
+(type Child_Mode (variant (Exit_With Child_Exit_Code) (Linger)))
+(type Child_Parameters (record
+  (label Child_Label)
+  (count Child_Count)
+  (mode Child_Mode)))
+(Executable_Manifest
+  identity => "com.cubit.test.supervision-child"
+  version => "1"
+  # ABI-002: its debug text (CuBit.Console_Route).
+  requests => [(service "logstore" "logstore")]
+  optional => ["logstore"]
+  parameters => (Parameter_Signature.Declared "Child_Parameters"))

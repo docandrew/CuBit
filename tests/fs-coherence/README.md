@@ -1,0 +1,45 @@
+# Cross-process filesystem coherence (FS-022)
+
+One case per program (`cases.txt`), built from `fs-coherence.c`: the
+program prepares files, starts its other process (CuBit: itself again with
+`posix_spawn`; Linux: `fork`), which changes them and `_exit`s without
+closing anything. Once `waitpid` returns, and 500 ms later (so the service
+has finished the other process's teardown), the program checks what the
+names hold. Table and history: docs/filesystem-data-plane.md, "Cross-process
+coherence tests".
+
+```sh
+export TMPDIR=/home/doc/cubit-build-tmp
+nix develop -c tests/fs-coherence/host.sh              # Linux semantics, on the host
+# CuBit, after make -C kernel world, under the build lock:
+flock coordination/build.lock nix develop -c bash -c \
+  'tests/fs-coherence/build-cubit.sh && tests/fs-coherence/run-cubit.sh 3'
+tests/headless/run.sh --test fs-coherence-exit-left-open --accel kvm --timeout 60   # one case
+```
+
+The `lock-*` cases test advisory locks (flock, filesystem.svc's
+`Queue_Lock`): a holder that exits without closing, one killed holding the
+lock (it traps; the kernel ends it), shared beside exclusive, a blocking
+request with a 200 ms limit (`cubit_flock_timeout`, `<cubit/files.h>`;
+on Linux a `LOCK_NB` loop stands in), and in one process close, `LOCK_UN`
+and a reused parked handle releasing. `fsync-directory` checks that fsync
+of a directory and of a read-only descriptor succeed (on CuBit both commit
+the volume's journal). The program checks conflicts while the other
+process lives (`during`), then that nothing is left locked.
+
+`hard-links` (FS-031) holds one name of a two-name file open while the
+other process unlinks the other name: the file keeps its bytes and one
+link (fstat and stat), a write through the open name does not bring the
+old count back, and the last name unlinked while open stays readable until
+closed. CuBit has no link operation, so the headless runner makes both
+names on its disk copy (debugfs) and, after the run, replays the journal
+and requires `e2fsck -fn` clean with both names gone; Linux's run makes
+them with link().
+
+Markers: `fs-coherence: start CASE`, `fs-coherence: CASE PASS` (or `FAIL`
+and what was wrong), `fs-coherence: end` (QEMU stops there). Files live
+under `@nvme:0/fs-coherence` (made by the headless runner on its disk copy).
+The guest gets 512 MiB, as bench-fs: each process lends the service about
+9 MiB of queue arenas, and at the default 128 MiB the desktop's services
+leave too little for two.
+tests/filesystem-hosted/run.sh runs host.sh with the other hosted suites.

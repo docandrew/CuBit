@@ -1,0 +1,14 @@
+project Reservation_Tests is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("main.adb", "boot_frame_allocator.ads",
+     "boot_frame_allocator.adb", "proof_instance.ads",
+     "reservation_properties.ads", "reservation_properties.adb",
+     "buddy_boot_admission.ads", "buddy_boot_admission.adb",
+     "buddy_geometry.ads", "buddy_geometry.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-g");
+   end Compiler;
+end Reservation_Tests;

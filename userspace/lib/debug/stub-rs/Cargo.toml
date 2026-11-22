@@ -1,0 +1,13 @@
+[package]
+name = "cubit-debug-stub"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "GPL-3.0-or-later"
+description = "The cooperative debug stub for Rust programs on CuBit (DBG-001 preview)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+cubit = { path = "../../../rust/cubit", features = ["start-symbols"] }

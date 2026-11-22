@@ -1,0 +1,9 @@
+project Client_Input_Channel_Native extends "input_delivery_native.gpr" is
+   for Source_Dirs use ("../../userspace/lib/ui", "../../userspace/lib/compositor", "../../userspace/services/desktop");
+   for Source_Files use Input_Delivery_Native'Source_Files &
+     ("client_input_channel.ads", "client_input_channel.adb",
+      "client_input_channel_policy.ads", "client_input_channel_policy.adb",
+      "client_input_batch_cache.ads", "client_input_batch_cache.adb",
+      "compositor_input_protocol.ads", "compositor_input_protocol.adb");
+   for Object_Dir use "build/client-input-channel-native";
+end Client_Input_Channel_Native;

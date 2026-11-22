@@ -1,0 +1,143 @@
+# CCL build declarations (docs/ccl-build.md). Three documents use them:
+# - build-params.ccl, one Parameters value: toolchain pins and manifest
+#   tools by host, the runtime, the catalogs, and what every native link
+#   shares;
+# - build-catalog.ccl, one Build_Catalog value: named code profiles and the
+#   libraries components may use;
+# - each component's component.ccl, one Component value that names only
+#   what differs from them. Its directory is where its component.ccl is.
+# Paths are relative to the source tree's root, with no "." or "..".
+
+# A toolchain tree, pinned by its identity (64 lowercase hex digits), and
+# the prefix of its program names (x86_64-unknown-linux-musl-gcc). The first
+# build on a machine is given the host directory once (--import NAME=PATH);
+# trees in the Nix store, and CuBit's toolchain place, are recorded in
+# place, others copied into the store.
+(type Toolchain (record (name String) (identity String) (prefix String)))
+
+# One link argument: literal text (no file names), a file from the tree,
+# or the component's manifest object (left out when it has no manifest).
+(type Link_Argument (variant (Text String) (File String) (Manifest_Object)))
+
+# How Ada code is compiled, by intent; ccl-build turns this into switches.
+# Ada_2012 is GNAT's default language version.
+(type Ada_Language (enum Ada_2012 Ada_2022))
+# Normal is -O2; Maximum is -O3, for proved hot paths.
+(type Optimization (enum Normal Maximum))
+# Suppressed (-gnatp) only for units whose absence of run-time errors is
+# proved.
+(type Checks (enum Enabled Suppressed))
+(type Frame_Pointer (enum Omitted Kept))
+# Reported is -gnatwa; Suppressed (-gnatws) is for code maintained
+# elsewhere, such as a fetched crate.
+(type Warnings (enum Reported Suppressed))
+# Instruction sets beyond the target's baseline, for units that run them
+# only after checking the processor (SPARKTLSCrypto's accelerated tiers).
+(type Instruction_Set (enum AES_NI ADX AVX2 AVX512))
+# value_range_propagation false is SPARKNaCl's -fno-tree-vrp workaround.
+(type Ada_Code (record
+  (language Ada_Language Ada_Language.Ada_2012) (optimization Optimization Optimization.Normal)
+  (checks Checks Checks.Enabled) (frame_pointer Frame_Pointer Frame_Pointer.Omitted)
+  (value_range_propagation Boolean true) (warnings Warnings Warnings.Reported)
+  (instruction_sets (List Instruction_Set) [])))
+
+# A named code profile (build-catalog.ccl) and units compiled with one.
+(type Code_Profile (record (name String) (code Ada_Code)))
+(type Unit_Code (record (files (List String)) (profile String)))
+
+# A SHA-256 digest as eight 32-bit words of the hex digest, in order.
+(type Digest_Word (range 0 4294967295))
+(type SHA256_Digest (record (w1 Digest_Word) (w2 Digest_Word) (w3 Digest_Word) (w4 Digest_Word)
+  (w5 Digest_Word) (w6 Digest_Word) (w7 Digest_Word) (w8 Digest_Word)))
+
+# Where a library's files are: in the source tree, or in a source tree
+# fetched from outside it (docs/ccl-build.md, "Fetchers are fixed-output
+# steps"). A fetched tree is a gzip'd tar archive, downloaded once, its
+# single top directory removed, and pinned by its Storehouse tree identity
+# (what `ccl-build hash-tree DIR` prints), as eight words like
+# SHA256_Digest. A mismatch is refused and nothing is stored; afterwards
+# the tree is answered from the store, with no network. The first build
+# without network may seed it with --import NAME=PATH, which is checked
+# against the same pin. A fetched library's sources and archives are
+# relative to its tree.
+(type Archive_Format (enum Tar_Gz))
+(type Fetched_Tree (record (url String) (format Archive_Format) (tree SHA256_Digest)))
+(type Library_Origin (variant (Repository) (Fetch Fetched_Tree)))
+# How a library's units are compiled: with the program's code, or with a
+# named code profile (a unit group naming a unit still comes first).
+(type Library_Code (variant (Program_Code) (Profile String)))
+
+# A library components name: source directories compiled into each user,
+# units with their own code profile, and archives built elsewhere, linked
+# after the component's objects (the font library).
+(type Library (record
+  (name String) (origin Library_Origin Library_Origin.Repository)
+  (code Library_Code Library_Code.Program_Code)
+  (sources (List String) []) (units (List Unit_Code) []) (archives (List String) [])))
+
+# The trees a build host runs steps with: its compiler (gcc, gnatbind) and
+# its binutils (ld, objcopy). ccl-build uses the entry for the host it runs
+# on (one per host): nixpkgs' trees on Linux; on CuBit the GCC port's tree
+# (userspace/ports/gcc), which holds its binutils too.
+(type Build_Host (enum Linux CuBit))
+# The manifest step's tool (ccl-manifest) a build host runs: a program in
+# the source tree, run as the step's input (Linux: the tree's own build), or
+# one installed on the host at an absolute name, run where it is and named
+# in the step by its SHA-256 (CuBit: launch tables name programs exactly,
+# so a copy in a step directory could not be started). Both are built from
+# the same sources and write the same bytes.
+(type Manifest_Tool (variant (Checkout String) (Installed String)))
+(type Host_Toolchains (record
+  (host Build_Host) (toolchain Toolchain) (binutils Toolchain) (manifest_tool Manifest_Tool)))
+
+(type Parameters (record
+  (toolchains (List Host_Toolchains)) (runtime String)
+  (manifest_schema String)
+  (process_manager_catalog String) (device_manager_catalog String)
+  (target (List String)) (binder (List String)) (linker (List Link_Argument))))
+
+(type Build_Catalog (record (profiles (List Code_Profile)) (libraries (List Library))))
+
+# Who launches a service: its manifest is checked against that launcher's
+# catalog; one the kernel starts has no manifest.
+(type Launcher (enum Process_Manager Device_Manager Kernel))
+
+# What a component is. The executable is its name with the kind's suffix
+# (.app, .svc, .drv; a tool has none); applications and tools are launched
+# by the process manager, drivers by the device manager.
+(type Kind (variant (Application) (Service Launcher) (Driver) (Tool)))
+
+# A program's main unit: main.adb, or another file.
+(type Main (variant (Conventional) (File String)))
+
+# An Ada program, built per compilation unit: gcc -c for each unit reached
+# from main through its .ali files, gnatbind, the binder unit, and the link
+# (D5: no gnatlink, gnatmake or gprbuild). Its sources are the Ada files in
+# its directory, then in sources, then its libraries' sources, then the
+# generated startup bindings; objects go to its directory's build/.
+(type Ada_Source (record
+  (main Main Main.Conventional) (sources (List String) []) (libraries (List String) [])
+  (language Ada_Language Ada_Language.Ada_2012) (optimization Optimization Optimization.Normal)
+  (checks Checks Checks.Enabled) (frame_pointer Frame_Pointer Frame_Pointer.Omitted)
+  (value_range_propagation Boolean true) (debug_info Boolean true)
+  (units (List Unit_Code) []) (link_extra (List Link_Argument) [])))
+
+(type Source (variant (Ada Ada_Source)))
+
+# Bytes linked into a program (docs/device-matching.md, "Firmware"): a
+# file under firmware/ or a download, pinned by its SHA-256 as eight
+# 32-bit words of the hex digest, in order (SHA256_Digest, above).
+# ccl-build hashes the bytes and refuses a mismatch; Ada reads them from
+# the generated package Embedded.
+(type Pinned (record (location String) (sha256 SHA256_Digest)))
+(type Blob_Source (variant (Vendored Pinned) (Fetch Pinned)))
+(type Blob (record (name String) (source Blob_Source) (licence String)))
+
+(type Component (record (name String) (kind Kind) (source Source) (embedded (List Blob) [])))
+
+(define (vendored (path String) (digest SHA256_Digest)) Blob_Source
+  (Blob_Source.Vendored (Pinned path digest)))
+(define (fetch (url String) (digest SHA256_Digest)) Blob_Source
+  (Blob_Source.Fetch (Pinned url digest)))
+(define (fetch_tar_gz (url String) (tree SHA256_Digest)) Library_Origin
+  (Library_Origin.Fetch (Fetched_Tree url Archive_Format.Tar_Gz tree)))

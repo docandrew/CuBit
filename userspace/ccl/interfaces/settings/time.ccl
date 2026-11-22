@@ -1,0 +1,5 @@
+# timesync.svc's settings: its NTP servers (space-separated names or
+# addresses, each with an optional :port) and how often it polls them.
+(Setting_Catalog settings => [
+  (Setting "time.servers" Shape.Key Value.Text Class.Declaration_Managed "")
+  (Setting "time.poll-seconds" Shape.Key Value.Count Class.Declaration_Managed "")])

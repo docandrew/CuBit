@@ -1,0 +1,12 @@
+{
+  "iasl": {
+    "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+    "sha256": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb",
+    "version": "\nIntel ACPI Component Architecture\nASL+ Optimizing Compiler/Disassembler version 20260408\nCopyright (c) 2000 - 2026 Intel Corporation\n\n"
+  },
+  "acpiexec": {
+    "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+    "sha256": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe",
+    "version": "\nIntel ACPI Component Architecture\nAML Execution/Debug Utility version 20260408\nCopyright (c) 2000 - 2026 Intel Corporation\n\n\nACPI: No outstanding allocations\n"
+  }
+}

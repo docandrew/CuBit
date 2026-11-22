@@ -1,0 +1,25 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-field-publication-OzYYTLwz/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-field-publication-OzYYTLwz/source/tests/aml-field-io/results/checked-zej1lzds",
+  "mode": "checked",
+  "inputs": 208,
+  "references": 498,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 6,
+  "artifacts": 1963,
+  "stages": 12,
+  "logs": {
+    "field_io_core_tests": "Field IO Core checks 516",
+    "field_deref_unknown_tests": "Field Deref unknown checks 186",
+    "field_partial_read_tests": "Partial Field reads passed 482",
+    "field_any_space_tests": "Any-space Field reads passed 440",
+    "field_partial_write_tests": "Partial Field write checks 6313",
+    "field_qword_tests": "Qword Field checks 6663"
+  },
+  "ALI": 484,
+  "dependencies": 8588,
+  "strict_commands": 478,
+  "audit_sha256": "29ca0da2ef2f41f2166aced0f0a7188eff9207c277e718d10e6c3c42a0e322d4",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

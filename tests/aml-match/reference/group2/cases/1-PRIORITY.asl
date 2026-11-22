@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",1,"CUBIT","MATCH",1){Name(MARK,Zero) Name(PKG0,Package(){1}) Method(IDEN,1){Return(Arg0)} Method(STRT,0){Store(One,MARK) Return(Buffer(){})} Method(CTRL,0){Return(One)} Method(WIDT,0){Return(ShiftRight(Ones,32))} Method(TEST,0){Return(Match(PKG0,MEQ,IDEN(Package(){}),MTR,Zero,STRT()))}}

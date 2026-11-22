@@ -1,0 +1,6 @@
+# The GPIO sink admission (SUP-001) uses gpio.drv's own admin wire and the
+# GPIO channel wire, read-only.
+(Component name => "gpio-launch-check" kind => Kind.Driver
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/services/gpio/lib" "userspace/lib/gpio-admission"]
+    language => Ada_Language.Ada_2022)))

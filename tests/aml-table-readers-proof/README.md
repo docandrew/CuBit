@@ -1,0 +1,5 @@
+# Owned table reader/source/store proof milestone
+
+Run `TMPDIR=/home/doc/cubit-build-tmp nix develop -c bash tests/aml-table-readers-proof/run.sh` in the pinned hosted toolchain. `--validate-only` verifies exact sources, cached raw reports and negative audit controls without executing a prover. The default runs fresh isolated SPARK levels 1 and 2 with cvc5, five-second solver limits, one worker, nice 19 and 180-second process limits. Tool hashes are pinned.
+
+Each level discharges 243 checks across 28 entities in AML_Table_Readers, AML_Table_Sources and AML_Copied_Tables. Sixty negative report-audit controls must be refused. Current contracts cover descriptor safety, typed source/slot mapping, bounded reads and zeroed refusals, and selected copied-store metadata/window/model framing. Header match policy and complete bit/byte/import semantics are not proved by these contracts. External modular dependencies include boot-span and identifier helpers, the firmware parser and standard Interfaces shifts. Namespace, Core, complete interpreter and native/hardware correctness remain outside this milestone. No Assume or skipped selected proof is accepted.

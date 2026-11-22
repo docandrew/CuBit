@@ -1,0 +1,1 @@
+with ACPI_Requests; with CuBit.Messages; package ACPI_Native_Passive_Queries is procedure Dispatch (Server : in out ACPI_Requests.State; From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message; Admission_Open : Boolean; Reply : out CuBit.Messages.Message; Handled, Reply_Now : out Boolean);end ACPI_Native_Passive_Queries;

@@ -1,0 +1,12 @@
+project Timestamp_Clock is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use
+     ("timestamp_clock_tests.adb", "intel_gpu_timestamp_clock.ads",
+      "intel_gpu_timestamp_clock.adb", "intel_gpu_timestamp_observe.ads",
+      "intel_gpu_timestamp_observe.adb");
+   for Object_Dir use "build-timestamp-clock";
+   for Main use ("timestamp_clock_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Timestamp_Clock;

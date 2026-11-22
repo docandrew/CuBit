@@ -1,0 +1,15 @@
+# The debugger preview's demo target (DBG-001): live data for CuBit.Debug to
+# read. It links the cooperative stub (CuBit.Debug_Stub) and registers the
+# debug-target service, so a debugger that requests that service may attach;
+# the stub shares its pages read-only with that debugger, and its threads
+# park at their checkpoints when asked. No secrets live here.
+(Executable_Manifest
+  identity => "com.cubit.debug-demo"
+  version => "0.1.0"
+  requests => [
+    # The declared debug port: registering debug-target (procmgr lets only
+    # this identity hold the role in the preview).
+    (notification "debug-target" Notify_Access.Manage "registration")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

@@ -1,0 +1,61 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+------------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total        Flow                               Provers   Justified   Unproved
+------------------------------------------------------------------------------------------------------------
+Data Dependencies                 .           .                                     .           .          .
+Flow Dependencies                 .           .                                     .           .          .
+Initialization                    4           4                                     .           .          .
+Non-Aliasing                      2           2                                     .           .          .
+Run-time Checks                  43           .    43 (CVC5 15%, Trivial 22%, Z3 63%)           .          .
+Assertions                        4           .                  4 (CVC5 17%, Z3 83%)           .          .
+Functional Contracts             25           .                 25 (CVC5 17%, Z3 83%)           .          .
+LSP Verification                  .           .                                     .           .          .
+Termination                       9           9                                     .           .          .
+Concurrency                       .           .                                     .           .          .
+------------------------------------------------------------------------------------------------------------
+Total                            87    15 (17%)                              72 (83%)           .          .
+
+
+max steps used for successful proof: 2102
+
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 3 units
+in unit observatory_archive_stream, 9 subprograms and packages out of 9 analyzed
+  Observatory_Archive_Stream at observatory_archive_stream.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Archive_Stream.Append at observatory_archive_stream.ads:17 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (20 checks)
+  Observatory_Archive_Stream.Context at observatory_archive_stream.ads:11 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Observatory_Archive_Stream.Finish at observatory_archive_stream.ads:19 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Observatory_Archive_Stream.Length at observatory_archive_stream.ads:10 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Archive_Stream.Ready at observatory_archive_stream.ads:9 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Archive_Stream.Start at observatory_archive_stream.ads:13 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (3 checks)
+  Observatory_Archive_Stream.State at observatory_archive_stream.ads:21 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Observatory_Archive_Stream.Statepredicate at observatory_archive_stream.ads:21 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit observatory_query_lifetime, 11 subprograms and packages out of 11 analyzed
+  Observatory_Query_Lifetime at observatory_query_lifetime.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Query_Lifetime.Consume at observatory_query_lifetime.ads:34 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Observatory_Query_Lifetime.Deadline at observatory_query_lifetime.ads:10 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Query_Lifetime.Expire at observatory_query_lifetime.ads:28 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Observatory_Query_Lifetime.Fail at observatory_query_lifetime.ads:32 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Observatory_Query_Lifetime.Receive at observatory_query_lifetime.ads:19 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Observatory_Query_Lifetime.Retired at observatory_query_lifetime.ads:24 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Observatory_Query_Lifetime.Start at observatory_query_lifetime.ads:11 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (1 checks)
+  Observatory_Query_Lifetime.State at observatory_query_lifetime.ads:37 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Query_Lifetime.Status at observatory_query_lifetime.ads:8 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Query_Lifetime.Token at observatory_query_lifetime.ads:9 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+in unit observatory_trace_plot, 4 subprograms and packages out of 4 analyzed
+  Observatory_Trace_Plot at observatory_trace_plot.ads:3 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Observatory_Trace_Plot.Describe at observatory_trace_plot.ads:13 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (10 checks)
+  Observatory_Trace_Plot.Extent at observatory_trace_plot.ads:18 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (19 checks)
+  Observatory_Trace_Plot.Project at observatory_trace_plot.ads:28 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (9 checks)

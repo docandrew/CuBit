@@ -1,0 +1,2 @@
+(Component name => "trap-flag-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

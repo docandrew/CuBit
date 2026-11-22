@@ -1,0 +1,10 @@
+--  The calculator core's proved units (tests/calculator/run.sh --prove,
+--  level 2, nothing unproved): every native program that links the core
+--  (the Calculator app, CCL front ends through calc.*) compiles them with
+--  these switches, without run-time checks.
+abstract project Calc_Flags is
+   for Source_Files use ();
+   Proved_Switches :=
+     ("-O3", "-gnatp", "-gnat2022", "-gnatwa", "-fstack-usage", "-fomit-frame-pointer",
+      "-mno-red-zone", "-fno-pic", "-fno-tree-vrp");
+end Calc_Flags;

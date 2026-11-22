@@ -1,0 +1,1 @@
+DefinitionBlock("", "DSDT", 2, "CUBIT", "COMPARE", 1) { Name(MARK,Zero) Name(SRC0,"A") Method(MUT0,0){Increment(MARK) CopyObject("B",SRC0) Return("B")} Method(TEST,0){Store(LEqual(SRC0,MUT0()),Local0) Return(Add(Multiply(MARK,10),Local0))} }

@@ -1,0 +1,114 @@
+------------------------------------------------------------------------------
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--
+--  Generation-checked shared-memory grant references.
+------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
+with System;
+
+with CuBit.Messages;
+with CuBit.Grant_References;
+
+with CuBit.Handles;
+package CuBit.Memory_Grants is
+   PAGE_SIZE : constant Unsigned_64 := 4096;
+   MAXIMUM_GLOBAL_SLOT : constant Unsigned_64 :=
+     CuBit.Grant_References.Maximum_Slot;
+   MAXIMUM_GENERATION : constant Unsigned_64 :=
+     CuBit.Grant_References.Maximum_Generation;
+
+   subtype Global_Grant_Slot is CuBit.Grant_References.Global_Slot;
+   subtype Grant_Generation is CuBit.Grant_References.Generation;
+   subtype Grant_Reference is CuBit.Grant_References.Reference;
+
+   type Required_Access is (Read_Access, Write_Access);
+   for Required_Access use (Read_Access => 0, Write_Access => 1);
+
+   procedure Create_For_Process
+     (grantee   : CuBit.Messages.Process_ID;
+      localAddr : System.Address;
+      numPages  : Natural;
+      readWrite : Boolean;
+      reference : out Grant_Reference;
+      success   : out Boolean;
+      notify    : Boolean := False);
+
+   procedure Create_Via_Capability
+     (slot      : CuBit.Handles.Endpoint;
+      localAddr : System.Address;
+      numPages  : Natural;
+      readWrite : Boolean;
+      reference : out Grant_Reference;
+      success   : out Boolean;
+      notify    : Boolean := False);
+
+   procedure Acquire
+     (reference     : Grant_Reference;
+      expectedOwner : CuBit.Messages.Process_ID;
+      byteOffset    : Unsigned_64;
+      byteLength    : Unsigned_64;
+      requiredAccess : Required_Access;
+      mappedAddress : out System.Address;
+      success       : out Boolean);
+
+   --  Explicit owner opt-in; only caller-owned pages can be granted. Existing
+   --  creation APIs remain nonforwardable. This does not create a child loan;
+   --  use Derive_Via_Capability only after acquiring the parent.
+   --  notify: the kernel posts grant lifecycle events for it and the grants
+   --  derived from it (CuBit.Control_Events).
+   procedure Create_Forwardable_Via_Capability
+     (slot : CuBit.Handles.Endpoint; localAddr : System.Address;
+      numPages : Natural; readWrite : Boolean;
+      reference : out Grant_Reference; success : out Boolean;
+      notify : Boolean := False);
+
+   --  The same, to the process a saved reply answers (the requester of a
+   --  request this process set aside): no endpoint to it is needed.
+   procedure Create_Via_Reply
+     (peer      : CuBit.Handles.Reply;
+      localAddr : System.Address;
+      numPages  : Natural;
+      readWrite : Boolean;
+      reference : out Grant_Reference;
+      success   : out Boolean;
+      notify    : Boolean := False);
+   procedure Create_Forwardable_Via_Reply
+     (peer : CuBit.Handles.Reply; localAddr : System.Address;
+      numPages : Natural; readWrite : Boolean;
+      reference : out Grant_Reference; success : out Boolean;
+      notify : Boolean := False);
+
+   --  The acquired parent's owner must have opted into forwarding. Children
+   --  cannot be forwarded, widen the page range or add write permission.
+   --  Recipient is authenticated through an endpoint capability, not a PID.
+   procedure Derive_Via_Capability
+     (recipient : CuBit.Handles.Endpoint; parent : Grant_Reference;
+      pageOffset, numPages : Natural; readWrite : Boolean;
+      reference : out Grant_Reference; success : out Boolean);
+
+   --  Acquire from the service named by an endpoint capability.  The kernel
+   --  derives and generation-checks the expected grant owner from that
+   --  authority, avoiding a caller-supplied PID at service boundaries.
+   procedure Acquire_Via_Capability
+     (slot           : CuBit.Handles.Endpoint;
+      reference      : Grant_Reference;
+      byteOffset     : Unsigned_64;
+      byteLength     : Unsigned_64;
+      requiredAccess : Required_Access;
+      mappedAddress  : out System.Address;
+      success        : out Boolean);
+
+   procedure Return_Acquisition
+     (reference : Grant_Reference;
+      success   : out Boolean);
+
+   procedure Revoke
+     (reference : Grant_Reference;
+      success   : out Boolean);
+   --  Revoke success means accepted, not necessarily completed. Only the
+   --  owner can confirm retirement. False includes pending and query failure.
+   --  A retired reference has no remaining mapping/acquisition; its identity
+   --  cannot become live again. This says nothing about other grants/aliases.
+   function Retirement_Confirmed (reference : Grant_Reference) return Boolean;
+end CuBit.Memory_Grants;

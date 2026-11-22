@@ -1,0 +1,556 @@
+------------------------------------------------------------------------------
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--
+--  @summary
+--  Audio mixer service (userspace)
+--
+--  @description
+--  Central audio hub. Manages client stream grants, mixes PCM data from
+--  multiple clients, and writes completed mixes directly into the isolated
+--  HDA PCM DMA grant.  Device-period notifications and client wakeups arrive
+--  through one-way capability IPC; control operations use capCall.
+------------------------------------------------------------------------------
+pragma Ada_2022;
+with CuBit.Console_Route;
+with Interfaces; use Interfaces;
+with System.Storage_Elements; use System.Storage_Elements;
+
+with CuBit.Messages; use CuBit.Messages;
+with CuBit.Grant_References;
+with CuBit.Memory_Grants; use CuBit.Memory_Grants;
+with Mixer;
+with Mixer_Control;
+with CuBit.Audio_Control;
+with CuBit.Audio_Periods;
+with CuBit.Benchmark_Clock;
+with CuBit.Timing_Histograms;
+
+with CuBit.Handles.Devices;
+with Startup;
+with CuBit.Monotonic;
+
+procedure main is
+   use ASCII;
+   package Clock renames CuBit.Benchmark_Clock;
+   package Timing renames CuBit.Timing_Histograms;
+   Mix_Timing, Publication_Timing : Timing.Histogram;
+   Received_At : Unsigned_64;
+
+   --  IPC labels
+   OP_AUDIO_OPEN     : constant Unsigned_32 := 16#0500#;
+   OP_AUDIO_CLOSE    : constant Unsigned_32 := 16#0501#;
+   OP_AUDIO_SET_VOL  : constant Unsigned_32 := 16#0502#;
+   OP_AUDIO_GET_VOL  : constant Unsigned_32 := 16#0503#;
+   OP_AUDIO_SET_PAN  : constant Unsigned_32 := 16#0504#;
+   OP_AUDIO_SET_FMT  : constant Unsigned_32 := 16#0505#;
+   OP_AUDIO_WAKE     : constant Unsigned_32 := 16#0506#;
+   OP_AUDIO_PLAYBACK : constant Unsigned_32 := 16#0509#;
+   OP_AUDIO_HW_INIT  : constant Unsigned_32 := 16#0510#;
+   OP_AUDIO_HW_START : constant Unsigned_32 := 16#0511#;
+   OP_AUDIO_HW_STOP  : constant Unsigned_32 := 16#0512#;
+   OP_AUDIO_HW_PERIOD : constant Unsigned_32 := 16#0516#;
+   REPLY_OK           : constant Unsigned_32 := 16#F000#;
+   REPLY_ERR          : constant Unsigned_32 := 16#F001#;
+
+   --  Capability slots (assigned by devmgr)
+
+   msg         : Message;
+   from        : Process_ID;
+
+   --  The HDA driver's endpoint, or the null handle without audio hardware
+   --  (its manifest's optional "hda" binding): calls through it fail.
+   function HDA_Endpoint return CuBit.Handles.Endpoint is
+     (if Startup.Hda.Present then Startup.Hda.Value else CuBit.Handles.No_Endpoint);
+   ret         : Unsigned_64;
+   mixBuf      : Mixer.MixBuffer;
+   mixFrames   : Natural;
+   dmaRingAddr : Unsigned_64 := 0;
+   periodBytes : Unsigned_32 := 0;
+   periodCount : Natural := 0;
+   hdaReady    : Boolean := False;
+   hdaRunning  : Boolean := False;
+   lastPeriodSequence : Unsigned_64 := 0;
+   statsStartMs : Unsigned_64 := 0;
+   statsPeriods : Unsigned_64 := 0;
+   statsActivePeriods : Unsigned_64 := 0;
+   statsSilentPeriods : Unsigned_64 := 0;
+   statsMissedPeriods : Unsigned_64 := 0;
+   statsUnderrunsLast : Unsigned_64 := 0;
+   periodIRQObserved : Boolean := False;
+   hdaPID : Process_ID := No_Process;
+
+   function clientRequestAllowed return Boolean is
+      Owners : Mixer_Control.Owner_Table (Mixer.streams'Range);
+   begin
+      for I in Owners'Range loop
+         Owners (I) := (if Mixer.streams (I).active then Mixer.streams (I).pid else 0);
+      end loop;
+      return Mixer_Control.Allowed
+        (msg.tag.label, msg.tag.length, CuBit.Messages.Flag_Byte (msg.tag), msg.tag.reserved,
+         [msg.words (0), msg.words (1), msg.words (2), msg.words (3)],
+         To_Word (from), Owners) and then
+        (msg.tag.label /= OP_AUDIO_OPEN or else hdaReady);
+   end clientRequestAllowed;
+
+   procedure printDec (val : Unsigned_64) is
+      buf : String (1 .. 20);
+      pos : Natural := buf'Last;
+      v   : Unsigned_64 := val;
+   begin
+      if v = 0 then
+         debugPrint ("0");
+         return;
+      end if;
+
+      while v > 0 loop
+         buf (pos) := Character'Val (Character'Pos ('0') +
+                                      Natural (v mod 10));
+         v := v / 10;
+         pos := pos - 1;
+      end loop;
+
+      debugPrint (buf (pos + 1 .. buf'Last));
+   end printDec;
+
+   function totalUnderruns return Unsigned_64 is
+      total : Unsigned_64 := 0;
+   begin
+      for i in Mixer.streams'Range loop
+         if Mixer.streams (i).active and then Mixer.streams (i).ringAddr /= 0
+         then
+            declare
+               hdr : Mixer.RingHeader
+                  with Import,
+                       Address => To_Address
+                         (Integer_Address (Mixer.streams (i).ringAddr)),
+                       Volatile;
+            begin
+               total := total + Unsigned_64 (hdr.underruns);
+            end;
+         end if;
+      end loop;
+
+      return total;
+   end totalUnderruns;
+
+   procedure maybePrintStats is
+      now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+      underruns : Unsigned_64;
+   begin
+      if now = Unsigned_64'Last then
+         return;
+      end if;
+
+      if statsStartMs = 0 then
+         statsStartMs := now;
+         statsUnderrunsLast := totalUnderruns;
+         return;
+      end if;
+
+      if now < statsStartMs or else now - statsStartMs < 1000 then
+         return;
+      end if;
+
+      underruns := totalUnderruns;
+      debugPrint ("mixer: stats periods=");
+      printDec (statsPeriods);
+      debugPrint (" active=");
+      printDec (statsActivePeriods);
+      debugPrint (" silent=");
+      printDec (statsSilentPeriods);
+      debugPrint (" missed_periods=");
+      printDec (statsMissedPeriods);
+      debugPrint (" underruns=");
+      if underruns >= statsUnderrunsLast then
+         printDec (underruns - statsUnderrunsLast);
+      else
+         printDec (underruns);
+      end if;
+      debugPrint ("" & LF);
+
+      statsStartMs := now;
+      statsPeriods := 0;
+      statsActivePeriods := 0;
+      statsSilentPeriods := 0;
+      statsMissedPeriods := 0;
+      statsUnderrunsLast := underruns;
+   end maybePrintStats;
+
+   procedure sendReply (label : Unsigned_32;
+                        w0    : Unsigned_64 := 0;
+                        w1    : Unsigned_64 := 0;
+                        w2    : Unsigned_64 := 0;
+                        w3    : Unsigned_64 := 0)
+   is
+      ignore : Unsigned_64;
+   begin
+      --  The request just received from from (its current reply).
+      ignore := reply (from,
+         (tag => (label  => label,
+                  length => 4,
+                  protocol  => 0, ipc => <>,
+                  reserved  => 0),
+          authorityTag => 0,
+          words => [0 => w0, 1 => w1, 2 => w2, 3 => w3]));
+   end sendReply;
+
+   procedure mixIntoPeriod (slot : Natural) is
+      target : Unsigned_64;
+      Before, After : Unsigned_64;
+   begin
+      if not hdaReady or else slot >= periodCount then
+         return;
+      end if;
+
+      target := dmaRingAddr + Unsigned_64 (slot) * Unsigned_64 (periodBytes);
+      Before := Clock.Read_Counter;
+      mixFrames := Mixer.mixPeriod (mixBuf, target, slot, Mixer.MIX_FRAMES);
+      After := Clock.Read_Counter;
+      if After >= Before then
+         Timing.Add (Mix_Timing, After - Before);
+      end if;
+      statsPeriods := statsPeriods + 1;
+      if mixFrames > 0 then
+         statsActivePeriods := statsActivePeriods + 1;
+      else
+         statsSilentPeriods := statsSilentPeriods + 1;
+      end if;
+   end mixIntoPeriod;
+
+   procedure startHardware is
+      ctlMsg : Message;
+   begin
+      if not hdaReady or else hdaRunning or else
+         not Mixer.hasRunningOutput
+      then
+         return;
+      end if;
+
+      --  Before the device starts, every period belongs to the mixer.  Prime
+      Mix_Timing := Timing.Empty;
+      Publication_Timing := Timing.Empty;
+      --  the complete cyclic buffer so the first sample can play immediately.
+      for slot in 0 .. periodCount - 1 loop
+         mixIntoPeriod (slot);
+      end loop;
+
+      ctlMsg :=
+        (tag => (label => OP_AUDIO_HW_START, length => 0,
+                 protocol => 0, ipc => <>, reserved => 0),
+         authorityTag => 0,
+         words => [others => 0]);
+      ctlMsg.tag := capCall (HDA_Endpoint, ctlMsg, CuBit.Messages.Wait_Forever);
+      if ctlMsg.tag.label = REPLY_OK then
+         hdaRunning := True;
+         --  HDA returns its pre-start completion baseline. Old queued events
+         --  must not release/refill periods belonging to this new run.
+         lastPeriodSequence := ctlMsg.words (0);
+      else
+         debugPrint ("mixer: HDA start failed" & LF);
+      end if;
+   end startHardware;
+
+   procedure stopHardware is
+      ctlMsg : Message;
+   begin
+      if not hdaReady or else not hdaRunning then
+         return;
+      end if;
+
+      ctlMsg :=
+        (tag => (label => OP_AUDIO_HW_STOP, length => 0,
+                 protocol => 0, ipc => <>, reserved => 0),
+         authorityTag => 0,
+         words => [others => 0]);
+      ctlMsg.tag := capCall (HDA_Endpoint, ctlMsg, CuBit.Messages.Wait_Forever);
+      if ctlMsg.tag.label = REPLY_OK then
+         hdaRunning := False;
+         -- The measured stream has stopped; no per-sample serial output.
+         Clock.Report ("audio-mix-and-copy", Mix_Timing);
+         Clock.Report ("audio-driver-publication-to-mixer", Publication_Timing);
+      end if;
+   end stopHardware;
+
+begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
+   --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
+   --  the process when a receive returns it (CuBit.Messages).
+   CuBit.Messages.Exit_On_Stop;
+   debugPrint ("mixer: starting" & ASCII.LF);
+
+   --  The real-time reservation its manifest's scheduling binding covers.
+   ret := CuBit.Handles.Devices.Reserve_Realtime
+      (Period_Us => 5_000,   --  One 256-frame period is about 5.3 ms at 48 kHz.
+       Budget_Us => 1_500,   --  Mix and submit one short audio period.
+       Flags     => 0,
+       Authority => Startup.Scheduling);
+   if ret = Unsigned_64'Last then
+      debugPrint ("mixer: latency contract rejected" & ASCII.LF);
+   end if;
+
+   --  Pre-allocate ring buffers for all stream slots via sbrk.
+   --  Each slot gets RING_PAGES (3) pages of page-aligned memory.
+   declare
+      PAGE_SIZE : constant Unsigned_64 := 4096;
+      totalBytes : constant Unsigned_64 :=
+         Unsigned_64 (Mixer.MAX_STREAMS) *
+         Unsigned_64 (Mixer.RING_PAGES) * PAGE_SIZE;
+      raw     : Unsigned_64;
+      aligned : Unsigned_64;
+   begin
+      --  Allocate with extra page for alignment
+      raw := syscall (SYSCALL_SBRK, totalBytes + PAGE_SIZE);
+      if raw /= Unsigned_64'Last then
+         aligned := (raw + PAGE_SIZE - 1) and not (PAGE_SIZE - 1);
+         for i in 0 .. Mixer.MAX_STREAMS - 1 loop
+            Mixer.ringBufBase (i) := aligned +
+               Unsigned_64 (i) * Unsigned_64 (Mixer.RING_PAGES) * PAGE_SIZE;
+         end loop;
+         debugPrint ("mixer: ring buffers allocated" & ASCII.LF);
+      else
+         debugPrint ("mixer: sbrk failed for ring buffers" & ASCII.LF);
+      end if;
+   end;
+
+   --  Ask HDA to grant only its DMA-visible PCM period page to the mixer.
+   --  Descriptor, CORB/RIRB, and MMIO pages remain inaccessible here.
+   declare
+      initMsg : Message;
+      gid     : Unsigned_64;
+      bytes   : Unsigned_64;
+      count   : Unsigned_64;
+      generation : Unsigned_64;
+      grantReference : Grant_Reference := (slot => 0, generation => 1);
+      mappedAddress : System.Address := System.Null_Address;
+      acquired : Boolean := False;
+   begin
+      initMsg :=
+        (tag => (label => OP_AUDIO_HW_INIT, length => 0,
+                 protocol => 0, ipc => <>, reserved => 0),
+         authorityTag => 0,
+         words => [others => 0]);
+      initMsg.tag := capCall (HDA_Endpoint, initMsg, CuBit.Messages.Wait_Forever);
+
+      gid := initMsg.words (0);
+      bytes := initMsg.words (1);
+      count := initMsg.words (2);
+      generation := initMsg.words (3);
+      if initMsg.tag.label = REPLY_OK and then
+         gid <= MAXIMUM_GLOBAL_SLOT and then
+         generation >= 1 and then generation <= MAXIMUM_GENERATION and then
+         bytes = Unsigned_64 (Mixer.MIX_FRAMES * 4) and then
+         count >= 2 and then count <= 32 and then
+         bytes * count <= 32 * 1024
+      then
+         grantReference :=
+           (slot       => Global_Grant_Slot (gid),
+            generation => Grant_Generation (generation));
+         Acquire_Via_Capability
+           (slot           => HDA_Endpoint,
+            reference      => grantReference,
+            byteOffset     => 0,
+            byteLength     => bytes * count,
+            requiredAccess => Write_Access,
+            mappedAddress  => mappedAddress,
+            success        => acquired);
+         if acquired then
+            dmaRingAddr := Unsigned_64 (To_Integer (mappedAddress));
+            periodBytes := Unsigned_32 (bytes);
+            periodCount := Natural (count);
+            hdaReady := True;
+            debugPrint ("mixer: acquired HDA period grant" & LF);
+         else
+            debugPrint ("mixer: HDA period grant acquisition failed" & LF);
+         end if;
+      else
+         debugPrint ("mixer: HDA period grant failed" & LF);
+      end if;
+   end;
+
+   --  Register as mixer driver
+   hdaPID := Registered_Driver (DRIVER_HDA);
+   ret := registerDriver (DRIVER_MIXER, Startup.Registration);
+
+   --  Signal devmgr that we are ready
+   declare
+      OP_READY       : constant Unsigned_32 := 16#FF00#;
+      ignore : MessageTag;
+   begin
+      ignore := capSend (Startup.Ready,
+         (tag      => (label => OP_READY, length => 0,
+                       protocol => 0, ipc => <>, reserved => 0),
+          authorityTag => 0,
+          words    => [others => 0]), CuBit.Messages.Wait_Forever);
+   end;
+
+   debugPrint ("mixer: registered, entering service loop" & ASCII.LF);
+
+   --  Main loop: block for client control/wakeup messages or HDA completion
+   --  messages.  There is no timer polling and no synchronous per-period IPC.
+   loop
+      receive (from, msg);
+      Received_At := Clock.Read_Counter;
+
+      if msg.tag.label = OP_AUDIO_HW_PERIOD then
+         if hdaReady and then hdaRunning and then hdaPID /= No_Process and then
+           from = hdaPID and then msg.tag.length = 4 and then
+           msg.tag.protocol = 0 and then msg.tag.reserved = 0 and then
+           msg.words (0) < Unsigned_64 (periodCount)
+         then
+            if not periodIRQObserved then
+               debugPrint ("mixer: HDA period IRQ active" & LF);
+               periodIRQObserved := True;
+            end if;
+            if lastPeriodSequence /= 0 and then
+               msg.words (1) > lastPeriodSequence + 1
+            then
+               statsMissedPeriods := statsMissedPeriods +
+                 (msg.words (1) - lastPeriodSequence - 1);
+            end if;
+            if msg.words (1) > lastPeriodSequence then
+               declare
+                  Number : constant Natural := Natural (Unsigned_64'Min
+                    (msg.words (1) - lastPeriodSequence, Unsigned_64 (periodCount - 1)));
+               begin
+                  for Offset in 0 .. Number - 1 loop
+                     mixIntoPeriod (CuBit.Audio_Periods.Refill
+                       (Natural (msg.words (0)), periodCount, Number, Offset));
+                  end loop;
+               end;
+               lastPeriodSequence := msg.words (1);
+               if msg.tag.length = 4 and then msg.words (3) /= 0 and then
+                 Received_At >= msg.words (3)
+               then
+                  Timing.Add (Publication_Timing, Received_At - msg.words (3));
+               end if;
+
+            end if;
+         end if;
+
+      elsif msg.tag.label = OP_AUDIO_WAKE then
+         if Mixer.hasRunningOutput then
+            startHardware;
+         else
+            stopHardware;
+         end if;
+
+      elsif msg.tag.label in CuBit.Audio_Control.Get_State | CuBit.Audio_Control.Set_State then
+         if not Mixer_Control.Master_Allowed
+           (msg.tag.label, msg.tag.length, CuBit.Messages.Flag_Byte (msg.tag), msg.tag.reserved,
+            Mixer_Control.Words (msg.words), msg.authorityTag,
+            CuBit.Audio_Control.Authority_Tag)
+         then
+            sendReply (REPLY_ERR);
+         else
+            if msg.tag.label = CuBit.Audio_Control.Set_State then
+               Mixer.Master.Level := CuBit.Audio_Control.Percent (msg.words (0));
+               Mixer.Master.Muted := msg.words (1) = 1;
+            end if;
+            sendReply (REPLY_OK, Unsigned_64 (Mixer.Master.Level),
+                       Boolean'Pos (Mixer.Master.Muted), Boolean'Pos (hdaReady));
+         end if;
+      elsif not clientRequestAllowed then
+         sendReply (REPLY_ERR);
+      else
+         --  from is the kernel's sender identity: streams belong to it.
+         case msg.tag.label is
+            when OP_AUDIO_OPEN =>
+               --  words(0) = sampleRate
+               --  words(1) = channels(16) | format(16) | direction(32 high)
+               openStream : declare
+                  sampleRate : constant Unsigned_32 :=
+                     Unsigned_32 (msg.words (0));
+                  channels : constant Unsigned_16 :=
+                     Unsigned_16 (msg.words (1) and 16#FFFF#);
+                  format : constant Unsigned_16 :=
+                     Unsigned_16 (Shift_Right (msg.words (1), 16) and 16#FFFF#);
+                  direction : constant Unsigned_64 :=
+                     Shift_Right (msg.words (1), 32);
+                  idx : Integer;
+               begin
+                  idx := Mixer.openStream (To_Word (from), sampleRate,
+                                           channels, format, direction);
+                  if idx >= 0 then
+                     --  Reply: w0=streamIdx, w1=ring grant reference
+                     --  (the client acquires it), w2=hdrSz, w3=dataSz
+                     sendReply (REPLY_OK,
+                                w0 => Unsigned_64 (idx),
+                                w1 => CuBit.Grant_References.Encode
+                                        (Mixer.streams (idx).grant),
+                                w2 => Unsigned_64 (Mixer.RING_HDR_SIZE),
+                                w3 => Unsigned_64 (Mixer.RING_DATA_SIZE));
+                  else
+                     sendReply (REPLY_ERR);
+                  end if;
+               end openStream;
+
+            when OP_AUDIO_PLAYBACK => -- Owner-scoped ring and device backlog query.
+               declare
+                  Index : constant Natural := Natural (msg.words (0));
+                  Buffered : constant Unsigned_64 := Mixer.Buffered_Frames (Index);
+               begin
+                  if Buffered = Unsigned_64'Last then sendReply (REPLY_ERR);
+                  else sendReply (REPLY_OK, Buffered, Mixer.Device_Frames (Index),
+                    Unsigned_64 (periodCount * Mixer.MIX_FRAMES));
+                  end if;
+               end;
+
+            when OP_AUDIO_CLOSE =>
+               --  words(0) = streamId
+               closeStream : declare
+                  streamIdx : constant Natural :=
+                     Natural (msg.words (0));
+               begin
+                  Mixer.closeStream (streamIdx);
+                  if not Mixer.hasRunningOutput then
+                     stopHardware;
+                  end if;
+                  -- Complete final-stream shutdown before releasing the
+                  -- caller. This also orders the stopped-stream timing
+                  -- report before the producer's own report on another CPU.
+                  sendReply (REPLY_OK);
+               end closeStream;
+
+            when OP_AUDIO_SET_VOL =>
+               --  words(0) = streamId, words(1) = volume 16.16
+               Mixer.setVolume (Natural (msg.words (0)),
+                                Unsigned_32 (msg.words (1)));
+               sendReply (REPLY_OK);
+
+            when OP_AUDIO_GET_VOL =>
+               --  words(0) = streamId
+               getVol : declare
+                  idx : constant Natural := Natural (msg.words (0));
+               begin
+                  if idx <= Mixer.streams'Last and then
+                     Mixer.streams (idx).active
+                  then
+                     sendReply (REPLY_OK,
+                                w0 => Unsigned_64 (Mixer.volToRaw (
+                                   Mixer.streams (idx).vol)));
+                  else
+                     sendReply (REPLY_ERR);
+                  end if;
+               end getVol;
+
+            when OP_AUDIO_SET_PAN =>
+               --  words(0) = streamId, words(1) = pan 16.16
+               Mixer.setPan (Natural (msg.words (0)),
+                             Unsigned_32 (msg.words (1)));
+               sendReply (REPLY_OK);
+
+            when OP_AUDIO_SET_FMT =>
+               --  Format change not yet supported at runtime
+               sendReply (REPLY_ERR);
+
+            when others =>
+               sendReply (REPLY_ERR);
+         end case;
+      end if;
+
+      maybePrintStats;
+   end loop;
+end main;

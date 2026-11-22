@@ -1,0 +1,2 @@
+-- Hosted model only.
+with Interfaces;package ACPI_Service is type State is null record;type Node_Descriptor is new Interfaces.Unsigned_64;package Values is No_Node:constant Node_Descriptor:=0;end Values;function Retained_Results(Service:State)return Natural;end ACPI_Service;

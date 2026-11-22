@@ -1,0 +1,1 @@
+DefinitionBlock ("", "DSDT", 2, "CUBIT", "TOBTARG", 1) { Name (DEST,9) Name (MARK,Zero) Method (SRC0,0) { Increment (MARK) Return ("AB") } Method (CTRL,0) {Return (One)} Method (TEST,0) {ToBuffer (SRC0 (), DEST) Return (MARK)} }

@@ -1,0 +1,10 @@
+(Component name => "i2c-dw" kind => Kind.Driver
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/services/i2c-dw/native"
+                "userspace/services/i2c-dw/owner"
+                "userspace/services/i2c-dw/requests"
+                "userspace/services/i2c-dw/setup"
+                "userspace/services/i2c-dw/lpss"
+                "userspace/services/i2c-dw/transfer"
+                "userspace/lib/i2c-admission"]
+    language => Ada_Language.Ada_2022)))

@@ -1,0 +1,3 @@
+# A misspelt field is a type error naming it.
+(Component name => "neg" kind => Kind.Application
+  source => (Source.Ada (Ada_Source librarys => ["ui-toolkit"])))

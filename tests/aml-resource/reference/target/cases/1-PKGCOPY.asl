@@ -1,0 +1,1 @@
+DefinitionBlock("","DSDT",1,"CUBIT","RESTEST",1){Name(MARK,Zero) Name(GOOD,Buffer(){0x79,0}) Name(PKG0,Package(){Zero}) Method(CTRL,0){Return(One)} Method(WIDT,0){Return(ShiftRight(Ones,32))} Method(TEST,0){Store(9,Index(ConcatenateResTemplate(GOOD,GOOD,Index(PKG0,Zero)),Zero)) Return(DerefOf(Index(PKG0,Zero)))}}

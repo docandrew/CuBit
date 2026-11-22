@@ -1,0 +1,9 @@
+# Address-space tags (PCIDs), headless --test tlb-tags: one life of the
+# probe tlb-check launches again and again.
+(Executable_Manifest
+  identity => "com.cubit.tlb-probe"
+  version => "1.0.0"
+  requests => [(service "ipc-test" "ipc-test")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

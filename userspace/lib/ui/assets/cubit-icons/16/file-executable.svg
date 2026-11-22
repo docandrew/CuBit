@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+<defs>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+<linearGradient id="violet" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#c3adff"/><stop offset="1" stop-color="#8457ff"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M6 1 L14 1 L14 10 L6 10Z" transform="translate(1 1)"/>
+  <path d="M6 1 L14 1 L14 10 L6 10Z"/>
+</g>
+<path d="M6 1 L14 1 L14 10 L6 10Z" fill="#7d879f" transform="translate(1 1)"/>
+<path d="M6 1 L14 1 L14 10 L6 10Z" fill="url(#paper)"/>
+<path d="M6 1 L14 1 L14 3 L6 3Z" fill="url(#violet)"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M5 6 L9 8 L9 13 L5 15 L1 13 L1 8Z"/>
+</g>
+<path d="M5 6 L9 8 L5 10 L1 8Z" fill="#c3adff"/>
+<path d="M1 8 L5 10 L5 15 L1 13Z" fill="#1fc8c3"/>
+<path d="M9 8 L9 13 L5 15 L5 10Z" fill="#8457ff"/>
+</svg>

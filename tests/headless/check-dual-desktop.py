@@ -1,0 +1,555 @@
+"""Exercise the native Desktop through PS/2 input; inspect both real scanouts.
+
+This deliberately does not paint host-side stand-ins or inspect private guest
+memory. Timing waits allow asynchronous presentation to settle, not benchmark it.
+"""
+import json
+import os
+import re
+from dataclasses import dataclass
+from pathlib import Path
+import socket
+import sys
+import time
+
+
+def require(condition, explanation):
+    if not condition:
+        raise RuntimeError(explanation)
+
+
+serial, socket_path, timeout = sys.argv[1:]
+# Functional settling only. Software Mesa under TCG may take longer than the
+# legacy row-copy path; all scanout and input assertions stay identical.
+settle_seconds = float(os.environ.get("CUBIT_TEST_SETTLE_SECONDS", "0.8"))
+require(0.1 <= settle_seconds <= 30, "invalid functional settle allowance")
+print(f"dual Desktop: functional settle={settle_seconds}s (not a timing benchmark)", flush=True)
+mixed = os.environ.get("CUBIT_TEST_MIXED_OUTPUTS") == "1"
+side_width, side_height = (1280, 720) if mixed else (1024, 768)
+handoff = os.environ.get("CUBIT_TEST_BOOT_HANDOFF") == "1"
+main_width, main_height = (1280, 720) if handoff else (1024, 768)
+if handoff:
+    side_width, side_height = 1024, 768
+
+if os.environ.get("CUBIT_TEST_SCALING") == "1":
+    require(os.environ.get("CUBIT_TEST_ARRANGEMENT") == "1" and
+            os.environ.get("CUBIT_TEST_PRIMARY") == "1" and
+            (side_width, side_height) == (1280, 720),
+            "scaling fixture requires ARRANGEMENT=1, PRIMARY=1, MIXED_OUTPUTS=1 "
+            "and no BOOT_HANDOFF (all CUBIT_TEST_ prefixed)")
+
+
+@dataclass
+class Image:
+    width: int
+    height: int
+    pixels: bytes
+
+
+deadline = time.monotonic() + float(timeout)
+log = Path(serial)
+while not Path(socket_path).exists():
+    require(time.monotonic() < deadline, "QMP socket deadline")
+    time.sleep(0.05)
+
+with socket.socket(socket.AF_UNIX) as connection:
+    connection.settimeout(3)
+    connection.connect(socket_path)
+    stream = connection.makefile("rwb")
+    require("QMP" in json.loads(stream.readline()), "QMP greeting")
+
+    def command(name, arguments=None):
+        request = {"execute": name}
+        if arguments is not None:
+            request["arguments"] = arguments
+        stream.write(json.dumps(request).encode() + b"\n")
+        stream.flush()
+        while True:
+            response = json.loads(stream.readline())
+            require("error" not in response, str(response))
+            if "return" in response:
+                return response["return"]
+
+    def hmp(text):
+        result = command("human-monitor-command", {"command-line": text})
+        require(not result.strip(), f"input rejected: {result}")
+
+    def capture(phase):
+        time.sleep(settle_seconds)
+        images = []
+        for head in range(2):
+            path = log.with_suffix(f".{phase}-head-{head}.ppm")
+            command("screendump", {"device": "multi-gpu", "head": head,
+                                   "filename": str(path), "format": "ppm"})
+            magic, dimensions, maximum, pixels = path.read_bytes().split(b"\n", 3)
+            width, height = (main_width, main_height) if head == 0 else (side_width, side_height)
+            require((magic, dimensions, maximum) == (b"P6", f"{width} {height}".encode(), b"255"),
+                    "unexpected scanout geometry/format")
+            require(len(pixels) == width * height * 3, "truncated capture")
+            images.append(Image(width, height, pixels))
+            if phase.startswith("settings-"):
+                command("screendump", {"device": "multi-gpu", "head": head,
+                                       "filename": str(path.with_suffix(".png")), "format": "png"})
+        return images
+
+    def region(image, x, y, w, h):
+        require(0 <= x and x + w <= image.width and 0 <= y and y + h <= image.height,
+                "test region outside scanout")
+        return b"".join(image.pixels[(row * image.width + x) * 3:
+                                     (row * image.width + x + w) * 3]
+                        for row in range(y, y + h))
+
+    pointer = [80, 80]
+
+    def move(x, y):
+        while pointer != [x, y]:
+            dx = max(-70, min(70, x - pointer[0]))
+            dy = max(-70, min(70, y - pointer[1]))
+            hmp(f"mouse_move {dx} {dy}")
+            pointer[0] += dx
+            pointer[1] += dy
+            time.sleep(0.06)
+
+    def launch_workbench():
+        # Apps menu: Development (second category row), its first entry.
+        for key in ("meta_l", "down", "right", "ret"):
+            hmp(f"sendkey {key}")
+            time.sleep(0.3 if key == "meta_l" else 0.15)
+
+    def click():
+        hmp("mouse_button 1")
+        time.sleep(0.07)
+        hmp("mouse_button 0")
+
+    def settings_layout(name):
+        """The latest place of a Settings widget, by identity (UI-033):
+        Desktop logs "Settings layout NAME x y w h" whenever the page or the
+        window's place changes (Desktop_Settings.Publish_Layout)."""
+        until = min(deadline, time.monotonic() + 15)
+        pattern = re.compile(rf"desktop: Settings layout {name} (\d+) (\d+) (\d+) (\d+)")
+        while True:
+            found = pattern.findall(log.read_text(errors="replace"))
+            if found:
+                return tuple(map(int, found[-1]))
+            require(time.monotonic() < until, f"Settings layout {name} not published")
+            time.sleep(0.05)
+
+    def middle(rect):
+        return (rect[0] + rect[2] // 2, rect[1] + rect[3] // 2)
+
+    def area(image, rect):
+        return region(image, rect[0], rect[1], rect[2], rect[3])
+
+    command("qmp_capabilities")
+    while True:
+        text = log.read_text(errors="replace") if log.exists() else ""
+        if ("desktop: active outputs= 2 primary= 0" in text and
+                "desktop: asynchronous frame released" in text and
+                "ps2: consumer registered" in text):
+            break
+        require(time.monotonic() < deadline, "native Desktop startup deadline")
+        time.sleep(0.05)
+
+    # Park the cursor outside window-restoration comparison regions.
+    move(20, 700)
+    baseline = capture("baseline")
+    if handoff:
+        require("display: native boot handoff 1024 x 768 -> 1280 x 720; firmware rendering retired" in text,
+                "fixture must change away from the actual boot framebuffer mode")
+    if not mixed and not handoff:
+        require(region(baseline[0], 100, 120, 800, 500) ==
+                region(baseline[1], 100, 120, 800, 500), "per-output wallpaper differs")
+        require(region(baseline[0], 0, 738, 1024, 30) !=
+                region(baseline[1], 0, 738, 1024, 30), "taskbar missing on primary")
+    elif side_height < main_height:
+        # Move into the unlit space below the shorter secondary output. The
+        # cursor must remain visible on its last row, not in the packed scene.
+        move(1100, 760)
+        pointer[1] = side_height - 1
+        confined = capture("confined")
+        require(region(confined[1], 70, side_height - 10, 40, 10) !=
+                region(baseline[1], 70, side_height - 10, 40, 10),
+                "pointer disappeared below short output")
+        move(20, 700)
+        restored = capture("restored")
+        require(restored[1] == baseline[1], "confined cursor left artifacts")
+    # CCL Workbench: exercise an actual native client.
+    launch_workbench()
+    # Window creation precedes client pixels; do not capture the placeholder.
+    while "ccl-workbench: first frame presented" not in log.read_text(errors="replace"):
+        require(time.monotonic() < deadline, "Workbench launch deadline")
+        time.sleep(0.05)
+    # First-frame publication can precede scanout. This fixture's Workbench
+    # has a large white source pane; the Desktop placeholder has none. Wait
+    # for those real client pixels before injecting a drag or saving its oracle.
+    client_deadline = min(deadline, time.monotonic() + 15)
+    while True:
+        original = capture("opened")
+        client = region(original[0], 110, 170, 500, 160)
+        white = sum(client[i:i + 3] == b"\xff\xff\xff"
+                    for i in range(0, len(client), 3))
+        if white >= 1000:
+            break
+        require(time.monotonic() < client_deadline, "Workbench client image not visible")
+    require(region(original[0], 100, 120, 550, 260) !=
+            region(baseline[0], 100, 120, 550, 260), "Workbench did not open")
+    move(180, 90)
+    hmp("mouse_button 1")
+    move(main_width - 144, 90)
+    # Window moved 700 pixels; require both exact fragments to reach scanout.
+    drag_deadline = min(deadline, time.monotonic() + 15)
+    while True:
+        spanning = capture("spanning")
+        primary_ok = (region(original[0], 110, 130, 90, 200) ==
+                      region(spanning[0], main_width - 214, 130, 90, 200))
+        secondary_ok = (region(original[0], 350, 130, 300, 200) ==
+                        region(spanning[1], 26, 130, 300, 200))
+        if primary_ok and secondary_ok:
+            break
+        require(time.monotonic() < drag_deadline,
+                "primary window fragment wrong" if not primary_ok else
+                "secondary window fragment wrong")
+    move(main_width + 156, 90)
+    hmp("mouse_button 0")
+    # Release admission precedes output presentation. Require both exact
+    # restoration and moved pixels, with the same bounded observation window.
+    secondary_deadline = min(deadline, time.monotonic() + 15)
+    while True:
+        secondary = capture("secondary")
+        # Above the taskbar (Desktop_Deskbar_Style.Bar_Height, at most 50), which
+        # rightly shows Workbench's task button now.
+        restored_ok = (region(secondary[0], 80, 60, main_width - 80, main_height - 110) ==
+                       region(baseline[0], 80, 60, main_width - 80, main_height - 110))
+        moved_ok = (region(original[0], 110, 130, 500, 200) ==
+                    region(secondary[1], 86, 130, 500, 200))
+        if restored_ok and moved_ok:
+            break
+        require(time.monotonic() < secondary_deadline,
+                "old window/cursor paint not restored" if not restored_ok else
+                "window not fully on secondary")
+    # New double-click sequence after the drag's release has aged out.
+    time.sleep(0.6)
+    click()
+    time.sleep(0.09)
+    click()
+    maximized = capture("maximized")
+    require(region(maximized[0], 100, 120, 800, 500) ==
+            region(baseline[0], 100, 120, 800, 500), "maximize changed primary")
+    require(region(maximized[1], 10, side_height - 68, side_width - 30, 50) !=
+            region(baseline[1], 10, side_height - 68, side_width - 30, 50), "maximize did not fill secondary")
+    move(main_width + side_width - 21, 12)
+    click()
+    move(80, 80)
+    closed = capture("closed")
+    require(closed[1] == baseline[1], "secondary cursor/window artifacts after close")
+    # Settings is compositor-owned but must display the same actual layout.
+    hmp("sendkey meta_l")
+    time.sleep(0.3)
+    # System is the first category row. Both Defaults and the system.ccl
+    # fixture put Settings immediately before Config Inspector, last in
+    # System: wrap backward so other System entries do not matter here.
+    for key in ("right", "up", "up"):
+        hmp(f"sendkey {key}")
+        time.sleep(0.12)
+    hmp("sendkey ret")
+    # The open-menu pixels also differ from wallpaper. Require the actual
+    # default Alloy Settings preview, not merely any changed rectangle: its
+    # miniature window's accent stripe and flat light title bar
+    # (CuBit.UI.Window_Chrome, App-colour stripe design).
+    preview_stripe = bytes.fromhex("2e7180")
+    preview_bar = bytes.fromhex("f4f6f8")
+    # Where Settings put them (by identity, not pixel constants): the
+    # miniature window in the preview, its page, its Displays tab. The
+    # stripe is the window's first rows under its 1-pixel border, the flat
+    # title bar under the 4-pixel stripe (CuBit.UI.Window_Chrome); sample
+    # the bar's right part, clear of the title text.
+    miniature = settings_layout("PREVIEW_WINDOW")
+    page = settings_layout("PAGE")
+    preview = settings_layout("PREVIEW")
+    sample_x = miniature[0] + miniature[2] - 48
+    settings_deadline = min(deadline, time.monotonic() + 15)
+    while True:
+        appearance = capture("settings-appearance")
+        preview_ready = (region(appearance[0], sample_x, miniature[1] + 1, 40, 1) == preview_stripe * 40 and
+                         region(appearance[0], sample_x, miniature[1] + 5, 40, 18) == preview_bar * 40 * 18)
+        if preview_ready:
+            break
+        require(time.monotonic() < settings_deadline, "Settings preview not visible")
+    require(area(appearance[0], page) != area(baseline[0], page), "Settings did not open")
+    move(*middle(settings_layout("DISPLAYS_TAB")))
+    click()
+    displays = capture("settings-displays")
+    require(area(displays[0], page) != area(appearance[0], page), "Displays tab did not change content")
+    hmp("sendkey shift-tab")
+    time.sleep(0.15)
+    hmp("sendkey ret")
+    # Focus moved from the Light button to the Appearance tab; compare the
+    # preview, not the intentionally changed keyboard-focus borders.
+    # The input and scanout are asynchronous. Wait for this exact restoration,
+    # rather than treating one fixed-delay capture as completed presentation.
+    returned_deadline = min(deadline, time.monotonic() + 15)
+    while True:
+        returned = capture("settings-returned")
+        if area(returned[0], preview) == area(appearance[0], preview):
+            break
+        require(time.monotonic() < returned_deadline, "Settings keyboard tab navigation failed")
+    if os.environ.get("CUBIT_TEST_ARRANGEMENT") == "1":
+        import math
+        import re
+
+        move(*middle(settings_layout("DISPLAYS_TAB")))
+        click()
+        origins = [(0, 0), (main_width, 0)]
+        sizes = [(main_width, main_height), (side_width, side_height)]
+
+        def arrange(dx, dy, phase):
+            old_primary = origins[0]
+            right = max(origins[i][0] + sizes[i][0] for i in range(2))
+            bottom = max(origins[i][1] + sizes[i][1] for i in range(2))
+            # The arrangement diagram where Settings last put it (logical
+            # desktop coordinates; it follows its monitor), and its scale:
+            # the displays fit inside it less a 16-pixel margin each side
+            # (Desktop_Settings.Projection).
+            diagram = settings_layout("DIAGRAM")
+            margin = 16
+            divisor = max(1, math.ceil(right / (diagram[2] - 2 * margin)),
+                          math.ceil(bottom / (diagram[3] - 2 * margin)))
+            tx = diagram[0] + (diagram[2] - right // divisor) // 2
+            ty = diagram[1] + (diagram[3] - bottom // divisor) // 2
+            sx = tx + origins[1][0] // divisor + side_width // divisor // 2
+            sy = ty + origins[1][1] // divisor + side_height // divisor // 2
+            move(sx, sy)
+            hmp("mouse_button 1")
+            time.sleep(0.1)
+            move(sx + round((old_primary[0] + dx - origins[1][0]) / divisor),
+                 sy + round((old_primary[1] + dy - origins[1][1]) / divisor))
+            hmp("mouse_button 0")
+            capture(f"settings-{phase}-preview")
+            before = len(log.read_text(errors="replace"))
+            move(*middle(settings_layout("APPLY")))
+            click()
+            expected = [(-min(0, dx), -min(0, dy)), (max(0, dx), max(0, dy))]
+            until = time.monotonic() + 5
+            while True:
+                text = log.read_text(errors="replace")[before:]
+                if all(re.search(rf"desktop: display {i} origin (\d+), (\d+)", text)
+                       for i in (1, 2)):
+                    break
+                require(time.monotonic() < until, f"{phase}: Apply did not complete")
+                time.sleep(0.05)
+            time.sleep(0.2)
+            text = log.read_text(errors="replace")[before:]
+            actual = []
+            for i, (x, y) in enumerate(expected, 1):
+                match = re.search(rf"desktop: display {i} origin (\d+), (\d+)", text)
+                require(match is not None, f"{phase}: missing applied coordinates")
+                point = tuple(map(int, match.groups()))
+                # A miniature's pixel represents several desktop pixels; free
+                # offsets are quantized, unlike exact snapped shared edges.
+                require(abs(point[0] - x) <= divisor and abs(point[1] - y) <= divisor,
+                        f"{phase}: wrong applied origins: {text[:300]}")
+                actual.append(point)
+            expected = actual
+            pointer[0] += expected[0][0] - old_primary[0]
+            pointer[1] += expected[0][1] - old_primary[1]
+            origins[:] = expected
+            image = capture(f"settings-{phase}-applied")
+            require(region(image[0], 120, 76, 500, 20) == region(displays[0], 120, 76, 500, 20),
+                    f"{phase}: Settings did not follow its monitor")
+            require(region(image[0], 0, main_height - 36, 100, 36) ==
+                    region(displays[0], 0, main_height - 36, 100, 36),
+                    f"{phase}: primary taskbar moved within its physical monitor")
+
+        arrange(0, -side_height, "above")
+        # Cross the vertical seam in both directions, without host-side warping.
+        move(850, side_height - 12)
+        crossed = capture("settings-seam-crossed")
+        require(region(crossed[1], 840, side_height - 20, 40, 20) !=
+                region(baseline[1], 840, side_height - 20, 40, 20),
+                "pointer did not cross the vertical seam")
+        move(80, side_height + 80)
+        restored = capture("settings-seam-restored")
+        require(restored[1] == baseline[1], "secondary cursor artifacts after vertical seam crossing")
+        # Launch a real resizable client
+        # on the relocated primary and exercise its work-area calculation.
+        ready_before = log.read_text(errors="replace").count("ccl-workbench: first frame presented")
+        launch_workbench()
+        until = time.monotonic() + 10
+        while log.read_text(errors="replace").count("ccl-workbench: first frame presented") <= ready_before:
+            require(time.monotonic() < until, "Workbench launch on rearranged primary failed")
+            time.sleep(0.05)
+        capture("settings-above-client-opened")
+        # This second client is cascaded below Settings, at physical Y=100.
+        move(origins[0][0] + 180, origins[0][1] + 114)
+        click()
+        time.sleep(0.08)
+        click()
+        # The title-double log is input acceptance, not presentation. Under
+        # softpipe/TCG the resized frame can outlast the ordinary settle delay.
+        maximize_deadline = min(deadline, time.monotonic() + 15)
+        while True:
+            full = capture("settings-above-maximized")
+            if region(full[0], 4, 4, 600, 20) != region(baseline[0], 4, 4, 600, 20):
+                break
+            require(time.monotonic() < maximize_deadline,
+                    "maximize ignored primary Y origin")
+        move(origins[0][0] + main_width - 21, origins[0][1] + 12)
+        click()
+        capture("settings-above-client-closed")
+        arrange(-side_width, 0, "left")
+        arrange(0, main_height, "below")
+        arrange(main_width, 128, "offset")
+        arrange(main_width, 0, "original")
+        if os.environ.get("CUBIT_TEST_PRIMARY") == "1":
+            divisor = max(1, math.ceil((main_width + side_width) / 530),
+                          math.ceil(max(main_height, side_height) / 152))
+            tx = 249 + (550 - (main_width + side_width) // divisor) // 2
+            ty = 182 + (172 - max(main_height, side_height) // divisor) // 2
+
+            def select_screen(index):
+                x = 0 if index == 0 else main_width
+                w, h = sizes[index]
+                move(tx + x // divisor + w // divisor // 2,
+                     ty + h // divisor // 2)
+                click()
+
+            def make_primary():
+                move(327, 424)
+                click()
+
+            def apply_primary(number, x_offset=0):
+                before = len(log.read_text(errors="replace"))
+                move(645 + x_offset, 455)
+                click()
+                until = time.monotonic() + 5
+                while f"desktop: primary display {number}" not in log.read_text(errors="replace")[before:]:
+                    require(time.monotonic() < until, "primary Apply did not complete")
+                    time.sleep(0.05)
+                time.sleep(0.2)
+                text = log.read_text(errors="replace")[before:]
+                require(f"desktop: primary display {number}" in text, "wrong primary selected")
+
+            select_screen(1)
+            move(700, 530)  # Keep the cursor out of diagram pixel comparisons.
+            selected = capture("settings-primary-selected")
+            before = log.read_text(errors="replace").count("desktop: arrangement applied")
+            make_primary()
+            pending = capture("settings-primary-pending")
+            require(region(pending[0], 249, 182, 550, 172) !=
+                    region(selected[0], 249, 182, 550, 172), "primary preview bar did not move")
+            require(log.read_text(errors="replace").count("desktop: arrangement applied") == before,
+                    "preview changed live primary before Apply")
+            move(755, 455)
+            click()
+            reverted = capture("settings-primary-reverted")
+            require(region(reverted[0], 249, 182, 550, 172) ==
+                    region(selected[0], 249, 182, 550, 172), "Revert did not restore primary preview")
+            make_primary()
+            apply_primary(2)
+            changed = capture("settings-primary-applied")
+            require(region(changed[0], 0, main_height - 36, 100, 36) !=
+                    region(displays[0], 0, main_height - 36, 100, 36), "old primary retained taskbar")
+            require(region(changed[1], 0, side_height - 36, 100, 36) ==
+                    region(displays[0], 0, main_height - 36, 100, 36), "new primary lacks Apps button")
+            ready_before = log.read_text(errors="replace").count("ccl-workbench: first frame presented")
+            launch_workbench()
+            until = time.monotonic() + 10
+            while log.read_text(errors="replace").count("ccl-workbench: first frame presented") <= ready_before:
+                require(time.monotonic() < until, "launch on new primary failed")
+                time.sleep(0.05)
+            opened = capture("settings-primary-client")
+            require(region(opened[1], 140, 140, 500, 260) !=
+                    region(changed[1], 140, 140, 500, 260), "client did not open on new primary")
+            move(main_width + 180, 114)
+            click()
+            time.sleep(0.08)
+            click()
+            maximize_deadline = min(deadline, time.monotonic() + 15)
+            while True:
+                maximized = capture("settings-primary-maximized")
+                if region(maximized[1], 4, 4, 600, 20) != region(baseline[1], 4, 4, 600, 20):
+                    break
+                require(time.monotonic() < maximize_deadline, "new-primary maximize failed")
+            select_screen(0)
+            make_primary()
+            apply_primary(1)
+            restore_deadline = min(deadline, time.monotonic() + 15)
+            while True:
+                restored = capture("settings-primary-restored")
+                taskbar_ok = (region(restored[0], 0, main_height - 36, 100, 36) ==
+                              region(displays[0], 0, main_height - 36, 100, 36))
+                workarea_ok = (region(restored[1], 200, side_height - 30, 400, 20) !=
+                               region(maximized[1], 200, side_height - 30, 400, 20))
+                if taskbar_ok and workarea_ok:
+                    break
+                require(time.monotonic() < restore_deadline,
+                        "primary taskbar not restored" if not taskbar_ok else
+                        "maximized window did not reclaim former taskbar area")
+            print("PASS native primary: preview/Revert/Apply, taskbar migration, new-client placement "
+                  "and maximized work-area adjustment", flush=True)
+            if os.environ.get("CUBIT_TEST_SCALING") == "1":
+                # Close the maximized client so cursor restoration can compare
+                # static wallpaper pixels on the scaled output exactly.
+                move(main_width + side_width - 21, 12)
+                click()
+                select_screen(1)
+                move(80, 80)
+                unscaled = capture("settings-scale-original")
+
+                def scale_button(up, x_offset=0):
+                    move((721 if up else 679) + x_offset, 420)
+                    click()
+                    time.sleep(0.1)
+
+                scale_button(True)
+                apply_primary(1)
+                require("desktop: display 2 scale 5/ 4" in log.read_text(errors="replace"),
+                        "125% scale not applied")
+                capture("settings-scale-125")
+                scale_button(True)
+                apply_primary(1)
+                scaled = capture("settings-scale-150")
+                require("desktop: display 2 scale 3/ 2" in log.read_text(errors="replace"),
+                        "150% scale not applied")
+                move(main_width + 150, 100)
+                cursor = capture("settings-scale-cursor")
+                require(region(cursor[1], 220, 145, 45, 45) !=
+                        region(scaled[1], 220, 145, 45, 45), "scaled pointer mapping failed")
+                move(80, 80)
+                clean = capture("settings-scale-cursor-restored")
+                require(clean[1] == scaled[1], "scaled cursor left stale pixels")
+                scale_button(True)  # 175% would leave less than 800x480.
+                rejected = capture("settings-scale-rejected")
+                require(region(rejected[0], 249, 182, 550, 172) ==
+                        region(scaled[0], 249, 182, 550, 172), "unsafe scale changed pending layout")
+                scale_button(False)
+                scale_button(False)
+                apply_primary(1)
+                restored = capture("settings-scale-restored")
+                require(restored[1] == unscaled[1], "100% restore changed unscaled scanout")
+
+                # Scale the primary too: logical width contracts and its
+                # neighbor follows the shared edge without changing GPU modes.
+                select_screen(0)
+                scale_button(True)
+                apply_primary(1)
+                primary_scaled = capture("settings-scale-primary")
+                logical_width = math.ceil(main_width * 4 / 5)
+                require(f"desktop: display 2 origin {logical_width}, 0" in
+                        log.read_text(errors="replace"), "scaled primary left a desktop gap")
+                move(logical_width + 10, 100)
+                seam = capture("settings-scale-primary-seam")
+                require(region(seam[1], 0, 90, 45, 45) !=
+                        region(primary_scaled[1], 0, 90, 45, 45), "mixed-scale seam crossing failed")
+                move(80, 80)
+                # Settings is kept wholly within the smaller primary work area.
+                settings_dx = min(96, logical_width - 742) - 96
+                scale_button(False, settings_dx)
+                apply_primary(1, settings_dx)
+                capture("settings-scale-primary-restored")
+                print("PASS native scaling: sidebar, 125/150%, unchanged modes, workspace floor, "
+                      "cursor repair, primary reflow and mixed-scale seam", flush=True)
+        print("PASS native arrangement: above/left/below/offset/restore, unchanged modes, "
+              "window/taskbar relocation and vertical pointer seam", flush=True)
+    print("PASS native Desktop: primary taskbar, split drag, per-monitor maximize, "
+          "wallpaper/cursor restoration, Settings display view", flush=True)

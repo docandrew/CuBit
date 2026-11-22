@@ -1,0 +1,2 @@
+(Component name => "crash-probe" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

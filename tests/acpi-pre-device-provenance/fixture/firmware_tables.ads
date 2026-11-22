@@ -1,0 +1,2 @@
+-- Hosted test model only; never a native runtime/provider implementation.
+with Interfaces; package Firmware_Tables is subtype Byte is Interfaces.Unsigned_8; type Bytes is array(Positive range<>) of Byte; end Firmware_Tables;

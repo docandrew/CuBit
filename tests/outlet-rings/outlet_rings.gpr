@@ -1,0 +1,12 @@
+--  Hosted tests and proofs for launcher-owned outlet ring tables (run.sh).
+project Outlet_Rings is
+   for Source_Dirs use (".", "../../userspace/runtime/gnat");
+   for Source_Files use ("cubit.ads", "cubit-outlet_rings.ads", "cubit-outlet_rings.adb", "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+end Outlet_Rings;

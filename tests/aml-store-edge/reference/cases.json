@@ -1,0 +1,186 @@
+[
+  {
+    "key": "r1-local-self-read",
+    "base": "cases/base1.asl",
+    "source": "cases/r1-local-self-read.asl",
+    "methods": [
+      "TEST",
+      "TEST"
+    ],
+    "revision": 1,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  },
+  {
+    "key": "r1-local-self-expression",
+    "base": "cases/base1.asl",
+    "source": "cases/r1-local-self-expression.asl",
+    "methods": [
+      "TEST",
+      "TEST"
+    ],
+    "revision": 1,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  },
+  {
+    "key": "r1-arg-self",
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-self.asl",
+    "methods": [
+      "TEST",
+      "TEST"
+    ],
+    "revision": 1,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  },
+  {
+    "key": "r1-failed-target-effects",
+    "base": "cases/base1.asl",
+    "source": "cases/r1-failed-target-effects.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "PRE0",
+      "POST",
+      "AFT0",
+      "BVAL",
+      "INIT",
+      "TEST",
+      "PRE0",
+      "POST",
+      "AFT0",
+      "BVAL"
+    ],
+    "revision": 1,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  },
+  {
+    "key": "r1-alias-rebind-store",
+    "base": "cases/base1.asl",
+    "source": "cases/r1-alias-rebind-store.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "BVAL",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "BVAL"
+    ],
+    "revision": 1,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  },
+  {
+    "key": "r1-alias-rebind-copyobject",
+    "base": "cases/base1.asl",
+    "source": "cases/r1-alias-rebind-copyobject.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "BVAL",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "BVAL"
+    ],
+    "revision": 1,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  },
+  {
+    "key": "r2-local-self-read",
+    "base": "cases/base2.asl",
+    "source": "cases/r2-local-self-read.asl",
+    "methods": [
+      "TEST",
+      "TEST"
+    ],
+    "revision": 2,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  },
+  {
+    "key": "r2-local-self-expression",
+    "base": "cases/base2.asl",
+    "source": "cases/r2-local-self-expression.asl",
+    "methods": [
+      "TEST",
+      "TEST"
+    ],
+    "revision": 2,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  },
+  {
+    "key": "r2-arg-self",
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-self.asl",
+    "methods": [
+      "TEST",
+      "TEST"
+    ],
+    "revision": 2,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  },
+  {
+    "key": "r2-failed-target-effects",
+    "base": "cases/base2.asl",
+    "source": "cases/r2-failed-target-effects.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "PRE0",
+      "POST",
+      "AFT0",
+      "BVAL",
+      "INIT",
+      "TEST",
+      "PRE0",
+      "POST",
+      "AFT0",
+      "BVAL"
+    ],
+    "revision": 2,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  },
+  {
+    "key": "r2-alias-rebind-store",
+    "base": "cases/base2.asl",
+    "source": "cases/r2-alias-rebind-store.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "BVAL",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "BVAL"
+    ],
+    "revision": 2,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  },
+  {
+    "key": "r2-alias-rebind-copyobject",
+    "base": "cases/base2.asl",
+    "source": "cases/r2-alias-rebind-copyobject.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "BVAL",
+      "INIT",
+      "TEST",
+      "POST",
+      "FLG0",
+      "BVAL"
+    ],
+    "revision": 2,
+    "expected": "unknown until independent normalACPICA execution; no status weakening"
+  }
+]

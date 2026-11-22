@@ -1,0 +1,53 @@
+--- a/src/intel/dev/intel_hwconfig.c
++++ b/src/intel/dev/intel_hwconfig.c
+@@ -30,4 +30,6 @@
++#if !defined(__cubit__)
+ #include "intel/common/intel_gem.h"
+ #include "i915/intel_device_info.h"
+ #include "xe/intel_device_info.h"
++#endif
+ 
+@@ -368,3 +370,4 @@
++#if !defined(__cubit__)
+ static struct hwconfig *
+ intel_get_hwconfig_table(int fd, struct intel_device_info *devinfo,
+                          int32_t *hwconfig_len)
+@@ -412,4 +415,5 @@
+       process_hwconfig_table(devinfo, data, len, check_hwconfig_item);
+       free(data);
+    }
+ }
++#endif
+--- a/src/intel/dev/meson.build
++++ b/src/intel/dev/meson.build
+@@ -6,17 +6,25 @@
+ files_libintel_dev = files(
+-  'i915/intel_device_info.c',
+-  'i915/intel_device_info.h',
+-  'xe/intel_device_info.c',
+-  'xe/intel_device_info.h',
+   'intel_debug.c',
+   'intel_debug.h',
+   'intel_device_info.c',
+   'intel_device_info.h',
++  'intel_device_info_topology.c',
+   'intel_hwconfig.c',
+   'intel_hwconfig.h',
+-  'intel_kmd.c',
+   'intel_kmd.h',
+ )
+ 
++# CuBit provides capability-based discovery, not DRM file descriptors.
++# Keep the shared tables/topology/workarounds without Linux KMD queries.
++if host_machine.system() != 'cubit'
++  files_libintel_dev += files(
++    'i915/intel_device_info.c',
++    'i915/intel_device_info.h',
++    'xe/intel_device_info.c',
++    'xe/intel_device_info.h',
++    'intel_kmd.c',
++  )
++endif
++
+ inc_intel_dev_virtio = []
+ link_intel_dev_virtio = []

@@ -1,0 +1,11 @@
+{
+  "kind": "failed-before-selected-constructor-analysis",
+  "actual_source": "/home/doc/git/.acpi-proof-work/bank-namespace-proof-7xpWuzqh/source",
+  "actual_output": "/home/doc/git/.acpi-proof-work/bank-namespace-proof-7xpWuzqh/source/tests/aml-bank-namespace-proof/result-check-6GdPmsWo",
+  "phase": "check",
+  "process_status": 1,
+  "accepted": false,
+  "flow_or_prove_ran": false,
+  "production_change": false,
+  "note": "Range diagnostic during inlined Global contract generation followed by a front-end internal exception. No constructor proof or runtime failure established. Original artifact manifest self-entry is not valid; other entries checked independently."
+}

@@ -1,0 +1,14 @@
+project Layout_Tests is
+   --  The unit is copied out of the runtime directory (run.sh): that
+   --  directory holds a run-time library of its own.
+   for Source_Dirs use (".", "build/source");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe", "-O2", "-g");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Layout_Tests;

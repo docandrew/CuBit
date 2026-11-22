@@ -1,0 +1,1120 @@
+[
+  {
+    "key": "1-INT",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "38f791de8aaced1af61854a32e17491f890603ed1f681ef0cd5e41782a74274a",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 65,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-STR",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "bf519c09c9639a85f1f517bb4a1a89cfc0cc0158b615e0e0e0575da8927dbd7a",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 66,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-EMPTY",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "77a69de89e978828b20a1ddd5959b0601ddb112281a5a124d7fb449a3337ec48",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "Firmware Error (ACPI): AE_AML_BUFFER_LIMIT, Field [FLD0] at bit offset/length 0/8 exceeds size of target Buffer (0 bits) (20260408/dsopcode-356)",
+      "Failed at AML Offset 00000, Opcode 008C: CreateByteField (BUFF, 0x00, FLD0)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_BUFFER_LIMIT) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_BUFFER_LIMIT, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_BUFFER_LIMIT",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_BUFFER_LIMIT"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-GEN1",
+    "expectation": null,
+    "compile_returncode": 255,
+    "classification": "compile_nonzero_pending_review"
+  },
+  {
+    "key": "1-GENBYTE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "6e4c870a5d35d82e6212148de05053a969097ed5d53e4ed4dc4bf0e47b75257a",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 1,
+    "hex": "01",
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-QTYPE",
+    "expectation": null,
+    "compile_returncode": 255,
+    "classification": "compile_nonzero_pending_review"
+  },
+  {
+    "key": "1-QBYTES",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "9dca8b1dffb367510e5a21caa5f86e212c84c6c520f7fb8e0f42261ec9db3d1d",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 8,
+    "hex": "4142434445464748",
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-LOCAL",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "c3c6ddc1964fd9444ae185bff955f6250979002b03a691b15cb8fa66cd4a8b4c",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 66,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-ARG",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "e548664c384b05710b542d92eb47405b46f29a1c50b745a3857706f362e676a3",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "helper_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 66,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-NAMED",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "92dd01c93bb6ff5fd788fba97493ce446905fc7a926519e92dc2cb27c52dc7fa",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 65,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-COUNTLOCAL",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "f0127767298cc627dbe49de14b2f46709fe61945def080522d115a2172520983",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 1,
+    "hex": "42",
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-IDX",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "d8efa9954ec363313439de136b63d13122cfe45c6e3f3e0ffe48981f37b4a445",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 9 (0x9) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 65,
+    "cache_diagnostics": [
+      "ACPI Error: 9 (0x9) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-REF",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "ac85d2c8a1b393be38999208cf85a6f7dd691cd9009f920ad67e42f205746a17",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: Needed [Integer/String/Buffer], found [Reference] 0x555555608c00 (20260408/exresop-577)",
+      "ACPI Error: (CreateByteField) bad operand(s), status 0x3003 (20260408/dsopcode-472)",
+      "Failed at AML Offset 00007, Opcode 008C: CreateByteField (Local0, 0x00, FLD0)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 6 (0x6) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-ERRORS",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "09e0f92fc4fddcdd3b31ab0130ebe613a399303fe0c2c5bd209844a458b35bbe",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "000000000000007B"
+    ],
+    "diagnostics": [
+      "ACPI Error: (CreateField) bad operand(s), status 0x300A (20260408/dsopcode-472)",
+      "Failed at AML Offset 00000, Opcode 5B13: CreateField (-Return Value- (), -Return Value- (), -Return Value- (), FLD0)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_BUFFER_LIMIT) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_BUFFER_LIMIT, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_BUFFER_LIMIT",
+      "ACPI Error: 11 (0xB) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_BUFFER_LIMIT"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-INDEXERR",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "a42419be8458bfb0334bf8dce8f1bf01ef4fd4f989e251f7a567843a56539ad2",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "000000000000000C"
+    ],
+    "diagnostics": [
+      "ACPI Error: Needed [Integer/String/Buffer], found [Package] 0x555555608d40 (20260408/exresop-550)",
+      "ACPI Error: (CreateField) bad operand(s), status 0x3003 (20260408/dsopcode-472)",
+      "Failed at AML Offset 00000, Opcode 5B13: CreateField (-Return Value- (), -Return Value- (), 0x08, FLD0)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 11 (0xB) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-DUP",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "c71aae05971509f34e4b254607075ae8942b8fc048cde9129d6733e65cd1fe29",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 65,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-COPYI",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "02dfb61918faefc729fc7364c9fc81253f07dddf578065a1ee232bd0ceb0a0a8",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 8,
+    "hex": "5942434445464748",
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-COPYB",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "4f15ef3601e574862f8fdb852f810830ac975840b90b7f97d4de9f2aef44e185",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 8,
+    "hex": "5942434445464748",
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "1-COPYTYPE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "40ad616ced8a7ff249a3a417c1a2ce7b9840295507c27b1828e05d3cc42f420e",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 14,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-INT",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "f1663e246dd22a87945974ed5f276c74a624462b89e39bd022d551add576ced5",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 65,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-STR",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "1b035c31ed29c11cf89e410154680bb948f439405cbdd6cbea7321325dc3b531",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 66,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-EMPTY",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "589a95da5edd63f95f57059d3407ac67a58c60376f7785b40294f0a70596df1f",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "Firmware Error (ACPI): AE_AML_BUFFER_LIMIT, Field [FLD0] at bit offset/length 0/8 exceeds size of target Buffer (0 bits) (20260408/dsopcode-356)",
+      "Failed at AML Offset 00000, Opcode 008C: CreateByteField (BUFF, 0x00, FLD0)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_BUFFER_LIMIT) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_BUFFER_LIMIT, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_BUFFER_LIMIT",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_BUFFER_LIMIT"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-GEN1",
+    "expectation": null,
+    "compile_returncode": 255,
+    "classification": "compile_nonzero_pending_review"
+  },
+  {
+    "key": "2-GENBYTE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "f4ca213e65664d7db6060904d5ef363b3dbfaf84c1d38aff514f39e3e676d0e0",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 1,
+    "hex": "01",
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-QTYPE",
+    "expectation": null,
+    "compile_returncode": 255,
+    "classification": "compile_nonzero_pending_review"
+  },
+  {
+    "key": "2-QBYTES",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "0d8ff5aeb9403a6b921f21507af1dd7a1c8ccf4f52337e611a1d6e74f9ee6a67",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 8,
+    "hex": "4142434445464748",
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-LOCAL",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "aea330d0c9288d3c6dda42da9488f0cfac3887196a26f8c31c1cdf3cee62e381",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 66,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-ARG",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "b81bfd065f464bc4a892a9c24ae1a5658f71609062caf5a6b00f715100f64ee5",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "helper_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 66,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-NAMED",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "9053e2567caf90b849cfccf66b5e19a90e1bdc4dfd4fd9caead2addb066c139b",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 65,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-COUNTLOCAL",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "1c2d2d65cb2d8ee195963332dda0714467cb85c1befef3bed230ccacee56aa0e",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 1,
+    "hex": "42",
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-IDX",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "cfd93b3eca62e7d7af8acc80c4128b5f4401c1ecfd9e1b64e2390b30dc63917a",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 9 (0x9) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 65,
+    "cache_diagnostics": [
+      "ACPI Error: 9 (0x9) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-REF",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "f94e092772e2c2ad3328456995c0377a8c35585f666de6e6d677ff84d84d4468",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: Needed [Integer/String/Buffer], found [Reference] 0x555555608c00 (20260408/exresop-577)",
+      "ACPI Error: (CreateByteField) bad operand(s), status 0x3003 (20260408/dsopcode-472)",
+      "Failed at AML Offset 00007, Opcode 008C: CreateByteField (Local0, 0x00, FLD0)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 6 (0x6) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-ERRORS",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "4b2577c6624cfad38d0d3a84d5ff0fbab33a9f743ee794cac486ebf346b8658d",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "000000000000007B"
+    ],
+    "diagnostics": [
+      "ACPI Error: (CreateField) bad operand(s), status 0x300A (20260408/dsopcode-472)",
+      "Failed at AML Offset 00000, Opcode 5B13: CreateField (-Return Value- (), -Return Value- (), -Return Value- (), FLD0)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_BUFFER_LIMIT) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_BUFFER_LIMIT, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_BUFFER_LIMIT",
+      "ACPI Error: 11 (0xB) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_BUFFER_LIMIT"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-INDEXERR",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "4d1c2173a917e9409ef155415e1700abc95121bd234c02de0e23686af6844df4",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "000000000000000C"
+    ],
+    "diagnostics": [
+      "ACPI Error: Needed [Integer/String/Buffer], found [Package] 0x555555608d40 (20260408/exresop-550)",
+      "ACPI Error: (CreateField) bad operand(s), status 0x3003 (20260408/dsopcode-472)",
+      "Failed at AML Offset 00000, Opcode 5B13: CreateField (-Return Value- (), -Return Value- (), 0x08, FLD0)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 11 (0xB) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-DUP",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "d67d4d78278b0ff8ed22f988792afb142b62f6934fc474548f3e9f76328b49b3",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 65,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-COPYI",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "7af9a5cc4d2d565649ceba926079c5a1cfaa45d78c0f50b406733f8023791452",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 8,
+    "hex": "5942434445464748",
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-COPYB",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "a75ffb0349d1249ad1db039db2dc0a7697ec1bfc9a09fb945b388ec0068eac26",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 8,
+    "hex": "5942434445464748",
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  },
+  {
+    "key": "2-COPYTYPE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "2f98af8115e14ef934e1a7d219361fc42bc62d9b62174dbe482838d007429f21",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 14,
+    "cache_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "returned"
+  }
+]

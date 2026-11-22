@@ -1,0 +1,12 @@
+project Descriptor_Proof is
+ for Source_Dirs use ("../../userspace/services/acpi/resource-data", "../../shared/firmware");
+ for Source_Files use ("acpi_resource_data.ads", "acpi_resource_data.adb",
+   "acpi_resource_data-basic_descriptors.ads", "acpi_resource_data-basic_descriptors.adb",
+   "acpi_resource_data-extended_interrupts.ads", "acpi_resource_data-extended_interrupts.adb",
+   "acpi_resource_data-address_spaces.ads", "acpi_resource_data-address_spaces.adb",
+   "firmware_tables.ads", "firmware_tables.adb");
+ for Object_Dir use external ("DESCRIPTOR_PROOF_OBJECTS");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Descriptor_Proof;

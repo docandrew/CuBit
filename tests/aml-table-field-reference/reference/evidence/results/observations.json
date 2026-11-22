@@ -1,0 +1,818 @@
+[
+  {
+    "key": "1-aligned-1025",
+    "revision": 1,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "1c8b764bcb3eb5ca4850b9e4843deb76cf7a4267a4c1b355412bca890c58524e",
+    "actual_revision": 1,
+    "table_length": 9202,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "84b5cdae118b417687ce689256c28b675885befbac30bce649ee685305fe7200",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000401"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000A3A3"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-unaligned-1025",
+    "revision": 1,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "96cbb7654897fea1597602139d8661bde68f52e5d68c65b9798e80eefdb17ad8",
+    "actual_revision": 1,
+    "table_length": 9204,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "e21c1838678afccc514056ed81ca98017f20510a685d6ca24194284d55918a6c",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000401"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000009494"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-masked-tail-1025",
+    "revision": 1,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "d044d5cfffa295eca51e0d3d1f9ec07b013fc841a4ea162c14c96458ca96a1d0",
+    "actual_revision": 1,
+    "table_length": 9204,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "65e0d5f06b78762365a27cc72a9b136f5819c47482367aa36cb7bab33a84cdb6",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000401"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000094"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-aligned-8192",
+    "revision": 1,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "6ef32abc0f0df4c4316ef4243c37f030b15940157087f74a340fe2d41e548d06",
+    "actual_revision": 1,
+    "table_length": 9202,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "d56af37d3e219759f4c10a3f0303c13e20eac9c55cc86ef7cc640d4939bd8f46",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000002000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000005AA3"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-unaligned-8192",
+    "revision": 1,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "b27757eb93638cd441a3822bfbb04aeb68d1e08e47e78151b675bf5132a46d46",
+    "actual_revision": 1,
+    "table_length": 9204,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "d097336f690d0d552b186412ad8314cda5baabc0845915e064be7ac881b2a997",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000002000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000006B94"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "1-threshold-33",
+    "revision": 1,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "803b50300559595fee290360961be0d306199a8d53347c1647c53663e7a8078e",
+    "actual_revision": 1,
+    "table_length": 9202,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "849583524373f87ee26c909129cb02e59504fcac69cd248e123f15a9448e9ae5",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "0000000000000000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000005"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000094"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-aligned-1025",
+    "revision": 2,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "55d411b07b8994eddb6a8dbe0fa67fb08f4c4759778315cfb9f15eb24ad690fa",
+    "actual_revision": 2,
+    "table_length": 9202,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "a1d7ae51c10bf0df11d58ab6db97742e901f8be0407251a9dbe3d3406f55e3c2",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000401"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "000000000000A3A3"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-unaligned-1025",
+    "revision": 2,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "04cc29879472c0b4e60e331d2f325e01132c0fba5c030a5bd7d342eae6660e40",
+    "actual_revision": 2,
+    "table_length": 9204,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "3c60a6e5026695b7567a05916e36dc4fec456492b4f3b9115365bc242a196a5e",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000401"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000009494"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-masked-tail-1025",
+    "revision": 2,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "bf7f477a61600cdbd8cd5513a037289c0ca4c70548c079c4cee12290a8db7d4b",
+    "actual_revision": 2,
+    "table_length": 9204,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "06296093f0218b2b6b532aa00a5d79912a2dcd6c25dc511f1351abf15cd169d4",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000000401"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000000094"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-aligned-8192",
+    "revision": 2,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "b0ba4c40cef43c45830aecaaf7b7e2f95c22c19ffaa27899cbedd7582a21e47e",
+    "actual_revision": 2,
+    "table_length": 9202,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "e6e168e913e6799c885c4f35e66b1b91ac3c9cf4ef5095dc0805e71d4046fdd4",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000002000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000005AA3"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-unaligned-8192",
+    "revision": 2,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "12186bd583ef1dd12ad2a4dcc60dddabd1492295be21684078322fb30ee7d68e",
+    "actual_revision": 2,
+    "table_length": 9204,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "c8a908f56288424c4c23f6bc892da875617e1430e2effe12028f235a1838e674",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "0000000000002000"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000003"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "0000000000006B94"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  },
+  {
+    "key": "2-threshold-33",
+    "revision": 2,
+    "question": "Read immutable DSDT field, independently extract low-bit-first value from actual AML bytes",
+    "compile_rc": 0,
+    "aml_sha256": "e822a676ca0d4ea7c10775329666bb3fc1fe2af5533fa124b48b28032be44e30",
+    "actual_revision": 2,
+    "table_length": 9202,
+    "checksum_valid": true,
+    "disassemble_rc": 0,
+    "disassembly_sha256": "e740634a05fb34a70bdac456d3e967ae8517c16924a5a83334c5a52dfb95d5b0",
+    "disassembled_operations": [
+      "Buffer",
+      "Name",
+      "Return",
+      "SizeOf"
+    ],
+    "disassembly_valid": true,
+    "disassembled_buffer_counts": [
+      "0x2328"
+    ],
+    "control_rc": 0,
+    "controls": {
+      "CTRL": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "WIDT": {
+        "values": [
+          "00000000FFFFFFFF"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "load_errors": [],
+    "execution_commands": "execute TEST;execute MARK;execute POST",
+    "execute_rc": 0,
+    "frames_complete": true,
+    "observations": {
+      "TEST": {
+        "values": [
+          "00000000EFC6BD94"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "MARK": {
+        "values": [
+          "0000000000000001"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      },
+      "POST": {
+        "values": [
+          "00000000EFC6BD94"
+        ],
+        "ae_statuses": [],
+        "raw_reference_lines": []
+      }
+    },
+    "all_ae_statuses": [],
+    "classification": "returned"
+  }
+]

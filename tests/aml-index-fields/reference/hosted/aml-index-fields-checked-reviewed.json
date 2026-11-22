@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-field-publication-OzYYTLwz/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-field-publication-OzYYTLwz/source/tests/aml-index-fields/results/checked-ql045fbg",
+  "mode": "checked",
+  "inputs": 228,
+  "references": 7,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 315,
+  "stages": 2,
+  "logs": {
+    "index_field_tests": "Index field checks 168"
+  },
+  "ALI": 77,
+  "dependencies": 1367,
+  "strict_commands": 76,
+  "audit_sha256": "2ab28f2c5de63655017c9bae2025368f624ee420dc8e9cef27ff61b9dd36e309",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

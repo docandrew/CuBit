@@ -1,0 +1,146 @@
+[
+  {
+    "name": "MEQ",
+    "declarations": "Name(PKG0,Package(){2,3,4})",
+    "body": "Return(Match(PKG0,MEQ,3,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "MLE",
+    "declarations": "Name(PKG0,Package(){2,3,4})",
+    "body": "Return(Match(PKG0,MLE,3,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "MLT",
+    "declarations": "Name(PKG0,Package(){2,3,4})",
+    "body": "Return(Match(PKG0,MLT,3,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "MGE",
+    "declarations": "Name(PKG0,Package(){2,3,4})",
+    "body": "Return(Match(PKG0,MGE,3,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "MGT",
+    "declarations": "Name(PKG0,Package(){2,3,4})",
+    "body": "Return(Match(PKG0,MGT,3,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "IMIX",
+    "declarations": "Name(PKG0,Package(){\"10\",16,32})",
+    "body": "Return(Match(PKG0,MEQ,16,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "SMIX",
+    "declarations": "Name(PKG0,Package(){16,\"10\"})",
+    "body": "Return(Match(PKG0,MEQ,\"10\",MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "BMIX",
+    "declarations": "Name(PKG0,Package(){\"A\",Buffer(){65,0}})",
+    "body": "Return(Match(PKG0,MEQ,Buffer(){65,0},MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "NULL",
+    "declarations": "Name(PKG0,Package(3){,Package(){1},9})",
+    "body": "Return(Match(PKG0,MTR,Zero,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "NEST",
+    "declarations": "Name(PKG0,Package(){Package(){1},9})",
+    "body": "Return(Match(PKG0,MEQ,9,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "EMPTYBYTE",
+    "declarations": "Name(PKG0,Package(){Buffer(){},9})",
+    "body": "Return(Match(PKG0,MEQ,9,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "NONE",
+    "declarations": "Name(PKG0,Package(){1})",
+    "body": "Return(Match(PKG0,MEQ,2,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "LAST",
+    "declarations": "Name(PKG0,Package(){1,2})",
+    "body": "Return(Match(PKG0,MTR,Zero,MTR,Zero,One))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "BOUND",
+    "declarations": "Name(PKG0,Package(){1})",
+    "body": "Return(Match(PKG0,MTR,Zero,MTR,Zero,One))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "HUGE",
+    "declarations": "Name(PKG0,Package(){1})",
+    "body": "Return(Match(PKG0,MTR,Zero,MTR,Zero,Ones))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "EMPTY",
+    "declarations": "Name(PKG0,Package(){})",
+    "body": "Return(Match(PKG0,MTR,Zero,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "ORDER",
+    "declarations": "Name(PKG0,Package(){1}) Method(PGET,0){Store(Add(Multiply(MARK,10),1),MARK) Return(PKG0)} Method(MONE,0){Store(Add(Multiply(MARK,10),2),MARK) Return(2)} Method(MTWO,0){Store(Add(Multiply(MARK,10),3),MARK) Return(1)} Method(STRT,0){Store(Add(Multiply(MARK,10),4),MARK) Return(Zero)}",
+    "body": "Return(Match(PGET(),MEQ,MONE(),MEQ,MTWO(),STRT()))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "MUTATE",
+    "declarations": "Name(PKG0,Package(){1}) Name(IVAL,One) Method(STRT,0){Store(2,IVAL) Store(2,Index(PKG0,Zero)) Return(Zero)}",
+    "body": "Return(Match(PKG0,MEQ,IVAL,MTR,Zero,STRT()))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "LOCAL",
+    "declarations": "Name(PKG0,Package(){2})",
+    "body": "Store(One,Local0) Return(Match(PKG0,MEQ,Local0,MTR,Zero,Subtract(Store(2,Local0),2)))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "REF",
+    "declarations": "Name(PKG0,Package(){1}) Name(IVAL,One)",
+    "body": "CopyObject(RefOf(IVAL),Local0) Return(Match(PKG0,MEQ,Local0,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "NAME",
+    "declarations": "Name(IVAL,One) Name(PKG0,Package(){IVAL})",
+    "body": "Store(2,IVAL) Return(Match(PKG0,MEQ,2,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "BADOBJ",
+    "declarations": "Name(PKG0,Package(){1})",
+    "body": "Return(Match(PKG0,MTR,Package(){},MTR,Zero,Store(One,MARK)))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "ERRORORDER",
+    "declarations": "Name(PKG0,Package(){1})",
+    "body": "Return(Match(PKG0,MEQ,Package(){},MTR,Zero,Store(Buffer(){},Local0)))",
+    "method_opcode": "Match"
+  },
+  {
+    "name": "BADOP",
+    "declarations": "Name(PKG0,Package(){1})",
+    "body": "Return(Match(PKG0,6,One,MTR,Zero,Zero))",
+    "method_opcode": "Match"
+  }
+]

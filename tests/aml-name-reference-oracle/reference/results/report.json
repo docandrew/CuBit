@@ -1,0 +1,706 @@
+[
+  {
+    "key": "r1-runtime-self-Store",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-runtime-self-Store.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.asl"
+        ],
+        "log": "results/r1-runtime-self-Store-base-compile.log",
+        "sha256": "7eef687d779e149b8cb7e47e5253c5b131f038077d6b2dd9969e68f9ee129311"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-runtime-self-Store.asl"
+        ],
+        "log": "results/r1-runtime-self-Store-source-compile.log",
+        "sha256": "608d8662751fe4d60b7dd109c630acf07ca387c03b8275802571deeeef60010a"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-runtime-self-Store.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.aml"
+      ],
+      "log": "results/r1-runtime-self-Store-execute.log",
+      "sha256": "618f432d6c1f8ca1ee96b105d005e2671180231f8b6b7ef7ddf1defbee75e0bd"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-static-data-Store",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-static-data-Store.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.asl"
+        ],
+        "log": "results/r1-static-data-Store-base-compile.log",
+        "sha256": "7eef687d779e149b8cb7e47e5253c5b131f038077d6b2dd9969e68f9ee129311"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-static-data-Store.asl"
+        ],
+        "log": "results/r1-static-data-Store-source-compile.log",
+        "sha256": "ec57510ab2da34048541db80c5141ee1eaec4c10e161c36c705e77900e2a227a"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-static-data-Store.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.aml"
+      ],
+      "log": "results/r1-static-data-Store-execute.log",
+      "sha256": "3ea8bbf2a9de236163b79ccb72da5bdee048e510bdee81c210f0ac61466dbf31"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-runtime-self-CopyObject",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-runtime-self-CopyObject.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.asl"
+        ],
+        "log": "results/r1-runtime-self-CopyObject-base-compile.log",
+        "sha256": "7eef687d779e149b8cb7e47e5253c5b131f038077d6b2dd9969e68f9ee129311"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-runtime-self-CopyObject.asl"
+        ],
+        "log": "results/r1-runtime-self-CopyObject-source-compile.log",
+        "sha256": "785c707255f2d785e3a9534cf06a061400629da5400f65606fc553aeff395b35"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-runtime-self-CopyObject.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.aml"
+      ],
+      "log": "results/r1-runtime-self-CopyObject-execute.log",
+      "sha256": "0d0e5fd485a09542ae24181fab9eeef0a9fc4574f01cbf2a36c0bc50d1ffba98"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-static-data-CopyObject",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-static-data-CopyObject.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.asl"
+        ],
+        "log": "results/r1-static-data-CopyObject-base-compile.log",
+        "sha256": "7eef687d779e149b8cb7e47e5253c5b131f038077d6b2dd9969e68f9ee129311"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-static-data-CopyObject.asl"
+        ],
+        "log": "results/r1-static-data-CopyObject-source-compile.log",
+        "sha256": "ea5e5e5048544fa5458faafda026167f97125524ec2992392defaa07b8a3df9a"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-static-data-CopyObject.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.aml"
+      ],
+      "log": "results/r1-static-data-CopyObject-execute.log",
+      "sha256": "ce00ea8b875643a7cc1f5a1e55fa05a93115efa8700dd37cfc1dfadc0986db8a"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-escaped-runtime-self",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-escaped-runtime-self.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "node teardown behavior; preserve failure/timeout, no force",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.asl"
+        ],
+        "log": "results/r1-escaped-runtime-self-base-compile.log",
+        "sha256": "7eef687d779e149b8cb7e47e5253c5b131f038077d6b2dd9969e68f9ee129311"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-escaped-runtime-self.asl"
+        ],
+        "log": "results/r1-escaped-runtime-self-source-compile.log",
+        "sha256": "94f71b03c2250c4f9796233a733628524a3f1a9dff831b5cdbbb2c70a185fb1e"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-escaped-runtime-self.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.aml"
+      ],
+      "log": "results/r1-escaped-runtime-self-execute.log",
+      "sha256": "8712826bdf00940a9f77c01aba699f9530f22c7b42c8b1d7447da34f9855a17a"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [
+      "AE_AML_INTERNAL"
+    ]
+  },
+  {
+    "key": "r1-detached-static-cycle",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-detached-static-cycle.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "detached cycle teardown warnings/status only; numeric return cannot prove count multiplicity",
+    "repeat_equivalence": false,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.asl"
+        ],
+        "log": "results/r1-detached-static-cycle-base-compile.log",
+        "sha256": "7eef687d779e149b8cb7e47e5253c5b131f038077d6b2dd9969e68f9ee129311"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-detached-static-cycle.asl"
+        ],
+        "log": "results/r1-detached-static-cycle-source-compile.log",
+        "sha256": "8214c39a17995306a2a6813617a3ac51d8f4f13df8033aa4b5fdf91aba343390"
+      }
+    ],
+    "execute": {
+      "rc": "log_limit",
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-detached-static-cycle.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.aml"
+      ],
+      "log": "results/r1-detached-static-cycle-execute.log",
+      "sha256": "2f76d21566e3d27365b02c21a6d08f646af2712fa4a8eba66b0c9724b13818b8"
+    },
+    "teardown_cache_warning": false,
+    "classification": "process_failure",
+    "statuses": []
+  },
+  {
+    "key": "r1-detached-runtime-cycle",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-detached-runtime-cycle.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "runtime captured self edge after detach; teardown warnings/status only",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.asl"
+        ],
+        "log": "results/r1-detached-runtime-cycle-base-compile.log",
+        "sha256": "7eef687d779e149b8cb7e47e5253c5b131f038077d6b2dd9969e68f9ee129311"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-detached-runtime-cycle.asl"
+        ],
+        "log": "results/r1-detached-runtime-cycle-source-compile.log",
+        "sha256": "f707625ceb637b8b346e64793ed58506091094c26b80cd5945afabcd0a7d2ea2"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r1-detached-runtime-cycle.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base1.aml"
+      ],
+      "log": "results/r1-detached-runtime-cycle-execute.log",
+      "sha256": "6424a9579aa68c62658911e5abc20c7fe29ac6e2fb1a382d17f79e6334c3f997"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-runtime-self-Store",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-runtime-self-Store.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.asl"
+        ],
+        "log": "results/r2-runtime-self-Store-base-compile.log",
+        "sha256": "256960a1b8d0ff3efc5cdc74a6db074f9ea974229d9ac4cbceeb572aa2140d1b"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-runtime-self-Store.asl"
+        ],
+        "log": "results/r2-runtime-self-Store-source-compile.log",
+        "sha256": "6732273a7bed9d75715a987ff9a2657fbe64ce882095bb3e4158492f4f7a737a"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-runtime-self-Store.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.aml"
+      ],
+      "log": "results/r2-runtime-self-Store-execute.log",
+      "sha256": "fb7e71e90042e42b147d33ef79cd22f24e78bed34d2242ef7ea73c6a7fab8c57"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-static-data-Store",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-static-data-Store.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.asl"
+        ],
+        "log": "results/r2-static-data-Store-base-compile.log",
+        "sha256": "256960a1b8d0ff3efc5cdc74a6db074f9ea974229d9ac4cbceeb572aa2140d1b"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-static-data-Store.asl"
+        ],
+        "log": "results/r2-static-data-Store-source-compile.log",
+        "sha256": "71111a68ff97bc2be9bff03154f360e417af86902e70ac560ae32a642543754f"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-static-data-Store.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.aml"
+      ],
+      "log": "results/r2-static-data-Store-execute.log",
+      "sha256": "8eb9bf2c2c2f7e86f429fd42762f5e18ded0bd5061a6bf4b2b41756fddfd5482"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-runtime-self-CopyObject",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-runtime-self-CopyObject.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.asl"
+        ],
+        "log": "results/r2-runtime-self-CopyObject-base-compile.log",
+        "sha256": "256960a1b8d0ff3efc5cdc74a6db074f9ea974229d9ac4cbceeb572aa2140d1b"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-runtime-self-CopyObject.asl"
+        ],
+        "log": "results/r2-runtime-self-CopyObject-source-compile.log",
+        "sha256": "140dfc6c111c6577b19c15b88bbb2fea5a460032a289c00952d60109d5d1619f"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-runtime-self-CopyObject.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.aml"
+      ],
+      "log": "results/r2-runtime-self-CopyObject-execute.log",
+      "sha256": "cc49757e41ccb03d717358d2bc5bb3f9ed5039844aa8d62202362d5f06b53775"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-static-data-CopyObject",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-static-data-CopyObject.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "typed return, status, warning, repeat; no guessed expectation",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.asl"
+        ],
+        "log": "results/r2-static-data-CopyObject-base-compile.log",
+        "sha256": "256960a1b8d0ff3efc5cdc74a6db074f9ea974229d9ac4cbceeb572aa2140d1b"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-static-data-CopyObject.asl"
+        ],
+        "log": "results/r2-static-data-CopyObject-source-compile.log",
+        "sha256": "f8bcb9b4505666d5fc2e5e21ff5924fa7dbeefb47149fbe9b35b508986c413dc"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-static-data-CopyObject.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.aml"
+      ],
+      "log": "results/r2-static-data-CopyObject-execute.log",
+      "sha256": "5b1e1415d6a0221d909eb6bbe4fcf38857ab3466eb24aa19957ccf15de376063"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-escaped-runtime-self",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-escaped-runtime-self.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "node teardown behavior; preserve failure/timeout, no force",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.asl"
+        ],
+        "log": "results/r2-escaped-runtime-self-base-compile.log",
+        "sha256": "256960a1b8d0ff3efc5cdc74a6db074f9ea974229d9ac4cbceeb572aa2140d1b"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-escaped-runtime-self.asl"
+        ],
+        "log": "results/r2-escaped-runtime-self-source-compile.log",
+        "sha256": "125921ece5430e7d9f63866d7467f3281fe92d1709a738d410d2a8cf78491feb"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-escaped-runtime-self.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.aml"
+      ],
+      "log": "results/r2-escaped-runtime-self-execute.log",
+      "sha256": "765a3fc1d75100010149673013eca28b4a30c3fc58414c855f5065950fa04155"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": [
+      "AE_AML_INTERNAL"
+    ]
+  },
+  {
+    "key": "r2-detached-static-cycle",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-detached-static-cycle.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "detached cycle teardown warnings/status only; numeric return cannot prove count multiplicity",
+    "repeat_equivalence": false,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.asl"
+        ],
+        "log": "results/r2-detached-static-cycle-base-compile.log",
+        "sha256": "256960a1b8d0ff3efc5cdc74a6db074f9ea974229d9ac4cbceeb572aa2140d1b"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-detached-static-cycle.asl"
+        ],
+        "log": "results/r2-detached-static-cycle-source-compile.log",
+        "sha256": "6b247ab22bcbf78c67e8da17237e77b0209d9cb758bbfb91da1d76c8901ef6dc"
+      }
+    ],
+    "execute": {
+      "rc": "log_limit",
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-detached-static-cycle.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.aml"
+      ],
+      "log": "results/r2-detached-static-cycle-execute.log",
+      "sha256": "594b3049007ec76ce523fea6ea723561a20122c032cde363d432e3d3616a4aa3"
+    },
+    "teardown_cache_warning": false,
+    "classification": "process_failure",
+    "statuses": []
+  },
+  {
+    "key": "r2-detached-runtime-cycle",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-detached-runtime-cycle.asl",
+    "methods": [
+      "INIT",
+      "TEST",
+      "INIT",
+      "TEST"
+    ],
+    "scope": "runtime captured self edge after detach; teardown warnings/status only",
+    "repeat_equivalence": true,
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.asl"
+        ],
+        "log": "results/r2-detached-runtime-cycle-base-compile.log",
+        "sha256": "256960a1b8d0ff3efc5cdc74a6db074f9ea974229d9ac4cbceeb572aa2140d1b"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-detached-runtime-cycle.asl"
+        ],
+        "log": "results/r2-detached-runtime-cycle-source-compile.log",
+        "sha256": "95a14128ad935a70dfa0d5ab9e96b7e338648ae347d8f56edde4162870dac443"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/r2-detached-runtime-cycle.aml;execute INIT;execute TEST;execute INIT;execute TEST",
+        "/home/doc/git/.acpi-proof-work/captured-name-oracle-restored-8pxl61ma/cases/base2.aml"
+      ],
+      "log": "results/r2-detached-runtime-cycle-execute.log",
+      "sha256": "14aefe4b61242457ae0f3e4fe13c9ec6cead1d031f70466db7e25848fb0c79b0"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  }
+]

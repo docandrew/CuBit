@@ -1,0 +1,98 @@
+# The services and registration roles procmgr's children may name in their
+# manifests. Numbers are service roles; a program gets its capabilities by
+# binding name in its startup table (CAP-002). No policy approval is implied.
+# (client X) names the typed handle a service's startup entry is handed out
+# as (CuBit.Handles.Services.X, CAP-003): a log publisher can only be bound
+# to a Logstore endpoint, a launcher only made from a Process_Manager one.
+(service-catalog v1
+  (service network-stack 3 read-write)
+  (service process-manager 4 read-write (client Process_Manager))
+  (service filesystem 6 read-write)
+  (service device-manager 7 read-write)
+  (service mixer 9 read-write)
+  (service config 11 read-write (client Config))
+  (service logstore 13 read-write (client Logstore))
+  (service ipc-test 14 read-write)
+  (service desktop 15 read-write)
+  (service display 16 read-write)
+  (service gpu 17 read-write)
+  (service ccl-test-host 18 read-write)
+  (service clock 19 read-write)
+  (service mixer-control 20 read-write)
+  (service log-observer 21 read-write (client Log_Observer))
+  (service clock-control 22 read-write)
+  (service tls 23 read-write)
+  (service metrics 24 read-write)
+  (service metrics-observer 25 read-write)
+  (service process-observer 26 read-write)
+  (service log-control 27 read-write)
+  # The dictionary, thesaurus and spelling service (docs/lexicon.md).
+  (service lexicon 28 read-write)
+  # The ACPI namespace service (acpi.svc); clients get the observer badge
+  # (ACPI_Protocol.Observer_Tag).
+  (service acpi 29 read-write)
+  # Startup only: CuBit.Disk_Install, CuBit.Installer_Protocol.
+  (service disk-install 30 read-write)
+  (service installer 31 read-write)
+  (service i2c 32 read-write)
+  # wifi.svc (docs/wifi.md): (wifi.join), (wifi.passphrase) ...
+  (service wifi 33 read-write)
+  # netmgr.svc (CuBit.Net_Manager_Control): the Deskbar watches every
+  # interface and applies per-interface settings through it.
+  (service netmgr 12 read-write)
+  (service gpio 34 read-write)
+  # 35 was acpi-backend.svc's named-register role; retired with the ACPI
+  # pair (ACPI-ONE-001): acpi.svc holds the hardware itself.
+  # Test only: the startup-wait headless test's late provider
+  # (CuBit.Startup_Wait_Test; procmgr's startup waits, CAP-003).
+  (service startup-wait-test 36 read-write)
+  # llm.svc (AGENT-001): the Messages API client; (llm.ask ...) and agents.
+  (service llm 37 read-write)
+  # secrets.svc (SEC-022 v0): named secrets used through grants.
+  (service secrets 38 read-write)
+  # Desktop's read-only copy of a composed frame (CuBit.Display_Capture):
+  # only a startup entry approving (display-capture approve-declared) gets
+  # this endpoint, badged with CuBit.Display_Capture.Authority_Tag.
+  (service display-capture 39 read-write)
+  # System_Publications.ACPI_PCI_Windows_Role; only acpi.svc's startup entry
+  # approving (acpi-hardware ...) and (acpi-pci-config ...) gets it.
+  (service acpi-pci-windows 40 read-write)
+  (service acpi-power 41 read-write)
+  (service power 42 read-write)
+  (service power-desktop 43 read-write)
+  (service power-console 44 read-write)
+  # Launch badges (CAP-012, docs/authority-model.md 7.5): procmgr's endpoint
+  # badged for launching into the user session. A launched program gets its
+  # install approval within the session's envelope, never its requester's
+  # authority. launch-remote is the same for ccl-remote, typed apart so its
+  # launches can require confirmation on the device later.
+  (service launch 45 read-write (client Process_Manager))
+  (service launch-remote 46 read-write (client Process_Manager))
+  # The debugger preview (DBG-001, CuBit.Debug_Protocol): a target that links
+  # CuBit.Debug_Stub registers it; a debugger requests it to attach.
+  (service debug-target 47 read-write)
+  # Debug-observe for the user session (DBG-001, CuBit.Launch_Handles):
+  # procmgr's endpoint badged for one operation, a Debug_Observe session on
+  # a process by identity, decided by the session's debug envelope (never
+  # secrets.svc, the trusted path, procmgr or devmgr).
+  (service debug-session 48 read-write (client Process_Manager))
+  (notification keyboard 1 publish-and-manage)
+  (notification mouse 10 publish-and-manage)
+  (notification ipc-test-registration 14 publish-and-manage)
+  # Registration: a service registers its role with a notification over it
+  # (procmgr grants these only to the identities its policy names).
+  (notification logstore 13 publish-and-manage)
+  (notification desktop 15 publish-and-manage)
+  (notification display 16 publish-and-manage)
+  (notification ccl-test-host 18 publish-and-manage)
+  (notification clock 19 publish-and-manage)
+  (notification tls 23 publish-and-manage)
+  (notification metrics 24 publish-and-manage)
+  (notification lexicon 28 publish-and-manage)
+  (notification acpi 29 publish-and-manage)
+  (notification installer 31 publish-and-manage)
+  (notification startup-wait-test 36 publish-and-manage)
+  (notification llm 37 publish-and-manage)
+  (notification secrets 38 publish-and-manage)
+  (notification power 42 publish-and-manage)
+  (notification debug-target 47 publish-and-manage))

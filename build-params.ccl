@@ -1,0 +1,40 @@
+# The repository's build parameters for CCL build (docs/ccl-build.md): the
+# toolchain pins and what every native program shares. A component's
+# component.ccl names only what differs.
+(Parameters
+  toolchains => [
+    # On Linux: GCC/GNAT 15.3, the compiler that also runs on CuBit:
+    # nixpkgs' pkgsCross.musl64 gnat15 (flake.nix exports it as
+    # CUBIT_GNAT), and nixpkgs' unwrapped binutils, for ld (CUBIT_BINUTILS).
+    # The manifest tool is the tree's own build (make -C kernel ccl-manifest).
+    (Host_Toolchains Build_Host.Linux
+      (Toolchain "gnat-15.3.0-x86_64-linux-musl"
+        "537d17c4afd57c05b36e797bc507d2d340336488c026cacd660bc74fcc85f608"
+        prefix => "x86_64-unknown-linux-musl-")
+      (Toolchain "binutils-2.46"
+        "12b0a97cfd6fccff837ffc7a521a6716bffb9da7e339ace12900b9131301b037" prefix => "")
+      (Manifest_Tool.Checkout "userspace/ccl/build/manifest/ccl-manifest"))
+    # On CuBit: the same GCC 15.3 built for CuBit (userspace/ports/gcc),
+    # installed at @system/toolchain with binutils 2.46's as and ld
+    # (userspace/ports/binutils): one tree for both. The manifest tool is
+    # ccl-manifest.app (make -C kernel ccl-manifest-app), from the same
+    # sources, installed at @system/tools (ccl-build's launch table).
+    (Host_Toolchains Build_Host.CuBit
+      (Toolchain "gnat-15.3.0-cubit" "592dfaf1083c3efdca9b19424526dec3bf29d9d29fd282557e217552ba168031" prefix => "")
+      (Toolchain "gnat-15.3.0-cubit" "592dfaf1083c3efdca9b19424526dec3bf29d9d29fd282557e217552ba168031" prefix => "")
+      (Manifest_Tool.Installed "/tools/ccl-manifest.app"))]
+  runtime => "userspace/runtime"
+  manifest_schema => "userspace/ccl/interfaces/executable-manifest.ccl"
+  process_manager_catalog => "userspace/ccl/catalogs/native-runtime-services.ccl"
+  device_manager_catalog => "userspace/ccl/catalogs/driver-services.ccl"
+  # Native CuBit code: no red zone (interrupt frames), not position independent.
+  # --eh-frame-hdr: the unwinder's search table over .eh_frame, which a
+  # static link leaves out unless asked (zero-cost exceptions, EXC-001).
+  target => ["-mno-red-zone" "-fno-pic"]
+  binder => ["-d_C" "-nostdlib"]
+  linker => [(Link_Argument.Text "-nostdlib") (Link_Argument.Text "-static")
+             (Link_Argument.Text "-no-pie") (Link_Argument.Text "-Wl,--eh-frame-hdr")
+             (Link_Argument.Text "-Wl,-z,stack-size=16777216")
+             (Link_Argument.Text "-lgnat-user") (Link_Argument.Text "-T")
+             (Link_Argument.File "userspace/c/link.ld") (Link_Argument.File "userspace/c/build/crt0.o")
+             Link_Argument.Manifest_Object])

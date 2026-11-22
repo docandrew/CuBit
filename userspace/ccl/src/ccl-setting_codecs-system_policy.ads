@@ -1,0 +1,22 @@
+--  Generated from userspace/ccl/interfaces/settings/ by
+--  ccl-manifest --setting-codecs (CAP-003); do not edit. Regenerate with
+--  make -C kernel setting-kinds after changing the catalog or a type.
+pragma Ada_2022;
+with CuBit.Canonical_Readers;
+
+--  The typed setting system.policy: a CCL System_Policy (CCL.Interfaces.System_Policy.TYPE_SOURCE),
+--  as Ada types, and Decode, which reads its canonical source
+--  (CCL.Typed_Settings renders it; CuBit.Canonical_Readers).
+package CCL.Setting_Codecs.System_Policy with SPARK_Mode, Pure is
+   subtype Text is CuBit.Canonical_Readers.Text;
+   type Debugging_Value is (Disabled, Production, Development);
+   type System_Policy_Value is record
+      debugging : Debugging_Value := Debugging_Value'First;
+   end record;
+
+   --  Item is the value when Success: Source is exactly the canonical
+   --  source of a System_Policy. Otherwise Item is (others => <>).
+   procedure Decode (Source : String; Item : out System_Policy_Value; Success : out Boolean)
+   with Global => null, Always_Terminates;
+end CCL.Setting_Codecs.System_Policy;
+

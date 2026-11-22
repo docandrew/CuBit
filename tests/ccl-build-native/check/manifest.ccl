@@ -1,0 +1,28 @@
+# The ccl-build-native test launcher (tests/ccl-build-native/check): runs
+# the native ccl-build.app on ps2.drv's sources, interrupts one build,
+# checks that the next recovers and makes Linux's program byte for byte,
+# and that a build after it runs no step. It delegates to ccl-build the
+# places ccl-build's steps need (decision D2): it holds each of them, and
+# what ccl-build's manifest requests (@system/tools: the manifest tool).
+(Executable_Manifest
+  identity => "com.cubit.ccl-build-check"
+  version => "0.1.0"
+  requests => [(service "process-manager" "process-manager") (service "launch" "launch") (service "filesystem" "filesystem")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"]
+  scopes => [
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
+    (filesystem [File_Right.Read] "@system/toolchain")
+    (filesystem [File_Right.Read] "@system/tools")
+    (filesystem [File_Right.Read] "@system/cubit-src")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/work")
+    # binutils-compare's own scope, as its manifest spells it (procmgr
+    # checks a child's scopes against its launcher's by their text).
+    (filesystem [File_Right.Read] "@nvme:0/work")]
+  may_launch => [
+    (Launch "ccl-build.app")
+    (Launch "binutils-compare.app")
+    # The runtime place probe (main.adb, 4): the gcc driver started with
+    # the places a ccl-build step gets.
+    (Launch "toolchain/bin/gcc")])

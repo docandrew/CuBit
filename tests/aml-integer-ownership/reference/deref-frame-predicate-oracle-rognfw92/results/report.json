@@ -1,0 +1,370 @@
+[
+  {
+    "key": "r1-arg-ref",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.asl"
+        ],
+        "log": "results/r1-arg-ref-base-compile.log",
+        "sha256": "d2e4fa2c5e8eda05b6d9e1f8efee3ed7d01369b32e612ab0a0a917e034202578"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-ref.asl"
+        ],
+        "log": "results/r1-arg-ref-source-compile.log",
+        "sha256": "2cbda9bcf4e2e49cbc927ee9761c7c057bb60c62008207c9bac1df9a5c256f30"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-ref.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.aml"
+      ],
+      "log": "results/r1-arg-ref-execute.log",
+      "sha256": "d77e6dfb2d1abd7332203ceba34878dbaa06546e4de7fd23703ade35b41b2687"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-arg-held",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.asl"
+        ],
+        "log": "results/r1-arg-held-base-compile.log",
+        "sha256": "d2e4fa2c5e8eda05b6d9e1f8efee3ed7d01369b32e612ab0a0a917e034202578"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-held.asl"
+        ],
+        "log": "results/r1-arg-held-source-compile.log",
+        "sha256": "68a12a49c6ba3f995d781ee077af580ccd2959effac8da8a56513e5ac9d21e35"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-held.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.aml"
+      ],
+      "log": "results/r1-arg-held-execute.log",
+      "sha256": "5b374ed8a6c36fbd9f6bc21c0af1bada0394a42475a34a6248910c4626c60b30"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-local-ref",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-local-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.asl"
+        ],
+        "log": "results/r1-local-ref-base-compile.log",
+        "sha256": "d2e4fa2c5e8eda05b6d9e1f8efee3ed7d01369b32e612ab0a0a917e034202578"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-local-ref.asl"
+        ],
+        "log": "results/r1-local-ref-source-compile.log",
+        "sha256": "5d68d1853e7a0e6bcfcba9f0153e5a2fb8de36b860f2783ab36eddf9dc7cca33"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-local-ref.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.aml"
+      ],
+      "log": "results/r1-local-ref-execute.log",
+      "sha256": "3cf6c22430cc4e8a2ba589d2312389c67092eda4be29bd49cc4e1e8ccc3f5613"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-local-held",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-local-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.asl"
+        ],
+        "log": "results/r1-local-held-base-compile.log",
+        "sha256": "d2e4fa2c5e8eda05b6d9e1f8efee3ed7d01369b32e612ab0a0a917e034202578"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-local-held.asl"
+        ],
+        "log": "results/r1-local-held-source-compile.log",
+        "sha256": "c1feb9f0cf13628ec183b9474d4aac98607ea9a1257e69c76c9649349ae0815e"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-local-held.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.aml"
+      ],
+      "log": "results/r1-local-held-execute.log",
+      "sha256": "04648c44dd78fc6183635c94d78221e965dc5e480bdf3065f0528f7b2d631d01"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-arg-ref",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.asl"
+        ],
+        "log": "results/r2-arg-ref-base-compile.log",
+        "sha256": "80f8b679b76aaf7080606f108e091cc5807d0ad65e82c12310d5f938488809b5"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-ref.asl"
+        ],
+        "log": "results/r2-arg-ref-source-compile.log",
+        "sha256": "e2155d3597d16c4ae9a50260a65291e841a4bb59930131e1c061428210c1b542"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-ref.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.aml"
+      ],
+      "log": "results/r2-arg-ref-execute.log",
+      "sha256": "cf64f70785d8c374e253a31336d286e97abf9da32ee7f01ff4f05aed874f0911"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-arg-held",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.asl"
+        ],
+        "log": "results/r2-arg-held-base-compile.log",
+        "sha256": "80f8b679b76aaf7080606f108e091cc5807d0ad65e82c12310d5f938488809b5"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-held.asl"
+        ],
+        "log": "results/r2-arg-held-source-compile.log",
+        "sha256": "40edfd07b15ba7fcfbc2d77f4f24dd7412e7e2c80de834be3222bd52b5e1b9cd"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-held.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.aml"
+      ],
+      "log": "results/r2-arg-held-execute.log",
+      "sha256": "d33ace05b73e8ca51e44ce9681fedd6b82e028460ab16b3c88402da68deb937a"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-local-ref",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-local-ref.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.asl"
+        ],
+        "log": "results/r2-local-ref-base-compile.log",
+        "sha256": "80f8b679b76aaf7080606f108e091cc5807d0ad65e82c12310d5f938488809b5"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-local-ref.asl"
+        ],
+        "log": "results/r2-local-ref-source-compile.log",
+        "sha256": "89633bedc54f560113e23149e1fae0808d98787ccd638eb5e8e27406a46adafc"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-local-ref.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.aml"
+      ],
+      "log": "results/r2-local-ref-execute.log",
+      "sha256": "1b52bca4d1c87f13d46121bd1930c0a24e6f3a9338c6b45ed51d46f5d534abf8"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-local-held",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-local-held.asl",
+    "methods": [
+      "TEST"
+    ],
+    "scope": "Frame raw integer control versus explicit DerefOf mutation; normal ASL no forcing",
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.asl"
+        ],
+        "log": "results/r2-local-held-base-compile.log",
+        "sha256": "80f8b679b76aaf7080606f108e091cc5807d0ad65e82c12310d5f938488809b5"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-local-held.asl"
+        ],
+        "log": "results/r2-local-held-source-compile.log",
+        "sha256": "0c67745e581bc60bb342d5d1399615a57e3bfffde29d9360df893088a912d311"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-local-held.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.aml"
+      ],
+      "log": "results/r2-local-held-execute.log",
+      "sha256": "f646cf2ee71629a1ba23e4fb71840fa5cace390723c58b864538b0f4856558dd"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  }
+]

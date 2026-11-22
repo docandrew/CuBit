@@ -1,0 +1,18 @@
+CCL-INTERFACE-DESCRIPTOR 1
+name 5:timer
+version 1 0
+operations 1
+operation 0
+name 5:every
+parameters 1
+argument integer
+result stream integer
+authority observe
+ownership-argument false
+transfer copy
+cancellation not-cancellable
+success-verb 0
+failure-verb 0
+cancel-verb 0
+end-operation
+end-interface

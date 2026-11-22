@@ -1,0 +1,88 @@
+[
+  {
+    "label": "ssdt-r1",
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "-oa",
+      "-r",
+      "1",
+      "-p",
+      "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r1",
+      "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r1.asl"
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null
+  },
+  {
+    "label": "dsdt-r1",
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "-oa",
+      "-r",
+      "1",
+      "-p",
+      "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r1",
+      "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r1.asl"
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null
+  },
+  {
+    "label": "execute-r1",
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "-dr",
+      "-b",
+      "evaluate BCNT; evaluate LDTB; evaluate LTGT; evaluate TTYP; evaluate BCNT; evaluate DNUM; evaluate MUT8; evaluate DNUM; evaluate MISS; evaluate BCNT",
+      "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r1.aml"
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null
+  },
+  {
+    "label": "ssdt-r2",
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "-oa",
+      "-r",
+      "2",
+      "-p",
+      "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r2",
+      "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/dynamic-r2.asl"
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null
+  },
+  {
+    "label": "dsdt-r2",
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "-oa",
+      "-r",
+      "2",
+      "-p",
+      "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r2",
+      "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r2.asl"
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null
+  },
+  {
+    "label": "execute-r2",
+    "args": [
+      "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "-dr",
+      "-b",
+      "evaluate BCNT; evaluate LDTB; evaluate LTGT; evaluate TTYP; evaluate BCNT; evaluate DNUM; evaluate MUT8; evaluate DNUM; evaluate MISS; evaluate BCNT",
+      "/home/doc/git/.acpi-proof-work/dynamic-load-reference-work/reference/loader-r2.aml"
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null
+  }
+]

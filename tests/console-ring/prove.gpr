@@ -1,0 +1,8 @@
+project Prove is
+   for Source_Dirs use ("../../kernel/src");
+   for Source_Files use ("console_ring.ads", "console_ring.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Prove;

@@ -1,0 +1,11 @@
+project Video_Decode is
+   --  GPU-003 standalone units: media engine discovery, HuC load and
+   --  authentication, VCS breadcrumb segments. Hosted tests and proofs.
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use external ("VIDEO_DECODE_OBJECT_DIR", "build-video-decode");
+   for Main use ("media_engines_tests.adb", "huc_load_tests.adb",
+                 "video_segment_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Video_Decode;

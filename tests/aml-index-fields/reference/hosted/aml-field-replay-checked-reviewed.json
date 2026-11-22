@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-field-publication-OzYYTLwz/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-field-publication-OzYYTLwz/source/tests/aml-field-replay/results/checked-biwajxia",
+  "mode": "checked",
+  "inputs": 232,
+  "references": 45,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 335,
+  "stages": 2,
+  "logs": {
+    "field_core_replay_tests": "Field Core replay checks 522"
+  },
+  "ALI": 82,
+  "dependencies": 1492,
+  "strict_commands": 81,
+  "audit_sha256": "f0d8f80c1beb063c79acda02352d5a83f047e9e1dd4d12274523bcdb9243b637",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

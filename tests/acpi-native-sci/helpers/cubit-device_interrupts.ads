@@ -1,0 +1,1 @@
+with CuBit.Messages;package CuBit.Device_Interrupts is EVENT_IRQ : constant := 16#0001#; function Is_Doorbell(Event:CuBit.Messages.Message) return Boolean;end CuBit.Device_Interrupts;

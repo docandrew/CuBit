@@ -1,0 +1,10 @@
+[
+  {
+    "name": "NAMED",
+    "method_opcode": "CreateField"
+  },
+  {
+    "name": "UNNAMED",
+    "method_opcode": "CreateField"
+  }
+]

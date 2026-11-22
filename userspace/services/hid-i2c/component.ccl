@@ -1,0 +1,6 @@
+(Component name => "hid-i2c" kind => Kind.Driver
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/hid" "userspace/services/hid-i2c/lib" "userspace/services/hid-i2c/native"
+                "userspace/services/acpi/hid-i2c" "userspace/lib/input"
+                "userspace/lib/i2c-admission" "userspace/lib/gpio-admission"]
+    language => Ada_Language.Ada_2022)))

@@ -1,0 +1,40 @@
+{
+  "status": "HOSTED_CCL_AND_SPARK_PASS",
+  "checks": 13445,
+  "proof": {
+    "units": [
+      "observatory_trace_view",
+      "observatory_trace_ccl"
+    ],
+    "checks": 141,
+    "flow": 21,
+    "provers": 120,
+    "unproved": 0,
+    "summary": "proof.txt",
+    "sha256": "158fb7c7803a7ed4c46b4893791ec3e6cf312d766a3464e28bc234e94b1d6e27",
+    "warning": "Invoke context stays in out to satisfy the existing generic host callback signature"
+  },
+  "source_sha256": {
+    "userspace/lib/observatory/observatory_trace_view.ads": "d388a11be653fd15a79af7bf43dc7fa7b47a1f2d2cfb287e5eb2155d196e2de6",
+    "userspace/lib/observatory/observatory_trace_view.adb": "0c6c293e549907fa668283e35f6eeaae70cb7660a747995e79b75930d626b158",
+    "userspace/lib/observatory/observatory_trace_ccl.ads": "8f50124df6b25c42871e98bfbd0664f230a4b843abd84a0ae70a83c1fd10a73f",
+    "userspace/lib/observatory/observatory_trace_ccl.adb": "421b1fe3754724c7ac157d324f425cf8a4b9955e821eb8e6a0589ad617dabba9",
+    "tests/observatory-metrics/trace-view/run.py": "10fcd32102fbf6aace6956f751c61348b789d78460416e0098b13f1a4d8a1dcf",
+    "tests/observatory-metrics/trace-view/view_tests.adb": "fd17653bfbdebf0d7f04be13325151d77b6c2392642bda1f5fd9d5e23303de06",
+    "tests/observatory-metrics/trace-view/trace_view.gpr": "8b43f8fdb37282b4ca68c77163c88f54e2aa2131022c7e8b06d75fb3439fd460"
+  },
+  "native_fixture": {
+    "source": "../../compositor/trace-archive/fixtures/native201.cubittrace",
+    "sha256": "250097b02a1aea0de9f402297f0fd3b8ecf4aa17507bac48066c3bcdd8115f9e",
+    "events": 78,
+    "scope": "Real native CuBit data; current test executes the hosted CCL interpreter"
+  },
+  "tests_log_sha256": "3c10e460acc239320c6b30f81ee844ec89ec89c2a6d7cea1a569765ee5b8d6ec",
+  "private_result": "/home/doc/git/compositor-test-artifacts/trace-view-portable-226/result.json",
+  "limits": [
+    "Not a native viewer window or on-device capture UI",
+    "No cross-event causality, stack reconstruction or hardware timing claim",
+    "Uses imported archive/CCL contracts; not a proof of the entire interpreter",
+    "File checksums detect accidental corruption; query results do not authenticate files"
+  ]
+}

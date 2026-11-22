@@ -1,0 +1,22 @@
+{
+  "gprbuild": {
+    "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+    "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+  },
+  "gnatbind": {
+    "path": "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gnatbind",
+    "sha256": "a6e0efb740f0d6bc7b96f4a6b1718a8684a5200bd53023baff8b169620368546"
+  },
+  "gnatlink": {
+    "path": "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gnatlink",
+    "sha256": "9eb00117ab023137a389da0af10a75439392d538758e828feb6ef8b0a7cdfc46"
+  },
+  "ada-gcc": {
+    "path": "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gcc",
+    "sha256": "216c8e207c60cee4b90866c28a4a89d424e37fecc03526d2ba825a2d2d58a1ef"
+  },
+  "python": {
+    "path": "/nix/store/3n4qphl9s728sz8frmpqqrv9b1m87g68-python3-3.14.7/bin/python3.14",
+    "sha256": "ee3549b0a0c65576b13b32abd410551ec8af9b2307cd726c89295de24213192f"
+  }
+}

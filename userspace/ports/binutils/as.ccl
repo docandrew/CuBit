@@ -1,0 +1,15 @@
+# GNU as on CuBit (userspace/ports/binutils): typed argv parameters
+# (docs/ccl-launch-parameters.md). One source in, one object out.
+(Executable_Manifest
+  identity => "org.gnu.binutils.as"
+  version => "2.46"
+  requests => [(service "filesystem" "filesystem")]
+  outlets => [
+    (Outlet "unix.stdout" Element.Text pages => 4)
+    (Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")]
+  argv => (Argv.Mapped (Argv_Mapping
+    parameters => [
+      (Argv_Parameter "output" Argv_Kind.Output_File)
+      (Argv_Parameter "source" Argv_Kind.Input_File)]
+    pieces => [(Argv_Piece.Literal "--64") (Argv_Piece.Literal "-o") (Argv_Piece.Value "output") (Argv_Piece.Value "source")])))

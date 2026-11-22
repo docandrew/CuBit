@@ -1,0 +1,6 @@
+(Component name => "virtio-net" kind => Kind.Driver
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/net/src"]
+    language => Ada_Language.Ada_2022
+    optimization => Optimization.Maximum
+    checks => Checks.Suppressed)))

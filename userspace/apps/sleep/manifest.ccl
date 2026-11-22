@@ -1,0 +1,8 @@
+# A long-lived process that reports on one text outlet and sleeps in a loop.
+(Executable_Manifest
+  identity => "com.cubit.sleep"
+  version => "1.0.0"
+  # ABI-002: its debug text (CuBit.Console_Route).
+  requests => [(service "logstore" "logstore")]
+  optional => ["logstore"]
+  outlets => [(Outlet "com.cubit.sleep.status" Element.Text pages => 4)])

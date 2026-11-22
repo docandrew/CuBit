@@ -1,0 +1,8 @@
+# DBG-001: the debugger engine's native check attaches to debug-demo through
+# its debug-target service (cooperative, read-only grants).
+(startup v1
+  # ABI-002: services' debug text reaches serial only through logstore's mirror.
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "debug-demo.app" (priority 5))
+  (start "debug-engine-check.app" (priority 5))
+)

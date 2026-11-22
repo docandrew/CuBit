@@ -1,0 +1,74 @@
+{
+  "oracle": "/home/doc/git/.acpi-proof-work/reference-source-timing-oracle-j24jmx3o",
+  "cases": [
+    {
+      "case": 1,
+      "key": "store-store",
+      "table_length": 129,
+      "revision": 2,
+      "aml_payload_offset": 36,
+      "payload_length": 93,
+      "payload_sha256": "2c4a6fd13a8b2c073ec95cb1c6c9254d260b230ed90db444891304d962aa8831",
+      "expected_hex": "2222",
+      "oracle_observations": 2,
+      "files": {
+        "store-store.aml": "f69a9fe3ff80b65f65849af338843c0ae81165dafdf28ce47e075ee3bf27d76c",
+        "store-store.asl": "09804c517a23ea05384453ebb49912ba46642d0d3f6901fe52f40195d5ba5877",
+        "store-store-execute.log": "65d8eddea556a40e1e887a03b033a69bce9dc65932472e102f0f756388dd2084",
+        "store-store-compile.log": "6ad65d81a8c263d5aaa36458112eb50d10dcd2532c11ae26b8af904af9f8ca27"
+      }
+    },
+    {
+      "case": 2,
+      "key": "store-copyobject",
+      "table_length": 129,
+      "revision": 2,
+      "aml_payload_offset": 36,
+      "payload_length": 93,
+      "payload_sha256": "f1eda512e3e1026ec575a00bfcbae877a238e49747ef228b87ee4ed15d47809d",
+      "expected_hex": "2211",
+      "oracle_observations": 2,
+      "files": {
+        "store-copyobject.aml": "e77f873170f162571b0bf58843a0ca052742fd73e522d6d4115cb618b4aa6ce1",
+        "store-copyobject.asl": "1c030936fedccd87fdc3508256e84948ba53e98f28b011a70b2114828c0fcee6",
+        "store-copyobject-execute.log": "175b041d1e5fefc390d1ce154c92dc01e76965b75d7b3b94ea26b5e5626573e0",
+        "store-copyobject-compile.log": "21cf3891d384c0277f2b24cd129c8c4c4a2a4a858ea4352e1e60db8a1d1eb460"
+      }
+    },
+    {
+      "case": 3,
+      "key": "tointeger-store",
+      "table_length": 129,
+      "revision": 2,
+      "aml_payload_offset": 36,
+      "payload_length": 93,
+      "payload_sha256": "7959a451796a2b3a8f4d378a843235337d16dab2aed1b1ef2a4a45ddee03abca",
+      "expected_hex": "2222",
+      "oracle_observations": 2,
+      "files": {
+        "tointeger-store.aml": "6cdb6392ec150c5327818c05edc7dc83e31fdb9323c4781bc7ff98ef50585c79",
+        "tointeger-store.asl": "acbe154b681d058840cc546494007abb5e755dc044017df132355faef700ef1b",
+        "tointeger-store-execute.log": "6af57e9a219348688c4dc4370ea834922fe97b4f99de4e38a8e2721bf121f041",
+        "tointeger-store-compile.log": "533bf4e633789942df11c9184fecc5c830ce037d30f919febb3d3c156bfc0d14"
+      }
+    },
+    {
+      "case": 4,
+      "key": "tointeger-copyobject",
+      "table_length": 129,
+      "revision": 2,
+      "aml_payload_offset": 36,
+      "payload_length": 93,
+      "payload_sha256": "65ea97fb784e96ed912d898f206b053b1326841595e221e89e2682bad558779e",
+      "expected_hex": "2211",
+      "oracle_observations": 2,
+      "files": {
+        "tointeger-copyobject.aml": "df916aed9ba49a512bab47cc582a75f5dcaecba6310030c03039de5b168ca4d9",
+        "tointeger-copyobject.asl": "2c5128e68a824f73f52b0a5a3ecd1732601662e720db5d3398d03ed1ee2e6395",
+        "tointeger-copyobject-execute.log": "905ebae97a31b766c10d1b255aa42f20de1549e9428d01e671e73512f57d6336",
+        "tointeger-copyobject-compile.log": "9c5da1fce24080fb2d131c1d63c42b700a2d03221a031aa9ddb199232e82de87"
+      }
+    }
+  ],
+  "scope": "Exact normalACPICA revision2 bodies, DerefOf(RefOf(SRC0)) timing. CuBit loads each body independently at32/64 widths and repeats TEST in same arena. Expected Store refresh2222 versus CopyObject replacement2211 is not weakened. No separate revision1 oracle execution claimed; raw teardown warnings retained."
+}

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9821a"/><stop offset="1" stop-color="#a55a0c"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0a338"/><stop offset="1" stop-color="#c06d10"/></linearGradient><linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd36b"/><stop offset="1" stop-color="#f5a524"/></linearGradient><linearGradient id="g4" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4c5d7a"/><stop offset="1" stop-color="#27324a"/></linearGradient><linearGradient id="g5" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f4f9e"/><stop offset="1" stop-color="#13224d"/></linearGradient></defs>
+<polygon points="4.08,32.50 26.60,45.50 26.60,40.50 4.08,27.50" fill="url(#g1)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="43.92,35.50 26.60,45.50 26.60,40.50 43.92,30.50" fill="url(#g2)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="21.40,17.50 43.92,30.50 26.60,40.50 4.08,27.50" fill="url(#g3)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="36.99,30.50 39.59,29.00 39.59,8.00 36.99,9.50" fill="url(#g4)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="19.67,20.50 36.99,30.50 36.99,9.50 19.67,-0.50" fill="url(#g5)" stroke="#1d1030" stroke-width="2.0" stroke-linejoin="round"/>
+<polyline points="21.40,4.50 27.46,8.00" fill="none" stroke="#5cf08a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="24.00,10.00 31.79,14.50" fill="none" stroke="#ffd84a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="24.00,14.00 29.20,17.00" fill="none" stroke="#ff7a9c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="21.40,16.50 33.53,23.50" fill="none" stroke="#7fd8ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

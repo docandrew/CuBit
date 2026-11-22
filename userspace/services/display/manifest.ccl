@@ -1,0 +1,18 @@
+# Generated ELF metadata is tied to this executable; requests are not grants.
+(executable-manifest v1
+  (identity "com.cubit.display")
+  (version "0.1.0")
+  (request-framebuffer-optional read-write framebuffer)
+  # Runtime falls back to the linear framebuffer if GPU service is absent.
+  (request-service-optional gpu read-write gpu)
+  # Warnings (a refused framebuffer mapping) reach logstore and the Desktop
+  # bootstrap screen when logstore runs; minimal profiles start display
+  # without it (records are then only echoed).
+  (request-service-optional logstore read-write logstore)
+  # No endpoint to Desktop is requested. UI-020: the display owner offers a
+  # read-only endpoint to itself with its first Lend_Buffer request; display
+  # accepts only exactly that, uses it for nothing but deriving the owner's
+  # scanout loans (Derive_Via_Capability needs only RIGHT_READ; a call needs
+  # READ_WRITE, so display cannot call Desktop through it: IPC DAG), and
+  # closes it when the session ends.
+  (request-notification display manage registration))

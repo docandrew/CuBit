@@ -1,0 +1,2 @@
+(Component name => "stall-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

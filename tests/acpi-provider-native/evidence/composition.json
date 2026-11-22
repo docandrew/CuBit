@@ -1,0 +1,331 @@
+{
+  "worker": 8976,
+  "exit_code": 0,
+  "runner": "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd",
+  "source": "/home/doc/git/.acpi-proof-work/provider-adapter-context-source-g1wv84gj",
+  "audit_sha256": "2e9fc7cb28dfe05b536bfd1c29cf75e0015bcc947a9cb906248936c6f56a6805",
+  "verified_counts": {
+    "sourcepins": 234,
+    "api_pins": 20,
+    "runnerpins": 11,
+    "runtime": 1582,
+    "artifacts": 769,
+    "tools": 5,
+    "binaries": 4
+  },
+  "composition_origins": [
+    {
+      "path": "tests/acpi-provider-actual-api/specs/cualloc_native.ads",
+      "origin": "/home/doc/git/cubit/userspace/allocator/process/cualloc_native.ads",
+      "sha256": "c30f83a211260f94ae7eaf2c0025b913ffb48f1b276b7bfa632b62ef1a3459a8"
+    },
+    {
+      "path": "tests/acpi-provider-actual-api/specs/cubit-handles-ipc.ads",
+      "origin": "/home/doc/git/cubit/userspace/runtime/gnat/cubit-handles-ipc.ads",
+      "sha256": "967e1bdc06f6581ac4f6f37fc6183e1509071a033b8bc92c89c5f29a1075686e"
+    },
+    {
+      "path": "tests/acpi-provider-actual-api/specs/cubit.ads",
+      "origin": "/home/doc/git/cubit/userspace/runtime/gnat/cubit.ads",
+      "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c"
+    },
+    {
+      "path": "tests/acpi-provider-actual-api/specs/cubit-monotonic.ads",
+      "origin": "/home/doc/git/cubit/userspace/runtime/gnat/cubit-monotonic.ads",
+      "sha256": "8903038c2ffd0a064d9df8b296a02ac887ecff5772bb6519c2c2f6619e53fc7b"
+    },
+    {
+      "path": "tests/acpi-provider-actual-api/specs/cubit-messages.ads",
+      "origin": "/home/doc/git/cubit/userspace/runtime/gnat/cubit-messages.ads",
+      "sha256": "c4b31172adba31b9b9cf5c21f97b2eb7b2d0e180f17ba3ed18191779119182b4"
+    },
+    {
+      "path": "tests/acpi-provider-actual-api/specs/cubit-memory_grants.ads",
+      "origin": "/home/doc/git/cubit/userspace/runtime/gnat/cubit-memory_grants.ads",
+      "sha256": "f338947f267391543eda29562cea527fabf56fc05d7905e7a5062d67f92b37b7"
+    },
+    {
+      "path": "tests/acpi-provider-actual-api/specs/cubit-grant_references.ads",
+      "origin": "/home/doc/git/cubit/userspace/runtime/gnat/cubit-grant_references.ads",
+      "sha256": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e"
+    },
+    {
+      "path": "tests/acpi-provider-actual-api/specs/cubit-process_ids.ads",
+      "origin": "/home/doc/git/cubit/userspace/runtime/gnat/cubit-process_ids.ads",
+      "sha256": "d012ffd2942827ef674e11921492508bfc46f0787553c94fb1c745cdcbe5d48a"
+    },
+    {
+      "path": "tests/acpi-provider-actual-api/specs/cubit-handles.ads",
+      "origin": "/home/doc/git/cubit/userspace/runtime/gnat/cubit-handles.ads",
+      "sha256": "afbc6c51725142db1e64655f4ffad07be0bb8d66c5a885548f57ef0b608eb6f8"
+    },
+    {
+      "path": "tests/acpi-provider-actual-api/specs/capability_abi.ads",
+      "origin": "/home/doc/git/cubit/shared/capabilities/capability_abi.ads",
+      "sha256": "ce6f609d7172745ab803d54f86dcec38511d88bf67267a7507f71ef2ef90f464"
+    },
+    {
+      "path": "tests/acpi-provider-composition/server-adapter/acpi_native_blocks.ads",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/native/acpi_native_blocks.ads",
+      "sha256": "55b7eef734560ddc16115771e89cd0f9fa2d6b2aaa4f05c48fd2dc74feff95e8",
+      "origin_sha256": "cd842829931ac3ea5b83e88515a7bbf58b8e469a4d1d70481c38e08ca5afb0a8",
+      "transformation": "Remove exactly with CuBit.Messages; context line; guarded candidate differs shared origin."
+    },
+    {
+      "path": "tests/acpi-provider-composition/server-adapter/acpi_native_blocks.adb",
+      "origin": "/home/doc/git/cubit/userspace/services/acpi/native/acpi_native_blocks.adb",
+      "sha256": "0102f9d769e2e9c3192436fd2eb5a72c33b52d77a508ff23495f718c15e3a82d"
+    },
+    {
+      "path": "tests/acpi-provider-composition/migration_tables.ads",
+      "origin": "/home/doc/git/cubit/tests/acpi-bootstrap-devices/migration_tables.ads",
+      "sha256": "5ab7cdf25f7bc2231b92807bfe07a55ac6cb2f6e71163b4954187acafa6e1b7f"
+    },
+    {
+      "path": "tests/acpi-provider-composition/migration_tables.adb",
+      "origin": "/home/doc/git/cubit/tests/acpi-bootstrap-devices/migration_tables.adb",
+      "sha256": "62bcf8c0cf69d146206be3041a33352da7647ccb0c91af804f5446ff3d2d1ca2"
+    }
+  ],
+  "stages": [
+    {
+      "stage": "gprbuild-version",
+      "command": [
+        "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+        "--version"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "gnat-version",
+      "command": [
+        "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gnatls",
+        "--version"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "runtime-directory",
+      "command": [
+        "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gcc",
+        "-print-file-name=adainclude"
+      ],
+      "timeout": 5,
+      "returncode": 0
+    },
+    {
+      "stage": "release-build",
+      "command": [
+        "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+        "-v",
+        "-j1",
+        "-p",
+        "-P",
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/release/check.gpr"
+      ],
+      "timeout": 180,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Normal",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/release/bin/provider_composition_tests",
+        "Normal"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Lost_Start",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/release/bin/provider_composition_tests",
+        "Lost_Start"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Lost_Import",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/release/bin/provider_composition_tests",
+        "Lost_Import"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Lost_Finish",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/release/bin/provider_composition_tests",
+        "Lost_Finish"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Pending_Return",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/release/bin/provider_composition_tests",
+        "Pending_Return"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Bad_Table",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/release/bin/provider_composition_tests",
+        "Bad_Table"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Wrong_Stamp",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/release/bin/provider_composition_tests",
+        "Wrong_Stamp"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Create_False",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/release/bin/provider_composition_tests",
+        "Create_False"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Multipage",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/release/bin/provider_multipage_tests"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-build",
+      "command": [
+        "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+        "-v",
+        "-j1",
+        "-p",
+        "-P",
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/checked/check.gpr"
+      ],
+      "timeout": 180,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Normal",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/checked/bin/provider_composition_tests",
+        "Normal"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Lost_Start",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/checked/bin/provider_composition_tests",
+        "Lost_Start"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Lost_Import",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/checked/bin/provider_composition_tests",
+        "Lost_Import"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Lost_Finish",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/checked/bin/provider_composition_tests",
+        "Lost_Finish"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Pending_Return",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/checked/bin/provider_composition_tests",
+        "Pending_Return"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Bad_Table",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/checked/bin/provider_composition_tests",
+        "Bad_Table"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Wrong_Stamp",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/checked/bin/provider_composition_tests",
+        "Wrong_Stamp"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Create_False",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/checked/bin/provider_composition_tests",
+        "Create_False"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Multipage",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/provider-adapter-context-validation-atr265yd/checked/bin/provider_multipage_tests"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    }
+  ],
+  "checks": {
+    "release": {
+      "Normal": 11,
+      "Lost_Start": 8,
+      "Lost_Import": 9,
+      "Lost_Finish": 8,
+      "Pending_Return": 18,
+      "Bad_Table": 7,
+      "Wrong_Stamp": 7,
+      "Create_False": 9,
+      "Multipage": 21
+    },
+    "checked": {
+      "Normal": 11,
+      "Lost_Start": 8,
+      "Lost_Import": 9,
+      "Lost_Finish": 8,
+      "Pending_Return": 18,
+      "Bad_Table": 7,
+      "Wrong_Stamp": 7,
+      "Create_False": 9,
+      "Multipage": 21
+    }
+  },
+  "checks_per_profile": 98,
+  "scope": "Hosted real Driver/bridge/Endpoint/Native_Blocks with modeled runtime IPC/grant/allocator backend. Context-only NativeBlocks spec candidate differs shared; no native kernel/launcher/allocator claim. 27005/3402 build failures preserved."
+}

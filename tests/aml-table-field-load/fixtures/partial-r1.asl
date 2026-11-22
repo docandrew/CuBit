@@ -1,0 +1,1 @@
+DefinitionBlock ("", "DSDT", 1, "CUBIT", "TFLOAD", 1) { Name (BCNT, Zero) Name (LTGT, Zero) DataTableRegion (TREG, "TEST", "CUBIT0", "TABWRAP0") Field (TREG, ByteAcc, NoLock, Preserve) { Offset (36), , 7, TBUF, 495 }  Method (LDTB, 0) { Load (TBUF, LTGT) Return (LTGT) } Method (TTYP, 0) { Return (ObjectType (LTGT)) } }

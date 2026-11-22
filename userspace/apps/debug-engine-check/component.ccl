@@ -1,0 +1,4 @@
+(Component name => "debug-engine-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/debug" "userspace/lib/debug/native"]
+    language => Ada_Language.Ada_2022)))

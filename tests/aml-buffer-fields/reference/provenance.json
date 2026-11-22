@@ -1,0 +1,67 @@
+[
+  {
+    "audit": "oracle-audit.json",
+    "audit_sha256": "aa8f4546edcedd36636c777067b8f2d314614d2d48f19afccdaf860ceb4c3be7",
+    "copied_files": 299,
+    "observations": "reviewed-observations.json",
+    "parent": "/home/doc/git/.acpi-proof-work/createfield-oracle-bx9yvgvv",
+    "tag": "base",
+    "verified_parent_audit_entries": 298
+  },
+  {
+    "audit": "audit.json",
+    "audit_sha256": "d42453a732fdbdfbaebf9b8ff491a3d1db9aa84a1b3f16a1bdc6ac79d2b803d2",
+    "copied_files": 328,
+    "observations": "reviewed-observations.json",
+    "parent": "/home/doc/git/.acpi-proof-work/createfield-small-oracle-ck93a1pt",
+    "tag": "small",
+    "verified_parent_audit_entries": 327
+  },
+  {
+    "audit": "audit.json",
+    "audit_sha256": "78862b6080207376cd7a113f85c49ee6d28ffd5fec813625d765bd48df36404c",
+    "copied_files": 104,
+    "observations": "results/observations.json",
+    "parent": "/home/doc/git/.acpi-proof-work/createfield-small-followup-avk15rd3",
+    "tag": "follow",
+    "verified_parent_audit_entries": 103
+  },
+  {
+    "audit": "audit.json",
+    "audit_sha256": "94433bfb05ab336b600d70872cf61bc0be62df126daf3116711abc1df5bde9e5",
+    "copied_files": 48,
+    "observations": "results/observations.json",
+    "parent": "/home/doc/git/.acpi-proof-work/createfield-package-capture-oracle-6jxh5zfo",
+    "tag": "package",
+    "verified_parent_audit_entries": 47
+  },
+  {
+    "tag": "copy",
+    "parent": "/home/doc/git/.acpi-proof-work/copy-index-oracle-reviewed-8uktr4is",
+    "audit": "audit.json",
+    "audit_sha256": "97869785a5059f13f13573b63ee2fd4fe118f439ba29c8010856abf353c7137b",
+    "verified_parent_audit_entries": 119,
+    "copied_files": 120,
+    "observations": "results/observations.json",
+    "scope": "executed oracle"
+  },
+  {
+    "tag": "copy-first-gate",
+    "parent": "/home/doc/git/.acpi-proof-work/copy-index-oracle-i42fbwh3",
+    "audit": "audit.json",
+    "audit_sha256": "b6824188cff51c81e44c9573cc0a50c87824c69c96a1a58a9c9b89a91a1d0a02",
+    "verified_parent_audit_entries": 28,
+    "copied_files": 29,
+    "observations": "results/observations.json",
+    "scope": "failed source-disassembly gate before TEST; provenance only"
+  },
+  {
+    "tag": "field-target",
+    "parent": "/home/doc/git/.acpi-proof-work/copy-index-field-oracle-whc6p6ad",
+    "audit": "audit.json",
+    "audit_sha256": "bfa67f78ab55ea22898e2caffdaec0db9cccdb78e46425fe1718cb11d42f9596",
+    "verified_parent_audit_entries": 119,
+    "copied_files": 120,
+    "observations": "reviewed-observations.json"
+  }
+]

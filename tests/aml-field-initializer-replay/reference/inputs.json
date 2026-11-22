@@ -1,0 +1,19 @@
+{
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/PLAN.txt": "6612fa2464ff6b447203cfdd90f95c1d5041294c3563d0ee77d2af1ce81f22f1",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/bounded_tool.py": "6ffc31aeb807149b491cde9a065c75ca6935e04a996da1f2b47fa45c41e53fd9",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/cases.json": "a5ce9e7c6c79affde589f5dc1f744a2e1bcdd39fdd7cd1a20b730245b08807c6",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/compound-r1.asl": "cf1a9f1e1a9037b852ce680fed994e44789f58bccff6533df46e96ca97d91d3e",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/compound-r2.asl": "e8dca0a89aa1f61fe941905d833cc5460ffe0bae2e6870904dfd8dbe32f4d8f7",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/direct-r1.asl": "6cfe155e9f0ae62c3e3e5df8ab1a1cb568228d780712630e629aa192f3bf5cb9",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/direct-r2.asl": "ca9cbdc755ccb64aafb94a9600e4676903f519459309bf93c5575dc20ddccbe3",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/failure-r1.asl": "5a00fbd3d0dddd3ad08f2bbaf4e18063a25fd12cab6b590ea21f16783bb88c59",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/failure-r2.asl": "4504cf76f379622dec490ee85f61a5703dfc65df2778f869b2f68b163236e335",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/method-r1.asl": "629e17dcc9563769730ba647e6a7cd3194dd69f70faf3c766ec064f044739290",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/method-r2.asl": "53c538635a4bc44069c7d9d6167e89384d085f60fc646cb29ca2792a932e44e6",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/parent.json": "b4aff5b56cc01345fe9a579c107a42513a1028abb926ad2649b8cfd6b4e905b1",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/predictions-not-goldens.json": "70a0ce7f0cf19c21d70b8910b3baffb2d84cc22ad4c52340fce28b6bae19ed89",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/run.py": "e6d7f796b62a177a165629ad34984e708adfcfc8e1c637c5852ec61e185f8b6e",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/runtime-divisor.patch": "abc42748faaa22de129439dfc8d0ff51ee319da620982e7c2216448937ccac70",
+  "/home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/tools.json": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08"
+}

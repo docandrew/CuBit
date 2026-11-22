@@ -1,0 +1,236 @@
+{
+  "status": "PAIRED_NATIVE_PASS",
+  "scope": "Native CuBit on frozen QEMU software platform: full Desktop visual regression, separate bounded collector, successful save and process exit after first acknowledged write. Not hardware timing or power-loss durability.",
+  "runs": {
+    "interrupted": {
+      "result": {
+        "status": "PASS",
+        "gpu_enabled": false,
+        "scope": "native CuBit runtime-dispatch software fallback with explicit boot seeds",
+        "binary_sha256": "9d684cdc7afaac55e10d4ae2435e515cd4fc769bc7fe5d06a760dc9f0f58fc43",
+        "memory": "1G",
+        "render_approved": false,
+        "render_attempts": [
+          [
+            "4294967329",
+            "TRUE"
+          ]
+        ],
+        "software_fallback": "PASS",
+        "hardware_validated": false,
+        "mesa_execution": {
+          "status": "PASS",
+          "renderer": "mesa-softpipe",
+          "text_draw": true,
+          "imported_surface_draw": true,
+          "client_retired_buffer_frames": 9,
+          "hardware_validated": false,
+          "scope": "Successful native Mesa draw and client self-check markers; pixel checks required separately"
+        },
+        "client_pixels": {
+          "status": "PASS",
+          "client_rectangle": [
+            120,
+            130,
+            512,
+            384
+          ],
+          "cursor_exclusion": [
+            78,
+            158,
+            97,
+            186
+          ],
+          "scale": [
+            1,
+            1
+          ]
+        },
+        "input_overlay": "off",
+        "cursor_moves": 32,
+        "cursor_roundtrips": 8,
+        "cursor_damage": "PASS exact restoration and no changes outside old/new footprints",
+        "overlay_click_pixels": "unchanged without HUD",
+        "scaled_cursor_moves": 16,
+        "scaled_cursor_roundtrips": 4,
+        "native_scales": [
+          [
+            5,
+            4
+          ]
+        ],
+        "output_pixels": [
+          1024,
+          768
+        ],
+        "metrics": {
+          "status": "PASS",
+          "frames": 13,
+          "batches": 35,
+          "producer_dropped_at_observer_exit": 11,
+          "schema_rejections": 0,
+          "batch_gaps": 0,
+          "scope": "Authenticated progress and schema; loss snapshot at observer exit, not full-run sampling completeness"
+        },
+        "log_channel": "PASS authenticated ordered startup/backend records and reader close",
+        "observer_sha256": "b04ccc9c30841f197e5d5c3623664ffce0652098848460e72232989d437a398e",
+        "profiling": "PASS completion measurements, diagnostic declaration with zero samples, no verbose trace markers",
+        "archive_interruption": {
+          "status": "PASS",
+          "pid": 35,
+          "written_bytes": 4096,
+          "handle_cleanup": "confirmed",
+          "scope": "Collector exit after first acknowledged write; not a power-loss test"
+        },
+        "menu_changed_pixels": [
+          104419,
+          104419,
+          104419
+        ],
+        "restored_cycles": 3,
+        "false_gpu_markers": 0,
+        "archive_file": {
+          "mode": "interrupted",
+          "bytes": 4096,
+          "sha256": "0b055c4755b327b4d4af800838090bb0abf1f5638f87b02ccc5d96d7ba8d1753",
+          "reader_exit": 1,
+          "scope": "Retrieved from stopped private VM; structural reader result, not power-loss durability"
+        }
+      },
+      "path": "/home/doc/git/compositor-test-artifacts/trace-archive-interrupted-221/native",
+      "serial_sha256": "992b6ba2022a44b6bd8d208fd52c60a2735b4c6a572a78bf6169964fa26aa1c3",
+      "reader_log_sha256": "09297f3a234e35118a7d740a13e3f62e40da21a0a67e0dbaa48a5010406cddac"
+    },
+    "complete": {
+      "result": {
+        "status": "PASS",
+        "gpu_enabled": false,
+        "scope": "native CuBit runtime-dispatch software fallback with explicit boot seeds",
+        "binary_sha256": "9d684cdc7afaac55e10d4ae2435e515cd4fc769bc7fe5d06a760dc9f0f58fc43",
+        "memory": "1G",
+        "render_approved": false,
+        "render_attempts": [
+          [
+            "4294967329",
+            "TRUE"
+          ]
+        ],
+        "software_fallback": "PASS",
+        "hardware_validated": false,
+        "mesa_execution": {
+          "status": "PASS",
+          "renderer": "mesa-softpipe",
+          "text_draw": true,
+          "imported_surface_draw": true,
+          "client_retired_buffer_frames": 9,
+          "hardware_validated": false,
+          "scope": "Successful native Mesa draw and client self-check markers; pixel checks required separately"
+        },
+        "client_pixels": {
+          "status": "PASS",
+          "client_rectangle": [
+            120,
+            130,
+            512,
+            384
+          ],
+          "cursor_exclusion": [
+            78,
+            158,
+            97,
+            186
+          ],
+          "scale": [
+            1,
+            1
+          ]
+        },
+        "input_overlay": "off",
+        "cursor_moves": 32,
+        "cursor_roundtrips": 8,
+        "cursor_damage": "PASS exact restoration and no changes outside old/new footprints",
+        "overlay_click_pixels": "unchanged without HUD",
+        "scaled_cursor_moves": 16,
+        "scaled_cursor_roundtrips": 4,
+        "native_scales": [
+          [
+            5,
+            4
+          ]
+        ],
+        "output_pixels": [
+          1024,
+          768
+        ],
+        "metrics": {
+          "status": "PASS",
+          "frames": 14,
+          "batches": 38,
+          "producer_dropped_at_observer_exit": 4,
+          "schema_rejections": 0,
+          "batch_gaps": 0,
+          "scope": "Authenticated progress and schema; loss snapshot at observer exit, not full-run sampling completeness"
+        },
+        "log_channel": "PASS authenticated ordered startup/backend records and reader close",
+        "observer_sha256": "b04ccc9c30841f197e5d5c3623664ffce0652098848460e72232989d437a398e",
+        "profiling": "PASS completion measurements, diagnostic declaration with zero samples, no verbose trace markers",
+        "desktop_trace": "TEST: PASS desktop-trace input= 10 source= 5 frame= 22 draws= 20 submits= 21 producer_dropped= 8 batch_gaps= 0 history_loss= 0 skipped_rows= 0 rejected_rows= 0 retirement=confirmed",
+        "trace_file": "TEST: PASS desktop-trace-file bytes= 20480 events= 78 flush=confirmed retirement=confirmed",
+        "menu_changed_pixels": [
+          104419,
+          104419,
+          104419
+        ],
+        "restored_cycles": 3,
+        "false_gpu_markers": 0,
+        "archive_file": {
+          "mode": "complete",
+          "bytes": 20480,
+          "sha256": "2c9c7c473078ca0138275844ba15173ef3ad4fd9c2201d7c13d7f9dfe7e6d01a",
+          "reader_exit": 0,
+          "scope": "Retrieved from stopped private VM; structural reader result, not power-loss durability"
+        }
+      },
+      "path": "/home/doc/git/compositor-test-artifacts/trace-archive-packaged-save-222/native",
+      "serial_sha256": "54281bc769e9f214d749e4af255c3319a4e2830000667293ecafa60256f652cc",
+      "reader_log_sha256": "ff15ac4bea9950550a4b476538220301344855649f90149902979dc8a4119fe1"
+    }
+  },
+  "builds": {
+    "interrupted": {
+      "status": "BUILD_PASS",
+      "executed": false,
+      "collector": "interrupted",
+      "scope": "Native link only with recorded runtime/font/startup seeds",
+      "binaries": {
+        "/home/doc/git/compositor-test-artifacts/trace-archive-interrupted-build-219/tree/tests/compositor/trace-native/build/desktop-trace-observer.app": "737b82f6884abba19fd55e19eb2c40c72f0202e1cc249da136510b0bbdcc0743",
+        "/home/doc/git/compositor-test-artifacts/trace-archive-interrupted-build-219/tree/tests/compositor/trace-native/build/client/trace-publication.app": "20f771307e5f8983e5e8a766095f0c6038511e29cb2ee88cdf7db4763c248c18",
+        "/home/doc/git/compositor-test-artifacts/trace-archive-interrupted-build-219/tree/tests/compositor/trace-native/summary/build/desktop-metrics-observer.app": "080030dc78eebbbcaebe5ebd69d28c1ff3b673fa2ca8e99f0a2273eb34dc7c1f"
+      }
+    },
+    "archive": {
+      "status": "BUILD_PASS",
+      "executed": false,
+      "collector": "archive",
+      "scope": "Native link only with recorded runtime/font/startup seeds",
+      "binaries": {
+        "/home/doc/git/compositor-test-artifacts/trace-archive-save-build-220/tree/tests/compositor/trace-native/build/desktop-trace-observer.app": "14503d1c5ec9a78d4ab905a7e0d58048811ac705526921e4f27cc016e868c844",
+        "/home/doc/git/compositor-test-artifacts/trace-archive-save-build-220/tree/tests/compositor/trace-native/build/client/trace-publication.app": "20f771307e5f8983e5e8a766095f0c6038511e29cb2ee88cdf7db4763c248c18",
+        "/home/doc/git/compositor-test-artifacts/trace-archive-save-build-220/tree/tests/compositor/trace-native/summary/build/desktop-metrics-observer.app": "080030dc78eebbbcaebe5ebd69d28c1ff3b673fa2ca8e99f0a2273eb34dc7c1f"
+      }
+    }
+  },
+  "hosted_reader_sha256": "470e151a9f433bee47bc4e21b437efdafef9d054e880ecad654f18218376f298",
+  "source_sha256": {
+    "build.py": "997bc057d97dce0808111edb09ece716c43df20b6cdda266816d6d9643ec36c9",
+    "run.py": "96faabe1e28fdfec5217d4ff3bad736fb054838abc7ab6105bb15b006a03cd3c",
+    "archive/main.adb": "0b5b066d8e36eed97c8b13c29af56bcf3ea8b92f2b55649b82148074863d1a97",
+    "archive/manifest.ccl": "b482a137c0b8eca15717165cdeb4fb950365268d9ea73cc2f47a23fe4c140204"
+  },
+  "limits": [
+    "File adapter, syscall behavior, clocks and grant operations are outside the archive SPARK proof",
+    "No native mid-operation write interruption, power-loss or observer-restart test",
+    "No on-device capture controls or CCL timeline/flame graph viewer",
+    "Hardware acceleration and physical input-to-photon validation remain open"
+  ]
+}

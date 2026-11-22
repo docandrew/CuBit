@@ -1,0 +1,21 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+--  Hosted tests of the Bible app's view (APP-005): translations read from
+--  the image files (the native app reads the cubit-bible asset package),
+--  the reading face registered from a font file, keys and clicks in, state
+--  and frames out.
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Bible_App_Tests is
+   for Source_Dirs use (".", "build/source", "../../userspace/apps/bible", "../../userspace/lib/bible",
+                        "../bible", "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display");
+   --  The native entry points are not hosted; the core tests' mains neither.
+   for Excluded_Source_Files use ("bible_main.adb", "bible_app.ads", "bible_app.adb", "bible_loading.ads",
+                                  "bible_assets.ads", "bible_assets.adb", "bible_tests.adb", "bible_bench.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("bible_app_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ");
+      for Switches ("client_glyph_blend.adb") use ("-O2", "-gnat2022", "-gnatwa");
+   end Compiler;
+end Bible_App_Tests;

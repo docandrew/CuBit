@@ -1,0 +1,86 @@
+{
+  "worker": 36209,
+  "harness_exit": 0,
+  "classification": "original reference semantic test failure; not compiler rejection or CuBit runtime result",
+  "source": "/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq",
+  "audit_sha256": "a3ae5378e7ee78341bffb497a6278a65a1e60c1796348aa743651be4bf398037",
+  "inputs_verified": 15,
+  "origins_verified": 12,
+  "artifacts_verified": 16,
+  "tools_verified": 4,
+  "stage_statuses": [
+    0,
+    0,
+    0
+  ],
+  "aml_bytes": 18714,
+  "aml_sha256": "7a3d4fa216eca024a697631451cb2f72a172e9cef8aa6dca56434c4134520f62",
+  "aml_header_valid": true,
+  "ordered_observations": [
+    [
+      "MN00",
+      1
+    ],
+    [
+      "ERRS",
+      4
+    ],
+    [
+      "MN00",
+      1
+    ],
+    [
+      "ERRS",
+      8
+    ]
+  ],
+  "ordered_ctst": [
+    [
+      "m130",
+      "PASS"
+    ],
+    [
+      "m132",
+      "PASS"
+    ],
+    [
+      "m133",
+      "FAIL"
+    ],
+    [
+      "m134",
+      "FAIL"
+    ],
+    [
+      "m136",
+      "PASS"
+    ],
+    [
+      "m130",
+      "PASS"
+    ],
+    [
+      "m132",
+      "PASS"
+    ],
+    [
+      "m133",
+      "FAIL"
+    ],
+    [
+      "m134",
+      "FAIL"
+    ],
+    [
+      "m136",
+      "PASS"
+    ]
+  ],
+  "semantic_pass": false,
+  "notes": [
+    "m133/m134 original reference argument Decrement rejected AE_AML_OPERAND_TYPE; upstream exception override AE_OK did not make tests pass.",
+    "Outstanding allocation diagnostics 0x1C/0x13 and final8 cache allocations preserved.",
+    "No source changes, suppression, retry, expectation rewrite, hosted run or runtime limit escalation.",
+    "Slot2 released."
+  ]
+}

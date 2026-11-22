@@ -1,0 +1,12 @@
+project Metric_Batch_Policy is
+ for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/runtime/gnat");
+ for Source_Files use
+  ("metric_batch_policy_tests.adb", "compositor_metric_batch_policy.ads", "compositor_metric_batch_policy.adb",
+   "compositor_elapsed.ads", "cubit.ads", "cubit-metric_records.ads", "cubit-metric_records.adb");
+ for Object_Dir use "build/metric-batch-policy/obj";
+ for Exec_Dir use "build/metric-batch-policy";
+ for Main use ("metric_batch_policy_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+ end Compiler;
+end Metric_Batch_Policy;

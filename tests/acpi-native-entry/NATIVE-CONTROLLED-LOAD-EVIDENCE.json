@@ -1,0 +1,1131 @@
+{
+  "checks": 4814,
+  "processes": 226,
+  "profiles": [
+    "checked",
+    "release"
+  ],
+  "portable": [
+    {
+      "path": "/home/doc/git/.acpi-proof-work/native-controlled-publication-VHuzku/candidate/tests/acpi-native-controlled-load/results/checked-B0KoF5/RESULT.json",
+      "mode": "checked",
+      "checks": 214,
+      "processes": 24,
+      "observations": [
+        {
+          "name": "normal",
+          "revision": "1",
+          "checks": 14
+        },
+        {
+          "name": "normal",
+          "revision": "2",
+          "checks": 14
+        },
+        {
+          "name": "reentry",
+          "revision": "1",
+          "checks": 16
+        },
+        {
+          "name": "reentry",
+          "revision": "2",
+          "checks": 16
+        },
+        {
+          "name": "default",
+          "revision": "1",
+          "checks": 4
+        },
+        {
+          "name": "default",
+          "revision": "2",
+          "checks": 4
+        },
+        {
+          "name": "info-denied",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "info-denied",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "info-exception",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "info-exception",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "not-ready",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "not-ready",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "describe-denied",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "describe-denied",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "clock-unavailable",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "clock-unavailable",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "early-deadline",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "early-deadline",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "copy-refused",
+          "revision": "1",
+          "checks": 8
+        },
+        {
+          "name": "copy-refused",
+          "revision": "2",
+          "checks": 8
+        },
+        {
+          "name": "module-exception",
+          "revision": "1",
+          "checks": 10
+        },
+        {
+          "name": "module-exception",
+          "revision": "2",
+          "checks": 10
+        },
+        {
+          "name": "late-deadline",
+          "revision": "1",
+          "checks": 13
+        },
+        {
+          "name": "late-deadline",
+          "revision": "2",
+          "checks": 13
+        }
+      ],
+      "oracles": [],
+      "source_files": 263,
+      "artifacts": [
+        {
+          "file": "bin/native_controlled_tests",
+          "sha256": "d56534575ec6179f1f80df4183bb1376205932075f2c593d0c29430d842c40c1"
+        },
+        {
+          "file": "obj/acpi_bootstrap.ali",
+          "sha256": "64ae9209c7ac98532199cbdcb9665191211cf15b102455659b255bc246d5a30c"
+        },
+        {
+          "file": "obj/acpi_clock_source.ali",
+          "sha256": "425fccbe63c1d7c8a105d555bf89836f2be54b607eda1519f7d1123811bf0d59"
+        },
+        {
+          "file": "obj/acpi_device_initialization.ali",
+          "sha256": "f5dbb6b616e04722ce216c706939ee7e86d028451bce4ac2cb7db0850b7ffb9f"
+        },
+        {
+          "file": "obj/acpi_device_policy.ali",
+          "sha256": "b15daa855ffbe13e31fd04feb3368bf808c32567d953afbdc447f7bb7b7888d1"
+        },
+        {
+          "file": "obj/acpi_fadt-transactions.ali",
+          "sha256": "9ab8271c2075dba2f2ed1af6242fcaa9bbf3eb3b512190107db665f6c0b3fb1c"
+        },
+        {
+          "file": "obj/acpi_fadt.ali",
+          "sha256": "4829238105e1cd5a79d77c6ee17bec854c07dd4a41e38a75101a898afd2bb798"
+        },
+        {
+          "file": "obj/acpi_fatal_diagnostics.ali",
+          "sha256": "15eb2c350d12d7e813b2a5c85e4e2f135147a5b1fc691e57e3a0bbc017dec9a9"
+        },
+        {
+          "file": "obj/acpi_module_diagnostics.ali",
+          "sha256": "118baad040bcf15057c2dc426a64d4c7ff0b2346c71c6128fc0a2aeecd562ef6"
+        },
+        {
+          "file": "obj/acpi_native_snapshot_load-with_driver.ali",
+          "sha256": "e125485ac2f788f6eee76bf97dfae961c15cb0da233c3133c893a4cdc1e2deda"
+        },
+        {
+          "file": "obj/acpi_native_snapshot_load.ali",
+          "sha256": "85388fb427dbce2a341ab7477a210e3e549769f919078012307350a2003fa5a4"
+        },
+        {
+          "file": "obj/acpi_native_snapshot_read.ali",
+          "sha256": "130cf364af3d34f0d010121ec6ee174cd20f99497200e265a3152ab5e057344b"
+        },
+        {
+          "file": "obj/acpi_notification_receipts.ali",
+          "sha256": "404761b2548c9139a2d704ca970ba5d9b7aa0bcdfea450dd2c2fc8b9311a7e80"
+        },
+        {
+          "file": "obj/acpi_requests-with_driver.ali",
+          "sha256": "217ab5f15d1cb4cde69fc33564ede83feac0e37c4078267b479144cceb6a24cb"
+        },
+        {
+          "file": "obj/acpi_requests.ali",
+          "sha256": "9c9145e8f36c761a6ca321fae42f3a49dff87fa8a52e1346bf3577d3bef8e74f"
+        },
+        {
+          "file": "obj/acpi_resource_names.ali",
+          "sha256": "5aba2fc5651d55ee4cc0524da74709b004ee6fffe687923f6901d728c00a77e1"
+        },
+        {
+          "file": "obj/acpi_service.ali",
+          "sha256": "c2851712e33ad2329283bc27193aae2ba0c74847bd306c4924101033416013cb"
+        },
+        {
+          "file": "obj/acpi_service_core.ali",
+          "sha256": "1b883f14d49b7c1b63f2800c0cceae136fbfc596b42e0c47427f40639f219f95"
+        },
+        {
+          "file": "obj/acpi_snapshot_reader.ali",
+          "sha256": "f5f8d15b471f8c3539d47d148dd921433f4af4e8a6ebb636c81b203191c9749b"
+        },
+        {
+          "file": "obj/acpi_snapshot_startup-with_driver.ali",
+          "sha256": "90ccee59f4da174d0072e5eadd25843f7c8966b449fbfc06ee49762abc4d42bf"
+        },
+        {
+          "file": "obj/acpi_snapshot_startup.ali",
+          "sha256": "13f229ad997c8d28127a3c6b283e2d06226577d35ef96816e490ec00d281c424"
+        },
+        {
+          "file": "obj/aml_bcd.ali",
+          "sha256": "e4d1424c1c99b22c8543ebb5e5dc4371d28c378101533c029e5a880e1081a923"
+        },
+        {
+          "file": "obj/aml_buffer_bits.ali",
+          "sha256": "5561a19dd91eb47f73336108676d958d93ca6315cb46a89406cbbc33d5cd1388"
+        },
+        {
+          "file": "obj/aml_buffer_layouts.ali",
+          "sha256": "aa7622f19f98167d04bf12320d232db19d7e36db92d938e28dcfada7b185fdc1"
+        },
+        {
+          "file": "obj/aml_byte_sources.ali",
+          "sha256": "d999e493dbd820e9120248b92e894f4f7044cc29571c07007ccc5ebf5f152674"
+        },
+        {
+          "file": "obj/aml_clock.ali",
+          "sha256": "f789af0c277f4c797431936ee65b39b5483a67d150179b338260fd91e75b8f87"
+        },
+        {
+          "file": "obj/aml_coercions-strings.ali",
+          "sha256": "e99e3e94eb7815e2d29d9148d095d3b55fbbd8240b250afe3efce06224f62a21"
+        },
+        {
+          "file": "obj/aml_coercions.ali",
+          "sha256": "c1fc176c92d1a3682da4d56b8a4a541eb5d4f1e1d272f904afeadca65818073b"
+        },
+        {
+          "file": "obj/aml_concatenation.ali",
+          "sha256": "fa1f4fe66dc11308d9cbc8a8fa706e0dff95860611e71b7cd70c8356ce092d07"
+        },
+        {
+          "file": "obj/aml_container_headers.ali",
+          "sha256": "e4a052723468c68ad4e81b6e88f26be157d231ba6d64ffbb15937ca5e9fb3bef"
+        },
+        {
+          "file": "obj/aml_data.ali",
+          "sha256": "f492c3de866f05b4d3d05dd0158c092c165f3ed830201f11c01cfbeff5716d93"
+        },
+        {
+          "file": "obj/aml_declaration_contexts.ali",
+          "sha256": "f1cfd5abc31e34f56cf9aa1c773dd2866c331342f177edb82d2b8ca0d30e1deb"
+        },
+        {
+          "file": "obj/aml_decode.ali",
+          "sha256": "00c6b9527659818f04945e7fbb4b1f206698319fe33ca826fa4e909fa25579ee"
+        },
+        {
+          "file": "obj/aml_definition_loads.ali",
+          "sha256": "3b01c0998c769e8351b9a315f99924da6c06720d77694d529f5f3ebffc63cd1b"
+        },
+        {
+          "file": "obj/aml_delays.ali",
+          "sha256": "dab5642e6e95a3b896820a5f766673d8f96f2c84e0863f7dbf4860335c97ccfc"
+        },
+        {
+          "file": "obj/aml_events.ali",
+          "sha256": "463e6f81bcafbac834027359391444645612787a744e591c88e18369d493788a"
+        },
+        {
+          "file": "obj/aml_execute-scalar_transport.ali",
+          "sha256": "c41674bac9fab21ea0cb50e51f9c6b77bdfead2a663c838352a470ca1208a435"
+        },
+        {
+          "file": "obj/aml_execute.ali",
+          "sha256": "7b02ffd7858f0b656d649e77c40bc0e5ca052340b0773ad3cc003e3e8eebee27"
+        },
+        {
+          "file": "obj/aml_execution_limits.ali",
+          "sha256": "7db26fcb210871f401b5f280f5df8ecc61b976024e363a61b53c2f93589df0ec"
+        },
+        {
+          "file": "obj/aml_explicit_formatting.ali",
+          "sha256": "847294297b016870e05f5f438de0ce7e56c07b01605ba81ad450b234b97948fe"
+        },
+        {
+          "file": "obj/aml_fatal.ali",
+          "sha256": "3632ca08e6bc438b24db73ddd9a0dbb39a75f6015a3d9f9e878d5ab33bc174ff"
+        },
+        {
+          "file": "obj/aml_field_access.ali",
+          "sha256": "9b7dbb0b45a01a83206a00148c5aa45cd23ba0c2e470688765056dc66ed69f59"
+        },
+        {
+          "file": "obj/aml_field_data.ali",
+          "sha256": "a3825f498e0ba9401f8693d498866c2d26538a486cb71f74fb5aa762ceca052d"
+        },
+        {
+          "file": "obj/aml_field_datums.ali",
+          "sha256": "52aacae3e22c07fbcd968100fd02b7a182ea72f0d910191e7e21f9002eeaf250"
+        },
+        {
+          "file": "obj/aml_field_layout.ali",
+          "sha256": "08bdbfc361e303229111a2073caffbeed638b9a682d1d7631a75918ccf9101ce"
+        },
+        {
+          "file": "obj/aml_field_plans.ali",
+          "sha256": "fc112d588945522fb2333f23c28a07cfe3ba6b03349292f974ad32f2de42b78d"
+        },
+        {
+          "file": "obj/aml_field_targets.ali",
+          "sha256": "d7c625284b7906c431987213dc608cff4237a194f1100d1ed4e69bd46b284c00"
+        },
+        {
+          "file": "obj/aml_fields.ali",
+          "sha256": "bd8fcb9b8b46a549e9c0200131c4a8466725f7d19a012743e90f14e06380690a"
+        },
+        {
+          "file": "obj/aml_frame_handles.ali",
+          "sha256": "62607e6e8b60934235978a32c204c0fa2d6b3ea044a26f3e27d6a2c322f37981"
+        },
+        {
+          "file": "obj/aml_frame_roots.ali",
+          "sha256": "76b75841c795eb485de0598817d1c52514031486490f7da5fa3f3ca0f6e3dd21"
+        },
+        {
+          "file": "obj/aml_identity-issuer.ali",
+          "sha256": "4f7a9b4c0cad9f11501ec86341cb5f02862f8e4d04b35bbd64eaad1b59122033"
+        },
+        {
+          "file": "obj/aml_identity.ali",
+          "sha256": "bcb6058e76d3ab01071122f66547bbce310c67e30b9a902d95bdb1dcbe0d4324"
+        },
+        {
+          "file": "obj/aml_index_handles.ali",
+          "sha256": "b5914b6c0c74bda9b6f45bdf32f8aed8798ce9a506d24af08d4c8f5fbebd2d43"
+        },
+        {
+          "file": "obj/aml_integers.ali",
+          "sha256": "b463513b19405fae02635185b51072c9032bb6f34c4b6a87a3c05a04a9e060ce"
+        },
+        {
+          "file": "obj/aml_interface_policy.ali",
+          "sha256": "0c618c0c8b6cba41dd065662bae862f73afbfefa8ef8ec45d15c0bfbc0c8e35f"
+        },
+        {
+          "file": "obj/aml_logic.ali",
+          "sha256": "db98ee43c8efadd67a6bd2432c81d14630d622b809b2c159c53e528b4c4308df"
+        },
+        {
+          "file": "obj/aml_metadata_kinds.ali",
+          "sha256": "aed6f1d395446a9d237bfc9ba2f6b56674c0acfa16ea5cb79049a0a2c53d7f97"
+        },
+        {
+          "file": "obj/aml_mixed_comparison.ali",
+          "sha256": "fb600e8ba3deb002a54ce4e80d147297ddd4dea9668e8c3b9b04bcf347a76adb"
+        },
+        {
+          "file": "obj/aml_module_frames.ali",
+          "sha256": "cafa1ed03ce3937ff0f9d4466c146e8ebd28fd2533b9368bb7ba64d0ea2a16e3"
+        },
+        {
+          "file": "obj/aml_mutex_invocations.ali",
+          "sha256": "14612fbfd52a59cbe8f6f1f203ba58c8ba79587286534ce52189c1381dee9a27"
+        },
+        {
+          "file": "obj/aml_mutexes.ali",
+          "sha256": "9b0b39a91bc1ccea39a48a232008e139496c34df250c17a95ac3ecc62b81f8e9"
+        },
+        {
+          "file": "obj/aml_names.ali",
+          "sha256": "dd21a1c5c384af6d058c603609b178fbce1bd63c2ec693c1f1cd8470f9b4788c"
+        },
+        {
+          "file": "obj/aml_namespace.ali",
+          "sha256": "733ce77fd67858358a99afe93611a11db0ff588889b3a5bb4d95aacf4de0ff7c"
+        },
+        {
+          "file": "obj/aml_object_identifiers.ali",
+          "sha256": "98960109d79504f10d8ebefd13b73b5b4a67c5521eed98cb7ef80bef9e6cdbeb"
+        },
+        {
+          "file": "obj/aml_objects-byte_references.ali",
+          "sha256": "ad5cb62df0c69bfef799086bba2fdfc4997281bdc431c1ef3014184e2c59af45"
+        },
+        {
+          "file": "obj/aml_objects-copies.ali",
+          "sha256": "247afbba2caf77927925d0ac298080206da7e6c75026c33e306adcce97c770af"
+        },
+        {
+          "file": "obj/aml_objects-package_references.ali",
+          "sha256": "6078e277779d9c6db08a746d050e4e015a4fdc9908269bf8123ea1b559eeb2c3"
+        },
+        {
+          "file": "obj/aml_objects-reachability.ali",
+          "sha256": "82972860d0fc543b5e86a03971d11a114862fd909b2463278d92765f0cff236d"
+        },
+        {
+          "file": "obj/aml_objects-reclamation.ali",
+          "sha256": "b8e9c11474aa56b6e571fe057dd000d3726581410db81ee86d665cba90f827f3"
+        },
+        {
+          "file": "obj/aml_objects-root_snapshots.ali",
+          "sha256": "52dafafddc2d22f9d536f47ffbc7747f2cb5508cd808b3336b928ba53cf19b6b"
+        },
+        {
+          "file": "obj/aml_objects.ali",
+          "sha256": "11ffd123004796ef2c7191a1d9b14a6c2b48107cf7a3ee1c1ece634f42610f4a"
+        },
+        {
+          "file": "obj/aml_pending_members.ali",
+          "sha256": "0f1b81818af09a1e84e9415627bfb71787e4cfadc88935778976d0ff3f67c433"
+        },
+        {
+          "file": "obj/aml_persistent_owner_graph.ali",
+          "sha256": "cf26d56a2b66ebe9e190797954e7bf7f206df6b2ef5020a20e66343593c9e8f0"
+        },
+        {
+          "file": "obj/aml_reference_frames.ali",
+          "sha256": "aa3fd4f50f37fd69d15b8eb33bbf71aa2e447f4156dcb704648c0ac5b6f745d1"
+        },
+        {
+          "file": "obj/aml_references.ali",
+          "sha256": "00e3388428e2f780bb8e302b4eb51247c6ea71b84d65c98fa02b1eac7d52ea05"
+        },
+        {
+          "file": "obj/aml_resource_templates.ali",
+          "sha256": "ee68dfa5ffcbf7f497d8a47206ed0c0abfdccf25c3c341320f4c62cd48fcbb25"
+        },
+        {
+          "file": "obj/aml_retained_identities.ali",
+          "sha256": "3d86d31379452c2157c93ec42b806546c3d1e7044fe5d92bc22b0dd58e9ea0ea"
+        },
+        {
+          "file": "obj/aml_retained_roots.ali",
+          "sha256": "9b429b6510a475f322cd3c615a3d3189b53352b06f7136b7c17b6f27c622de4d"
+        },
+        {
+          "file": "obj/aml_root_slots.ali",
+          "sha256": "c5ae0895729869bc6c854cf0af9556209d9dd063681e1bcfe163a249f5c7f7a7"
+        },
+        {
+          "file": "obj/aml_scalar_ledger.ali",
+          "sha256": "606e210d05a884b2ac1546edc09a92294bba61a74313ae3a0487cf1bbefed65e"
+        },
+        {
+          "file": "obj/aml_simple_targets.ali",
+          "sha256": "77ea98f00e0ce9bc8f9cd918220897cdb7d8b9138bdd6c6de469957f78dc28ac"
+        },
+        {
+          "file": "obj/aml_slices.ali",
+          "sha256": "48ac61d8262171fc36ebef6d4865ff9691c9e1bcacad252dc31d6f92cfc26408"
+        },
+        {
+          "file": "obj/aml_table_backing.ali",
+          "sha256": "443edd702b984a35003f720de61562f5f2d86f72cac472b92501e8c461309bc7"
+        },
+        {
+          "file": "obj/aml_table_code.ali",
+          "sha256": "a9a0030ce16cac2ecb8896013dfc233f506f896bc79e4cf2ee3654ce38303fd1"
+        },
+        {
+          "file": "obj/b__native_controlled_tests.ali",
+          "sha256": "bf4b3a1b535a611603d76199db35c49def6c1f2ab3ff42fb2c53c6702e830238"
+        },
+        {
+          "file": "obj/cubit-firmware_snapshot.ali",
+          "sha256": "b177195f24ca0c4f90cb78760492560e1f9248496d41ca8c9cedb9db561983b9"
+        },
+        {
+          "file": "obj/cubit.ali",
+          "sha256": "355720bc6ef30735011a825091f23b5604deecdb619395f48c64e64113454f64"
+        },
+        {
+          "file": "obj/firmware_snapshot_abi.ali",
+          "sha256": "e697bda2a46e5524119ccc303d8a8e63305f7079040fc0c3baa6a749c23972cf"
+        },
+        {
+          "file": "obj/firmware_tables-catalog.ali",
+          "sha256": "4882e4498a140755a14978b8f3ba0da57e8a5b43a48033360742fbe507a8c5fc"
+        },
+        {
+          "file": "obj/firmware_tables-copies.ali",
+          "sha256": "19d3e9c728208cb991f7525603b0fad36dd5bf77a145980d65485288b5d3c74c"
+        },
+        {
+          "file": "obj/firmware_tables-dmar.ali",
+          "sha256": "793ba2f4372804b40766abbc1a86331a37b61698e04ba213da85239f28bf34a8"
+        },
+        {
+          "file": "obj/firmware_tables-identifiers.ali",
+          "sha256": "778b7154cd0de111ef3d6fc6b4958e8e0447b68aa81a547973da392433af6236"
+        },
+        {
+          "file": "obj/firmware_tables-madt.ali",
+          "sha256": "eaa6f430d5d9884c1091f9960c34150eb7d45626a5ee80422f3b673024d37477"
+        },
+        {
+          "file": "obj/firmware_tables-mcfg.ali",
+          "sha256": "b9655ef7cc420f086ff0e93533aa68509f5bd966ac77fb74805be561740c4cf9"
+        },
+        {
+          "file": "obj/firmware_tables-slit.ali",
+          "sha256": "803ade7823a33a2b231412f2a07a35a21fedcf38d0e868b9c1da0d988138fbed"
+        },
+        {
+          "file": "obj/firmware_tables-snapshots.ali",
+          "sha256": "24b3fd15648bb97aaa124259c5659e50faeea42245521fa4b32dbe2e8a4997ac"
+        },
+        {
+          "file": "obj/firmware_tables-srat.ali",
+          "sha256": "43757468b422d28f66904ee604712ba7e2f3a24aea24c7d6ab2aa6b78a2c64f9"
+        },
+        {
+          "file": "obj/firmware_tables.ali",
+          "sha256": "ab557cf8ce54794e269a96ede3d002c012624073baabe76fd1ce2e147c52aa65"
+        },
+        {
+          "file": "obj/native_controlled_tests.ali",
+          "sha256": "731f027730253588a47aaf403c0c309bd9b7a40f17c594fd8fc081b34de68448"
+        },
+        {
+          "file": "obj/native_test_control.ali",
+          "sha256": "e20aa32b2f9a6b543c3d42390953ff9954807a216e049760feb3a796b0eab1a2"
+        },
+        {
+          "file": "obj/root_test_support.ali",
+          "sha256": "c592e70ce201657f2f186f41ff8e9c76aea21ec950de2372eef225c5746da39b"
+        },
+        {
+          "file": "obj/startup.ali",
+          "sha256": "b19b61c7dbbc2d0c68bd6cfb5cdb31771a41da476f1325bb8d8b1e597af310e4"
+        }
+      ],
+      "new_proof": false,
+      "native_executed": false,
+      "hardware_validated": false,
+      "scope": "Actual native reader/default/controlled facade and AML startup; modeled kernel authority/Startup/clock/EC/region barrier. No native syscall, provisioning, hardware or new proof."
+    },
+    {
+      "path": "/home/doc/git/.acpi-proof-work/native-controlled-publication-VHuzku/candidate/tests/acpi-native-controlled-load/results/release-s7NNas/RESULT.json",
+      "mode": "release",
+      "checks": 214,
+      "processes": 24,
+      "observations": [
+        {
+          "name": "normal",
+          "revision": "1",
+          "checks": 14
+        },
+        {
+          "name": "normal",
+          "revision": "2",
+          "checks": 14
+        },
+        {
+          "name": "reentry",
+          "revision": "1",
+          "checks": 16
+        },
+        {
+          "name": "reentry",
+          "revision": "2",
+          "checks": 16
+        },
+        {
+          "name": "default",
+          "revision": "1",
+          "checks": 4
+        },
+        {
+          "name": "default",
+          "revision": "2",
+          "checks": 4
+        },
+        {
+          "name": "info-denied",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "info-denied",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "info-exception",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "info-exception",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "not-ready",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "not-ready",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "describe-denied",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "describe-denied",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "clock-unavailable",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "clock-unavailable",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "early-deadline",
+          "revision": "1",
+          "checks": 7
+        },
+        {
+          "name": "early-deadline",
+          "revision": "2",
+          "checks": 7
+        },
+        {
+          "name": "copy-refused",
+          "revision": "1",
+          "checks": 8
+        },
+        {
+          "name": "copy-refused",
+          "revision": "2",
+          "checks": 8
+        },
+        {
+          "name": "module-exception",
+          "revision": "1",
+          "checks": 10
+        },
+        {
+          "name": "module-exception",
+          "revision": "2",
+          "checks": 10
+        },
+        {
+          "name": "late-deadline",
+          "revision": "1",
+          "checks": 13
+        },
+        {
+          "name": "late-deadline",
+          "revision": "2",
+          "checks": 13
+        }
+      ],
+      "oracles": [],
+      "source_files": 263,
+      "artifacts": [
+        {
+          "file": "bin/native_controlled_tests",
+          "sha256": "c553a1bd4017ef71028e7952ef5cbcb2df36b115ff48eaa47b00e90d99a84466"
+        },
+        {
+          "file": "obj/acpi_bootstrap.ali",
+          "sha256": "fa0af09c167df496682dabfaf96b37d2048ac13b21b63a9a6a1ced4e62443506"
+        },
+        {
+          "file": "obj/acpi_clock_source.ali",
+          "sha256": "fbeff44e7154f1dcddd890dfabd33cfffd8f3f81b2cfea48228d9120f9b07aa6"
+        },
+        {
+          "file": "obj/acpi_device_initialization.ali",
+          "sha256": "0d3869c74670871dee1e6a721720336005db3098342d82a82226381d812b0292"
+        },
+        {
+          "file": "obj/acpi_device_policy.ali",
+          "sha256": "96da3aac0f1a3495bbe7afc7c37b1336c13520ad9bd97ddd3ea6bf057521b45b"
+        },
+        {
+          "file": "obj/acpi_fadt-transactions.ali",
+          "sha256": "e004beeb3a6b7cff371d34b86ac4f4f4f0d0a43da6144148e80d1a12724d2a3c"
+        },
+        {
+          "file": "obj/acpi_fadt.ali",
+          "sha256": "a6d8e2356355bdb7ba8d3c5713e890bb3a7a6d80a0a53203d34de4cce44a92c2"
+        },
+        {
+          "file": "obj/acpi_fatal_diagnostics.ali",
+          "sha256": "a14f5a1384c03e9251a9cd622a0b91730049de2e4ab9aa6f58d44fc594306adf"
+        },
+        {
+          "file": "obj/acpi_module_diagnostics.ali",
+          "sha256": "def63497798e8aabb63836eda67c3e2d9a58b2c45c295bea6bbee17d7e1cef92"
+        },
+        {
+          "file": "obj/acpi_native_snapshot_load-with_driver.ali",
+          "sha256": "1347d50a5a916c07d7284f7a51a8d089aae0b4527568a65fcdfe2fd714cd67ff"
+        },
+        {
+          "file": "obj/acpi_native_snapshot_load.ali",
+          "sha256": "89f5b92a7bbb0b7487cd58d4138856e60276111c7eeab30eba36221a06d934b0"
+        },
+        {
+          "file": "obj/acpi_native_snapshot_read.ali",
+          "sha256": "af2a49bfb5d1d10915d75833d08cac03341e4a45b2f9beb86348c9229f2d5482"
+        },
+        {
+          "file": "obj/acpi_notification_receipts.ali",
+          "sha256": "bd246ecc2777cd1d5bb8fb8e9aa26416032d632c59c19a1c5334ca68ea323eb2"
+        },
+        {
+          "file": "obj/acpi_requests-with_driver.ali",
+          "sha256": "9c206cbf0ecd7f055aee25955b27175770b433e977ad9d50536747da66855a41"
+        },
+        {
+          "file": "obj/acpi_requests.ali",
+          "sha256": "b3d19dae6c02f2f6481d48082e7a79038696bc04f5e36d93ae822ddcfc76d632"
+        },
+        {
+          "file": "obj/acpi_resource_names.ali",
+          "sha256": "25fff0367ac56b9e4b3cc17b026c1839b7674c98d08de0f955a152354ae5d3b4"
+        },
+        {
+          "file": "obj/acpi_service.ali",
+          "sha256": "7cdcd2e2dc7e7c55cd61bddf9ecb513401ed84463baeec4489a4b39f54be71e8"
+        },
+        {
+          "file": "obj/acpi_service_core.ali",
+          "sha256": "5e9cccf84d37a228708d5ab9fd82538015207ffb1768e8d28fb9ba5d547fdda7"
+        },
+        {
+          "file": "obj/acpi_snapshot_reader.ali",
+          "sha256": "5529573fb90e0327a06d3313f54e9629d447b2977f9088d431958c7c988e6da4"
+        },
+        {
+          "file": "obj/acpi_snapshot_startup-with_driver.ali",
+          "sha256": "3f5a369f6e9f5e9ebc4595d3f12aebbe23591eef4ae24ca00db63ea1deeaf48f"
+        },
+        {
+          "file": "obj/acpi_snapshot_startup.ali",
+          "sha256": "347f0ff0364f64ad4c9d4bc094b44103cfa4007d8d2a1ac8141dda98f21325e4"
+        },
+        {
+          "file": "obj/aml_bcd.ali",
+          "sha256": "4665bc68385d05fefcc0c26f7fa2a139d6099682e58b4102e09fb1fd57a5bd45"
+        },
+        {
+          "file": "obj/aml_buffer_bits.ali",
+          "sha256": "5a38df8e11162cdfc4ddaeed86788954df6f56d5b87736e005f3390bf020c666"
+        },
+        {
+          "file": "obj/aml_buffer_layouts.ali",
+          "sha256": "1204a8d4d20e9ba7843340572e1bf3bdd88676680542110e52091f1a6083a469"
+        },
+        {
+          "file": "obj/aml_byte_sources.ali",
+          "sha256": "e1855f67b43b5ea0821bbe97d331f95b1605e381036b48b973145863060a6328"
+        },
+        {
+          "file": "obj/aml_clock.ali",
+          "sha256": "da55d660141de61c66ba0997f99ae70cf958b493804319d95a1ac097b5d0bdcb"
+        },
+        {
+          "file": "obj/aml_coercions-strings.ali",
+          "sha256": "a34e2698b2e54615a0e0f45c561ea9177a2ea57e9b243aeeaada554c9d86da6a"
+        },
+        {
+          "file": "obj/aml_coercions.ali",
+          "sha256": "bd99fb5083c8ae88866cefec328958b7680277d70342494970cdfe9cb5c5acd6"
+        },
+        {
+          "file": "obj/aml_concatenation.ali",
+          "sha256": "2d5a044ee03ebd93148cb0321ea2c1a4d3faff5a08f3f3932d8273b5325aa40a"
+        },
+        {
+          "file": "obj/aml_container_headers.ali",
+          "sha256": "640dbbe63e8579ca1a85ae8d7aea02762c8392cb5949eb833eb5a10de4176054"
+        },
+        {
+          "file": "obj/aml_data.ali",
+          "sha256": "9c2fa2cf463c912e070ce2117c406fee8616c9cb8c7abdaf35392ad234ce8c8c"
+        },
+        {
+          "file": "obj/aml_declaration_contexts.ali",
+          "sha256": "c82858cfd1c367a40c76db35b49182786e20c8afc49684b4afb6ead68df30fd3"
+        },
+        {
+          "file": "obj/aml_decode.ali",
+          "sha256": "cc19b208932ac7604598e12d35362755960e687ae0015e639be3814f0f58fcb9"
+        },
+        {
+          "file": "obj/aml_definition_loads.ali",
+          "sha256": "37719481b56a1a5a32f7fc9dc8d5b6d44666e3da58e009c0a4ce90485c6cd031"
+        },
+        {
+          "file": "obj/aml_delays.ali",
+          "sha256": "0e84ccb3d1dd2ade7350a18605922d711695104e5f4c324dd89d77a3cb8302db"
+        },
+        {
+          "file": "obj/aml_events.ali",
+          "sha256": "0b70cbabba61b171913bb1c2d579da6fd09d96b608baa520a2b50c63cfc429ff"
+        },
+        {
+          "file": "obj/aml_execute-scalar_transport.ali",
+          "sha256": "a6d4fe41abbd05cb412061cdfdf7bcfc55645c2f66e1eb951a2147ebe8844d9b"
+        },
+        {
+          "file": "obj/aml_execute.ali",
+          "sha256": "cfd9e72a18d7bf2d172a5af6eaa483fda4ba9a17ea59bb72924ddd558e966d61"
+        },
+        {
+          "file": "obj/aml_execution_limits.ali",
+          "sha256": "10e417d0754eb175d339e52d5774f030526e26bcd4595c4b20170638b473662a"
+        },
+        {
+          "file": "obj/aml_explicit_formatting.ali",
+          "sha256": "c6f6d855abe26e999369fcd1d767aa155c3dc90c7c2a5625c1fc7cce1c6cd0c9"
+        },
+        {
+          "file": "obj/aml_fatal.ali",
+          "sha256": "c630b8f311bc655b016ee64070a9bbb7a6c33ec78ec28e4b90f66da542ab2c75"
+        },
+        {
+          "file": "obj/aml_field_access.ali",
+          "sha256": "5f702c11c93d91deb883437d337a2d4a56c3f6dbca5cd823bb3c1c50fb05d4ca"
+        },
+        {
+          "file": "obj/aml_field_data.ali",
+          "sha256": "6069c7c23c334dc32aae29724e5e359c320976d43812b8b0d275fd72bdfc71ee"
+        },
+        {
+          "file": "obj/aml_field_datums.ali",
+          "sha256": "b4721f82f00bf107850079750776ceaba41f45bb99db7e770629ef62981fa571"
+        },
+        {
+          "file": "obj/aml_field_layout.ali",
+          "sha256": "9d85c123d6012ba4caa413e9db2e402bda047d8a8771c5cdcfcd7243fc25c878"
+        },
+        {
+          "file": "obj/aml_field_plans.ali",
+          "sha256": "8d7cbe152e5d5066a1980067459cf4196d0eebd157e1d5d3a5cd4dda8502fec6"
+        },
+        {
+          "file": "obj/aml_field_targets.ali",
+          "sha256": "4be5e088b824840b5de0f4dd20a4f75198f63d314cb51300922c4e31547b0137"
+        },
+        {
+          "file": "obj/aml_fields.ali",
+          "sha256": "b8dc3342017e6c26d83c1ae0586880c462d2b36761c786fe355ec1222ad8000c"
+        },
+        {
+          "file": "obj/aml_frame_handles.ali",
+          "sha256": "4c7ac4dd413308a341e8d272fccb44b2e7599efab12344431ec5ad13eba53e09"
+        },
+        {
+          "file": "obj/aml_frame_roots.ali",
+          "sha256": "69261d1b7b578747fdda96a3bb2cfd5da3057594bf376cb0e51a6d6938544dca"
+        },
+        {
+          "file": "obj/aml_identity-issuer.ali",
+          "sha256": "125a7a855f6b88bc0528690f24ed172878a6110d033fd505f8ac701601bcdb04"
+        },
+        {
+          "file": "obj/aml_identity.ali",
+          "sha256": "be8d9c2126b0dd1d6b5df6d5c61fcf852e082535a9934d920dfb979284142e9a"
+        },
+        {
+          "file": "obj/aml_index_handles.ali",
+          "sha256": "52058738cb143e2d933d5b8884d97fc2a220e2bc77d1863722390d338936a5cf"
+        },
+        {
+          "file": "obj/aml_integers.ali",
+          "sha256": "17654a049bcc8a68da4cf73b9261bd1bcd7c152d374635f1695a9b69431a2a56"
+        },
+        {
+          "file": "obj/aml_interface_policy.ali",
+          "sha256": "81dac2c929d210846229c22d64d5730f597190e28b389d82840e1d3dcb73b424"
+        },
+        {
+          "file": "obj/aml_logic.ali",
+          "sha256": "668b739c074eabe426ec5637c350f985ea525515760e2f02c7e96d06eb3ddd23"
+        },
+        {
+          "file": "obj/aml_metadata_kinds.ali",
+          "sha256": "39c1fb26feeb6fb011aa10bba197b1528269c4923bd3fd37b6843004044ef438"
+        },
+        {
+          "file": "obj/aml_mixed_comparison.ali",
+          "sha256": "a1c654a78ae534fca5433deacd2501a7e0a46ee9816aa9c5f867af4cb2801e51"
+        },
+        {
+          "file": "obj/aml_module_frames.ali",
+          "sha256": "4e9a065a423ba6540adab6c2e96db316888cb53d5798dfba4089da0354b0a9b4"
+        },
+        {
+          "file": "obj/aml_mutex_invocations.ali",
+          "sha256": "99624a6c604fa96573c483e53ef83bfa0f173336fc397006ef653c652edf6313"
+        },
+        {
+          "file": "obj/aml_mutexes.ali",
+          "sha256": "e9faa127e9fdde10dd32690a6412fe02a27f697b59a85f1fdd5913e7a477b27d"
+        },
+        {
+          "file": "obj/aml_names.ali",
+          "sha256": "d05a652fbb6784fa2ca0c9274c8f489659a81ff871f3466dab9904fe1c6e03e3"
+        },
+        {
+          "file": "obj/aml_namespace.ali",
+          "sha256": "141215fef78acc997b954f2079a6fd146336218efc80dd788356fc6cfe6f38e8"
+        },
+        {
+          "file": "obj/aml_object_identifiers.ali",
+          "sha256": "b14cb71788b20298a278ed79be50d0c5d1baeb81d8af9457465db9709fc034f6"
+        },
+        {
+          "file": "obj/aml_objects-byte_references.ali",
+          "sha256": "30242d5c2300736cfe1e33bf6e50551739b3813a25fd969307daa07d1e29f41b"
+        },
+        {
+          "file": "obj/aml_objects-copies.ali",
+          "sha256": "0e0dd939c4ae413d464163f4f6c59cd8c7389492c3bac0cce87527e08731ff0d"
+        },
+        {
+          "file": "obj/aml_objects-package_references.ali",
+          "sha256": "7c5dc8c17fcf98e472437ea15843231f167177fa60a93087e190139364f88b05"
+        },
+        {
+          "file": "obj/aml_objects-reachability.ali",
+          "sha256": "c21af065a145951c899cb6f7d6a0afe36402787e1677580c41c7507231197b4d"
+        },
+        {
+          "file": "obj/aml_objects-reclamation.ali",
+          "sha256": "e431a51f01834c0c848495265bb9dd9663ae195ec9816c2e4111e00ff253b8df"
+        },
+        {
+          "file": "obj/aml_objects-root_snapshots.ali",
+          "sha256": "7ddf7ae8f7139e89e8c9eb5d12571dc048bcefd8f42f6ed458c16ba3366213c2"
+        },
+        {
+          "file": "obj/aml_objects.ali",
+          "sha256": "01718a768a4d06210e4f0affeaa17738baee880a54cbab9286cf0eef1d1de56d"
+        },
+        {
+          "file": "obj/aml_pending_members.ali",
+          "sha256": "b6caea515688d3527a34ba2c72571a1f48acfd9e9ab328b228654f04fa70a95c"
+        },
+        {
+          "file": "obj/aml_persistent_owner_graph.ali",
+          "sha256": "e96aa32c881023b606c4f59d785c47d442bcad0cb5808d6e1c767380f64ca97e"
+        },
+        {
+          "file": "obj/aml_reference_frames.ali",
+          "sha256": "d070960ae0743cd43f7cade2b480720735f6a5b5bf878459527f4115d508b024"
+        },
+        {
+          "file": "obj/aml_references.ali",
+          "sha256": "22ca34f24e69b3ff561ce20db19cdd4fe21f5d923576e2cece481ba87d78e861"
+        },
+        {
+          "file": "obj/aml_resource_templates.ali",
+          "sha256": "11cd43e1629b472fe8a3fb1971207de806f6e9f0b5c4c32d7da48b97c0f11510"
+        },
+        {
+          "file": "obj/aml_retained_identities.ali",
+          "sha256": "8aeb1b171ce053771c19d3eaa08a55d50b3bd290f91837090aa18ee8ffec8aed"
+        },
+        {
+          "file": "obj/aml_retained_roots.ali",
+          "sha256": "708a3060f14f717a8ff1ccec7c18f5ff2c1c336dd8b8db207080b42f7dab3e6e"
+        },
+        {
+          "file": "obj/aml_root_slots.ali",
+          "sha256": "627ebe988a1034a45b439a140937ae26f79a06b2e2645b322a69b2f5e1e974bd"
+        },
+        {
+          "file": "obj/aml_scalar_ledger.ali",
+          "sha256": "130c51ef38924a601247edc50e6ff3cdb079c1ef12de875ac4bf2364aeffa8e3"
+        },
+        {
+          "file": "obj/aml_simple_targets.ali",
+          "sha256": "2865d0fcacf7538a1c43f39b334614e8d023422828f373e01387fddc9a7b4a3e"
+        },
+        {
+          "file": "obj/aml_slices.ali",
+          "sha256": "36f4c8004f2c529cda30a8801c3376b77a414d4cbda873d0da128fa0a9a1e115"
+        },
+        {
+          "file": "obj/aml_table_backing.ali",
+          "sha256": "88447e403c7b287d9711088cf9b3df234f03efb5e5d6c0081f71e80b7da628a0"
+        },
+        {
+          "file": "obj/aml_table_code.ali",
+          "sha256": "a29aa2dc0ab52901dd65266cb48f146cbea942761fbd23639d2944b4c522c1c8"
+        },
+        {
+          "file": "obj/b__native_controlled_tests.ali",
+          "sha256": "2436d74bb9aecc055c29a93137976019190e798ca4a1f23e30427c58de1a3fb2"
+        },
+        {
+          "file": "obj/cubit-firmware_snapshot.ali",
+          "sha256": "f2e37897d76a6ff5c8a5d283864ab1fd9fa8bbffc53f86ada7fce738ef91b1c0"
+        },
+        {
+          "file": "obj/cubit.ali",
+          "sha256": "fd7faa66580e35e9aecc5291931bd4d6ab6017602faa751133cbc0a44182167f"
+        },
+        {
+          "file": "obj/firmware_snapshot_abi.ali",
+          "sha256": "81b1dfa523a973d1a719e0540ba8a76e1ecc9316a6f8a5cc139f9bd7bc499577"
+        },
+        {
+          "file": "obj/firmware_tables-catalog.ali",
+          "sha256": "05aa609839a09c3b64a05348e56944bea024288a2f3116ced4c516884da1cf8b"
+        },
+        {
+          "file": "obj/firmware_tables-copies.ali",
+          "sha256": "f7bd6885ed9473f79b5b4a63f6e48b13788d9909bac551707efc8f1b2b868268"
+        },
+        {
+          "file": "obj/firmware_tables-dmar.ali",
+          "sha256": "2bfc126f771f9c6cb88c021a0c7be9676756abf1f84efdf3bd528a26cf8c9729"
+        },
+        {
+          "file": "obj/firmware_tables-identifiers.ali",
+          "sha256": "cea1dd481e455e1bdbc14d3fc4f14fd8740167f61a7ec0b18e9b6091a3630368"
+        },
+        {
+          "file": "obj/firmware_tables-madt.ali",
+          "sha256": "fd2ad68729f3ad184a43db19f37f37a8c1f75c85ec3dc5b7e18c9686dc01907f"
+        },
+        {
+          "file": "obj/firmware_tables-mcfg.ali",
+          "sha256": "9d3b1dcabc1e693424586e94b838be1ba4a1f6597b4b7969f5f64a40ad5382db"
+        },
+        {
+          "file": "obj/firmware_tables-slit.ali",
+          "sha256": "d01e23bf5af9e07ef39d091fb41a0b0b9678bbb5e20ea9f9e6e76b78ce09633f"
+        },
+        {
+          "file": "obj/firmware_tables-snapshots.ali",
+          "sha256": "67e5f219be05b17bcf4b4556f073d6b5cde46b8677edbe959838b0594c16f210"
+        },
+        {
+          "file": "obj/firmware_tables-srat.ali",
+          "sha256": "2ce433151bb74440cb2f39fa7c2af5200437c6139c94ba8ed555e2e127aeb317"
+        },
+        {
+          "file": "obj/firmware_tables.ali",
+          "sha256": "97cca44d2c9cfd1f97d40abab578dcb14bb8c356ae999c1de29fce4e3a5affb4"
+        },
+        {
+          "file": "obj/native_controlled_tests.ali",
+          "sha256": "de88de977a6024adcdd3ba3a5f8b4f22ac70b43f9fd734c0e6d9ba90a1e576d8"
+        },
+        {
+          "file": "obj/native_test_control.ali",
+          "sha256": "b7a9c58361f06f476e6cde9d98deb138862a560f52a6e714cb99cd244def7ce3"
+        },
+        {
+          "file": "obj/root_test_support.ali",
+          "sha256": "a11795b2578e2b5c49af7bc3fe0ccb85e65743159ea88f108bbc37499d2c47c1"
+        },
+        {
+          "file": "obj/startup.ali",
+          "sha256": "c24d990af6c370aea0c691dd4050cb29c1183eb70830a10a33e820ee8353f587"
+        }
+      ],
+      "new_proof": false,
+      "native_executed": false,
+      "hardware_validated": false,
+      "scope": "Actual native reader/default/controlled facade and AML startup; modeled kernel authority/Startup/clock/EC/region barrier. No native syscall, provisioning, hardware or new proof."
+    }
+  ],
+  "api": [
+    {
+      "path": "/home/doc/git/.acpi-proof-work/native-controlled-publication-VHuzku/candidate/tests/acpi-native-entry/results/checked-MDx1tySX",
+      "selections": 60,
+      "ALIs": 57,
+      "objects": 0
+    },
+    {
+      "path": "/home/doc/git/.acpi-proof-work/native-controlled-publication-VHuzku/candidate/tests/acpi-native-entry/results/release-KvxQFpWN",
+      "selections": 60,
+      "ALIs": 57,
+      "objects": 0
+    }
+  ],
+  "owner": [
+    {
+      "path": "/home/doc/git/.acpi-proof-work/native-controlled-publication-VHuzku/candidate/tests/acpi-native-startup/results/checked-xA6nvP8b",
+      "checks": 2193,
+      "processes": 89
+    },
+    {
+      "path": "/home/doc/git/.acpi-proof-work/native-controlled-publication-VHuzku/candidate/tests/acpi-native-startup/results/release-ay1gpAOn",
+      "checks": 2193,
+      "processes": 89
+    }
+  ],
+  "production_paths": 4,
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "scope": "Actual native snapshot reader/default/controlled facade with modeled kernel authority, generated Startup accessor, clock, EC and region barrier. Actual runtime declarations checked separately with -gnatc. Parent native Instance remains on default mode.",
+  "assumed": "Native Startup authentication, real syscall/clock behavior, independent provider authority, serialized lifetime/backing/region connection/recovery. These tests establish none of those native facts.",
+  "goal": "active and incomplete"
+}

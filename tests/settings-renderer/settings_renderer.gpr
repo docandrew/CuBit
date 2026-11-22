@@ -1,0 +1,29 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Settings_Renderer is
+   for Source_Dirs use (".", "../../userspace/services/desktop",
+     "../../userspace/lib/ui", "../../userspace/lib/theme", "../../userspace/lib/display",
+     "../../userspace/ccl/tools/ccl-ui-preview/host", "../../userspace/lib/compositor",
+     "../../userspace/lib/time/build/generated", "build/protocol", "../../userspace/ccl/src",
+     "../../userspace/lib/image", "../../userspace/ccl/runtime-shared");
+   for Source_Files use ("renderer_tests.adb", "wallpaper_trap.adb", "compositor_image_sampling.ads", "compositor_image_sampling.adb", "desktop_backdrop_style.ads", "desktop_wallpaper.ads",
+     "desktop_wallpaper_catalog.ads", "desktop_wallpaper_catalog.adb", "desktop_heap_objects.ads", "desktop_heap_objects.adb",
+     "ccl.ads", "ccl-asset_codecs.ads", "ccl-asset_codecs-wallpaper.ads", "ccl-asset_codecs-wallpaper.adb",
+     "cubit-canonical_readers.ads", "cubit-canonical_readers.adb", "cubit-launch_arguments.ads", "cubit-launch_arguments.adb",
+     "cubit-qoi.ads", "cubit-qoi.adb",
+     "desktop_settings.ads", "desktop_settings.adb", "cubit-output_modes.ads", "cubit-output_modes.adb", "cubit-output_discovery.ads", "cubit-output_discovery.adb", "cubit-desktop_protocol.ads", "cubit-desktop_protocol.adb", "cubit-grant_references.ads", "time_zones.ads", "time_zones.adb", "desktop_auto_scale.ads", "desktop_auto_scale.adb", "cubit.ads", "cubit-ui.ads", "cubit-ui.adb", "cubit-ui-boxes.ads", "cubit-ui-boxes.adb", "box_distribution.ads", "box_distribution.adb", "cubit-ui_masking.ads", "cubit-reading_faces.ads", "cubit-reading_faces.adb",
+     "cubit-ui-window_chrome.ads", "cubit-ui-window_chrome.adb", "icon_edge_choice.ads", "icon_edge_choice.adb", "text_fit.ads", "text_fit.adb",
+     "font8x16.ads", "cubit-fonts.ads", "glyph_pen.ads", "cubit-fonts.adb", "cubit-theme.ads",
+     "cubit-appearance.ads", "cubit-appearance.adb", "cubit-display_geometry.ads",
+     "cubit-display_geometry.adb", "cubit-display_layouts.ads", "cubit-display_layouts.adb",
+     "cubit-display_arrangement.ads", "cubit-display_arrangement.adb", "client_raster.ads", "client_raster.adb", "client_glyph_blend.ads", "client_glyph_blend.adb", "client_glyphs.ads", "client_glyphs.adb", "client_canvas_geometry.ads", "client_canvas_geometry.adb", "compositor_glyph_cache.ads", "compositor_glyph_cache.adb", "compositor_glyph_storage.ads", "compositor_glyph_storage.adb", "compositor_glyph_memory.ads", "compositor_glyph_memory.adb", "compositor_glyph_layout.ads", "cubit-ui_metrics.ads", "compositor_glyph_layout.adb", "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb", "compositor_glyph_software.ads", "glyph_gamma.ads", "compositor_glyph_software.adb", "compositor_glyph_placement.ads", "compositor_glyph_placement.adb", "compositor_affine.ads", "compositor_affine.adb", "compositor_identity.ads");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("renderer_tests.adb");
+   package Naming is
+      for Body ("Desktop_Wallpaper") use "wallpaper_trap.adb";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Settings_Renderer;

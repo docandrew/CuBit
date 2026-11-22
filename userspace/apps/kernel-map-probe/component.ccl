@@ -1,0 +1,2 @@
+(Component name => "kernel-map-probe" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

@@ -1,0 +1,11 @@
+--  SPARK proof of the GPU canvas bookkeeping and the gallery's pure units.
+project Prove is
+   for Languages use ("Ada");
+   for Source_Dirs use ("../../userspace/lib/ui", "../../userspace/apps/teapots");
+   for Excluded_Source_Files use ("main.adb", "teapot_gallery.adb", "teapot_renderer.adb",
+                                  "cubit-ui-gpu_canvas.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Prove;

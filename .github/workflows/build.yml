@@ -1,52 +1,158 @@
-name: Build
+name: Build and capability security
 
-on: 
-    push:
-        branches:
-            - master
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capability-security-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  capability-security:
+    name: Prove policy and boot adversarial guest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
 
-    build:
-        name: Build
-        runs-on: ubuntu-latest
-        container: jonfandrew/cubit-gnat:latest
-        steps:
+    steps:
+      - name: Check out repository
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-            - name: Check out repo
-              uses: actions/checkout@v2
+      - name: Install Nix
+        # cachix/install-nix-action v31.11.1
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
 
-            - name: Build CuBit
-              id: build_id
-              run: make cubit_kernel
+      - name: Build focused capability-security image
+        run: nix develop --command make -C kernel capability-security-image
 
-            - name: Build CuBit ISO
-              run: make iso
-           
-            - name: Upload iso
-              uses: actions/upload-artifact@v2
-              with:
-                name: cubit_iso
-                path: cubit_kernel.iso
+      - name: Prove capability policy core
+        run: nix develop --command make -C kernel prove-capability-policy
 
-            - name: Build Documents
-              run: make docs
+      - name: Prove capability derivation attenuation
+        run: nix develop --command make -C kernel prove-capability-derive
 
-            - name: Upload gnatdoc
-              uses: actions/upload-artifact@v2
-              with:
-                name: gnatdoc
-                path: build/gnatdoc
+      - name: Test and prove asynchronous request identity
+        run: nix develop --command make -C kernel test-ipc-request-ids prove-ipc-request-ids
 
-            - name: Build Cross-Referenced Code HTML
-              run: make html
+      - name: Build request and reply lifetime regressions
+        run: nix develop --command make -C kernel ipctest-server ipctest-client
 
-            - name: Upload html
-              uses: actions/upload-artifact@v2
-              with:
-                name: gnathtml
-                path: build/gnathtml
+      - name: Boot request and reply lifetime regressions
+        run: >-
+          nix develop --command tests/headless/run.sh
+          --test async-ipc
+          --disk kernel/capability_security_disk.img
+          --accel tcg,thread=multi
+          --cpus 2
+          --timeout 45
+          --serial "${{ runner.temp }}/cubit-ipc-lifetime-serial.log"
+          --pcap "${{ runner.temp }}/cubit-ipc-lifetime-net.pcap"
+          --keep-logs
 
-# TODO: Static-Site Generator w/ custom index.md containing links to the
-# gnatdoc and gnathtml pages as well as the README, figure out a gh-pages
-# deploy action that works for us.
+      - name: Check kernel SPARK boundaries
+        run: nix develop --command make -C kernel check-spark-boundaries
+
+      - name: Test and prove desktop and display codecs
+        run: nix develop --command make -C kernel test-desktop-protocol prove-desktop-protocol
+
+      - name: Test and prove click and presentation state machines
+        run: nix develop --command make -C kernel test-desktop-state prove-desktop-state
+
+      - name: Build display buffer lifetime regression
+        run: nix develop --command make -C kernel display display-check
+
+      - name: Boot display buffer lifetime regression
+        run: >-
+          nix develop --command tests/headless/run.sh
+          --test display-grants
+          --disk kernel/capability_security_disk.img
+          --accel tcg,thread=multi
+          --cpus 2
+          --timeout 45
+          --serial "${{ runner.temp }}/cubit-display-grants-serial.log"
+          --pcap "${{ runner.temp }}/cubit-display-grants-net.pcap"
+          --keep-logs
+
+      - name: Prove interrupt exclusion and context handoff state
+        run: nix develop --command make -C kernel prove-interrupt-state
+
+      - name: Prove spinlock ownership policy and exercise concurrent adapter
+        run: nix develop --command make -C kernel prove-lock-ownership prove-process-lifetime test-locking
+
+      - name: Prove frame pins and TLB reclamation authorization
+        run: nix develop --command make -C kernel prove-frame-pins prove-tlb-reclamation
+
+      - name: Test and prove bounded filesystem policy decisions
+        run: nix develop --command make -C kernel test-filesystem-policy prove-filesystem-policy
+
+      - name: Exercise production reclamation state transitions
+        run: nix develop --command make -C kernel test-reclamation-state
+
+      - name: Build scoped filesystem diagnostics
+        run: nix develop --command make -C kernel storage-check
+
+      - name: Boot scoped filesystem regressions under QEMU
+        run: >-
+          nix develop --command tests/headless/run.sh
+          --test storage-grants
+          --disk kernel/capability_security_disk.img
+          --accel tcg,thread=multi
+          --timeout 40
+          --serial "${{ runner.temp }}/cubit-filesystem-scope-serial.log"
+          --pcap "${{ runner.temp }}/cubit-filesystem-scope-net.pcap"
+          --keep-logs
+
+      - name: Boot adversarial guest under QEMU
+        run: >-
+          nix develop --command tests/headless/run.sh
+          --test capability-security
+          --disk kernel/capability_security_disk.img
+          --accel tcg,thread=multi
+          --timeout 30
+          --serial "${{ runner.temp }}/cubit-capability-security-serial.log"
+          --pcap "${{ runner.temp }}/cubit-capability-security-net.pcap"
+          --keep-logs
+
+      - name: Upload boot images
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cubit-capability-security-images
+          path: |
+            kernel/cubit_kernel.iso
+            kernel/capability_security_disk.img
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cubit-capability-security-diagnostics
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/cubit-capability-security-serial.log
+            ${{ runner.temp }}/cubit-capability-security-net.pcap
+            ${{ runner.temp }}/cubit-filesystem-scope-serial.log
+            ${{ runner.temp }}/cubit-filesystem-scope-net.pcap
+            ${{ runner.temp }}/cubit-ipc-lifetime-serial.log
+            ${{ runner.temp }}/cubit-ipc-lifetime-net.pcap
+            tests/ipc-request-ids/build/obj/gnatprove/gnatprove.out
+            ${{ runner.temp }}/cubit-display-grants-serial.log
+            ${{ runner.temp }}/cubit-display-grants-net.pcap
+            tests/desktop-protocol/build/obj/gnatprove/gnatprove.out
+            tests/desktop-state/build/obj/gnatprove/gnatprove.out
+            userspace/runtime/tests/directory-paths/build/gnatprove/gnatprove.out
+            userspace/runtime/tests/file-access/build/gnatprove/gnatprove.out
+            kernel/build/spark-legality/gnatprove/gnatprove.out
+            kernel/build/proof-interrupt-state/gnatprove/gnatprove.out
+            kernel/build/proof-lock-ownership/gnatprove/gnatprove.out
+            kernel/build/proof-frame-pins/gnatprove/gnatprove.out
+            kernel/build/proof-tlb-reclamation/gnatprove/gnatprove.out

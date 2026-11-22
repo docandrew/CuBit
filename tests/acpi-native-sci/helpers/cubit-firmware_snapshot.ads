@@ -1,0 +1,1 @@
+with Interfaces;package CuBit.Firmware_Snapshot is type Authority is limited null record;type Table_ID is new Interfaces.Unsigned_32;end CuBit.Firmware_Snapshot;

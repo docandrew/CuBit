@@ -1,0 +1,1 @@
+Cached ACPICA Notify oracle: unchanged semantic records, portable path relocation only. verify.py checks original-reference.json, provenance map and all422 evidence hashes. Original evidence may contain historical absolute paths; execution uses only mapped repository-local AML. No ACPICA installation is required for cached replay. See ../REGISTRATION.md for scope.

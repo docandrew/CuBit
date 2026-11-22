@@ -1,0 +1,161 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2021 Jon Andrew
+--
+-- @summary
+-- Standard IPC message labels (operation codes)
+--
+-- @description
+-- Central registry of IPC operation codes that servers and clients agree on.
+-- Labels are carried in the MessageTag.label field (Unsigned_32).
+-- Ranges are reserved by category to avoid collisions:
+--   16#0001# - 16#00FF#  Filesystem operations
+--   16#0100# - 16#01FF#  Process operations
+--   16#0200# - 16#02FF#  Device operations
+--     16#0280# - 16#02BF#  acpi-backend.svc's role-35 endpoint: NVS data
+--                          records 16#0280#.., Global Lock 16#0290#..
+--                          (replies 16#F280#..); the scalar register
+--                          protocol keeps 16#0100#/16#0101# (shared/acpi)
+--   16#0300# - 16#03FF#  Memory operations
+--   16#0400# - 16#04FF#  Network operations
+--   16#F000# - 16#FFFF#  Status/error reply labels
+-------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
+
+package IPC_Labels with
+    SPARK_Mode => On
+is
+    -- Process operations (16#0100#, procmgr's unattenuated OP_SPAWN, is
+    -- retired: CAP-012; every launch is OP_LAUNCH or Start_Child)
+    OP_EXIT    : constant Unsigned_32 := 16#0101#;
+    OP_WAIT    : constant Unsigned_32 := 16#0102#;
+    -- Spawn with launch arguments (procmgr, docs/process-arguments.md).
+    OP_LAUNCH  : constant Unsigned_32 := 16#0106#;
+
+    --  The device IRQ doorbell (Process.IPC.takeIRQDoorbell): a driver's
+    --  coalesced "device has work" event. Words carry the pending device
+    --  vectors (Device_Vector_ABI). The historic value 1 is what drivers
+    --  match.
+    EVENT_IRQ : constant Unsigned_32 := 16#0001#;
+
+    --  Process lifecycle events (kernel -> userspace)
+    EVENT_CHILD_EXIT    : constant Unsigned_32 := 16#0103#;
+    EVENT_CAP_FAULT     : constant Unsigned_32 := 16#0104#;
+    EVENT_PROCESS_FAULT : constant Unsigned_32 := 16#0105#;
+    --  Grant lifecycle (docs/data-plane.md). Words: the grant's global
+    --  slot, its generation, the peer's PID.
+    --  To the grantee: the owner revoked the grant, or died; return it.
+    EVENT_GRANT_REVOKED  : constant Unsigned_32 := 16#010C#;
+    --  To the owner: the grant retired (returned, or its grantee died);
+    --  its pages are the owner's again.
+    EVENT_GRANT_RETURNED : constant Unsigned_32 := 16#010D#;
+    --  A control message (docs/data-plane.md, "Control messages"). Words:
+    --  the kind (Control_Kind), the sender's PID.
+    EVENT_CONTROL        : constant Unsigned_32 := 16#010E#;
+    type Control_Kind is (Control_Stop, Control_Interrupt, Control_Reload);
+
+    --  Events only the kernel posts. A process's own SEND_EVENT may not use
+    --  these labels, so one in an event lane (sender NO_PROCESS) is the
+    --  kernel's (docs/data-plane.md, "Control messages").
+    function Is_Kernel_Event (Label : Unsigned_32) return Boolean is
+      (Label in EVENT_CHILD_EXIT | EVENT_CAP_FAULT | EVENT_PROCESS_FAULT
+              | EVENT_GRANT_REVOKED | EVENT_GRANT_RETURNED | EVENT_CONTROL);
+    for Control_Kind use (Control_Stop => 1, Control_Interrupt => 2, Control_Reload => 3);
+
+    -- Device operations
+    OP_IOCTL       : constant Unsigned_32 := 16#0200#;
+
+    -- Block device operations
+    OP_READ_BLOCKS          : constant Unsigned_32 := 16#0210#;
+    OP_WRITE_BLOCKS         : constant Unsigned_32 := 16#0211#;
+    OP_DESCRIBE_BLOCK_DEVICE : constant Unsigned_32 := 16#0212#;
+    OP_FLUSH_BLOCK_DEVICE   : constant Unsigned_32 := 16#0213#;
+
+    -- Memory operations (for future shared memory grants)
+    OP_GRANT   : constant Unsigned_32 := 16#0300#;
+    OP_REVOKE  : constant Unsigned_32 := 16#0301#;
+    OP_MAP     : constant Unsigned_32 := 16#0302#;
+
+    -- Network operations (driver ↔ netstack)
+    OP_NET_ATTACH     : constant Unsigned_32 := 16#0400#;
+    OP_NET_RX         : constant Unsigned_32 := 16#0401#;
+    OP_NET_TX         : constant Unsigned_32 := 16#0402#;
+    OP_NET_GET_MAC    : constant Unsigned_32 := 16#0403#;
+    OP_NET_GET_CONFIG : constant Unsigned_32 := 16#0404#;
+
+    -- Network operations (app -> netstack, legacy socket-style)
+    OP_NET_RESOLVE    : constant Unsigned_32 := 16#0410#;
+    OP_NET_CONNECT    : constant Unsigned_32 := 16#0411#;
+    OP_NET_SEND       : constant Unsigned_32 := 16#0412#;
+    OP_NET_RECV       : constant Unsigned_32 := 16#0413#;
+    OP_NET_CLOSE      : constant Unsigned_32 := 16#0414#;
+
+    -- Network operations (app -> netstack, channel API)
+    OP_NET_OPEN       : constant Unsigned_32 := 16#0420#;
+    OP_NET_WRITE      : constant Unsigned_32 := 16#0421#;
+    OP_NET_READ       : constant Unsigned_32 := 16#0422#;
+    OP_NET_SHUT       : constant Unsigned_32 := 16#0423#;
+    OP_NET_BIND       : constant Unsigned_32 := 16#0424#;
+    OP_NET_ACCEPT     : constant Unsigned_32 := 16#0425#;
+    OP_NET_OPEN_RAW   : constant Unsigned_32 := 16#0426#;
+    OP_NET_CLOSE_LISTENER : constant Unsigned_32 := 16#0427#;
+
+    -- Network management operations (netmgr -> netstack)
+    OP_NET_CONFIGURE  : constant Unsigned_32 := 16#0430#;
+    OP_NET_SET_DNS    : constant Unsigned_32 := 16#0432#;
+    OP_NET_ROUTE_ADD  : constant Unsigned_32 := 16#0433#;
+    OP_NET_ROUTE_DEL  : constant Unsigned_32 := 16#0434#;
+    OP_NET_LIST_IF    : constant Unsigned_32 := 16#0435#;
+    OP_NET_IF_DETAIL  : constant Unsigned_32 := 16#0436#;
+    OP_NET_ROUTE_LIST : constant Unsigned_32 := 16#0437#;
+    OP_NET_PING       : constant Unsigned_32 := 16#0438#;
+
+    -- Trusted policy endpoint only; tags reference private service state.
+    OP_NET_INSTALL_SCOPE : constant Unsigned_32 := 16#0440#;
+    OP_NET_RELEASE_SCOPE : constant Unsigned_32 := 16#0441#;
+
+    -- Audio operations (app ↔ mixer)
+    OP_AUDIO_OPEN     : constant Unsigned_32 := 16#0500#;
+    OP_AUDIO_CLOSE    : constant Unsigned_32 := 16#0501#;
+    OP_AUDIO_SET_VOL  : constant Unsigned_32 := 16#0502#;
+    OP_AUDIO_GET_VOL  : constant Unsigned_32 := 16#0503#;
+    OP_AUDIO_SET_PAN  : constant Unsigned_32 := 16#0504#;
+    OP_AUDIO_SET_FMT  : constant Unsigned_32 := 16#0505#;
+    OP_AUDIO_PLAYBACK : constant Unsigned_32 := 16#0509#;
+
+    -- Audio operations (mixer ↔ HDA driver)
+    OP_AUDIO_HW_INIT  : constant Unsigned_32 := 16#0510#;
+    OP_AUDIO_HW_START : constant Unsigned_32 := 16#0511#;
+    OP_AUDIO_HW_STOP  : constant Unsigned_32 := 16#0512#;
+    OP_AUDIO_HW_FILL  : constant Unsigned_32 := 16#0513#;
+    OP_AUDIO_HW_DRAIN : constant Unsigned_32 := 16#0514#;
+    OP_AUDIO_HW_CAPS  : constant Unsigned_32 := 16#0515#;
+
+    -- Status/error reply labels
+    REPLY_OK       : constant Unsigned_32 := 16#F000#;
+    REPLY_ERR      : constant Unsigned_32 := 16#F001#;
+    REPLY_BUSY     : constant Unsigned_32 := 16#F002#;
+    REPLY_CANCELED : constant Unsigned_32 := 16#F003#;
+    REPLY_FULL     : constant Unsigned_32 := 16#F005#;
+    REPLY_EOF           : constant Unsigned_32 := 16#F006#;
+    REPLY_ACCESS_DENIED : constant Unsigned_32 := 16#F007#;
+
+    --  Call outcomes only the kernel gives. A server's reply may not use
+    --  these labels (the kernel refuses it), so a caller can always tell
+    --  the kernel's answer from a protocol's own status labels, which
+    --  reuse 16#F000# .. 16#FFFF# freely.
+    KERNEL_REPLY_FIRST : constant Unsigned_32 := 16#FFFF_0000#;
+    --  The call's deadline passed before a reply (docs/ipc-fastpath.md,
+    --  "Call deadlines"). The outcome is unknown: the server may still act.
+    REPLY_TIMEOUT      : constant Unsigned_32 := 16#FFFF_0001#;
+    --  The request was delivered (or queued) and will never be answered:
+    --  its server received again or closed the reply without answering,
+    --  the thread holding it exited, or the server ended (IPC-000 rule 3,
+    --  BUG-004). Distinct from a server's own reply with label 0. A call
+    --  refused before delivery (no or stale capability) still gets the
+    --  empty tag.
+    REPLY_ENDED        : constant Unsigned_32 := 16#FFFF_0002#;
+    function Is_Kernel_Reply (Label : Unsigned_32) return Boolean is
+      (Label >= KERNEL_REPLY_FIRST);
+
+end IPC_Labels;

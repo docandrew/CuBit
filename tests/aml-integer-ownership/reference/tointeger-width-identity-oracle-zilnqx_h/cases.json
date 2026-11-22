@@ -1,0 +1,114 @@
+[
+  {
+    "key": "r1-direct",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-direct.asl",
+    "methods": [
+      "TEST"
+    ]
+  },
+  {
+    "key": "r1-arg",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg.asl",
+    "methods": [
+      "TEST"
+    ]
+  },
+  {
+    "key": "r1-local",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-local.asl",
+    "methods": [
+      "TEST"
+    ]
+  },
+  {
+    "key": "r1-arg-target-source",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-target-source.asl",
+    "methods": [
+      "TEST"
+    ]
+  },
+  {
+    "key": "r1-arg-target-dest",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-target-dest.asl",
+    "methods": [
+      "TEST"
+    ]
+  },
+  {
+    "key": "r1-package",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-package.asl",
+    "methods": [
+      "PRAW",
+      "TEST",
+      "PAFT"
+    ]
+  },
+  {
+    "key": "r2-direct",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-direct.asl",
+    "methods": [
+      "TEST"
+    ]
+  },
+  {
+    "key": "r2-arg",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg.asl",
+    "methods": [
+      "TEST"
+    ]
+  },
+  {
+    "key": "r2-local",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-local.asl",
+    "methods": [
+      "TEST"
+    ]
+  },
+  {
+    "key": "r2-arg-target-source",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-target-source.asl",
+    "methods": [
+      "TEST"
+    ]
+  },
+  {
+    "key": "r2-arg-target-dest",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-target-dest.asl",
+    "methods": [
+      "TEST"
+    ]
+  },
+  {
+    "key": "r2-package",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-package.asl",
+    "methods": [
+      "PRAW",
+      "TEST",
+      "PAFT"
+    ]
+  }
+]

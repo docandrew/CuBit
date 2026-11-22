@@ -1,0 +1,10 @@
+project Grants is
+   for Source_Dirs use (".", "../../../kernel/src", "../../../shared/hardware");
+   for Object_Dir use "../build/hardware-grants/obj";
+   for Exec_Dir use "../build/hardware-grants";
+   for Main use ("hardware_grants_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Grants;

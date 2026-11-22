@@ -1,0 +1,53 @@
+with CCL.Language;
+
+--  Bounded declaration scanner. Scalar expressions use the real CCL evaluator.
+--  No host adapter, file access, or capability grant is available here.
+package CCL.Declarations with SPARK_Mode => On is
+   type Format_Version is (V1);
+   type Format_Selection (Supported : Boolean := False) is record
+      case Supported is
+         when True => Version : Format_Version;
+         when False => null;
+      end case;
+   end record;
+   --  Header versions are symbolic tags, not evaluated CCL expressions.
+   function Select_Format (Token : String) return Format_Selection;
+   --  The largest declaration document (system.ccl, init.ccl, a manifest,
+   --  the image catalog). 16 KiB: system.ccl reached 7.2 KiB and the image
+   --  catalog passed 8 KiB with the Calculator and Dictionary; each app adds
+   --  about 330 bytes of launch entry. A Scanner holds a copy, on the stack
+   --  of a process that has 16 MiB (Process_Layout.Initial_Stack_Bytes).
+   MAX_SOURCE : constant := 16_384;
+   type Diagnostic_Code is
+     (No_Error, Source_Too_Long, Unexpected_End, Expected_Form,
+      Invalid_Expression, Nesting_Too_Deep);
+   type Symbol is record
+      Length : Natural range 0 .. 64 := 0;
+      Data : String (1 .. 64) := [others => ' '];
+   end record;
+   type Scanner is private;
+   procedure Start (Item : out Scanner; Source : String);
+   procedure Open_Form (Item : in out Scanner);
+   procedure Close_Form (Item : in out Scanner);
+   procedure Read_Symbol (Item : in out Scanner; Value : out Symbol);
+   procedure Evaluate
+     (Item : in out Scanner; Value : out CCL.Language.Interpretation_Result);
+   --  The next expression's source, not evaluated (a typed setting is
+   --  checked against its declared type instead). Empty on failure.
+   procedure Take_Expression (Item : in out Scanner; First : out Positive; Last : out Natural);
+   function Source_Of (Item : Scanner; First : Positive; Last : Natural) return String
+     with Pre => Last <= MAX_SOURCE;
+   function Matches (Value : Symbol; Text : String) return Boolean;
+   function At_Close (Item : Scanner) return Boolean;
+   function At_End (Item : Scanner) return Boolean;
+   function Failed (Item : Scanner) return Boolean;
+   function Diagnostic (Item : Scanner) return Diagnostic_Code;
+   function Position (Item : Scanner) return Positive;
+private
+   type Scanner is record
+      Text : String (1 .. MAX_SOURCE) := [others => ' '];
+      Last : Natural range 0 .. MAX_SOURCE := 0;
+      Cursor : Positive range 1 .. MAX_SOURCE + 1 := 1;
+      Error : Diagnostic_Code := No_Error;
+   end record;
+end CCL.Declarations;

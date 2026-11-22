@@ -1,0 +1,8 @@
+project Client_Input_Channel_Policy extends "input_queue.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/ui", "../../userspace/lib/compositor");
+   for Source_Files use Input_Queue'Source_Files &
+     ("client_input_channel_policy.ads", "client_input_channel_policy.adb", "client_input_channel_policy_tests.adb");
+   for Object_Dir use "build/client-input-channel-policy/obj";
+   for Exec_Dir use "build/client-input-channel-policy";
+   for Main use ("client_input_channel_policy_tests.adb");
+end Client_Input_Channel_Policy;

@@ -1,0 +1,4 @@
+# System-wide settings: where the read-only asset packages live
+# (docs/assets.md), read by Desktop and lexicon.svc.
+(Setting_Catalog settings => [
+  (Setting "system.assets.root" Shape.Key Value.Text Class.Declaration_Managed "")])

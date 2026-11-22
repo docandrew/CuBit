@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "sources": {
+    "shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "shared/firmware/firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316"
+  },
+  "artifacts": {
+    "cached/COMPLETE.json": "a1e06ac13806bb0ebe9e6f60540818cf99e25bc9eef22325884be3dcb4a0c04a",
+    "cached/level1.spark": "3734623ae21788e97a4e8ef1d72470d27653b3196fad6c4a07692a621ce00e82",
+    "cached/level1-summary.txt": "8e332afbd9a79472c27251d7d88b022d91d9983acdff5ec6278307dfcdee0f61",
+    "cached/level1-project.gpr": "a6894758764a8172a5d4a393eb98c8506110124153bdaa3bb34543b80fb96e52",
+    "cached/level1.log": "c303f5480317e03238be2a72fdca5242bb9bf57b66f9783053a839df101ab3e7",
+    "cached/level2.spark": "8a6fa29fbbdd41fd8db7f517f92d19a03d0f9adca0a905a67ed669a28968ba0b",
+    "cached/level2-summary.txt": "8e332afbd9a79472c27251d7d88b022d91d9983acdff5ec6278307dfcdee0f61",
+    "cached/level2-project.gpr": "a6894758764a8172a5d4a393eb98c8506110124153bdaa3bb34543b80fb96e52",
+    "cached/level2.log": "5f58690995a01b35f633c385646798768b641945fd6ae790b4f03a45d8ce392c"
+  },
+  "results": [
+    {
+      "level": 1,
+      "spark": "cached/level1.spark"
+    },
+    {
+      "level": 2,
+      "spark": "cached/level2.spark"
+    }
+  ],
+  "original_run": "/home/doc/cubit-build-tmp/aml-copied-table-proof-VeSBFl",
+  "scope": "Firmware parser safety, flow, termination and accepted extent contracts only. No full signature/checksum theorem, hardware mapping authority or interpreter/native proof.",
+  "negative_checks": 16,
+  "native_executed": false,
+  "hardware_validated": false
+}

@@ -1,0 +1,19 @@
+--  Hosted tests and proof (level 2) of procmgr's launch rules (CAP-012):
+--  attenuation by rights (launch_attenuation.ads, finding P-03) and
+--  Launch-into-S's envelope (session_launch.ads, section 7.5).
+project Launch_Attenuation_Tests is
+   for Source_Dirs use (".", "../../userspace/services/procmgr");
+   for Source_Files use
+     ("main.adb", "launch_attenuation.ads", "launch_attenuation.adb",
+      "session_launch.ads", "session_launch.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-O2", "-gnatwa", "-gnatwJ");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--counterexamples=off");
+   end Prove;
+end Launch_Attenuation_Tests;

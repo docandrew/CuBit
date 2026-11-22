@@ -1,0 +1,27 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+Summary logged in /home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/level2/obj/gnatprove/gnatprove.out
+delay_proof_model.ads:9:42: info: initialization of "Result" proved
+acpi_delay_waits.ads:27:13: info: implicit aspect Always_Terminates on "Duration" has been proved, subprogram will terminate, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.ads:33:36: info: initialization of "Result" proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.ads:34:19: info: postcondition proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:6:51: info: discriminant check proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:7:51: info: discriminant check proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:12:07: info: initialization of "Accepted" proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:12:17: info: initialization of "Sampled" proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:14:25: info: initialization of "Success" proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:16:19: info: postcondition proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:25:10: info: initialization of "Available" proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:29:43: info: range check proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:41:07: info: precondition proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:48:33: info: loop invariant initialization proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:48:33: info: loop invariant preservation proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:49:33: info: loop invariant initialization proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:49:33: info: loop invariant preservation proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:50:33: info: loop invariant preservation proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:50:33: info: loop invariant initialization proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:51:31: info: loop variant proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:58:50: info: range check proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:61:47: info: range check proved, in instantiation at delay_proof_model.ads:7
+acpi_delay_waits.adb:67:10: info: precondition proved, in instantiation at delay_proof_model.ads:7

@@ -1,0 +1,12 @@
+/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-integer-replacement.asl      5: Method (TEST, 0) { Store (One, DST0) Return (ObjectType (DST0)) }
+Error    6058 -                                                                                                                Invalid type ^  (Target is [Package], Source must be a package also)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-integer-replacement.asl -     505 bytes     26 keywords      0 source lines
+
+Compilation failed. 1 Errors, 0 Warnings, 0 Remarks
+No AML files were generated due to compiler error(s)

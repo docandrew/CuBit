@@ -1,0 +1,13 @@
+{
+  "worker": 3786,
+  "terminal": 0,
+  "source": "/home/doc/git/.acpi-proof-work/store-edge-oracle-prepared-4oz3n1nk",
+  "inputs": 21,
+  "artifacts": 76,
+  "observations": 76,
+  "cases": 12,
+  "cache_warnings": 12,
+  "normal_iasl": true,
+  "source_audit_sha256": "c9192a8c5d9bcb2cd3ed2bdc25a09d8ee1f49ec848c26e9ad2019ab6fe52ad95",
+  "observations_sha256": "ff6b835d4c8db43d1608a47bb7a2946e42a1cbea265a14e6ceceb6b1a72a62b8"
+}

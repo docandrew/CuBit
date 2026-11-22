@@ -1,0 +1,42 @@
+[
+  {
+    "key": "store1",
+    "base": "cases/base1.asl",
+    "source": "cases/store1.asl",
+    "methods": [
+      "DRET",
+      "LOCL",
+      "LEXP",
+      "ARGT",
+      "AEXP",
+      "RSLT",
+      "RARG",
+      "NMST",
+      "NEXP",
+      "PIND",
+      "SRC0",
+      "DST0",
+      "PASS"
+    ]
+  },
+  {
+    "key": "store2",
+    "base": "cases/base2.asl",
+    "source": "cases/store2.asl",
+    "methods": [
+      "DRET",
+      "LOCL",
+      "LEXP",
+      "ARGT",
+      "AEXP",
+      "RSLT",
+      "RARG",
+      "NMST",
+      "NEXP",
+      "PIND",
+      "SRC0",
+      "DST0",
+      "PASS"
+    ]
+  }
+]

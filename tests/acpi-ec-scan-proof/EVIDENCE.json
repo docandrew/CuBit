@@ -1,0 +1,33 @@
+{
+  "path": "/home/doc/cubit-build-tmp/ec-scan-policy-proof-P8mlIS/COMPLETE.json",
+  "sha256": "6bef15a5429c22df330f9603e8b3543cde9bcc9583fd08bcb6e36874357faad1",
+  "reports": [
+    {
+      "level": 1,
+      "entities": 11,
+      "proof": 9,
+      "flow": 19,
+      "valid_CVC5": 47,
+      "valid_Trivial": 21,
+      "external_dependencies": 0,
+      "skips": 0,
+      "rejected_controls": 20
+    },
+    {
+      "level": 2,
+      "entities": 11,
+      "proof": 9,
+      "flow": 19,
+      "valid_CVC5": 47,
+      "valid_Trivial": 21,
+      "external_dependencies": 0,
+      "skips": 0,
+      "rejected_controls": 20
+    }
+  ],
+  "scope": "Actual scan allowance policy only, under its contracts; no whole driver or hardware proof.",
+  "new_proof": true,
+  "whole_service_proved": false,
+  "native_executed": false,
+  "hardware_validated": false
+}

@@ -1,0 +1,8 @@
+project Context_Table is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-context-table";
+   for Main use ("context_table_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Context_Table;

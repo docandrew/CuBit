@@ -1,0 +1,12 @@
+--  Hosted test of calc.* (CCL.Interfaces.Calc) in a CCL session: the
+--  CCL face of the calculator core (docs/calculator.md).
+with "../../userspace/ccl/cubit_shared.gpr";
+project Calc_CCL is
+   for Source_Dirs use ("ccl", "../../userspace/ccl/src", "../../userspace/lib/calc");
+   for Object_Dir use "build/ccl";
+   for Exec_Dir use "build";
+   for Main use ("calc_ccl_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O1", "-g", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+end Calc_CCL;

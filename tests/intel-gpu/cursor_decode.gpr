@@ -1,0 +1,11 @@
+project Cursor_Decode is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("intel_gpu_cursor_control.ads", "cursor_decode_tests.adb", "intel_gpu_cursor_decode.ads",
+     "intel_gpu_cursor_decode.adb", "intel_gpu_scanout_range.ads",
+     "intel_gpu_scanout_range.adb", "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb");
+   for Object_Dir use "build-cursor-decode";
+   for Main use ("cursor_decode_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Cursor_Decode;

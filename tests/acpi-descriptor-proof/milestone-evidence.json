@@ -1,0 +1,57 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/resource-descriptor-proof-contract-B7IuHOBY/source",
+  "output": "/home/doc/git/.acpi-proof-work/resource-descriptor-proof-contract-B7IuHOBY/source/tests/acpi-descriptor-proof/results/prove-4IDPuq9t",
+  "units": [
+    {
+      "unit": "acpi_resource_data",
+      "spark_sha256": "4d2415eeff2469392ae9cd4007a0b1ba60b3472eb7f05e115820686baaf16bad",
+      "entities": 3,
+      "flow_checks": 10,
+      "proof_checks": 51,
+      "valid_goals": 93,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    },
+    {
+      "unit": "acpi_resource_data-basic_descriptors",
+      "spark_sha256": "a5b798d63cdef1b5968393e57165963b29e9775a606fac79903ea5394318b896",
+      "entities": 4,
+      "flow_checks": 5,
+      "proof_checks": 69,
+      "valid_goals": 112,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    },
+    {
+      "unit": "acpi_resource_data-extended_interrupts",
+      "spark_sha256": "2688beb25deff1f98808364ba834305eff4919c32fd8db467a904ef8dd90a9de",
+      "entities": 3,
+      "flow_checks": 7,
+      "proof_checks": 86,
+      "valid_goals": 156,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    },
+    {
+      "unit": "acpi_resource_data-address_spaces",
+      "spark_sha256": "dcebcb0e86a5f5cf6e08a23f6383e26207bb1895951be2deb20afde82aa1e566",
+      "entities": 4,
+      "flow_checks": 11,
+      "proof_checks": 91,
+      "valid_goals": 156,
+      "unresolved": 0,
+      "skipped": 0,
+      "assume": 0
+    }
+  ],
+  "totals": {
+    "entities": 14,
+    "flow_checks": 33,
+    "proof_checks": 297,
+    "valid_goals": 517
+  },
+  "scope": "Selected four-unit runtime safety and existing frame/extent/unused-suffix contracts, initialization/dependencies/termination; not full field-value/checksum equivalence, address geometry, resource authority or whole AML correctness."
+}

@@ -1,0 +1,9 @@
+project Native_GGTT is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("native_ggtt_tests.adb", "intel_gpu_native_ggtt.ads", "intel_gpu_native_ggtt.adb", "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb");
+   for Object_Dir use "build-native-ggtt";
+   for Main use ("native_ggtt_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Native_GGTT;

@@ -1,0 +1,125 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2019 Jon Andrew
+--
+-- I/O APIC
+-------------------------------------------------------------------------------
+with TextIO; use TextIO;
+
+package body ioapic
+    with SPARK_Mode => On
+is
+    ---------------------------------------------------------------------------
+    -- specify register, read the value
+    ---------------------------------------------------------------------------
+    function read(index : in IOAPICAddress) return Unsigned_32 with
+        SPARK_Mode => On
+    is
+    begin
+        ioapic.IOREGSEL := index;
+        return ioapic.IOWIN;
+    end read;
+
+    ---------------------------------------------------------------------------
+    -- specify register, write the value
+    ---------------------------------------------------------------------------
+    procedure write(index : in IOAPICAddress; val : in Unsigned_32) with
+        SPARK_Mode => On
+    is
+    begin
+        ioapic.IOREGSEL := index;
+        ioapic.IOWIN := val;
+    end write;
+
+    ---------------------------------------------------------------------------
+    -- Get the maximum number of entries in the I/O redirection table
+    -- bits 16:23 of IOAPICVER are the max redirection entry
+    -- bits 0:7 of IOAPICVER is the APIC version, should be 0x11
+    -- bits 24:27 of IOAPICID is 
+    ---------------------------------------------------------------------------
+    procedure setupIOAPIC (expectedID : in Unsigned_32) with
+        SPARK_Mode => On
+    is
+        version         : Unsigned_32;
+        maxRedirect     : Unsigned_32;
+        id              : Unsigned_32;
+    begin
+        -- assign the expected ID we got from the ACPI tables.
+        --write(IOAPICID, expectedID);
+
+        version := read(IOAPICVER) and 16#0000_00FF#;
+        maxRedirect := Shift_Right(read(IOAPICVER) and 16#00FF_0000#, 16);
+        id          := Shift_Right(read(IOAPICID) and 16#0F00_0000#, 24);
+
+        if id /= expectedID then
+            println(" WARNING: I/O APIC ID doesn't match the ID from ACPI tables.");
+            print(" id: "); printd(id); print(" expected: "); printdln(expectedID);
+        end if;
+        --print(" Max Redirect: "); printdln(maxRedirect);
+
+        -- set interrupts as edge-triggered, active-high, disabled.
+        for i in 0..maxRedirect loop
+            write(IOREDTBL_BASE + IOAPICAddress(2*i), 
+                INT_MASKED or (Unsigned_32(InterruptNumbers.TIMER) + i));
+            write(IOREDTBL_BASE + IOAPICAddress(2*i + 1), 0);
+        end loop;
+    end setupIOAPIC;
+
+    ---------------------------------------------------------------------------
+    -- enableIRQ
+    ---------------------------------------------------------------------------
+    procedure enableIRQ (irq            : in InterruptNumbers.x86Interrupt;
+                         cpu            : in Unsigned_32;
+                         levelTriggered : in Boolean := False;
+                         activeLow      : in Boolean := False;
+                         masked         : in Boolean := False) with
+        SPARK_Mode => On
+    is
+        tableEntry : constant Unsigned_32 := Unsigned_32(2 * (irq - 32));
+        lowWord    : Unsigned_32 := Unsigned_32 (irq);
+    begin
+        if levelTriggered then
+            lowWord := lowWord or INT_LEVEL_TRIGGER;
+        end if;
+        if activeLow then
+            lowWord := lowWord or INT_ACTIVE_LOW;
+        end if;
+
+        -- Mask while the entry is rewritten, so the input never fires with
+        -- a half-written destination; then write the final low word.
+        write(IOREDTBL_BASE + tableEntry,   lowWord or INT_MASKED);
+        write(IOREDTBL_BASE + tableEntry+1, Shift_Left(cpu, 24));
+        if not masked then
+            write(IOREDTBL_BASE + tableEntry, lowWord);
+        end if;
+    end enableIRQ;
+
+    ---------------------------------------------------------------------------
+    -- setMasked
+    ---------------------------------------------------------------------------
+    procedure setMasked (irq    : in InterruptNumbers.x86Interrupt;
+                         masked : in Boolean) with
+        SPARK_Mode => On
+    is
+        tableEntry : constant Unsigned_32 := Unsigned_32(2 * (irq - 32));
+        lowWord    : constant Unsigned_32 := read (IOREDTBL_BASE + tableEntry);
+    begin
+        if masked then
+            write (IOREDTBL_BASE + tableEntry, lowWord or INT_MASKED);
+        else
+            write (IOREDTBL_BASE + tableEntry, lowWord and not INT_MASKED);
+        end if;
+    end setMasked;
+
+    ---------------------------------------------------------------------------
+    -- redirectionEntries
+    ---------------------------------------------------------------------------
+    function redirectionEntries return Natural with
+        SPARK_Mode => On
+    is
+    begin
+        return Natural (Shift_Right (read (IOAPICVER) and MAX_REDIRECTION_MASK,
+                                     MAX_REDIRECTION_SHIFT)) + 1;
+    end redirectionEntries;
+
+end ioapic;

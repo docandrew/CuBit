@@ -1,0 +1,14 @@
+--  Hosted tests of the driver-budget log issuances (ABI-002). run.sh links
+--  the units into build/links.
+project Log_Issuances_Tests is
+   for Source_Dirs use (".", "build/links", "../../userspace/ccl/runtime-shared");
+   for Source_Files use
+     ("log_issuances_tests.adb", "cubit.ads", "cubit-log_protocol.ads", "cubit-log_records.ads", "cubit-log_records.adb", "cubit-protocols.ads",
+      "driver_log_issuances.ads", "driver_log_issuances.adb");
+   for Object_Dir use "build/tests";
+   for Exec_Dir use "build/tests";
+   for Main use ("log_issuances_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwa", "-g", "-O1");
+   end Compiler;
+end Log_Issuances_Tests;

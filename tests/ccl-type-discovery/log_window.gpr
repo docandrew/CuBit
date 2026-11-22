@@ -1,0 +1,9 @@
+--  logs.between and logs.recent through the real bindings (CCL_Log_Bindings)
+--  and selection (CCL_Log_Selection), over a scripted, Linux-hosted
+--  stand-in for logstore's replay (log-window/ccl_log_io.adb): not CuBit.
+project Log_Window extends "discovery.gpr" is
+   for Source_Dirs use ("log-window");
+   for Object_Dir use "build/log-window";
+   for Exec_Dir use "build/log-window";
+   for Main use ("log_window_tests.adb");
+end Log_Window;

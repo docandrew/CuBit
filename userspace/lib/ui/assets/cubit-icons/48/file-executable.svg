@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs>
+<linearGradient id="g7ff3e416b5b3" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#7ff3e4"/><stop offset="1" stop-color="#16b5b3"/></linearGradient>
+<linearGradient id="g8a5cff4e28c4" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#8a5cff"/><stop offset="1" stop-color="#4e28c4"/></linearGradient>
+<linearGradient id="ge6dcffb49bff" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#e6dcff"/><stop offset="1" stop-color="#b49bff"/></linearGradient>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+<linearGradient id="violet" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#c3adff"/><stop offset="1" stop-color="#8457ff"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M15 2 L43 2 L43 30 L15 30Z" transform="translate(3 3)"/>
+  <path d="M15 2 L43 2 L43 30 L15 30Z" transform="translate(2 2)"/>
+  <path d="M15 2 L43 2 L43 30 L15 30Z" transform="translate(1 1)"/>
+  <path d="M15 2 L43 2 L43 30 L15 30Z"/>
+</g>
+<path d="M15 2 L43 2 L43 30 L15 30Z" fill="#7d879f" transform="translate(3 3)"/>
+<path d="M15 2 L43 2 L43 30 L15 30Z" fill="#7d879f" transform="translate(2 2)"/>
+<path d="M15 2 L43 2 L43 30 L15 30Z" fill="#7d879f" transform="translate(1 1)"/>
+<path d="M15 2 L43 2 L43 30 L15 30Z" fill="url(#paper)"/>
+<path d="M15 2 L43 2 L43 8 L15 8Z" fill="url(#violet)"/>
+<path d="M15 8.5 L43 8.5" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.6"/>
+<path d="M29 11 L41 11 L41 15 L29 15Z" fill="#8af5e8"/>
+<path d="M29 17 L37 17 L37 21 L29 21Z" fill="#ffdc80"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M15 18 L27 24 L27 38 L15 44 L3 38 L3 24Z"/>
+</g>
+<path d="M15 18 L27 24 L15 30 L3 24Z" fill="url(#ge6dcffb49bff)"/>
+<path d="M3 24 L15 30 L15 44 L3 38Z" fill="url(#g7ff3e416b5b3)"/>
+<path d="M27 24 L27 38 L15 44 L15 30Z" fill="url(#g8a5cff4e28c4)"/>
+<path d="M3 24 L15 30 L27 24" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="butt" opacity="0.55"/>
+</svg>

@@ -1,0 +1,137 @@
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl    390:     Method (RPT0, 0, NotSerialized)
+Remark   2120 -                      Control Method should be made Serialized due to creation of named objects within ^  (\RPT0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl    394:         Name (B000, Buffer (0x04){})
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RPT0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl    917:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\PRN0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl    918:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\PRN0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1137:         Name (N000, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1138:         Name (NCUR, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1155:         Name (B000, Buffer (Local0){})
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1186:         Divide (Local1, 0x08, Local2, Local0)
+Warning  3144 -                                                                                        Method Local is set but never used ^  (Local2)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1201:         Name (PREV, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1202:         Name (MS00, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1203:         Name (MS01, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1204:         Name (MS02, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1205:         Name (MS03, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1206:         Name (TAIL, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1207:         Name (LBT0, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1210:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1211:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1214:         Name (NB01, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1217:         Name (NREG, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1220:         Name (NB08, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1223:         Name (NB09, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1226:         Name (REST, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1240:         Name (B000, Buffer (NB01){})
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1362:         Name (TMP0, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4C0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1363:         Name (TMP1, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4C0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1406:         Name (S000, " ")
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\M4A1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   1422:         DataTableRegion (HDR, "DSDT", "", "")
+Remark   2173 -    Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\STRT)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   2021:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RERR)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   2022:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RERR)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   2069:         Name (LPN0, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RRM0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   2070:         Name (LPC0, 0x00)
+Remark   2173 -                                                                                                         ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\RRM0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   2159:     Method (TRC0, 3, NotSerialized)
+Remark   2146 -                                                                         Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   2177:     Method (TRC1, 3, NotSerialized)
+Remark   2146 -                                                                         Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/common.asl   2240:         Divide (Local1, 0x000F4240, Local0, Local2)
+Warning  3144 -                                                                                              Method Local is set but never used ^  (Local0)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/ehandle.asl    793:         Name (EBUF, Buffer (ISZC){})
+Remark   2173 -                                                                                                          ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\ST16)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/ehandle.asl    796:         Name (RBUF, Buffer (0x04){})
+Remark   2173 -                                                                                                          ^ Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\ST16)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/ehandle.asl    917:     Method (CH06, 3, NotSerialized)
+Remark   2146 -                                                                          Method Argument is never used ^  (Arg1)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/ehandle.asl    934:     Method (CH07, 7, NotSerialized)
+Remark   2146 -                                                                          Method Argument is never used ^  (Arg4)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/cntl/ehandle.asl   1038:             Local7 = 0x01
+Warning  3144 -                                                                       Method Local is set but never used ^  (Local7)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/collections/complex/provoke/provoke.asl     41:         Name (B000, Buffer (0x02)
+Remark   2173 -                  Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M130)
+
+/home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/collections/complex/provoke/provoke.asl     46:         Local2 = ToString (B000, Local0)
+Warning  3144 -                                                                                          Method Local is set but never used ^  (Local2)
+
+ASL Input:     /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/src/runtime/collections/complex/provoke/MAIN.asl -    2103 bytes   1553 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.aml -   18714 bytes   1126 opcodes     427 named objects
+Source Output: /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.src -  125306 bytes
+Preprocessor:  /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.i -    2103 bytes
+Listing File:  /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.lst -  497261 bytes
+Hex Dump:      /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.hex -  185278 bytes
+Namespace:     /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.nsp -  102179 bytes
+ASM Source:    /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.asm -  563263 bytes
+C Source:      /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.c -  639078 bytes
+C Include:     /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.h -   18983 bytes
+Offset Table:  /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.offset.h -   46532 bytes
+Device Map:    /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.map -     349 bytes
+
+Compilation successful. 0 Errors, 4 Warnings, 37 Remarks, 0 Optimizations

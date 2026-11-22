@@ -1,0 +1,98 @@
+[
+  {
+    "key": "r1-ref-package",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-ref-package.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML."
+  },
+  {
+    "key": "r1-ref-integer",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-ref-integer.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML."
+  },
+  {
+    "key": "r1-arg-package",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-package.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML."
+  },
+  {
+    "key": "r1-arg-integer",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-integer.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML."
+  },
+  {
+    "key": "r2-ref-package",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-ref-package.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML."
+  },
+  {
+    "key": "r2-ref-integer",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-ref-integer.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML."
+  },
+  {
+    "key": "r2-arg-package",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-package.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML."
+  },
+  {
+    "key": "r2-arg-integer",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-integer.asl",
+    "methods": [
+      "TEST",
+      "TYPE",
+      "SIZE"
+    ],
+    "scope": "Normal RefOf/Arg-held Package target; compiler/runtime failures remain observations, no forced AML."
+  }
+]

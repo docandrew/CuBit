@@ -1,0 +1,25 @@
+{
+  "hosted": {
+    "path": "/home/doc/cubit-build-tmp/ec-query-queue-htAhOw/COMPLETE.json",
+    "sha256": "baa989c56ba469d1d16bbb8f77892369a1527511f640f53d0e08a8a087a5dd87",
+    "checks": 3112,
+    "runtime_processes": 66,
+    "sources": 49,
+    "compiled_units": 30
+  },
+  "deferred_lifecycle": {
+    "path": "/home/doc/cubit-build-tmp/gpe-deferred-S8z41U/COMPLETE.json",
+    "sha256": "12119be965e68276e6bd4aa46b67b7b978e86f49abe4ef0e4875b67d786f5936",
+    "checks": 198,
+    "runtime_processes": 2
+  },
+  "legacy_gpe": {
+    "path": "/home/doc/cubit-build-tmp/gpe-legacy-2zmN2N/COMPLETE.json",
+    "sha256": "e3fafbdba7be38224f688e93f55fd0f2504693888a5a2cff1c80a6451932adf7",
+    "checks": 2024,
+    "runtime_processes": 4
+  },
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false
+}

@@ -1,0 +1,32 @@
+# Penny, powered by Servo on CuBit (docs/servo-port.md). Reads its page list and
+# the TLS trust store (its fonts are linked in: cubit-fonts' bundled faces); wall-clock time from clock.svc;
+# outbound TCP with DNS through netstack, like NetSurf. Network use needs
+# launch approval (network approve-declared).
+# What it writes to descriptor 2 goes to its unix.stderr outlet; without a
+# launcher's ring the libc publishes it as records in its logstore ring
+# (CuBit.Libc_Log, ABI-002): never the kernel console.
+(Executable_Manifest
+  identity => "com.cubit.servo"
+  version => "0.1.0"
+  requests => [
+    # Its diagnostics (descriptor 2, the libc's own records).
+    (service "logstore" "logstore")
+    (service "filesystem" "filesystem")
+    (service "config" "config")
+    # A window on the desktop (desktop.svc; lent buffer, surface-scoped input).
+    (service "desktop" "desktop")
+    # Shared PCM output; the mixer owns device access and other clients' streams.
+    (service "mixer" "mixer")
+    # Wall-clock time (certificate validity, Date headers).
+    (service "clock" "clock")
+    (network Network_Action.TCP_Connect "0.0.0.0" 0 1 65535 true 32 "network")]
+  scopes => [
+    # Only these folders may be modified; no writable profile/cache directory.
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/Bookmarks")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/Downloads")
+    (config [File_Right.Read File_Right.Write] "browser.servo")
+    (filesystem [File_Right.Read] "@system/servo")
+    # The system trust store for TLS (read; later a trust store service).
+    (filesystem [File_Right.Read] "@system/tls")]
+  outlets => [(Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 2 "unix.stderr")])

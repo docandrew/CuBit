@@ -1,0 +1,111 @@
+# The authority delegation model (CAP-012, docs/authority-model.md) as
+# typed CCL: its vocabulary, the rule that classifies a real path from its
+# facts, and the IPC layering. inventory.ccl holds the real paths;
+# inventory_check.adb checks both against the SPARK model
+# (authority_model.ads), whose Classify this mirrors.
+
+(type Family (enum Spawn Hardware Endpoint Data Observation Administration))
+
+(type SpawnK (enum None Process_Control))
+(type HwK (enum None Device_Memory Firmware_Memory IO_Ports Interrupt_Line Device_Vectors DMA Platform_Pool Firmware_Data Scheduling Whole_Disk))
+(type EpK (enum None Service_Endpoint Notification_Role))
+(type DataK (enum None Data_Grant Filesystem_Scope Network_Scope Config_Scope Secret_Use))
+(type ObsK (enum None Log_Observation Metric_Observation Process_Observation Device_Inventory Trace Test_Console Firmware_Snapshot))
+(type AdmK (enum None Platform_Power Startup_Plan Trust_List Settings))
+# One authority kind: its family and, in that family's field, which kind
+# (the other fields stay None; well_formed checks it). Split by family
+# because a CCL enum has at most 16 members (and a program at most 16
+# functions: keep the definitions here few).
+(type Authority (record (family Family)
+  (spawn SpawnK SpawnK.None) (hardware HwK HwK.None) (endpoint EpK EpK.None)
+  (data DataK DataK.None) (observation ObsK ObsK.None)
+  (administration AdmK AdmK.None)))
+
+# Leaf_Service: metrics.svc, tls.svc, secrets.svc. Driver: any driver
+# devmgr starts (block, input, network, GPIO, audio, ...).
+(type Component (enum
+  Kernel Devmgr Procmgr Filesystem Config Netstack Logstore Leaf_Service
+  Acpi Intel_Gpu Driver Desktop Shells Installer Program Any_Holder))
+
+(type Operation (enum
+  Root_Issue Spawn Derive Install Introduce Transfer Broker
+  Scope_On_Behalf Map_Into Revoke Exercise Control Sync_Call Async_Submit))
+
+# How an invariant stands on one path: guaranteed by the kernel or a
+# proved unit, holding by reading the code or by a test, failing, or not
+# established.
+(type Fact (enum Enforced Observed Fails Unknown))
+(type Verdict (enum Fits Violates Unclear))
+
+(type Invariant_Facts (record
+  (provenance Fact)        # traces to a declared request, an approved plan and a root
+  (attenuation Fact)       # no amplification: never wider than its source
+  (broker_inert Fact)      # a broker never exercises what it carries
+  (revocation Fact)        # revoking the source reaches this copy
+  (call_order Fact)))      # synchronous calls only go down the layering
+
+(type Path (record
+  (id String) (site String) (kind Authority) (operation Operation)
+  (from Component) (to Component) (facts Invariant_Facts) (verdict Verdict)))
+
+(type Root (record
+  (kind Authority) (issuer Component) (site String)))
+
+(type Call (record
+  (caller Component) (callee Component) (site String) (forever Boolean)))
+
+
+# Authority_Model.Classify: any failing invariant violates; otherwise any
+# unknown one leaves the path unclear; otherwise it fits.
+(define (fails_any (f Invariant_Facts)) Boolean
+  (or (= (field f provenance) Fact.Fails)
+      (or (= (field f attenuation) Fact.Fails)
+          (or (= (field f broker_inert) Fact.Fails)
+              (or (= (field f revocation) Fact.Fails) (= (field f call_order) Fact.Fails))))))
+(define (unknown_any (f Invariant_Facts)) Boolean
+  (or (= (field f provenance) Fact.Unknown)
+      (or (= (field f attenuation) Fact.Unknown)
+          (or (= (field f broker_inert) Fact.Unknown)
+              (or (= (field f revocation) Fact.Unknown) (= (field f call_order) Fact.Unknown))))))
+(define (classify (f Invariant_Facts)) Verdict
+  (if (fails_any f) Verdict.Violates (if (unknown_any f) Verdict.Unclear Verdict.Fits)))
+
+# The proposed layering (higher calls lower, synchronously; back-flow is
+# asynchronous). A witness that the recorded calls form a DAG.
+(define (level (c Component)) Integer
+  (if (= c Component.Program) 9
+  (if (= c Component.Shells) 9
+  (if (= c Component.Installer) 8
+  (if (= c Component.Desktop) 8
+  (if (= c Component.Procmgr) 7
+  (if (= c Component.Intel_Gpu) 6
+  (if (= c Component.Acpi) 6
+  (if (= c Component.Devmgr) 5
+  (if (= c Component.Logstore) 4
+  (if (= c Component.Leaf_Service) 4
+  (if (= c Component.Netstack) 3
+  (if (= c Component.Config) 3
+  (if (= c Component.Filesystem) 2
+  0))))))))))))))
+
+(define (goes_down (c Call)) Boolean
+  (> (level (field c caller)) (level (field c callee))))
+
+# The kind names exactly its family's field; the other fields are None.
+(define (one (b Boolean)) Integer (if b 1 0))
+(define (fields_set (k Authority)) Integer
+  (+ (one (not (= (field k spawn) SpawnK.None)))
+     (+ (one (not (= (field k hardware) HwK.None)))
+        (+ (one (not (= (field k endpoint) EpK.None)))
+           (+ (one (not (= (field k data) DataK.None)))
+              (+ (one (not (= (field k observation) ObsK.None)))
+                 (one (not (= (field k administration) AdmK.None)))))))))
+(define (family_field_set (k Authority)) Boolean
+  (if (= (field k family) Family.Spawn) (not (= (field k spawn) SpawnK.None))
+  (if (= (field k family) Family.Hardware) (not (= (field k hardware) HwK.None))
+  (if (= (field k family) Family.Endpoint) (not (= (field k endpoint) EpK.None))
+  (if (= (field k family) Family.Data) (not (= (field k data) DataK.None))
+  (if (= (field k family) Family.Observation) (not (= (field k observation) ObsK.None))
+      (not (= (field k administration) AdmK.None))))))))
+(define (well_formed (k Authority)) Boolean
+  (and (= (fields_set k) 1) (family_field_set k)))

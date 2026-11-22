@@ -1,0 +1,56 @@
+{
+  "status": "PASS",
+  "gpu_enabled": false,
+  "scope": "Native CuBit Files at200% on verified1600x1200 firmware framebuffer, actual Settings, pointer and keyboard; explicitly modified boot preferred-mode fields only",
+  "binary_sha256": "e1134d1ecb65b996960437149e969e16aba4259b7c27557f52c30b3fcf748b1d",
+  "memory": "1G",
+  "render_approved": false,
+  "render_attempts": [
+    [
+      "4294967328",
+      "TRUE"
+    ]
+  ],
+  "software_fallback": "PASS",
+  "hardware_validated": false,
+  "files_scrollbar": true,
+  "files_refresh_after_scroll": true,
+  "files_keyboard_refresh": true,
+  "native_scale": [
+    2,
+    1
+  ],
+  "output_pixels": [
+    1600,
+    1200
+  ],
+  "display_path": "firmware framebuffer",
+  "boot_mode_fixture": {
+    "scope": "Private boot-mode fixture only: Multiboot1 preferred width/height fields, all other kernel bytes identical",
+    "original_kernel": "/home/doc/git/compositor-test-artifacts/deadline-platform-seed-24/cubit_kernel",
+    "original_sha256": "8b5bdcad173c14d4da98b9a0a3ec7366e224ea15bf964b54e0c122dac358d57b",
+    "fixture_sha256": "be71472b3010ce92b7ea3006aa071e39852824455ef5e1e7e540ca141d9f1fe7",
+    "header_offset": 4096,
+    "width_offset": 4132,
+    "height_offset": 4136,
+    "original_mode": [
+      1280,
+      1024,
+      32
+    ],
+    "requested_mode": [
+      1600,
+      1200,
+      32
+    ]
+  },
+  "native_inputs_manifest": {
+    "path": "/home/doc/git/compositor-test-artifacts/ui-hit-map-native-120/inputs.json",
+    "sha256": "11e5bfd77200d5797f0a12df17289dfb7031180f2f9f94974aaed0c983612755"
+  },
+  "formal_proof": false,
+  "failed_precursors": {
+    "117": "Virtio EDID1600x960 rejected by8MiB dual-buffer DMA budget; actual1024x768",
+    "119": "Unmodified Multiboot1 kernel requests1280x1024; resolution assertion rejected test before scaling"
+  }
+}

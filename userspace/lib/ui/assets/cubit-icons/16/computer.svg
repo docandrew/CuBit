@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+<defs>
+<linearGradient id="g5a2fd00f8f9c" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#5a2fd0"/><stop offset="1" stop-color="#0f8f9c"/></linearGradient>
+<linearGradient id="steel" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#eef1f8"/><stop offset="1" stop-color="#b4bccf"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M3 12 L11 12 L11 13 L3 13Z" transform="translate(1 1)"/>
+  <path d="M3 12 L11 12 L11 13 L3 13Z"/>
+  <path d="M6 10 L8 10 L8 12 L6 12Z"/>
+</g>
+<path d="M3 12 L11 12 L11 13 L3 13Z" fill="#4f5870" transform="translate(1 1)"/>
+<path d="M3 12 L11 12 L11 13 L3 13Z" fill="url(#steel)"/>
+<path d="M6 10 L8 10 L8 12 L6 12Z" fill="#7d879f"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="2" stroke-linejoin="round">
+  <path d="M1 1 L13 1 L13 10 L1 10Z" transform="translate(1 1)"/>
+  <path d="M1 1 L13 1 L13 10 L1 10Z"/>
+</g>
+<path d="M1 1 L13 1 L13 10 L1 10Z" fill="#4f5870" transform="translate(1 1)"/>
+<path d="M1 1 L13 1 L13 10 L1 10Z" fill="url(#steel)"/>
+<path d="M2 2 L12 2 L12 9 L2 9Z" fill="url(#g5a2fd00f8f9c)"/>
+<path d="M7 3 L9 4 L7 5 L5 4Z" fill="#c3adff"/>
+<path d="M5 4 L7 5 L7 7 L5 6Z" fill="#8af5e8"/>
+<path d="M9 4 L9 6 L7 7 L7 5Z" fill="#1fc8c3"/>
+</svg>

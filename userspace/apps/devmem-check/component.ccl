@@ -1,0 +1,2 @@
+(Component name => "devmem-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

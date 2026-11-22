@@ -1,0 +1,1 @@
+with CuBit.Messages;package body CuBit.Monotonic is function Milliseconds return Interfaces.Unsigned_64 is (CuBit.Messages.Test.Now);end CuBit.Monotonic;

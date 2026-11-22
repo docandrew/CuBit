@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-wide-bulk-isPybU3Z/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-wide-bulk-isPybU3Z/source/tests/aml-index-wide/results/checked-e0gh45oa",
+  "mode": "checked",
+  "inputs": 231,
+  "references": 26,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 315,
+  "stages": 2,
+  "logs": {
+    "index_width_tests": "Index width checks 922"
+  },
+  "ALI": 77,
+  "dependencies": 1373,
+  "strict_commands": 76,
+  "audit_sha256": "a9462a13144929b678046341fccc1c444a0c9372af7f713acdec88137325902d",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

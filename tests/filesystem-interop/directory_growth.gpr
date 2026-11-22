@@ -1,0 +1,7 @@
+project Directory_Growth extends "interop.gpr" is
+   for Source_Dirs use Interop'Source_Dirs;
+   for Source_Files use Interop'Source_Files & ("directory_growth.adb");
+   for Object_Dir use "build/directory-growth";
+   for Exec_Dir use "build/directory-growth";
+   for Main use ("directory_growth.adb");
+end Directory_Growth;

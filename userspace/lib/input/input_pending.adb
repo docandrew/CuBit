@@ -1,0 +1,40 @@
+package body Input_Pending with SPARK_Mode is
+   procedure Acknowledge (Q : in out Queue) is
+   begin
+      Q.Head := (Q.Head + 1) mod Capacity;
+      Q.Used := Q.Used - 1;
+   end Acknowledge;
+
+   procedure Append (Q : in out Queue; Payload : Word; Lost : out Boolean;
+                     Observed_Ms : Word := Word'Last; Observed_Us : Word := Word'Last) is
+   begin
+      Lost := Q.Used = Capacity;
+      if Lost then
+         Q.Head := 0;
+         Q.Used := 0;
+      end if;
+      Q.Last_Sequence := Next_Sequence (Q.Last_Sequence);
+      Q.Data ((Q.Head + Q.Used) mod Capacity) :=
+        (Payload, Q.Last_Sequence, Lost or Q.Recover_Next, Observed_Ms, Observed_Us);
+      Q.Recover_Next := False;
+      Q.Used := Q.Used + 1;
+   end Append;
+
+   procedure Replace_Newest (Q : in out Queue; Payload : Word) is
+      Newest : constant Offset_Type := (Q.Head + Q.Used - 1) mod Capacity;
+   begin
+      Q.Data (Newest).Payload := Payload;
+   end Replace_Newest;
+
+   procedure Require_Recovery (Q : in out Queue) is
+   begin
+      Q.Recover_Next := True;
+   end Require_Recovery;
+
+   procedure Reset (Q : in out Queue) is
+   begin
+      Q.Used := 0;
+      Q.Head := 0;
+      Q.Recover_Next := True;
+   end Reset;
+end Input_Pending;

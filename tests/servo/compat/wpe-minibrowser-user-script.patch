@@ -1,0 +1,47 @@
+WEB-001 survey: MiniBrowser --user-script FILE adds FILE as a user script,
+injected at document start in the top frame (the survey probe runs before
+the page's own scripts, as Playwright's addInitScript and Servo's
+UserScript do). Automation sessions reuse the view's user content manager.
+
+--- a/Tools/MiniBrowser/wpe/main.cpp
++++ b/Tools/MiniBrowser/wpe/main.cpp
+@@ -57,6 +57,7 @@
+ static gboolean automationMode;
+ static gboolean ignoreTLSErrors;
+ static const char* contentFilter;
++static const char* userScriptFile;
+ static const char* cookiesFile;
+ static const char* cookiesPolicy;
+ static const char* proxy;
+@@ -126,6 +127,7 @@
+     { "ignore-host", 0, 0, G_OPTION_ARG_STRING_ARRAY, &ignoreHosts, "Set proxy ignore hosts", "HOSTS" },
+     { "ignore-tls-errors", 0, 0, G_OPTION_ARG_NONE, &ignoreTLSErrors, "Ignore TLS errors", nullptr },
+     { "content-filter", 0, 0, G_OPTION_ARG_FILENAME, &contentFilter, "JSON with content filtering rules", "FILE" },
++    { "user-script", 0, 0, G_OPTION_ARG_FILENAME, &userScriptFile, "Script injected at document start in the top frame", "FILE" },
+     { "bg-color", 0, 0, G_OPTION_ARG_STRING, &bgColor, "Window background color. Default: white", "COLOR" },
+     { "enable-itp", 0, 0, G_OPTION_ARG_NONE, &enableITP, "Enable Intelligent Tracking Prevention (ITP)", nullptr },
+     { "time-zone", 't', 0, G_OPTION_ARG_STRING, &timeZone, "Set time zone", "TIMEZONE" },
+@@ -562,6 +564,23 @@
+         g_object_unref(contentFilterFile);
+     }
+ 
++    if (userScriptFile) {
++        gchar* source = nullptr;
++        GError* scriptError = nullptr;
++        if (!g_file_get_contents(userScriptFile, &source, nullptr, &scriptError)) {
++            // Fatal: a survey run without its probe would be recorded as
++            // a probe-less engine.
++            g_error("Cannot read user script '%s': %s", userScriptFile, scriptError->message);
++        }
++        if (!userContentManager)
++            userContentManager = webkit_user_content_manager_new();
++        WebKitUserScript* script = webkit_user_script_new(source, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME,
++            WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, nullptr, nullptr);
++        webkit_user_content_manager_add_script(userContentManager, script);
++        webkit_user_script_unref(script);
++        g_free(source);
++    }
++
+     auto* settings = webkit_settings_new_with_settings(
+         "enable-developer-extras", TRUE,
+         "enable-webgl", TRUE,

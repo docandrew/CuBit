@@ -1,0 +1,22 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-wide-bulk-isPybU3Z/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-wide-bulk-isPybU3Z/source/tests/aml-index-large/results/checked-xcsxe1tj",
+  "mode": "checked",
+  "inputs": 231,
+  "references": 8,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 317,
+  "stages": 4,
+  "logs": {
+    "index_width_tests-small": "Index width checks 2577 bytes 512",
+    "index_width_tests-medium": "Index width checks 20497 bytes 4096",
+    "index_width_tests-large": "Index width checks 81937 bytes 16384"
+  },
+  "ALI": 77,
+  "dependencies": 1374,
+  "strict_commands": 76,
+  "audit_sha256": "25de7d55f7ae98c8bb74cc62dbcf46af41f53d919b2d0571033c6d1c0bd8cfbe",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

@@ -1,0 +1,26 @@
+--  The CuBit runtime units that hosted (Linux) builds share with native
+--  ones: the proved ring generics (docs/async-rings.md), CuBit.Failures
+--  (docs/ccl-errors.md), and program descriptions with the launch block and
+--  grant formats they use (docs/ccl-launch-parameters.md). Native builds get them from the runtime library.
+--  It brings the runtime's root package CuBit, so an including project
+--  must not have another (the preview excludes its host/cubit.ads).
+project CuBit_Shared is
+   --  Links to just these files: the whole runtime directory would put
+   --  the CuBit runtime's own Interfaces and System units in front of the
+   --  host toolchain's.
+   for Source_Dirs use ("runtime-shared");
+   --  The full Ada runtime the including tool runs on: the Linux host's,
+   --  or the GCC port's libgnat on CuBit (ccl_build.gpr's cubit target).
+   type Tool_Targets is ("linux", "cubit");
+   Tool_Target : Tool_Targets := external ("CCL_TOOL_TARGET", "linux");
+   Target := ();
+   case Tool_Target is
+      when "linux" => for Object_Dir use "build/cubit-shared";
+      when "cubit" =>
+         for Object_Dir use "build/cubit-shared-cubit";
+         Target := ("-mno-red-zone");   --  native code has no red zone
+   end case;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O2") & Target;
+   end Compiler;
+end CuBit_Shared;

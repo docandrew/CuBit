@@ -1,0 +1,91 @@
+{
+  "aml_sha256": "6c3a97b3811f9227ea08b147471b4fcad2cf5b501ad9528ffbaa120f2d2a73e0",
+  "aml_bytes": 26070,
+  "batch": "execute MN00;execute ERRS;execute MN00;execute ERRS",
+  "repair_disabled": true,
+  "segments": [
+    {
+      "method": "MN00",
+      "integers": [
+        "0000000000000000"
+      ],
+      "records": [
+        ":STST:functional:arithmetic:ADD0:PASS:",
+        ":STST:functional:arithmetic:SUB0:PASS:",
+        ":STST:functional:arithmetic:MTP0:PASS:",
+        ":STST:functional:arithmetic:DVD0:PASS:",
+        ":STST:functional:arithmetic:ICR0:PASS:",
+        ":STST:functional:arithmetic:DCR0:PASS:",
+        ":STST:functional:arithmetic:AND0:PASS:",
+        ":STST:functional:arithmetic:NAN0:PASS:",
+        ":STST:functional:arithmetic:NOR0:PASS:",
+        ":STST:functional:arithmetic:NOT0:PASS:",
+        ":STST:functional:arithmetic:OR00:PASS:",
+        ":STST:functional:arithmetic:XOR0:PASS:",
+        ":STST:functional:arithmetic:MOD0:PASS:",
+        ":STST:functional:arithmetic:SHL0:PASS:",
+        ":STST:functional:arithmetic:SHR0:PASS:",
+        ":STST:functional:arithmetic:FSL0:PASS:",
+        ":STST:functional:arithmetic:FSR0:PASS:"
+      ]
+    },
+    {
+      "method": "ERRS",
+      "integers": [
+        "0000000000000000"
+      ],
+      "records": []
+    },
+    {
+      "method": "MN00",
+      "integers": [
+        "0000000000000000"
+      ],
+      "records": [
+        ":STST:functional:arithmetic:ADD0:PASS:",
+        ":STST:functional:arithmetic:SUB0:PASS:",
+        ":STST:functional:arithmetic:MTP0:PASS:",
+        ":STST:functional:arithmetic:DVD0:PASS:",
+        ":STST:functional:arithmetic:ICR0:PASS:",
+        ":STST:functional:arithmetic:DCR0:PASS:",
+        ":STST:functional:arithmetic:AND0:PASS:",
+        ":STST:functional:arithmetic:NAN0:PASS:",
+        ":STST:functional:arithmetic:NOR0:PASS:",
+        ":STST:functional:arithmetic:NOT0:PASS:",
+        ":STST:functional:arithmetic:OR00:PASS:",
+        ":STST:functional:arithmetic:XOR0:PASS:",
+        ":STST:functional:arithmetic:MOD0:PASS:",
+        ":STST:functional:arithmetic:SHL0:PASS:",
+        ":STST:functional:arithmetic:SHR0:PASS:",
+        ":STST:functional:arithmetic:FSL0:PASS:",
+        ":STST:functional:arithmetic:FSR0:PASS:",
+        ":STST:functional:arithmetic:ADD0:PASS:",
+        ":STST:functional:arithmetic:SUB0:PASS:",
+        ":STST:functional:arithmetic:MTP0:PASS:",
+        ":STST:functional:arithmetic:DVD0:PASS:",
+        ":STST:functional:arithmetic:ICR0:PASS:",
+        ":STST:functional:arithmetic:DCR0:PASS:",
+        ":STST:functional:arithmetic:AND0:PASS:",
+        ":STST:functional:arithmetic:NAN0:PASS:",
+        ":STST:functional:arithmetic:NOR0:PASS:",
+        ":STST:functional:arithmetic:NOT0:PASS:",
+        ":STST:functional:arithmetic:OR00:PASS:",
+        ":STST:functional:arithmetic:XOR0:PASS:",
+        ":STST:functional:arithmetic:MOD0:PASS:",
+        ":STST:functional:arithmetic:SHL0:PASS:",
+        ":STST:functional:arithmetic:SHR0:PASS:",
+        ":STST:functional:arithmetic:FSL0:PASS:",
+        ":STST:functional:arithmetic:FSR0:PASS:"
+      ]
+    },
+    {
+      "method": "ERRS",
+      "integers": [
+        "0000000000000000"
+      ],
+      "records": []
+    }
+  ],
+  "full_log_sha256": "6958a79fad939e64955c234a29819089c8e38edd9ef54b2092d875149d900fbd",
+  "exit_zero_is_not_conformance": true
+}

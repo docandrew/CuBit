@@ -1,0 +1,5 @@
+(Component name => "secondary-stack-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    # A 96 MiB primary stack: the main thread uses more than the 16 MiB the
+    # old fixed secondary stack sat below the stack top (acpi.svc's case).
+    link_extra => [(Link_Argument.Text "-Wl,-z,stack-size=100663296")])))

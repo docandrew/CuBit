@@ -1,0 +1,2356 @@
+{
+  "assumptions": [
+    {
+      "assumptions": [
+        {
+          "arg": 4,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 11,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 3,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 12,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 2,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 10,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 2,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 2,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 10,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 13,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 5,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 5,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 14,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 14,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 6,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 4,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 9,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 9,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 14,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 14,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 7,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 8,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 8,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 4,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 11,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 8,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 7,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 7,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 3,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 2,
+        "predicate": "CLAIM_AORTE"
+      }
+    }
+  ],
+  "entities": {
+    " 1": {
+      "name": "ACPI_EC_Event_Policy.Settle",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 101
+        }
+      ]
+    },
+    " 10": {
+      "name": "ACPI_EC_Event_Policy.Bind",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 40
+        }
+      ]
+    },
+    " 11": {
+      "name": "ACPI_EC_Event_Policy.Claim",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 76
+        }
+      ]
+    },
+    " 12": {
+      "name": "ACPI_EC_Event_Policy.State",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 109
+        }
+      ]
+    },
+    " 13": {
+      "name": "ACPI_EC_Event_Policy",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 6
+        }
+      ]
+    },
+    " 14": {
+      "name": "CuBit.Process_IDs.Is_Process",
+      "sloc": [
+        {
+          "file": "cubit-process_ids.ads",
+          "line": 45
+        }
+      ]
+    },
+    " 2": {
+      "name": "ACPI_EC_Event_Policy.Binding_Decision",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 32
+        }
+      ]
+    },
+    " 3": {
+      "name": "ACPI_EC_Event_Policy.View",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 20
+        }
+      ]
+    },
+    " 4": {
+      "name": "ACPI_EC_Event_Policy.Decision",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 62
+        }
+      ]
+    },
+    " 5": {
+      "name": "ACPI_EC_Event_Policy.Revoke",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 52
+        }
+      ]
+    },
+    " 6": {
+      "name": "ACPI_EC_Event_Policy.Valid",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 21
+        }
+      ]
+    },
+    " 7": {
+      "name": "ACPI_EC_Event_Policy.Identity_Valid",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 27
+        }
+      ]
+    },
+    " 8": {
+      "name": "ACPI_EC_Event_Policy.Matches",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 88
+        }
+      ]
+    },
+    " 9": {
+      "name": "ACPI_EC_Event_Policy.Guard",
+      "sloc": [
+        {
+          "file": "acpi_ec_event_policy.ads",
+          "line": 93
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 37,
+      "entity": 1,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "flow",
+      "line": 102,
+      "msg_id": 0,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 2,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "flow",
+      "line": 32,
+      "msg_id": 1,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 3,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "flow",
+      "line": 20,
+      "msg_id": 2,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 4,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "flow",
+      "line": 62,
+      "msg_id": 3,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 27,
+      "entity": 5,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "flow",
+      "line": 53,
+      "msg_id": 4,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 6,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "flow",
+      "line": 21,
+      "msg_id": 5,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 7,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "flow",
+      "line": 27,
+      "msg_id": 6,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 8,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "flow",
+      "line": 88,
+      "msg_id": 7,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 60,
+      "entity": 9,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "flow",
+      "line": 93,
+      "msg_id": 8,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 50,
+      "entity": 10,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "flow",
+      "line": 41,
+      "msg_id": 9,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 50,
+      "entity": 11,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "flow",
+      "line": 77,
+      "msg_id": 10,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    }
+  ],
+  "pragma_assume": [
+  ],
+  "progress": "PROGRESS_PROOF",
+  "proof": [
+    {
+      "check_col": 9,
+      "check_file": "acpi_ec_event_policy.ads",
+      "check_line": 19,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 3.84000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 100,
+              "time": 1.58530000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.52000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.21800000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.65100000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 9,
+      "entity": 12,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "prover",
+      "line": 19,
+      "msg_id": 11,
+      "rule": "VC_DEFAULT_INITIAL_CONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 5,
+          "max_steps": 100,
+          "max_time": 1.58530008047819E-02
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    },
+    {
+      "check_col": 17,
+      "check_file": "acpi_ec_event_policy.adb",
+      "check_line": 6,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.26070000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.57380000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.46690000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.59290000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.85210000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 17,
+      "entity": 10,
+      "file": "acpi_ec_event_policy.adb",
+      "how_proved": "prover",
+      "line": 6,
+      "msg_id": 12,
+      "rule": "VC_PRECONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 5,
+          "max_steps": 1,
+          "max_time": 1.85209996998310E-02
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    },
+    {
+      "check_col": 26,
+      "check_file": "acpi_ec_event_policy.ads",
+      "check_line": 43,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 499,
+              "time": 2.47630000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 526,
+              "time": 2.82080000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 607,
+              "time": 2.43490000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 610,
+              "time": 2.69670000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 2.02270000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 26,
+      "entity": 10,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "prover",
+      "line": 43,
+      "msg_id": 13,
+      "rule": "VC_PRECONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 5,
+          "max_steps": 610,
+          "max_time": 2.82080005854368E-02
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    },
+    {
+      "check_col": 40,
+      "check_file": "acpi_ec_event_policy.ads",
+      "check_line": 42,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.50100000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.07930000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.93500000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.10300000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.20600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.29780000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 466,
+              "time": 2.31550000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.80900000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 31,
+              "time": 1.90990000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 172,
+              "time": 2.47720000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 46,
+              "time": 2.15800000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 67,
+              "time": 1.82800000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 81,
+              "time": 2.30580000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 40,
+      "entity": 10,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "prover",
+      "line": 42,
+      "msg_id": 14,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 13,
+          "max_steps": 466,
+          "max_time": 2.47719995677471E-02
+        },
+        "Trivial": {
+          "count": 2,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    },
+    {
+      "check_col": 40,
+      "check_file": "acpi_ec_event_policy.ads",
+      "check_line": 54,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.30800000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.99900000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.24200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.00700000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.84400000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.74200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.84600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 73,
+              "time": 1.72220000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 103,
+              "time": 2.16440000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 38,
+              "time": 1.75860000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 73,
+              "time": 1.69530000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 73,
+              "time": 1.91760000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 40,
+      "entity": 5,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "prover",
+      "line": 54,
+      "msg_id": 15,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 12,
+          "max_steps": 103,
+          "max_time": 2.16439999639988E-02
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    },
+    {
+      "check_col": 17,
+      "check_file": "acpi_ec_event_policy.adb",
+      "check_line": 22,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.36740000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.50630000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.67590000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.20980000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.54540000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 17,
+      "entity": 11,
+      "file": "acpi_ec_event_policy.adb",
+      "how_proved": "prover",
+      "line": 22,
+      "msg_id": 16,
+      "rule": "VC_PRECONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 5,
+          "max_steps": 1,
+          "max_time": 1.67590007185936E-02
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    },
+    {
+      "check_col": 26,
+      "check_file": "acpi_ec_event_policy.ads",
+      "check_line": 79,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 35,
+              "time": 2.09690000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 32,
+              "time": 1.80650000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 24,
+              "time": 2.18540000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 25,
+              "time": 2.16830000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 24,
+              "time": 2.05160000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 26,
+      "entity": 11,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "prover",
+      "line": 79,
+      "msg_id": 17,
+      "rule": "VC_PRECONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 5,
+          "max_steps": 35,
+          "max_time": 2.18540001660585E-02
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    },
+    {
+      "check_col": 40,
+      "check_file": "acpi_ec_event_policy.ads",
+      "check_line": 78,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 12,
+              "time": 1.72520000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.10820000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.36190000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.08810000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.08200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.13740000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 302,
+              "time": 1.90910000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 18,
+              "time": 2.00310000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.75200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 153,
+              "time": 2.39150000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 314,
+              "time": 2.80910000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 218,
+              "time": 2.25990000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 225,
+              "time": 2.38540000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 226,
+              "time": 2.41310000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 40,
+      "entity": 11,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "prover",
+      "line": 78,
+      "msg_id": 18,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 14,
+          "max_steps": 314,
+          "max_time": 2.80910003930330E-02
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    },
+    {
+      "check_col": 40,
+      "check_file": "acpi_ec_event_policy.ads",
+      "check_line": 94,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.83100000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.38500000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.89700000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.86300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.84300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.82100000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.17770000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.16860000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.15020000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.10300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.00900000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.20250000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 159,
+              "time": 2.41620000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 148,
+              "time": 2.64830000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 124,
+              "time": 1.97120000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 161,
+              "time": 2.33040000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 161,
+              "time": 2.13880000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 40,
+      "entity": 9,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "prover",
+      "line": 94,
+      "msg_id": 19,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 17,
+          "max_steps": 161,
+          "max_time": 2.64829993247986E-02
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    },
+    {
+      "check_col": 40,
+      "check_file": "acpi_ec_event_policy.ads",
+      "check_line": 103,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.22300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.97900000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.49200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.48100000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.70000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.59800000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.23400000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.09450000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.16000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.04260000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "Trivial": {
+              "result": "Valid",
+              "steps": 2,
+              "time": 0
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.91680000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 133,
+              "time": 2.14930000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 110,
+              "time": 1.98110000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 147,
+              "time": 1.81860000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 147,
+              "time": 2.05000000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 40,
+      "entity": 1,
+      "file": "acpi_ec_event_policy.ads",
+      "how_proved": "prover",
+      "line": 103,
+      "msg_id": 20,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 15,
+          "max_steps": 147,
+          "max_time": 2.14930009096861E-02
+        },
+        "Trivial": {
+          "count": 1,
+          "max_steps": 2,
+          "max_time": 0.00000000000000E+00
+        }
+      }
+    }
+  ],
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all",
+    " 10": "all",
+    " 11": "all",
+    " 12": "all",
+    " 13": "all",
+    " 2": "all",
+    " 3": "all",
+    " 4": "all",
+    " 5": "all",
+    " 6": "all",
+    " 7": "all",
+    " 8": "all",
+    " 9": "all"
+  },
+  "stop_reason": "STOP_REASON_NONE",
+  "timings": {
+    " 1": {
+      "gnat2why.vc_generation": 5.03610000014305E-02,
+      "gnatwhy3.init": 2.64860987663269E-01,
+      "gnatwhy3.register_vcs": 4.09080013632774E-02,
+      "gnatwhy3.run_vcs": 1.59989995154319E-05,
+      "gnatwhy3.save_session": 8.82000010460615E-03,
+      "gnatwhy3.schedule_vcs": 2.04099994152784E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.24190002679825E-02,
+      "gnatwhy3.transformations.detect_polymorphism": 2.59699905291200E-03,
+      "gnatwhy3.transformations.discriminate_if_poly": 7.00000009601354E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 1.87200005166233E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 4.64599905535579E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 2.09899898618460E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 2.96199903823435E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 3.53499897755682E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 1.68099894654006E-03,
+      "gnatwhy3.transformations.eliminate_literal": 2.90399906225502E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 1.64000003132969E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 9.00000031833770E-06,
+      "gnatwhy3.transformations.inline_trivial": 6.60419985651970E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 1.49990000863909E-05,
+      "gnatwhy3.transformations.remove_unused": 2.01280005276203E-02,
+      "gnatwhy3.transformations.simplify_formula": 2.53900000825524E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 2.04819981008768E-02
+    },
+    " 10": {
+      "gnat2why.vc_generation": 5.17960004508495E-02,
+      "gnatwhy3.init": 2.65881985425949E-01,
+      "gnatwhy3.register_vcs": 3.37349995970726E-02,
+      "gnatwhy3.run_vcs": 2.30000005103648E-05,
+      "gnatwhy3.save_session": 9.37999878078699E-03,
+      "gnatwhy3.schedule_vcs": 3.59920002520084E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 6.94799888879061E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 2.02000001445413E-03,
+      "gnatwhy3.transformations.discriminate_if_poly": 1.40000001920271E-05,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 4.00900002568960E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 4.00700001046062E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 2.67200008966029E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 2.91500007733703E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 3.57800000347197E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 2.31499900110066E-03,
+      "gnatwhy3.transformations.eliminate_literal": 3.49600007757545E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 3.03800008259714E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 7.99900044512469E-06,
+      "gnatwhy3.transformations.inline_trivial": 9.14380028843880E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 1.59989995154319E-05,
+      "gnatwhy3.transformations.remove_unused": 3.02080009132624E-02,
+      "gnatwhy3.transformations.simplify_formula": 3.47299897111952E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 1.57789997756481E-02
+    },
+    " 11": {
+      "gnat2why.vc_generation": 5.85619993507862E-02,
+      "gnatwhy3.init": 2.74414002895355E-01,
+      "gnatwhy3.register_vcs": 6.48040026426315E-02,
+      "gnatwhy3.run_vcs": 2.30000005103648E-05,
+      "gnatwhy3.save_session": 1.53829986229539E-02,
+      "gnatwhy3.schedule_vcs": 4.13889996707439E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.32170002907515E-02,
+      "gnatwhy3.transformations.detect_polymorphism": 3.04999900981784E-03,
+      "gnatwhy3.transformations.discriminate_if_poly": 1.59989995154319E-05,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 4.65000001713634E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 5.51699893549085E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 3.11499903909862E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 4.70500020310283E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 5.34400017932057E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 4.24600020051003E-03,
+      "gnatwhy3.transformations.eliminate_literal": 4.70300018787384E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 3.88700002804399E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 1.40000001920271E-05,
+      "gnatwhy3.transformations.inline_trivial": 1.05720996856689E-01,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 1.20000004244503E-05,
+      "gnatwhy3.transformations.remove_unused": 3.51039990782738E-02,
+      "gnatwhy3.transformations.simplify_formula": 4.49200021103024E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 3.32170017063618E-02
+    },
+    " 12": {
+      "gnatwhy3.init": 2.55962997674942E-01,
+      "gnatwhy3.register_vcs": 4.65899892151356E-03,
+      "gnatwhy3.run_vcs": 7.99900044512469E-06,
+      "gnatwhy3.save_session": 1.36999902315438E-03,
+      "gnatwhy3.schedule_vcs": 1.13960001617670E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 2.55100009962916E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 1.32999004563317E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 3.99900000047637E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 6.13000011071563E-04,
+      "gnatwhy3.transformations.eliminate_builtin": 1.62800005637109E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 7.15998990926892E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 5.78998995479196E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 6.14000018686056E-04,
+      "gnatwhy3.transformations.eliminate_inductive": 5.08000026457012E-04,
+      "gnatwhy3.transformations.eliminate_literal": 7.35000008717179E-04,
+      "gnatwhy3.transformations.eliminate_projections_sums": 9.28000023122877E-04,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 4.99899988426478E-06,
+      "gnatwhy3.transformations.inline_trivial": 1.60690005868673E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 4.99899988426478E-06,
+      "gnatwhy3.transformations.remove_unused": 5.20000001415610E-03,
+      "gnatwhy3.transformations.simplify_formula": 8.37000028695911E-04,
+      "gnatwhy3.transformations.split_goal_wp_conj": 3.02299903705716E-03
+    },
+    " 2": {
+      "gnat2why.vc_generation": 1.71760004013777E-02
+    },
+    " 3": {
+      "gnat2why.vc_generation": 2.87656992673874E-01
+    },
+    " 4": {
+      "gnat2why.vc_generation": 3.37439998984337E-02
+    },
+    " 5": {
+      "gnat2why.vc_generation": 5.03059998154640E-02,
+      "gnatwhy3.init": 2.55371004343033E-01,
+      "gnatwhy3.register_vcs": 2.00839992612600E-02,
+      "gnatwhy3.run_vcs": 1.59989995154319E-05,
+      "gnatwhy3.save_session": 5.65000018104911E-03,
+      "gnatwhy3.schedule_vcs": 1.57030001282692E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 5.33000007271767E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 6.59000012092292E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 6.00000021222513E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 1.37299904599786E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 3.34899895824492E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 1.12100003752857E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 1.97999901138246E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 1.56999903265387E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 1.79200002457947E-03,
+      "gnatwhy3.transformations.eliminate_literal": 1.89499894622713E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 1.40800001099706E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 3.99900000047637E-06,
+      "gnatwhy3.transformations.inline_trivial": 4.79599982500076E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 7.99900044512469E-06,
+      "gnatwhy3.transformations.remove_unused": 1.65730006992817E-02,
+      "gnatwhy3.transformations.simplify_formula": 1.55100005213171E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 1.09329987317324E-02
+    },
+    " 6": {
+      "gnat2why.vc_generation": 1.73940006643534E-02
+    },
+    " 7": {
+      "gnat2why.vc_generation": 2.62399995699525E-03
+    },
+    " 8": {
+      "gnat2why.vc_generation": 2.40800008177757E-02
+    },
+    " 9": {
+      "gnat2why.vc_generation": 4.15639989078045E-02,
+      "gnatwhy3.init": 2.77195006608963E-01,
+      "gnatwhy3.register_vcs": 2.79890000820160E-02,
+      "gnatwhy3.run_vcs": 1.70000002981396E-05,
+      "gnatwhy3.save_session": 6.19600014761090E-03,
+      "gnatwhy3.schedule_vcs": 2.13360004127026E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.00999986752868E-02,
+      "gnatwhy3.transformations.detect_polymorphism": 1.66499905753881E-03,
+      "gnatwhy3.transformations.discriminate_if_poly": 9.99900021270150E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 2.57900008000433E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 4.49099903926253E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 2.09400011226535E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 2.50399904325604E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 3.79300001077354E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 1.23499904293567E-03,
+      "gnatwhy3.transformations.eliminate_literal": 2.70999898202717E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 1.92099902778864E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 6.00000021222513E-06,
+      "gnatwhy3.transformations.inline_trivial": 8.19680020213127E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 1.20000004244503E-05,
+      "gnatwhy3.transformations.remove_unused": 2.48770006000996E-02,
+      "gnatwhy3.transformations.simplify_formula": 2.56199901923537E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 1.36280003935099E-02
+    },
+    "global": {
+      "flow analysis": 1.16460002958775E-01,
+      "globals (advanced)": 3.33500001579523E-03,
+      "globals (basic)": 2.71489992737770E-02,
+      "init_why_sections": 2.71940007805824E-02,
+      "marking": 2.52299997955561E-02,
+      "properties (advanced)": 2.41999994614162E-04,
+      "translation of standard": 4.08050008118153E-02
+    }
+  }
+}

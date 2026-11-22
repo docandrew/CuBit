@@ -1,6 +1,110 @@
+# Rules are general by kind, not per directory: a new test or service gets
+# the same treatment without editing this file. Before adding a general rule,
+# check `git ls-files | grep` for tracked paths it would shadow, and add an
+# exception (!) for those.
+
+# --- Build output: gprbuild object/exec directories, proofs, binder files ---
 build
+build-*/
+*-build/
+obj/
+gnatprove/
+# Tracked source and test directories, not output.
+!/tests/build-workspace/
+!/tests/ccl-build/
+!/userspace/ccl/tools/ccl-build/
+b~*
+*.ali
+*.o
+*.a
+*.elf
+*.bexch
+# GNAT compiler/binder output captures and stack-usage reports.
+*.cswi
+*.su
+__pycache__/
+# Nix shells started with TMPDIR inside a test directory.
+nix-tmp.*/
+
+# --- Kernel and image products ---
 cubit_kernel
 cubit_kernel.iso
 cubit_kernel.map
 runtime/adalib
 src/build.ads
+/kernel/src/build.ads
+/kernel/*.iso.plan.json
+/kernel/*.img.plan.json
+/kernel/isodir/boot/*.img.plan.json
+# Separated debug files of image binaries, by build-id (docs/image-debug-info.md).
+/kernel/debug/
+/kernel/isodir/boot/debug/
+/kernel/isodir/licenses/cbor_ada.txt
+# Local A/B backups of built images.
+/kernel/*.pre-*
+/kernel/desktop-logs/
+# Userspace binaries and images.
+*.svc
+*.drv
+*.app
+*.img
+*.iso
+
+# --- Logs, captures, archives ---
+# Tool diagnostics stay local, including curated-reference raw output.
+*.log
+*.stdout
+*.stderr
+*.pcap
+*.zip
+/tests/performance/results/
+
+# --- Third-party source and build trees for ports ---
+/userspace/c/doom_src/
+/userspace/c/netsurf/
+/userspace/c/netsurf_deps/
+/userspace/c/netsurf_src/
+# Retired apps, kept locally for reference (user, 2026-10-11).
+/userspace/apps/security-center/
+/userspace/apps/ui-lab/
+/userspace/c/sameboy_src/
+/userspace/c/sameboy_build/
+/tests/mesa-software/target/
+/tests/mesa-anv/target/
+
+# --- Private inputs: never committed ---
+# Cartridges are build inputs, never source artifacts.
+/local-roms/
+*.[gG][bB]
+*.[gG][bB][cC]
+
+# --- Coordination and isolated workspaces ---
+# Session coordination notes and the advisory build lock are local working
+# state, not repository content.
+/coordination/
+/.build-workspaces/
+
+# --- Scratch from isolated regression and proof runs ---
+/tests/intel-gpu/budget-accounting.*/
+/tests/intel-gpu/prefix-geometry.*/
+/tests/intel-gpu/prefix-proof.*/
+/tests/intel-gpu/prefix-transport.*/
+/tests/intel-gpu/transport-proof-tmp.*/
+/tests/intel-gpu/demand-backing.*/
+/.gpu-status-test.*/
+/.vm-intel-*/
+
+# ACPI/AML tool output: compiled AML, ASL sources and disassembly generated
+# by the AML tests (cached ACPICA references are curated separately).
+*.aml
+*.asl
+# Hand-written ASL test fixtures are sources, not disassembly output.
+!tests/**/fixtures/*.asl
+!tests/headless/acpi/*.asl
+*.dsl
+tests/**/reference/**/*.log
+tests/**/reference/**/*.out
+tests/**/reference/**/*.err
+tests/**/reference/**/tests/**/reference/**/
+# VMM-001: the pinned test guest, rebuilt by tests/vm-linux/guest-image.sh
+firmware/vm-guest/

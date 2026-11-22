@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4d5470"/><stop offset="1" stop-color="#262a3a"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3e4560"/><stop offset="1" stop-color="#1f2333"/></linearGradient><linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a3f52"/><stop offset="1" stop-color="#1c2030"/></linearGradient><linearGradient id="g4" gradientUnits="userSpaceOnUse" x1="24" y1="5" x2="24" y2="24"><stop offset="0" stop-color="#ff2d2d"/><stop offset="1" stop-color="#ffffff"/></linearGradient><linearGradient id="g5" gradientUnits="userSpaceOnUse" x1="40" y1="33" x2="24" y2="24"><stop offset="0" stop-color="#2dff4f"/><stop offset="1" stop-color="#ffffff"/></linearGradient><linearGradient id="g6" gradientUnits="userSpaceOnUse" x1="8" y1="33" x2="24" y2="24"><stop offset="0" stop-color="#2d62ff"/><stop offset="1" stop-color="#ffffff"/></linearGradient></defs>
+<polygon points="1.48,34.00 24.00,47.00 24.00,44.00 1.48,31.00" fill="url(#g1)" stroke="#0b0d14" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="46.52,34.00 24.00,47.00 24.00,44.00 46.52,31.00" fill="url(#g2)" stroke="#0b0d14" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="24.00,18.00 46.52,31.00 24.00,44.00 1.48,31.00" fill="url(#g3)" stroke="#0b0d14" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="24.00,5.00 32.00,19.00 24.00,24.00 16.00,19.00" fill="url(#g4)"/>
+<polygon points="40.00,33.00 24.00,33.00 24.00,24.00 32.00,19.00" fill="url(#g5)"/>
+<polygon points="8.00,33.00 16.00,19.00 24.00,24.00 24.00,33.00" fill="url(#g6)"/>
+<polygon points="24.00,5.00 40.00,33.00 8.00,33.00" fill="none" stroke="#0b0d14" stroke-width="2.0" stroke-linejoin="round"/>
+</svg>

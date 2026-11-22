@@ -1,0 +1,319 @@
+{
+  "worker": 67312,
+  "exit_code": 0,
+  "runner": "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d",
+  "source": "/home/doc/git/.acpi-proof-work/acpi-provider-bridge-fixture-layout-x_jxc0xk",
+  "audit_sha256": "f7658d1d186537a2e894b4179aebc5a6d870d8b2d72b2ead505bae1d5e76260a",
+  "verified_counts": {
+    "sourcepins": 181,
+    "api_pins": 20,
+    "runnerpins": 11,
+    "runtime": 1582,
+    "artifacts": 731,
+    "tools": 5,
+    "binaries": 2
+  },
+  "stages": [
+    {
+      "stage": "gprbuild-version",
+      "command": [
+        "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+        "--version"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "gnat-version",
+      "command": [
+        "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gnatls",
+        "--version"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "runtime-directory",
+      "command": [
+        "/nix/store/a6xads67a2s6pb2d297lr5fxjk2lhcpc-gnat-wrapper-15.3.0/bin/gcc",
+        "-print-file-name=adainclude"
+      ],
+      "timeout": 5,
+      "returncode": 0
+    },
+    {
+      "stage": "release-build",
+      "command": [
+        "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+        "-v",
+        "-j1",
+        "-p",
+        "-P",
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/check.gpr"
+      ],
+      "timeout": 180,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Normal",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Normal"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Create_False",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Create_False"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Hidden_Create_False",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Hidden_Create_False"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Pending_Retirement",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Pending_Retirement"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Revoke_Refused",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Revoke_Refused"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Import_Timeout",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Import_Timeout"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Kernel_Failure",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Kernel_Failure"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Deadline_Start",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Deadline_Start"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Deadline_Import",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Deadline_Import"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Malformed_Request",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Malformed_Request"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Finish_Timeout",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Finish_Timeout"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "release-Wrong_Item",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/release/bin/provider_transport_tests",
+        "Wrong_Item"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-build",
+      "command": [
+        "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+        "-v",
+        "-j1",
+        "-p",
+        "-P",
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/check.gpr"
+      ],
+      "timeout": 180,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Normal",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Normal"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Create_False",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Create_False"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Hidden_Create_False",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Hidden_Create_False"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Pending_Retirement",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Pending_Retirement"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Revoke_Refused",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Revoke_Refused"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Import_Timeout",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Import_Timeout"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Kernel_Failure",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Kernel_Failure"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Deadline_Start",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Deadline_Start"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Deadline_Import",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Deadline_Import"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Malformed_Request",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Malformed_Request"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Finish_Timeout",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Finish_Timeout"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    },
+    {
+      "stage": "checked-Wrong_Item",
+      "command": [
+        "/home/doc/git/.acpi-proof-work/acpi-provider-layout-validation-8mb9128d/checked/bin/provider_transport_tests",
+        "Wrong_Item"
+      ],
+      "timeout": 30,
+      "returncode": 0
+    }
+  ],
+  "checks": {
+    "release": {
+      "Normal": 16,
+      "Create_False": 10,
+      "Hidden_Create_False": 10,
+      "Pending_Retirement": 20,
+      "Revoke_Refused": 20,
+      "Import_Timeout": 19,
+      "Kernel_Failure": 19,
+      "Deadline_Start": 4,
+      "Deadline_Import": 5,
+      "Malformed_Request": 4,
+      "Finish_Timeout": 16,
+      "Wrong_Item": 5
+    },
+    "checked": {
+      "Normal": 16,
+      "Create_False": 10,
+      "Hidden_Create_False": 10,
+      "Pending_Retirement": 20,
+      "Revoke_Refused": 20,
+      "Import_Timeout": 19,
+      "Kernel_Failure": 19,
+      "Deadline_Start": 4,
+      "Deadline_Import": 5,
+      "Malformed_Request": 4,
+      "Finish_Timeout": 16,
+      "Wrong_Item": 5
+    }
+  },
+  "checks_per_profile": 148,
+  "scope": "Hosted synthetic IPC/grant mechanics only. Real Driver/server composition and actual runtime-spec semantic gate not run. Prior31402 fixture build failure immutable."
+}

@@ -1,0 +1,25 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+Summary logged in /home/doc/cubit-build-tmp/ec-policy-proof-6VSF84/level2/obj/gnatprove/gnatprove.out
+acpi_ec_event_policy.adb:6:17: info: precondition proved
+acpi_ec_event_policy.adb:22:17: info: precondition proved
+acpi_ec_event_policy.ads:19:09: info: default initial condition proved
+acpi_ec_event_policy.ads:20:13: info: implicit aspect Always_Terminates on "View" has been proved, subprogram will terminate
+acpi_ec_event_policy.ads:21:13: info: implicit aspect Always_Terminates on "Valid" has been proved, subprogram will terminate
+acpi_ec_event_policy.ads:27:13: info: implicit aspect Always_Terminates on "Identity_Valid" has been proved, subprogram will terminate
+acpi_ec_event_policy.ads:32:13: info: implicit aspect Always_Terminates on "Binding_Decision" has been proved, subprogram will terminate
+acpi_ec_event_policy.ads:41:50: info: initialization of "Result" proved
+acpi_ec_event_policy.ads:42:40: info: postcondition proved
+acpi_ec_event_policy.ads:43:26: info: precondition proved
+acpi_ec_event_policy.ads:53:27: info: initialization of "Accepted" proved
+acpi_ec_event_policy.ads:54:40: info: postcondition proved
+acpi_ec_event_policy.ads:62:13: info: implicit aspect Always_Terminates on "Decision" has been proved, subprogram will terminate
+acpi_ec_event_policy.ads:77:50: info: initialization of "Result" proved
+acpi_ec_event_policy.ads:78:40: info: postcondition proved
+acpi_ec_event_policy.ads:79:26: info: precondition proved
+acpi_ec_event_policy.ads:88:13: info: implicit aspect Always_Terminates on "Matches" has been proved, subprogram will terminate
+acpi_ec_event_policy.ads:93:60: info: initialization of "Accepted" proved
+acpi_ec_event_policy.ads:94:40: info: postcondition proved
+acpi_ec_event_policy.ads:102:37: info: initialization of "Accepted" proved
+acpi_ec_event_policy.ads:103:40: info: postcondition proved

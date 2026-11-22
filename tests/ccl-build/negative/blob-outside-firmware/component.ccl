@@ -1,0 +1,7 @@
+# Vendored blobs live under firmware/ only.
+(Component name => "neg" kind => Kind.Application
+  source => (Source.Ada (Ada_Source))
+  embedded => [(Blob name => "blob-one"
+                 source => (vendored "userspace/apps/sleep/main.adb"
+                   (SHA256_Digest 0x2f1f57a1 0xb23d186f 0x2592318d 0x1e07a136 0x59689328 0x41ccb3e7 0x177c516b 0xa006e2f6))
+                 licence => "firmware/LICENSE.i915")])

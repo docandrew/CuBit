@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "scope": "Native CuBit synthetic compositor trace fragment publisher and collector over real IPC/grants, both SDK pages held through100 refused events then recovery; explicit prebuilt kernel/initrd/allocator seeds; no Desktop callsite or hardware latency claim",
+  "events": 64,
+  "trace_overwritten_gap": 268,
+  "dropped_fragments": 400,
+  "rows": 256,
+  "initial_metric_gap": 749,
+  "binary_hashes": {
+    "metrics-check.app": "30f853cff7193b72cd3b264da8ffd8e8b0836ad4e9e24ccbeac3b7866a25f31f",
+    "metrics.svc": "a15830153ae52b0550cf8353bbe97a300e101a4a37c56950fae405a5769602bb"
+  },
+  "serial_sha256": "926545b090e8409b5b9bfe9145c264d0b4f15720a56c4b268321ab84eba0327a"
+}

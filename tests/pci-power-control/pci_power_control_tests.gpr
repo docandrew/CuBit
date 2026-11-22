@@ -1,0 +1,12 @@
+--  Hosted tests and proof of devmgr's D3hot-to-D0 decision (PCI-BAR-001, run.sh).
+project PCI_Power_Control_Tests is
+   for Source_Dirs use (".", "../../userspace/services/devmgr");
+   for Source_Files use ("main.adb", "pci_power_control.ads", "pci_power_control.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end PCI_Power_Control_Tests;

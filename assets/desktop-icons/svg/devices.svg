@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#127a35"/><stop offset="1" stop-color="#0b4f22"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c9c48"/><stop offset="1" stop-color="#0e6a2c"/></linearGradient><linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4ee07a"/><stop offset="1" stop-color="#169a45"/></linearGradient><linearGradient id="g4" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#15171d"/><stop offset="1" stop-color="#08090c"/></linearGradient><linearGradient id="g5" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2d36"/><stop offset="1" stop-color="#121318"/></linearGradient><linearGradient id="g6" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a4f5c"/><stop offset="1" stop-color="#22252e"/></linearGradient></defs>
+<polygon points="-0.25,32.00 24.00,46.00 24.00,43.00 -0.25,29.00" fill="url(#g1)" stroke="#06290f" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="48.25,32.00 24.00,46.00 24.00,43.00 48.25,29.00" fill="url(#g2)" stroke="#06290f" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="24.00,15.00 48.25,29.00 24.00,43.00 -0.25,29.00" fill="url(#g3)" stroke="#06290f" stroke-width="2.0" stroke-linejoin="round"/>
+<polyline points="25.73,18.00 21.40,20.50" fill="none" stroke="#c9f7a0" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="30.06,20.50 25.73,23.00" fill="none" stroke="#c9f7a0" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="34.39,23.00 30.06,25.50" fill="none" stroke="#c9f7a0" stroke-width="1.0" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="27.46,22.00 24.00,24.00" fill="none" stroke="#ffd447" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="15.34,29.00 11.88,31.00" fill="none" stroke="#ffd447" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="30.50,23.75 27.03,25.75" fill="none" stroke="#ffd447" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="18.37,30.75 14.91,32.75" fill="none" stroke="#ffd447" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="33.53,25.50 30.06,27.50" fill="none" stroke="#ffd447" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="21.40,32.50 17.94,34.50" fill="none" stroke="#ffd447" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="36.56,27.25 33.09,29.25" fill="none" stroke="#ffd447" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="24.43,34.25 20.97,36.25" fill="none" stroke="#ffd447" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="13.61,29.00 24.00,35.00 24.00,31.00 13.61,25.00" fill="url(#g4)" stroke="#000000" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="34.39,29.00 24.00,35.00 24.00,31.00 34.39,25.00" fill="url(#g5)" stroke="#000000" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="24.00,19.00 34.39,25.00 24.00,31.00 13.61,25.00" fill="url(#g6)" stroke="#000000" stroke-width="2.0" stroke-linejoin="round"/>
+<circle cx="24.00" cy="22.00" r="1.10" fill="#9aa3b5"/>
+</svg>

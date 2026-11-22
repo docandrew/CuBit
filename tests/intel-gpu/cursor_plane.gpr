@@ -1,0 +1,26 @@
+--  DISP-003 cursor path: hosted tests (Linux) and level-2 proofs of the
+--  pure units (intel_gpu_firmware_output, intel_gpu_cursor_surfaces).
+--    gprbuild -P tests/intel-gpu/cursor_plane.gpr && tests/intel-gpu/build-cursor-plane/cursor_plane_tests
+--    gnatprove -P tests/intel-gpu/cursor_plane.gpr -u intel_gpu_firmware_output.adb intel_gpu_cursor_surfaces.adb --level=2
+project Cursor_Plane is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("cursor_plane_tests.adb",
+     "intel_gpu_firmware_output.ads", "intel_gpu_firmware_output.adb",
+     "intel_gpu_cursor_surfaces.ads", "intel_gpu_cursor_surfaces.adb",
+     "intel_gpu_cursor_ddb.ads", "intel_gpu_cursor_ddb.adb",
+     "intel_gpu_cursor_plane.ads", "intel_gpu_cursor_plane.adb",
+     "intel_gpu_cursor_program.ads", "intel_gpu_cursor_program.adb",
+     "intel_gpu_plane_decode.ads", "intel_gpu_plane_decode.adb",
+     "intel_gpu_plane_control.ads",
+     "intel_gpu_scanout_range.ads", "intel_gpu_scanout_range.adb",
+     "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb",
+     "intel_gpu_display_topology.ads", "intel_gpu_display_topology.adb");
+   for Object_Dir use "build-cursor-plane";
+   for Main use ("cursor_plane_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Cursor_Plane;

@@ -1,0 +1,9 @@
+project GT_Reset is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("gt_reset_tests.adb", "intel_gpu_gt_reset.ads", "intel_gpu_gt_reset.adb");
+   for Object_Dir use "build-gt-reset";
+   for Main use ("gt_reset_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwe");
+   end Compiler;
+end GT_Reset;

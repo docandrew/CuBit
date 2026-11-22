@@ -1,0 +1,5 @@
+project Portable_Objects extends "discovery.gpr" is
+   for Object_Dir use "build/portable-objects";
+   for Exec_Dir use "build/portable-objects";
+   for Main use ("portable_object_tests.adb");
+end Portable_Objects;

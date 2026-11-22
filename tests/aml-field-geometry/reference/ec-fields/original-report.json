@@ -1,0 +1,338 @@
+{
+  "results": [
+    {
+      "unit": "aml_field_layout",
+      "level": 1,
+      "entities": 2,
+      "flow": 4,
+      "proof": 7,
+      "obligations": [
+        {
+          "file": "aml_field_layout.adb",
+          "line": 51,
+          "col": 34,
+          "rule": "VC_DIVISION_CHECK"
+        },
+        {
+          "file": "aml_field_layout.adb",
+          "line": 52,
+          "col": 34,
+          "rule": "VC_DIVISION_CHECK"
+        },
+        {
+          "file": "aml_field_layout.ads",
+          "line": 46,
+          "col": 36,
+          "rule": "VC_DIVISION_CHECK"
+        },
+        {
+          "file": "aml_field_layout.ads",
+          "line": 47,
+          "col": 36,
+          "rule": "VC_DIVISION_CHECK"
+        },
+        {
+          "file": "aml_field_layout.ads",
+          "line": 49,
+          "col": 27,
+          "rule": "VC_OVERFLOW_CHECK"
+        },
+        {
+          "file": "aml_field_layout.ads",
+          "line": 49,
+          "col": 27,
+          "rule": "VC_RANGE_CHECK"
+        },
+        {
+          "file": "aml_field_layout.ads",
+          "line": 35,
+          "col": 15,
+          "rule": "VC_POSTCONDITION"
+        }
+      ]
+    },
+    {
+      "unit": "aml_field_layout",
+      "level": 2,
+      "entities": 2,
+      "flow": 4,
+      "proof": 7,
+      "obligations": [
+        {
+          "file": "aml_field_layout.adb",
+          "line": 51,
+          "col": 34,
+          "rule": "VC_DIVISION_CHECK"
+        },
+        {
+          "file": "aml_field_layout.adb",
+          "line": 52,
+          "col": 34,
+          "rule": "VC_DIVISION_CHECK"
+        },
+        {
+          "file": "aml_field_layout.ads",
+          "line": 46,
+          "col": 36,
+          "rule": "VC_DIVISION_CHECK"
+        },
+        {
+          "file": "aml_field_layout.ads",
+          "line": 47,
+          "col": 36,
+          "rule": "VC_DIVISION_CHECK"
+        },
+        {
+          "file": "aml_field_layout.ads",
+          "line": 49,
+          "col": 27,
+          "rule": "VC_OVERFLOW_CHECK"
+        },
+        {
+          "file": "aml_field_layout.ads",
+          "line": 49,
+          "col": 27,
+          "rule": "VC_RANGE_CHECK"
+        },
+        {
+          "file": "aml_field_layout.ads",
+          "line": 35,
+          "col": 15,
+          "rule": "VC_POSTCONDITION"
+        }
+      ]
+    },
+    {
+      "unit": "aml_field_plans",
+      "level": 1,
+      "entities": 10,
+      "flow": 11,
+      "proof": 8,
+      "obligations": [
+        {
+          "file": "aml_field_plans.adb",
+          "line": 74,
+          "col": 49,
+          "rule": "VC_RANGE_CHECK"
+        },
+        {
+          "file": "aml_field_plans.ads",
+          "line": 22,
+          "col": 20,
+          "rule": "VC_POSTCONDITION"
+        },
+        {
+          "file": "aml_field_plans.adb",
+          "line": 79,
+          "col": 86,
+          "rule": "VC_RANGE_CHECK"
+        },
+        {
+          "file": "aml_field_plans.adb",
+          "line": 79,
+          "col": 23,
+          "rule": "VC_PRECONDITION"
+        },
+        {
+          "file": "aml_field_plans.adb",
+          "line": 86,
+          "col": 53,
+          "rule": "VC_PRECONDITION"
+        },
+        {
+          "file": "aml_field_plans.adb",
+          "line": 102,
+          "col": 48,
+          "rule": "VC_DIVISION_CHECK"
+        },
+        {
+          "file": "aml_field_plans.adb",
+          "line": 102,
+          "col": 81,
+          "rule": "VC_RANGE_CHECK"
+        },
+        {
+          "file": "aml_field_plans.ads",
+          "line": 33,
+          "col": 41,
+          "rule": "VC_POSTCONDITION"
+        }
+      ]
+    },
+    {
+      "unit": "aml_field_plans",
+      "level": 2,
+      "entities": 10,
+      "flow": 11,
+      "proof": 8,
+      "obligations": [
+        {
+          "file": "aml_field_plans.adb",
+          "line": 74,
+          "col": 49,
+          "rule": "VC_RANGE_CHECK"
+        },
+        {
+          "file": "aml_field_plans.ads",
+          "line": 22,
+          "col": 20,
+          "rule": "VC_POSTCONDITION"
+        },
+        {
+          "file": "aml_field_plans.adb",
+          "line": 79,
+          "col": 86,
+          "rule": "VC_RANGE_CHECK"
+        },
+        {
+          "file": "aml_field_plans.adb",
+          "line": 79,
+          "col": 23,
+          "rule": "VC_PRECONDITION"
+        },
+        {
+          "file": "aml_field_plans.adb",
+          "line": 86,
+          "col": 53,
+          "rule": "VC_PRECONDITION"
+        },
+        {
+          "file": "aml_field_plans.adb",
+          "line": 102,
+          "col": 48,
+          "rule": "VC_DIVISION_CHECK"
+        },
+        {
+          "file": "aml_field_plans.adb",
+          "line": 102,
+          "col": 81,
+          "rule": "VC_RANGE_CHECK"
+        },
+        {
+          "file": "aml_field_plans.ads",
+          "line": 33,
+          "col": 41,
+          "rule": "VC_POSTCONDITION"
+        }
+      ]
+    }
+  ],
+  "inputs": {
+    "/home/doc/git/cubit/userspace/services/acpi/lib/aml_field_layout.ads": "90ca517c567cd4ffc1fb0a53828f8c10b803d9aa8dc7f19eb01f90d2bb065659",
+    "/home/doc/git/cubit/userspace/services/acpi/lib/aml_field_layout.adb": "7baaf697ec1b774d969ef559da732ba249e892b0aa04ea2a919eda7197f0af5a",
+    "/home/doc/git/cubit/userspace/services/acpi/lib/aml_field_plans.ads": "0a73ece7e14d286ddf36485e0187cdc4fc24bfe3c40dbbfc261d7e4f41c57778",
+    "/home/doc/git/cubit/userspace/services/acpi/lib/aml_field_plans.adb": "58caa861eb8aa92fe5ec2c6fe60bc24326e0c8d75e8706cca8c616ced826778a",
+    "/home/doc/git/cubit/userspace/services/acpi/field-client/provider/acpi_field_remote_provider.adb": "c3fa433435b6c05f3559a5f6fe3b589a92256a60bc55061e9951dc5fcddb5557",
+    "/home/doc/git/cubit/userspace/services/acpi/lib/acpi_fadt-transactions.ads": "a1ea946249aef284cafea4079d07b08ba5b17c2030df9106eccbc70cc634e10f",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/acpi_fadt-transactions.ads": "a1ea946249aef284cafea4079d07b08ba5b17c2030df9106eccbc70cc634e10f",
+    "/home/doc/git/cubit/userspace/services/acpi/lib/acpi_fadt-transactions.adb": "aa6907caeb5d911c74e8e866c72180e3e70ac205ba8755bf1d4c599beb11d6eb",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/acpi_fadt-transactions.adb": "aa6907caeb5d911c74e8e866c72180e3e70ac205ba8755bf1d4c599beb11d6eb",
+    "/home/doc/git/cubit/userspace/services/acpi/lib/acpi_fadt.ads": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/acpi_fadt.ads": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752",
+    "/home/doc/git/cubit/userspace/services/acpi/lib/acpi_fadt.adb": "7058da752f0644899a6c97fd3ea2722cba927bf08e4f0e7c5736f16ee2e2c10d",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/acpi_fadt.adb": "7058da752f0644899a6c97fd3ea2722cba927bf08e4f0e7c5736f16ee2e2c10d",
+    "/home/doc/git/cubit/userspace/services/acpi/lib/aml_decode.ads": "3f312c98587da55cabbd1a800b8dd4634a7adbc502e95e1fbbac11ac91567bfa",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/aml_decode.ads": "3f312c98587da55cabbd1a800b8dd4634a7adbc502e95e1fbbac11ac91567bfa",
+    "/home/doc/git/cubit/userspace/services/acpi/lib/aml_decode.adb": "9fee3a0bb3c6aaa12ccc34eb7df4ffcba8488b337b7f8613284d10495006ea87",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/aml_decode.adb": "9fee3a0bb3c6aaa12ccc34eb7df4ffcba8488b337b7f8613284d10495006ea87",
+    "/home/doc/git/cubit/userspace/services/acpi/lib/aml_field_datums.ads": "f1f8b4e505c44cdf2b12d8dab10cf072ab0ab5235c222465f572790320997072",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/aml_field_datums.ads": "f1f8b4e505c44cdf2b12d8dab10cf072ab0ab5235c222465f572790320997072",
+    "/home/doc/git/cubit/userspace/services/acpi/lib/aml_field_datums.adb": "5af67ff7681da04c0eda590d25bae840093df64424d7e0ecacdbc9e02d4c79bb",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/aml_field_datums.adb": "5af67ff7681da04c0eda590d25bae840093df64424d7e0ecacdbc9e02d4c79bb",
+    "/home/doc/git/.acpi-proof-work/ec-field-work/candidate/userspace/services/acpi/lib/aml_field_layout.ads": "e018fd6bfd063c2781fc6177d4b630f62959077dce8768f37b3907ee38a5d637",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/aml_field_layout.ads": "e018fd6bfd063c2781fc6177d4b630f62959077dce8768f37b3907ee38a5d637",
+    "/home/doc/git/.acpi-proof-work/ec-field-work/candidate/userspace/services/acpi/lib/aml_field_layout.adb": "99345a0403f538486ff77247297bfea5a2b3476e872d95c957f483b15e8df9e5",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/aml_field_layout.adb": "99345a0403f538486ff77247297bfea5a2b3476e872d95c957f483b15e8df9e5",
+    "/home/doc/git/.acpi-proof-work/ec-field-work/candidate/userspace/services/acpi/lib/aml_field_plans.ads": "f9c024dfafe7025dadebd17e3447c5579bc7aae9716e7e90935b97816e038c62",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/aml_field_plans.ads": "f9c024dfafe7025dadebd17e3447c5579bc7aae9716e7e90935b97816e038c62",
+    "/home/doc/git/.acpi-proof-work/ec-field-work/candidate/userspace/services/acpi/lib/aml_field_plans.adb": "e8975c5c746bfaf37d4ab74fc3a8d4d78b0696a73dfdc8753f97b58981c06bc1",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/aml_field_plans.adb": "e8975c5c746bfaf37d4ab74fc3a8d4d78b0696a73dfdc8753f97b58981c06bc1",
+    "/home/doc/git/cubit/shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "/home/doc/git/cubit/shared/firmware/firmware_tables.adb": "120555c25910e45212c229526c232c0b1afae7f63effd04fdd54a5f567690cfa",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/source/firmware_tables.adb": "120555c25910e45212c229526c232c0b1afae7f63effd04fdd54a5f567690cfa",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/aml_field_layout-level1/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/aml_field_layout-level2/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/aml_field_plans-level1/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5",
+    "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/aml_field_plans-level2/proof.gpr": "3ff017dce32ea1178a7a092f8e1e333c359218f3f7e37fbb652e77b4a7a5a3c5"
+  },
+  "commands": [
+    {
+      "label": "aml_field_layout-level1",
+      "args": [
+        "gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/aml_field_layout-level1/proof.gpr",
+        "-u",
+        "aml_field_layout.adb",
+        "--mode=prove",
+        "-j1",
+        "--report=all",
+        "--level=1",
+        "--prover=cvc5,z3",
+        "--timeout=5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "label": "aml_field_layout-level2",
+      "args": [
+        "gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/aml_field_layout-level2/proof.gpr",
+        "-u",
+        "aml_field_layout.adb",
+        "--mode=prove",
+        "-j1",
+        "--report=all",
+        "--level=2",
+        "--prover=cvc5,z3",
+        "--timeout=5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "label": "aml_field_plans-level1",
+      "args": [
+        "gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/aml_field_plans-level1/proof.gpr",
+        "-u",
+        "aml_field_plans.adb",
+        "--mode=prove",
+        "-j1",
+        "--report=all",
+        "--level=1",
+        "--prover=cvc5,z3",
+        "--timeout=5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "label": "aml_field_plans-level2",
+      "args": [
+        "gnatprove",
+        "-P",
+        "/home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/aml_field_plans-level2/proof.gpr",
+        "-u",
+        "aml_field_plans.adb",
+        "--mode=prove",
+        "-j1",
+        "--report=all",
+        "--level=2",
+        "--prover=cvc5,z3",
+        "--timeout=5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    }
+  ],
+  "scope": "Selected geometry safety and stated contracts only, no interpreter/provider/hardware correctness proof."
+}

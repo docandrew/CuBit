@@ -1,0 +1,23 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+aml_field_plans.adb:24:07: info: initialization of "Width" proved
+aml_field_plans.adb:25:07: info: initialization of "Update" proved
+aml_field_plans.adb:26:07: info: initialization of "Datums" proved
+aml_field_plans.adb:68:49: info: range check proved
+aml_field_plans.adb:73:23: info: precondition proved
+aml_field_plans.adb:73:86: info: range check proved
+aml_field_plans.adb:80:53: info: precondition proved
+aml_field_plans.adb:96:48: info: division check proved
+aml_field_plans.adb:96:81: info: range check proved
+aml_field_plans.ads:16:13: info: implicit aspect Always_Terminates on "Valid" has been proved, subprogram will terminate
+aml_field_plans.ads:17:13: info: implicit aspect Always_Terminates on "Count" has been proved, subprogram will terminate
+aml_field_plans.ads:18:13: info: implicit aspect Always_Terminates on "Prepare" has been proved, subprogram will terminate
+aml_field_plans.ads:19:20: info: postcondition proved
+aml_field_plans.ads:20:13: info: implicit aspect Always_Terminates on "Rule" has been proved, subprogram will terminate
+aml_field_plans.ads:21:13: info: implicit aspect Always_Terminates on "Datum_At" has been proved, subprogram will terminate
+aml_field_plans.ads:24:13: info: implicit aspect Always_Terminates on "Matches" has been proved, subprogram will terminate
+aml_field_plans.ads:27:13: info: implicit aspect Always_Terminates on "Result_Form" has been proved, subprogram will terminate
+aml_field_plans.ads:29:13: info: implicit aspect Always_Terminates on "Buffer_Length" has been proved, subprogram will terminate
+aml_field_plans.ads:30:41: info: postcondition proved
+Summary logged in /home/doc/git/.acpi-proof-work/bank-catalog-atomicity-EunyJxV9/source/tests/aml-field-geometry/proof-plans-prove-moQx0EYO/obj/gnatprove/gnatprove.out

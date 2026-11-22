@@ -1,0 +1,218 @@
+[
+  {
+    "key": "1-local_ref_source",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "8c3ecf71a908ae04eb6b2775f645d12db26aa28c2faa1e5167e996b78f2e9210",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: Needed [Integer/String/Buffer], found [Reference] 0x55555560b0e0 (20260408/exresop-635)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [ToBuffer] (20260408/dswexec-613)",
+      "Failed at AML Offset 00008, Opcode 0096: ToBuffer (Local0)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-arg_ref_source",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "1497deec0cc1ccd35ec0677516a804cbb7bebc2c2fdc37eee38e0aeb87fbb06e",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: Needed [Integer/String/Buffer], found [Reference] 0x55555560b110 (20260408/exresop-635)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [ToBuffer] (20260408/dswexec-613)",
+      "Failed at AML Offset 00001, Opcode 0096: ToBuffer (Arg0)",
+      "ACPI Error: Aborting method \\HELP due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "1-package_target",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "59111780b3c14d3695864b9b412820cf8f23761ec4f3d8e83a58cbab580c020c",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "414200",
+    "classification": "returned"
+  },
+  {
+    "key": "1-byte_target",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "4f6dedd9039ecd47068c3bcac2b63979006427559e48b22e5d6f67980bebe33c",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 833,
+    "classification": "returned"
+  },
+  {
+    "key": "1-fresh_string_alias",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "111688a9dcf4d0b7a4a6a55f54962e0245aa8f31030b8b20dc6eb2ff3c9e2c19",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "094200",
+    "classification": "returned"
+  },
+  {
+    "key": "1-arg_frame_target",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "cddf2ca48f0a86a7cd7ae3251e16c6df33e1dcd9ed124c465484d34c92d7f396",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "414200",
+    "classification": "returned"
+  },
+  {
+    "key": "2-local_ref_source",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "c3277655d3a1bfa3e462809ace359c7cdde9e82e0f3c04fde995bb94a6f00e36",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: Needed [Integer/String/Buffer], found [Reference] 0x55555560b0e0 (20260408/exresop-635)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [ToBuffer] (20260408/dswexec-613)",
+      "Failed at AML Offset 00008, Opcode 0096: ToBuffer (Local0)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-arg_ref_source",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "dac12ca915329fb67b42d43bc38f484c489ec390c078ef9e15f9c88f7519f316",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: Needed [Integer/String/Buffer], found [Reference] 0x55555560b110 (20260408/exresop-635)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [ToBuffer] (20260408/dswexec-613)",
+      "Failed at AML Offset 00001, Opcode 0096: ToBuffer (Arg0)",
+      "ACPI Error: Aborting method \\HELP due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "classification": "runtime_error"
+  },
+  {
+    "key": "2-package_target",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "dbb383033323a225b858cba6fc798546981734a9a394a705e67dd2e712108e4d",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "414200",
+    "classification": "returned"
+  },
+  {
+    "key": "2-byte_target",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "b066baa9e9cf4e873bfebca01fb4bbecf245a6657706b918952833ee19b4fcb7",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "integer",
+    "integer": 833,
+    "classification": "returned"
+  },
+  {
+    "key": "2-fresh_string_alias",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "ced2b5bba9ccec7f5c9f3f4128c9756d24944c5840d342071323c650e9944ae3",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "094200",
+    "classification": "returned"
+  },
+  {
+    "key": "2-arg_frame_target",
+    "expectation": null,
+    "compile_returncode": 0,
+    "aml_sha256": "eb44486a39c9936fe2a86a34f2b99c7b4ba7605d5d8b79bdd3c397b89e37717f",
+    "returncode": 0,
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "kind": "buffer",
+    "length": 3,
+    "hex": "414200",
+    "classification": "returned"
+  }
+]

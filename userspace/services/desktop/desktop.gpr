@@ -1,0 +1,139 @@
+with "../../lib/ui/fonts_native.gpr";
+with "../../lib/ui/toolkit_flags.gpr";
+project Desktop is
+
+    for Languages use ("Ada");
+
+    type Backend_Type is ("legacy", "mesa", "vulkan");
+    Backend : Backend_Type := external ("CUBIT_COMPOSITOR", "vulkan");
+    Backend_Directory := "backend-" & Backend;
+    Backend_Suffix := "";
+    Startup_Directory := "startup-software";
+    case Backend is
+        when "legacy" => null;
+        when "mesa" => Backend_Suffix := "-mesa";
+        when "vulkan" =>
+            Backend_Suffix := "-vulkan";
+            Startup_Directory := "startup-vulkan";
+    end case;
+
+    type Input_Overlay_Type is ("off", "on");
+    Input_Overlay : Input_Overlay_Type := external ("CUBIT_INPUT_OVERLAY", "off");
+    Input_Overlay_Directory := "input-overlay-" & Input_Overlay;
+    case Input_Overlay is
+        when "off" => null;
+        when "on" => Backend_Suffix := Backend_Suffix & "-input-overlay";
+    end case;
+
+    type Timing_Type is ("off", "on");
+    Timing : Timing_Type := external ("CUBIT_COMPOSITOR_TIMING", "off");
+    Timing_Directory := "timing-" & Timing;
+    case Timing is
+        when "off" => null;
+        when "on" => Backend_Suffix := Backend_Suffix & "-timing";
+    end case;
+
+    --  Metrics are always on (MET-002): Desktop publishes through the
+    --  com.cubit-os.stdmetric outlet its manifest declares.
+    Manifest_Directory := "build";
+
+    --  Test-only fault injection (Desktop_Fault_Policy): the headless
+    --  desktop-restart test's desktop fails once on purpose.
+    type Fault_Type is ("off", "exit-once");
+    Fault : Fault_Type := external ("CUBIT_DESKTOP_FAULT", "off");
+    Fault_Directory := "fault-" & Fault;
+    case Fault is
+        when "off" => null;
+        when "exit-once" => Backend_Suffix := Backend_Suffix & "-fault-exit-once";
+    end case;
+
+    type Storage_Type is ("production", "limited");
+    Storage : Storage_Type := external ("CUBIT_COMPOSITOR_STORAGE", "production");
+    Storage_Directory := "storage-" & Storage;
+    case Storage is
+        when "production" => null;
+        when "limited" => Backend_Suffix := Backend_Suffix & "-limited-storage";
+    end case;
+
+    type Test_Mode_Type is ("production", "delayed");
+    Test_Mode : Test_Mode_Type := external ("CUBIT_DISPLAY_TEST_MODE", "production");
+    case Test_Mode is
+        when "production" =>
+            for Object_Dir use "build" & Backend_Suffix;
+            for Source_Dirs use ("../../mesa", "../../lib/display", "../../lib/compositor", "../../lib/image", "../../allocator/src", Backend_Directory, Startup_Directory, Input_Overlay_Directory, Timing_Directory, Fault_Directory, Storage_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../lib/input", "../../lib/time", "../../lib/time/build/generated", "../../ccl/src", "../display/production");
+        when "delayed" =>
+            for Object_Dir use "build-delayed" & Backend_Suffix;
+            for Source_Dirs use ("../../mesa", "../../lib/display", "../../lib/compositor", "../../lib/image", "../../allocator/src", Backend_Directory, Startup_Directory, Input_Overlay_Directory, Timing_Directory, Fault_Directory, Storage_Directory, Manifest_Directory & "/generated", ".", "../../lib/theme", "../../lib/ui", "../../lib/input", "../../lib/time", "../../lib/time/build/generated", "../../ccl/src", "../display/test-delayed");
+    end case;
+
+    for Main use ("main.adb");
+
+    for Runtime ("Ada") use "../../runtime";
+
+    for Library_Dir use "";
+
+    package Builder is
+        for Executable ("main.adb") use "desktop.svc";
+
+        for Default_Switches ("Ada") use
+        (
+            "-g",
+            "-gnatwa",
+            "-gnatw.X",
+            "-s",
+            "-v",
+            "-nostdlib"
+        );
+    end Builder;
+
+    package Compiler extends Toolkit_Flags.Compiler is
+        for Default_Switches ("Ada") use
+        (
+            "-O2",
+            "-gnat2022",
+            "-fstack-usage",
+            "-fomit-frame-pointer",
+            "-mno-red-zone",
+            "-fno-pic"
+        );
+        --  Compose units proved free of run-time errors (SPARK level 2, no
+        --  unproved checks, no assumptions): built without run-time checks
+        --  and at -O3, like drivers and services. Proof: the units' own
+        --  gnatprove runs (tests/compositor). -fno-tree-vrp: GCC's
+        --  value-range propagation miscompiles some Ada in GNAT 15.
+        Proved_Compose_Switches :=
+          ("-O3", "-gnatp", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
+           "-mno-red-zone", "-fno-pic", "-fno-tree-vrp");
+        for Switches ("compositor_row_copy.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_sampling.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_image_sampling.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_backdrop_strips.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_damage.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_repaint.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_pool.adb") use Proved_Compose_Switches;
+        for Switches ("compositor_pointer_over.adb") use Proved_Compose_Switches;
+        for Switches ("client_raster.adb") use Proved_Compose_Switches;
+    end Compiler;
+
+    package Binder is
+        for Default_Switches ("Ada") use
+        (
+            "-d_C"
+        );
+    end Binder;
+
+    package Linker is
+        for Default_Switches ("Ada") use
+        (
+            "-nostdlib",
+            "-static",
+            "-no-pie",
+            "-Wl,-z,stack-size=16777216",
+            "-lgnat-user",
+            "-T", "../../c/link.ld",
+            "../../c/build/crt0.o",
+            Manifest_Directory & "/manifest.o"
+        );
+    end Linker;
+
+end Desktop;

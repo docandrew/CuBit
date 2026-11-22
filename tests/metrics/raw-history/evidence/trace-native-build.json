@@ -1,0 +1,8 @@
+{
+  "status": "BUILD_PASS",
+  "scope": "Private trace metrics service/test app using production compositor source-directory layout; exact trace runtime160 and allocator/kernel platform are explicit seeds",
+  "binaries": {
+    "metrics-check.app": "30f853cff7193b72cd3b264da8ffd8e8b0836ad4e9e24ccbeac3b7866a25f31f",
+    "metrics.svc": "a15830153ae52b0550cf8353bbe97a300e101a4a37c56950fae405a5769602bb"
+  }
+}

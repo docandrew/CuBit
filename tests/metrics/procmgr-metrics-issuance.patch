@@ -1,0 +1,101 @@
+diff -ru a/userspace/runtime/gnat/cubit-authority_policy.ads b/userspace/runtime/gnat/cubit-authority_policy.ads
+--- a/userspace/runtime/gnat/cubit-authority_policy.ads	2026-10-01 15:50:45.676773979 -0600
++++ b/userspace/runtime/gnat/cubit-authority_policy.ads	2026-10-01 15:50:45.687619164 -0600
+@@ -19,12 +19,14 @@
+           Session_Approved and Issuer_Allowed);
+ 
+    type Bootstrap_Authority is
+-     (Log_Publication, Log_Observation, Master_Audio, Clock_Adjustment);
++     (Log_Publication, Log_Observation, Master_Audio, Clock_Adjustment,
++      Metric_Publication, Metric_Observation);
+    --  Transitional development-image approval: entry in the trusted startup
+    --  plan approves declared privileged requests. OP_SPAWN cannot select it.
+    --  Publication preserves the existing manifest-request policy.
+    function Bootstrap_Approves
+      (Authority : Bootstrap_Authority; Trusted_Startup : Boolean)
+       return Boolean is
+-     (Authority = Log_Publication or else Trusted_Startup);
++     (Authority in Log_Publication | Metric_Publication or else
++      Trusted_Startup);
+ end CuBit.Authority_Policy;
+diff -ru a/userspace/services/procmgr/main.adb b/userspace/services/procmgr/main.adb
+--- a/userspace/services/procmgr/main.adb	2026-10-01 15:50:45.675577722 -0600
++++ b/userspace/services/procmgr/main.adb	2026-10-01 15:50:45.688615728 -0600
+@@ -28,6 +28,7 @@
+ with CuBit.TLS_Scopes;
+ with CuBit.Authority_Policy;
+ with CuBit.Log_Protocol;
++with CuBit.Metric_Protocol;
+ with CuBit.Authority; use CuBit.Authority;
+ with CuBit.Memory_Grants;
+ with CuBit.Filesystems;
+@@ -45,6 +46,8 @@
+    --  Never reuse issuance identities within this bootstrap issuer lifetime.
+    --  Independent procmgr restart requires an epoch protocol, not yet supported.
+    Next_Log_Issuance : Unsigned_32 := 1;
++   --  Same rule for metrics.svc publisher/observer tags; zero = exhausted.
++   Next_Metric_Issuance : Unsigned_32 := 1;
+    package GPU_Grants renames CuBit.Capability_Grants;
+    package Render_Launch is new Intel_Render_Launch_Client
+      (Intel_GPU_Broker_Request.Launcher_Endpoint_Slot,
+@@ -953,11 +956,17 @@
+                                    Unsigned_64 (param0) = DRIVER_LOGSTORE;
+                                  isClockControl : constant Boolean :=
+                                    Unsigned_64 (param0) = CuBit.Clock_Control.Service_Role;
++                                 isMetricObserver : constant Boolean :=
++                                   Unsigned_64 (param0) = CuBit.Metric_Protocol.Observer_Service_Role;
++                                 isMetricPublisher : constant Boolean :=
++                                   Unsigned_64 (param0) = CuBit.Metric_Protocol.Publisher_Service_Role;
+                                  use CuBit.Authority_Policy;
+                                  Authority : constant Bootstrap_Authority :=
+                                    (if isAudioControl then Master_Audio
+                                     elsif isClockControl then Clock_Adjustment
+                                     elsif isLogObserver then Log_Observation
++                                    elsif isMetricObserver then Metric_Observation
++                                    elsif isMetricPublisher then Metric_Publication
+                                     else Log_Publication);
+                                  Approval : constant Decision := Evaluate
+                                    (Requested => True,
+@@ -972,7 +981,8 @@
+                                  -- narrowly selected system log viewer. This
+                                  -- exception grants observation only, not the
+                                  -- other startup-only authorities.
+-                                 if (isAudioControl or isLogObserver or isClockControl)
++                                 if (isAudioControl or isLogObserver or isClockControl
++                                     or isMetricObserver)
+                                    and then Approval /= Approved
+                                  then
+                                     recordAuthority
+@@ -989,6 +999,8 @@
+                                        (if isAudioControl then DRIVER_MIXER
+                                         elsif isClockControl then DRIVER_CLOCK
+                                         elsif isLogObserver then DRIVER_LOGSTORE
++                                        elsif isMetricObserver then
++                                          CuBit.Metric_Protocol.Publisher_Service_Role
+                                         else Unsigned_64 (param0)));
+                                     exit when driverPID /= 0;
+                                     ignore := syscall (
+@@ -1018,7 +1030,22 @@
+                                        Next_Log_Issuance := Next_Log_Issuance + 1;
+                                     end if;
+                                  end if;
+-                                 if (isLogObserver or isLogPublisher)
++                                 if (isMetricObserver or isMetricPublisher)
++                                   and then Next_Metric_Issuance /= 0
++                                 then
++                                    Issued_Tag :=
++                                      (if isMetricObserver
++                                       then CuBit.Metric_Protocol.Observer_Tag
++                                         (Unsigned_64 (Next_Metric_Issuance))
++                                       else CuBit.Metric_Protocol.Publisher_Tag
++                                         (Unsigned_64 (Next_Metric_Issuance)));
++                                    --  Never wrap: exhaustion denies issuance.
++                                    Next_Metric_Issuance :=
++                                      (if Next_Metric_Issuance = Unsigned_32'Last
++                                       then 0 else Next_Metric_Issuance + 1);
++                                 end if;
++                                 if (isLogObserver or isLogPublisher
++                                     or isMetricObserver or isMetricPublisher)
+                                    and then Issued_Tag = 0
+                                  then
+                                     recordAuthority

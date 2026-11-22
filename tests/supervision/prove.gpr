@@ -1,0 +1,17 @@
+--  gnatprove (level 2) over Start_Child's pure parts: the spec codec, the
+--  fact/policy merge and the supervision edges (one supervisor per
+--  process; ranks ordered along supervisor chains, so no cycles).
+project Prove is
+   for Source_Dirs use ("build/links", "../../userspace/ccl/runtime-shared");
+   for Source_Files use
+     ("cubit.ads", "cubit-child_specs.ads", "cubit-child_specs.adb",
+      "child_parameters.ads", "child_parameters.adb",
+      "supervision_edges.ads", "supervision_edges.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Prove;

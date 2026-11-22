@@ -1,0 +1,16 @@
+File appears to be binary: found 99 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file /home/doc/git/.acpi-proof-work/field-partial-object-stores-wbb7nw0o/results/byte-three-preserve-r1.aml, Length 0x1AE (430) bytes
+ACPI: DSDT 0x0000000000000000 0001AE (v01 CUBIT  PARTIO   00000001 INTL 20260408)
+Pass 1 parse of [DSDT]
+Pass 2 parse of [DSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+Disassembly completed
+ASL Output:    /home/doc/git/.acpi-proof-work/field-partial-object-stores-wbb7nw0o/results/byte-three-preserve-r1.dsl - 2885 bytes

@@ -1,0 +1,2 @@
+CounterSnapshot = (revision: Integer, value: Integer)
+CounterRead = Found(CounterSnapshot) | Stale(CounterSnapshot) | Missing | Denied | Busy | Unavailable | SchemaMismatch | InvalidRequest | InvalidCompletion

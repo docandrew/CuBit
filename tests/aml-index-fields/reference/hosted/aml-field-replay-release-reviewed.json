@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-field-publication-OzYYTLwz/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-field-publication-OzYYTLwz/source/tests/aml-field-replay/results/release-up8l6nqx",
+  "mode": "release",
+  "inputs": 232,
+  "references": 45,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 335,
+  "stages": 2,
+  "logs": {
+    "field_core_replay_tests": "Field Core replay checks 522"
+  },
+  "ALI": 82,
+  "dependencies": 1151,
+  "strict_commands": 81,
+  "audit_sha256": "f4f9807b9e94eea025d422f223d60b6ff61b660e9ac6371b0f6c9292445bbc15",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

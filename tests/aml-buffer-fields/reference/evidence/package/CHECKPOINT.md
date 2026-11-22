@@ -1,0 +1,7 @@
+# BufferField runtime package capture oracle
+
+Worker34735 terminal0. Four normal-compiled attempts (named/unnamed runtime Package, DSDT revisions1/2) all returned16706=65*256+66 with MARK3. Runtime WIDT, DSDT revision, control method, CreateField and Package disassembly gates passed. Seven source-input hashes unchanged. No normal compile rejection, runtime error, timeout or missing result. Exact compiler/disassembler/control/width/runtime logs and pinned tool identities retained.
+
+Both package forms preserve original field content65 after a later field write changes current content to66. This confirms captured content for these one-byte generic fields, consistent with source plan4xrc25mp. The unnamed Store may copy the package, so results are not an independent object-identity or precise copy-stage proof. No claims about unrelated field types, device/method NAME references, deferred malformed names or cross-width nested methods.
+
+Subprocess limits5s/128MiB address-space/64MiB stack/1MiB disk output; nice19/Nix with TMPDIR exported. Initial sandbox cache failure and corrected placeholder-path command are preserved in sandbox-attempt.json. No unsafe offsets, HUGE, forcecompile or stopped diagnostic. Retained four-outstanding-cache-allocation warnings match control baseline; not clean teardown. No CuBit execution, implementation or formal proof. Slot1 released. Original source plan remains untouched.

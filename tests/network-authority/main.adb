@@ -1,0 +1,171 @@
+with Ada.Text_IO;
+with Interfaces; use Interfaces;
+with CuBit.Network_Authority; use CuBit.Network_Authority;
+with Network_Grants;
+with CuBit.Launch_Policy;
+with UDP_Tests;
+
+with CuBit.Process_IDs;
+procedure Main is
+   use type CuBit.Process_IDs.Process_ID;
+   function PID (Word : Interfaces.Unsigned_64) return CuBit.Process_IDs.Process_ID
+     renames CuBit.Process_IDs.From_Word;
+   Narrow : constant Scope := (Connect_TCP, 16#0A00_0200#, 24, 80, 443, False, 4);
+   Listener : constant Scope := (Listen_TCP, 16#0A00_020F#, 32, 8080, 8080, False, 4);
+   --  A LAN endpoint whose address DHCP chooses (ccl-remote): any address
+   --  this machine holds, one port.
+   LAN_Listener : constant Scope := (Listen_TCP, 0, 0, 8445, 8445, False, 8);
+   Decoded : Scope;
+   Success : Boolean;
+   Grants : Network_Grants.Table;
+   Tag, Other_Tag, New_Tag : Unsigned_64;
+   Capacity : constant Network_Grants.Reservation :=
+     Network_Grants.Reservation'Last;
+begin
+   declare
+      package Policy renames CuBit.Launch_Policy;
+      use type Policy.Network_Approval;
+   begin
+      --  No program name carries a network approval (CAP-011): only a
+      --  plan entry's (network approve-declared) does.
+      pragma Assert (not Policy.Allows (Policy.No_Network, Broad_Outbound_TCP));
+      pragma Assert (Policy.Allows (Policy.Declared_Network, Listener));
+   end;
+   pragma Assert (not Valid (Denied_Scope));
+   pragma Assert (Valid (Broad_Outbound_TCP));
+   pragma Assert (Valid (Narrow) and Valid (Listener));
+   pragma Assert (Allows (Narrow, Connect_TCP, 16#0A00_0201#, 80));
+   pragma Assert (Allows (Narrow, Connect_TCP, 16#0A00_02FF#, 443));
+   pragma Assert (not Allows (Narrow, Connect_TCP, 16#0A00_0301#, 80));
+   pragma Assert (not Allows (Narrow, Connect_TCP, 16#0A00_0201#, 79));
+   pragma Assert (not Allows (Narrow, Connect_TCP, 16#0A00_0201#, 444));
+   pragma Assert (not Allows (Narrow, Listen_TCP, 16#0A00_0201#, 80));
+   pragma Assert (not Allows (Broad_Outbound_TCP, Connect_TCP, 16#0101_0101#, 0));
+   pragma Assert (Allows (Listener, Listen_TCP, 16#0A00_020F#, 8080));
+   pragma Assert (not Allows (Listener, Listen_TCP, 16#0A00_0210#, 8080));
+   pragma Assert (not Allows (Listener, Listen_TCP, 16#0A00_020F#, 8081));
+   pragma Assert (Includes (Broad_Outbound_TCP, Narrow));
+   pragma Assert (not Includes (Narrow, Broad_Outbound_TCP));
+   pragma Assert (not Includes (Broad_Outbound_TCP, Listener));
+   pragma Assert (Valid (LAN_Listener));
+   pragma Assert (Allows (LAN_Listener, Listen_TCP, 16#C0A8_0117#, 8445));
+   pragma Assert (not Allows (LAN_Listener, Listen_TCP, 16#C0A8_0117#, 8446));
+   pragma Assert (not Allows (LAN_Listener, Connect_TCP, 16#C0A8_0117#, 8445));
+   pragma Assert (not Valid ((LAN_Listener with delta Last_Port => 8446)));
+   pragma Assert (not Valid ((LAN_Listener with delta Resolve_Names => True)));
+   pragma Assert (Valid ((LAN_Listener with delta Network => 16#C0A8_0100#, Prefix => 24)));
+   pragma Assert (not Valid ((LAN_Listener with delta Network => 16#E000_0000#, Prefix => 8)));
+   pragma Assert (CuBit.Launch_Policy.Allows (CuBit.Launch_Policy.Declared_Network, LAN_Listener));
+   pragma Assert (not Includes (Listener, LAN_Listener));
+   for Prefix in Prefix_Length loop
+      declare
+         S : constant Scope := (Connect_TCP, 0, Prefix, 1, 65535, False, 4);
+      begin
+         Decode (0, Descriptor (S), Decoded, Success);
+         pragma Assert (Success and Decoded = S);
+      end;
+   end loop;
+   Decode (Unsigned_64 (Narrow.Network), Descriptor (Narrow), Decoded, Success);
+   pragma Assert (Success and Decoded = Narrow);
+   Decode (16#0A00_0201#, Descriptor (Narrow), Decoded, Success);
+   pragma Assert (not Success); -- host bits in network prefix
+   Decode (0, Shift_Left (Unsigned_64'(1), 63), Decoded, Success);
+   pragma Assert (not Success); -- no action
+   Decode (0, Descriptor (Narrow) and not Shift_Left (Unsigned_64'(2 ** Connection_Bits - 1), 49),
+           Decoded, Success);
+   pragma Assert (not Success); -- no connections declared
+   Decode (Unsigned_64 (Narrow.Network),
+           Descriptor ((Narrow with delta Connections => Connection_Count'Last)),
+           Decoded, Success);
+   pragma Assert (Success and Decoded.Connections = Connection_Count'Last);
+   pragma Assert (Includes (Narrow, (Narrow with delta Connections => 1)));
+   pragma Assert (not Includes (Narrow, (Narrow with delta Connections => 5)));
+   Decode (Unsigned_64'Last, Descriptor (Narrow), Decoded, Success);
+   pragma Assert (not Success); -- address truncation forbidden
+   for Invalid_Prefix in 33 .. 255 loop
+      Decode (0, Descriptor (Broad_Outbound_TCP) or
+              Shift_Left (Unsigned_64 (Invalid_Prefix), 32), Decoded, Success);
+      pragma Assert (not Success);
+   end loop;
+   pragma Assert (not Network_Grants.Owned (Grants, PID (42), 0));
+   Network_Grants.Install (Grants, PID (0), Narrow, Capacity, Tag, Success);
+   pragma Assert (not Success and Tag = 0);
+   Network_Grants.Install (Grants, PID (42), Denied_Scope, Capacity, Tag, Success);
+   pragma Assert (not Success and Tag = 0);
+   Network_Grants.Install (Grants, PID (42), Narrow, Capacity, Tag, Success);
+   pragma Assert (Success and Tag >= First_Grant_Tag);
+   pragma Assert (Network_Grants.Allows (Grants, PID (42), Tag, Connect_TCP, 16#0A00_0202#, 443));
+   pragma Assert (not Network_Grants.Allows (Grants, PID (43), Tag, Connect_TCP, 16#0A00_0202#, 443));
+   pragma Assert (not Network_Grants.May_Resolve (Grants, PID (42), Tag));
+   Network_Grants.Install (Grants, PID (43), Broad_Outbound_TCP, Capacity, Other_Tag, Success);
+   pragma Assert (Success and Other_Tag /= Tag);
+   pragma Assert (Network_Grants.May_Resolve (Grants, PID (43), Other_Tag));
+   pragma Assert (not Network_Grants.May_Resolve (Grants, PID (42), Other_Tag));
+   Network_Grants.Release (Grants, PID (43), Tag);
+   pragma Assert (Network_Grants.Owned (Grants, PID (42), Tag));
+   Network_Grants.Release (Grants, PID (42), Tag);
+   pragma Assert (not Network_Grants.Owned (Grants, PID (42), Tag));
+   Network_Grants.Install (Grants, PID (42), Listener, Capacity, New_Tag, Success);
+   pragma Assert (Success and New_Tag /= Tag);
+   pragma Assert (not Network_Grants.Owned (Grants, PID (42), Tag));
+   for I in 3 .. Network_Grants.Maximum_Grants loop
+      Network_Grants.Install (Grants, PID (42), Narrow, Capacity, New_Tag, Success);
+      pragma Assert (Success);
+   end loop;
+   Network_Grants.Install (Grants, PID (42), Narrow, Capacity, New_Tag, Success);
+   pragma Assert (not Success and New_Tag = 0);
+   --  Reservations: declared channels are reserved at install, never
+   --  overcommitted, and charged one per open channel.
+   declare
+      Small : Network_Grants.Table;
+      First_Tag, Second_Tag, Third_Tag : Unsigned_64;
+      Ten : constant Network_Grants.Reservation := 10;
+   begin
+      Network_Grants.Install (Small, PID (42), Narrow, Ten, First_Tag, Success);
+      pragma Assert (Success and Network_Grants.Reserved (Small) = 4);
+      Network_Grants.Install (Small, PID (43), Narrow, Ten, Second_Tag, Success);
+      pragma Assert (Success and Network_Grants.Reserved (Small) = 8);
+      Network_Grants.Install (Small, PID (44), Narrow, Ten, Third_Tag, Success);
+      pragma Assert (not Success and Third_Tag = 0); -- 12 > 10
+      Network_Grants.Install (Small, PID (44), (Narrow with delta Connections => 2), Ten, Third_Tag, Success);
+      pragma Assert (Success and Network_Grants.Reserved (Small) = 10);
+      for I in 1 .. 4 loop
+         Network_Grants.Charge (Small, PID (42), First_Tag, Success);
+         pragma Assert (Success);
+      end loop;
+      Network_Grants.Charge (Small, PID (42), First_Tag, Success);
+      pragma Assert (not Success); -- all four declared channels open
+      Network_Grants.Charge (Small, PID (43), First_Tag, Success);
+      pragma Assert (not Success); -- another owner's grant
+      pragma Assert (Network_Grants.In_Use (Small, Second_Tag) = 0);
+      Network_Grants.Refund (Small, First_Tag);
+      pragma Assert (Network_Grants.In_Use (Small, First_Tag) = 3);
+      Network_Grants.Charge (Small, PID (42), First_Tag, Success);
+      pragma Assert (Success and Network_Grants.In_Use (Small, First_Tag) = 4);
+      Network_Grants.Release (Small, PID (43), Second_Tag);
+      pragma Assert (Network_Grants.Reserved (Small) = 6);
+      Network_Grants.Install (Small, PID (45), Narrow, Ten, Second_Tag, Success);
+      pragma Assert (Success and Network_Grants.Reserved (Small) = 10);
+      Network_Grants.Charge (Small, PID (42), 0, Success);
+      pragma Assert (not Success);
+      --  Owner 42 exits: its scope and reservation go, others stay.
+      declare
+         Released : Network_Grants.Tag_List;
+      begin
+         Network_Grants.Release_Owner (Small, PID (42), Released);
+         pragma Assert (Released (1) = First_Tag);
+         pragma Assert (for all I in 2 .. Released'Last => Released (I) = 0);
+         pragma Assert (Network_Grants.Reserved (Small) = 6);
+         pragma Assert (not Network_Grants.Owned (Small, PID (42), First_Tag));
+         pragma Assert (Network_Grants.Owned (Small, PID (44), Third_Tag));
+         pragma Assert (Network_Grants.In_Use (Small, First_Tag) = 0);
+         Network_Grants.Charge (Small, PID (42), First_Tag, Success);
+         pragma Assert (not Success); -- stale tag after exit
+         Network_Grants.Release_Owner (Small, PID (0), Released);
+         pragma Assert (for all T of Released => T = 0);
+         pragma Assert (Network_Grants.Reserved (Small) = 6);
+      end;
+   end;
+   UDP_Tests.Run;
+   Ada.Text_IO.Put_Line ("Network authority: scope decoding, CIDR/ports, direction, DNS, owner, stale tags, bounded table, reservations, owner exit PASS");
+end Main;

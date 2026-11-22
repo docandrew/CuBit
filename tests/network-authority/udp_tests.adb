@@ -1,0 +1,147 @@
+pragma Ada_2022;
+with Ada.Text_IO;
+with Interfaces; use Interfaces;
+with CuBit.Network_Authority; use CuBit.Network_Authority;
+with CuBit.Launch_Policy;
+with Network_Grants;
+with UDP_Channels; use UDP_Channels;
+with CuBit.Process_IDs;
+
+package body UDP_Tests is
+   use type CuBit.Process_IDs.Process_ID;
+   function PID (Word : Interfaces.Unsigned_64) return CuBit.Process_IDs.Process_ID
+     renames CuBit.Process_IDs.From_Word;
+   procedure Authority is
+      NTP : constant Scope := (Connect_UDP, 16#0A00_0202#, 32, 123, 123, False, 4);
+      Named : constant Scope := (Connect_UDP, 0, 0, 123, 123, True, 4);
+      Decoded : Scope;
+      Success : Boolean;
+      Grants : Network_Grants.Table;
+      Tag, Named_Tag : Unsigned_64;
+      Capacity : constant Network_Grants.Reservation := 8;
+      package Policy renames CuBit.Launch_Policy;
+   begin
+      pragma Assert (Valid (NTP) and Valid (Named));
+      pragma Assert (Allows (NTP, Connect_UDP, 16#0A00_0202#, 123));
+      pragma Assert (not Allows (NTP, Connect_TCP, 16#0A00_0202#, 123));
+      pragma Assert (not Allows (NTP, Listen_TCP, 16#0A00_0202#, 123));
+      pragma Assert (not Allows (NTP, Connect_UDP, 16#0A00_0203#, 123));
+      pragma Assert (not Allows (NTP, Connect_UDP, 16#0A00_0202#, 124));
+      pragma Assert (not Allows (Broad_Outbound_TCP, Connect_UDP, 16#0A00_0202#, 123));
+      --  A TCP ceiling never contains UDP authority, and the reverse.
+      pragma Assert (not Includes (Broad_Outbound_TCP, NTP));
+      pragma Assert (not Includes (NTP, (Connect_TCP, 16#0A00_0202#, 32, 123, 123, False, 4)));
+      pragma Assert (Includes (Named, (Connect_UDP, 16#0A00_0202#, 32, 123, 123, False, 4)));
+      pragma Assert (not Includes (NTP, Named));
+      --  Browser approval is TCP only; UDP needs declared approval.
+      pragma Assert (Policy.Allows (Policy.Declared_Network, NTP));
+      Decode (Unsigned_64 (NTP.Network), Descriptor (NTP), Decoded, Success);
+      pragma Assert (Success and Decoded = NTP);
+      pragma Assert ((Shift_Right (Descriptor (NTP), 40) and 255) = 3);
+      pragma Assert (Shift_Right (Descriptor (NTP), 49) = 4);
+      Decode (0, Descriptor (Named), Decoded, Success);
+      pragma Assert (Success and Decoded = Named);
+      for Unknown in Unsigned_64'(4) .. 255 loop
+         Decode (0, (Descriptor (Named) and not Shift_Left (Unsigned_64'(255), 40)) or
+                 Shift_Left (Unknown, 40), Decoded, Success);
+         pragma Assert (not Success and Decoded = Denied_Scope);
+      end loop;
+      Decode (0, Descriptor (Named) and not Shift_Left (Unsigned_64'(255), 40),
+              Decoded, Success);
+      pragma Assert (not Success); -- operation zero
+      Network_Grants.Install (Grants, PID (42), NTP, Capacity, Tag, Success);
+      pragma Assert (Success);
+      pragma Assert (Network_Grants.Allows (Grants, PID (42), Tag, Connect_UDP, 16#0A00_0202#, 123));
+      pragma Assert (not Network_Grants.Allows (Grants, PID (42), Tag, Connect_TCP, 16#0A00_0202#, 123));
+      pragma Assert (not Network_Grants.May_Resolve (Grants, PID (42), Tag));
+      Network_Grants.Install (Grants, PID (42), Named, Capacity, Named_Tag, Success);
+      pragma Assert (Success and Network_Grants.May_Resolve (Grants, PID (42), Named_Tag));
+      pragma Assert (not Network_Grants.May_Resolve (Grants, PID (43), Named_Tag));
+   end Authority;
+
+   procedure Channels is
+      Item : Table;
+      Success : Boolean;
+      Index : Channel_Index;
+      Result : Delivery;
+      Peer : constant Unsigned_32 := 16#0A00_0202#;
+      Port : Unsigned_16;
+      Previous : Unsigned_16;
+      Repeats  : Natural := 0;
+      --  Starting points as netstack's keyed hash gives them: arbitrary.
+      Seed : Unsigned_32 := 12_345;
+      procedure Open_From
+        (Item : in out Table; Index : Channel_Index; Address : Unsigned_32;
+         Port : Unsigned_16; Success : out Boolean) is
+      begin
+         Seed := Seed * 1_103_515_245 + 12_345;
+         Open (Item, Index, Address, Port,
+               Unsigned_16 (Shift_Right (Seed, 16) and 16#FFFF#), Success);
+      end Open_From;
+   begin
+      Open_From (Item, 0, 0, 123, Success);
+      pragma Assert (not Success and not Active (Item, 0));
+      Open_From (Item, 0, Peer, 0, Success);
+      pragma Assert (not Success and not Active (Item, 0));
+      for I in Channel_Index loop
+         Open_From (Item, I, Peer, 18446, Success);
+         pragma Assert (Success and Local_Port (Item, I) >= First_Ephemeral);
+         for J in Channel_Index'First .. I - 1 loop
+            pragma Assert (Local_Port (Item, J) /= Local_Port (Item, I));
+         end loop;
+      end loop;
+      Open_From (Item, 3, Peer, 18446, Success);
+      pragma Assert (not Success); -- an active slot is not reopened
+      Port := Local_Port (Item, 3);
+
+      --  Only the exact endpoint reaches the channel (its datagrams go to
+      --  the channel's receive ring, CuBit.Datagram_Rings).
+      Deliver (Item, Port, Peer + 1, 18446, 2, Index, Result);
+      pragma Assert (Result = No_Channel);
+      Deliver (Item, Port, Peer, 18447, 2, Index, Result);
+      pragma Assert (Result = No_Channel);
+      Deliver (Item, Port + 1000, Peer, 18446, 2, Index, Result);
+      pragma Assert (Result = No_Channel);
+      Deliver (Item, Port, Peer, 18446, Maximum_Payload + 1, Index, Result);
+      pragma Assert (Result = Oversized);
+      Deliver (Item, Port, Peer, 18446, Maximum_Payload, Index, Result);
+      pragma Assert (Result = Matched and Index = 3);
+
+      --  Closing stops the old port matching.
+      Close (Item, 3);
+      pragma Assert (not Active (Item, 3));
+      Deliver (Item, Port, Peer, 18446, 1, Index, Result);
+      pragma Assert (Result = No_Channel);
+      Open_From (Item, 3, Peer, 18446, Success);
+      pragma Assert (Success);
+
+      --  Reopen repeatedly from arbitrary starting points: ports stay in
+      --  range, never collide with the seven channels that remain open, and
+      --  spread over the range (a reuse of the port just freed is allowed,
+      --  as RFC 6056's algorithms allow it, but must be rare).
+      Previous := Local_Port (Item, 3);
+      for Round in 1 .. 40_000 loop
+         Close (Item, 3);
+         Open_From (Item, 3, Peer, 18446, Success);
+         pragma Assert (Success and Local_Port (Item, 3) >= First_Ephemeral);
+         if Local_Port (Item, 3) = Previous then
+            Repeats := Repeats + 1;
+         end if;
+         for J in Channel_Index loop
+            pragma Assert
+              (J = 3 or else Local_Port (Item, J) /= Local_Port (Item, 3));
+         end loop;
+         Previous := Local_Port (Item, 3);
+      end loop;
+      pragma Assert (Repeats < 40);   --  about 40,000 / 16,384 expected
+   end Channels;
+
+   procedure Run is
+   begin
+      Authority;
+      Channels;
+      Ada.Text_IO.Put_Line
+        ("UDP: scope direction/decoding, launch policy, endpoint filtering, " &
+         "exact matching, size bound, port uniqueness and wrap PASS");
+   end Run;
+end UDP_Tests;

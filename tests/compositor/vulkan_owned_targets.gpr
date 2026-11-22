@@ -1,0 +1,12 @@
+project Vulkan_Owned_Targets extends "vulkan_submission_mock.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Submission_Mock'Source_Files &
+     ("vulkan_context_owner.ads", "vulkan_context_owner.adb", "vulkan_context_ffi.ads", "vulkan_context_ffi.adb", "vulkan_context_policy_mock.c", "vulkan_scene_recording.ads", "vulkan_scene_recording.adb",
+      "vulkan_owned_targets_tests.adb", "vulkan_owned_targets_mock.c", "vulkan_image_owner_mock.c",
+      "vulkan_owned_targets.ads", "vulkan_owned_targets.adb", "vulkan_owned_target_ffi.ads", "vulkan_owned_target_ffi.adb",
+      "vulkan_image_owner.ads", "vulkan_image_owner.adb", "vulkan_image_ffi.ads", "vulkan_image_ffi.adb",
+      "compositor_storage.ads", "compositor_storage.adb");
+   for Object_Dir use "build/vulkan-owned-targets/obj";
+   for Exec_Dir use "build/vulkan-owned-targets";
+   for Main use ("vulkan_owned_targets_tests.adb");
+end Vulkan_Owned_Targets;

@@ -1,0 +1,434 @@
+[
+  {
+    "key": "1-FIXEDBYTE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "cb4ae0b3e77704170a6a8fa5bf904af7310efd2125378a5fc322f4bc1003b3b5",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00010, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "1-FIXEDPACKAGE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "3787d92425571a6294b687e2cdb8dc0489542676abf0c9c22656477e252b6adc",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00010, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "1-FIXEDEMPTY",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "a433d0c82de2fc29855873fccaa44055d276ec9bc9549dcf9d35eec6cc166d4e",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00010, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "1-GENERICBYTE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "798a8de29fb150643ce53c8711e61c32b78add6c618420b4b675a81f4adf8349",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00013, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "1-GENERICPACKAGE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "d247aa2a6a40f42027acaddb806a39a8de1b537ff455eda98b2887a522ebe476",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00013, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "1-GENERICEMPTY",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 1,
+    "aml_sha256": "e68b682ff76a68ce75bfd5cde4200e65f45acb39e642916828344d1275b49734",
+    "width_returncode": 0,
+    "width_witness": [
+      "0000000000000000"
+    ],
+    "verified_bits": 32,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00013, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "2-FIXEDBYTE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "ffb9ef49ed04361fc0c32a9ede3559da3439c17d26bbe4ac7373d5b14d7cda38",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00010, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "2-FIXEDPACKAGE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "029cccef9b9d2ee5fd3187122a8602606fe5bf0925be070cedc8785cff322b21",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00010, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "2-FIXEDEMPTY",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "e0fe5a92862c04af3c4d84240428863d5a1e7b8eaa213acb015af0362043709e",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00010, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "2-GENERICBYTE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "f4554a115cb955ba8ccbdc27fb327156f8430d7606a3db66376ce2ec76a7e92e",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00013, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "2-GENERICPACKAGE",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "ebaa1ef4ea40e4971832a15fe3e25216985c52bf23c477d40f0983b6ab9c3da1",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00013, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  },
+  {
+    "key": "2-GENERICEMPTY",
+    "expectation": null,
+    "compile_returncode": 0,
+    "signature": "DSDT",
+    "revision": 2,
+    "aml_sha256": "d6f83beddc0309e14588b7ace9e579a6b56967fff1b97cd03e84cb3fb2ede00b",
+    "width_returncode": 0,
+    "width_witness": [
+      "00000000FFFFFFFF"
+    ],
+    "verified_bits": 64,
+    "disassembly_returncode": 0,
+    "method_opcode_verified": true,
+    "index_and_deref_verified": true,
+    "field_opcode_verified": true,
+    "returncode": 0,
+    "marker_values": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "Failed at AML Offset 00013, Opcode 009D: CopyObject (-Return Value- (), FLD0) /* External reference */",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_OPERAND_TYPE) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_OPERAND_TYPE, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_OPERAND_TYPE",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "control_diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "ae_statuses": [
+      "AE_AML_OPERAND_TYPE"
+    ],
+    "classification": "runtime_error",
+    "exact_error": "AE_AML_OPERAND_TYPE"
+  }
+]

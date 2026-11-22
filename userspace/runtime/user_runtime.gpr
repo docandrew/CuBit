@@ -1,0 +1,55 @@
+library project user_runtime is
+    --  Ada only: GNAT's personality routine (gnat/raise-gcc.c, upstream,
+    --  unchanged) and libgcc's unwinder are compiled and added to the
+    --  library by the build (kernel/Makefile, user_runtime; EXC-001).
+    for Source_Dirs use ("gnat", "../../shared/time", "../../shared/interrupts",
+                         "../../shared/launch", "../../shared/publications",
+                         "../../shared/capabilities", "../../shared/boot");
+
+    for Object_Dir use "build";
+
+    for Runtime ("Ada") use ".";
+
+    package Builder is
+        for Default_Switches ("Ada") use
+        (
+            "-g",
+            "-gnatyN",
+            "-gnatpgn",     -- Suppress checks, internal GNAT implementation mode, inlining
+            "-gnatyM120",   -- lines up to 120 columns (-gnatg alone means 79)
+            "-gnatwa",
+            "-nostdlib",
+            "-v",
+            "-x"
+        );
+    end Builder;
+
+    package Compiler is
+        for Default_Switches ("Ada") use
+        (
+            "-O2",
+            "-mno-red-zone",
+            "-mcmodel=kernel",
+            "-fno-pic",
+            "-I-"
+        );
+
+        --  Ada.Tags.Length (upstream) is a NUL scan GCC turns into a strlen
+        --  call; the user runtime provides no strlen (the libc does, and
+        --  not every Ada program links it).
+        for Switches ("a-tags.adb") use
+          Compiler'Default_Switches ("Ada") & ("-fno-tree-loop-distribute-patterns");
+        --  The same for the unwinder's strlen (CuBit.Unwinder_Support).
+        for Switches ("cubit-unwinder_support.adb") use
+          Compiler'Default_Switches ("Ada") & ("-fno-tree-loop-distribute-patterns");
+
+        --  Upstream: System.Traceback's Call_Chain must keep its own frame
+        --  (the frames it skips are counted from it).
+        for Switches ("s-traceb.adb") use
+          Compiler'Default_Switches ("Ada") & ("-fno-optimize-sibling-calls");
+    end Compiler;
+
+    for Library_Kind use "static";
+    for Library_Name use "gnat-user";
+    for Library_Dir use "adalib";
+end user_runtime;

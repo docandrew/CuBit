@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Build the CuBit libc (musl + CuBit system-call layer) into build/sysroot.
+# Run in the Nix shell. See README.md.
+set -euo pipefail
+# Nix's gcc wrapper adds hardening flags (stack protector, fortify, PIE).
+# The libc's start code runs before the thread pointer (and so the stack
+# canary at %fs:0x28) exists; CuBit programs are static and non-PIE.
+export NIX_HARDENING_ENABLE=""
+# Locale-independent file-name order (the archive's members).
+export LC_ALL=C
+here=$(cd "$(dirname "$0")" && pwd)
+build=$here/build
+# Reproducible: the same sources make the same libc in any checkout. Debug
+# information names files relative to the checkout, and the configuration
+# pragmas file is named relatively (GNAT records its switches in the
+# objects). The GCC port's toolchain tree, whose identity is pinned, holds
+# this libc and programs linked with it.
+prefix_map="-ffile-prefix-map=$(cd "$here/../.." && pwd)=."
+musl_version=1.2.6
+musl_sha256=d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a
+tarball=$build/musl-$musl_version.tar.gz
+mkdir -p "$build"
+if [ ! -f "$tarball" ]; then
+    curl -sSL -o "$tarball.part" "https://musl.libc.org/releases/musl-$musl_version.tar.gz"
+    mv "$tarball.part" "$tarball"
+fi
+echo "$musl_sha256  $tarball" | sha256sum -c --quiet
+
+src=$build/musl-src
+sysroot=$build/sysroot
+rm -rf "$src"
+mkdir -p "$src"
+tar -xzf "$tarball" -C "$src" --strip-components=1
+cp -R "$here/overlay/." "$src/"
+# musl sources replaced by the libc's Ada (docs/c-removal.md).
+sed -e 's/#.*//' -e 's/[[:space:]]*$//' "$here/replaced-by-ada.txt" | while read -r replaced; do
+    if [ -n "$replaced" ]; then rm -f "$src/$replaced"; fi
+done
+
+(
+    cd "$src"
+    ./configure --prefix="$sysroot" --target=x86_64 --disable-shared \
+        CFLAGS="-O2 -g $prefix_map" >/dev/null
+    make -j"$(nproc)" >/dev/null
+    make install >/dev/null
+)
+
+# The proved channel-ring and datagram-record code (CuBit.Channel_Rings,
+# CuBit.Datagram_Rings, tests/channel-rings) and their C entry points: C,
+# C++ and Rust programs keep their network channel rings and listener
+# records with it (CuBit.Libc_Net). Also the proved launch-block validator
+# (CuBit.Launch_Arguments, tests/launch-arguments) that the start code and
+# posix_spawn use, path resolution (CuBit.Path_Names, tests/path-names), and
+# the libc's functions written in Ada (ada/, docs/c-removal.md). No Ada
+# run-time library: libc-ada.adc forbids anything that would need one.
+gnat_gcc=$(dirname "$(command -v gnat)")/gcc
+ada_obj=$build/ada
+rm -rf "$ada_obj"
+mkdir -p "$ada_obj"
+for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gnat/cubit-channel_rings_c.adb" \
+    "$here/../runtime/gnat/cubit-datagram_rings.adb" "$here/../runtime/gnat/cubit-datagram_rings_c.adb" \
+    "$here/../runtime/gnat/cubit-launch_arguments.adb" "$here/../runtime/gnat/cubit-launch_arguments_c.adb" \
+    "$here/../runtime/gnat/cubit-launch_grants.adb" "$here/../runtime/gnat/cubit-program_descriptions.adb" \
+    "$here/../runtime/gnat/cubit-outlet_rings.adb" "$here/../runtime/gnat/cubit-parameter_sections.adb" \
+    "$here/../runtime/gnat/cubit-path_names.adb" "$here/../runtime/gnat/cubit-path_names_c.adb" \
+    "$here/../runtime/gnat/cubit-kernel_calls.adb" "$here/../runtime/gnat/cubit-child_table.adb" \
+    "$here/../runtime/gnat/cubit-call_census.adb" \
+    "$here/../../shared/time/clock_publication.adb" "$here/../runtime/gnat/cubit-published_clock.adb" \
+    "$here/../runtime/gnat/cubit-system_facts.adb" "$here/../runtime/gnat/cubit-hardware_random.adb" \
+    "$here/ada/cubit-libc_process.adb" "$here/ada/cubit-libc_time.adb" \
+    "$here/ada/cubit-libc_select.adb" "$here/ada/cubit-libc_reports.adb" \
+    "$here/ada/cubit-libc_system_calls.adb" "$here/ada/cubit-libc_start.adb" \
+    "$here/ada/cubit-libc_start_layout.adb" "$here/ada/cubit-libc_rings.adb" \
+    "$here/ada/cubit-libc_directory_entries.adb" "$here/ada/cubit-libc_descriptor_rules.adb" \
+    "$here/../runtime/gnat/cubit-directory_pages.adb" \
+    "$here/ada/cubit-libc_descriptors.adb" "$here/ada/cubit-libc_file_cache.adb" \
+    "$here/ada/cubit-libc_dirty_map.adb" "$here/ada/cubit-libc_park_table.adb" \
+    "$here/ada/cubit-libc_files.adb" "$here/../runtime/gnat/cubit-filesystem_queues.ads" \
+    "$here/../runtime/gnat/cubit-submission_queues.adb" "$here/../runtime/gnat/cubit-slot_rings.adb" \
+    "$here/ada/cubit-libc_net_addresses.adb" "$here/ada/cubit-libc_net_targets.adb" \
+    "$here/ada/cubit-libc_net_names.adb" "$here/ada/cubit-libc_net.adb" \
+    "$here/../runtime/gnat/cubit-net_control_queues.ads" "$here/ada/cubit-libc_threads.adb" \
+    "$here/../runtime/gnat/cubit-stream_rings.adb" "$here/../runtime/gnat/cubit-stream_regions.adb" \
+    "$here/../runtime/gnat/cubit-channel_contracts.adb" \
+    "$here/ada/cubit-libc_streams.adb" \
+    "$here/../allocator/src/heap_classes.adb" "$here/../allocator/src/heap_bitmap.adb" \
+    "$here/../allocator/src/heap_extents.adb" "$here/../allocator/src/heap_slab_instance.ads" \
+    "$here/../allocator/process/cualloc_requests.ads" \
+    "$here/../allocator/process/cualloc_native.adb" "$here/ada/cubit-libc_memory.adb" \
+    "$here/ada/cubit-libc_child_outlets.adb" \
+    "$here/../runtime/gnat/cubit-startup_tables.adb" "$here/../runtime/gnat/cubit-launch_envelopes.adb" \
+    "$here/../../shared/capabilities/capability_abi.adb" \
+    "$here/../runtime/gnat/cubit-log_records.adb" "$here/../runtime/gnat/cubit-console_lines.adb" \
+    "$here/../runtime/gnat/cubit-log_publish_rings.ads" "$here/ada/cubit-libc_log.adb" \
+    "$here/ada/cubit-libc_startup.adb"; do
+    (cd "$ada_obj" && "$gnat_gcc" -c -O2 -g "$prefix_map" -gnatp -gnatn -fno-pic -ffunction-sections \
+        -gnat2022 -gnatwa -gnatys -gnatec=../../libc-ada.adc \
+        -I"$here/ada" -I"$here/../runtime/gnat" -I"$here/../../shared/time" \
+        -I"$here/../../shared/publications" -I"$here/../../shared/launch" \
+        -I"$here/../../shared/capabilities" \
+        -I"$here/../allocator/src" -I"$here/../allocator/process" "$unit")
+done
+ar rcs "$sysroot/lib/libc.a" "$ada_obj"/*.o
+
+gcc -c -Wa,-I"$here/../runtime/start" "$here/crt/crt1.S" -o "$sysroot/lib/cubit-crt1.o"
+install -m 0644 "$here/link.ld" "$sysroot/lib/cubit.ld"
+
+# C++: nixpkgs' musl cross gcc (libstdc++ built against musl headers of the
+# same version); cubit-c++ links it with this libc instead of its own.
+# --out-link keeps a GC root beside the build: with --no-link a garbage
+# collection deleted the compiler that cross-gcc still named.
+nix build --inputs-from "$here/../.." nixpkgs#pkgsCross.musl64.buildPackages.gcc \
+    --out-link "$build/cross-gcc-root" --print-out-paths | grep -v -- '-man$' | head -1 > "$build/cross-gcc.new"
+# Renamed into place: concurrent builds read it through cubit-c++.
+mv "$build/cross-gcc.new" "$build/cross-gcc"
+# Rust's musl-family std links -lunwind: the musl cross gcc's unwinder
+# provides _Unwind_* (the host gcc's is built for glibc).
+cross_gxx=$(cat "$build/cross-gcc")/bin/x86_64-unknown-linux-musl-g++
+install -m 0644 "$("$cross_gxx" -print-file-name=libgcc_eh.a)" "$sysroot/lib/libunwind.a"
+# C++ runtime where a non-C++ link driver (rustc) finds -lstdc++.
+install -m 0644 "$("$cross_gxx" -print-file-name=libstdc++.a)" "$sysroot/lib/libstdc++.a"
+install -m 0644 "$("$cross_gxx" -print-file-name=libsupc++.a)" "$sysroot/lib/libsupc++.a"
+echo "CuBit libc: $sysroot (C++: $(cat "$build/cross-gcc"))"

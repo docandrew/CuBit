@@ -1,0 +1,10 @@
+{
+  "scope": "Hosted proofs/fault tests plus native QEMU software compositor; no hardware performance claim",
+  "artifacts": {
+    "/home/doc/git/compositor-test-artifacts/trace-archive-portable-246/result.json": "513efc6c265a4a24ff582b68b636d9f5280a6e8519f4677f7acb1f7d44e6b26f",
+    "/home/doc/git/compositor-test-artifacts/trace-viewer-native-242/result.json": "bf3a5a709edf5350917defd5d48c3cf440dda82af9304a6274a75db35bee362d",
+    "/home/doc/git/compositor-test-artifacts/trace-viewer-native-243/result.json": "65876a41571cf29e9e2098d0c7dadcd6989f5cc7b69f90d6ccdbde8941854b27",
+    "/home/doc/git/compositor-test-artifacts/trace-budget-metrics-244/check.log": "9db0f27a3f518bf64216eb5350921d48c18c19704c463636f1ff4223fa74e276",
+    "/home/doc/git/compositor-test-artifacts/trace-viewer-acceptance-244.json": "3c5e98726cd1e40288028c4b1bd8e5dff1c7068ccba624328caf7406af731981"
+  }
+}

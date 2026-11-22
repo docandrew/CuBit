@@ -1,0 +1,12 @@
+# Works with Interpret and with Compile / Run VM / Step.
+# Try Value(41), Unavailable, or Flag(true), then switch to BASIC with F8.
+(type Reading (variant
+  (Value Integer)
+  (Unavailable)
+  (Flag Boolean)))
+
+(let ((reading (Reading.Value 41)))
+  (match reading
+    ((Reading.Value n) (+ n 1))
+    ((Reading.Unavailable) 0)
+    ((Reading.Flag enabled) (if enabled 100 0))))

@@ -1,0 +1,17 @@
+import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';import{spawnSync}from'node:child_process';
+const d=import.meta.dirname,tree=path.resolve(d,'../..'),out=fs.mkdtempSync(process.env.TMPDIR+'/acpi-serving-policy-proof-'),pins={},levels=[],sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+const tool='/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove',cvc5='/nix/store/kpamqxdkwynzxyzhqj4csy6h5qj0pz21-cvc5-1.3.4/bin/cvc5',z3='/nix/store/c92vyfgscj1s8xnmgfiqvqk3ic35jcz1-z3-4.16.0/bin/z3',config=d+'/why3.conf';
+fs.mkdirSync(out+'/source');
+const sources=['acpi_serving_state.ads','acpi_serving_state.adb'].map(n=>tree+'/userspace/services/acpi/'+n).concat(['acpi_serving_properties.ads','acpi_serving_properties.adb'].map(n=>d+'/fixtures/'+n));
+for(const p of [tool,cvc5,z3,config,d+'/prove.mjs',...sources])pins[p]=sha(p);
+for(const p of sources){const q=out+'/source/'+path.basename(p);fs.copyFileSync(p,q);pins[q]=sha(q);}
+
+const report={accepted:false,out,pins,levels,scope:'Actual serving policy contracts: all fifteen eligibility facts, physical retirement acknowledgment, first choice consumed on refusal, selected mode/reason and no later promotion; ghost clients. Truthfulness of facts, native retirement, kernel/runtime and full service NOT proved.',nativeExecuted:false,hardwareValidated:false,goalComplete:false};const save=()=>fs.writeFileSync(out+'/PROOF.json',JSON.stringify(report,null,2)+'\n');
+for(const level of [1,2])for(const unit of ['acpi_serving_state','acpi_serving_properties']){
+ const dir=out+'/L'+level+'-'+unit;fs.mkdirSync(dir);const project=dir+'/proof.gpr';fs.writeFileSync(project,'project Proof is for Source_Dirs use("../source");for Object_Dir use "obj";package Compiler is for Default_Switches("Ada") use("-gnat2022","-gnata","-gnato");end Compiler;end Proof;\n');pins[project]=sha(project);
+ const r=spawnSync('timeout',['--kill-after=2s','180','prlimit','--as=25769803776',tool,'-P',project,'-u',unit+'.adb','--mode=prove','--level='+level,'--timeout=5','--prover=cvc5,z3','--why3-conf',config,'-j1','--report=all'],{cwd:out,env:{...process.env,PATH:[path.dirname(tool),path.dirname(cvc5),path.dirname(z3),process.env.PATH].join(':')},encoding:'utf8',timeout:183000,maxBuffer:1048576});
+ const output=(r.stdout??'')+(r.stderr??'');fs.writeFileSync(dir+'/prove.log',output);const row={level,unit,status:r.status,error:r.error?.message??null,signal:r.signal,output};levels.push(row);
+ const p=dir+'/obj/gnatprove/'+unit+'.spark';if(fs.existsSync(p)){const j=JSON.parse(fs.readFileSync(p));row.report=p;row.sha256=sha(p);row.proof=j.proof?.length??0;row.flow=j.flow?.length??0;row.unproved=[...(j.proof??[]),...(j.flow??[])].filter(c=>c.severity!=='info');row.spark=j.spark;row.assume=j.pragma_assume;row.skipProof=j.skip_proof;row.skipFlow=j.skip_flow_proof;row.progress=j.progress;row.stop=j.stop_reason;}save();
+ if(r.status!==0||r.error||r.signal||!row.report||row.unproved.length||Object.values(row.spark).some(v=>v!=='all')||[row.assume,row.skipProof,row.skipFlow].some(a=>!Array.isArray(a)||a.length)||row.progress!=='PROGRESS_PROOF'||row.stop!=='STOP_REASON_NONE')throw Error('Proof not complete '+dir);
+}
+for(const[p,h]of Object.entries(pins))if(sha(p)!==h)throw Error('Input drift');report.accepted=true;save();console.log(JSON.stringify({accepted:true,out,levels:levels.map(l=>({level:l.level,unit:l.unit,proof:l.proof,flow:l.flow,unproved:l.unproved.length}))}));

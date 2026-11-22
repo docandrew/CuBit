@@ -1,0 +1,2 @@
+(Component name => "parameters-plain" kind => Kind.Application
+  source => (Source.Ada (Ada_Source language => Ada_Language.Ada_2022)))

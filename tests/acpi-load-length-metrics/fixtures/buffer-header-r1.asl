@@ -1,0 +1,1 @@
+DefinitionBlock ("", "DSDT", 1, "CUBIT", "LMETRIC", 1) { Name (BBUF, Buffer (35) { Zero }) Name (LTGT, Zero) Method (_INI, 0) { Load (BBUF, LTGT) } Scope (_SB) { Method (_INI, 0) { Return (Zero) } } }

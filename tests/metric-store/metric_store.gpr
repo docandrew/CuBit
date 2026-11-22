@@ -1,0 +1,15 @@
+--  Hosted tests and proofs of metrics.svc's series store (MET-002):
+--  tests/metric-store/run.sh copies the units under test into build/source.
+project Metric_Store is
+   for Source_Dirs use (".", "build/source");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwe", "-gnatyM120");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "-j2");
+   end Prove;
+end Metric_Store;

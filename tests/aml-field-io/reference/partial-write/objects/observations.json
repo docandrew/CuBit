@@ -1,0 +1,3332 @@
+[
+  {
+    "label": "byte-three-preserve-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 58
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 2625
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 61
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "byte-three-preserve-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 58
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 2625
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 61
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "byte-three-writeasones-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 250
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 2625
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 253
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "byte-three-writeasones-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 250
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 2625
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 253
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "byte-three-writeaszeros-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 2625
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 5
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "byte-three-writeaszeros-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1223
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 2
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 2625
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 5
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 195
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 150
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-preserve-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 58
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 148
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 3308097
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 10
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 149
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-preserve-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 58
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 148
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 3308097
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 10
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 149
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 105
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-writeasones-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 63
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 252
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 3308097
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 253
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-writeasones-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 63
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 252
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 3308097
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 253
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-writeaszeros-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 56
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 3308097
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 8
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "word-three-writeaszeros-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 1193159
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 56
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 3308097
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 8
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 240
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-preserve-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          22
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 59
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 178
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "buffer",
+        "bytes": [
+          65,
+          122,
+          50,
+          33,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 11
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-preserve-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 96000423111
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 59
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 178
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 556956225
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 90
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 60
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 11
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-writeasones-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          22
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 63
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 178
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "buffer",
+        "bytes": [
+          65,
+          122,
+          50,
+          33,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-writeasones-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 96000423111
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 63
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 178
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 556956225
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-writeaszeros-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          22
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 56
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 178
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "buffer",
+        "bytes": [
+          65,
+          122,
+          50,
+          33,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 8
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "dword-two-writeaszeros-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 96000423111
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 56
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 166
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 145
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 208
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 178
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 556956225
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 8
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 210
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 147
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-preserve-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          150,
+          105,
+          165,
+          60
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 203
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 180
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 82
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 30
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "buffer",
+        "bytes": [
+          65,
+          122,
+          50,
+          33,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 61
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 153
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 16
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-preserve-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 4370015107910087879
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 203
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 180
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 82
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 30
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 556956225
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 165
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 61
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 153
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 16
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-writeasones-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          150,
+          105,
+          165,
+          60
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 203
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 180
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 82
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 158
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "buffer",
+        "bytes": [
+          65,
+          122,
+          50,
+          33,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 61
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 153
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 16
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-writeasones-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 4370015107910087879
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 203
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 180
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 82
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 158
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 556956225
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 255
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 61
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 153
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 16
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-writeaszeros-r1",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "buffer",
+        "bytes": [
+          199,
+          52,
+          18,
+          90,
+          150,
+          105,
+          165,
+          60
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 203
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 180
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 82
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 30
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "buffer",
+        "bytes": [
+          65,
+          122,
+          50,
+          33,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 61
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 153
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 16
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  },
+  {
+    "label": "any-nine-writeaszeros-r2",
+    "observations": [
+      {
+        "path": "\\BUFR",
+        "kind": "integer",
+        "value": 4370015107910087879
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 99
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 26
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 9
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 45
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 203
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 180
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 82
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 30
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      },
+      {
+        "path": "\\STRG",
+        "kind": "integer",
+        "value": 556956225
+      },
+      {
+        "path": "\\P000",
+        "kind": "integer",
+        "value": 128
+      },
+      {
+        "path": "\\P001",
+        "kind": "integer",
+        "value": 32
+      },
+      {
+        "path": "\\P002",
+        "kind": "integer",
+        "value": 61
+      },
+      {
+        "path": "\\P003",
+        "kind": "integer",
+        "value": 153
+      },
+      {
+        "path": "\\P004",
+        "kind": "integer",
+        "value": 16
+      },
+      {
+        "path": "\\P005",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P006",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P007",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P008",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\P009",
+        "kind": "integer",
+        "value": 204
+      },
+      {
+        "path": "\\P010",
+        "kind": "integer",
+        "value": 135
+      },
+      {
+        "path": "\\P011",
+        "kind": "integer",
+        "value": 120
+      }
+    ]
+  }
+]

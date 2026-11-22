@@ -1,0 +1,28 @@
+{
+  "status": "HOSTED_PASS",
+  "scope": "Real collector/store, bounded pages and desktop publisher with mocked IPC/grants. No native stream/kernel authentication proof.",
+  "stream": "Two real pages,894 overload drops, retained-page immutability,out-of-order release/redeclaration",
+  "collector": "Byte units,separate keys,delta totals,undeclared rejection,repeated metadata preserving totals",
+  "publisher": "22120 terminal0;18 modes PASS",
+  "prior_attempts": [
+    "24423 missing private test inputs",
+    "37546 stream/store pass; publisher mock missing deadline ABI",
+    "82563 first two modes pass; test timestamp accidentally changed during metadata update, corrected before final run"
+  ],
+  "inputs": {
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/tests/compositor/metric_batch_stream_tests.adb": "8d9facfc7994c3df4d8bc870e0504e38b9a66c1510048b3c5bbe3a66768608fc",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/tests/compositor/metric_batch_stream.gpr": "5fd8dc0fb79912034478eb38da6a0a4efa971bebebd36c32021ee35b8f61d3d4",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/tests/compositor/transfer_metrics_store_tests.adb": "8eca1a9ad2ec3b2bc48672ed7831217aec3148da3d8f6fcb25a3896da8dba2a8",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/tests/compositor/transfer_metrics_store.gpr": "865af12f18cd8daaf5902d2c4788537b0542f85235254a250a2258742c719441",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/tests/compositor/test-desktop-metric-publisher.py": "e14c2b1634145103253aed0aee7be93de7fa32bbdeec0fc8c2746372c713a7e1",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/tests/compositor/test-metrics-publisher-boundary.py": "9ec30851a6dd5b9a0c7a7144d0f60db0fb48510e40e791ebf9aadfac88339966",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/userspace/services/metricsvc/metric_histograms.ads": "3daaf6394df86b56bc985a4e015d5a0ea030e3722bfab28a315fde727e8f8372",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/userspace/services/metricsvc/metric_store.ads": "2cfb7ebc196eba6721c6285068fc3bb152b6e5a1f96f5919c928506dd08ff8a5",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/userspace/services/metricsvc/metric_store.adb": "e74fbfe3f21617686f22533bceacd53915f7bb4e457c41f5d1167a3e9a82b3b7",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/userspace/services/metricsvc/metric_histograms.adb": "766277233b1ebf46d509e91126156df5faaa4b578c666df9d76b8618202be732",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/userspace/lib/compositor/compositor_work_metrics.ads": "a6a5cd04a82a0623379af07588fbacbe8160f90b104d61434a53a853ac2fb4dc",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/userspace/lib/compositor/compositor_work_metrics.adb": "4b57f1df4bd5f5ae81c36b11d4e45569f02741541d24c902a917efa1a2d0c659",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/userspace/lib/compositor/compositor_metric_batch_policy.ads": "c799604c221e4edfac4715f0da8aa7f9aa1229a6ddbab95ee5c8eed4e91b5372",
+    "/home/doc/git/compositor-test-artifacts/desktop-transfer-metrics-source-43/userspace/lib/compositor/compositor_metric_batch_policy.adb": "cff13b6691bb1d590f08853e1aa33802e18df3c1dfdb3f32383dc798aac34396"
+  }
+}

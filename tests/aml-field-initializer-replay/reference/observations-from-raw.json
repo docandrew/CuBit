@@ -1,0 +1,630 @@
+[
+  {
+    "label": "method-r1",
+    "aml_sha256": "e56cee88c8e73f7da869c843aa9a748a8385a75a7bb1cc34eb386532c37f85b2",
+    "raw_log_sha256": "0371a6181e252e1a92935737b85d49120400c4aec57a7345c34ab1e9aabfbb95",
+    "observations": [
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "no_object",
+        "value": null
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "no_object",
+        "value": null
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      }
+    ]
+  },
+  {
+    "label": "method-r2",
+    "aml_sha256": "12f7518ac334b580b12a62bdc354e7bca405843b31c3239dfd6712c7962ec0a5",
+    "raw_log_sha256": "906509fdd78fa31d87adf52eec8c11b28b6b12d271367bd159a859a64ded223e",
+    "observations": [
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "no_object",
+        "value": null
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "no_object",
+        "value": null
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      }
+    ]
+  },
+  {
+    "label": "direct-r1",
+    "aml_sha256": "c1be523652502a156b50e694fff03346f7114c20ce504dd12e2a70dff21e04c0",
+    "raw_log_sha256": "8a04209afc0f21d0f31bba5c0287bc85f35eae5d82a4e54247904c25b8105483",
+    "observations": [
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "no_object",
+        "value": null
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "no_object",
+        "value": null
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      }
+    ]
+  },
+  {
+    "label": "direct-r2",
+    "aml_sha256": "717d293cd10dc606822a5a66d80734345d7779b6327ce638728f024ef60fa0fb",
+    "raw_log_sha256": "bde682606d99fc83a0e55a69f278d7264edc0589137c3490080624b2cbfbcffb",
+    "observations": [
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "no_object",
+        "value": null
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "no_object",
+        "value": null
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      }
+    ]
+  },
+  {
+    "label": "failure-r1",
+    "aml_sha256": "f76956342997b9c1e3750a60fec635ae2bc6932c79386043804c58eabff9a2dd",
+    "raw_log_sha256": "c11c948662984053a37b5cbdaf377931f3c53ffbbc2fa0e3ae1ed970282a74eb",
+    "observations": [
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "error",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "error",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 0
+      }
+    ]
+  },
+  {
+    "label": "failure-r2",
+    "aml_sha256": "3d767d3eb068ef13b96378112e669970cbba5ad9058608d82618a8bc86fd0e52",
+    "raw_log_sha256": "701b802af88928ecabaf463e98c68183b0a14aaede73a49b7b02dca980f7375d",
+    "observations": [
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "error",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "error",
+        "value": "AE_AML_DIVIDE_BY_ZERO"
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 1
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 0
+      }
+    ]
+  },
+  {
+    "label": "compound-r1",
+    "aml_sha256": "2d7818fc5d0b0001abcc9ff02e80df8bd9156b3a8e30be076b1229a34be8eab4",
+    "raw_log_sha256": "38cca371a081e64fc1c29f02c9aed50f77b310310853d0e38cc5a0f59f705c4e",
+    "observations": [
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "buffer",
+        "value": [
+          165,
+          90
+        ]
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "buffer",
+        "value": [
+          165,
+          90
+        ]
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      }
+    ]
+  },
+  {
+    "label": "compound-r2",
+    "aml_sha256": "ead569e8b2d844777b6b467ffdd7be72da7bedcd1a2b5d5efb70ac6376c11f06",
+    "raw_log_sha256": "ffa4a99e1874f4683aa813174165fd6ed97f2ffea739ba806ebae80a47de12ae",
+    "observations": [
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "buffer",
+        "value": [
+          165,
+          90
+        ]
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      },
+      {
+        "path": "\\RSET",
+        "kind": "integer",
+        "value": 0
+      },
+      {
+        "path": "\\_SB.DVA0._STA",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\_SB.DVA0._INI",
+        "kind": "buffer",
+        "value": [
+          165,
+          90
+        ]
+      },
+      {
+        "path": "\\OBS0",
+        "kind": "integer",
+        "value": 291
+      },
+      {
+        "path": "\\PR01",
+        "kind": "integer",
+        "value": 15
+      },
+      {
+        "path": "\\PR02",
+        "kind": "integer",
+        "value": 34
+      },
+      {
+        "path": "\\PR03",
+        "kind": "integer",
+        "value": 51
+      }
+    ]
+  }
+]

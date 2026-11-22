@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="lime" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#d8ff85"/><stop offset="1" stop-color="#8fdc1f"/></linearGradient>
+<linearGradient id="steel" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#eef1f8"/><stop offset="1" stop-color="#b4bccf"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M19 7 L27 11 L27 18 L11 26 L3 22 L3 15Z"/>
+</g>
+<path d="M19 7 L27 11 L11 19 L3 15Z" fill="url(#steel)"/>
+<path d="M3 15 L11 19 L11 26 L3 22Z" fill="url(#steel)"/>
+<path d="M27 11 L27 18 L11 26 L11 19Z" fill="#7d879f"/>
+<path d="M3 15 L11 19 L27 11" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="butt" opacity="0.55"/>
+<path d="M25.08 15.46 L17.08 19.46" fill="none" stroke="#1d1530" stroke-width="2" stroke-linecap="butt" opacity="0.85"/>
+<path d="M11.8 21.3 A1.6 1.6 0 1 0 15 21.3 A1.6 1.6 0 1 0 11.8 21.3Z" fill="url(#lime)"/>
+</svg>

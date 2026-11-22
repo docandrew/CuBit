@@ -1,0 +1,25 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+Summary logged in /home/doc/cubit-build-tmp/ec-resource-proof-WtmEZ7/level1/obj/gnatprove/gnatprove.out
+acpi_ec_boot_resources.adb:8:07: info: initialization of "Result" proved
+acpi_ec_boot_resources.adb:22:70: info: discriminant check proved
+acpi_ec_boot_resources.adb:22:86: info: discriminant check proved
+acpi_ec_boot_resources.adb:23:42: info: discriminant check proved
+acpi_ec_boot_resources.adb:32:70: info: discriminant check proved
+acpi_ec_boot_resources.adb:32:86: info: discriminant check proved
+acpi_ec_boot_resources.adb:33:42: info: discriminant check proved
+acpi_ec_boot_resources.ads:28:13: info: implicit aspect Always_Terminates on "Descriptions_Agree" has been proved, subprogram will terminate
+acpi_ec_boot_resources.ads:34:61: info: discriminant check proved
+acpi_ec_boot_resources.ads:34:82: info: discriminant check proved
+acpi_ec_boot_resources.ads:35:22: info: discriminant check proved
+acpi_ec_boot_resources.ads:36:70: info: discriminant check proved
+acpi_ec_boot_resources.ads:36:93: info: discriminant check proved
+acpi_ec_boot_resources.ads:37:22: info: discriminant check proved
+acpi_ec_boot_resources.ads:38:31: info: discriminant check proved
+acpi_ec_boot_resources.ads:39:32: info: discriminant check proved
+acpi_ec_boot_resources.ads:40:28: info: discriminant check proved
+acpi_ec_boot_resources.ads:41:18: info: data dependencies proved
+acpi_ec_boot_resources.ads:48:13: info: implicit aspect Always_Terminates on "Compare" has been proved, subprogram will terminate
+acpi_ec_boot_resources.ads:49:11: info: data dependencies proved
+acpi_ec_boot_resources.ads:51:10: info: postcondition proved

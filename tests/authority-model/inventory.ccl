@@ -1,0 +1,242 @@
+# The real delegation paths (CAP-012 inventory), as typed values of the
+# vocabulary in rules.ccl. Sites are in the k3w tree at 5adc8f71b:
+#   K  kernel/src/            D  userspace/services/devmgr/main.adb
+#   DL userspace/services/devmgr/devmgr_launches.adb
+#   P  userspace/services/procmgr/main.adb   RT userspace/runtime/gnat/
+# Facts (rules.ccl): Enforced = kernel or proved unit; Observed = reading
+# or test; Fails; Unknown. Each verdict must equal (classify facts):
+# inventory_check.adb checks it. docs/authority-model.md explains each row.
+
+(define (paths) (List Path) [
+  # ---- Kernel: boot roots, minting, attenuation, revocation ----
+  (Path "K-01" "K modules.adb:850-860" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Root_Issue Component.Kernel Component.Devmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-02" "K modules.adb:926-932" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Root_Issue Component.Kernel Component.Devmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-03" "K modules.adb:933-956,996-1110" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Root_Issue Component.Kernel Component.Devmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-04" "K modules.adb:957-992" (Authority Family.Observation observation => ObsK.Firmware_Snapshot) Operation.Root_Issue Component.Kernel Component.Devmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Observed Fact.Enforced Fact.Enforced) Verdict.Fits)
+  # K-05 to K-07, fixed on branch spawngate: SPAWN's rules are
+  # kernel/src/spawn_admission.ads (proved, tests/spawn-admission), which
+  # handleSpawn applies (headless --test spawn-rules).
+  (Path "K-05" "K spawn_admission.ads (rule 1); syscall-ipc.adb handleSpawn" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Spawn Component.Any_Holder Component.Program
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-06" "K spawn_admission.ads (rule 2); syscall-ipc.adb handleSpawn" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Spawn Component.Any_Holder Component.Any_Holder
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-07" "K spawn_admission.ads (rule 3); syscall-ipc.adb handleSpawn; syscall-admin.adb:1180-1192" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Control Component.Any_Holder Component.Any_Holder
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-08" "K syscall-admin.adb:743-838; capability_install.ads:135-211" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Install Component.Any_Holder Component.Any_Holder
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-09" "K syscall-admin.adb:849-879" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Derive Component.Any_Holder Component.Any_Holder
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-10" "K syscall-ipc.adb:1418-1497; syscall-admin.adb:482-546" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Transfer Component.Any_Holder Component.Any_Holder
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-11" "K syscall.ads:118-122 (POLICY_MINT 72, 120 retired)" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Root_Issue Component.Any_Holder Component.Any_Holder
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-12" "K syscall-admin.adb:676-740" (Authority Family.Hardware hardware => HwK.Platform_Pool) Operation.Install Component.Devmgr Component.Kernel
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-13" "K syscall-ipc.adb:957-1100" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Map_Into Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "K-14" "K syscall-ipc.adb:636-660" (Authority Family.Hardware hardware => HwK.DMA) Operation.Map_Into Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-15" "K syscall-admin.adb:1344-1478" (Authority Family.Hardware hardware => HwK.Device_Vectors) Operation.Derive Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Observed Fact.Enforced) Verdict.Fits)
+  (Path "K-16" "K syscall-ipc.adb:1638-1745" (Authority Family.Data data => DataK.Data_Grant) Operation.Transfer Component.Any_Holder Component.Any_Holder
+    (Invariant_Facts Fact.Unknown Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Unclear)
+  (Path "K-17" "K syscall-ipc.adb:1917-2022" (Authority Family.Data data => DataK.Data_Grant) Operation.Transfer Component.Any_Holder Component.Any_Holder
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-18" "K process-ipc.adb:3964-3996,4035-4055" (Authority Family.Data data => DataK.Data_Grant) Operation.Revoke Component.Any_Holder Component.Any_Holder
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "K-19" "K capabilities.ads:60-66,115-123; modules.adb:908" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Revoke Component.Any_Holder Component.Any_Holder
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "K-20" "K process.adb:1065-1086" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Root_Issue Component.Kernel Component.Program
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+
+  # ---- devmgr ----
+  (Path "D-01" "DL :206; D :1491,7184-8177" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Spawn Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "D-02" "D :1388-1450,1466-1491" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Spawn Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Fails Fact.Enforced Fact.Enforced Fact.Enforced Fact.Observed) Verdict.Violates)
+  (Path "D-03" "D :8195-8196" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Install Component.Devmgr Component.Procmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "D-04" "D :8226-8254" (Authority Family.Administration administration => AdmK.Platform_Power) Operation.Install Component.Devmgr Component.Procmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Observed Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-05" "D :8188-8224" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Install Component.Devmgr Component.Procmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "D-06" "D :8222; P :3592,4172" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Install Component.Devmgr Component.Procmgr
+    (Invariant_Facts Fact.Enforced Fact.Unknown Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Unclear)
+  (Path "D-07" "D :2041-2066,8269-8270" (Authority Family.Data data => DataK.Filesystem_Scope) Operation.Scope_On_Behalf Component.Devmgr Component.Procmgr
+    (Invariant_Facts Fact.Unknown Fact.Enforced Fact.Enforced Fact.Observed Fact.Observed) Verdict.Unclear)
+  (Path "D-08" "D :2019-2027" (Authority Family.Data data => DataK.Filesystem_Scope) Operation.Scope_On_Behalf Component.Devmgr Component.Intel_Gpu
+    (Invariant_Facts Fact.Unknown Fact.Enforced Fact.Enforced Fact.Observed Fact.Observed) Verdict.Unclear)
+  (Path "D-09" "DL :591-604" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Install Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Unknown Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Unclear)
+  (Path "D-10" "DL :618-627" (Authority Family.Endpoint endpoint => EpK.Notification_Role) Operation.Install Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Fails Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-11" "D :2649-2651; devmgr_authority.adb:351-362" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Install Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-12" "D :2753-2768" (Authority Family.Hardware hardware => HwK.Interrupt_Line) Operation.Install Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-13" "D :2824-2827,1571" (Authority Family.Hardware hardware => HwK.IO_Ports) Operation.Install Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-14" "D :2510,2531,2577" (Authority Family.Hardware hardware => HwK.Device_Vectors) Operation.Install Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Observed Fact.Enforced) Verdict.Fits)
+  (Path "D-15" "D :262,2995-4377" (Authority Family.Hardware hardware => HwK.DMA) Operation.Map_Into Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "D-16" "D :399,9084,9223" (Authority Family.Hardware hardware => HwK.DMA) Operation.Map_Into Component.Devmgr Component.Intel_Gpu
+    (Invariant_Facts Fact.Observed Fact.Unknown Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Unclear)
+  (Path "D-17" "D :3174,3639" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Map_Into Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-18" "D :4234-4401,1500-1507" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Install Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-19" "D :6068-6124; devmgr_acpi_windows.adb:152-217" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Install Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-20" "D :8409-8452" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Transfer Component.Devmgr Component.Procmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "D-21" "D :8518-8560; P :1906-1930" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Introduce Component.Procmgr Component.Devmgr
+    (Invariant_Facts Fact.Unknown Fact.Enforced Fact.Enforced Fact.Enforced Fact.Observed) Verdict.Unclear)
+  (Path "D-22" "D :8470-8488,2824-2935" (Authority Family.Hardware hardware => HwK.IO_Ports) Operation.Broker Component.Devmgr Component.Procmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Observed Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-23" "D :8491,5906-5998,4767" (Authority Family.Hardware hardware => HwK.Firmware_Data) Operation.Transfer Component.Devmgr Component.Acpi
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-24" "D :5296-5330" (Authority Family.Hardware hardware => HwK.Platform_Pool) Operation.Transfer Component.Devmgr Component.Acpi
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-25" "D :8513,4550" (Authority Family.Hardware hardware => HwK.Whole_Disk) Operation.Transfer Component.Devmgr Component.Installer
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-26" "D :8676-9065" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Transfer Component.Devmgr Component.Intel_Gpu
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-27" "D :8345; userspace/lib/display/intel_render_broker.adb:103-107" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Broker Component.Devmgr Component.Procmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Observed Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "D-28" "D :9242-9387" (Authority Family.Observation observation => ObsK.Device_Inventory) Operation.Exercise Component.Any_Holder Component.Devmgr
+    (Invariant_Facts Fact.Fails Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Violates)
+  (Path "D-29" "D :6758-6803,6788,6935" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Async_Submit Component.Devmgr Component.Procmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "D-30" "D :8149" (Authority Family.Hardware hardware => HwK.Scheduling) Operation.Install Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Unknown Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "D-31" "D :7128; DL :127-146" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Control Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "D-32" "D :7358,7819,7881,8012-8024,8137" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Install Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Unknown Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Unclear)
+
+  # ---- procmgr ----
+  (Path "P-01" "P :4470-4474,820-945" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Spawn Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  # P-02 and P-03, fixed on branch spawngate: OP_SPAWN is deleted; every
+  # launch is Launch-into-S through a Launch badge (approval within the user
+  # session's envelope, by rights: userspace/services/procmgr/
+  # session_launch.ads, proved; its use in procmgr is read; headless
+  # --test launch-gate) or a supervisor's Start_Child.
+  (Path "P-02" "P OP_SPAWN deleted (spawngate)" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Spawn Component.Any_Holder Component.Program
+    (Invariant_Facts Fact.Observed Fact.Observed Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "P-03" "P handleLaunch, launchGives; session_launch.ads (approval within the session envelope)" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Spawn Component.Program Component.Program
+    (Invariant_Facts Fact.Enforced Fact.Observed Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "P-04" "P :7093-7262" (Authority Family.Spawn spawn => SpawnK.Process_Control) Operation.Spawn Component.Devmgr Component.Driver
+    (Invariant_Facts Fact.Unknown Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Unclear)
+  (Path "P-05" "P :3395-3412,3518-3538,3671-3673" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Install Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  # P-06, fixed on branch spawngate: the exact-name approvals are deleted;
+  # a viewer gets observation only from a launcher holding it.
+  (Path "P-06" "P exact-name approvals deleted (spawngate)" (Authority Family.Observation observation => ObsK.Log_Observation) Operation.Install Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "P-07" "P :2106-2153" (Authority Family.Endpoint endpoint => EpK.Notification_Role) Operation.Install Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Fails Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Violates)
+  (Path "P-08" "RT cubit-authority_policy.ads:47-51,69-75" (Authority Family.Administration administration => AdmK.Startup_Plan) Operation.Install Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Unknown Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Unclear)
+  (Path "P-09" "P :6147-6184,6560,6797-6825,7001-7003" (Authority Family.Administration administration => AdmK.Startup_Plan) Operation.Spawn Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Fails Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Violates)
+  (Path "P-10" "P :3729-3739" (Authority Family.Hardware hardware => HwK.Device_Memory) Operation.Install Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Fails Fact.Enforced Fact.Observed Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "P-11" "P :3766-3798,8403" (Authority Family.Data data => DataK.Network_Scope) Operation.Scope_On_Behalf Component.Procmgr Component.Netstack
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Observed Fact.Enforced) Verdict.Fits)
+  (Path "P-12" "P :3816-3919" (Authority Family.Administration administration => AdmK.Platform_Power) Operation.Install Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Observed Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "P-13" "P :4045-4079" (Authority Family.Hardware hardware => HwK.IO_Ports) Operation.Broker Component.Procmgr Component.Acpi
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Observed Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "P-14" "P :4114-4139" (Authority Family.Hardware hardware => HwK.Firmware_Memory) Operation.Broker Component.Procmgr Component.Acpi
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Observed Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "P-15" "P :3973-4035" (Authority Family.Hardware hardware => HwK.Interrupt_Line) Operation.Broker Component.Procmgr Component.Acpi
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Observed Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "P-16" "P :4163-4174" (Authority Family.Hardware hardware => HwK.Firmware_Data) Operation.Install Component.Procmgr Component.Acpi
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "P-17" "P :3572-3573; shared/acpi/acpi_pci_window_approval.ads:11-12" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Install Component.Procmgr Component.Acpi
+    (Invariant_Facts Fact.Observed Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "P-18" "P :4963-4968,4311" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Broker Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Observed Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "P-19" "P :5104,1952-2066; RT cubit-introduction_ledgers.ads" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Introduce Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "P-20" "P :4922-4924" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Introduce Component.Procmgr Component.Config
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "P-21" "P :7367-7370" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Transfer Component.Procmgr Component.Devmgr
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "P-22" "P :2694-2897,4819-4877,8403-8404" (Authority Family.Data data => DataK.Config_Scope) Operation.Scope_On_Behalf Component.Procmgr Component.Config
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "P-23" "P :3185-3192" (Authority Family.Data data => DataK.Data_Grant) Operation.Derive Component.Program Component.Program
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "P-24" "P :3587-3592" (Authority Family.Hardware hardware => HwK.Whole_Disk) Operation.Install Component.Procmgr Component.Installer
+    (Invariant_Facts Fact.Unknown Fact.Enforced Fact.Enforced Fact.Fails Fact.Enforced) Verdict.Violates)
+  (Path "P-25" "P :553,668-705,7899" (Authority Family.Observation observation => ObsK.Process_Observation) Operation.Exercise Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+  (Path "P-26" "P :4262" (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Operation.Install Component.Procmgr Component.Program
+    (Invariant_Facts Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Fits)
+
+  # ---- secrets.svc ----
+  (Path "S-01" "userspace/services/secrets/main.adb:193-206,248" (Authority Family.Data data => DataK.Secret_Use) Operation.Exercise Component.Program Component.Leaf_Service
+    (Invariant_Facts Fact.Unknown Fact.Enforced Fact.Enforced Fact.Observed Fact.Enforced) Verdict.Unclear)
+  (Path "S-02" "userspace/services/secrets/main.adb:115-136,265-267" (Authority Family.Data data => DataK.Secret_Use) Operation.Control Component.Any_Holder Component.Leaf_Service
+    (Invariant_Facts Fact.Fails Fact.Enforced Fact.Enforced Fact.Enforced Fact.Enforced) Verdict.Violates)
+])
+
+# Root issuers: who holds each kind first.
+(define (roots) (List Root) [
+  (Root (Authority Family.Spawn spawn => SpawnK.Process_Control) Component.Devmgr "K modules.adb:926-932")
+  (Root (Authority Family.Hardware hardware => HwK.Device_Memory) Component.Devmgr "K modules.adb:1054-1074")
+  (Root (Authority Family.Hardware hardware => HwK.Firmware_Memory) Component.Devmgr "K modules.adb:1075-1093")
+  (Root (Authority Family.Hardware hardware => HwK.Firmware_Data) Component.Devmgr "K modules.adb:1075-1093")
+  (Root (Authority Family.Hardware hardware => HwK.Platform_Pool) Component.Devmgr "K modules.adb:1094-1112")
+  (Root (Authority Family.Hardware hardware => HwK.IO_Ports) Component.Devmgr "K modules.adb:933-934,946-947")
+  (Root (Authority Family.Hardware hardware => HwK.Interrupt_Line) Component.Devmgr "K modules.adb:948-950")
+  (Root (Authority Family.Hardware hardware => HwK.Device_Vectors) Component.Devmgr "K modules.adb:939-945")
+  (Root (Authority Family.Hardware hardware => HwK.DMA) Component.Kernel "K syscall-ipc.adb:907-956")
+  (Root (Authority Family.Hardware hardware => HwK.Scheduling) Component.Devmgr "K modules.adb:954-956")
+  (Root (Authority Family.Hardware hardware => HwK.Whole_Disk) Component.Devmgr "D :4550")
+  (Root (Authority Family.Endpoint endpoint => EpK.Service_Endpoint) Component.Kernel "K process.adb:1065-1076; syscall-ipc.adb:316-323")
+  (Root (Authority Family.Endpoint endpoint => EpK.Notification_Role) Component.Devmgr "K modules.adb:935-938,951-953")
+  (Root (Authority Family.Data data => DataK.Data_Grant) Component.Any_Holder "K syscall-ipc.adb:1917-2022")
+  (Root (Authority Family.Data data => DataK.Filesystem_Scope) Component.Filesystem "D :2041-2047; P :2694")
+  (Root (Authority Family.Data data => DataK.Config_Scope) Component.Config "D :2060-2066; P :2757")
+  (Root (Authority Family.Data data => DataK.Network_Scope) Component.Netstack "P :3777")
+  (Root (Authority Family.Data data => DataK.Secret_Use) Component.Leaf_Service "userspace/services/secrets/main.adb:248")
+  (Root (Authority Family.Observation observation => ObsK.Firmware_Snapshot) Component.Devmgr "K modules.adb:957-964")
+  (Root (Authority Family.Observation observation => ObsK.Trace) Component.Devmgr "K modules.adb:972-978")
+  (Root (Authority Family.Observation observation => ObsK.Test_Console) Component.Devmgr "K modules.adb:985-992")
+  (Root (Authority Family.Observation observation => ObsK.Process_Observation) Component.Procmgr "K modules.adb:979-984; P :668-705")
+  (Root (Authority Family.Observation observation => ObsK.Log_Observation) Component.Logstore "P :3596-3604")
+  (Root (Authority Family.Observation observation => ObsK.Metric_Observation) Component.Leaf_Service "P :3613-3621")
+  (Root (Authority Family.Observation observation => ObsK.Device_Inventory) Component.Devmgr "D :9242-9387")
+  (Root (Authority Family.Administration administration => AdmK.Platform_Power) Component.Devmgr "K modules.adb:965-971")
+  (Root (Authority Family.Administration administration => AdmK.Startup_Plan) Component.Procmgr "userspace/ccl/src/ccl-configurations.adb:246-295")
+  (Root (Authority Family.Administration administration => AdmK.Trust_List) Component.Procmgr "docs/signed-binaries.md section 4 (design)")
+  (Root (Authority Family.Administration administration => AdmK.Settings) Component.Config "P :3026,6065")
+])
+
+# Synchronous calls between processes (and the asynchronous back-flow).
+(define (calls) (List Call) [
+  (Call Component.Procmgr Component.Devmgr "P :1837,1874,1906,4070,4114" true)
+  (Call Component.Procmgr Component.Devmgr "P :3973,7698" false)
+  (Call Component.Procmgr Component.Filesystem "P :544,2694,2897,3372,4819" true)
+  (Call Component.Procmgr Component.Filesystem "P :867,908,929" false)
+  (Call Component.Procmgr Component.Config "P :2757,3026,4922,6065" true)
+  (Call Component.Procmgr Component.Leaf_Service "P :2811,4870" true)
+  (Call Component.Procmgr Component.Leaf_Service "P :2859,4852" true)
+  (Call Component.Procmgr Component.Netstack "P :528,3777,3798" true)
+  (Call Component.Procmgr Component.Logstore "P :7649" false)
+  (Call Component.Procmgr Component.Logstore "RT cubit-logging.adb:43-57,206 via cubit-console_route.adb:227" true)
+  (Call Component.Devmgr Component.Filesystem "D :1423-1447,2023,2047,2174" true)
+  (Call Component.Devmgr Component.Config "D :2066,2117,7690,7722" true)
+  (Call Component.Devmgr Component.Logstore "RT cubit-logging.adb:43-57,206 via Deferred_Warnings" true)
+  (Call Component.Devmgr Component.Driver "D :4159,7536" true)
+  (Call Component.Devmgr Component.Driver "D :7450" true)
+  (Call Component.Devmgr Component.Driver "D :7843" true)
+  (Call Component.Devmgr Component.Driver "D :6828" false)
+])

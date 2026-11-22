@@ -1,0 +1,566 @@
+[
+  {
+    "case": "r1-alias",
+    "revision": 1,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-alias.asl",
+    "aml_sha256": "78174eb8308a0897cf74424b30374af8369baccb11d76f939a5dc5465e6c0f56",
+    "body_sha256": "acabf0758fc895d82fbf511e7aa5973b91f07f2151db39430de688b2b83d7e2e",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ]
+  },
+  {
+    "case": "r1-self",
+    "revision": 1,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-self.asl",
+    "aml_sha256": "eaf02e94ae4c1c61042649a56a4f7b1ffe2a0a32c87d4af5d36ce455f22360ef",
+    "body_sha256": "37bdf88100dc592f5855fc92ad4f5be03dcf9def739c853f8828897fc3640d2d",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "GETD",
+        "integer": 1
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 1
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ]
+  },
+  {
+    "case": "r1-source-independence",
+    "revision": 1,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-source-independence.asl",
+    "aml_sha256": "8c8f1b3eb0d6441bed635794bea7dbc5cb5226ab9953df8db79ea4e2e6426217",
+    "body_sha256": "ca98875cda2d1d17a8de4417421284d4a7e34a0324cffbdc60eb5f219c61dbc2",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 17
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 68
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ]
+  },
+  {
+    "case": "r1-nested-independence",
+    "revision": 1,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-nested-independence.asl",
+    "aml_sha256": "c382e103b34fce170193b151fbf705dbe6401215ab0d0ff659b408b0bee4305f",
+    "body_sha256": "665d66f6b8223a1aabc3d5848577f82f39e37a1ce1313cdb193c0eb89b42cf8c",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 34
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 85
+      }
+    ]
+  },
+  {
+    "case": "r1-old-target-local",
+    "revision": 1,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-old-target-local.asl",
+    "aml_sha256": "d4d2243b847ef1279c34f4b8f57622d29dfdf5b8f25800ed188b39b793c10cfa",
+    "body_sha256": "0158f668190fe28eae11b4eff3e2eb8f3f0c8d0ecaba1a26b3e0d633a4b49331",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 1
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ]
+  },
+  {
+    "case": "r2-alias",
+    "revision": 2,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-alias.asl",
+    "aml_sha256": "b0a8f938ea5f9d127263afa27ba5698a2fa66b5a2b0879d46e46961308eafbee",
+    "body_sha256": "acabf0758fc895d82fbf511e7aa5973b91f07f2151db39430de688b2b83d7e2e",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ]
+  },
+  {
+    "case": "r2-self",
+    "revision": 2,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-self.asl",
+    "aml_sha256": "ec072450cb689567294446cd01ee8b78a6bdcd5d12f0718630614e1831a9c4e8",
+    "body_sha256": "37bdf88100dc592f5855fc92ad4f5be03dcf9def739c853f8828897fc3640d2d",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "GETD",
+        "integer": 1
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 1
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ]
+  },
+  {
+    "case": "r2-source-independence",
+    "revision": 2,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-source-independence.asl",
+    "aml_sha256": "4464e9dda634b691a11ac7702ee8d5612fcc1931d3f3cd2fa7958a13ce56a22c",
+    "body_sha256": "ca98875cda2d1d17a8de4417421284d4a7e34a0324cffbdc60eb5f219c61dbc2",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 17
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 68
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ]
+  },
+  {
+    "case": "r2-nested-independence",
+    "revision": 2,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-nested-independence.asl",
+    "aml_sha256": "85ecae43f4d6f42ba050dbeb7699dbd2e060a1a9dbcbc9ee7abf653416142aab",
+    "body_sha256": "665d66f6b8223a1aabc3d5848577f82f39e37a1ce1313cdb193c0eb89b42cf8c",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 34
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 85
+      }
+    ]
+  },
+  {
+    "case": "r2-old-target-local",
+    "revision": 2,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-old-target-local.asl",
+    "aml_sha256": "c61593f5d9bc2ce290bf36f9960ea230434a699a2514a5f7d11cc9b6a8d18da5",
+    "body_sha256": "0158f668190fe28eae11b4eff3e2eb8f3f0c8d0ecaba1a26b3e0d633a4b49331",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 1
+      },
+      {
+        "method": "GETD",
+        "integer": 2
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 2
+      },
+      {
+        "method": "LEAF",
+        "integer": 17
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ]
+  },
+  {
+    "case": "r1-self-old-index",
+    "revision": 1,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-self-old-index.asl",
+    "aml_sha256": "3f3f406e4f3e520c4289b4b808bc5de368ab68544f8f262008859c37ca388e98",
+    "body_sha256": "bce5cec05bc0e1a433826bc18eb988641044cc43e9da26aba329afee9df2f138",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 17
+      },
+      {
+        "method": "GETD",
+        "integer": 1
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 1
+      },
+      {
+        "method": "LEAF",
+        "integer": 102
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ]
+  },
+  {
+    "case": "r2-self-old-index",
+    "revision": 2,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-self-old-index.asl",
+    "aml_sha256": "f8d73e267280bc769db6ff9a819e527b16f5a9b805b8496b3b299ccf2732823f",
+    "body_sha256": "bce5cec05bc0e1a433826bc18eb988641044cc43e9da26aba329afee9df2f138",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 17
+      },
+      {
+        "method": "GETD",
+        "integer": 1
+      },
+      {
+        "method": "GETS",
+        "integer": 2
+      },
+      {
+        "method": "GETA",
+        "integer": 1
+      },
+      {
+        "method": "LEAF",
+        "integer": 102
+      },
+      {
+        "method": "NEST",
+        "integer": 34
+      }
+    ]
+  },
+  {
+    "case": "r1-ref-package",
+    "revision": 1,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-package.asl",
+    "aml_sha256": "ee28c8267113c39594bd1ef913b7e880e3930c0e60d7f211adde232816733c24",
+    "body_sha256": "febe7194590dc1c06e96e8ba674f6e5f684d4fc0df8722a80d9f35c17d323d16",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 2
+      }
+    ]
+  },
+  {
+    "case": "r1-ref-integer",
+    "revision": 1,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-integer.asl",
+    "aml_sha256": "d126dd432572a20e5e50ef0c00d13cd34e25e0b171f1d8ed309e17aeee38416f",
+    "body_sha256": "e07034be65ee5e6d900a439028ce3070a9655136d302444f459a631c18c146f9",
+    "observations": [
+      {
+        "method": "TEST",
+        "error": "AE_AML_TARGET_TYPE"
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 1
+      }
+    ]
+  },
+  {
+    "case": "r1-arg-package",
+    "revision": 1,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-package.asl",
+    "aml_sha256": "dccb00dcc338cf68d9949a53aca1b8485817a1c06798d86da41a13304ee31b56",
+    "body_sha256": "b05d01f6c93b65991dd88218e5228e8b4b209a59ab503199523b1d5de9287e60",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 2
+      }
+    ]
+  },
+  {
+    "case": "r1-arg-integer",
+    "revision": 1,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-integer.asl",
+    "aml_sha256": "3a1383f9259315221a0152854b2e1ad35b001c0ce5c1ba8fa311ff91738ae185",
+    "body_sha256": "6cbe7415672591be06162eebf556a50a5ff65756647110fbf4225d0c25e935e5",
+    "observations": [
+      {
+        "method": "TEST",
+        "error": "AE_AML_TARGET_TYPE"
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 1
+      }
+    ]
+  },
+  {
+    "case": "r2-ref-package",
+    "revision": 2,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-package.asl",
+    "aml_sha256": "3f72d53eb132a540e2f056c6be6d1b0abdbdea407ec885a98d0405967bb60791",
+    "body_sha256": "febe7194590dc1c06e96e8ba674f6e5f684d4fc0df8722a80d9f35c17d323d16",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 2
+      }
+    ]
+  },
+  {
+    "case": "r2-ref-integer",
+    "revision": 2,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-integer.asl",
+    "aml_sha256": "b18e72e761b77c6e6094bd5ff8cf76159591cfc748e994d21c789afee3b87557",
+    "body_sha256": "e07034be65ee5e6d900a439028ce3070a9655136d302444f459a631c18c146f9",
+    "observations": [
+      {
+        "method": "TEST",
+        "error": "AE_AML_TARGET_TYPE"
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 1
+      }
+    ]
+  },
+  {
+    "case": "r2-arg-package",
+    "revision": 2,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-package.asl",
+    "aml_sha256": "cbffe04cbbe3347997ae79ea6eedd7370f40935491bea466db6cb9b9be9a37c3",
+    "body_sha256": "b05d01f6c93b65991dd88218e5228e8b4b209a59ab503199523b1d5de9287e60",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 2
+      }
+    ]
+  },
+  {
+    "case": "r2-arg-integer",
+    "revision": 2,
+    "source": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-integer.asl",
+    "aml_sha256": "63784792451916db5320305fe23aa09b0a03d3a3c671972227dcaa9ee3e9c2fd",
+    "body_sha256": "6cbe7415672591be06162eebf556a50a5ff65756647110fbf4225d0c25e935e5",
+    "observations": [
+      {
+        "method": "TEST",
+        "error": "AE_AML_TARGET_TYPE"
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 1
+      }
+    ]
+  }
+]

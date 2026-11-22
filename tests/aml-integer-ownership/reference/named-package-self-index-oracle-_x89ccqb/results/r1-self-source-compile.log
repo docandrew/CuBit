@@ -1,0 +1,12 @@
+/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-self.asl      5: Method (TEST, 0) { Store (SRC0, SRC0) Return (SizeOf (SRC0)) }
+Warning  3023 -                                                                                             Duplicate value in list ^  (Source is the same as Target)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-self.asl -     502 bytes     26 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-self.aml -     167 bytes     17 opcodes       9 named objects
+
+Compilation successful. 0 Errors, 1 Warnings, 0 Remarks, 0 Optimizations

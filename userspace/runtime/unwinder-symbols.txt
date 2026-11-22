@@ -1,0 +1,10 @@
+abort __cubit_unwind_abort
+dl_iterate_phdr __cubit_unwind_dl_iterate_phdr
+free __cubit_unwind_free
+malloc __cubit_unwind_malloc
+pthread_cond_broadcast __cubit_unwind_cond_broadcast
+pthread_cond_wait __cubit_unwind_cond_wait
+pthread_mutex_lock __cubit_unwind_mutex_lock
+pthread_mutex_unlock __cubit_unwind_mutex_unlock
+pthread_once __cubit_unwind_once
+strlen __cubit_unwind_strlen

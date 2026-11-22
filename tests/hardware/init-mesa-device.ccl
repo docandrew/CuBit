@@ -1,0 +1,10 @@
+# Opt-in real Mesa/ANV device lifecycle on Intel hardware.
+# Device creation may submit internal setup batches; no application drawing.
+(startup v1
+  (start "logstore.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  (start "config-storage.svc" (priority 5) (role config-storage))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "boot-logs.app" (priority 4))
+  (start "mesa-logical-device.app" (priority 3) (render approve-declared)))

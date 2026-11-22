@@ -1,0 +1,279 @@
+-------------------------------------------------------------------------------
+--  CuBitOS
+--  Copyright (C) 2026 Jon Andrew
+--
+--  Pure policy for shared-memory ownership and derived loans.
+-------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
+with Grant_Windows;
+
+package Memory_Grants with
+    Pure,
+    SPARK_Mode => On
+is
+    Page_Size              : constant Unsigned_64 := 4096;
+    -- Pages per received-grant window (16 MiB). A larger grant takes a run
+    -- of consecutive windows (Grant_Windows.Allocate_Run).
+    Window_Pages           : constant := 4096;
+    -- The largest grant is the grantee's whole received-window space: an
+    -- address-space structure, not a size policy. What bounds a real grant
+    -- is its owner's memory (a grant shares pages the owner already holds,
+    -- charged to its frame quota) and the grantee's free windows.
+    Maximum_Page_Count     : constant Positive :=
+        Grant_Windows.Window_Count * Window_Pages;
+    -- One table of grants for the whole system (KERN-003 step 2,
+    -- docs/process-objects.md), indexed by a global slot. Namespace
+    -- capacity, not eagerly allocated records or physical memory. It does
+    -- not decide any address: a grant is mapped at a window of its
+    -- grantee's (Grant_Windows, step 2b), so the table can grow freely.
+    Maximum_Grants         : constant Positive := 2 ** 20;
+    -- What one process may own at once: a quota, not a namespace.
+    Owner_Grant_Quota      : constant Positive := 4096;
+    Window_Bytes           : constant Unsigned_64 :=
+        Unsigned_64 (Window_Pages) * Page_Size;
+
+    -- Every process's received region: [64 TiB, 80 TiB), ending exactly
+    -- before the fixed bootstrap initrd aperture. Owned pages here are
+    -- refused, so nothing a process owns can alias a received mapping.
+    Received_Region_First  : constant Unsigned_64 := 16#0000_4000_0000_0000#;
+    Received_Region_Limit  : constant Unsigned_64 := 16#0000_5000_0000_0000#;
+
+    -- Where window W lies in its grantee's received region.
+    function Window_Address (W : Grant_Windows.Window) return Unsigned_64 is
+      (Received_Region_First + Unsigned_64 (W) * Window_Bytes)
+      with Post => Window_Address'Result >= Received_Region_First and then
+                   Window_Address'Result <= Received_Region_Limit - Window_Bytes;
+
+    subtype Page_Count is Positive range 1 .. Maximum_Page_Count;
+    subtype Page_Offset is Natural range 0 .. Maximum_Page_Count - 1;
+
+    -- The windows a grant of Pages pages occupies.
+    function Windows_For (Pages : Page_Count) return Grant_Windows.Run_Length is
+      ((Pages + Window_Pages - 1) / Window_Pages)
+      with Post => Windows_For'Result * Window_Pages >= Pages;
+
+    -- Slot 0 names no grant.
+    subtype Global_Slot is Natural range 0 .. Maximum_Grants - 1;
+    No_Slot : constant Global_Slot := 0;
+    subtype Grant_Slot is Global_Slot range 1 .. Global_Slot'Last;
+
+    type Grant_Generation is mod 2 ** 32;
+    Initial_Generation : constant Grant_Generation := 1;
+    subtype Live_Grant_Generation is Grant_Generation range
+      Initial_Generation .. Grant_Generation'Last;
+
+    type Reference is record
+        slot       : Global_Slot;
+        generation : Live_Grant_Generation;
+    end record;
+
+    --  Zero is never a live generation. Generation exhaustion retires the
+    --  identity rather than wrapping and making an ancient reference current.
+    procedure Advance_Generation
+      (value    : in out Live_Grant_Generation;
+       reusable :    out Boolean)
+      with Post =>
+        (if value'Old < Grant_Generation'Last then
+             reusable and then value = value'Old + 1
+         else
+             not reusable and then value = value'Old);
+
+    --  Each slot has its own generation, advanced when its grant retires
+    --  (Advance_Generation): a reference made for an earlier grant in the
+    --  slot never matches, and a slot at the last generation is retired.
+
+    --  References use two explicit wire fields. Keeping slot and generation
+    --  separate avoids a hidden packing ABI and makes validation mandatory at
+    --  the Unsigned_64 boundary.
+    function Is_Valid_Generation_Field (value : Unsigned_64) return Boolean is
+      (value >= Unsigned_64 (Initial_Generation) and then
+       value <= Unsigned_64 (Grant_Generation'Last));
+
+    function To_Live_Generation
+      (value : Unsigned_64) return Live_Grant_Generation
+      with Pre  => Is_Valid_Generation_Field (value),
+           Post => Unsigned_64 (To_Live_Generation'Result) = value;
+
+    function Is_Current
+      (value      : Reference;
+       generation : Grant_Generation) return Boolean is
+      (value.generation = generation);
+
+    type Permission is (Borrowed_Read_Only, Borrowed_Read_Write);
+
+    -- Grant creation wire flags: bit0 writable, bit1 owner allows one level
+    -- of forwarding, bit2 post grant lifecycle events (docs/data-plane.md).
+    -- Unknown bits and out-of-range page counts are rejected before syscall
+    -- arguments are narrowed to kernel scalar types.
+    Creation_Flag_Bits : constant := 3;
+    Maximum_Creation_Flags : constant := 2 ** Creation_Flag_Bits - 1;
+    function Valid_Creation_Request (Pages, Flags : Unsigned_64) return Boolean is
+      (Pages in 1 .. Unsigned_64 (Maximum_Page_Count)
+       and then Flags <= Maximum_Creation_Flags);
+
+    --  Ordinary grants contain only owner pages. Received grant mappings must
+    --  use the future explicit derivation operation so parentage is retained.
+    function Overlaps_Received_Region
+      (firstByte : Unsigned_64;
+       pages     : Page_Count) return Boolean;
+    -- General mapping exclusion, independent of the per-grant page quota.
+    -- Reject wrapping ranges as conflicts; empty ranges do not overlap.
+    function Overlaps_Received_Bytes
+      (First, Bytes : Unsigned_64) return Boolean;
+
+    --  Derivation may preserve or remove write authority, never add it.
+    function Permission_Attenuates
+      (parent, child : Permission) return Boolean;
+
+    --  A child loan must be a non-empty page subrange of its parent.
+    function Range_Attenuates
+      (parentPages : Page_Count;
+       childOffset : Page_Offset;
+       childPages  : Page_Count) return Boolean;
+
+    --  A grant's usable lifetime is represented as one state machine rather
+    --  than independent active/pending/count fields.  Revocation completes
+    --  immediately when there is no borrower or forwarding hold; otherwise
+    --  it prevents new acquisitions until both kinds of use have ended.
+    Maximum_Acquisition_Count : constant Natural := 127;
+    subtype Acquisition_Count is
+      Natural range 0 .. Maximum_Acquisition_Count;
+
+    type Lifecycle is private;
+    Inactive_Lifecycle  : constant Lifecycle;
+    Available_Lifecycle : constant Lifecycle;
+
+    function Is_Valid (value : Lifecycle) return Boolean;
+    function Is_Active (value : Lifecycle) return Boolean;
+    function Is_Available (value : Lifecycle) return Boolean;
+    function Is_Revocation_Pending (value : Lifecycle) return Boolean;
+    function Acquisition_Total
+      (value : Lifecycle) return Acquisition_Count;
+    function Can_Acquire (value : Lifecycle) return Boolean;
+
+    --  One kernel-owned hold per forwarding scope, separate from user returns.
+    --  Retention is one-shot for this grant identity. These operations do not
+    --  authenticate forwarding authority, map pages or establish DMA quiescence.
+    function Has_Forwarding_Hold (value : Lifecycle) return Boolean;
+    function Can_Retain_Forwarding_Hold (value : Lifecycle) return Boolean;
+    procedure Retain_Forwarding_Hold
+      (value : in out Lifecycle; applied : out Boolean)
+      with Pre => Is_Valid (value),
+           Post => Is_Valid (value) and then
+             applied = Can_Retain_Forwarding_Hold (value'Old) and then
+             Acquisition_Total (value) = Acquisition_Total (value'Old) and then
+             (if applied then
+                Is_Available (value) and Has_Forwarding_Hold (value) and
+                not Can_Retain_Forwarding_Hold (value)
+              else value = value'Old);
+
+    procedure Record_Acquire (value : in out Lifecycle)
+      with Pre  => Is_Valid (value) and then Can_Acquire (value),
+           Post => Is_Valid (value) and then Is_Available (value) and then
+             Has_Forwarding_Hold (value) = Has_Forwarding_Hold (value'Old) and then
+             Acquisition_Total (value) =
+               Acquisition_Total (value'Old) + 1;
+
+    type Revocation_Result is
+      (Revocation_Rejected, Revocation_Pending, Revocation_Completed);
+
+    procedure Request_Revocation
+      (value  : in out Lifecycle;
+       result : out Revocation_Result)
+      with Pre  => Is_Valid (value),
+           Post => Is_Valid (value) and then
+             Has_Forwarding_Hold (value) = Has_Forwarding_Hold (value'Old) and then
+             (if not Is_Active (value'Old) then
+                  result = Revocation_Rejected and then value = value'Old
+              elsif Acquisition_Total (value'Old) = 0 and then
+                    not Has_Forwarding_Hold (value'Old) then
+                  result = Revocation_Completed and then
+                  not Is_Active (value)
+              else
+                  result = Revocation_Pending and then
+                  Is_Revocation_Pending (value) and then
+                  Acquisition_Total (value) =
+                    Acquisition_Total (value'Old));
+
+    type Return_Result is
+      (Return_Rejected, Acquisition_Returned, Revocation_Completed_On_Return);
+
+    procedure Record_Return
+      (value  : in out Lifecycle;
+       result : out Return_Result)
+      with Pre  => Is_Valid (value),
+           Post => Is_Valid (value) and then
+             Has_Forwarding_Hold (value) = Has_Forwarding_Hold (value'Old) and then
+             (if Acquisition_Total (value'Old) = 0 then
+                  result = Return_Rejected and then value = value'Old
+              elsif Is_Revocation_Pending (value'Old) and then
+                    Acquisition_Total (value'Old) = 1 and then
+                    not Has_Forwarding_Hold (value'Old)
+              then
+                  result = Revocation_Completed_On_Return and then
+                  not Is_Active (value)
+              else
+                  result = Acquisition_Returned and then
+                  Is_Active (value) and then
+                  Acquisition_Total (value) =
+                    Acquisition_Total (value'Old) - 1);
+
+    type Hold_Release_Result is
+      (Hold_Release_Rejected, Forwarding_Hold_Released,
+       Revocation_Completed_On_Hold_Release);
+
+    --  Only after the associated scope is closed and every child mapping has
+    --  retired. This is NOT the userspace return-grant operation.
+    procedure Release_Forwarding_Hold
+      (value : in out Lifecycle; result : out Hold_Release_Result)
+      with Pre => Is_Valid (value),
+           Post => Is_Valid (value) and then
+             Acquisition_Total (value) = Acquisition_Total (value'Old) and then
+             (if not Has_Forwarding_Hold (value'Old) then
+                result = Hold_Release_Rejected and value = value'Old
+              else not Has_Forwarding_Hold (value) and
+                not Can_Retain_Forwarding_Hold (value) and
+                (if Is_Revocation_Pending (value'Old) and
+                    Acquisition_Total (value'Old) = 0 then
+                   result = Revocation_Completed_On_Hold_Release and
+                   not Is_Active (value)
+                 else result = Forwarding_Hold_Released and
+                   Is_Active (value) and
+                   Is_Available (value) = Is_Available (value'Old)));
+
+    --  Receiver death ends its ordinary acquisitions, not downstream use.
+    --  The adapter still unmaps/shoots down the dead receiver's mappings;
+    --  a retained lifecycle protects the parent identity and owner resources.
+    procedure Close_Receiver
+      (value            : in out Lifecycle;
+       had_acquisitions : out Boolean)
+      with Pre  => Is_Valid (value),
+           Post => Is_Valid (value) and then
+             Acquisition_Total (value) = 0 and then
+             Has_Forwarding_Hold (value) = Has_Forwarding_Hold (value'Old) and then
+             Is_Active (value) = Has_Forwarding_Hold (value'Old) and then
+             (if Has_Forwarding_Hold (value'Old) then
+                Is_Revocation_Pending (value)) and then
+             had_acquisitions =
+               (Acquisition_Total (value'Old) /= 0);
+
+private
+    type Lifecycle_State is
+      (Inactive, Available, Revocation_Requested);
+    for Lifecycle_State use
+      (Inactive => 0, Available => 1, Revocation_Requested => 2);
+    for Lifecycle_State'Size use 8;
+
+    type Forwarding_Hold_State is (Unused, Retained, Released);
+    type Lifecycle is record
+        -- Group the small state fields before the aligned reader count.
+        state        : Lifecycle_State := Inactive;
+        forwarding   : Forwarding_Hold_State := Unused;
+        acquisitions : Acquisition_Count := 0;
+    end record;
+
+    Inactive_Lifecycle : constant Lifecycle :=
+      (state => Inactive, acquisitions => 0, forwarding => Unused);
+    Available_Lifecycle : constant Lifecycle :=
+      (state => Available, acquisitions => 0, forwarding => Unused);
+end Memory_Grants;

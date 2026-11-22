@@ -1,0 +1,160 @@
+[
+  {
+    "case": "integer",
+    "revision": 1,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "string",
+    "revision": 1,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "buffer",
+    "revision": 1,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "emptybuffer",
+    "revision": 1,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "named",
+    "revision": 1,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "refof",
+    "revision": 1,
+    "compile": 255
+  },
+  {
+    "case": "heldref",
+    "revision": 1,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "packageindex",
+    "revision": 1,
+    "compile": 255
+  },
+  {
+    "case": "heldpackage",
+    "revision": 1,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "byteindex",
+    "revision": 1,
+    "compile": 255
+  },
+  {
+    "case": "heldbyte",
+    "revision": 1,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "deref",
+    "revision": 1,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "uninit",
+    "revision": 1,
+    "compile": 255
+  },
+  {
+    "case": "emptyindex",
+    "revision": 1,
+    "compile": 255
+  },
+  {
+    "case": "integer",
+    "revision": 2,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "string",
+    "revision": 2,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "buffer",
+    "revision": 2,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "emptybuffer",
+    "revision": 2,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "named",
+    "revision": 2,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "refof",
+    "revision": 2,
+    "compile": 255
+  },
+  {
+    "case": "heldref",
+    "revision": 2,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "packageindex",
+    "revision": 2,
+    "compile": 255
+  },
+  {
+    "case": "heldpackage",
+    "revision": 2,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "byteindex",
+    "revision": 2,
+    "compile": 255
+  },
+  {
+    "case": "heldbyte",
+    "revision": 2,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "deref",
+    "revision": 2,
+    "compile": 0,
+    "execution": 0
+  },
+  {
+    "case": "uninit",
+    "revision": 2,
+    "compile": 255
+  },
+  {
+    "case": "emptyindex",
+    "revision": 2,
+    "compile": 255
+  }
+]

@@ -1,0 +1,20 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+with "../../userspace/ccl/cubit_shared.gpr";
+--  Hosted tests of the CCL Bible bindings (APP-005): bible.* through the
+--  CCL session engine and the console view, the images read from
+--  CCL_BIBLE_DIR by the hosted CCL_Bible_Source.
+with "../../userspace/lib/ui/fonts_host.gpr";
+with "../../userspace/lib/tls/sparktls_host.gpr";
+project CCL_Bible_Tests is
+   for Source_Dirs use (".", "../../userspace/lib/lexicon", "../../userspace/lib/bible", "../../userspace/ccl/src",
+                        "../../userspace/ccl/tools/ccl-ui-preview", "../../userspace/ccl/tools/ccl-ui-preview/host",
+                        "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display");
+   for Excluded_Source_Files use ("cubit.ads");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ");
+   end Compiler;
+end CCL_Bible_Tests;

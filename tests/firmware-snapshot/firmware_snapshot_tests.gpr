@@ -1,0 +1,21 @@
+--  Hosted tests of FIRMWARE_SNAPSHOT: the shared wire ABI and the kernel's
+--  service body over a test snapshot (run.sh).
+project Firmware_Snapshot_Tests is
+   for Source_Dirs use (".", "../../shared/boot", "../../shared/firmware", "../../kernel/src");
+   for Source_Files use
+     ("firmware_snapshot_tests.adb", "test_snapshot.ads", "test_snapshot.adb",
+      "firmware_snapshot_abi.ads", "firmware_snapshot_abi.adb",
+      "firmware_snapshot_service.ads", "firmware_snapshot_service.adb",
+      "firmware_tables.ads", "firmware_tables.adb",
+      "firmware_tables-catalog.ads", "firmware_tables-catalog.adb",
+      "firmware_tables-copies.ads", "firmware_tables-copies.adb",
+      "firmware_tables-snapshots.ads", "firmware_tables-snapshots.adb",
+      "firmware_tables-snapshots-transfers.ads", "firmware_tables-snapshots-transfers.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("firmware_snapshot_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Firmware_Snapshot_Tests;

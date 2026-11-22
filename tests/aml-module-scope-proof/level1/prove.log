@@ -1,0 +1,123 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+Summary logged in /home/doc/cubit-build-tmp/module-scope-proof-CIzxAB/level1/obj/gnatprove/gnatprove.out
+aml_declaration_contexts.adb:10:13: info: implicit aspect Always_Terminates on "Initial_Stack" has been proved, subprogram will terminate
+aml_declaration_contexts.adb:12:13: info: implicit aspect Always_Terminates on "Entry_Compatible" has been proved, subprogram will terminate
+aml_declaration_contexts.adb:19:25: info: index check proved
+aml_declaration_contexts.adb:19:58: info: index check proved
+aml_declaration_contexts.adb:20:23: info: index check proved
+aml_declaration_contexts.adb:20:84: info: index check proved
+aml_declaration_contexts.adb:21:50: info: index check proved
+aml_declaration_contexts.adb:22:33: info: index check proved
+aml_declaration_contexts.adb:22:73: info: index check proved
+aml_declaration_contexts.adb:23:33: info: index check proved
+aml_declaration_contexts.adb:23:77: info: index check proved
+aml_declaration_contexts.adb:25:35: info: index check proved
+aml_declaration_contexts.adb:26:38: info: index check proved
+aml_declaration_contexts.adb:27:39: info: index check proved
+aml_declaration_contexts.adb:27:84: info: index check proved
+aml_declaration_contexts.adb:28:32: info: index check proved
+aml_declaration_contexts.adb:29:56: info: overflow check proved
+aml_declaration_contexts.adb:30:25: info: index check proved
+aml_declaration_contexts.adb:30:60: info: index check proved
+aml_declaration_contexts.adb:30:85: info: index check proved
+aml_declaration_contexts.adb:35:48: info: index check proved
+aml_declaration_contexts.adb:37:48: info: index check proved
+aml_declaration_contexts.adb:38:81: info: range check proved
+aml_declaration_contexts.adb:38:81: info: index check proved
+aml_declaration_contexts.adb:39:49: info: range check proved
+aml_declaration_contexts.adb:39:49: info: index check proved
+aml_declaration_contexts.adb:42:74: info: range check proved
+aml_declaration_contexts.adb:42:74: info: index check proved
+aml_declaration_contexts.adb:43:50: info: range check proved
+aml_declaration_contexts.adb:43:50: info: index check proved
+aml_declaration_contexts.adb:51:07: info: initialization of "Item" proved
+aml_declaration_contexts.adb:51:25: info: initialization of "Allowed" proved
+aml_declaration_contexts.adb:52:41: info: postcondition proved
+aml_declaration_contexts.adb:78:33: info: loop invariant preservation proved
+aml_declaration_contexts.adb:78:33: info: loop invariant initialization proved
+aml_declaration_contexts.adb:78:63: info: index check proved
+aml_declaration_contexts.adb:80:13: info: loop invariant initialization proved
+aml_declaration_contexts.adb:80:13: info: loop invariant preservation proved
+aml_declaration_contexts.adb:81:28: info: index check proved
+aml_declaration_contexts.adb:81:63: info: index check proved
+aml_declaration_contexts.adb:86:20: info: index check proved
+aml_declaration_contexts.adb:86:49: info: index check proved
+aml_declaration_contexts.adb:95:07: info: precondition proved
+aml_declaration_contexts.adb:97:15: info: precondition proved
+aml_declaration_contexts.adb:104:07: info: precondition proved
+aml_declaration_contexts.adb:110:27: info: index check proved
+aml_declaration_contexts.adb:110:65: info: index check proved
+aml_declaration_contexts.adb:114:57: info: index check proved
+aml_declaration_contexts.adb:114:90: info: index check proved
+aml_declaration_contexts.adb:116:57: info: index check proved
+aml_declaration_contexts.adb:118:58: info: index check proved
+aml_declaration_contexts.adb:119:84: info: range check proved
+aml_declaration_contexts.adb:119:84: info: index check proved
+aml_declaration_contexts.adb:120:38: info: index check proved
+aml_declaration_contexts.adb:120:51: info: range check proved
+aml_declaration_contexts.adb:121:39: info: index check proved
+aml_declaration_contexts.adb:121:82: info: index check proved
+aml_declaration_contexts.adb:121:95: info: range check proved
+aml_declaration_contexts.adb:121:95: info: index check proved
+aml_declaration_contexts.adb:123:58: info: index check proved
+aml_declaration_contexts.adb:124:84: info: range check proved
+aml_declaration_contexts.adb:124:84: info: index check proved
+aml_declaration_contexts.adb:125:38: info: index check proved
+aml_declaration_contexts.adb:125:51: info: range check proved
+aml_declaration_contexts.adb:126:39: info: index check proved
+aml_declaration_contexts.adb:126:82: info: index check proved
+aml_declaration_contexts.adb:126:88: info: index check proved
+aml_declaration_contexts.adb:134:36: info: index check proved
+aml_declaration_contexts.adb:135:26: info: index check proved
+aml_declaration_contexts.adb:135:61: info: index check proved
+aml_declaration_contexts.adb:135:74: info: range check proved
+aml_declaration_contexts.adb:136:26: info: index check proved
+aml_declaration_contexts.adb:136:59: info: index check proved
+aml_declaration_contexts.adb:144:36: info: index check proved
+aml_declaration_contexts.adb:145:26: info: index check proved
+aml_declaration_contexts.adb:145:59: info: index check proved
+aml_declaration_contexts.adb:146:26: info: index check proved
+aml_declaration_contexts.adb:146:61: info: index check proved
+aml_declaration_contexts.adb:146:74: info: range check proved
+aml_declaration_contexts.ads:11:13: info: implicit aspect Always_Terminates on "Is_Module" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:14:13: info: implicit aspect Always_Terminates on "Is_Module" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:20:13: info: implicit aspect Always_Terminates on "Present" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:21:13: info: implicit aspect Always_Terminates on "Node_Of" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:22:13: info: implicit aspect Always_Terminates on "Stamp_Of" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:23:13: info: implicit aspect Always_Terminates on "Make_Scope" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:25:16: info: postcondition proved
+aml_declaration_contexts.ads:30:13: info: implicit aspect Always_Terminates on "Entry_Identity" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:33:13: info: implicit aspect Always_Terminates on "Valid" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:34:13: info: implicit aspect Always_Terminates on "Empty" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:34:45: info: postcondition proved
+aml_declaration_contexts.ads:35:13: info: implicit aspect Always_Terminates on "Is_Live" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:36:13: info: implicit aspect Always_Terminates on "Added_Lease" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:37:13: info: implicit aspect Always_Terminates on "Removed_Lease" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:38:13: info: implicit aspect Always_Terminates on "Lexical_Top" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:39:13: info: implicit aspect Always_Terminates on "Lexical_Count" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:40:13: info: implicit aspect Always_Terminates on "Pushed_Scope" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:41:13: info: implicit aspect Always_Terminates on "Popped_Scope" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:45:45: info: initialization of "Allowed" proved
+aml_declaration_contexts.ads:46:41: info: postcondition proved
+aml_declaration_contexts.ads:52:38: info: initialization of "Allowed" proved
+aml_declaration_contexts.ads:53:41: info: postcondition proved
+aml_declaration_contexts.ads:57:13: info: implicit aspect Always_Terminates on "Scope_Of" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:58:13: info: implicit aspect Always_Terminates on "Stamp_Of" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:59:13: info: implicit aspect Always_Terminates on "Frame_Of" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:65:07: info: initialization of "Item" proved
+aml_declaration_contexts.ads:65:25: info: initialization of "Allowed" proved
+aml_declaration_contexts.ads:66:41: info: postcondition proved
+aml_declaration_contexts.ads:78:07: info: initialization of "Item" proved
+aml_declaration_contexts.ads:78:25: info: initialization of "Allowed" proved
+aml_declaration_contexts.ads:79:41: info: postcondition proved
+aml_declaration_contexts.ads:90:41: info: postcondition proved
+aml_declaration_contexts.ads:98:13: info: implicit aspect Always_Terminates on "Reserve_Operation_Region" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:100:13: info: implicit aspect Always_Terminates on "Issued_By" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:101:13: info: implicit aspect Always_Terminates on "Node_Of" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:102:13: info: implicit aspect Always_Terminates on "Stamp_Of" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:105:13: info: implicit aspect Always_Terminates on "Reserve_Region" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:106:13: info: implicit aspect Always_Terminates on "Issued_By" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:107:13: info: implicit aspect Always_Terminates on "Node_Of" has been proved, subprogram will terminate
+aml_declaration_contexts.ads:108:13: info: implicit aspect Always_Terminates on "Stamp_Of" has been proved, subprogram will terminate

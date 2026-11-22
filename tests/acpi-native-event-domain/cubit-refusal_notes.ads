@@ -1,0 +1,3 @@
+package CuBit.Refusal_Notes is
+ procedure Warn_Once (Service,Key,Text : String);
+end CuBit.Refusal_Notes;

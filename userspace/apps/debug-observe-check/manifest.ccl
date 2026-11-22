@@ -1,0 +1,6 @@
+# The Debug_Observe check (DBG-001, headless --test debug-observe). Requests
+# nothing: it runs in procmgr's place, from a test initrd only, and uses the
+# handles devmgr gives procmgr (its process root and the test console).
+(Executable_Manifest
+  identity => "com.cubit.test.debug-observe"
+  version => "1.0.0")

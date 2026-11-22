@@ -1,0 +1,315 @@
+------------------------------------------------------------------------------
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--
+--  @summary
+--  Typed application protocol for filesystem services.
+------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
+
+with CuBit.Memory_Grants;
+with CuBit.Messages;
+with CuBit.Directory_Paths;
+with CuBit.Directory_Pages;
+
+package CuBit.Filesystems with
+   SPARK_Mode => On
+is
+   --  2: directory pages are Directory.Page.V2 (CuBit.Directory_Pages).
+   PROTOCOL_VERSION : constant Unsigned_16 := 2;
+
+   type Filesystem_Operation is
+     (Open_File, Close_File, Read_File, Write_File, Open_Directory,
+      Seek_File, Read_Directory_Page, Rename_File, Close_Directory,
+      Open_Child_Directory, Rewind_Directory, Flush_File,
+      Read_File_At, Write_File_At, Resize_File, Unlink_Path,
+      Make_Directory, Remove_Directory,
+      Set_Access_Profile,
+      Revoke_Access_Profile, Release_Owner);
+   for Filesystem_Operation use
+     (Open_File             => 16#0001#,
+      Close_File            => 16#0002#,
+      Read_File             => 16#0003#,
+      Write_File            => 16#0004#,
+      Open_Directory        => 16#0005#,
+      Seek_File             => 16#0006#,
+      Read_Directory_Page   => 16#0007#,
+      Rename_File           => 16#0008#,
+      Close_Directory       => 16#0009#,
+      Open_Child_Directory  => 16#000A#,
+      Rewind_Directory      => 16#000B#,
+      Flush_File            => 16#000C#,
+      Read_File_At          => 16#000D#,
+      Write_File_At         => 16#000E#,
+      Resize_File           => 16#000F#,
+      Unlink_Path           => 16#0010#,
+      Make_Directory        => 16#0011#,
+      Remove_Directory      => 16#0012#,
+      Set_Access_Profile    => 16#0080#,
+      Revoke_Access_Profile => 16#0081#,
+      Release_Owner         => 16#0082#);
+
+   --  Ada case choices require static expressions. These constants are the
+   --  sole numeric definition site for the userspace filesystem protocol.
+   OP_OPEN       : constant Unsigned_32 := 16#0001#;
+   OP_CLOSE      : constant Unsigned_32 := 16#0002#;
+   OP_READ       : constant Unsigned_32 := 16#0003#;
+   OP_WRITE      : constant Unsigned_32 := 16#0004#;
+   OP_OPEN_DIRECTORY : constant Unsigned_32 := 16#0005#;
+   OP_SEEK       : constant Unsigned_32 := 16#0006#;
+   OP_READ_DIRECTORY_PAGE : constant Unsigned_32 := 16#0007#;
+   OP_RENAME     : constant Unsigned_32 := 16#0008#;
+   OP_CLOSE_DIRECTORY : constant Unsigned_32 := 16#0009#;
+   OP_OPEN_CHILD_DIRECTORY : constant Unsigned_32 := 16#000A#;
+   OP_REWIND_DIRECTORY : constant Unsigned_32 := 16#000B#;
+   OP_FLUSH_FILE : constant Unsigned_32 := 16#000C#;
+   OP_READ_AT : constant Unsigned_32 := 16#000D#;
+   OP_WRITE_AT : constant Unsigned_32 := 16#000E#;
+   OP_RESIZE_FILE : constant Unsigned_32 := 16#000F#;
+   --  UNLINK, MKDIR, RMDIR (calls): words as OPEN (0 = path grant slot,
+   --  1 = path length, 3 = grant generation). MKDIR replies words 0 = the
+   --  new inode.
+   OP_UNLINK     : constant Unsigned_32 := 16#0010#;
+   OP_MKDIR      : constant Unsigned_32 := 16#0011#;
+   OP_RMDIR      : constant Unsigned_32 := 16#0012#;
+   OP_SET_ACL    : constant Unsigned_32 := 16#0080#;
+   OP_REVOKE_ACL : constant Unsigned_32 := 16#0081#;
+   --  A process has exited (procmgr only; words 0 = its PID): its handles
+   --  are released (buffered writes harvested first), its request queue
+   --  and grants returned, and its access profile cleared.
+   OP_RELEASE_OWNER : constant Unsigned_32 := 16#0082#;
+
+   REPLY_OK            : constant Unsigned_32 := 16#F000#;
+   REPLY_ERR           : constant Unsigned_32 := 16#F001#;
+   REPLY_ERROR         : constant Unsigned_32 := REPLY_ERR;
+   REPLY_NO_SPACE      : constant Unsigned_32 := 16#F002#;
+   REPLY_READ_ONLY     : constant Unsigned_32 := 16#F003#;
+   REPLY_OUT_OF_RANGE  : constant Unsigned_32 := 16#F004#;
+   REPLY_FILE_RANGE_UNSUPPORTED : constant Unsigned_32 := 16#F005#;
+   REPLY_IO_ERROR      : constant Unsigned_32 := 16#F006#;
+   REPLY_ACCESS_DENIED : constant Unsigned_32 := 16#F007#;
+   REPLY_MALFORMED_FILESYSTEM : constant Unsigned_32 := 16#F008#;
+   REPLY_WRONG_OBJECT_TYPE    : constant Unsigned_32 := 16#F009#;
+   REPLY_ALREADY_EXISTS       : constant Unsigned_32 := 16#F00A#;
+   REPLY_NOT_FOUND            : constant Unsigned_32 := 16#F00B#;
+   REPLY_RECOVERY_REQUIRED    : constant Unsigned_32 := 16#F00C#;
+   REPLY_DURABILITY_UNSUPPORTED : constant Unsigned_32 := 16#F00D#;
+   --  The object exists, but its link/metadata semantics are not supported.
+   --  This is distinct from insufficient caller authority or a missing name.
+   REPLY_UNSUPPORTED_OBJECT : constant Unsigned_32 := 16#F00E#;
+   REPLY_SHARING_VIOLATION : constant Unsigned_32 := 16#F00F#;
+   REPLY_NOT_EMPTY : constant Unsigned_32 := 16#F010#;   --  rmdir, rename
+   --  rename: a non-directory onto a directory.
+   REPLY_IS_DIRECTORY : constant Unsigned_32 := 16#F011#;
+   --  rename: a directory into its own subtree.
+   REPLY_INVALID_MOVE : constant Unsigned_32 := 16#F012#;
+   --  rename between volumes: the caller copies instead (EXDEV).
+   REPLY_CROSS_VOLUME : constant Unsigned_32 := 16#F013#;
+   --  Queue_Copy endings (docs/filesystem-protocol-v2.md step 5): cancelled
+   --  by Queue_Cancel; its deadline passed; too many copies running.
+   REPLY_CANCELLED : constant Unsigned_32 := 16#F014#;
+   REPLY_DEADLINE  : constant Unsigned_32 := 16#F015#;
+   REPLY_BUSY      : constant Unsigned_32 := 16#F016#;
+   --  The path names a volume this system registers whose device is not
+   --  present (no driver attached it, or it offered none), as on a live
+   --  image without an NVMe driver. Not an I/O error: nothing was tried.
+   REPLY_VOLUME_UNAVAILABLE : constant Unsigned_32 := 16#F017#;
+
+   MAXIMUM_PATH_BYTES : constant := CuBit.Directory_Paths.Maximum_Bytes;
+   subtype Path_Byte_Count is Natural range 0 .. MAXIMUM_PATH_BYTES;
+   subtype Nonempty_Path_Byte_Count is
+     Path_Byte_Count range 1 .. MAXIMUM_PATH_BYTES;
+
+   --  Handles are service-issued, generation-tagged object identities. Their
+   --  representation is intentionally opaque to clients.
+   type File_Handle is new Unsigned_64;
+   INVALID_FILE_HANDLE : constant File_Handle := 0;
+
+   type Directory_Handle is new Unsigned_64;
+   INVALID_DIRECTORY_HANDLE : constant Directory_Handle := 0;
+
+   --  READ_DIRECTORY_PAGE answers one Directory.Page.V2 (CuBit.Directory_Pages)
+   --  into a one-page grant: packed entries, each with its metadata (kind,
+   --  size, times, mode, links, owner, object identity), and a resume token.
+   --  The service acquires exactly one page and never trusts a
+   --  caller-supplied capacity. Object identities are descriptive only: they
+   --  cannot be used in place of a handle and confer no authority.
+   DIRECTORY_PAGE_BYTES : constant := CuBit.Directory_Pages.Page_Bytes;
+   MAXIMUM_DIRECTORY_NAME_BYTES : constant := CuBit.Directory_Pages.Maximum_Name_Bytes;
+   DIRECTORY_PAGE_END : constant Unsigned_32 := CuBit.Directory_Pages.Page_End;
+
+   DIRECTORY_KIND_UNKNOWN   : constant Unsigned_8 := CuBit.Directory_Pages.Kind_Unknown;
+   DIRECTORY_KIND_FILE      : constant Unsigned_8 := CuBit.Directory_Pages.Kind_File;
+   DIRECTORY_KIND_DIRECTORY : constant Unsigned_8 := CuBit.Directory_Pages.Kind_Directory;
+   DIRECTORY_KIND_SYMLINK   : constant Unsigned_8 := CuBit.Directory_Pages.Kind_Symlink;
+
+   --  Directory.Inspection.V1: what the volume records about one open
+   --  handle's object (Queue_Describe, fstat); the same facts a
+   --  Directory.Page.V2 entry carries.
+   --  Valid says which fields were filled; a volume without a field leaves
+   --  it zero and its bit clear. Times are milliseconds since the Unix
+   --  epoch: modified is content (POSIX mtime), changed is the object's
+   --  metadata (ctime), accessed is atime. Mode is the stored permission
+   --  and type bits. ObjectId names the object within its service (volume
+   --  << 32 | inode) for as long as it exists, as st_dev/st_ino do.
+   DIRECTORY_INSPECTION_BYTES : constant := 64;
+   INSPECTED_SIZE  : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Size;
+   INSPECTED_TIMES : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Times;
+   INSPECTED_MODE  : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Mode;
+   INSPECTED_LINKS : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Links;
+   INSPECTED_OWNER : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Owner;
+   INSPECTED_OBJECT : constant Unsigned_32 := CuBit.Directory_Pages.Valid_Object;
+
+   type Entry_Inspection is record
+      valid      : Unsigned_32;
+      mode       : Unsigned_32;
+      sizeBytes  : Unsigned_64;
+      modifiedMs : Unsigned_64;
+      changedMs  : Unsigned_64;
+      accessedMs : Unsigned_64;
+      links      : Unsigned_32;
+      owner      : Unsigned_32;
+      group      : Unsigned_32;
+      reserved   : Unsigned_32;
+      objectId   : Unsigned_64;
+   end record with Convention => C, Size => DIRECTORY_INSPECTION_BYTES * 8;
+
+   for Entry_Inspection use record
+      valid      at 0  range 0 .. 31;
+      mode       at 4  range 0 .. 31;
+      sizeBytes  at 8  range 0 .. 63;
+      modifiedMs at 16 range 0 .. 63;
+      changedMs  at 24 range 0 .. 63;
+      accessedMs at 32 range 0 .. 63;
+      links      at 40 range 0 .. 31;
+      owner      at 44 range 0 .. 31;
+      group      at 48 range 0 .. 31;
+      reserved   at 52 range 0 .. 31;
+      objectId   at 56 range 0 .. 63;
+   end record;
+
+   type Open_Options is mod 2 ** 64;
+   OPEN_READ_ONLY  : constant Open_Options := 0;
+   OPEN_WRITE_ONLY : constant Open_Options := 1;
+   OPEN_READ_WRITE : constant Open_Options := 2;
+   OPEN_CREATE     : constant Open_Options := 64;
+   OPEN_TRUNCATE   : constant Open_Options := 512;
+   --  With CREATE: fail if the name exists. Never truncate/reuse an old file.
+   OPEN_EXCLUSIVE  : constant Open_Options := 1024;
+   --  Lifetime-exclusive handle, distinct from create-if-absent above.
+   --  Requires write access. Existing handles conflict, and while held all
+   --  further opens and path renames are denied, even to its owner.
+   OPEN_DENY_SHARING : constant Open_Options := 2048;
+
+   function Valid_Open_Options (options : Open_Options) return Boolean;
+   function Requests_Read (options : Open_Options) return Boolean;
+   function Requests_Write (options : Open_Options) return Boolean;
+
+   type Seek_Origin is (From_Start, From_Current, From_End);
+   for Seek_Origin use
+     (From_Start => 0, From_Current => 1, From_End => 2);
+
+   function Open_Request
+     (loan       : CuBit.Memory_Grants.Grant_Reference;
+      pathLength : Nonempty_Path_Byte_Count;
+      options    : Open_Options := OPEN_READ_ONLY)
+      return CuBit.Messages.Message;
+
+   function Close_Request
+     (handle : File_Handle) return CuBit.Messages.Message;
+
+   --  Requires an owned, write-authorized file handle. Success means prior
+   --  completed writes and metadata reached the backing device's flush
+   --  completion. It does not make ext2 metadata changes crash-atomic.
+   --  Volatile RAM/unsupported media must not report durable success.
+   function Flush_Request
+     (handle : File_Handle) return CuBit.Messages.Message;
+
+   --  Owned, write-authorized handle; words = [handle, new byte length].
+   --  Growth exposes zeroes without reserving holes. Success updates metadata
+   --  seen by every open alias, but never changes any handle's seek cursor.
+   --  Rejected/unsupported requests publish no new size. RECOVERY_REQUIRED
+   --  retires affected aliases; this is not an atomic or journaled operation.
+   function Resize_Request
+     (handle : File_Handle; length : Unsigned_64)
+      return CuBit.Messages.Message;
+
+   function Read_Request
+     (handle : File_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference;
+      count  : Unsigned_64) return CuBit.Messages.Message;
+
+   function Write_Request
+     (handle : File_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference;
+      count  : Unsigned_64) return CuBit.Messages.Message;
+
+   --  Positioned transfers never read or modify the handle's seek cursor.
+   --  words = [handle, canonical packed grant reference, count, file offset].
+   --  Payload starts at grant byte zero, with no header or new authority.
+   --  A wrapping offset+count is OUT_OF_RANGE before any I/O. Empty transfers
+   --  still validate handle, rights and wire reference, but borrow no memory.
+   --  EOF reads may be short; errors report any completed prefix in words(0).
+   --  Completion returns the acquisition; callers must not reuse the buffer
+   --  while a request is in flight. Revocation is neither completion nor
+   --  cancellation.
+   --  Write success does not imply flush.
+   function Read_At_Request
+     (handle : File_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference;
+      count  : Unsigned_64;
+      offset : Unsigned_64) return CuBit.Messages.Message;
+
+   function Write_At_Request
+     (handle : File_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference;
+      count  : Unsigned_64;
+      offset : Unsigned_64) return CuBit.Messages.Message;
+
+   function Seek_Request
+     (handle : File_Handle;
+      offset : Unsigned_64;
+      origin : Seek_Origin) return CuBit.Messages.Message;
+
+   function Open_Directory_Request
+     (loan       : CuBit.Memory_Grants.Grant_Reference;
+      pathLength : Path_Byte_Count) return CuBit.Messages.Message;
+
+   function Read_Directory_Page_Request
+     (handle : Directory_Handle;
+      loan   : CuBit.Memory_Grants.Grant_Reference)
+      return CuBit.Messages.Message;
+
+   function Close_Directory_Request
+     (handle : Directory_Handle) return CuBit.Messages.Message;
+
+   --  Derive a read-only directory handle from an owned parent. The loan
+   --  contains one name, not a path, inode number, or backend selector.
+   --  Dot/dot-dot, separators, NUL, schemes and symlink targets are rejected.
+   --  The current access profile must also authorize the child policy path.
+   function Open_Child_Directory_Request
+     (parent : Directory_Handle;
+      loan : CuBit.Memory_Grants.Grant_Reference;
+      nameLength : Nonempty_Path_Byte_Count) return CuBit.Messages.Message;
+
+   --  Restart enumeration on the same object; does not reopen a path or
+   --  acquire new authority. Enumeration is not a filesystem snapshot.
+   function Rewind_Directory_Request
+     (handle : Directory_Handle) return CuBit.Messages.Message;
+
+   --  POSIX rename within one volume (CROSS_VOLUME otherwise, EXDEV):
+   --  across directories and blocks, replacing an existing destination (a
+   --  file by a file, an empty directory by a directory). A directory onto
+   --  a non-directory is WRONG_OBJECT_TYPE, a non-directory onto a directory
+   --  IS_DIRECTORY, onto a directory with entries NOT_EMPTY, a directory
+   --  into its own subtree INVALID_MOVE; nothing changes then.
+   --  IO_ERROR reports a failed read, or a failed write whose original block
+   --  was restored successfully.
+   --  RECOVERY_REQUIRED means restoration also failed; the volume rejects
+   --  further writes. Success is not a power-loss durability guarantee.
+   function Rename_Request
+     (loan          : CuBit.Memory_Grants.Grant_Reference;
+      oldPathLength : Nonempty_Path_Byte_Count;
+      newPathLength : Nonempty_Path_Byte_Count)
+      return CuBit.Messages.Message;
+end CuBit.Filesystems;

@@ -1,0 +1,2 @@
+(Component name => "bench-spread" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

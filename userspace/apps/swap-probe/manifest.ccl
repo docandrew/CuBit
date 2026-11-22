@@ -1,0 +1,8 @@
+# The device-build test's app (tests/device-builds): built on CuBit by
+# ccl-build through ccl-remote, then started and replaced there. It names
+# its build in a log record and on the console, and exits when asked to
+# stop (CuBit.Control_Events.Stop).
+(Executable_Manifest
+  identity => "com.cubit.swap-probe"
+  version => "0.1.0"
+  requests => [(service "logstore" "logstore")])

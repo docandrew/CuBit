@@ -1,0 +1,18 @@
+{
+  "iasl": {
+    "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+    "sha256": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb"
+  },
+  "acpiexec": {
+    "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+    "sha256": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
+  },
+  "stdbuf": {
+    "path": "/nix/store/97d5ygrvqj55f4nx1x34wfdcc7qn11c0-coreutils-9.11/bin/stdbuf",
+    "sha256": "f5afcbdd8db007620ba82a36a21c07bf66a6b737c062101b6aa16f81f587c8a6"
+  },
+  "libstdbuf": {
+    "path": "/nix/store/97d5ygrvqj55f4nx1x34wfdcc7qn11c0-coreutils-9.11/libexec/coreutils/libstdbuf.so",
+    "sha256": "6e2d8d224c0a11165e4d56d1ebea837cc833c98e5469fecdb4125d3a35ba9d66"
+  }
+}

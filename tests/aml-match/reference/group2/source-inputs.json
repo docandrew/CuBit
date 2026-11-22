@@ -1,0 +1,10 @@
+{
+  "run.py": "bfe3e7051539502e6d9da570c6e9088387b6c15f80c208ff2998ae7475d314fb",
+  "cases.json": "2d3f81e536f05d90b39c8ec62b876a923ddb37d886f9e3c4a852e8af6dd266d2",
+  "cases/2-SKIP.asl": "fb117268a3cef911b6c7d7dc14028d0960c0e75d4f99e9999cbad281b26a7c82",
+  "cases/2-PRIORITY.asl": "ddf41ba74bb0a11335f1dff25a6acce4482f265df3ecf3ae1299227a7103f488",
+  "cases/1-PRIORITY.asl": "fc05c823fd1c67ba33e9420d0cb9a895ac114b0c6afccf0422609740306fb06e",
+  "cases/1-BADRETURN.asl": "af511f60673b8b5c746bc8a0b50a41ba2e3a602fb78cee798b76c2c6eabd6d19",
+  "cases/1-SKIP.asl": "09286ef23c0e051d354d9e7982a6896d6cd50423181e709b796e5a6f0ff13070",
+  "cases/2-BADRETURN.asl": "0adaac250bc8b6375d3857eb019de86cc85b5b69519a34a64d47e4c493b20593"
+}

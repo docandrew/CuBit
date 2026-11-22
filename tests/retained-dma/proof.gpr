@@ -1,0 +1,10 @@
+project Proof is
+   for Source_Dirs use ("../../kernel/src");
+   for Source_Files use ("retained_dma_budget.ads", "retained_dma_budget.adb",
+                        "process_memory_budget.ads", "process_memory_budget.adb",
+                        "process_memory_accounts.ads", "process_memory_accounts.adb");
+   for Object_Dir use external ("DMA_PROOF_OBJECTS", "proof-build");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Proof;

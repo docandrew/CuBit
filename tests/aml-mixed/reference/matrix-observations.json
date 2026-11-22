@@ -1,0 +1,836 @@
+[
+  {
+    "case": "II",
+    "revision": 1,
+    "left": "18",
+    "right": "18",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "IS",
+    "revision": 1,
+    "left": "18",
+    "right": "\"12\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "IB",
+    "revision": 1,
+    "left": "18",
+    "right": "Buffer(){0x12}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "SI",
+    "revision": 1,
+    "left": "\"00000012\"",
+    "right": "18",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "SS",
+    "revision": 1,
+    "left": "\"12\"",
+    "right": "\"18\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "SB",
+    "revision": 1,
+    "left": "\"0x12 0xAB\"",
+    "right": "Buffer(){0x12,0xAB}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "BI",
+    "revision": 1,
+    "left": "Buffer(){0x12,0,0,0}",
+    "right": "18",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "BS",
+    "revision": 1,
+    "left": "Buffer(){0x31,0x32,0}",
+    "right": "\"12\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "BB",
+    "revision": 1,
+    "left": "Buffer(){0,255}",
+    "right": "Buffer(){1,0}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "shortSI",
+    "revision": 1,
+    "left": "\"12\"",
+    "right": "18",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000004"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "shortBI",
+    "revision": 1,
+    "left": "Buffer(){0x12}",
+    "right": "18",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "emptyIB",
+    "revision": 1,
+    "left": "0",
+    "right": "Buffer(0){}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [],
+    "diagnostics": [
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_BUFFER_LIMIT) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_BUFFER_LIMIT, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_BUFFER_LIMIT",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "emptySB",
+    "revision": 1,
+    "left": "\"\"",
+    "right": "Buffer(0){}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "emptyBS",
+    "revision": 1,
+    "left": "Buffer(0){}",
+    "right": "\"\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "emptyIS",
+    "revision": 1,
+    "left": "0",
+    "right": "\"\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "badIS",
+    "revision": 1,
+    "left": "0",
+    "right": "\"Z3\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "signIS",
+    "revision": 1,
+    "left": "0",
+    "right": "\"-1\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "prefixIS",
+    "revision": 1,
+    "left": "18",
+    "right": "\"0x12\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "suffixIS",
+    "revision": 1,
+    "left": "3",
+    "right": "\"3Z\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "widthIS",
+    "revision": 1,
+    "left": "0x10000000",
+    "right": "\"100000003\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "widthIB",
+    "revision": 1,
+    "left": "3",
+    "right": "Buffer(){3,0,0,0,1,0,0,0,255}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "zeroSB",
+    "revision": 1,
+    "left": "\"0x00 0xFF\"",
+    "right": "Buffer(){0,255}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "termBS",
+    "revision": 1,
+    "left": "Buffer(){0x41}",
+    "right": "\"A\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "highBB",
+    "revision": 1,
+    "left": "Buffer(){255}",
+    "right": "Buffer(){127}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000004"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "prefixSS",
+    "revision": 1,
+    "left": "\"A\"",
+    "right": "\"AA\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "emptyBI",
+    "revision": 1,
+    "left": "Buffer(0){}",
+    "right": "0",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "II",
+    "revision": 2,
+    "left": "18",
+    "right": "18",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "IS",
+    "revision": 2,
+    "left": "18",
+    "right": "\"12\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "IB",
+    "revision": 2,
+    "left": "18",
+    "right": "Buffer(){0x12}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "SI",
+    "revision": 2,
+    "left": "\"0000000000000012\"",
+    "right": "18",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "SS",
+    "revision": 2,
+    "left": "\"12\"",
+    "right": "\"18\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "SB",
+    "revision": 2,
+    "left": "\"0x12 0xAB\"",
+    "right": "Buffer(){0x12,0xAB}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "BI",
+    "revision": 2,
+    "left": "Buffer(){0x12,0,0,0,0,0,0,0}",
+    "right": "18",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "BS",
+    "revision": 2,
+    "left": "Buffer(){0x31,0x32,0}",
+    "right": "\"12\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "BB",
+    "revision": 2,
+    "left": "Buffer(){0,255}",
+    "right": "Buffer(){1,0}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "shortSI",
+    "revision": 2,
+    "left": "\"12\"",
+    "right": "18",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000004"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "shortBI",
+    "revision": 2,
+    "left": "Buffer(){0x12}",
+    "right": "18",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "emptyIB",
+    "revision": 2,
+    "left": "0",
+    "right": "Buffer(0){}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [],
+    "diagnostics": [
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_AML_BUFFER_LIMIT) (20260408/psparse-688)",
+      "ACPI Error: AE_AML_BUFFER_LIMIT, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_AML_BUFFER_LIMIT",
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "emptySB",
+    "revision": 2,
+    "left": "\"\"",
+    "right": "Buffer(0){}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "emptyBS",
+    "revision": 2,
+    "left": "Buffer(0){}",
+    "right": "\"\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "emptyIS",
+    "revision": 2,
+    "left": "0",
+    "right": "\"\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "badIS",
+    "revision": 2,
+    "left": "0",
+    "right": "\"Z3\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "signIS",
+    "revision": 2,
+    "left": "0",
+    "right": "\"-1\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "prefixIS",
+    "revision": 2,
+    "left": "18",
+    "right": "\"0x12\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "suffixIS",
+    "revision": 2,
+    "left": "3",
+    "right": "\"3Z\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "widthIS",
+    "revision": 2,
+    "left": "0x100000003",
+    "right": "\"100000003\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "widthIB",
+    "revision": 2,
+    "left": "0x100000003",
+    "right": "Buffer(){3,0,0,0,1,0,0,0,255}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "zeroSB",
+    "revision": 2,
+    "left": "\"0x00 0xFF\"",
+    "right": "Buffer(){0,255}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000001"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "termBS",
+    "revision": 2,
+    "left": "Buffer(){0x41}",
+    "right": "\"A\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "highBB",
+    "revision": 2,
+    "left": "Buffer(){255}",
+    "right": "Buffer(){127}",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000004"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "prefixSS",
+    "revision": 2,
+    "left": "\"A\"",
+    "right": "\"AA\"",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  },
+  {
+    "case": "emptyBI",
+    "revision": 2,
+    "left": "Buffer(0){}",
+    "right": "0",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "integers": [
+      "0000000000000002"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ]
+  }
+]

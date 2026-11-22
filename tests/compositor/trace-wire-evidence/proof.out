@@ -1,0 +1,41 @@
+=========================
+Summary of SPARK analysis
+=========================
+
+------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total       Flow                    Provers   Justified   Unproved
+------------------------------------------------------------------------------------------------
+Data Dependencies                 .          .                          .           .          .
+Flow Dependencies                 .          .                          .           .          .
+Initialization                    .          .                          .           .          .
+Non-Aliasing                      .          .                          .           .          .
+Run-time Checks                  36          .      36 (CVC5 90%, Z3 10%)           .          .
+Assertions                        .          .                          .           .          .
+Functional Contracts              2          .    2 (Trivial 13%, Z3 88%)           .          .
+LSP Verification                  .          .                          .           .          .
+Termination                       4          4                          .           .          .
+Concurrency                       .          .                          .           .          .
+------------------------------------------------------------------------------------------------
+Total                            42    4 (10%)                   38 (90%)           .          .
+
+
+max steps used for successful proof: 1379
+
+============================
+Most difficult proved checks
+============================
+
+No check found with max time greater than 1 second
+
+========================
+Detailed analysis report
+========================
+
+Analyzed 1 unit
+in unit compositor_trace_wire, 6 subprograms and packages out of 6 analyzed
+  Compositor_Trace_Wire at compositor_trace_wire.ads:10 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Wire.Checked at compositor_trace_wire.adb:2 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (0 checks)
+  Compositor_Trace_Wire.Decode at compositor_trace_wire.ads:42 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (5 checks)
+  Compositor_Trace_Wire.Encode at compositor_trace_wire.ads:47 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (27 checks)
+  Compositor_Trace_Wire.Lemma_Decoded_Valid at compositor_trace_wire.ads:44 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (2 checks)
+  Compositor_Trace_Wire.Valid at compositor_trace_wire.ads:27 flow analyzed (0 errors, 0 checks, 0 warnings and 0 pragma Assume statements) and proved (4 checks)

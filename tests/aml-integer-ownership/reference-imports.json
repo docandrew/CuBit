@@ -1,0 +1,1832 @@
+[
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/PLAN.txt",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/PLAN.txt",
+    "sha256": "aa2b2ed30aea2c7e13e5ed71718f2ed6f918b60412607c52afba4a48adb62402"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/base1.aml",
+    "sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base1.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/base1.asl",
+    "sha256": "6cfe7d358a7f930336d83c0478cc02f29c376b6ca9dbd73166345bd762e95256"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/base2.aml",
+    "sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/base2.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/base2.asl",
+    "sha256": "0aafe49d2031ada16d799234abe1f4e8f64a2c377337d4587df3fbef161f1039"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-control.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-control.aml",
+    "sha256": "85a3a9e6af28ef3f6cd109088d300d76760041b847fa8c1aeaa95b18e3067b0e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-control.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-control.asl",
+    "sha256": "0e952fe641584f9fdd18c9f7d470c9bd4149650489f62515d9bb982277d13c1d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-held.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-held.asl",
+    "sha256": "6df431c4800db39f716278311441d76552263bef63c0df530988d32884a89b4a"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-ref.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r1-arg-ref.asl",
+    "sha256": "8e21c44893a2eb62722d0f72555520b3ea7ee8f497ff467625e265e7be6eaed8"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-control.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-control.aml",
+    "sha256": "57290b62f97e1ab6c2d9cc19bb3394cc3127b50740d56398e3c4e59e187b7a3c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-control.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-control.asl",
+    "sha256": "02cf4a7d47a6268565bcf5086f1d35c7484b92915211e316f91589ebe46bbeab"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-held.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-held.asl",
+    "sha256": "c1ba7454bfb330730bec5110f0ee03208fc439e482bdf6b14cce866b4efd5b89"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-ref.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r1-local-ref.asl",
+    "sha256": "b413e3be8037fd6bfb7cb850260d2b9de56bacfd2b60e0bca054385cee2c7a5f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-control.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-control.aml",
+    "sha256": "34db16392c2016db844e3358c322d18c43fcf35d5ec4c42394bf85f53b282e03"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-control.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-control.asl",
+    "sha256": "78a55ae8db3960cfa6e11c6f750296dde59ecc250e39a94d8ab37dba046032ed"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-held.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-held.asl",
+    "sha256": "a8ba74025917faf6859d54c79974584d50cfb047d673ca26618542579e090cab"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-ref.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r2-arg-ref.asl",
+    "sha256": "24fb885acc64318b2081e12b01c3ffd9c402f8e48e081447c39b1648aa56310f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-control.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-control.aml",
+    "sha256": "88f2d2ac201760c3809d35ed551547d42703b750ca0c8f2531bc92a6d5973844"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-control.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-control.asl",
+    "sha256": "97009e33e9d60aa0abbe872db18e9868f38dddc4240d6492d0e87c305acd7de8"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-held.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-held.asl",
+    "sha256": "31bbf034c9be3da7a3678be49a9f9d3ff29c29d366999779f2ce20c6f1ff5b35"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-ref.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases/r2-local-ref.asl",
+    "sha256": "c7def74757ab422b0d1aaeec7ba87f38810444a89132e249e862671d27029900"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/cases.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/cases.json",
+    "sha256": "3a3efd428a47c8fb341a043399b7742b0960d7140656a4a9a50eca3c1ee597e9"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/inputs.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/inputs.json",
+    "sha256": "cf85ad76e88922167a4975b195f57bffe1f923f1623f634c1a7c920b05df7ee0"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/acpiexec-version.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/acpiexec-version.log",
+    "sha256": "a67be5cf6cb60ee508792de0ca6bdd3bce6b85126fcebe0cf3d462e864374cad"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/audit.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/audit.json",
+    "sha256": "f18df449b0798aa1319ddb2097aa70c2d9ddc86baaa287935b3040c3be204aae"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/iasl-version.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/iasl-version.log",
+    "sha256": "4911816d4e6a4d863a7158965fb616fb5bcb1831acdf90f81b53c7f12b543968"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/python.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/python.json",
+    "sha256": "defac660d3b48500755bbf71ca883c2d60d7f118eaa6c4fc5164888ec681c87e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-control-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-control-base-compile.log",
+    "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-control-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-control-execute.log",
+    "sha256": "1820af44e8dbd4f941e0834b9510f0a975cff12a914961b01ee4109a41b63789"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-control-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-control-source-compile.log",
+    "sha256": "cc13ad6befa4d906d26cbf55410441421acad96e03ca8e83ed71353846384d9c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-held-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-held-base-compile.log",
+    "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-held-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-held-source-compile.log",
+    "sha256": "37ce4ee4a6a61938564fa0d5fa9555bf4833ac1495b8e779576bb980f3c3dae0"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-ref-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-ref-base-compile.log",
+    "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-ref-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-arg-ref-source-compile.log",
+    "sha256": "64da421b45f23b4d5f46a7e50c5cc06ea8b33f5be93a9153217a9b2a02534ca3"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-local-control-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-local-control-base-compile.log",
+    "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-local-control-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-local-control-execute.log",
+    "sha256": "16e43b0c42729cb52355348f852f90bab5a6cbbe22adc5f988a0e438ccd72f76"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-local-control-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-local-control-source-compile.log",
+    "sha256": "38f313167566a591d1d42166a1d86431a39f27eee721bd5934519c1fa03e95b4"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-local-held-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-local-held-base-compile.log",
+    "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-local-held-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-local-held-source-compile.log",
+    "sha256": "352d503bd01e381fcd83874903377747c7f6482051742c738c8fcb6b63e3d19d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-local-ref-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-local-ref-base-compile.log",
+    "sha256": "dfbcd1d76917663b8f78e3e36e0f9c8232bf23760d831c04edae38611eee08fc"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r1-local-ref-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r1-local-ref-source-compile.log",
+    "sha256": "b5965e2f9691686091c295b9d772f79f0dc4a315cdabad337865010e13abf7d2"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-control-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-control-base-compile.log",
+    "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-control-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-control-execute.log",
+    "sha256": "d7cf1bf741577189f4a9ef658cb03522fed997ffb78bf2d81b2be944555ec1ba"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-control-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-control-source-compile.log",
+    "sha256": "2dd7ec16c72be532cbd8c2d5a1e291edd84c52199c71c057198053f4a81b06f2"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-held-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-held-base-compile.log",
+    "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-held-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-held-source-compile.log",
+    "sha256": "e742eb72c7586a70d6cc4366b296288b4b016bc89c84fcfc8d27d65fbc65718d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-ref-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-ref-base-compile.log",
+    "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-ref-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-arg-ref-source-compile.log",
+    "sha256": "46c565f6e0cb4ae4a09c55bae5d0302b9073aea5554ad0f0bd393db0cec6cfe1"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-local-control-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-local-control-base-compile.log",
+    "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-local-control-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-local-control-execute.log",
+    "sha256": "f42df2bb63ab6f4f6f82aa4988d416745fcd799d56d6cd4b2a825cd6d9ea975f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-local-control-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-local-control-source-compile.log",
+    "sha256": "37685886b61ebd502cdb9e7b88308ca05add2397794d7aeb44fb0e4e94f85219"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-local-held-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-local-held-base-compile.log",
+    "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-local-held-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-local-held-source-compile.log",
+    "sha256": "c4e20a19eaaa15e8c23467f638c08590a7434953a6a42f9234385d45768dd6ff"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-local-ref-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-local-ref-base-compile.log",
+    "sha256": "3b6f248ad52deaee6681408fd6ab463b717e59bebbe9a6d1e08c68e227e9b374"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/r2-local-ref-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/r2-local-ref-source-compile.log",
+    "sha256": "367f2ef8751e125ab77f4d8d562b76c09822bad6eadc17bace84c615a0712ead"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/results/report.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/results/report.json",
+    "sha256": "b4e218964faa74aa5d5c2ec8964bc2e7cfc79f8590618ab84519c17430b562e5"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/tool-pins.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/tool-pins.json",
+    "sha256": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-width-oracle-hvb2vqu1/verified-observations.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-width-oracle-hvb2vqu1/verified-observations.json",
+    "sha256": "4d44c8484c1aaccd0c110d68261acc54299c74e10fdc97313ea6e8a5d14afd78"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/PLAN.txt",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/PLAN.txt",
+    "sha256": "f98de24228c404887e7337ce0d9440ae6d2c45bc1d3c9d97dc7b6111c9bea819"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base1.aml",
+    "sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base1.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base1.asl",
+    "sha256": "6cfe7d358a7f930336d83c0478cc02f29c376b6ca9dbd73166345bd762e95256"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base2.aml",
+    "sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/base2.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/base2.asl",
+    "sha256": "0aafe49d2031ada16d799234abe1f4e8f64a2c377337d4587df3fbef161f1039"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-held.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-held.aml",
+    "sha256": "1a524b00a2a7e5fdb2d8ebc101542f9c675571354656b380daf0be234043387f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-held.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-held.asl",
+    "sha256": "288c57239cf97e1a03171f29d9403092928ba4e4617461aa2b1a40a306714f58"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-ref.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-ref.aml",
+    "sha256": "6417362d3ec71df821e383779ad1261710142f0509ce8ca578312ab1d7c120e7"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-ref.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-ref.asl",
+    "sha256": "95d35eaf8f9b19c7b2fc0d2ea90ba20a234589f36ab5bd3b3aacfe2cfa777d1d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-local-held.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-local-held.aml",
+    "sha256": "b5a94cb76fb83355315341dba89844a534658bbf41b0fb6e5126e844425fad81"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-local-held.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-local-held.asl",
+    "sha256": "c69543b56b3bedc12cd841ac797344b2fd3630a07414fac077b1e15c0e1d05fe"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-local-ref.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-local-ref.aml",
+    "sha256": "da46450e2635ee66ab4308b2101c1d413e4142aef24b53ee6ac4fed8cb5faf08"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-local-ref.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r1-local-ref.asl",
+    "sha256": "802cbc982feb4091864f8c9cc0f7280df14ace27f5e175db43297e892566c827"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-held.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-held.aml",
+    "sha256": "240e733e2672cc01efc28de30b43da553dcd3dedf991f7fbbb8514afb693c9a6"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-held.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-held.asl",
+    "sha256": "bb05b71264e52222a72e4dbfd7ddf65a1b8cf217afe0015feba360b35340f5a6"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-ref.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-ref.aml",
+    "sha256": "1f25bb33715af9053d4762e1adbac8d42e052574a19088e4eaa3c8e4838a90dc"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-ref.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-arg-ref.asl",
+    "sha256": "a1271b41de071789032e72249dd869781e5ca4f907a63d425773ac58fad360c7"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-local-held.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-local-held.aml",
+    "sha256": "29c051235b138cb87943b4889e7db81e0088944826c57a186f68e0376fba0052"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-local-held.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-local-held.asl",
+    "sha256": "686c8f98dc2d0c3d0c3cb9c293855d3c0551d788245fe6d63f4eadee18369714"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-local-ref.aml",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-local-ref.aml",
+    "sha256": "4bcdcb7f738a48d176375d7ea2c5db8c1913c1b6eb04c0a6f15a86b394a202d8"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r2-local-ref.asl",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases/r2-local-ref.asl",
+    "sha256": "b463acfc29adcf0fd0bdbfe0413b2d64f298ca135822d5eb63ab87631c2a3934"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/cases.json",
+    "sha256": "1f1fafe26884207200391f13419fa28b3251663cae1318319c39b54857632e37"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/inputs.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/inputs.json",
+    "sha256": "c102794db725f01a1d9a72b4894bb0515cd8346ba56534e835f557b2dfa4ff42"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/acpiexec-version.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/acpiexec-version.log",
+    "sha256": "a67be5cf6cb60ee508792de0ca6bdd3bce6b85126fcebe0cf3d462e864374cad"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/audit.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/audit.json",
+    "sha256": "6a4dac9a85f279322cd90cbcb87ec3e54f4d2fcb451c1671a2e1be957430fcb1"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/iasl-version.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/iasl-version.log",
+    "sha256": "4911816d4e6a4d863a7158965fb616fb5bcb1831acdf90f81b53c7f12b543968"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/python.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/python.json",
+    "sha256": "defac660d3b48500755bbf71ca883c2d60d7f118eaa6c4fc5164888ec681c87e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-arg-held-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-arg-held-base-compile.log",
+    "sha256": "d2e4fa2c5e8eda05b6d9e1f8efee3ed7d01369b32e612ab0a0a917e034202578"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-arg-held-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-arg-held-execute.log",
+    "sha256": "5b374ed8a6c36fbd9f6bc21c0af1bada0394a42475a34a6248910c4626c60b30"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-arg-held-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-arg-held-source-compile.log",
+    "sha256": "68a12a49c6ba3f995d781ee077af580ccd2959effac8da8a56513e5ac9d21e35"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-arg-ref-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-arg-ref-base-compile.log",
+    "sha256": "d2e4fa2c5e8eda05b6d9e1f8efee3ed7d01369b32e612ab0a0a917e034202578"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-arg-ref-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-arg-ref-execute.log",
+    "sha256": "d77e6dfb2d1abd7332203ceba34878dbaa06546e4de7fd23703ade35b41b2687"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-arg-ref-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-arg-ref-source-compile.log",
+    "sha256": "2cbda9bcf4e2e49cbc927ee9761c7c057bb60c62008207c9bac1df9a5c256f30"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-local-held-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-local-held-base-compile.log",
+    "sha256": "d2e4fa2c5e8eda05b6d9e1f8efee3ed7d01369b32e612ab0a0a917e034202578"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-local-held-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-local-held-execute.log",
+    "sha256": "04648c44dd78fc6183635c94d78221e965dc5e480bdf3065f0528f7b2d631d01"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-local-held-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-local-held-source-compile.log",
+    "sha256": "c1feb9f0cf13628ec183b9474d4aac98607ea9a1257e69c76c9649349ae0815e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-local-ref-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-local-ref-base-compile.log",
+    "sha256": "d2e4fa2c5e8eda05b6d9e1f8efee3ed7d01369b32e612ab0a0a917e034202578"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-local-ref-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-local-ref-execute.log",
+    "sha256": "3cf6c22430cc4e8a2ba589d2312389c67092eda4be29bd49cc4e1e8ccc3f5613"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r1-local-ref-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r1-local-ref-source-compile.log",
+    "sha256": "5d68d1853e7a0e6bcfcba9f0153e5a2fb8de36b860f2783ab36eddf9dc7cca33"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-arg-held-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-arg-held-base-compile.log",
+    "sha256": "80f8b679b76aaf7080606f108e091cc5807d0ad65e82c12310d5f938488809b5"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-arg-held-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-arg-held-execute.log",
+    "sha256": "d33ace05b73e8ca51e44ce9681fedd6b82e028460ab16b3c88402da68deb937a"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-arg-held-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-arg-held-source-compile.log",
+    "sha256": "40edfd07b15ba7fcfbc2d77f4f24dd7412e7e2c80de834be3222bd52b5e1b9cd"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-arg-ref-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-arg-ref-base-compile.log",
+    "sha256": "80f8b679b76aaf7080606f108e091cc5807d0ad65e82c12310d5f938488809b5"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-arg-ref-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-arg-ref-execute.log",
+    "sha256": "cf64f70785d8c374e253a31336d286e97abf9da32ee7f01ff4f05aed874f0911"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-arg-ref-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-arg-ref-source-compile.log",
+    "sha256": "e2155d3597d16c4ae9a50260a65291e841a4bb59930131e1c061428210c1b542"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-local-held-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-local-held-base-compile.log",
+    "sha256": "80f8b679b76aaf7080606f108e091cc5807d0ad65e82c12310d5f938488809b5"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-local-held-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-local-held-execute.log",
+    "sha256": "f646cf2ee71629a1ba23e4fb71840fa5cace390723c58b864538b0f4856558dd"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-local-held-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-local-held-source-compile.log",
+    "sha256": "0c67745e581bc60bb342d5d1399615a57e3bfffde29d9360df893088a912d311"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-local-ref-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-local-ref-base-compile.log",
+    "sha256": "80f8b679b76aaf7080606f108e091cc5807d0ad65e82c12310d5f938488809b5"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-local-ref-execute.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-local-ref-execute.log",
+    "sha256": "1b52bca4d1c87f13d46121bd1930c0a24e6f3a9338c6b45ed51d46f5d534abf8"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/r2-local-ref-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/r2-local-ref-source-compile.log",
+    "sha256": "89633bedc54f560113e23149e1fae0808d98787ccd638eb5e8e27406a46adafc"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/results/report.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/results/report.json",
+    "sha256": "4548876eb3b3bb4312753e949d7d6f119e945d1401496c8af0f0f435560e0878"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/tool-pins.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/tool-pins.json",
+    "sha256": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/verified-observations.json",
+    "path": "tests/aml-integer-ownership/reference/deref-frame-predicate-oracle-rognfw92/verified-observations.json",
+    "sha256": "93a9f364435202b0a4d7cfa1866f478a6cd0a939f5eaf691777d728d485c824c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/CORRECTION.txt",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/CORRECTION.txt",
+    "sha256": "1e1a406d84239875a94175032657e58a1a0c3e453775d67fdcd0bcf426ad9860"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/base1.aml",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/base1.aml",
+    "sha256": "d396b03dbef0058f85a51a7c9e583f3610b0c234c5a3294e545b2d59dbc8509c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/base1.asl",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/base1.asl",
+    "sha256": "7f45cc63c8ecafc1d83d9effeebe779b4d4dccce685a4d4c24c6ee0cb6713d57"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/base2.aml",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/base2.aml",
+    "sha256": "c45382ebba94e2f7c6be38a0d988a7f1419c2b43a4577c388def2b4d07cab373"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/base2.asl",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/base2.asl",
+    "sha256": "31eb4b90ed68bd86bc52e082e6f15d552f922ea0c1fbbbda6e8c47f9871ba375"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/copy1.aml",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/copy1.aml",
+    "sha256": "93c7e46676616d5ab0db44aab53fd5c0acb498d7d7dc74f79d423f4b76e91f54"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/copy1.asl",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/copy1.asl",
+    "sha256": "6393e1b467111ee2599cdbe94ac116d77d66e2741dc3e3344e89285272a1e902"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/copy2.aml",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/copy2.aml",
+    "sha256": "62dfaf04786372b640668ba256aa1e7a18c0f9e2e75ba601356302cdd1c76c2b"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/copy2.asl",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases/copy2.asl",
+    "sha256": "cb957084e061bfe74fbd2ab49d16bc130520b0c2711b6cd3b779ec7f3812d10d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases.json",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/cases.json",
+    "sha256": "eb46e9030d00bd0ed33f1967256b2fea804d52d452ade0c1c6e14fd3d774e01a"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/inputs.json",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/inputs.json",
+    "sha256": "84ef44d2a44dfbfdfba37b6a8f392218ce382b425dc6bc544a57569005f80e57"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/REVIEW.txt",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/REVIEW.txt",
+    "sha256": "65468b5f6b2df39e345e0aa0de4fda1440c0fb54d36ab1ad7c675e8b96bcb881"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/acpiexec-version.log",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/acpiexec-version.log",
+    "sha256": "a67be5cf6cb60ee508792de0ca6bdd3bce6b85126fcebe0cf3d462e864374cad"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/audit.json",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/audit.json",
+    "sha256": "c2b760af01aa3805c88abd72d55780a4bf4f0427fb3c16153d9e7adbaf66821f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/copy1-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/copy1-base-compile.log",
+    "sha256": "6fc0e4337304f430d51869caf7e9008cc28747dcbb012675d367ff468ee61d7a"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/copy1-execute.log",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/copy1-execute.log",
+    "sha256": "082782d27d99dacb646044733217b75528b221b38546a1d669f517ae8fb90d11"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/copy1-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/copy1-source-compile.log",
+    "sha256": "e19d8a775089b275695ae6e7081d69ac0c7feb91ca4dee971ebc14e35333eae2"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/copy2-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/copy2-base-compile.log",
+    "sha256": "9e44c2adcab0e294e622db5405de4bdb31ad67694b3d8bede937bcb043c6c36a"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/copy2-execute.log",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/copy2-execute.log",
+    "sha256": "b6c5a7c3b667e3bfdc15fd4b496b834bcc6da42560bf1bcd3bcb6a441f5a948a"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/copy2-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/copy2-source-compile.log",
+    "sha256": "f9f9149dbe3768acc92c30a06a17683c0b6dfa4ad66bb36376571ca9d85f4b27"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/iasl-version.log",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/iasl-version.log",
+    "sha256": "4911816d4e6a4d863a7158965fb616fb5bcb1831acdf90f81b53c7f12b543968"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/observations.json",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/observations.json",
+    "sha256": "b05bc50e040634db2e3fbf523000244fec385fbc31a1439e3dfc6cbbb25258ff"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/python.json",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/python.json",
+    "sha256": "defac660d3b48500755bbf71ca883c2d60d7f118eaa6c4fc5164888ec681c87e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/results/report.json",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/results/report.json",
+    "sha256": "117ff88dd38a6c77d1dc97892dfc4194281abe5caaf605502f267a546981f396"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/tool-pins.json",
+    "path": "tests/aml-integer-ownership/reference/osi-copy-package-valid-fcq5c9zx/tool-pins.json",
+    "sha256": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/PLAN.txt",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/PLAN.txt",
+    "sha256": "bf02ae21a2aeab6a1cc76254ced4da7138904d05c904232bbc261ba7f4220c91"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/base1.aml",
+    "sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/base1.asl",
+    "sha256": "6cfe7d358a7f930336d83c0478cc02f29c376b6ca9dbd73166345bd762e95256"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/base2.aml",
+    "sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/base2.asl",
+    "sha256": "0aafe49d2031ada16d799234abe1f4e8f64a2c377337d4587df3fbef161f1039"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-dest.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-dest.aml",
+    "sha256": "e7e4d92729b54dcc17bfa72bcbc7e30ad9e8e6bb3f3b771a43e67d153ff1cbbb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-dest.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-dest.asl",
+    "sha256": "749afcfd3c9107a13cfdb005fda962a21729ef4b4d0694dc8d94fa8f48476a68"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-source.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-source.aml",
+    "sha256": "8d74f04d3da45dde19cabb618ca07fd04b88021d430970aaa45e22fa5b0cf868"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-source.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-source.asl",
+    "sha256": "ef03d80366bc03701a5e81de3e02f4512172c7c2aa30400641e89a9493de78f1"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg.aml",
+    "sha256": "0eb900b6573cc916158b14334a4fccd8b8f0de69fe9f4e18736256d12fb777ef"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg.asl",
+    "sha256": "ef0f740ee3fdf0a9512de9be20b78886fefffc4ae2d03688295b42176f158363"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-direct.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r1-direct.aml",
+    "sha256": "d648b8db3c72137cd51a7983938f9fd97f75513ace7a4487004c11ac1d7122ba"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-direct.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r1-direct.asl",
+    "sha256": "abc4939f20dfd60bbe723df007b7b3d23cebb855c42636220193f390beddf910"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-local.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r1-local.aml",
+    "sha256": "c4fcfda6f719f8787a9b7ad9470177d5c618fb841298607b5515f822187173ba"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-local.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r1-local.asl",
+    "sha256": "bdc35221917a82dd2f5e4618d0ba9efa98d22d8368b711e965a1fcfe1211120d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-package.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r1-package.asl",
+    "sha256": "e8caef1580e07c4c894d54b16637f61fe340564cb81391fdee222e4d3b8ea053"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-dest.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-dest.aml",
+    "sha256": "deed66431cf0c2dfda8fade2e87f94fb938c6ee5e2c2c42fd0ef9bb2f423c3b9"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-dest.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-dest.asl",
+    "sha256": "820be4c2076182805156721f59cf31208225b17646c7ca37c50f1db81e109845"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-source.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-source.aml",
+    "sha256": "addb4548d7ec8bbe63be50c815cb40b654324cb00b906365645d14dd16d6f3c3"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-source.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-source.asl",
+    "sha256": "8fb8192a99103a56c9e25d0d789aba8d25183d8f67ee62c066afb9a96be9e8ba"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg.aml",
+    "sha256": "d29ec5e4be027aeb636c673d72563d0cb27b2a0e97a97ed1dcf625dcdfc1caa0"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg.asl",
+    "sha256": "891841684d0a2f47a4cb63717e1673a5802c4fe6dfc5083bf17b5fcccdddaf27"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-direct.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r2-direct.aml",
+    "sha256": "c92d1b5228ddc159f9c8d75d382ef54fca1e55db11f622a4bd6d813dbc4c7334"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-direct.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r2-direct.asl",
+    "sha256": "835258f3d7e0468dfeb3fc336de38c0fd32d1784d70549b7c3c4c51b9e157837"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-local.aml",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r2-local.aml",
+    "sha256": "00785b58d28e44dfa1b2c62322bcdf529512e09bb064ee10639002382df5f72c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-local.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r2-local.asl",
+    "sha256": "884a1334992e160bbe0137ddef8616a2394aae9883957f03b2f942eed0101e75"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-package.asl",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases/r2-package.asl",
+    "sha256": "41e429994352939b991c38c59148cabe0c4f8237093c5b75c93527e6b98c7950"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases.json",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/cases.json",
+    "sha256": "b2166aa5d6f0c95d084f7056c16cb48bdceeef5ba2fd6d86db3551b9315a107e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/inputs.json",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/inputs.json",
+    "sha256": "18a641d4b2df6545273d5fe5ef2efc7f63d4b2365656aa4342602a701da501e0"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/observations-audited.json",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/observations-audited.json",
+    "sha256": "99291e219c1eadcc59605e98ccb0fe9be55604ba5adb59603f0a4a62974bcd1e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/acpiexec-version.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/acpiexec-version.log",
+    "sha256": "a67be5cf6cb60ee508792de0ca6bdd3bce6b85126fcebe0cf3d462e864374cad"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/audit.json",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/audit.json",
+    "sha256": "931f4e4051310348619c1ac8bc74df4444d479e9d571dc6bba2f4fc225642245"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/iasl-version.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/iasl-version.log",
+    "sha256": "4911816d4e6a4d863a7158965fb616fb5bcb1831acdf90f81b53c7f12b543968"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/python.json",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/python.json",
+    "sha256": "defac660d3b48500755bbf71ca883c2d60d7f118eaa6c4fc5164888ec681c87e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-base-compile.log",
+    "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-execute.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-execute.log",
+    "sha256": "6612552d6c650c9ca369401db4f224f8cd69b7360fc81ddfda102b5c87c70648"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-source-compile.log",
+    "sha256": "3d278bf0e15113b622f1e00ea24101773b289149c072af2fbaff55c188f43454"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-dest-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-dest-base-compile.log",
+    "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-dest-execute.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-dest-execute.log",
+    "sha256": "f38cc8ce3a8797d64b7a5dfee9fda0df71f6620cf63fb0010a29093568db4ddc"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-dest-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-dest-source-compile.log",
+    "sha256": "0a8f8aeee88cfa7dafd8b5eb3a02cad48b5806be82dc0514b286b8df511fcd2f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-source-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-source-base-compile.log",
+    "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-source-execute.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-source-execute.log",
+    "sha256": "7025fb3fc612bc4b67714f26eb04dc136b86489dcf8eaf8c052cd62e6dd56bda"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-source-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-arg-target-source-source-compile.log",
+    "sha256": "f6aa9392f33f446706e845edcb0489ca451aed5fe7f8dc6f4a3c3509cfa82042"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-direct-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-direct-base-compile.log",
+    "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-direct-execute.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-direct-execute.log",
+    "sha256": "1f6923ec16ac9d0e28292119ac7c3f7468c697bd8173f6a1e7c1106384503193"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-direct-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-direct-source-compile.log",
+    "sha256": "5959e21791b6e73a796fc6a9bc7a6e2b055b1dbd03236d80d634e6028040ee97"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-local-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-local-base-compile.log",
+    "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-local-execute.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-local-execute.log",
+    "sha256": "1bb20a42ce644a4f19ade0324b2ff1568a0499bfbccc00b26ada44e3dc5c846c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-local-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-local-source-compile.log",
+    "sha256": "e67c643bb3d2cb772345c3153250081b74da29cf6ec4311aa3a2877486136bdc"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-package-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-package-base-compile.log",
+    "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r1-package-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r1-package-source-compile.log",
+    "sha256": "d3d5a8902a90cff2b4e54bddf589909224e842197abffaef34beab4438c7d4ff"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-base-compile.log",
+    "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-execute.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-execute.log",
+    "sha256": "a461c6a141262cfb6bb8d79f314533a4b9d444d039b41416c534ca6f2cd50f3b"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-source-compile.log",
+    "sha256": "3ea6c7f69dc308c5e8110a1d96382297650ca250b6888e5c1d7c2bf8ed56b4cd"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-dest-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-dest-base-compile.log",
+    "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-dest-execute.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-dest-execute.log",
+    "sha256": "0c864741b497369517158b9bc3e6b35b252da1a7245392eed2fdaa8718be77de"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-dest-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-dest-source-compile.log",
+    "sha256": "8e79a374448a616fa485154c147bd7459d92cc033d2eede25ac39973d832f3b6"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-source-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-source-base-compile.log",
+    "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-source-execute.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-source-execute.log",
+    "sha256": "59909f255cdfb81314a25c1d1e7f070626a0b3f3a75dc842b643a7a5f82f8e50"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-source-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-arg-target-source-source-compile.log",
+    "sha256": "429a02c51af7f9d9022844c612e6e9d9a06466332835d9b27106af008dff46a4"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-direct-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-direct-base-compile.log",
+    "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-direct-execute.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-direct-execute.log",
+    "sha256": "d6b533424086cbdd66c897ebf4716268dbddf4bf8e71113f05772758edf2d5c6"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-direct-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-direct-source-compile.log",
+    "sha256": "46a85c72e9a139997642c819ee180474ad62113f8186a2db715889a6c35027da"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-local-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-local-base-compile.log",
+    "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-local-execute.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-local-execute.log",
+    "sha256": "bbedccacac320f61391516dfc02104d01bc46226856ab0d3976900336126ea59"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-local-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-local-source-compile.log",
+    "sha256": "c0e6845f46598bf4799345fa299d3853067182f0693d95c81e8ed1e7d7979721"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-package-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-package-base-compile.log",
+    "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/r2-package-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/r2-package-source-compile.log",
+    "sha256": "6aa942046f5322b2ca617c2ee29463565934a2bb2b5a1a2ff3bb57e81bdc0e22"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/results/report.json",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/results/report.json",
+    "sha256": "3ffa363d1c511785a06729082936f865b722aa803d7e00b4a4af18fcab8613c0"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/terminal-review.json",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/terminal-review.json",
+    "sha256": "c588e0c9a75cc37e71715a04da7f04dc00ca3ff170c5c8b58ed90705f6fae394"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/tool-pins.json",
+    "path": "tests/aml-integer-ownership/reference/tointeger-width-identity-oracle-zilnqx_h/tool-pins.json",
+    "sha256": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/base1.aml",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/cases/base1.aml",
+    "sha256": "d396b03dbef0058f85a51a7c9e583f3610b0c234c5a3294e545b2d59dbc8509c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/base1.asl",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/cases/base1.asl",
+    "sha256": "7f45cc63c8ecafc1d83d9effeebe779b4d4dccce685a4d4c24c6ee0cb6713d57"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/base2.aml",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/cases/base2.aml",
+    "sha256": "c45382ebba94e2f7c6be38a0d988a7f1419c2b43a4577c388def2b4d07cab373"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/base2.asl",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/cases/base2.asl",
+    "sha256": "31eb4b90ed68bd86bc52e082e6f15d552f922ea0c1fbbbda6e8c47f9871ba375"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store1.aml",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/cases/store1.aml",
+    "sha256": "e9a15156ae407a0c7b4786e8c668295c5e67bbcf59233e4c7bd078d8bd5cdc27"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store1.asl",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/cases/store1.asl",
+    "sha256": "45aef08f0549aaec61d2efbab2c632059ee66b51a8e253f70b752f02d56ed220"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store2.aml",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/cases/store2.aml",
+    "sha256": "9f0980b59a82d4e4be14cd8fad8fac3856be705ce131d41bf49be59e9b0b0c64"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases/store2.asl",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/cases/store2.asl",
+    "sha256": "4530da550d61a2439335834392eda820083a285fb16e84497b7cb5be8390cb90"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/cases.json",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/cases.json",
+    "sha256": "61c24576ac1b9e9246d88b3d3a9c91959dbdaa71ceaf191ac8a1b300ece9f8fb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/inputs.json",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/inputs.json",
+    "sha256": "e6093ef3a0191c71daa78ec6cf6a8c82e665613f6d2f88a5047f3a38fdf603ed"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/REVIEW.txt",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/REVIEW.txt",
+    "sha256": "077c1ede61dab2209f797f90bd8d1814dbd602c6d6b56e84ec790ba1b377f412"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/acpiexec-version.log",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/acpiexec-version.log",
+    "sha256": "a67be5cf6cb60ee508792de0ca6bdd3bce6b85126fcebe0cf3d462e864374cad"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/audit.json",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/audit.json",
+    "sha256": "753f4c08b531aee3609e22045bdc47b04fac52e69f8a31aa735621a7c4ef11fd"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/iasl-version.log",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/iasl-version.log",
+    "sha256": "4911816d4e6a4d863a7158965fb616fb5bcb1831acdf90f81b53c7f12b543968"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/observations.json",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/observations.json",
+    "sha256": "6a979784557c735763883a0ba7f631dac244e7961ec295209831b4480c7a31a9"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/python.json",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/python.json",
+    "sha256": "defac660d3b48500755bbf71ca883c2d60d7f118eaa6c4fc5164888ec681c87e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/report.json",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/report.json",
+    "sha256": "c3fd69dcfc1dbc0a5a74ad2ff1df808b24757352e64fc34cd3255f1c0aa6f05c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/store1-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/store1-base-compile.log",
+    "sha256": "e6a4e0c4cc0aa5a5ebf47b9ebf09d131bcdfa9b0027d2a24310abd3ca217c683"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/store1-execute.log",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/store1-execute.log",
+    "sha256": "919173844ce480375f653be202341fb325238804e9d67838dde3d66bb5bf6232"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/store1-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/store1-source-compile.log",
+    "sha256": "5898e8938ca23d6ec6ede12f5b66c1ce7b68dd943d13c6dbf488d0b972582910"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/store2-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/store2-base-compile.log",
+    "sha256": "68721dc3a914fac0e5e11f9d38e7b56df35581edb656f357a51fe9014e7e2735"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/store2-execute.log",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/store2-execute.log",
+    "sha256": "41092ed953be34aa867f5e9faf71ab44cb7280f402b9a7a98e6ebb226621622e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/results/store2-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/results/store2-source-compile.log",
+    "sha256": "dd79169c2c6a1611d207a0a9c149553c3e9cbc74bf0a4997de48b18ff8704940"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/osi-store-normalization-oracle-4e1_27gv/tool-pins.json",
+    "path": "tests/aml-integer-ownership/reference/osi-store-normalization-oracle-4e1_27gv/tool-pins.json",
+    "sha256": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/PLAN.txt",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/PLAN.txt",
+    "sha256": "50491ecf188620a6659af72660fb5db778c477ba29fcd29d84ab30794492d0b7"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/base1.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/base1.aml",
+    "sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/base1.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/base1.asl",
+    "sha256": "6cfe7d358a7f930336d83c0478cc02f29c376b6ca9dbd73166345bd762e95256"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/base2.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/base2.aml",
+    "sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/base2.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/base2.asl",
+    "sha256": "0aafe49d2031ada16d799234abe1f4e8f64a2c377337d4587df3fbef161f1039"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-alias.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-alias.aml",
+    "sha256": "78174eb8308a0897cf74424b30374af8369baccb11d76f939a5dc5465e6c0f56"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-alias.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-alias.asl",
+    "sha256": "3b1aa084803a01cb13658808bd76b728f01dadaf171ebf0a698d47948e5a588d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-integer-replacement.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-integer-replacement.asl",
+    "sha256": "4920bbffbfcdd4b0c07c0502681d690f5bf7d7ed1579bb31f038a8ba682f4dc7"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-nested-independence.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-nested-independence.aml",
+    "sha256": "c382e103b34fce170193b151fbf705dbe6401215ab0d0ff659b408b0bee4305f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-nested-independence.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-nested-independence.asl",
+    "sha256": "1bb7923a2e66c002c1e28d538b9ab0d4c82095a56c18a5052eeffc54519b4bcb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-old-target-local.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-old-target-local.aml",
+    "sha256": "d4d2243b847ef1279c34f4b8f57622d29dfdf5b8f25800ed188b39b793c10cfa"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-old-target-local.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-old-target-local.asl",
+    "sha256": "de172bc7006303c29a963ef57094e50a36fcea14c238f10d39af152aa4db7198"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-self-old-index.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-self-old-index.aml",
+    "sha256": "3f3f406e4f3e520c4289b4b808bc5de368ab68544f8f262008859c37ca388e98"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-self-old-index.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-self-old-index.asl",
+    "sha256": "4212bf0b3e0e42afa99f99c2d1182fc3b1ea435e5ba21a2e40df035ecf370f0d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-self.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-self.aml",
+    "sha256": "eaf02e94ae4c1c61042649a56a4f7b1ffe2a0a32c87d4af5d36ce455f22360ef"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-self.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-self.asl",
+    "sha256": "d8ee60811bb703b313d2d92cb820ca5e751425ac1dbdcde537c65ed267c80bb9"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-source-independence.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-source-independence.aml",
+    "sha256": "8c8f1b3eb0d6441bed635794bea7dbc5cb5226ab9953df8db79ea4e2e6426217"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r1-source-independence.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r1-source-independence.asl",
+    "sha256": "ba0ecc54c14747f1ab49a9a4a952fbe6f5a54671f0e1528c8f9534be9b92012a"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-alias.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-alias.aml",
+    "sha256": "b0a8f938ea5f9d127263afa27ba5698a2fa66b5a2b0879d46e46961308eafbee"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-alias.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-alias.asl",
+    "sha256": "37e1eb9ad460162b0ea892437e14d3a85db5e49f049154ba4431964bb9877fd4"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-integer-replacement.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-integer-replacement.asl",
+    "sha256": "ba72608d4ace1ce05cda675a07b38367936100a0fcc508b096ccca1715ea1d1b"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-nested-independence.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-nested-independence.aml",
+    "sha256": "85ecae43f4d6f42ba050dbeb7699dbd2e060a1a9dbcbc9ee7abf653416142aab"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-nested-independence.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-nested-independence.asl",
+    "sha256": "c394eda36f7045b5eefde19ec33d5be8f0ddea739d284eb3c74a4c7d42b3afec"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-old-target-local.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-old-target-local.aml",
+    "sha256": "c61593f5d9bc2ce290bf36f9960ea230434a699a2514a5f7d11cc9b6a8d18da5"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-old-target-local.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-old-target-local.asl",
+    "sha256": "6b3c6c2454e4c2bd92d40e18f79b1fab790f82a19e974a847f5aeaf358ab88ee"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-self-old-index.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-self-old-index.aml",
+    "sha256": "f8d73e267280bc769db6ff9a819e527b16f5a9b805b8496b3b299ccf2732823f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-self-old-index.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-self-old-index.asl",
+    "sha256": "9951fcde89ec5adfd08bd1847ec795e94bbb8791a44e724f0dde99466a441a21"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-self.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-self.aml",
+    "sha256": "ec072450cb689567294446cd01ee8b78a6bdcd5d12f0718630614e1831a9c4e8"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-self.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-self.asl",
+    "sha256": "75a15302fe6dd25180d04236e82836005ab16c69fe7774acb257a8aafa99ba6d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-source-independence.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-source-independence.aml",
+    "sha256": "4464e9dda634b691a11ac7702ee8d5612fcc1931d3f3cd2fa7958a13ce56a22c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases/r2-source-independence.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases/r2-source-independence.asl",
+    "sha256": "1b5b82b069713f246b0e8b578a8427faa91b8172543c38228afe2b3ff2afb2e1"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/cases.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/cases.json",
+    "sha256": "7c57a71f76fb3d1aa1e4e4f0ab91a239d4d8b3042cd2118ad94982fb3fa1b560"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/inputs.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/inputs.json",
+    "sha256": "b5144f06390c694dcdf32a2c520b26c3881aca86f2dbdc37687846099b27668f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/observations-audited.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/observations-audited.json",
+    "sha256": "5f2f678cf1d03ef7cbf51c4af007523feb85c33b0a20518781f7c0926a97a57b"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/acpiexec-version.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/acpiexec-version.log",
+    "sha256": "a67be5cf6cb60ee508792de0ca6bdd3bce6b85126fcebe0cf3d462e864374cad"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/audit.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/audit.json",
+    "sha256": "dda1fcc6b571f0729b3a6439413f5fcd77aff57e27419c1fe1223f291a16194d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/iasl-version.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/iasl-version.log",
+    "sha256": "4911816d4e6a4d863a7158965fb616fb5bcb1831acdf90f81b53c7f12b543968"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/python.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/python.json",
+    "sha256": "defac660d3b48500755bbf71ca883c2d60d7f118eaa6c4fc5164888ec681c87e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-alias-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-alias-base-compile.log",
+    "sha256": "ea07d7f75046be8064be929acf475144ce99e73ee23fa83c7a24cf0456f0d97c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-alias-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-alias-execute.log",
+    "sha256": "dc6b143ea4514360869e6ee67584c95c3bef98b289346ad8d178a80da5634305"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-alias-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-alias-source-compile.log",
+    "sha256": "024350bdc22f8cb1929a9db6e64910b4ff1b9c13ce7bbbb2098e25a459f7c548"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-integer-replacement-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-integer-replacement-base-compile.log",
+    "sha256": "ea07d7f75046be8064be929acf475144ce99e73ee23fa83c7a24cf0456f0d97c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-integer-replacement-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-integer-replacement-source-compile.log",
+    "sha256": "6a0d7b6b9d427c197238290030ad8165a11079e7accc3494ad16d9b442a4b1af"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-nested-independence-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-nested-independence-base-compile.log",
+    "sha256": "ea07d7f75046be8064be929acf475144ce99e73ee23fa83c7a24cf0456f0d97c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-nested-independence-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-nested-independence-execute.log",
+    "sha256": "bc5fafeb3acec0d309ed592fbe704033bbba79052bc694072eb0ec498870eeca"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-nested-independence-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-nested-independence-source-compile.log",
+    "sha256": "df0fea82c11f881c755e73b09a979b0c9afc147e281453f9dd442fae6e10f358"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-old-target-local-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-old-target-local-base-compile.log",
+    "sha256": "ea07d7f75046be8064be929acf475144ce99e73ee23fa83c7a24cf0456f0d97c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-old-target-local-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-old-target-local-execute.log",
+    "sha256": "c27e84e755ccbc75297793a0327052904aafd4f23cb51487310a0b2d81563f23"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-old-target-local-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-old-target-local-source-compile.log",
+    "sha256": "3dd7687c1db2ca23d8705a460901365baa243b0adf3e6bf7be67b27ee6922d3c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-self-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-self-base-compile.log",
+    "sha256": "ea07d7f75046be8064be929acf475144ce99e73ee23fa83c7a24cf0456f0d97c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-self-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-self-execute.log",
+    "sha256": "a633ac33db9e8859ff8c231825c446196c5f4d610e49f9c25ffa74a87a98a588"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-self-old-index-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-self-old-index-base-compile.log",
+    "sha256": "ea07d7f75046be8064be929acf475144ce99e73ee23fa83c7a24cf0456f0d97c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-self-old-index-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-self-old-index-execute.log",
+    "sha256": "28dcc8b1512bc0536f49f5bcfd58d5b6b0433b5ed6b1b956396286f72d2384ea"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-self-old-index-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-self-old-index-source-compile.log",
+    "sha256": "0bbef89c18b196279d9282f7d024011bcbd96e3e5ba3de645c74ddb52ec2d690"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-self-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-self-source-compile.log",
+    "sha256": "1e3325db82188669f6165eeda59b088734b27070563ae77d1c7dd47e7797775c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-source-independence-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-source-independence-base-compile.log",
+    "sha256": "ea07d7f75046be8064be929acf475144ce99e73ee23fa83c7a24cf0456f0d97c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-source-independence-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-source-independence-execute.log",
+    "sha256": "42e84b066443a2ef744ee146c778f9bdd0f82bd683756cdb89acf02c05b4ac91"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r1-source-independence-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r1-source-independence-source-compile.log",
+    "sha256": "a527cdbfd95c0e8fda3ded83584d72dbe16fd06eb36b237cb49720d731128b39"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-alias-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-alias-base-compile.log",
+    "sha256": "9b3484f0437a9883345cce9314d2fd006b143e15c7cfd231b62641cebf1fb8eb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-alias-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-alias-execute.log",
+    "sha256": "963b6262769a9d6769d4f7ed896d9db71787ab5a96ef95eefe08ebc49ce516dc"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-alias-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-alias-source-compile.log",
+    "sha256": "46a92acfc574a73477f2f6df5de1ccbe1a185ce138c2a138dfcc46ec8e6c894d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-integer-replacement-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-integer-replacement-base-compile.log",
+    "sha256": "9b3484f0437a9883345cce9314d2fd006b143e15c7cfd231b62641cebf1fb8eb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-integer-replacement-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-integer-replacement-source-compile.log",
+    "sha256": "8102c79168992c944e4d56d556dc73c2e8139b87003b05585d6b931f14fd9584"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-nested-independence-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-nested-independence-base-compile.log",
+    "sha256": "9b3484f0437a9883345cce9314d2fd006b143e15c7cfd231b62641cebf1fb8eb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-nested-independence-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-nested-independence-execute.log",
+    "sha256": "e5f49c3ce3c1b0297e3eecc2b9642cbb606b0b4ceb672e2066dda0c95473ecc8"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-nested-independence-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-nested-independence-source-compile.log",
+    "sha256": "ee0483a092b32c4d7fbeec90fe7e63ad1c2cfc02bf7a44f0c9a1cbdd80a28820"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-old-target-local-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-old-target-local-base-compile.log",
+    "sha256": "9b3484f0437a9883345cce9314d2fd006b143e15c7cfd231b62641cebf1fb8eb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-old-target-local-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-old-target-local-execute.log",
+    "sha256": "fa9bff7fdfb40072d0023a5bfff84c0ee3982c57e8eb3a844fad347db8c3287c"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-old-target-local-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-old-target-local-source-compile.log",
+    "sha256": "4f6ddd29a8fd0c19bc431d89a5b4ad2047a430d78f6b628e9e45bf387e4f9d97"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-self-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-self-base-compile.log",
+    "sha256": "9b3484f0437a9883345cce9314d2fd006b143e15c7cfd231b62641cebf1fb8eb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-self-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-self-execute.log",
+    "sha256": "a9652518479f26561f3e1d48a5670d8bf6daf725ae634cf3c39bcca751be0c42"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-self-old-index-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-self-old-index-base-compile.log",
+    "sha256": "9b3484f0437a9883345cce9314d2fd006b143e15c7cfd231b62641cebf1fb8eb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-self-old-index-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-self-old-index-execute.log",
+    "sha256": "ee0639a35be5c7cad27cf2faf3592e57c951344cb35daf4e25793cc501b14852"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-self-old-index-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-self-old-index-source-compile.log",
+    "sha256": "34f1b74fcf79cf970d74e538926baf2df0fa2fbebdcae5d8f6bb7d57240f014d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-self-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-self-source-compile.log",
+    "sha256": "3444f85d433c62245859d96e8814bcb6a14499d50a06055842f20a6f0264da44"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-source-independence-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-source-independence-base-compile.log",
+    "sha256": "9b3484f0437a9883345cce9314d2fd006b143e15c7cfd231b62641cebf1fb8eb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-source-independence-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-source-independence-execute.log",
+    "sha256": "66bdec1c478f082c784a4139a22254098da0418edaebba3249bf3e21fa282ab9"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/r2-source-independence-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/r2-source-independence-source-compile.log",
+    "sha256": "a6522a3147ad9d1fef03ed925aee8698970fd2a8dea47c0ac063b615a881cfe8"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/results/report.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/results/report.json",
+    "sha256": "5b8ba4225ed8224bf0374410fa6837ba33182f67db5c2cb860aa8af984482871"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-self-index-oracle-_x89ccqb/tool-pins.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-self-index-oracle-_x89ccqb/tool-pins.json",
+    "sha256": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/PLAN.txt",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/PLAN.txt",
+    "sha256": "d980fe8b92c6edb32595f117e863f7c11da2e7bef3b56348631c6e7490936de3"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base1.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/base1.aml",
+    "sha256": "8ffdf4de87b5d8c536acd2ac1400daae14cb5e005d0ada111eebb3f1809a661f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base1.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/base1.asl",
+    "sha256": "6cfe7d358a7f930336d83c0478cc02f29c376b6ca9dbd73166345bd762e95256"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base2.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/base2.aml",
+    "sha256": "c71c26cb931e1ee284dcedd9606327935624cb4e4972889f7b78718f5b52adbd"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/base2.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/base2.asl",
+    "sha256": "0aafe49d2031ada16d799234abe1f4e8f64a2c377337d4587df3fbef161f1039"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-integer.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-integer.aml",
+    "sha256": "3a1383f9259315221a0152854b2e1ad35b001c0ce5c1ba8fa311ff91738ae185"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-integer.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-integer.asl",
+    "sha256": "a1ae2d1b3ae5f3040f87ab60d06849dc913d8871b9b068ed9f2acf911db8d781"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-package.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-package.aml",
+    "sha256": "dccb00dcc338cf68d9949a53aca1b8485817a1c06798d86da41a13304ee31b56"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-package.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r1-arg-package.asl",
+    "sha256": "989f718956cd365e58f96795c9c61004aecd4049998be146f496d228ab7a36ab"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-integer.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-integer.aml",
+    "sha256": "d126dd432572a20e5e50ef0c00d13cd34e25e0b171f1d8ed309e17aeee38416f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-integer.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-integer.asl",
+    "sha256": "b7e058ad5d2acedb049703ffe5e93ca83901533a57fcac740791044738717aba"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-package.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-package.aml",
+    "sha256": "ee28c8267113c39594bd1ef913b7e880e3930c0e60d7f211adde232816733c24"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-package.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r1-ref-package.asl",
+    "sha256": "b963a6009b6f084be07ed8bea8dd83a568983ff6f2fce7aca1002af732707707"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-integer.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-integer.aml",
+    "sha256": "63784792451916db5320305fe23aa09b0a03d3a3c671972227dcaa9ee3e9c2fd"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-integer.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-integer.asl",
+    "sha256": "94808259c1936d6925c3c55f932b58ffc98b87f15098ae5ae54e307f76b0c889"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-package.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-package.aml",
+    "sha256": "cbffe04cbbe3347997ae79ea6eedd7370f40935491bea466db6cb9b9be9a37c3"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-package.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r2-arg-package.asl",
+    "sha256": "798bf41f70e5ba3f26fbb967e534d26cf1d77e49c09b0e6e8e3363a3c77e267d"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-integer.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-integer.aml",
+    "sha256": "b18e72e761b77c6e6094bd5ff8cf76159591cfc748e994d21c789afee3b87557"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-integer.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-integer.asl",
+    "sha256": "27b41813798b40352f30907520ed53ed641fa060c6b878fce551f97fc3546202"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-package.aml",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-package.aml",
+    "sha256": "3f72d53eb132a540e2f056c6be6d1b0abdbdea407ec885a98d0405967bb60791"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-package.asl",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases/r2-ref-package.asl",
+    "sha256": "e194fcdc882cfcd79b13cd92f2fde26c8395c35934f50326223785ee4e4cccf0"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/cases.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/cases.json",
+    "sha256": "ff87db0eb587566b3a09d237259c4a44dd77a05447512f46eae3c8df806bd709"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/inputs.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/inputs.json",
+    "sha256": "cb945a2254d4d95c4b4b7b3cf867c17ab3deab686fed58773745fbcc88d4e7ca"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/observations-audited.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/observations-audited.json",
+    "sha256": "a3bcb764d933979388f3268666549df0ef89649e7a1df90b0c180fb8fcfac2b3"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/acpiexec-version.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/acpiexec-version.log",
+    "sha256": "a67be5cf6cb60ee508792de0ca6bdd3bce6b85126fcebe0cf3d462e864374cad"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/audit.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/audit.json",
+    "sha256": "11531f9b7ad20add446f1407ae242eda6d992982138b61123ef4c0f2b1d19b56"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/iasl-version.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/iasl-version.log",
+    "sha256": "4911816d4e6a4d863a7158965fb616fb5bcb1831acdf90f81b53c7f12b543968"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/python.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/python.json",
+    "sha256": "defac660d3b48500755bbf71ca883c2d60d7f118eaa6c4fc5164888ec681c87e"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-arg-integer-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-arg-integer-base-compile.log",
+    "sha256": "071f4db969f0ca192090b6aeda8284c3ceafc83c9e23b839f0513ac318b327be"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-arg-integer-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-arg-integer-execute.log",
+    "sha256": "8c2b0f1ad3b330f2515f19f3dd2f58b7344eebe4a476905b44da0a25cef69f40"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-arg-integer-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-arg-integer-source-compile.log",
+    "sha256": "7e09c4e425bd083bdeefc9dbfd9a765a7eb3ee6866cf4101e74a0fe95c730e4a"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-arg-package-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-arg-package-base-compile.log",
+    "sha256": "071f4db969f0ca192090b6aeda8284c3ceafc83c9e23b839f0513ac318b327be"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-arg-package-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-arg-package-execute.log",
+    "sha256": "bc02fa3e06078df687a390ea83af16bdc6bc05ffda98ac50250f2a28838d7edb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-arg-package-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-arg-package-source-compile.log",
+    "sha256": "7911b014eeccddb51b87d55d100ffc6d690f4c56f2b5fc0f892b58a5180d0e67"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-ref-integer-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-ref-integer-base-compile.log",
+    "sha256": "071f4db969f0ca192090b6aeda8284c3ceafc83c9e23b839f0513ac318b327be"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-ref-integer-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-ref-integer-execute.log",
+    "sha256": "204a6cfd23501e08b02c933eff52659d639463582e9acd1ce8438f951f02600b"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-ref-integer-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-ref-integer-source-compile.log",
+    "sha256": "eda9d0b1f723b06aa99029d5339a3cb068b45ab6efbdd6cbbedffa50069aa909"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-ref-package-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-ref-package-base-compile.log",
+    "sha256": "071f4db969f0ca192090b6aeda8284c3ceafc83c9e23b839f0513ac318b327be"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-ref-package-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-ref-package-execute.log",
+    "sha256": "5b6723bb9a34c7890594696e184f1fb93438b5221b606cd0a1d2ea07eb8ad73b"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r1-ref-package-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r1-ref-package-source-compile.log",
+    "sha256": "ca0669296e0739b6dd2be5adcc8bc9074bfe50c4ffaf102401c2aae04e7d7243"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-arg-integer-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-arg-integer-base-compile.log",
+    "sha256": "a78f22e0ced7e97021420b64f86ae3c72c8bef67bc853abfb60dd554041d5349"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-arg-integer-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-arg-integer-execute.log",
+    "sha256": "ae43a82890cf8c154a5198cf0198192f0f30218a237d85aad5179e8bb2c0adc6"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-arg-integer-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-arg-integer-source-compile.log",
+    "sha256": "8ed724737964f10b96834ba888fc1ca1658fec2e115143cddc763faa9be558d7"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-arg-package-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-arg-package-base-compile.log",
+    "sha256": "a78f22e0ced7e97021420b64f86ae3c72c8bef67bc853abfb60dd554041d5349"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-arg-package-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-arg-package-execute.log",
+    "sha256": "7130bfb48cab4cd0d742dcfacff9684adf20a990b1980e8f938342bc6dfb5cdb"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-arg-package-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-arg-package-source-compile.log",
+    "sha256": "bf3b408a3fe86ff338fd52eade725fcc0f31a16b751c9a116ec637a8aac9a843"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-ref-integer-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-ref-integer-base-compile.log",
+    "sha256": "a78f22e0ced7e97021420b64f86ae3c72c8bef67bc853abfb60dd554041d5349"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-ref-integer-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-ref-integer-execute.log",
+    "sha256": "6b20e2b5fe561554eb04bfa395bb32fb63079a86cdfa91a8c3d5ebfa4a5a40de"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-ref-integer-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-ref-integer-source-compile.log",
+    "sha256": "a21c5d4ff2593641a3d33cad426fba58f695ac5f22a01100556af4795b146d69"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-ref-package-base-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-ref-package-base-compile.log",
+    "sha256": "a78f22e0ced7e97021420b64f86ae3c72c8bef67bc853abfb60dd554041d5349"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-ref-package-execute.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-ref-package-execute.log",
+    "sha256": "9e2e30ea532f0528c647b633f3a95850f60bb0b70ffde4a86165dc94a5ea7674"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/r2-ref-package-source-compile.log",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/r2-ref-package-source-compile.log",
+    "sha256": "1ea5fcafec210bd0051b4913d39ac39288e96806369514ebfbe76cfe299da03f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/results/report.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/results/report.json",
+    "sha256": "cfb1a1e3acf37adba23561d01d7b44ef3219ed1f250b8b030cf5158c7fa6cc8f"
+  },
+  {
+    "original": "/home/doc/git/.acpi-proof-work/named-package-reference-oracle-dd9e_1rl/tool-pins.json",
+    "path": "tests/aml-integer-ownership/reference/named-package-reference-oracle-dd9e_1rl/tool-pins.json",
+    "sha256": "63b4e2eab8312270127d242e81e586cbfe17d297b10740a1798b0807f53beb08"
+  }
+]

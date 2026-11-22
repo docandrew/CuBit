@@ -1,0 +1,1 @@
+DefinitionBlock ("", "DSDT", 1, "CUBIT", "TOBREF", 1) { Name (BUFF,Buffer (2) {0x41,0x42}) Method (CTRL,0) {Return (One)} Method (TEST,0) {CopyObject (RefOf (BUFF),Local0) Return (ToBuffer (Local0))} }

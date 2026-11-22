@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8"><title>CuBitMediaNegativeLoading</title>
+<body style="margin:24px;background:#f4f2ec;color:#24313d;font:18px sans-serif">
+<h1>Penny media recovery</h1><p id="status">Checking unsupported features and damaged files...</p>
+<video id="video" muted width="512" height="384"></video>
+<canvas id="canvas" width="64" height="48" hidden></canvas>
+<script>
+const status=document.getElementById('status');
+function report(s){fetch('/report?'+encodeURIComponent(s)).catch(()=>{});}
+function fail(e){report('FAIL '+String(e));status.textContent=String(e);document.title='CuBitMediaNegativeFAIL';}
+function deadline(p){return Promise.race([p,new Promise((_,reject)=>setTimeout(()=>reject(Error('Timed out')),10000))]);}
+async function test(){
+ if(typeof RTCPeerConnection!=='undefined')throw Error('Unexpected WebRTC exposure');
+ let denied=0;
+ for(let i=0;i<8;i++){try{let context=new AudioContext();await context.close();throw Error('Unexpected audio availability');}catch(e){if(e.name!=='NotSupportedError')throw e;denied++;}}
+ report('audio rejected '+denied);
+ for(const path of ['/truncated.webm','/invalid.webm','/missing.webm']){
+  report('start '+path);
+  await deadline(new Promise((resolve,reject)=>{
+   video.onerror=()=>{if(!video.error)reject(Error('Missing media error'));else resolve();};
+   video.onloadeddata=()=>reject(Error('Invalid media decoded'));
+   video.src=path;video.load();
+  }));
+  report('handled '+path);
+  video.removeAttribute('src');video.load();
+ }
+ video.onloadeddata=null;
+ await deadline(new Promise((resolve,reject)=>{
+  video.onerror=()=>reject(Error('Recovery playback failed'));
+  video.onended=()=>{try{let c=canvas.getContext('2d');c.drawImage(video,0,0,64,48);let b=c.getImageData(0,0,64,48).data;let changed=0;for(let i=4;i<b.length;i+=4)if(b[i]!==b[0]||b[i+1]!==b[1]||b[i+2]!==b[2])changed++;if(video.videoWidth!==64||changed<500)throw Error('Recovery pixels incorrect');resolve();}catch(e){reject(e);}};
+  video.src='/vp9.webm';video.play().catch(reject);
+ }));
+ status.textContent=denied+' unsupported audio requests and 3 media errors handled; VP9 playback recovered.';
+ report('PASS');document.title='CuBitMediaNegativePASS2';
+}
+test().catch(fail);
+</script>

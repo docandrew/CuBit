@@ -1,0 +1,11 @@
+--  The wait-heartbeat bound of intel-gpu's bring-up waits.
+project Wait_Heartbeat is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("wait_heartbeat_tests.adb",
+     "intel_gpu_wait_heartbeat.ads", "intel_gpu_wait_heartbeat.adb");
+   for Object_Dir use "build-wait-heartbeat";
+   for Main use ("wait_heartbeat_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Wait_Heartbeat;

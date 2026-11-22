@@ -1,0 +1,15 @@
+project Vulkan_Owned extends "vulkan_affine.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use Vulkan_Affine'Source_Files &
+     ("vulkan_owned_tests.adb", "vulkan_owned_bridge.ads", "vulkan_owned_bridge.adb",
+      "vulkan_owned_image.h", "vulkan_owned_image.c", "vulkan_image_owner.ads",
+      "vulkan_image_owner.adb", "vulkan_image_ffi.ads", "vulkan_image_ffi.adb",
+      "compositor_storage.ads", "compositor_storage.adb");
+   for Object_Dir use "build/vulkan-owned/obj";
+   for Exec_Dir use "build/vulkan-owned";
+   for Main use ("vulkan_owned_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+      for Default_Switches ("C") use ("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-DCUBIT_VULKAN_OWNED_IMAGE_TEST=1");
+   end Compiler;
+end Vulkan_Owned;

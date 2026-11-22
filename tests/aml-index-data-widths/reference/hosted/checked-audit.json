@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-data-update-Ho0dUXUe/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-data-update-Ho0dUXUe/source/tests/aml-index-data-widths/results/checked-h_l_irh8",
+  "mode": "checked",
+  "inputs": 230,
+  "references": 8,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 315,
+  "stages": 2,
+  "logs": {
+    "bank_access_tests": "Bank access checks 244"
+  },
+  "ALI": 77,
+  "dependencies": 1373,
+  "strict_commands": 76,
+  "audit_sha256": "fdb250bbe36bda15b746ef6910bf9825185f0f350dd870723f84ff61545fb574",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

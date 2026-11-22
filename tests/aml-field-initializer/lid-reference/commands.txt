@@ -1,0 +1,2 @@
+iasl -p lid lid.asl
+acpiexec -di -b 'execute LID0._HID; execute LCLO; execute LID0._LID; execute LOPN; execute LID0._LID; execute LHI0; execute LID0._LID' lid.aml

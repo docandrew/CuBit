@@ -1,0 +1,7 @@
+# ccl-build's embedded-blob fixture: requests nothing.
+(Executable_Manifest
+  identity => "com.cubit.test.embed-check"
+  version => "1.0.0"
+  # ABI-002: its debug text (CuBit.Console_Route).
+  requests => [(service "logstore" "logstore")]
+  optional => ["logstore"])

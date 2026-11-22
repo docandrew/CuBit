@@ -1,0 +1,74 @@
+# The public preview's startup (images/preview.ccl): init-usb-live without
+# development-only entries. No ccl-remote (no LAN remote session at all),
+# and no boot-diagnostics window at startup.
+# Services and applications below are on ISO9660, not the bootstrap archive.
+(startup v1
+  # DBG-001: debugging is a system policy. The preview ships the Debugger
+  # with Development (the default), so it can attach to the demo targets.
+  (policy (System_Policy debugging => Debugging.Development))
+  (start "logstore.svc" (priority 5))
+  # MET-002: the metrics store, before every program that declares a
+  # com.cubit-os.stdmetric outlet (every program may), so their outlets are
+  # wired at launch.
+  (start "metrics.svc" (priority 5))
+  (start "clock.svc" (priority 5))
+  # The agent path (AGENT-002): tls.svc holds the trust store (tls/roots.der)
+  # and connects for llm.svc, whose one tls-scope is the Messages API host.
+  # timesync keeps the wall clock certificate validation needs.
+  (start "tls.svc" (priority 5) (network approve-declared))
+  # (replace transparent): timesync has no clients and keeps nothing (the
+  # next instance polls again); it exits on Stop between polls.
+  (start "timesync.svc" (priority 5) (network approve-declared) (replace transparent))
+  (start "config-storage.svc" (priority 5) (role config-storage))
+  (start "display.svc" (priority 5))
+  # ACPI (ACPI-ONE-001): the one acpi.svc holds the hardware grant (FADT
+  # fixed blocks, FACS/NVS memory), the platform-register pool through
+  # its firmware-data endpoint and the read-only PCI configuration
+  # broker, and runs AML over them in-process.
+  # (replace graceful): a system generation may switch it live (cubit-remote
+  # system replace). procmgr sends Stop; acpi.svc closes its consumers,
+  # retires the hardware through its shutdown controller and exits 0 within
+  # the stop grace; the new program gets the same approvals and runs
+  # startup again from the sealed tables (headless acpi-live-replace). One
+  # that has not registered by the end of the health window is stopped and
+  # the program before runs again. Startup is re-run, device _INI included,
+  # not handed over (no firmware-state handover yet, LIVE-001): a
+  # development path while bring-up stops before _INI on the laptop.
+  (start "acpi.svc" (priority 5) (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Known_Windows))
+    (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (platform-power approve-declared)
+    (acpi-firmware-data approve-declared) (acpi-pci-config approve-declared)
+    (replace graceful)
+    # The root stop keeps it for the firmware's last step (PWR-003).
+    (stop-stage power-tail))
+  # Dictionary, thesaurus and spelling (docs/lexicon.md).
+  (start "lexicon.svc" (priority 4))
+  # GPU rendering is a settings grant (desktop.render.gpu, default on);
+  # without a supported GPU devmgr refuses the session and Desktop renders
+  # in software. One image for every machine (HW-002).
+  # BUG-001: a desktop that fails is started again (procmgr, growing delay).
+  # (replace graceful): a system generation may switch Desktop live. On Stop
+  # it hands every output lease and buffer back to Display and exits 0
+  # within the stop grace; the new program takes the display (headless
+  # desktop-live-replace). Windows are not handed over yet (UI-037): the
+  # apps Desktop hosts lose them.
+  (start "desktop.svc" (priority 4) (render setting "desktop.render.gpu")
+    (restart on-failure) (replace graceful))
+  # tls.svc has registered by now (llm.svc's TLS scope needs it). The API
+  # key is the named secret anthropic-api-key, typed into agent.app's
+  # masked entry; only llm.svc's registered role may use it (SEC-022).
+  (start "secrets.svc" (priority 5)
+    (arguments (Secrets_Parameters
+      grant => (Secret_Grant secret => "anthropic-api-key" holder => Secret_Holder.Llm_Service))))
+  (start "llm.svc" (priority 5) (network approve-declared)
+    (arguments (Llm_Service_Parameters
+      endpoint => "api.anthropic.com:443" api_key_secret => "anthropic-api-key")))
+  # The Debugger's demo targets (DBG-001): an Ada and a Rust program whose
+  # threads keep changing their data, to attach to from the Debugger.
+  (start "debug-demo.app" (priority 3))
+  (start "debug-demo-rs.app" (priority 3))
+  # vmm.app (VMM-001, EXPERIMENTAL) is on the image but not started. Only
+  # an entry here can approve its VM creation: a program the Desktop or a
+  # console launches gets the user session's envelope, which never holds a
+  # kernel object (procmgr's Session_Launch). To boot Linux in a VM at
+  # startup, add: (start "vmm.app" (priority 3) (vm-create approve-declared))
+)

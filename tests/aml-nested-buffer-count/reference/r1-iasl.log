@@ -1,0 +1,23 @@
+/home/doc/git/.acpi-proof-work/nested-buffer-count-oracle-1l6f4h3j/buffer-r1.asl      3:  Method (TEST, 0) { Store (51, Local0) Name (P000, Package () { Buffer (Local0) {}, Buffer (Local0) {}, Buffer (Local0) {} }) Return (Add (Add (SizeOf (DerefOf (Index (P000, Zero))), SizeOf (DerefOf (Index (P000, One)))), SizeOf (DerefOf (Index (P000, 2)))
+[*** iASL: Very long input line, message below refers to column 49 ***]
+Remark   2173 -    Creation of named objects within a method is highly inefficient, use globals or method local variables instead (\TEST)
+
+/home/doc/git/.acpi-proof-work/nested-buffer-count-oracle-1l6f4h3j/buffer-r1.asl      3:  Method (TEST, 0) { Store (51, Local0) Name (P000, Package () { Buffer (Local0) {}, Buffer (Local0) {}, Buffer (Local0) {} }) Return (Add (Add (SizeOf (DerefOf (Index (P000, Zero))), SizeOf (DerefOf (Index (P000, One)))), SizeOf (DerefOf (Index (P000, 2)))
+[*** iASL: Very long input line, message below refers to column 13 ***]
+Remark   2120 -    Control Method should be made Serialized due to creation of named objects within (\TEST)
+
+/home/doc/git/.acpi-proof-work/nested-buffer-count-oracle-1l6f4h3j/buffer-r1.asl      4:  Method (DRCT, 0) { Store (51, Local0) Name (B000, Buffer (Local0) {}) Return (SizeOf (B000)) }
+Remark   2173 -          Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\DRCT)
+
+/home/doc/git/.acpi-proof-work/nested-buffer-count-oracle-1l6f4h3j/buffer-r1.asl      4:  Method (DRCT, 0) { Store (51, Local0) Name (B000, Buffer (Local0) {}) Return (SizeOf (B000)) }
+Remark   2120 -    Control Method should be made Serialized due to creation of named objects within ^  (\DRCT)
+
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/nested-buffer-count-oracle-1l6f4h3j/buffer-r1.asl -     416 bytes     20 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/nested-buffer-count-oracle-1l6f4h3j/results/buffer-r1.aml -     122 bytes     16 opcodes       4 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 4 Remarks, 0 Optimizations

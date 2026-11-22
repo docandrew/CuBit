@@ -1,0 +1,8 @@
+project Proof is
+ for Source_Dirs use ("../../userspace/services/acpi/power", "../../userspace/services/acpi/hid-i2c");
+ for Source_Files use ("acpi_battery_status.ads", "acpi_battery_status.adb", "hid_i2c_wire.ads", "hid_i2c_wire.adb", "hid_i2c_descriptors.ads", "hid_i2c_descriptors.adb");
+ for Object_Dir use external ("ACPI_LEAF_PROOF_BUILD") & "/obj";
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+ end Compiler;
+end Proof;

@@ -1,0 +1,131 @@
+with Ada.Text_IO;
+with CuBit.Backend_Targets;
+procedure Backend_Targets_Tests is
+   package B renames CuBit.Backend_Targets;
+   use type B.Phase, B.Identifier, B.State;
+   S : B.State;
+   Accepted : Boolean;
+begin
+   B.Prepare (S, Accepted); pragma Assert (not Accepted);
+   B.Cleared (S);
+   for I in B.Identifier range 1 .. 10000 loop
+      declare Old : constant B.Buffer := B.Active (S); begin
+         B.Prepare (S, Accepted); pragma Assert (Accepted and B.Writable (S, 1 - Old));
+         B.Prepare (S, Accepted); pragma Assert (not Accepted);
+         B.Seal (S, I);
+         pragma Assert (not B.Writable (S, 0) and not B.Writable (S, 1));
+         B.Prepare (S, Accepted); pragma Assert (not Accepted);
+         B.Complete (S, I, True);
+         pragma Assert (B.Active (S) = 1 - Old and B.Current (S) = B.Idle);
+      end;
+   end loop;
+   --  Three buffers (Intel): the target rotates and is never the active one.
+   declare
+      T : B.State;
+   begin
+      B.Set_Count (T, 3);
+      B.Cleared (T);
+      B.Set_Count (T, 2); pragma Assert (B.Count (T) = 3);
+      for I in B.Identifier range 1 .. 3000 loop
+         declare Old : constant B.Buffer := B.Active (T); begin
+            B.Prepare (T, Accepted);
+            pragma Assert (Accepted and B.Target (T) = (Old + 1) mod 3 and
+                           not B.Writable (T, Old));
+            B.Seal (T, I);
+            pragma Assert (for all X in B.Buffer => not B.Writable (T, X));
+            B.Complete (T, I, True);
+            pragma Assert (B.Active (T) = (Old + 1) mod 3);
+         end;
+      end loop;
+   end;
+   for Fault in 0 .. 5 loop
+      declare Item : B.State; Before : B.State; begin
+         B.Cleared (Item); B.Prepare (Item, Accepted); B.Seal (Item, 123);
+         case Fault is
+            when 0 => B.Complete (Item, 122, True);
+            when 1 => B.Complete (Item, 0, True);
+            when 2 => B.Complete (Item, 123, False);
+            when 3 => B.Cleared (Item);
+            when 4 => B.Quarantine (Item);
+            when others => B.Seal (Item, 124);
+         end case;
+         pragma Assert (B.Current (Item) = B.Failed and B.Active (Item) = 0 and B.Token (Item) = 123);
+         Before := Item;
+         for Repeat in 1 .. 100 loop
+            B.Prepare (Item, Accepted); pragma Assert (not Accepted);
+            B.Complete (Item, 123, True); B.Cleared (Item);
+            pragma Assert (Item = Before);
+         end loop;
+      end;
+   end loop;
+   --  Abandon (a certain GPU refusal): back to Idle on the same active
+   --  buffer and target; any other token fails the instance.
+   for N in B.Buffer_Count loop
+      declare Item : B.State; Before_Target : B.Buffer; begin
+         B.Set_Count (Item, N); B.Cleared (Item);
+         for Round in 1 .. 50 loop
+            B.Prepare (Item, Accepted); pragma Assert (Accepted);
+            Before_Target := B.Target (Item);
+            B.Seal (Item, B.Identifier (Round));
+            B.Abandon (Item, B.Identifier (Round));
+            pragma Assert (B.Current (Item) = B.Idle and B.Token (Item) = 0 and
+                           B.Target (Item) = Before_Target and B.Count (Item) = N);
+         end loop;
+         B.Prepare (Item, Accepted); B.Seal (Item, 77);
+         B.Abandon (Item, 78);
+         pragma Assert (B.Current (Item) = B.Failed and B.Token (Item) = 77);
+         B.Abandon (Item, 77);
+         pragma Assert (B.Current (Item) = B.Failed);
+      end;
+   end loop;
+   --  UI-020: the compositor names the target (lent scanout buffers).
+   --  Any buffer but the active one is accepted; the active one, one past
+   --  the count, or a second prepare is refused and changes nothing. The
+   --  named target becomes active on completion, never another.
+   declare
+      T, Before : B.State;
+      Choice : B.Buffer;
+      Seed : Natural := 7;
+   begin
+      B.Set_Count (T, 3); B.Cleared (T);
+      for I in B.Identifier range 1 .. 3000 loop
+         Seed := (Seed * 1103 + 12345) mod 65536;
+         Choice := (B.Active (T) + 1 + Seed mod 2) mod 3;
+         Before := T;
+         B.Prepare_Target (T, B.Active (T), Accepted);
+         pragma Assert (not Accepted and T = Before);
+         B.Prepare_Target (T, Choice, Accepted);
+         pragma Assert (Accepted and B.Target (T) = Choice and B.Writable (T, Choice) and
+                        not B.Writable (T, B.Active (T)));
+         Before := T;
+         B.Prepare_Target (T, (Choice + 1) mod 3, Accepted);
+         pragma Assert (not Accepted and T = Before);
+         B.Seal (T, I);
+         pragma Assert (for all X in B.Buffer => not B.Writable (T, X));
+         if Seed mod 5 = 0 then
+            --  A certain refusal keeps the active buffer.
+            declare Old : constant B.Buffer := B.Active (T); begin
+               B.Abandon (T, I);
+               pragma Assert (B.Current (T) = B.Idle and B.Active (T) = Old);
+            end;
+         else
+            B.Complete (T, I, True);
+            pragma Assert (B.Active (T) = Choice and B.Current (T) = B.Idle);
+         end if;
+      end loop;
+      --  Two buffers: the only choice is the one not shown.
+      declare U : B.State; begin
+         B.Cleared (U);
+         B.Prepare_Target (U, 2, Accepted); pragma Assert (not Accepted);
+         B.Prepare_Target (U, 0, Accepted); pragma Assert (not Accepted);
+         B.Prepare_Target (U, 1, Accepted); pragma Assert (Accepted);
+      end;
+      --  Unconfigured or failed instances accept no target.
+      declare U : B.State; begin
+         B.Prepare_Target (U, 1, Accepted); pragma Assert (not Accepted);
+         B.Cleared (U); B.Quarantine (U);
+         B.Prepare_Target (U, 1, Accepted); pragma Assert (not Accepted);
+      end;
+   end;
+   Ada.Text_IO.Put_Line ("BACKEND-TARGETS: PASS 10000 two-buffer and 3000 three-buffer flips and stale/unknown/faulted lease retention; abandon; 3000 named targets");
+end Backend_Targets_Tests;

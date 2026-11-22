@@ -1,0 +1,9 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/mutex-oracle-identifier-source-f7kk0a1p/cases/r1-unowned-release.asl -     361 bytes     18 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/mutex-oracle-identifier-validation-j8q69sjp/results/r1-unowned-release/table.aml -     134 bytes     10 opcodes       8 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations

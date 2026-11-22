@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c98a4a"/><stop offset="1" stop-color="#8a5222"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e2e8f2"/></linearGradient><linearGradient id="g3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8ecf2"/><stop offset="1" stop-color="#9aa4b8"/></linearGradient></defs>
+<path d="M 9 8 L 37 8 Q 39 8 39 10 L 39 43 Q 39 45 37 45 L 9 45 Q 7 45 7 43 L 7 10 Q 7 8 9 8 Z" fill="url(#g1)" stroke="#2a1606" stroke-width="2.0" stroke-linejoin="round"/>
+<polygon points="11.00,12.00 35.00,12.00 35.00,41.00 11.00,41.00" fill="url(#g2)" stroke="#2a1606" stroke-width="1.2" stroke-linejoin="round"/>
+<path d="M 17 5 L 29 5 L 30 11 L 16 11 Z" fill="url(#g3)" stroke="#2a1606" stroke-width="1.4" stroke-linejoin="round"/>
+<polyline points="14.00,19.00 16.50,21.50 21.00,16.50" fill="none" stroke="#22c55e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="24.00,19.00 32.00,19.00" fill="none" stroke="#7a869e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="14.00,26.50 16.50,29.00 21.00,24.00" fill="none" stroke="#22c55e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="24.00,26.50 32.00,26.50" fill="none" stroke="#7a869e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="14.00,34.00 16.50,36.50 21.00,31.50" fill="none" stroke="#22c55e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="24.00,34.00 32.00,34.00" fill="none" stroke="#7a869e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

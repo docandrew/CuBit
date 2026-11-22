@@ -1,0 +1,19 @@
+--  SPARK proof of the debugger engine's untrusted-input readers (DBG-001):
+--  bounded byte reads and the DWARF expression evaluator.
+--  systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 gnatprove -P prove.gpr -j2
+project Prove is
+   for Source_Dirs use ("../../userspace/lib/debug", "../../userspace/lib/debug/hosted",
+                        "../../userspace/runtime/gnat");
+   for Source_Files use ("cubit.ads", "cubit-debug.ads", "cubit-debug_target.ads",
+                         "cubit-debug-bytes.ads", "cubit-debug-bytes.adb",
+                         "cubit-debug-cfi.ads",
+                         "cubit-debug-expressions.ads", "cubit-debug-expressions.adb",
+                         "cubit-debug-rust_names.ads", "cubit-debug-rust_names.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--mode=all");
+   end Prove;
+end Prove;

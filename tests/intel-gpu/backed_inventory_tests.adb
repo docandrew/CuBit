@@ -1,0 +1,41 @@
+with Ada.Text_IO;
+with Interfaces; use Interfaces;
+with Intel_GPU_VM_Image;
+with Intel_GPU_VM_Image.Snapshots;
+with Intel_GPU_ADLN_PPGTT; use Intel_GPU_ADLN_PPGTT;
+procedure Backed_Inventory_Tests is
+   package VM is new Intel_GPU_VM_Image (8);
+   package Snapshots is new VM.Snapshots;
+   Source, Candidate : VM.Image;
+   OK : Boolean;
+   First : Natural;
+   Epoch : Unsigned_64;
+begin
+   pragma Assert (VM.Backed_Tables (Source) = 0);
+   VM.Initialize (Source, [4096, 8192, 12288, 16384, others => 0], OK, Backing_Count => 4);
+   pragma Assert (OK and VM.Backed_Tables (Source) = 4 and VM.Used (Source) = 1);
+   VM.Map_Page (Source, 4096, 16#100000#, Write_Back, Read_Write, OK);
+   pragma Assert (OK and VM.Used (Source) = 4 and VM.Backed_Tables (Source) = 4);
+   VM.Append_Offline_Backing (Source, [5 => 20480], First, OK);
+   pragma Assert (OK and First = 5 and VM.Backed_Tables (Source) = 5);
+   VM.Append_Offline_Backing (Source, [20480], First, OK);
+   pragma Assert (not OK and First = 0 and VM.Backed_Tables (Source) = 5);
+   pragma Assert (not VM.DMA_Disjoint (Source, 20480, 4096));
+   pragma Assert (VM.DMA_Disjoint (Source, 24576, 4096));
+   VM.Seal (Source, OK); pragma Assert (OK);
+   VM.Prepare_Update (Candidate, Source,
+     [40960, 45056, 49152, 53248, 57344, 61440, 0, 0], OK, Backing_Count => 6);
+   pragma Assert (OK and VM.Backed_Tables (Candidate) = 6 and VM.Used (Candidate) = 4);
+   VM.Seal (Candidate, OK); pragma Assert (OK);
+   Snapshots.Adopt_Committed (Source, Candidate, OK);
+   pragma Assert (OK and VM.Backed_Tables (Source) = 6 and VM.Used (Source) = 4);
+   pragma Assert (not VM.DMA_Disjoint (Source, 61440, 4096));
+   Epoch := VM.Revision (Source);
+   Snapshots.Forget_Retired (Source, Epoch, VM.Root_DMA (Source), False, OK);
+   pragma Assert (not OK and VM.Backed_Tables (Source) = 6);
+   Snapshots.Forget_Retired (Source, Epoch, VM.Root_DMA (Source), True, OK);
+   pragma Assert (OK and VM.Backed_Tables (Source) = 0);
+   VM.Initialize (Source, [81920, others => 0], OK, Backing_Count => 1);
+   pragma Assert (OK and VM.Backed_Tables (Source) = 1 and VM.Used (Source) = 1);
+   Ada.Text_IO.Put_Line ("Backed inventory PASS: reserved/used distinction, rejected alias, snapshot adoption, authenticated retirement and reuse");
+end Backed_Inventory_Tests;

@@ -1,0 +1,26 @@
+{
+  "status": "EXPECTED_NATIVE_REGRESSION_FAILURE",
+  "negative_session": 23704,
+  "positive_session": 24825,
+  "failure": "Unrepaired UI scrolls row17 but Refresh click does not activate within10seconds",
+  "positive": "Repaired UI scrolls row17, accepts Refresh click and keyboard F5",
+  "oracle_difference": "Only Files artifact path; same pointer positions and timing",
+  "positive_artifact": {
+    "status": "LINK_PASS",
+    "sha256": "fc9fe52c27f35ed84192f4b69777586290af1515c13fe261d61855e2f9d148a3",
+    "native_executed": false,
+    "scope": "Current Files and rebased private UI, explicit frozen native runtime/libc/fonts"
+  },
+  "negative_artifact": {
+    "status": "LINK_PASS",
+    "sha256": "6ac15d64481bf024ce3843666c16188efb00d9ec205b19e2f2b2cfc5d9923bac",
+    "native_executed": false,
+    "scope": "Current Files and rebased private UI, explicit frozen native runtime/libc/fonts"
+  },
+  "native_scale": [
+    1,
+    1
+  ],
+  "hardware_validated": false,
+  "shared_ui_applied": false
+}

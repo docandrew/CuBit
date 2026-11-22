@@ -1,0 +1,25 @@
+{
+  "status": "PASS",
+  "gpu_enabled": false,
+  "scope": "Native CuBit Files, software Mesa compositor and frozen platform; real pointer scrollbar then Refresh click plus keyboard F5. No hardware/DPI-above100%/proof claim.",
+  "binary_sha256": "e1134d1ecb65b996960437149e969e16aba4259b7c27557f52c30b3fcf748b1d",
+  "memory": "1G",
+  "render_approved": false,
+  "render_attempts": [
+    [
+      "4294967329",
+      "TRUE"
+    ]
+  ],
+  "software_fallback": "PASS",
+  "hardware_validated": false,
+  "files_scrollbar": true,
+  "files_refresh_after_scroll": true,
+  "files_keyboard_refresh": true,
+  "native_scale": [
+    1,
+    1
+  ],
+  "inputs_verified": 877,
+  "artifact_sha256": "fc9fe52c27f35ed84192f4b69777586290af1515c13fe261d61855e2f9d148a3"
+}

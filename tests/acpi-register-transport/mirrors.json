@@ -1,0 +1,8 @@
+{
+  "tests/acpi-register-transport/fixtures/api/cubit-handles-ipc.ads": "userspace/runtime/gnat/cubit-handles-ipc.ads",
+  "tests/acpi-register-transport/fixtures/api/cubit-handles.ads": "userspace/runtime/gnat/cubit-handles.ads",
+  "tests/acpi-register-transport/fixtures/api/cubit-messages.ads": "userspace/runtime/gnat/cubit-messages.ads",
+  "tests/acpi-register-transport/fixtures/api/cubit-monotonic.ads": "userspace/runtime/gnat/cubit-monotonic.ads",
+  "tests/acpi-register-transport/fixtures/api/cubit-process_ids.ads": "userspace/runtime/gnat/cubit-process_ids.ads",
+  "tests/acpi-register-transport/fixtures/api/cubit.ads": "userspace/runtime/gnat/cubit.ads"
+}

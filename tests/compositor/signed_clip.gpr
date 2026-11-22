@@ -1,0 +1,10 @@
+project Signed_Clip is
+   for Source_Dirs use (".", "../../userspace/lib/ui");
+   for Source_Files use ("client_signed_clip.ads", "client_signed_clip.adb", "signed_clip_tests.adb");
+   for Object_Dir use "build/signed-clip/obj";
+   for Exec_Dir use "build/signed-clip";
+   for Main use ("signed_clip_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Signed_Clip;

@@ -1,0 +1,108 @@
+[
+  {
+    "key": "copy1",
+    "base": "cases/base1.asl",
+    "source": "cases/copy1.asl",
+    "methods": [
+      "PRAW",
+      "PDRE",
+      "PAFT",
+      "PLOC",
+      "CLOC",
+      "CEXP",
+      "CSRC",
+      "CDST",
+      "PASS",
+      "DRET"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/base1.asl"
+        ],
+        "log": "results/copy1-base-compile.log",
+        "sha256": "6fc0e4337304f430d51869caf7e9008cc28747dcbb012675d367ff468ee61d7a"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/copy1.asl"
+        ],
+        "log": "results/copy1-source-compile.log",
+        "sha256": "e19d8a775089b275695ae6e7081d69ac0c7feb91ca4dee971ebc14e35333eae2"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/copy1.aml;execute PRAW;execute PDRE;execute PAFT;execute PLOC;execute CLOC;execute CEXP;execute CSRC;execute CDST;execute PASS;execute DRET",
+        "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/base1.aml"
+      ],
+      "log": "results/copy1-execute.log",
+      "sha256": "082782d27d99dacb646044733217b75528b221b38546a1d669f517ae8fb90d11"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "copy2",
+    "base": "cases/base2.asl",
+    "source": "cases/copy2.asl",
+    "methods": [
+      "PRAW",
+      "PDRE",
+      "PAFT",
+      "PLOC",
+      "CLOC",
+      "CEXP",
+      "CSRC",
+      "CDST",
+      "PASS",
+      "DRET"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/base2.asl"
+        ],
+        "log": "results/copy2-base-compile.log",
+        "sha256": "9e44c2adcab0e294e622db5405de4bdb31ad67694b3d8bede937bcb043c6c36a"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/copy2.asl"
+        ],
+        "log": "results/copy2-source-compile.log",
+        "sha256": "f9f9149dbe3768acc92c30a06a17683c0b6dfa4ad66bb36376571ca9d85f4b27"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/copy2.aml;execute PRAW;execute PDRE;execute PAFT;execute PLOC;execute CLOC;execute CEXP;execute CSRC;execute CDST;execute PASS;execute DRET",
+        "/home/doc/git/.acpi-proof-work/osi-copy-package-valid-fcq5c9zx/cases/base2.aml"
+      ],
+      "log": "results/copy2-execute.log",
+      "sha256": "b6c5a7c3b667e3bfdc15fd4b496b834bcc6da42560bf1bcd3bcb6a441f5a948a"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  }
+]

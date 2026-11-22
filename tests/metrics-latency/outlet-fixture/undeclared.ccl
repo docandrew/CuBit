@@ -1,0 +1,5 @@
+# The metrics-latency test's undeclared fixture (MET-002): the same program
+# without the outlet, so its launcher gives it none.
+(Executable_Manifest
+  identity => "com.cubit.metrics-undeclared"
+  version => "0.1.0")

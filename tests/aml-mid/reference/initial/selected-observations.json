@@ -1,0 +1,564 @@
+[
+  {
+    "group": "unoptimized",
+    "case": "string",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 03 = \"BCD\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "buffer",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Buffer] Length 02 =     0000: 00 FE                                            // .."
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "emptystring",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 00 = \"\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "emptybuffer",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Buffer] Length 00 = "
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "outside",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 00 = \"\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "hugecount",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 02 = \"BC\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "hugeindex",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 00 = \"\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "zero",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 00 = \"\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "integer",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Buffer] Length 03 =     0000: 77 66 55                                         // wfU"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "coerce",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 02 = \"BC\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "directindex",
+    "revision": 1,
+    "status": "compiler_rejection",
+    "detail": "/home/doc/git/.acpi-proof-work/aml-mid-oracle-xqon789m/oracle/directindex1.asl      1: DefinitionBlock(\"\",\"DSDT\",1,\"CUBIT\",\"MIDPROBE\",1){Name(MARK,Zero) Name(INT0,Zero) Name(STR0,\"QQQQ\") Name(BUF0,Buffer(){0x10,0x20,0x30,0x40}) Name(BUF1,Buffer(){1,2,3,4}) Name(PKG0,Package(){Buffer(){0x41,0x42,0x43,0x44}}) Method(GETI,0){Return(Index(PKG0,0\n[*** iASL: Very long input line, message below refers to column 748 ***]\nError    6058 -    Invalid type ([Reference] found, Mid operator requires [Integer|String|Buffer])\n\n"
+  },
+  {
+    "group": "oracle",
+    "case": "heldindex",
+    "revision": 1,
+    "status": "AE_AML_OPERAND_TYPE",
+    "result_lines": [],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "methodindex",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Buffer] Length 02 =     0000: 42 43                                            // BC"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "heldref",
+    "revision": 1,
+    "status": "AE_AML_OPERAND_TYPE",
+    "result_lines": [],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "deref",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Buffer] Length 02 =     0000: 20 30                                            //  0"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "package",
+    "revision": 1,
+    "status": "compiler_rejection",
+    "detail": "/home/doc/git/.acpi-proof-work/aml-mid-oracle-xqon789m/oracle/package1.asl      1: DefinitionBlock(\"\",\"DSDT\",1,\"CUBIT\",\"MIDPROBE\",1){Name(MARK,Zero) Name(INT0,Zero) Name(STR0,\"QQQQ\") Name(BUF0,Buffer(){0x10,0x20,0x30,0x40}) Name(BUF1,Buffer(){1,2,3,4}) Name(PKG0,Package(){Buffer(){0x41,0x42,0x43,0x44}}) Method(GETI,0){Return(Index(PKG0,0\n[*** iASL: Very long input line, message below refers to column 742 ***]\nError    6058 -    Invalid type ([Package] found, Mid operator requires [Integer|String|Buffer])\n\n"
+  },
+  {
+    "group": "oracle",
+    "case": "uninit",
+    "revision": 1,
+    "status": "compiler_rejection",
+    "detail": "/home/doc/git/.acpi-proof-work/aml-mid-oracle-xqon789m/oracle/uninit1.asl      1: DefinitionBlock(\"\",\"DSDT\",1,\"CUBIT\",\"MIDPROBE\",1){Name(MARK,Zero) Name(INT0,Zero) Name(STR0,\"QQQQ\") Name(BUF0,Buffer(){0x10,0x20,0x30,0x40}) Name(BUF1,Buffer(){1,2,3,4}) Name(PKG0,Package(){Buffer(){0x41,0x42,0x43,0x44}}) Method(GETI,0){Return(Index(PKG0,0\n[*** iASL: Very long input line, message below refers to column 744 ***]\nError    6066 -    Method local variable is not initialized (Local0)\n\n"
+  },
+  {
+    "group": "unoptimized",
+    "case": "namedint",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 4 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [Integer] = 00000000000000BC",
+      "    [Integer] = 0000000000000001",
+      "    [Integer] = 0000000000000000"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "namedstr",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 4 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [String] Length 02 = \"BC\"",
+      "    [Integer] = 0000000000000002",
+      "    [Integer] = 0000000000000000"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "namedbuf",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 4 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [Buffer] Length 04 =     0000: 42 43 00 00                                      // BC..",
+      "    [Integer] = 0000000000000003",
+      "    [Integer] = 0000000000000000"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "index-observation",
+    "case": "member",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 4 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [String] Length 02 = \"BC\"",
+      "    [Integer] = 0000000000000002",
+      "    [Integer] = 0000000000000000"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "index-observation",
+    "case": "byte",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 4 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [Integer] = 0000000000000042",
+      "    [Integer] = 0000000000000001",
+      "    [Integer] = 0000000000000000"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "same",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 2 Elements:",
+      "    [Buffer] Length 02 =     0000: 77 30                                            // w0",
+      "    [Buffer] Length 04 =     0000: 20 30 00 00                                      //  0.."
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "argref",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 3 Elements:",
+      "    [Buffer] Length 02 =     0000: 42 43                                            // BC",
+      "    [Buffer] Length 02 =     0000: 42 43                                            // BC",
+      "    [Integer] = 0000000000000003"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "once",
+    "revision": 1,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 3 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [Buffer] Length 04 =     0000: 42 43 00 00                                      // BC..",
+      "    [Integer] = 000000000000006F"
+    ],
+    "marker": 111
+  },
+  {
+    "group": "oracle",
+    "case": "badindex",
+    "revision": 1,
+    "status": "AE_AML_OPERAND_TYPE",
+    "result_lines": [],
+    "marker": 1101
+  },
+  {
+    "group": "oracle",
+    "case": "badsource",
+    "revision": 1,
+    "status": "AE_AML_OPERAND_TYPE",
+    "result_lines": [],
+    "marker": 1110
+  },
+  {
+    "group": "unoptimized",
+    "case": "string",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 03 = \"BCD\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "buffer",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Buffer] Length 02 =     0000: 00 FE                                            // .."
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "emptystring",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 00 = \"\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "emptybuffer",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Buffer] Length 00 = "
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "outside",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 00 = \"\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "hugecount",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 02 = \"BC\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "hugeindex",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 00 = \"\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "zero",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 00 = \"\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "integer",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Buffer] Length 07 =     0000: 77 66 55 44 33 22 11                             // wfUD3\"."
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "coerce",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [String] Length 02 = \"BC\""
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "directindex",
+    "revision": 2,
+    "status": "compiler_rejection",
+    "detail": "/home/doc/git/.acpi-proof-work/aml-mid-oracle-xqon789m/oracle/directindex2.asl      1: DefinitionBlock(\"\",\"DSDT\",2,\"CUBIT\",\"MIDPROBE\",1){Name(MARK,Zero) Name(INT0,Zero) Name(STR0,\"QQQQ\") Name(BUF0,Buffer(){0x10,0x20,0x30,0x40}) Name(BUF1,Buffer(){1,2,3,4}) Name(PKG0,Package(){Buffer(){0x41,0x42,0x43,0x44}}) Method(GETI,0){Return(Index(PKG0,0\n[*** iASL: Very long input line, message below refers to column 748 ***]\nError    6058 -    Invalid type ([Reference] found, Mid operator requires [Integer|String|Buffer])\n\n"
+  },
+  {
+    "group": "oracle",
+    "case": "heldindex",
+    "revision": 2,
+    "status": "AE_AML_OPERAND_TYPE",
+    "result_lines": [],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "methodindex",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Buffer] Length 02 =     0000: 42 43                                            // BC"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "heldref",
+    "revision": 2,
+    "status": "AE_AML_OPERAND_TYPE",
+    "result_lines": [],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "deref",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Buffer] Length 02 =     0000: 20 30                                            //  0"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "package",
+    "revision": 2,
+    "status": "compiler_rejection",
+    "detail": "/home/doc/git/.acpi-proof-work/aml-mid-oracle-xqon789m/oracle/package2.asl      1: DefinitionBlock(\"\",\"DSDT\",2,\"CUBIT\",\"MIDPROBE\",1){Name(MARK,Zero) Name(INT0,Zero) Name(STR0,\"QQQQ\") Name(BUF0,Buffer(){0x10,0x20,0x30,0x40}) Name(BUF1,Buffer(){1,2,3,4}) Name(PKG0,Package(){Buffer(){0x41,0x42,0x43,0x44}}) Method(GETI,0){Return(Index(PKG0,0\n[*** iASL: Very long input line, message below refers to column 742 ***]\nError    6058 -    Invalid type ([Package] found, Mid operator requires [Integer|String|Buffer])\n\n"
+  },
+  {
+    "group": "oracle",
+    "case": "uninit",
+    "revision": 2,
+    "status": "compiler_rejection",
+    "detail": "/home/doc/git/.acpi-proof-work/aml-mid-oracle-xqon789m/oracle/uninit2.asl      1: DefinitionBlock(\"\",\"DSDT\",2,\"CUBIT\",\"MIDPROBE\",1){Name(MARK,Zero) Name(INT0,Zero) Name(STR0,\"QQQQ\") Name(BUF0,Buffer(){0x10,0x20,0x30,0x40}) Name(BUF1,Buffer(){1,2,3,4}) Name(PKG0,Package(){Buffer(){0x41,0x42,0x43,0x44}}) Method(GETI,0){Return(Index(PKG0,0\n[*** iASL: Very long input line, message below refers to column 744 ***]\nError    6066 -    Method local variable is not initialized (Local0)\n\n"
+  },
+  {
+    "group": "unoptimized",
+    "case": "namedint",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 4 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [Integer] = 00000000000000BC",
+      "    [Integer] = 0000000000000001",
+      "    [Integer] = 0000000000000000"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "namedstr",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 4 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [String] Length 02 = \"BC\"",
+      "    [Integer] = 0000000000000002",
+      "    [Integer] = 0000000000000000"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "unoptimized",
+    "case": "namedbuf",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 4 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [Buffer] Length 04 =     0000: 42 43 00 00                                      // BC..",
+      "    [Integer] = 0000000000000003",
+      "    [Integer] = 0000000000000000"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "index-observation",
+    "case": "member",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 4 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [String] Length 02 = \"BC\"",
+      "    [Integer] = 0000000000000002",
+      "    [Integer] = 0000000000000000"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "index-observation",
+    "case": "byte",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 4 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [Integer] = 0000000000000042",
+      "    [Integer] = 0000000000000001",
+      "    [Integer] = 0000000000000000"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "same",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 2 Elements:",
+      "    [Buffer] Length 02 =     0000: 77 30                                            // w0",
+      "    [Buffer] Length 04 =     0000: 20 30 00 00                                      //  0.."
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "argref",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 3 Elements:",
+      "    [Buffer] Length 02 =     0000: 42 43                                            // BC",
+      "    [Buffer] Length 02 =     0000: 42 43                                            // BC",
+      "    [Integer] = 0000000000000003"
+    ],
+    "marker": 0
+  },
+  {
+    "group": "oracle",
+    "case": "once",
+    "revision": 2,
+    "status": "returned",
+    "result_lines": [
+      "  [Package] Contains 3 Elements:",
+      "    [String] Length 02 = \"BC\"",
+      "    [Buffer] Length 04 =     0000: 42 43 00 00                                      // BC..",
+      "    [Integer] = 000000000000006F"
+    ],
+    "marker": 111
+  },
+  {
+    "group": "oracle",
+    "case": "badindex",
+    "revision": 2,
+    "status": "AE_AML_OPERAND_TYPE",
+    "result_lines": [],
+    "marker": 1101
+  },
+  {
+    "group": "oracle",
+    "case": "badsource",
+    "revision": 2,
+    "status": "AE_AML_OPERAND_TYPE",
+    "result_lines": [],
+    "marker": 1110
+  }
+]

@@ -1,0 +1,8 @@
+project RCS_Start is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Object_Dir use "build-rcs-start";
+   for Main use ("rcs_start_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end RCS_Start;

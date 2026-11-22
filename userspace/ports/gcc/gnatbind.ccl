@@ -1,0 +1,14 @@
+# GNAT on CuBit (userspace/ports/gcc): the binder, gnatbind. It reads the
+# program's and the run-time library's .ali files and writes the binder
+# unit (b~NAME.adb, .ads), which the gcc driver compiles and links with
+# the program: CuBit links without gnatlink, which spawns through
+# fork/exec (decision D5). Its argv is open-ended, and it has no file
+# scopes of its own: it works in the places its launcher delegates.
+(Executable_Manifest
+  identity => "org.gnu.gcc.gnatbind"
+  version => "15.3.0"
+  requests => [(service "filesystem" "filesystem")]
+  outlets => [
+    (Outlet "unix.stdout" Element.Text pages => 4)
+    (Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 1 "unix.stdout") (Descriptor 2 "unix.stderr")])

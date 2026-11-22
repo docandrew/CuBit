@@ -1,0 +1,56 @@
+with Intel_GPU_ADLN_Devices;
+package body Intel_GPU_Device_Query with SPARK_Mode is
+   function Respond
+     (Data : Snapshot; Request_Label : Unsigned_32;
+      Length, Flags : Unsigned_8; Reserved : Unsigned_16;
+      Request : Words; Timestamp_Hz : Unsigned_32 := 0;
+      Memory_Policy : Memory_Contract := Not_Admitted;
+      VM_Policy : VM_Contract := VM_Unavailable) return Words
+   is
+   begin
+      if Request_Label /= Label then
+         return [Unsupported, Version, 0, 0];
+      end if;
+      if Length /= 4 or Flags /= 0 or Reserved /= 0 or
+        Request (0) /= Version or Request (2) /= 0 or Request (3) /= 0 or
+        Request (1) > Virtual_Memory
+      then
+         return [Bad_Request, Version, 0, 0];
+      end if;
+      -- Only the ADL-N family is admitted (Intel_GPU_ADLN_Devices); never
+      -- infer support from a PCI-table default or a firmware upload.
+      if not Intel_GPU_ADLN_Devices.Supported_Device (Data.Device) then
+         return [Unavailable, Version, 0, 0];
+      end if;
+      if Request (1) = Virtual_Memory then
+         return (if VM_Policy = Private_PPGTT_48 then [OK, Version, 48, 1]
+                 else [Unavailable, Version, 0, 0]);
+      end if;
+      if Request (1) = Identity then
+         return [OK, Version,
+           16#8086# or Shift_Left (Unsigned_64 (Data.Device), 16) or
+           Shift_Left (Unsigned_64 (Data.Revision), 32), 0];
+      end if;
+      if Request (1) = Memory then
+         if Memory_Policy = Not_Admitted then
+            return [Unavailable, Version, 0, 0];
+         end if;
+         return [OK, Version, Memory_Contract'Pos (Memory_Policy), 0];
+      end if;
+      if Request (1) = Timestamp then
+         if Timestamp_Hz = 0 or Timestamp_Hz > 1_025_000_000 then
+            return [Unavailable, Version, 0, 0];
+         end if;
+         return [OK, Version, Unsigned_64 (Timestamp_Hz), 0];
+      end if;
+      if not Data.Topology_Observed or Data.DSS_Mask = 0 or
+        (Data.DSS_Mask and 16#C0#) /= 0 or Data.EU_Mask = 0 or
+        (Data.EU_Mask and 16#5555#) /=
+          (Shift_Right (Data.EU_Mask, 1) and 16#5555#)
+      then
+         return [Unavailable, Version, 0, 0];
+      end if;
+      return [OK, Version, Unsigned_64 (Data.DSS_Mask),
+              Unsigned_64 (Data.EU_Mask)];
+   end Respond;
+end Intel_GPU_Device_Query;

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<defs>
+<linearGradient id="amber" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffdc80"/><stop offset="1" stop-color="#ffa41f"/></linearGradient>
+<linearGradient id="slate" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#5d5778"/><stop offset="1" stop-color="#3a3452"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M2 18 L43 18 L43 42 L2 42Z" transform="translate(3 3)"/>
+  <path d="M2 18 L43 18 L43 42 L2 42Z" transform="translate(2 2)"/>
+  <path d="M2 18 L43 18 L43 42 L2 42Z" transform="translate(1 1)"/>
+  <path d="M2 18 L43 18 L43 42 L2 42Z"/>
+</g>
+<path d="M2 18 L43 18 L43 42 L2 42Z" fill="#1d1530" transform="translate(3 3)"/>
+<path d="M2 18 L43 18 L43 42 L2 42Z" fill="#1d1530" transform="translate(2 2)"/>
+<path d="M2 18 L43 18 L43 42 L2 42Z" fill="#1d1530" transform="translate(1 1)"/>
+<path d="M2 18 L43 18 L43 42 L2 42Z" fill="url(#slate)"/>
+<path d="M2 23 L10 23 L15 18 L7 18Z" fill="#ffffff"/>
+<path d="M18 23 L26 23 L31 18 L23 18Z" fill="#ffffff"/>
+<path d="M34 23 L42 23 L43 18 L39 18Z" fill="#ffffff"/>
+<path d="M17.7 26.5 L28.5 32.5 L17.7 38.5Z" fill="#8af5e8"/>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M2 7 L39 2 L41 11 L2 16Z" transform="translate(3 3)"/>
+  <path d="M2 7 L39 2 L41 11 L2 16Z" transform="translate(2 2)"/>
+  <path d="M2 7 L39 2 L41 11 L2 16Z" transform="translate(1 1)"/>
+  <path d="M2 7 L39 2 L41 11 L2 16Z"/>
+</g>
+<path d="M2 7 L39 2 L41 11 L2 16Z" fill="#1d1530" transform="translate(3 3)"/>
+<path d="M2 7 L39 2 L41 11 L2 16Z" fill="#1d1530" transform="translate(2 2)"/>
+<path d="M2 7 L39 2 L41 11 L2 16Z" fill="#1d1530" transform="translate(1 1)"/>
+<path d="M2 7 L39 2 L41 11 L2 16Z" fill="url(#slate)"/>
+<path d="M3.85 6.75 L7.55 6.25 L3.17 15.85 L-0.73 16.35Z" fill="url(#amber)"/>
+<path d="M11.25 5.75 L14.95 5.25 L10.97 14.85 L7.07 15.35Z" fill="url(#amber)"/>
+<path d="M18.65 4.75 L22.35 4.25 L18.77 13.85 L14.87 14.35Z" fill="url(#amber)"/>
+<path d="M26.05 3.75 L29.75 3.25 L26.57 12.85 L22.67 13.35Z" fill="url(#amber)"/>
+<path d="M33.45 2.75 L37.15 2.25 L34.37 11.85 L30.47 12.35Z" fill="url(#amber)"/>
+</svg>

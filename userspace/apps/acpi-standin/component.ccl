@@ -1,0 +1,2 @@
+(Component name => "acpi-standin" kind => Kind.Application
+  source => (Source.Ada (Ada_Source sources => ["shared/acpi"])))

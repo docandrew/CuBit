@@ -1,0 +1,1 @@
+Eight normal ASL cases: direct RefOf and Arg-held reference Package acceptance/scalar rejection or observed conversion, both revisions. Expected behavior remains open. Existing per-process bounds unchanged.

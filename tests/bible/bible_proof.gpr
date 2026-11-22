@@ -1,0 +1,13 @@
+--  SPARK proof of the Bible core (APP-005): run.sh --prove (memory-capped,
+--  -j2, level 2): the books, references, the parser, the image reader and
+--  search.
+project Bible_Proof is
+   for Source_Dirs use ("../../userspace/lib/bible");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--timeout=60");
+   end Prove;
+end Bible_Proof;

@@ -1,0 +1,6 @@
+# The native font engine's masks, hashed (font-masks.app) against
+# userspace/rust/fonts/tests/masks.golden, the hosted engine's golden.
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "font-masks.app" (priority 3))
+)

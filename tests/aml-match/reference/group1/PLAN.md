@@ -1,0 +1,1 @@
+48 normal DSDT cases: 24 scenarios × revision1/2. Four expressions and two match bytes; no forced compilation. Reused bounded harness: ACPICA subprocess128MiB/5sec/64MiB. Runtime width witness and retained TEST disassembly required. Compiler failures reviewed separately. Primary planning: aml-match-plan-2ftjqkjd. Source inputs frozen before launch.

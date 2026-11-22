@@ -1,0 +1,29 @@
+{
+  "status": "private-tested-ready-for-publication",
+  "checks": 6452,
+  "processes": 38,
+  "loop_checks": 1516,
+  "loop_profiles": {
+    "checked": "/home/doc/git/.acpi-proof-work/native-service-receive-20261029/tests/acpi-native-server-loop/results/checked-1plMmbck",
+    "release": "/home/doc/git/.acpi-proof-work/native-service-receive-20261029/tests/acpi-native-server-loop/results/release-vy0uhw6I"
+  },
+  "notification_checks": 4936,
+  "notification_result": "/home/doc/cubit-build-tmp/acpi-native-notifications-T21LXk/COMPLETE.json",
+  "notification_sha256": "f3d3a50fac298e2aa31c85673d3c884ae300da5e4af5f4a8490e3fde51e3c5a3",
+  "native_api": {
+    "checked": "/home/doc/git/.acpi-proof-work/native-service-receive-20261029/tests/acpi-native-entry/results/checked-bkMFXKQz",
+    "release": "/home/doc/git/.acpi-proof-work/native-service-receive-20261029/tests/acpi-native-entry/results/release-tsMjdhW9"
+  },
+  "selections_per_profile": 60,
+  "alis_per_profile": 57,
+  "zero_objects": true,
+  "negative_control": "/home/doc/git/.acpi-proof-work/native-service-receive-20261029/NEGATIVE-CONTROL.json",
+  "production": [
+    "userspace/services/acpi/native/acpi_native_server.adb"
+  ],
+  "scope": "Actual ACPI observer loop with modeled typed/mixed receive queues; queued-stop negative control, event/request fairness, notification/EC owner and both AML widths. Actual-runtime declarations checked separately. Native queue/kernel behavior and hardware not executed.",
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "goal": "active and incomplete"
+}

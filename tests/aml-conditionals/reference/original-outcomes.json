@@ -1,0 +1,227 @@
+[
+  {
+    "name": "chain01-compile",
+    "returncode": 0,
+    "seconds": 0.003594769979827106
+  },
+  {
+    "name": "chain01-oracle",
+    "returncode": 0,
+    "seconds": 1.0154531319858506
+  },
+  {
+    "name": "chain501-compile",
+    "returncode": 0,
+    "seconds": 0.0037457419093698263
+  },
+  {
+    "name": "chain501-oracle",
+    "returncode": 0,
+    "seconds": 1.0154235920635983
+  },
+  {
+    "name": "chain991-compile",
+    "returncode": 0,
+    "seconds": 0.0037325609009712934
+  },
+  {
+    "name": "chain991-oracle",
+    "returncode": 0,
+    "seconds": 1.015589992981404
+  },
+  {
+    "name": "chain2001-compile",
+    "returncode": 0,
+    "seconds": 0.003708651987835765
+  },
+  {
+    "name": "chain2001-oracle",
+    "returncode": 0,
+    "seconds": 1.0155337329488248
+  },
+  {
+    "name": "tailtrue1-compile",
+    "returncode": 0,
+    "seconds": 0.0015900519210845232
+  },
+  {
+    "name": "tailtrue1-oracle",
+    "returncode": 0,
+    "seconds": 1.0155449430458248
+  },
+  {
+    "name": "tailfalse1-compile",
+    "returncode": 0,
+    "seconds": 0.0017358040204271674
+  },
+  {
+    "name": "tailfalse1-oracle",
+    "returncode": 0,
+    "seconds": 1.0155460140667856
+  },
+  {
+    "name": "trailing1-compile",
+    "returncode": 0,
+    "seconds": 0.0016971139702945948
+  },
+  {
+    "name": "trailing1-oracle",
+    "returncode": 0,
+    "seconds": 1.0154879320180044
+  },
+  {
+    "name": "whilecontinue1-compile",
+    "returncode": 0,
+    "seconds": 0.0036452709464356303
+  },
+  {
+    "name": "whilecontinue1-oracle",
+    "returncode": 0,
+    "seconds": 1.0155461629619822
+  },
+  {
+    "name": "whilerestart1-compile",
+    "returncode": 0,
+    "seconds": 0.0037119819317013025
+  },
+  {
+    "name": "whilerestart1-oracle",
+    "returncode": 0,
+    "seconds": 1.0154991530580446
+  },
+  {
+    "name": "effects1-compile",
+    "returncode": 0,
+    "seconds": 0.003655111067928374
+  },
+  {
+    "name": "effects1-oracle",
+    "returncode": 0,
+    "seconds": 1.015477041946724
+  },
+  {
+    "name": "empty1-compile",
+    "returncode": 0,
+    "seconds": 0.0036566200433298945
+  },
+  {
+    "name": "empty1-oracle",
+    "returncode": 0,
+    "seconds": 1.01550145202782
+  },
+  {
+    "name": "chain02-compile",
+    "returncode": 0,
+    "seconds": 0.0036777110071852803
+  },
+  {
+    "name": "chain02-oracle",
+    "returncode": 0,
+    "seconds": 1.01550593203865
+  },
+  {
+    "name": "chain502-compile",
+    "returncode": 0,
+    "seconds": 0.003628470003604889
+  },
+  {
+    "name": "chain502-oracle",
+    "returncode": 0,
+    "seconds": 1.0155102220596746
+  },
+  {
+    "name": "chain992-compile",
+    "returncode": 0,
+    "seconds": 0.003714830963872373
+  },
+  {
+    "name": "chain992-oracle",
+    "returncode": 0,
+    "seconds": 1.0154906819807366
+  },
+  {
+    "name": "chain2002-compile",
+    "returncode": 0,
+    "seconds": 0.0037181710358709097
+  },
+  {
+    "name": "chain2002-oracle",
+    "returncode": 0,
+    "seconds": 1.0154748209752142
+  },
+  {
+    "name": "tailtrue2-compile",
+    "returncode": 0,
+    "seconds": 0.001615922898054123
+  },
+  {
+    "name": "tailtrue2-oracle",
+    "returncode": 0,
+    "seconds": 1.0155534729128703
+  },
+  {
+    "name": "tailfalse2-compile",
+    "returncode": 0,
+    "seconds": 0.0036675110459327698
+  },
+  {
+    "name": "tailfalse2-oracle",
+    "returncode": 0,
+    "seconds": 1.0154756620759144
+  },
+  {
+    "name": "trailing2-compile",
+    "returncode": 0,
+    "seconds": 0.0017312340205535293
+  },
+  {
+    "name": "trailing2-oracle",
+    "returncode": 0,
+    "seconds": 1.015502312919125
+  },
+  {
+    "name": "whilecontinue2-compile",
+    "returncode": 0,
+    "seconds": 0.0036415100330486894
+  },
+  {
+    "name": "whilecontinue2-oracle",
+    "returncode": 0,
+    "seconds": 1.0154415708966553
+  },
+  {
+    "name": "whilerestart2-compile",
+    "returncode": 0,
+    "seconds": 0.0037640120135620236
+  },
+  {
+    "name": "whilerestart2-oracle",
+    "returncode": 0,
+    "seconds": 1.0154750430956483
+  },
+  {
+    "name": "effects2-compile",
+    "returncode": 0,
+    "seconds": 0.003742382046766579
+  },
+  {
+    "name": "effects2-oracle",
+    "returncode": 0,
+    "seconds": 1.0158289870014414
+  },
+  {
+    "name": "empty2-compile",
+    "returncode": 0,
+    "seconds": 0.0016988940769806504
+  },
+  {
+    "name": "empty2-oracle",
+    "returncode": 0,
+    "seconds": 1.015482223010622
+  },
+  {
+    "name": "release-build",
+    "returncode": 4,
+    "seconds": 6.12460835208185
+  }
+]

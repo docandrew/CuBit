@@ -1,0 +1,5 @@
+(executable-manifest v1
+  (identity "com.cubit.test.native-render-session")
+  (version "1")
+  (request-render read-write render)
+  (request-service logstore read-write logstore))

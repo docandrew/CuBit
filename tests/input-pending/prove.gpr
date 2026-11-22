@@ -1,0 +1,9 @@
+project Prove is
+   for Source_Dirs use ("../../userspace/lib/input");
+   --  The wire glue (CuBit.Input, runtime) is proved with the runtime.
+   for Excluded_Source_Files use ("input_stamps.ads");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Prove;

@@ -1,0 +1,146 @@
+[
+  {
+    "case": "r1-ref-package",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 2
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r1-ref-integer",
+    "observations": [
+      {
+        "method": "TEST",
+        "error": "AE_AML_TARGET_TYPE"
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 1
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r1-arg-package",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 2
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r1-arg-integer",
+    "observations": [
+      {
+        "method": "TEST",
+        "error": "AE_AML_TARGET_TYPE"
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 1
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r2-ref-package",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 2
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r2-ref-integer",
+    "observations": [
+      {
+        "method": "TEST",
+        "error": "AE_AML_TARGET_TYPE"
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 1
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r2-arg-package",
+    "observations": [
+      {
+        "method": "TEST",
+        "integer": 2
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 2
+      }
+    ],
+    "cache_warning": true
+  },
+  {
+    "case": "r2-arg-integer",
+    "observations": [
+      {
+        "method": "TEST",
+        "error": "AE_AML_TARGET_TYPE"
+      },
+      {
+        "method": "TYPE",
+        "integer": 4
+      },
+      {
+        "method": "SIZE",
+        "integer": 1
+      }
+    ],
+    "cache_warning": true
+  }
+]

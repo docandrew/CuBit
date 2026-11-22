@@ -1,0 +1,10 @@
+{
+  "path": "/home/doc/cubit-build-tmp/gpe-legacy-2zmN2N/COMPLETE.json",
+  "sha256": "e3fafbdba7be38224f688e93f55fd0f2504693888a5a2cff1c80a6451932adf7",
+  "checks": 2024,
+  "runtime_processes": 4,
+  "runner": "Private Node orchestration of the unchanged legacy main and current source list; ACPICA values only,not hardware ordering equivalence.",
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false
+}

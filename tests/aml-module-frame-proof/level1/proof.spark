@@ -1,0 +1,1926 @@
+{
+  "assumptions": [
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 11,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 13,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 14,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 9,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 1,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 10,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 13,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 14,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 9,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 1,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 10,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 7,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 13,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 14,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 9,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 1,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 10,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 13,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 14,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 9,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 1,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 10,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 7,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 12,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 10,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 10,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 2,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 10,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 10,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 8,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 3,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 10,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 10,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 2,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 6,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 10,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 6,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 4,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "arg": 10,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 8,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 13,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 13,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 9,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 15,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 15,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 6,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 5,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 5,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 4,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+        {
+          "arg": 15,
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "arg": 15,
+          "predicate": "CLAIM_AORTE"
+        }
+      ],
+      "claim": {
+        "arg": 10,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 5,
+        "predicate": "CLAIM_AORTE"
+      }
+    }
+  ],
+  "entities": {
+    " 1": {
+      "name": "AML_Module_Frames.Pushed",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 12
+        }
+      ]
+    },
+    " 10": {
+      "name": "AML_Module_Frames.Valid",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 6
+        }
+      ]
+    },
+    " 11": {
+      "name": "AML_Module_Frames",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 2
+        }
+      ]
+    },
+    " 12": {
+      "name": "AML_Module_Frames.State",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 30
+        }
+      ]
+    },
+    " 13": {
+      "name": "AML_Frame_Handles.Belongs_To",
+      "sloc": [
+        {
+          "file": "aml_frame_handles.ads",
+          "line": 24
+        }
+      ]
+    },
+    " 14": {
+      "name": "AML_Frame_Handles.Has_Authority",
+      "sloc": [
+        {
+          "file": "aml_frame_handles.ads",
+          "line": 17
+        }
+      ]
+    },
+    " 15": {
+      "name": "AML_Frame_Handles.Present",
+      "sloc": [
+        {
+          "file": "aml_frame_handles.ads",
+          "line": 23
+        }
+      ]
+    },
+    " 2": {
+      "name": "AML_Module_Frames.Empty",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 7
+        }
+      ]
+    },
+    " 3": {
+      "name": "AML_Module_Frames.Count",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 8
+        }
+      ]
+    },
+    " 4": {
+      "name": "AML_Module_Frames.Popped",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 13
+        }
+      ]
+    },
+    " 5": {
+      "name": "AML_Module_Frames.Top",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 9
+        }
+      ]
+    },
+    " 6": {
+      "name": "AML_Module_Frames.Contains",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 10
+        }
+      ]
+    },
+    " 7": {
+      "name": "AML_Module_Frames.Push",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 16
+        }
+      ]
+    },
+    " 8": {
+      "name": "AML_Module_Frames.Pop",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 22
+        }
+      ]
+    },
+    " 9": {
+      "name": "AML_Module_Frames.Belongs_To",
+      "sloc": [
+        {
+          "file": "aml_module_frames.ads",
+          "line": 11
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 1,
+      "file": "aml_module_frames.ads",
+      "how_proved": "flow",
+      "line": 12,
+      "msg_id": 0,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 2,
+      "file": "aml_module_frames.ads",
+      "how_proved": "flow",
+      "line": 7,
+      "msg_id": 1,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 3,
+      "file": "aml_module_frames.ads",
+      "how_proved": "flow",
+      "line": 8,
+      "msg_id": 2,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 4,
+      "file": "aml_module_frames.ads",
+      "how_proved": "flow",
+      "line": 13,
+      "msg_id": 3,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 5,
+      "file": "aml_module_frames.ads",
+      "how_proved": "flow",
+      "line": 9,
+      "msg_id": 4,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 6,
+      "file": "aml_module_frames.ads",
+      "how_proved": "flow",
+      "line": 10,
+      "msg_id": 5,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 53,
+      "entity": 7,
+      "file": "aml_module_frames.ads",
+      "how_proved": "flow",
+      "line": 17,
+      "msg_id": 6,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 7,
+      "entity": 8,
+      "file": "aml_module_frames.ads",
+      "how_proved": "flow",
+      "line": 23,
+      "msg_id": 7,
+      "rule": "UNINITIALIZED",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 9,
+      "file": "aml_module_frames.ads",
+      "how_proved": "flow",
+      "line": 11,
+      "msg_id": 8,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 10,
+      "file": "aml_module_frames.ads",
+      "how_proved": "flow",
+      "line": 6,
+      "msg_id": 9,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    }
+  ],
+  "pragma_assume": [
+  ],
+  "progress": "PROGRESS_PROOF",
+  "proof": [
+    {
+      "check_col": 71,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 4,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.40000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.72300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 71,
+      "entity": 10,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 4,
+      "msg_id": 10,
+      "rule": "VC_INDEX_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 6.39999983832240E-03
+        }
+      }
+    },
+    {
+      "check_col": 56,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 5,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.46600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.96400000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 56,
+      "entity": 10,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 5,
+      "msg_id": 11,
+      "rule": "VC_OVERFLOW_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 8.96400026977062E-03
+        }
+      }
+    },
+    {
+      "check_col": 75,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 5,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.94500000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.39100000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 75,
+      "entity": 10,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 5,
+      "msg_id": 12,
+      "rule": "VC_INDEX_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 9.94499959051609E-03
+        }
+      }
+    },
+    {
+      "check_col": 93,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 5,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 3.69000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.95500000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 93,
+      "entity": 10,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 5,
+      "msg_id": 13,
+      "rule": "VC_INDEX_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 6.95500010624528E-03
+        }
+      }
+    },
+    {
+      "check_col": 26,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 6,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.50800000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.03800000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 26,
+      "entity": 10,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 6,
+      "msg_id": 14,
+      "rule": "VC_INDEX_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 6.50800019502640E-03
+        }
+      }
+    },
+    {
+      "check_col": 45,
+      "check_file": "aml_module_frames.ads",
+      "check_line": 7,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.23240000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.58900000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.96900000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 45,
+      "entity": 2,
+      "file": "aml_module_frames.ads",
+      "how_proved": "prover",
+      "line": 7,
+      "msg_id": 15,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 3,
+          "max_steps": 1,
+          "max_time": 1.23239997774363E-02
+        }
+      }
+    },
+    {
+      "check_col": 77,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 10,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.32200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.23700000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 77,
+      "entity": 5,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 10,
+      "msg_id": 16,
+      "rule": "VC_INDEX_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 8.32199957221746E-03
+        }
+      }
+    },
+    {
+      "check_col": 53,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 13,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.03810000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.23700000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 53,
+      "entity": 6,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 13,
+      "msg_id": 17,
+      "rule": "VC_INDEX_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.03810001164675E-02
+        }
+      }
+    },
+    {
+      "check_col": 80,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 15,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.84300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.96300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 80,
+      "entity": 9,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 15,
+      "msg_id": 18,
+      "rule": "VC_INDEX_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 7.84299988299608E-03
+        }
+      }
+    },
+    {
+      "check_col": 28,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 18,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.04400000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.82000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 28,
+      "entity": 1,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 18,
+      "msg_id": 19,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 8.04399978369474E-03
+        }
+      }
+    },
+    {
+      "check_col": 77,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 18,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.05100000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.97700000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 77,
+      "entity": 1,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 18,
+      "msg_id": 20,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 7.05099990591407E-03
+        }
+      }
+    },
+    {
+      "check_col": 77,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 18,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.84300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.80900000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 77,
+      "entity": 1,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 18,
+      "msg_id": 21,
+      "rule": "VC_INDEX_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 6.80899992585182E-03
+        }
+      }
+    },
+    {
+      "check_col": 28,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 21,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.06800000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.71800000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 28,
+      "entity": 4,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 21,
+      "msg_id": 22,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 7.71800009533763E-03
+        }
+      }
+    },
+    {
+      "check_col": 71,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 21,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 9.97000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.93600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 71,
+      "entity": 4,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 21,
+      "msg_id": 23,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 9.97000001370907E-03
+        }
+      }
+    },
+    {
+      "check_col": 71,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 21,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.06600000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.96500000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 71,
+      "entity": 4,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 21,
+      "msg_id": 24,
+      "rule": "VC_INDEX_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.06600001454353E-02
+        }
+      }
+    },
+    {
+      "check_col": 30,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 29,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.23170000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.36610000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 30,
+      "entity": 7,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 29,
+      "msg_id": 25,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.36609999462962E-02
+        }
+      }
+    },
+    {
+      "check_col": 51,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 29,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.39960000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.55430000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 51,
+      "entity": 7,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 29,
+      "msg_id": 26,
+      "rule": "VC_INDEX_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.55429998412728E-02
+        }
+      }
+    },
+    {
+      "check_col": 40,
+      "check_file": "aml_module_frames.ads",
+      "check_line": 18,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.24440000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.92230000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.37030000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 165,
+              "time": 2.51230000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 74,
+              "time": 2.64390000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 203,
+              "time": 3.76440000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 12,
+              "time": 2.41510000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 40,
+      "entity": 7,
+      "file": "aml_module_frames.ads",
+      "how_proved": "prover",
+      "line": 18,
+      "msg_id": 27,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 7,
+          "max_steps": 203,
+          "max_time": 3.76439988613129E-02
+        }
+      }
+    },
+    {
+      "check_col": 23,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 36,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.16170000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.07190000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 23,
+      "entity": 8,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 36,
+      "msg_id": 28,
+      "rule": "VC_INDEX_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.16170002147555E-02
+        }
+      }
+    },
+    {
+      "check_col": 84,
+      "check_file": "aml_module_frames.adb",
+      "check_line": 36,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.13270000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 8.76200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 84,
+      "entity": 8,
+      "file": "aml_module_frames.adb",
+      "how_proved": "prover",
+      "line": 36,
+      "msg_id": 29,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.13270003348589E-02
+        }
+      }
+    },
+    {
+      "check_col": 40,
+      "check_file": "aml_module_frames.ads",
+      "check_line": 24,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.10570000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 11,
+              "time": 2.35900000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 106,
+              "time": 2.14250000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.98200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.77900000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 63,
+              "time": 2.54100000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 160,
+              "time": 2.91570000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 2.05120000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 40,
+      "entity": 8,
+      "file": "aml_module_frames.ads",
+      "how_proved": "prover",
+      "line": 24,
+      "msg_id": 30,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 8,
+          "max_steps": 160,
+          "max_time": 2.91569996625185E-02
+        }
+      }
+    }
+  ],
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all",
+    " 10": "all",
+    " 11": "all",
+    " 12": "all",
+    " 2": "all",
+    " 3": "all",
+    " 4": "all",
+    " 5": "all",
+    " 6": "all",
+    " 7": "all",
+    " 8": "all",
+    " 9": "all"
+  },
+  "stop_reason": "STOP_REASON_NONE",
+  "timings": {
+    " 1": {
+      "gnat2why.vc_generation": 2.18860004097223E-02,
+      "gnatwhy3.init": 2.58047997951508E-01,
+      "gnatwhy3.register_vcs": 3.46500007435679E-03,
+      "gnatwhy3.run_vcs": 6.00000021222513E-06,
+      "gnatwhy3.save_session": 1.44999905023724E-03,
+      "gnatwhy3.schedule_vcs": 1.75490006804466E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.60199904348701E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 2.34998995438218E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 4.99899988426478E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 7.15998990926892E-04,
+      "gnatwhy3.transformations.eliminate_builtin": 1.23799894936383E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 3.48000001395121E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 5.46998984646052E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 5.37000014446676E-04,
+      "gnatwhy3.transformations.eliminate_inductive": 3.75000003259629E-04,
+      "gnatwhy3.transformations.eliminate_literal": 6.85998995322734E-04,
+      "gnatwhy3.transformations.eliminate_projections_sums": 8.73000011779368E-04,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 3.00000010611257E-06,
+      "gnatwhy3.transformations.inline_trivial": 1.23220002278686E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 4.99899988426478E-06,
+      "gnatwhy3.transformations.remove_unused": 4.45799902081490E-03,
+      "gnatwhy3.transformations.simplify_formula": 8.85999004822224E-04,
+      "gnatwhy3.transformations.split_goal_wp_conj": 2.06499896012247E-03
+    },
+    " 10": {
+      "gnat2why.vc_generation": 2.71286010742188E-01,
+      "gnatwhy3.init": 2.62690991163254E-01,
+      "gnatwhy3.register_vcs": 6.85800006613135E-03,
+      "gnatwhy3.run_vcs": 1.29990003188141E-05,
+      "gnatwhy3.save_session": 4.75199893116951E-03,
+      "gnatwhy3.schedule_vcs": 2.66469996422529E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 2.40899901837111E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 3.46999004250392E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 3.00000010611257E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 1.09599903225899E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 1.42900005448610E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 7.90000020060688E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 8.35000013466924E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 1.12499902024865E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 6.07000023592263E-04,
+      "gnatwhy3.transformations.eliminate_literal": 9.54999006353319E-04,
+      "gnatwhy3.transformations.eliminate_projections_sums": 1.03599904105067E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 3.00000010611257E-06,
+      "gnatwhy3.transformations.inline_trivial": 2.25109998136759E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 3.99900000047637E-06,
+      "gnatwhy3.transformations.remove_unused": 8.80600046366453E-03,
+      "gnatwhy3.transformations.simplify_formula": 1.05199904646724E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 3.78199899569154E-03
+    },
+    " 2": {
+      "gnat2why.vc_generation": 1.45319998264313E-02,
+      "gnatwhy3.init": 2.65253990888596E-01,
+      "gnatwhy3.register_vcs": 3.61500005237758E-03,
+      "gnatwhy3.run_vcs": 4.99899988426478E-06,
+      "gnatwhy3.save_session": 1.30200001876801E-03,
+      "gnatwhy3.schedule_vcs": 1.01680001243949E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.76599901169538E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 1.32999004563317E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 3.00000010611257E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 5.90000010561198E-04,
+      "gnatwhy3.transformations.eliminate_builtin": 1.68099894654006E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 3.56000004103407E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 6.07000023592263E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 4.82000003103167E-04,
+      "gnatwhy3.transformations.eliminate_inductive": 4.46999009000137E-04,
+      "gnatwhy3.transformations.eliminate_literal": 5.62998990062624E-04,
+      "gnatwhy3.transformations.eliminate_projections_sums": 7.45000026654452E-04,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 9.99000008050643E-07,
+      "gnatwhy3.transformations.inline_trivial": 8.02200008183718E-03,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 1.99900000552589E-06,
+      "gnatwhy3.transformations.remove_unused": 2.94400006532669E-03,
+      "gnatwhy3.transformations.simplify_formula": 7.44000019039959E-04,
+      "gnatwhy3.transformations.split_goal_wp_conj": 2.36200005747378E-03
+    },
+    " 3": {
+      "gnat2why.vc_generation": 1.09919998794794E-02
+    },
+    " 4": {
+      "gnat2why.vc_generation": 2.55929995328188E-02,
+      "gnatwhy3.init": 2.55531013011932E-01,
+      "gnatwhy3.register_vcs": 4.31599887087941E-03,
+      "gnatwhy3.run_vcs": 7.00000009601354E-06,
+      "gnatwhy3.save_session": 1.70400005299598E-03,
+      "gnatwhy3.schedule_vcs": 1.98849998414516E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.73400004860014E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 2.77999002719298E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 4.99899988426478E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 8.41000000946224E-04,
+      "gnatwhy3.transformations.eliminate_builtin": 1.42400001641363E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 3.84999002562836E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 5.55998994968832E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 5.53000019863248E-04,
+      "gnatwhy3.transformations.eliminate_inductive": 4.41000011051074E-04,
+      "gnatwhy3.transformations.eliminate_literal": 6.83000020217150E-04,
+      "gnatwhy3.transformations.eliminate_projections_sums": 6.37000019196421E-04,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 3.00000010611257E-06,
+      "gnatwhy3.transformations.inline_trivial": 1.42400003969669E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 4.99899988426478E-06,
+      "gnatwhy3.transformations.remove_unused": 5.71799883618951E-03,
+      "gnatwhy3.transformations.simplify_formula": 7.63999007176608E-04,
+      "gnatwhy3.transformations.split_goal_wp_conj": 2.48100003227592E-03
+    },
+    " 5": {
+      "gnat2why.vc_generation": 1.14120002835989E-02,
+      "gnatwhy3.init": 2.57780998945236E-01,
+      "gnatwhy3.register_vcs": 2.82800011336803E-03,
+      "gnatwhy3.run_vcs": 1.99900000552589E-06,
+      "gnatwhy3.save_session": 4.75998996989802E-04,
+      "gnatwhy3.schedule_vcs": 9.13599878549576E-03,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.82100001256913E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 6.19990023551509E-05,
+      "gnatwhy3.transformations.discriminate_if_poly": 1.99900000552589E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 2.61998997302726E-04,
+      "gnatwhy3.transformations.eliminate_builtin": 1.17900001350790E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 2.50000011874363E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 3.57999000698328E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 2.77999002719298E-04,
+      "gnatwhy3.transformations.eliminate_inductive": 3.92999005271122E-04,
+      "gnatwhy3.transformations.eliminate_literal": 3.61999002052471E-04,
+      "gnatwhy3.transformations.eliminate_projections_sums": 4.18000010540709E-04,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 0.00000000000000E+00,
+      "gnatwhy3.transformations.inline_trivial": 4.66099893674254E-03,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 9.99000008050643E-07,
+      "gnatwhy3.transformations.remove_unused": 1.94700004067272E-03,
+      "gnatwhy3.transformations.simplify_formula": 3.04999004583806E-04,
+      "gnatwhy3.transformations.split_goal_wp_conj": 2.30200006626546E-03
+    },
+    " 6": {
+      "gnat2why.vc_generation": 1.70120000839233E-02,
+      "gnatwhy3.init": 2.57991999387741E-01,
+      "gnatwhy3.register_vcs": 3.46800009720027E-03,
+      "gnatwhy3.run_vcs": 3.99900000047637E-06,
+      "gnatwhy3.save_session": 9.29998990613967E-04,
+      "gnatwhy3.schedule_vcs": 8.47299862653017E-03,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.43900001421571E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 7.89990008343011E-05,
+      "gnatwhy3.transformations.discriminate_if_poly": 1.99900000552589E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 3.38000012561679E-04,
+      "gnatwhy3.transformations.eliminate_builtin": 1.15799903869629E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 2.53000005614012E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 2.69000011030585E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 3.60000005457550E-04,
+      "gnatwhy3.transformations.eliminate_inductive": 2.20000001718290E-04,
+      "gnatwhy3.transformations.eliminate_literal": 2.51999008469284E-04,
+      "gnatwhy3.transformations.eliminate_projections_sums": 3.61999002052471E-04,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 9.99000008050643E-07,
+      "gnatwhy3.transformations.inline_trivial": 4.93300007656217E-03,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 9.99000008050643E-07,
+      "gnatwhy3.transformations.remove_unused": 1.91500002983958E-03,
+      "gnatwhy3.transformations.simplify_formula": 4.02000005124137E-04,
+      "gnatwhy3.transformations.split_goal_wp_conj": 2.61799897998571E-03
+    },
+    " 7": {
+      "gnat2why.vc_generation": 4.43530008196831E-02,
+      "gnatwhy3.init": 2.68750011920929E-01,
+      "gnatwhy3.register_vcs": 1.69489998370409E-02,
+      "gnatwhy3.run_vcs": 1.40000001920271E-05,
+      "gnatwhy3.save_session": 7.14999902993441E-03,
+      "gnatwhy3.schedule_vcs": 2.79360003769398E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 4.81900013983250E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 1.26199901569635E-03,
+      "gnatwhy3.transformations.discriminate_if_poly": 7.99900044512469E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 3.71500011533499E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 2.18000006861985E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 2.21000006422400E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 2.70799896679819E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 3.11199901625514E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 2.24000005982816E-03,
+      "gnatwhy3.transformations.eliminate_literal": 3.16000008024275E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 3.91499884426594E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 4.99899988426478E-06,
+      "gnatwhy3.transformations.inline_trivial": 3.73470000922680E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 9.00000031833770E-06,
+      "gnatwhy3.transformations.remove_unused": 1.37959988787770E-02,
+      "gnatwhy3.transformations.simplify_formula": 3.99000011384487E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 9.52799897640944E-03
+    },
+    " 8": {
+      "gnat2why.vc_generation": 4.54729981720448E-02,
+      "gnatwhy3.init": 2.63172000646591E-01,
+      "gnatwhy3.register_vcs": 1.30650000646710E-02,
+      "gnatwhy3.run_vcs": 1.80000006366754E-05,
+      "gnatwhy3.save_session": 6.27199886366725E-03,
+      "gnatwhy3.schedule_vcs": 2.32299994677305E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 4.05299896374345E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 1.07300002127886E-03,
+      "gnatwhy3.transformations.discriminate_if_poly": 6.00000021222513E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 2.50599905848503E-03,
+      "gnatwhy3.transformations.eliminate_builtin": 1.91200000699610E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 1.54099904466420E-03,
+      "gnatwhy3.transformations.eliminate_epsilon": 1.56000000424683E-03,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 2.20700004138052E-03,
+      "gnatwhy3.transformations.eliminate_inductive": 1.43900001421571E-03,
+      "gnatwhy3.transformations.eliminate_literal": 2.67699896357954E-03,
+      "gnatwhy3.transformations.eliminate_projections_sums": 1.92700000479817E-03,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 7.99900044512469E-06,
+      "gnatwhy3.transformations.inline_trivial": 3.84600013494492E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 7.00000009601354E-06,
+      "gnatwhy3.transformations.remove_unused": 1.47930001839995E-02,
+      "gnatwhy3.transformations.simplify_formula": 2.39800009876490E-03,
+      "gnatwhy3.transformations.split_goal_wp_conj": 6.95900013670325E-03
+    },
+    " 9": {
+      "gnat2why.vc_generation": 1.59949995577335E-02,
+      "gnatwhy3.init": 2.66389995813370E-01,
+      "gnatwhy3.register_vcs": 2.86099896766245E-03,
+      "gnatwhy3.run_vcs": 3.00000010611257E-06,
+      "gnatwhy3.save_session": 8.59998981468379E-04,
+      "gnatwhy3.schedule_vcs": 8.58199875801802E-03,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.44200003705919E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 5.70000011066440E-05,
+      "gnatwhy3.transformations.discriminate_if_poly": 1.99900000552589E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 4.37000009696931E-04,
+      "gnatwhy3.transformations.eliminate_builtin": 1.17800000589341E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 1.72999003552832E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 2.64000002061948E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 2.13998995604925E-04,
+      "gnatwhy3.transformations.eliminate_inductive": 2.85999005427584E-04,
+      "gnatwhy3.transformations.eliminate_literal": 2.99000006634742E-04,
+      "gnatwhy3.transformations.eliminate_projections_sums": 4.15999005781487E-04,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 9.99000008050643E-07,
+      "gnatwhy3.transformations.inline_trivial": 4.29499894380569E-03,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 1.99900000552589E-06,
+      "gnatwhy3.transformations.remove_unused": 1.69599894434214E-03,
+      "gnatwhy3.transformations.simplify_formula": 3.73999006114900E-04,
+      "gnatwhy3.transformations.split_goal_wp_conj": 1.94400001782924E-03
+    },
+    "global": {
+      "flow analysis": 3.26059982180595E-02,
+      "globals (advanced)": 1.12799997441471E-03,
+      "globals (basic)": 4.11600014194846E-03,
+      "init_why_sections": 2.81479991972446E-02,
+      "marking": 1.27969998866320E-02,
+      "properties (advanced)": 2.93999997666106E-04,
+      "translation of standard": 4.34199981391430E-02
+    }
+  }
+}

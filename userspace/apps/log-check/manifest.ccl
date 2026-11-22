@@ -1,0 +1,13 @@
+# The log-authority guest test (tests/headless --test log-authority). The
+# trusted instance (from the startup plan) launches itself once (may_launch);
+# the child gets its approval within the user session's envelope (CAP-012).
+(Executable_Manifest
+  identity => "com.cubit.log-check"
+  version => "0.1.0"
+  requests => [
+    (service "logstore" "logstore")
+    (service "ipc-test" "ipc-test")
+    (service "log-observer" "log-observer")
+    (service "process-manager" "process-manager") (service "launch" "launch")]
+  optional => ["log-observer"]
+  may_launch => [(Launch "log-check.app")])

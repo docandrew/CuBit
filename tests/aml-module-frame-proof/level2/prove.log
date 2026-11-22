@@ -1,0 +1,35 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+Summary logged in /home/doc/cubit-build-tmp/module-frames-proof-KYLkJb/level2/obj/gnatprove/gnatprove.out
+aml_module_frames.adb:4:71: info: index check proved
+aml_module_frames.adb:5:56: info: overflow check proved
+aml_module_frames.adb:5:75: info: index check proved
+aml_module_frames.adb:5:93: info: index check proved
+aml_module_frames.adb:6:26: info: index check proved
+aml_module_frames.adb:10:77: info: index check proved
+aml_module_frames.adb:13:53: info: index check proved
+aml_module_frames.adb:15:80: info: index check proved
+aml_module_frames.adb:18:28: info: range check proved
+aml_module_frames.adb:18:77: info: range check proved
+aml_module_frames.adb:18:77: info: index check proved
+aml_module_frames.adb:21:28: info: range check proved
+aml_module_frames.adb:21:71: info: range check proved
+aml_module_frames.adb:21:71: info: index check proved
+aml_module_frames.adb:29:30: info: range check proved
+aml_module_frames.adb:29:51: info: index check proved
+aml_module_frames.adb:36:23: info: index check proved
+aml_module_frames.adb:36:84: info: range check proved
+aml_module_frames.ads:6:13: info: implicit aspect Always_Terminates on "Valid" has been proved, subprogram will terminate
+aml_module_frames.ads:7:13: info: implicit aspect Always_Terminates on "Empty" has been proved, subprogram will terminate
+aml_module_frames.ads:7:45: info: postcondition proved
+aml_module_frames.ads:8:13: info: implicit aspect Always_Terminates on "Count" has been proved, subprogram will terminate
+aml_module_frames.ads:9:13: info: implicit aspect Always_Terminates on "Top" has been proved, subprogram will terminate
+aml_module_frames.ads:10:13: info: implicit aspect Always_Terminates on "Contains" has been proved, subprogram will terminate
+aml_module_frames.ads:11:13: info: implicit aspect Always_Terminates on "Belongs_To" has been proved, subprogram will terminate
+aml_module_frames.ads:12:13: info: implicit aspect Always_Terminates on "Pushed" has been proved, subprogram will terminate
+aml_module_frames.ads:13:13: info: implicit aspect Always_Terminates on "Popped" has been proved, subprogram will terminate
+aml_module_frames.ads:17:53: info: initialization of "Accepted" proved
+aml_module_frames.ads:18:40: info: postcondition proved
+aml_module_frames.ads:23:07: info: initialization of "Accepted" proved
+aml_module_frames.ads:24:40: info: postcondition proved

@@ -1,0 +1,8 @@
+# IPC-010 shared futexes: the server (grantee), the client (owner, runs the
+# checks) and an outsider that holds no grant.
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "futex-share-server.app" (priority 5))
+  (start "futex-share-client.app" (priority 5))
+  (start "futex-share-outsider.app" (priority 5))
+)

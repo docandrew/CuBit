@@ -1,0 +1,2 @@
+tests/support/acpi-firmware-wire/cubit.ads	userspace/runtime/gnat/cubit.ads
+tests/support/acpi-firmware-wire/cubit-firmware_data_exchange.ads	userspace/runtime/gnat/cubit-firmware_data_exchange.ads

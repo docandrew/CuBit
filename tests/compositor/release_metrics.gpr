@@ -1,0 +1,13 @@
+project Release_Metrics is
+ for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/runtime/gnat");
+ for Source_Files use
+  ("release_metrics_tests.adb", "compositor_release_metrics.ads", "compositor_release_metrics.adb",
+   "compositor_frame_trace.ads", "compositor_frame_trace.adb", "compositor_elapsed.ads",
+   "cubit.ads", "cubit-metric_records.ads", "cubit-metric_records.adb");
+ for Object_Dir use "build/release-metrics/obj";
+ for Exec_Dir use "build/release-metrics";
+ for Main use ("release_metrics_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+ end Compiler;
+end Release_Metrics;

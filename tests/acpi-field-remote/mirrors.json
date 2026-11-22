@@ -1,0 +1,11 @@
+{
+  "tests/acpi-field-remote/fixtures/api/cubit-handles-ipc.ads": "userspace/runtime/gnat/cubit-handles-ipc.ads",
+  "tests/acpi-field-remote/fixtures/api/cubit-handles.ads": "userspace/runtime/gnat/cubit-handles.ads",
+  "tests/acpi-field-remote/fixtures/api/cubit-messages.ads": "userspace/runtime/gnat/cubit-messages.ads",
+  "tests/acpi-field-remote/fixtures/api/cubit-monotonic.ads": "userspace/runtime/gnat/cubit-monotonic.ads",
+  "tests/acpi-field-remote/fixtures/api/cubit-process_ids.ads": "userspace/runtime/gnat/cubit-process_ids.ads",
+  "tests/acpi-field-remote/fixtures/api/cubit.ads": "userspace/runtime/gnat/cubit.ads",
+  "tests/acpi-field-remote/fixtures/behavior/qword_oracle.ads": "tests/aml-field-io/qword_oracle.ads",
+  "tests/acpi-field-remote/fixtures/behavior/root_test_support.adb": "tests/aml-field-io/root_test_support.adb",
+  "tests/acpi-field-remote/fixtures/behavior/root_test_support.ads": "tests/aml-field-io/root_test_support.ads"
+}

@@ -1,0 +1,7 @@
+project Backend_Targets is
+ for Source_Dirs use (".", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+ for Source_Files use ("backend_targets_tests.adb", "cubit-backend_targets.ads", "cubit-backend_targets.adb", "cubit.ads");
+ for Object_Dir use "build/backend-targets/obj"; for Exec_Dir use "build/backend-targets";
+ for Main use ("backend_targets_tests.adb");
+ package Compiler is for Default_Switches("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2"); end Compiler;
+end Backend_Targets;

@@ -1,0 +1,72 @@
+project Display is
+
+    for Languages use ("Ada");
+
+    type Test_Mode_Type is ("production", "delayed", "output-rebind");
+    Test_Mode : Test_Mode_Type := external ("CUBIT_DISPLAY_TEST_MODE", "production");
+    case Test_Mode is
+        when "production" =>
+            for Object_Dir use "build";
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "production", "build/generated");
+        when "delayed" =>
+            for Object_Dir use "build-delayed";
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "test-delayed", "build/generated");
+        when "output-rebind" =>
+            for Object_Dir use "build-output-rebind";
+            for Source_Dirs use ("../../lib/display", "../../lib/compositor", ".", "test-output", "build/generated");
+    end case;
+
+    for Main use ("main.adb");
+
+    for Runtime ("Ada") use "../../runtime";
+
+    for Library_Dir use "";
+
+    package Builder is
+        for Executable ("main.adb") use "display.svc";
+
+        for Default_Switches ("Ada") use
+        (
+            "-g",
+            "-gnatwa",
+            "-gnatw.X",
+            "-s",
+            "-v",
+            "-nostdlib"
+        );
+    end Builder;
+
+    package Compiler is
+        for Default_Switches ("Ada") use
+        (
+            "-O2",
+            "-gnat2022",
+            "-fstack-usage",
+            "-fomit-frame-pointer",
+            "-mno-red-zone",
+            "-fno-pic"
+        );
+    end Compiler;
+
+    package Binder is
+        for Default_Switches ("Ada") use
+        (
+            "-d_C"
+        );
+    end Binder;
+
+    package Linker is
+        for Default_Switches ("Ada") use
+        (
+            "-nostdlib",
+            "-static",
+            "-no-pie",
+            "-Wl,-z,stack-size=16777216",
+            "-lgnat-user",
+            "-T", "../../c/link.ld",
+            "../../c/build/crt0.o",
+            "build/manifest.o"
+        );
+    end Linker;
+
+end Display;

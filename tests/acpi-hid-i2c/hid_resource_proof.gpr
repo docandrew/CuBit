@@ -1,0 +1,8 @@
+project Resources is
+   for Source_Dirs use ("../../userspace/services/acpi/hid-i2c", "../../userspace/services/acpi/resource-data", "../../shared/firmware");
+   for Source_Files use ("acpi_hid_i2c_resources.ads", "acpi_hid_i2c_resources.adb", "acpi_resource_data.ads", "acpi_resource_data.adb", "acpi_resource_data-serial_connections.ads", "acpi_resource_data-serial_connections.adb", "acpi_resource_data-gpio_connections.ads", "acpi_resource_data-gpio_connections.adb", "firmware_tables.ads", "firmware_tables.adb");
+   for Object_Dir use external ("ACPI_HID_PROOF_OBJECTS");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+   end Compiler;
+end Resources;

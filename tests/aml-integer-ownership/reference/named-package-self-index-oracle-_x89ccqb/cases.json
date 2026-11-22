@@ -1,0 +1,212 @@
+[
+  {
+    "key": "r1-alias",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-alias.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r1-self",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-self.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r1-source-independence",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-source-independence.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r1-nested-independence",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-nested-independence.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r1-old-target-local",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-old-target-local.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r1-integer-replacement",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-integer-replacement.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r2-alias",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-alias.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r2-self",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-self.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r2-source-independence",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-source-independence.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r2-nested-independence",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-nested-independence.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r2-old-target-local",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-old-target-local.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r2-integer-replacement",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-integer-replacement.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "normal named Package Store alias/self/source and nested independence/old target/integer replacement; expected behavior open"
+  },
+  {
+    "key": "r1-self-old-index",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-self-old-index.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "retained Index old package across self Store then new named element mutation; no shortcut assumption"
+  },
+  {
+    "key": "r2-self-old-index",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-self-old-index.asl",
+    "methods": [
+      "TEST",
+      "GETD",
+      "GETS",
+      "GETA",
+      "LEAF",
+      "NEST"
+    ],
+    "scope": "retained Index old package across self Store then new named element mutation; no shortcut assumption"
+  }
+]

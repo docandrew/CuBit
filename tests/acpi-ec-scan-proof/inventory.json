@@ -1,0 +1,442 @@
+{
+  "entities": [
+    "ACPI_EC_Query_Scans",
+    "ACPI_EC_Query_Scans.Can_Start",
+    "ACPI_EC_Query_Scans.Create",
+    "ACPI_EC_Query_Scans.Extend",
+    "ACPI_EC_Query_Scans.Fail",
+    "ACPI_EC_Query_Scans.Record_Empty",
+    "ACPI_EC_Query_Scans.Record_Event",
+    "ACPI_EC_Query_Scans.Start_Iteration",
+    "ACPI_EC_Query_Scans.State",
+    "ACPI_EC_Query_Scans.Valid",
+    "ACPI_EC_Query_Scans.View"
+  ],
+  "proof": [
+    "ACPI_EC_Query_Scans.Create:acpi_ec_query_scans.ads:32:16:VC_POSTCONDITION",
+    "ACPI_EC_Query_Scans.Extend:acpi_ec_query_scans.ads:64:16:VC_POSTCONDITION",
+    "ACPI_EC_Query_Scans.Fail:acpi_ec_query_scans.ads:58:16:VC_POSTCONDITION",
+    "ACPI_EC_Query_Scans.Record_Empty:acpi_ec_query_scans.ads:52:16:VC_POSTCONDITION",
+    "ACPI_EC_Query_Scans.Record_Event:acpi_ec_query_scans.ads:46:16:VC_POSTCONDITION",
+    "ACPI_EC_Query_Scans.Start_Iteration:acpi_ec_query_scans.adb:9:60:VC_RANGE_CHECK",
+    "ACPI_EC_Query_Scans.Start_Iteration:acpi_ec_query_scans.ads:39:16:VC_POSTCONDITION",
+    "ACPI_EC_Query_Scans.Start_Iteration:acpi_ec_query_scans.ads:41:69:VC_RANGE_CHECK",
+    "ACPI_EC_Query_Scans.State:acpi_ec_query_scans.ads:18:9:VC_DEFAULT_INITIAL_CONDITION"
+  ],
+  "proof_shapes": [
+    {
+      "signature": "ACPI_EC_Query_Scans.Create:acpi_ec_query_scans.ads:32:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Query_Scans.Extend:acpi_ec_query_scans.ads:64:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Query_Scans.Fail:acpi_ec_query_scans.ads:58:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Query_Scans.Record_Empty:acpi_ec_query_scans.ads:52:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Query_Scans.Record_Event:acpi_ec_query_scans.ads:46:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Query_Scans.Start_Iteration:acpi_ec_query_scans.adb:9:60:VC_RANGE_CHECK",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Query_Scans.Start_Iteration:acpi_ec_query_scans.ads:39:16:VC_POSTCONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Query_Scans.Start_Iteration:acpi_ec_query_scans.ads:41:69:VC_RANGE_CHECK",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    },
+    {
+      "signature": "ACPI_EC_Query_Scans.State:acpi_ec_query_scans.ads:18:9:VC_DEFAULT_INITIAL_CONDITION",
+      "leaves": [
+        [
+          "CVC5"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ],
+        [
+          "Trivial"
+        ],
+        [
+          "CVC5"
+        ]
+      ]
+    }
+  ],
+  "flow": [
+    "ACPI_EC_Query_Scans.Can_Start:acpi_ec_query_scans.ads:27:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Query_Scans.Can_Start:acpi_ec_query_scans.ads:28:39:GLOBAL_WRONG",
+    "ACPI_EC_Query_Scans.Create:acpi_ec_query_scans.ads:30:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Query_Scans.Create:acpi_ec_query_scans.ads:31:11:GLOBAL_WRONG",
+    "ACPI_EC_Query_Scans.Extend:acpi_ec_query_scans.ads:62:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Query_Scans.Extend:acpi_ec_query_scans.ads:62:64:UNINITIALIZED",
+    "ACPI_EC_Query_Scans.Extend:acpi_ec_query_scans.ads:63:11:GLOBAL_WRONG",
+    "ACPI_EC_Query_Scans.Fail:acpi_ec_query_scans.ads:55:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Query_Scans.Fail:acpi_ec_query_scans.ads:56:11:GLOBAL_WRONG",
+    "ACPI_EC_Query_Scans.Record_Empty:acpi_ec_query_scans.ads:49:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Query_Scans.Record_Empty:acpi_ec_query_scans.ads:50:11:GLOBAL_WRONG",
+    "ACPI_EC_Query_Scans.Record_Event:acpi_ec_query_scans.ads:43:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Query_Scans.Record_Event:acpi_ec_query_scans.ads:44:11:GLOBAL_WRONG",
+    "ACPI_EC_Query_Scans.Start_Iteration:acpi_ec_query_scans.ads:36:14:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Query_Scans.Start_Iteration:acpi_ec_query_scans.ads:37:11:GLOBAL_WRONG",
+    "ACPI_EC_Query_Scans.Valid:acpi_ec_query_scans.ads:20:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Query_Scans.Valid:acpi_ec_query_scans.ads:26:11:GLOBAL_WRONG",
+    "ACPI_EC_Query_Scans.View:acpi_ec_query_scans.ads:19:13:SUBPROGRAM_TERMINATION",
+    "ACPI_EC_Query_Scans.View:acpi_ec_query_scans.ads:19:57:GLOBAL_WRONG"
+  ],
+  "claims": [
+    {
+      "claim": "ACPI_EC_Query_Scans:CLAIM_AORTE",
+      "dependencies": []
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Can_Start:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Create:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Create:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Extend:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Extend:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Fail:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Fail:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Record_Empty:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Record_Empty:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Record_Event:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Record_Event:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Start_Iteration:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Can_Start:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Can_Start:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Start_Iteration:CLAIM_POST",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.Can_Start:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Can_Start:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.Valid:CLAIM_EFFECTS",
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.State:CLAIM_AORTE",
+      "dependencies": []
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.Valid:CLAIM_AORTE",
+      "dependencies": [
+        "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+        "ACPI_EC_Query_Scans.View:CLAIM_EFFECTS"
+      ]
+    },
+    {
+      "claim": "ACPI_EC_Query_Scans.View:CLAIM_AORTE",
+      "dependencies": []
+    }
+  ],
+  "source_sha256": {
+    "acpi_ec_query_scans.ads": "591ddbc473777aa0cf469cbde73e851074ebd1430eed0a07e5aacfb2b5a1ef52",
+    "acpi_ec_query_scans.adb": "cd494ab8abeb9c3ee028e984b6bd1c6f386d83004fe5b2bbd714cf1e519ad2d0"
+  }
+}

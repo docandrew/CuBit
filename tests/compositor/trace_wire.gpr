@@ -1,0 +1,10 @@
+project Trace_Wire is
+ for Source_Dirs use (".", "../../userspace/lib/compositor");
+ for Source_Files use ("compositor_frame_trace.adb", "compositor_trace_wire.ads", "compositor_render_trace.adb", "compositor_render_trace.ads", "compositor_elapsed.ads", "compositor_trace_wire.adb", "compositor_frame_trace.ads", "compositor_source_trace.ads", "compositor_input_trace.ads", "compositor_input_trace.adb", "compositor_source_trace.adb", "trace_wire_check.adb");
+ for Object_Dir use external ("TRACE_WIRE_OUTPUT", "build/trace-wire") & "/obj";
+ for Exec_Dir use external ("TRACE_WIRE_OUTPUT", "build/trace-wire");
+ for Main use ("trace_wire_check.adb");
+ package Compiler is
+ for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+ end Compiler;
+end Trace_Wire;

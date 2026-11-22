@@ -1,0 +1,26 @@
+--  Hosted tests and proofs for the kernel log ring (LOG-004): the shared
+--  layout and arithmetic (shared/publications/kernel_log_publication.ads),
+--  the reader's drain step (Kernel_Log_Publication.Drain, through
+--  Drain_Instance) and the typed fault reports
+--  (shared/publications/fault_reports.ads): run.sh.
+project Kernel_Log_Ring_Tests is
+   for Source_Dirs use (".", "../../shared/publications", "../../shared/time");
+   for Source_Files use
+     ("clock_publication.ads", "clock_publication.adb",
+      "kernel_log_publication.ads", "kernel_log_publication.adb",
+      "kernel_log_publication-drain.ads", "kernel_log_publication-drain.adb",
+      "fault_reports.ads", "fault_reports.adb",
+      "simulated_ring.ads", "simulated_ring.adb", "drain_loads.ads", "drain_loads.adb",
+      "drain_instance.ads",
+      "main.adb");
+   for Object_Dir use external ("KERNEL_LOG_RING_OBJ", "build/obj");
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail");
+   end Prove;
+end Kernel_Log_Ring_Tests;

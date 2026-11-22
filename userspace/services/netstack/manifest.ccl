@@ -1,0 +1,12 @@
+# netstack.svc's authority (CAP-002): its role registration and its
+# endpoint to devmgr. It holds no endpoint to any network driver: drivers
+# attach to it and park their transmit waits with it (docs/net-link.md).
+(Executable_Manifest
+  identity => "com.cubit.netstack"
+  version => "0.1.0"
+  requests => [
+    (notification "netstack" Notify_Access.Manage "registration")
+    (service "device-manager" "ready")
+    # ABI-002: its debug text, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

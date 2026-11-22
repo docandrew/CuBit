@@ -1,0 +1,29 @@
+{
+  "hosted_checks": 2600,
+  "runtime_processes": 100,
+  "evidence": {
+    "drain": {
+      "path": "/home/doc/cubit-build-tmp/ec-drain-YBXSNp/COMPLETE.json",
+      "sha256": "90811bb4f384be597bafcef3d3197d6ab367d92bf7c44ee9ea1b7382f97752de",
+      "checks": 2056,
+      "runtime_processes": 64
+    },
+    "legacy": {
+      "path": "/home/doc/cubit-build-tmp/ec-receive-rzgDIv/COMPLETE.json",
+      "sha256": "6c96f87563c4f92987b589f0ed65065ca25186e37a7757475dc5dd7c6767a093",
+      "checks": 544,
+      "runtime_processes": 36
+    },
+    "semantic": {
+      "path": "/home/doc/cubit-build-tmp/ec-progress-semantic-PticND/COMPLETE.json",
+      "sha256": "2f618695a9242ddfd52b94ebfe5fd08540dfa40264f36b4cbace1085281d0d50",
+      "source_count": 252,
+      "runtime_specs": 222,
+      "objects": 0
+    }
+  },
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "goal_complete": false
+}

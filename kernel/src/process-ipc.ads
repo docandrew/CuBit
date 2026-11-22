@@ -1,0 +1,590 @@
+-------------------------------------------------------------------------------
+-- CuBitOS
+-- Copyright (C) 2021 Jon Andrew
+--
+-- @summary
+-- CuBitOS IPC
+--
+-- Multi-word register-based IPC (L4/seL4 style). Messages carry a tag
+-- (opcode, length, flags, authority tag), a kernel-stamped capability authority tag, and up to
+-- 4 64-bit data words, for a total of 48 bytes.
+--
+-- IPC lock ordering (acquire in this order, never reverse):
+--   1. mailtab(pid).lock    (ring, completions, pending requests, request IDs,
+--                          reply-slot changes and authorized cspace edits)
+--      Two-mailbox publication acquires distinct PIDs in ascending order.
+--      Explicit reply retirement releases the caller lock before locking its
+--      target. PID-based reply selection holds both, then drops the caller
+--      lock before the target-locked completion/handoff. Self-reply locks once.
+--   2. Process.lock         (global process table)
+--   3. individual process queue locks (ready, sleep, send, receive)
+-- Queue locks are leaves: release the sleep lock before acquiring a ready
+-- lock. See docs/kernel-locking.md for allocator/grant dependencies and the
+-- process-lifetime / mailbox teardown protocol in kernel-process-retirement.md.
+-------------------------------------------------------------------------------
+with Capabilities;
+with Capability_ABI;
+with IPC_Labels;
+with Kernel_Controls;
+with Memory_Grants;
+
+with Device_Vector_ABI;
+
+package Process.IPC is
+    -- Request/mixed receive variants share a mailbox-locked round-robin over
+    -- queued messages, blocked synchronous senders, and persistent IRQ work.
+    -- Service-only polls omit IRQs and preserve unsolicited events. Under
+    -- continuous eligible traffic, neither synchronous calls nor queued
+    -- submissions may monopolize receive selection. This is a dequeue-count
+    -- fairness bound, not a scheduler/service-time or p99 latency guarantee.
+
+    -- Victim is closed, off CPU and exclusively claimed by the reaper.
+    -- Acquires each mailbox before Process.lock, never the reverse.
+    procedure retireMailboxes (pid : ProcessID);
+
+    -- An exiting thread: a client blocked on the reply this thread owed is
+    -- woken with REPLY_ENDED; an asynchronous request it owed completes
+    -- COMPLETION_CANCELLED (when the main thread exits, the process's
+    -- teardown completes those TARGET_DIED instead).
+    procedure retireThread (tid : ThreadID);
+
+    -- The process and (for a synchronous reply) the thread a reply
+    -- capability answers; NO_PROCESS if it is stale.
+    procedure replyTargetOf (cap : Capabilities.Capability;
+                             pid : out ProcessID;
+                             tid : out ThreadID);
+
+    ---------------------------------------------------------------------------
+    -- Kernel notices (docs/ipc-delivery.md): grant ends, exit and fault
+    -- reports, kept until read and delivered through the event receives.
+    ---------------------------------------------------------------------------
+
+    -- pid (its current life) is told of grant ends and sent reports from
+    -- now: at publication.
+    procedure openNotices (pid : ProcessID);
+    -- pid ended: nothing more for it, and what it was owed is dropped
+    -- (PIDs that waited only for its reading are freed). At reclamation,
+    -- before its grants are revoked. Caller holds no IPC lock.
+    procedure closeNotices (pid : ProcessID);
+    -- pid's exit report, kept for its parent and for the process manager
+    -- (their lives as given); ring* say whom to ring (ringReport) once the
+    -- caller's locks are released. Before releaseRetiredPID.
+    procedure reportExit
+      (pid : ProcessID; msg : Message;
+       parent : ProcessID; parentGeneration : Capabilities.Generation;
+       manager : ProcessID; managerGeneration : Capabilities.Generation;
+       ringParent, ringManager : out Boolean);
+    procedure ringReport (recipient : ProcessID);
+    -- A control message from sender to target (this life of each), kept
+    -- until target reads it; Busy when every sender slot of target holds
+    -- another sender's unread messages (the sender keeps its message).
+    procedure sendControl
+      (target : ProcessID; targetGeneration : Capabilities.Generation;
+       sender : ProcessID; kind : IPC_Labels.Control_Kind;
+       result : out Kernel_Controls.Send_Result);
+    -- A retired, invalidated pid goes back to the allocator once no report
+    -- about it is unread; until then its release waits for the last read.
+    procedure releaseRetiredPID (pid : ProcessID);
+
+    ---------------------------------------------------------------------------
+    -- send
+    -- Synchronous send: deliver a message to a process' mailbox. If a
+    -- receiver is already waiting, hand the message off immediately.
+    -- Otherwise enqueue as a sender and block.
+    --
+    -- The caller blocks in WAITINGFORREPLY until the receiver calls reply().
+    -- @return the reply message tag.
+    ---------------------------------------------------------------------------
+    function send (dest : ProcessID; msg : Message;
+                   expectedGeneration : Capabilities.Generation;
+                   deadlineMs : Unsigned_64) return MessageTag;
+
+
+    --  Non-blocking event publication with explicit backpressure. accepted is
+    --  False when the destination is unavailable or its bounded event lane is
+    --  full. Producers of stateful streams use this result to mark their next
+    --  accepted report as a resynchronization snapshot.
+    procedure trySendEvent (dest      : ProcessID;
+                            msg       : Message;
+                            publisher : ProcessID;
+                            accepted  : out Boolean;
+                            expectedGeneration : Capabilities.Generation := 0);
+
+    -- Publish a coalescible, persistent device-work doorbell. It cannot be
+    -- refused: it is a bit, not a queued message.
+    procedure notifyIRQ (dest : ProcessID);
+
+    -- The same doorbell for a message-signaled device vector, which also
+    -- marks the vector in dest's pending set (Device_Vector_ABI).
+    procedure notifyDeviceVector (dest   : ProcessID;
+                                  vector : Device_Vector_ABI.Device_Vector);
+
+    ---------------------------------------------------------------------------
+    -- receive
+    -- Receive a message from one's mailbox. Block if no message available.
+    -- On return, from contains the sender PID and msg contains the message.
+    --
+    -- Every receive and poll variant replaces the thread's reply authority
+    -- (even when it finds nothing). A request still unanswered then ends
+    -- (IPC-000 rule 3, BUG-004): its synchronous caller wakes with
+    -- REPLY_ENDED, an asynchronous one completes COMPLETION_CANCELLED, and
+    -- the kernel prints a REPLY-ENDED line naming the server. A server that
+    -- answers later sets the request aside first (MOVE_REPLY_CAPABILITY).
+    ---------------------------------------------------------------------------
+    procedure receive (from : out ProcessID; msg : out Message);
+
+    -- What waitForActivityUntil returns.
+    Activity_Deadline : constant Unsigned_64 := 0;
+    Activity_Work     : constant Unsigned_64 := 1;
+    -- A kernel notice (grant lifecycle, child exit, channel wakes) was
+    -- taken into event: the woken thread needs no second call to read it.
+    Activity_Event    : constant Unsigned_64 := 2;
+    -- The wake word moved, or was woken (IPC-010 option B).
+    Activity_Word     : constant Unsigned_64 := 3;
+    Activity_Closed   : constant Unsigned_64 := Unsigned_64'Last;
+
+    -- Wait without consuming messages or completions (or reply authority).
+    -- With takeEvent, a pending kernel notice is taken into event and the
+    -- result is Activity_Event (nothing else is consumed); the caller must
+    -- have checked that it can store event before asking.
+    --
+    -- With wakeWord /= 0 (an aligned word of the caller's own memory): it
+    -- becomes the process's wake word, and the wait also returns
+    -- Activity_Word, taking the pending wake, when the word no longer holds
+    -- expected or a futex wake of it came (noteWakeWord). Both are checked
+    -- under the mailbox lock, which noteWakeWord takes: no lost wake.
+    procedure waitForActivityUntil
+      (deadlineMs : Unsigned_64; takeEvent : Boolean;
+       event : out Message; result : out Unsigned_64;
+       wakeWord : Unsigned_64 := 0; expected : Unsigned_64 := 0);
+
+    --  Block until any IPC arrives or the absolute monotonic millisecond
+    --  deadline is reached. Unlike a userspace sleep/poll loop, publication
+    --  wakes the receiver immediately. received is False only on timeout.
+    procedure receiveUntil
+        (deadlineMs : in  Unsigned_64;
+         from       : out ProcessID;
+         msg        : out Message;
+         received   : out Boolean);
+
+    --  Called once per monotonic millisecond by the BSP timer. Timed receivers
+    --  are removed from their one mailbox queue and made runnable when due.
+    procedure expireReceiveDeadlines (nowMs : Unsigned_64);
+
+    --  Diagnostics for machines without serial: every Stuck_Report_Period_Ms
+    --  the BSP timer draws the threads blocked in a synchronous call for at
+    --  least Stuck_Call_Ms (Boot_Diagnostics.Stuck_Calls), with the server's
+    --  main-thread state. Reads thread records without locks: a torn line is
+    --  possible and harmless; it grants and changes nothing. Each line is
+    --  also printed to serial as "STUCK-CALL: ...".
+    Stuck_Report_Period_Ms : constant := 2_000;
+    Stuck_Call_Ms          : constant := 3_000;
+    procedure reportStuckCalls (nowMs : Unsigned_64);
+
+    ---------------------------------------------------------------------------
+    -- receiveEvent
+    -- Block until an event is received, or return the event if one is already
+    -- waiting. If multiple events are sent to this process between
+    -- receiveEvent calls, only the latest one will be delivered.
+    ---------------------------------------------------------------------------
+    function receiveEvent return Message;
+
+    ---------------------------------------------------------------------------
+    -- receiveEventNB
+    -- Non-blocking event receive. Pops from the event ring buffer.
+    -- @param msg       - the event message (valid only if found is True)
+    -- @param found     - True if an event was available
+    -- @param publisher - the process that published it; NO_PROCESS for the
+    --                    kernel's own notices and doorbells
+    ---------------------------------------------------------------------------
+    procedure receiveEventNB (msg : out Message; found : out Boolean;
+                              publisher : out ProcessID);
+
+    ---------------------------------------------------------------------------
+    -- reply
+    -- Reply to a process who called send() or submit() and unblock it.
+    -- Dual-path: if sender is in WAITINGFORREPLY (sync send), stores reply
+    -- and wakes them directly. If sender used submit() (async), enqueues a
+    -- CompletionEntry matched by the reply cap's request ID and wakes them if
+    -- in WAITINGFORCOMPLETION.
+    -- @return 1 on success.
+    ---------------------------------------------------------------------------
+    function reply (replyTo : ProcessID; msg : Message) return Unsigned_64;
+
+    ---------------------------------------------------------------------------
+    -- replyCap
+    -- Reply using a saved CAP_REPLY, named by its handle (MOVE_REPLY_
+    -- CAPABILITY placed it). The saved reply is consumed (its handle closed)
+    -- even if the peer is dead/stale or delivery otherwise fails. A handle
+    -- naming anything else is never changed by this operation.
+    -- @return 1 on success.
+    ---------------------------------------------------------------------------
+    function replyCap
+        (handle : Unsigned_64;
+         msg    : Message) return Unsigned_64;
+
+    ---------------------------------------------------------------------------
+    -- replyWithCapability (REPLY_WITH_CAPABILITY, CAP-002)
+    -- Reply to replyTo with the calling thread's current reply authority,
+    -- carrying a copy of the caller's capability `derivation` names
+    -- (Capability_ABI.Derivation, already copied in). Only when replyTo's
+    -- request set Capability_ABI.Accepts_Capability (the reply authority then
+    -- holds RIGHT_GRANT). The copy is placed in replyTo's table; the delivered
+    -- reply's authorityTag is its handle word and its flags say
+    -- Capability_Transferred. When the copy cannot be placed in replyTo's
+    -- table (its limit, its memory), the reply is still delivered, with
+    -- Capability_Refused and the refusal code. A copy whose reply is not
+    -- delivered (the caller went away) is closed again.
+    -- @return the handle word in replyTo's table, or a refusal code; the
+    --  reply authority is kept on Not_Accepted and on a refused derivation.
+    ---------------------------------------------------------------------------
+    function replyWithCapability
+        (replyTo    : ProcessID;
+         msg        : Message;
+         derivation : Capability_ABI.Derivation) return Unsigned_64;
+
+    ---------------------------------------------------------------------------
+    -- failReply
+    -- A saved reply was closed unanswered (CLOSE_HANDLE): its request ends.
+    -- A synchronous caller wakes with REPLY_ENDED, as when its server
+    -- exits; an asynchronous request completes COMPLETION_CANCELLED. The
+    -- calling process is the one that held it. Caller holds no mailbox lock
+    -- and not Process.lock.
+    ---------------------------------------------------------------------------
+    procedure failReply (cap : Capabilities.Capability);
+
+    ---------------------------------------------------------------------------
+    -- replySavedWithCapability (REPLY_SAVED_WITH_CAPABILITY, CAP-002)
+    -- replyWithCapability for a request set aside with MOVE_REPLY_CAPABILITY,
+    -- named by its saved reply's handle. Nothing is consumed unless the
+    -- request accepted a capability and the copy is allowed.
+    ---------------------------------------------------------------------------
+    function replySavedWithCapability
+        (handle     : Unsigned_64;
+         msg        : Message;
+         derivation : Capability_ABI.Derivation) return Unsigned_64;
+
+    ---------------------------------------------------------------------------
+    -- replyWait
+    -- Reply then receive in one syscall; each operation has its own
+    -- mailbox-locked publication boundary (not one atomic transaction).
+    -- Replies to replyTo, then blocks receiving the next message.
+    -- Avoids a second userspace syscall entry for server loops.
+    -- @param replyTo  - PID to reply to
+    -- @param replyMsg - message to send as reply
+    -- @param from     - out: sender PID of next received message
+    -- @param msg      - out: next received message
+    ---------------------------------------------------------------------------
+    procedure replyWait (replyTo  : in  ProcessID;
+                         replyMsg : in  Message;
+                         from     : out ProcessID;
+                         msg      : out Message);
+
+    ---------------------------------------------------------------------------
+    -- receiveServiceRequestNB
+    -- Non-blocking receive for the service-request lane only.
+    --
+    -- This procedure deliberately ignores events even though they share the
+    -- same underlying ring. It may return:
+    --   * synchronous send/call requests, which mint a reply capability;
+    --   * async requests submitted with a completion token, which mint a
+    --     reply capability carrying the async request ID;
+    --   * one-way service messages, which have a sender but do not mint reply
+    --     authority.
+    --
+    -- Use this for ordinary server dispatch loops. Input, IRQ, lifecycle, and
+    -- other unsolicited traffic must be received through the event lane.
+    ---------------------------------------------------------------------------
+    procedure receiveServiceRequestNB (from  : out ProcessID;
+                                       msg   : out Message;
+                                       found : out Boolean);
+
+    ---------------------------------------------------------------------------
+    -- receiveAnyIpcNB
+    -- Non-blocking mixed receive.
+    --
+    -- This is the explicit footgun. It may consume service requests, events,
+    -- and one-way messages from the unified ring. Callers must
+    -- inspect the returned message and sender and perform their own dispatch.
+    --
+    -- Prefer receiveServiceRequestNB, receiveEventNB, or completion polling
+    -- unless the caller is intentionally implementing a mixed IPC event loop.
+    ---------------------------------------------------------------------------
+    procedure receiveAnyIpcNB (from  : out ProcessID;
+                               msg   : out Message;
+                               found : out Boolean);
+
+    ---------------------------------------------------------------------------
+    -- Async I/O Primitives
+    ---------------------------------------------------------------------------
+
+    ---------------------------------------------------------------------------
+    -- waitCompletion
+    -- Block until at least minWait completions are available, then drain
+    -- up to maxEntries from the caller's completion queue.
+    -- @param entries     - output array of completion entries
+    -- @param maxEntries  - max completions to drain
+    -- @param minWait     - minimum completions before returning (blocks if fewer)
+    -- @param numReturned - actual number of completions returned
+    ---------------------------------------------------------------------------
+    -- Completions are written to the caller's user memory at destination
+    -- (CompletionEntry each) through Process.User_Memory: the whole range
+    -- must be the caller's own writable memory, checked before anything is
+    -- taken (ok False otherwise, and nothing is taken).
+    procedure waitCompletion (destination : in  Unsigned_64;
+                              maxEntries  : in  Natural;
+                              minWait     : in  Natural;
+                              numReturned : out Natural;
+                              ok          : out Boolean);
+
+    ---------------------------------------------------------------------------
+    -- pollCompletion
+    -- Non-blocking single completion check.
+    -- @param result - the completion entry if found
+    -- @param found  - True if a completion was available
+    ---------------------------------------------------------------------------
+    procedure pollCompletion (result : out CompletionEntry;
+                              found  : out Boolean);
+
+    ---------------------------------------------------------------------------
+    -- Shared Memory Grant Operations
+    ---------------------------------------------------------------------------
+
+    --  True when any byte in a page range lies in the virtual aperture used
+    --  for received grants. Such pages are borrowed, not owned, and cannot be
+    --  passed onward through ordinary createGrant. Future zero-copy chains use
+    --  an explicit derived-loan operation with parent lifetime tracking.
+    function overlapsGrantRegion (localAddr : System.Address;
+                                  numPages  : Natural) return Boolean
+        with Global     => null;
+
+    ---------------------------------------------------------------------------
+    -- createGrant
+    -- Map pages from the caller's address space into grantee's address space.
+    -- The caller (granter) owns the grant and can revoke it later.
+    -- Borrowed pages in GRANT_REGION_BASE..GRANT_REGION_END are rejected.
+    -- @param grantee   - PID of the process to grant access to
+    -- @param localAddr - page-aligned virtual address in caller's space
+    -- @param numPages  - number of 4K pages to grant
+    -- @param perm      - read-only or read-write access
+    -- @param id        - output: ID of the created grant
+    -- @param success   - output: True on success
+    ---------------------------------------------------------------------------
+    procedure createGrant (grantee   : in  ProcessID;
+                           localAddr : in  System.Address;
+                           numPages  : in  Natural;
+                           perm      : in  GrantPermission;
+                           id        : out Natural;
+                           success   : out Boolean;
+                           expectedGeneration : Capabilities.Generation := 0;
+                           forwardable : Boolean := False;
+                           notify : Boolean := False);
+
+    -- Derive a terminal mapping from an acquired, owner-forwardable parent.
+    -- The caller must be the parent's receiver. Recipient identity comes from
+    -- endpoint authority; its generation is rechecked under grantLock.
+    procedure deriveGrant
+      (parent : Memory_Grants.Reference; grantee : ProcessID;
+       expectedGeneration : Capabilities.Generation;
+       pageOffset : Memory_Grants.Page_Offset;
+       numPages : Memory_Grants.Page_Count; perm : GrantPermission;
+       derived : out Memory_Grants.Reference; success : out Boolean);
+
+    ---------------------------------------------------------------------------
+    -- revokeGrant
+    -- Unmap granted pages from the grantee's address space.
+    -- Only the granter (caller) can revoke.
+    -- @param id - ID of the grant to revoke
+    ---------------------------------------------------------------------------
+    -- success reports whether an active owned grant was found under grantLock.
+    procedure revokeGrant (id : Memory_Grants.Global_Slot; success : out Boolean);
+
+    ---------------------------------------------------------------------------
+    -- revokeAllGrants
+    -- Revoke all active grants owned by the specified process.
+    -- Called during process kill() to prevent dangling mappings.
+    -- @param pid - PID of the process whose grants should be revoked
+    ---------------------------------------------------------------------------
+    procedure revokeAllGrants (pid : ProcessID);
+
+    ---------------------------------------------------------------------------
+    -- revokeAllGrantsTo
+    -- Invalidate every grant whose grantee is the specified process. Called
+    -- during process death so an owner cannot retain metadata naming a PID
+    -- that may later be reused for an unrelated process.
+    ---------------------------------------------------------------------------
+    procedure revokeAllGrantsTo (pid : ProcessID);
+
+    ---------------------------------------------------------------------------
+    -- getOwnedGrantGeneration
+    -- The generation of the caller's active grant at this slot (a pending
+    -- revocation is still active), or zero when the caller has none there.
+    -- Zero proves the caller's reference retired: a slot's generation only
+    -- advances, so the caller's grant can't come back. The slot may already
+    -- hold another process's grant (one global table, KERN-003 step 2a);
+    -- that reads as zero too, so the query reveals nothing about it.
+    ---------------------------------------------------------------------------
+    procedure getOwnedGrantGeneration
+      (slot       : Memory_Grants.Grant_Slot;
+       generation : out Memory_Grants.Grant_Generation);
+
+    ---------------------------------------------------------------------------
+    -- acquireGrant
+    -- Authoritatively validate and pin a generation-tagged grant for the
+    -- current grantee.  The mapping remains valid until returnGrant.
+    ---------------------------------------------------------------------------
+    procedure acquireGrant
+      (reference     : Memory_Grants.Reference;
+       expectedOwner : ProcessID;
+       byteOffset    : Unsigned_64;
+       byteLength    : Unsigned_64;
+       requiredWrite : Boolean;
+       mappedAddress : out System.Address;
+       success       : out Boolean);
+
+    procedure returnGrant
+      (reference : Memory_Grants.Reference;
+       success   : out Boolean);
+
+    procedure revokeGrantReference
+      (reference : Memory_Grants.Reference;
+       success   : out Boolean);
+
+    -- A futex wake reached owner's word at ownerAddress (its own address):
+    -- if that is owner's registered wake word (IPC-010 option B), its Ready
+    -- wait and its receive wake as for a doorbell (one Channel_Wake_ABI
+    -- notice, coalesced). True when it was. Caller holds no futex bucket
+    -- lock, no grantLock and no mailbox lock.
+    function noteWakeWord (owner : ProcessID; ownerAddress : Unsigned_64; sync : Boolean)
+      return Boolean;
+
+    -- Wake a channel peer (FUTEX_WAKE, Futex_ABI.Peer_Space): caller is a
+    -- party of the live grant named by reference (generation << 32 | slot),
+    -- made with the notify flag; the other party's wake word is woken (its
+    -- Ready_Word wait or its receive: one coalesced Channel_Wake_ABI
+    -- notice). Returns 1, or Futex_ABI.Wake_Refused.
+    function wakePeer (caller : ProcessID; reference : Unsigned_64; sync : Boolean)
+      return Unsigned_64;
+
+    -- Called once after reserving a PID, before resetting/publishing its
+    -- process record: True when no grant of an earlier life of this slot is
+    -- still on its lists (they leave before the slot can be reused).
+    function grantListsEmpty (pid : ProcessID) return Boolean;
+
+    -- Called by process teardown.  When acquired grants remain, retain the
+    -- PID until teardown is complete and the final acquisition is returned.
+    procedure prepareGrantProtectedTeardown
+      (pid         : ProcessID;
+       pidReusable : Boolean;
+       deferred    : out Boolean);
+
+    procedure finishGrantProtectedTeardown (pid : ProcessID);
+
+    -- Retirement-worker-only bounded step, after DMA.Take_Ready; at most
+    -- 64 ownership-tag releases. PID stays reserved until all records retire.
+    procedure releaseDMAAllocations (pid : ProcessID);
+
+    ---------------------------------------------------------------------------
+    -- Capability-Aware IPC
+    ---------------------------------------------------------------------------
+
+    ---------------------------------------------------------------------------
+    -- capSend
+    -- Resolve the endpoint capability the handle names in the caller's table,
+    -- stamp the message authority tag from the capability, and perform a synchronous
+    -- send to the resolved destination.
+    -- @return the reply message tag (NULL_TAG on capability error).
+    ---------------------------------------------------------------------------
+    function capSend (handle  : Unsigned_64;
+                      msg     : Message;
+                      deadlineMs : Unsigned_64;
+                      kernelFlags : Capability_ABI.IPC_Flags := Capability_ABI.No_IPC_Flags)
+      return MessageTag;
+
+    ---------------------------------------------------------------------------
+    -- capCall
+    -- Like capSend but writes the full reply message back via pointer.
+    -- Resolves endpoint cap, stamps authority tag, sends, returns reply tag.
+    -- The caller should read the full reply from threadOf (pid).replyMsg.
+    -- @return the reply message tag (NULL_TAG on capability error).
+    ---------------------------------------------------------------------------
+    function capCall (handle  : Unsigned_64;
+                      msg     : Message;
+                      deadlineMs : Unsigned_64) return MessageTag;
+
+    ---------------------------------------------------------------------------
+    -- capCallOffering (CALL_OFFERING_CAPABILITY, CAP-002)
+    -- capCall offering one capability, already derived from the caller's
+    -- table (Capability_Install.Derive): the delivered request carries
+    -- Capability_ABI.Capability_Offered, the server may take the offer with
+    -- acceptOffered while it answers, and whatever it leaves is dropped when
+    -- the call ends.
+    ---------------------------------------------------------------------------
+    function capCallOffering (handle  : Unsigned_64;
+                              msg     : Message;
+                              deadlineMs : Unsigned_64;
+                              offer   : Capabilities.Capability) return MessageTag;
+
+    ---------------------------------------------------------------------------
+    -- acceptOffered (ACCEPT_OFFERED_CAPABILITY, CAP-002)
+    -- Take what requester's current synchronous call offers into the
+    -- caller's table: only while the calling thread answers that call.
+    -- @return the handle word, or a refusal code (Not_Accepted: nothing was
+    --  offered; Not_Permitted: not answering requester's call).
+    ---------------------------------------------------------------------------
+    function acceptOffered (requester : ProcessID) return Unsigned_64;
+
+    ---------------------------------------------------------------------------
+    -- capSubmit
+    -- Resolve endpoint capability, stamp authority tag, perform async submit.
+    -- @return True on success, False on capability error or mailbox full.
+    ---------------------------------------------------------------------------
+    function capSubmit (handle  : Unsigned_64;
+                        msg     : Message;
+                        token   : Unsigned_64) return Boolean;
+
+    ---------------------------------------------------------------------------
+    -- Supervisor Notification
+    ---------------------------------------------------------------------------
+
+    ---------------------------------------------------------------------------
+    -- notifySupervisor
+    -- Send a non-blocking fault event to the supervisor of the given process.
+    -- Safe to call before acquiring Process.lock (respects lock ordering).
+    -- @param pid        - offending process
+    -- @param faultLabel - EVENT_CAP_FAULT or EVENT_PROCESS_FAULT
+    -- @param detail0    - syscall number or exception vector
+    -- @param detail1    - what was attempted (arg0 or fault address)
+    -- @param detail2    - additional context (arg1 or RIP)
+    ---------------------------------------------------------------------------
+    procedure notifySupervisor (pid        : ProcessID;
+                                faultLabel : Unsigned_32;
+                                detail0    : Unsigned_64;
+                                detail1    : Unsigned_64;
+                                detail2    : Unsigned_64);
+
+    ---------------------------------------------------------------------------
+    -- Shared futexes (IPC-010, Process.Futex, Futex_ABI)
+    ---------------------------------------------------------------------------
+
+    -- Where pid's 32-bit word at offset of the grant in slot lies in pid's
+    -- own address space, and the grant life it belongs to. ok only when the
+    -- grant is live (active, not being revoked, not ended), pid is its
+    -- owner or its grantee (this life of the process), and offset is
+    -- 4-aligned and inside the grant. Takes grantLock: callers may hold a
+    -- futex bucket lock (bucket lock, then grantLock), never grantLock.
+    procedure resolveSharedWord
+      (pid        : ProcessID;
+       slot       : Unsigned_64;
+       offset     : Unsigned_64;
+       generation : out Unsigned_32;
+       address    : out Unsigned_64;
+       owner      : out ProcessID;
+       ownerAddress : out Unsigned_64;
+       ok         : out Boolean);
+
+    -- Whether that grant life is still live (the futex sweep after a
+    -- sweep queue overflow). Takes grantLock, as above.
+    function sharedLifeLive (slot, generation : Unsigned_32) return Boolean;
+
+end Process.IPC;

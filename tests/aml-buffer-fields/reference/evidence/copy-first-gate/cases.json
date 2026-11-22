@@ -1,0 +1,38 @@
+[
+  {
+    "name": "BYTENAME",
+    "kind": "byte",
+    "target": "DST0",
+    "method_opcode": "CopyObject"
+  },
+  {
+    "name": "PKGLOCAL",
+    "kind": "package",
+    "target": "Local0",
+    "method_opcode": "CopyObject"
+  },
+  {
+    "name": "PKGNAME",
+    "kind": "package",
+    "target": "DST0",
+    "method_opcode": "CopyObject"
+  },
+  {
+    "name": "EMPTYLOCAL",
+    "kind": "empty",
+    "target": "Local0",
+    "method_opcode": "CopyObject"
+  },
+  {
+    "name": "EMPTYNAME",
+    "kind": "empty",
+    "target": "DST0",
+    "method_opcode": "CopyObject"
+  },
+  {
+    "name": "BYTELOCAL",
+    "kind": "byte",
+    "target": "Local0",
+    "method_opcode": "CopyObject"
+  }
+]

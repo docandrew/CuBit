@@ -1,0 +1,2 @@
+(Component name => "firmware-undeclared" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

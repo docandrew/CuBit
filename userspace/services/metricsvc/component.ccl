@@ -1,0 +1,6 @@
+(Component name => "metrics" kind => (Kind.Service Launcher.Process_Manager)
+  source => (Source.Ada (Ada_Source
+    # The series store grows on the process heap (Heap_Arrays, Heap_Growth).
+    sources => ["userspace/lib/heap"]
+    optimization => Optimization.Maximum
+    checks => Checks.Suppressed)))

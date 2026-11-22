@@ -1,0 +1,10 @@
+project Surface_State is
+   for Source_Dirs use (".", "../../userspace/lib/compositor");
+   for Source_Files use ("surface_state_tests.adb", "surface_state_model.ads", "surface_state_production.ads", "compositor_surface_state.ads", "compositor_surface_state.adb");
+   for Object_Dir use "build/surface-state/obj";
+   for Exec_Dir use "build/surface-state";
+   for Main use ("surface_state_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Surface_State;

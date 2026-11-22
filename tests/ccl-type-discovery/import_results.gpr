@@ -1,0 +1,5 @@
+project Import_Results extends "discovery.gpr" is
+   for Object_Dir use "build/import-results";
+   for Exec_Dir use "build/import-results";
+   for Main use ("import_result_tests.adb");
+end Import_Results;

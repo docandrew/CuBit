@@ -1,0 +1,1014 @@
+{
+  "oracle": "/home/doc/git/.acpi-proof-work/concat-source-timing-oracle-3pyqjc0w",
+  "cases": [
+    {
+      "case": 1,
+      "key": "r1-left-owned-store",
+      "revision": 1,
+      "payload_sha256": "f3efdfe850968ee712f8f34f74ac55f2c87fb9b316593d5abc73125919fbd840",
+      "expected_hex": "2200000033000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "2200000033000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "2200000033000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "2200000033000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "2200000033000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r1-left-owned-store.asl": "2dfdff27c4850a1fdad54af78655e801b71a02db6fb4aaee739074d4c9423925",
+        "r1-left-owned-store.aml": "62ec5bfec93470b870ba0c075c2026dbc4e87994993d11051a66cdd837053c2c",
+        "r1-left-owned-store.dsl": "452cdc07ff87fb7cf3d5814f489eecfad4a769fa3f51d4a4ed6fed4c9388ed51",
+        "r1-left-owned-store-compile.log": "a18e890537f7e609d629b5205e8a5c191846a20cfd912b1b59719cb7ccf43f92",
+        "r1-left-owned-store-disassemble.log": "f4c0500ef5b18b0044ba5f9cf983353e0de0ba82a120f587d9a656615770dae3",
+        "r1-left-owned-store-execute.log": "ab1d000b72853cb56d86a482707bc0ba1fef844221247932cad40f95fdc2862a"
+      }
+    },
+    {
+      "case": 2,
+      "key": "r1-left-owned-copyobject",
+      "revision": 1,
+      "payload_sha256": "76708e7d65da84e4918fbc58294e0516b72b46d11043ccddd876106c7b806b61",
+      "expected_hex": "1100000033000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r1-left-owned-copyobject.asl": "b7b02f0e424993ad1bc80417c6c845556e813fdc3544d4eb74aaacb4ce512be4",
+        "r1-left-owned-copyobject.aml": "a2f2fab65808f7ec6af58b21f250416acb2630431c01d5f8d6f62aeae65ff77e",
+        "r1-left-owned-copyobject.dsl": "cd0b600869ec08af4977ed8c5466ffce85ed8bde359d578df6ee1b6df28c0244",
+        "r1-left-owned-copyobject-compile.log": "acd84f26095a17d78f8d21cd2a67dd02df8a7e2533f094ee5dff331753cabdaf",
+        "r1-left-owned-copyobject-disassemble.log": "fad1a9448d6e3d7f16e530babf31b325546db3c4d2baff4fdf11cdb48cc876b0",
+        "r1-left-owned-copyobject-execute.log": "3c277b2a68934f567c68f1914e677f128ec70bcd901cae349fbf84aae1c7a0e7"
+      }
+    },
+    {
+      "case": 3,
+      "key": "r1-left-named-store",
+      "revision": 1,
+      "payload_sha256": "ce9a4fc0c66198b81727f450022a8cb927f43ca70c584a426777bdfb51c2cbe8",
+      "expected_hex": "1100000033000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r1-left-named-store.asl": "6fdf7461bcaedb48d578a614d639efb9fc4c7c81e70ee41f5387e3f2e8446341",
+        "r1-left-named-store.aml": "d6e59db9f7a6561fa622bf58ac31e62120d8ece54e65eeaf56570ca07799beaa",
+        "r1-left-named-store.dsl": "6dea52504c2725fff85e43720adaff909c988295fbef0c5946752efa1179e04c",
+        "r1-left-named-store-compile.log": "94bb929459e44b3e4d77caf290559eb7df7be0e847c12659d2b3483979a13f61",
+        "r1-left-named-store-disassemble.log": "39d7fb9a3525a48b939483cdf21b6944a509e929cc1caf162c2b8827d3487abc",
+        "r1-left-named-store-execute.log": "5051ddf7054eb4616c838b241bc95c6da738bd18d6e48258cece2e81f0b13f44"
+      }
+    },
+    {
+      "case": 4,
+      "key": "r1-left-named-copyobject",
+      "revision": 1,
+      "payload_sha256": "ecffd0f8f1f83fe85924107304b469dc8bf90f3270975c7ae3da76b470588d07",
+      "expected_hex": "1100000033000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "1100000033000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r1-left-named-copyobject.asl": "cd56f3ca559543851ac362ecba75fdd9eafee9ca0aabe0faeb32722894c04fc4",
+        "r1-left-named-copyobject.aml": "8e1e1ef7a3a23f676dfb22bdeceaf14626da38683ab25de517116a26f21f223a",
+        "r1-left-named-copyobject.dsl": "7406c183c1299d1a9fb7742195428bda987272c72143ea3a6644ea5be43e6b79",
+        "r1-left-named-copyobject-compile.log": "3628453b6501e76a107c0a53e214348be2845222438f810a5e19648745a6f554",
+        "r1-left-named-copyobject-disassemble.log": "f40cfedb818549d35e32fe80fa076c23ef7be7a1a17001c71264cae89c958cfd",
+        "r1-left-named-copyobject-execute.log": "edf7ec9c8f9bb26212a2190e40ec63a1aa96901ded82137eb21c805ca240d447"
+      }
+    },
+    {
+      "case": 5,
+      "key": "r1-right-target-owned-store",
+      "revision": 1,
+      "payload_sha256": "99e0229710421338961610b1c9a1a2170ae42c4f4941150e71be0bb66e9a49d0",
+      "expected_hex": "3300000022000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "3300000022000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "3300000022000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "3300000022000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "3300000022000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r1-right-target-owned-store.asl": "3697901c03ec34b13ea3bb87dac4ddae625a1e1d09229694b540af2c6b0cf491",
+        "r1-right-target-owned-store.aml": "905b5fb2cd8aaeba50a0eb0f18ff06f8c80c84ed7cec4a265db8b72a29d21e70",
+        "r1-right-target-owned-store.dsl": "d4464237fb273e20f23a1c85d5c55ebdad9188afe574e96028684960a06b3e1a",
+        "r1-right-target-owned-store-compile.log": "ff846a99411e6f211a998c60331b47bab00e4e60843edf28c377094b64e46ea5",
+        "r1-right-target-owned-store-disassemble.log": "fdfb5829363fd68df26dae8446ef481a5954e98d458279f43de0360725460a44",
+        "r1-right-target-owned-store-execute.log": "b52fff927c8c7d3dbe5ef90884dbb609815e1181d3b65a03c283f603ef79d0a9"
+      }
+    },
+    {
+      "case": 6,
+      "key": "r1-right-target-owned-copyobject",
+      "revision": 1,
+      "payload_sha256": "58caf08b466782b1c0b754c2dacb0b7cc3b16491ba7255156553147d8dd35bfa",
+      "expected_hex": "3300000011000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r1-right-target-owned-copyobject.asl": "c3c27d96bdedafa567e62b075efa9389b6a510e62a9cf73b6e05e9bcb82ff4bd",
+        "r1-right-target-owned-copyobject.aml": "c881a43a4f3464f5c86b68f511fc60bb4122c0c516cca790921e39c1d7114bf4",
+        "r1-right-target-owned-copyobject.dsl": "130284ff071ee723b5e6c64a63288fe4d130b1fd8b297e8cd751ac03324ec8d4",
+        "r1-right-target-owned-copyobject-compile.log": "b8dc6d5e7a2badaeca103911f3306ccf63d7b5e06d14e22c89cc3257bf4014f9",
+        "r1-right-target-owned-copyobject-disassemble.log": "0b76e7d137ba3ec5050dd1cbd0fcafbc8a481011e6266231f0ada1162cf7af9e",
+        "r1-right-target-owned-copyobject-execute.log": "8a18c9d499ed663fdcbedc319770c30333574b584af80e191c6b517df442274b"
+      }
+    },
+    {
+      "case": 7,
+      "key": "r1-right-target-named-store",
+      "revision": 1,
+      "payload_sha256": "459ba7c848ea4fe54ec19e44e0fcf00141d156e06a7c919a36913a8ca305d092",
+      "expected_hex": "3300000011000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r1-right-target-named-store.asl": "081d349aab8a6dddb79b695ea9965a8f9ae5a8748259ef2f1f0009f8d8c37493",
+        "r1-right-target-named-store.aml": "a0ea913a8a5059ad9f581977977a069d127c4fbfd6bca09e3c3430167b5488b8",
+        "r1-right-target-named-store.dsl": "7a09f1434801e96444d950fc2a3a288fe2dbacb58756480aa9c772f474c7604b",
+        "r1-right-target-named-store-compile.log": "e895bb74ee1a687efb006f7856461b90ccbf2e0f0f9320088e4933050b6f55dd",
+        "r1-right-target-named-store-disassemble.log": "89a7f981495bdcdc0cd4a66af3b28e1f25b8c3784991726e6d2869fbe6e50f4e",
+        "r1-right-target-named-store-execute.log": "5e19617a2e4c64ea883fa9dd45daa6a527983c9b15465d337bb2fc011b0bb01e"
+      }
+    },
+    {
+      "case": 8,
+      "key": "r1-right-target-named-copyobject",
+      "revision": 1,
+      "payload_sha256": "38f13c2a6ee61a2ab35a97fc719da991cbed5fc23e363665a32e9f69b58b7821",
+      "expected_hex": "3300000011000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 4294967295,
+          "hex": "00000000FFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 8,
+          "hex": "3300000011000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r1-right-target-named-copyobject.asl": "ff917d3344ab4aeb43bd6c9a3fa8dba17894a78cf45ef868489d860530cef3b6",
+        "r1-right-target-named-copyobject.aml": "c1a453890fcc7f610f47c7ef2768cd08e3aa1d0f16300c6840b6d5d889fc6a48",
+        "r1-right-target-named-copyobject.dsl": "44f1af5cd5d7690fa34f4710e597def22eeca0540bbb361ce0c22a7069447d38",
+        "r1-right-target-named-copyobject-compile.log": "556778f8e801442ef694a1cd7a654fd8821eaa7f728a2f8c7df731dd183de218",
+        "r1-right-target-named-copyobject-disassemble.log": "90647e6ad5a294a5a2b32a3638f2c69bb2ce1ce292f9c3a21365b2cc28acc96f",
+        "r1-right-target-named-copyobject-execute.log": "2c35da3f1fe9bf5bd552d5fa859a680b6bc6a7188a6b3c3347d5fb15fd514b98"
+      }
+    },
+    {
+      "case": 9,
+      "key": "r2-left-owned-store",
+      "revision": 2,
+      "payload_sha256": "f3efdfe850968ee712f8f34f74ac55f2c87fb9b316593d5abc73125919fbd840",
+      "expected_hex": "22000000000000003300000000000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "22000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "22000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "22000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "22000000000000003300000000000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r2-left-owned-store.asl": "f44c08e54ab3caf1b72456e8c123e1d634d46482f8c96fd9758f47f97952355e",
+        "r2-left-owned-store.aml": "22626a9f6f6d35e4ef468890ddb662ab354a6821f8ad35b3ce307ccecc350bf0",
+        "r2-left-owned-store.dsl": "82e3d3b29a51464fdc3673c6d868780d76ab9bf35043d0fb59ef84a8d9d3306e",
+        "r2-left-owned-store-compile.log": "896a4fa97686f28f8210823ddeaa3f9607ffa9339f970cfe67c0c85c226e40ec",
+        "r2-left-owned-store-disassemble.log": "a8dba967dda9459005d31b9531e801d79970e750411fa63558f588016daec762",
+        "r2-left-owned-store-execute.log": "a44bd7452ae4bcd2078f119f6e1010d7343dbcc1025d83401b5055c42321e279"
+      }
+    },
+    {
+      "case": 10,
+      "key": "r2-left-owned-copyobject",
+      "revision": 2,
+      "payload_sha256": "76708e7d65da84e4918fbc58294e0516b72b46d11043ccddd876106c7b806b61",
+      "expected_hex": "11000000000000003300000000000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r2-left-owned-copyobject.asl": "96ec14c9d91e50623fe85618635563765ec1ad4caa93ca9e393aec87737a10fe",
+        "r2-left-owned-copyobject.aml": "3b98af99ee360ee258f8d878c22e3491a6856cd70348d74fc69e5ff6a4a9f115",
+        "r2-left-owned-copyobject.dsl": "cf736a9ccd5c6e65328b9c95eeb92c01c6591c86f32f8a972838e18e84ea6099",
+        "r2-left-owned-copyobject-compile.log": "f44dd013a1f8a8b9f0032e85ed83be167abc4298e91330c8cff9c73a6972b9d2",
+        "r2-left-owned-copyobject-disassemble.log": "355f4a970ec8044a8055e686e8161fa8087f330bc7b613dc43d7e21a7c9b3ec7",
+        "r2-left-owned-copyobject-execute.log": "a34323823a340850d730a7f33bf7b9a85abe654785a057090b7b75d7f637b75c"
+      }
+    },
+    {
+      "case": 11,
+      "key": "r2-left-named-store",
+      "revision": 2,
+      "payload_sha256": "ce9a4fc0c66198b81727f450022a8cb927f43ca70c584a426777bdfb51c2cbe8",
+      "expected_hex": "11000000000000003300000000000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r2-left-named-store.asl": "0ae6044dfa78191124334afa58ff118ebb8a8484b686991983da081e77f22658",
+        "r2-left-named-store.aml": "67ea2a05904987facb15ee75468ab729fca6ab4662694f3fe107516c371e0242",
+        "r2-left-named-store.dsl": "69078b4caba0c431c6e7998d33b76f9805bc2dacc9f09fb42781e16da5de18bd",
+        "r2-left-named-store-compile.log": "2279ab908b729a5e9b6b3cdb31894fe8502b658a0de8146dd4eaab9017bdc1b9",
+        "r2-left-named-store-disassemble.log": "6948e193aa4c2e5fee36df5fcff4935ac1bfd2c4df74ac9655021e5ad4a9c25a",
+        "r2-left-named-store-execute.log": "6bf99da42109e61aa53d5f11ccdc26ce2f435ae931ceacc3696d21a3b0568c58"
+      }
+    },
+    {
+      "case": 12,
+      "key": "r2-left-named-copyobject",
+      "revision": 2,
+      "payload_sha256": "ecffd0f8f1f83fe85924107304b469dc8bf90f3270975c7ae3da76b470588d07",
+      "expected_hex": "11000000000000003300000000000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "11000000000000003300000000000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r2-left-named-copyobject.asl": "9098aeb88d2df04c8dde33ab709acaab6ca4e864fd55174d02438b2cfee242fd",
+        "r2-left-named-copyobject.aml": "93085782a2a0d4d6a401abdf586e15916890de8bad5bcc068c9e857c1bdd3c67",
+        "r2-left-named-copyobject.dsl": "e4e5d6c7658230cd11b2667bc012a503d59bf5369a430025a6ccee8c7dba05a1",
+        "r2-left-named-copyobject-compile.log": "ec0ef527cc926ff7545ef38512887d53d3d85eb351ad456b543332cf01a679f5",
+        "r2-left-named-copyobject-disassemble.log": "8f7a772d3a951ed7ddba929c4f45febfec1cddc3cd7963f75723b637f11785bf",
+        "r2-left-named-copyobject-execute.log": "9364db792dea9735c331ba1ae0654712f429db15f3697edc9746e2e1002f04be"
+      }
+    },
+    {
+      "case": 13,
+      "key": "r2-right-target-owned-store",
+      "revision": 2,
+      "payload_sha256": "99e0229710421338961610b1c9a1a2170ae42c4f4941150e71be0bb66e9a49d0",
+      "expected_hex": "33000000000000002200000000000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "33000000000000002200000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "33000000000000002200000000000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "33000000000000002200000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "33000000000000002200000000000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r2-right-target-owned-store.asl": "009e73d910c802815648f9125b63d2230d6c5a23af8a0bd80a921dac6953af97",
+        "r2-right-target-owned-store.aml": "1f8a398915ff85ae01babf131fdf2dd47ceb245eec2db091ad587832d2491974",
+        "r2-right-target-owned-store.dsl": "26b7c167dcbfa9318552b30cf4a463442d5904fe4c643c243a71fea56a5366d5",
+        "r2-right-target-owned-store-compile.log": "55072917a27fb240f1bc990a33adb3f933893670b989d4e8f3facd455c2edece",
+        "r2-right-target-owned-store-disassemble.log": "588d3e801d0db190fff500ac2fe75a2115b5733a391858aaf8356010023c3851",
+        "r2-right-target-owned-store-execute.log": "0789f404fd3ecacd59cff5cce5bd5b06c081e476156af8755c877dd5ed642a09"
+      }
+    },
+    {
+      "case": 14,
+      "key": "r2-right-target-owned-copyobject",
+      "revision": 2,
+      "payload_sha256": "58caf08b466782b1c0b754c2dacb0b7cc3b16491ba7255156553147d8dd35bfa",
+      "expected_hex": "33000000000000001100000000000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r2-right-target-owned-copyobject.asl": "f16e4c83b2b054f5f92103a26d3c4a6d722464fa0fe2ac9654e3eaf73be98384",
+        "r2-right-target-owned-copyobject.aml": "7efe2ff4b886b636eb584102adb2db22cc0341eed6aff53e60d70f70854d55b0",
+        "r2-right-target-owned-copyobject.dsl": "53fb8d780f782a181cab9f0293e4a82ce42345542c6039ab1700fca2b7fd855c",
+        "r2-right-target-owned-copyobject-compile.log": "66fba77186bf263c4e267ea10014c90830bb2ebf2fb77ddb38854f89920e40f6",
+        "r2-right-target-owned-copyobject-disassemble.log": "7f930cd973731e375896b703e4af11c93f79e16621ced2c558ef4b10295dac69",
+        "r2-right-target-owned-copyobject-execute.log": "1731927ad1a857d2cfcd7443c236167a2bb860258dd59e0c408c22dd763c5f82"
+      }
+    },
+    {
+      "case": 15,
+      "key": "r2-right-target-named-store",
+      "revision": 2,
+      "payload_sha256": "459ba7c848ea4fe54ec19e44e0fcf00141d156e06a7c919a36913a8ca305d092",
+      "expected_hex": "33000000000000001100000000000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r2-right-target-named-store.asl": "a2ec5e59b80208e63c446b7aa988ea877f2897b238c9d103568539a19d844ae1",
+        "r2-right-target-named-store.aml": "2375be3d021f0a528641397d4e051d2f6413653a9410f95aa44d6a97c33c873b",
+        "r2-right-target-named-store.dsl": "a60110b2443ea1c4c1734ce735c487ae58fe4f0c1b8d6849d2b36d4de36da2fe",
+        "r2-right-target-named-store-compile.log": "57599677f63fdc2cf9edc79ce671dc19c526d255559fa64907eadb0bb39540c7",
+        "r2-right-target-named-store-disassemble.log": "a7f3297aaa8a00dc69eb0b5dbbb9e1efd3d571103b109eb98c51d2dd78797c38",
+        "r2-right-target-named-store-execute.log": "7b17373fa29a8a675c2c2fecb3660c4a93af15ceb01dad570b5173bf43344535"
+      }
+    },
+    {
+      "case": 16,
+      "key": "r2-right-target-named-copyobject",
+      "revision": 2,
+      "payload_sha256": "38f13c2a6ee61a2ab35a97fc719da991cbed5fc23e363665a32e9f69b58b7821",
+      "expected_hex": "33000000000000001100000000000000",
+      "observations": [
+        {
+          "method": "CTRL",
+          "value": 165,
+          "hex": "00000000000000A5"
+        },
+        {
+          "method": "WIDT",
+          "value": 18446744073709551615,
+          "hex": "FFFFFFFFFFFFFFFF"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        },
+        {
+          "method": "SRCV",
+          "value": 34,
+          "hex": "0000000000000022"
+        }
+      ],
+      "buffers": [
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        },
+        {
+          "method": "TEST",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        },
+        {
+          "method": "TVAL",
+          "length": 16,
+          "hex": "33000000000000001100000000000000",
+          "complete": true
+        }
+      ],
+      "files": {
+        "r2-right-target-named-copyobject.asl": "bac6998c211cbb66a9b94c886668f42cef4352943cc3a5f9a34cd8a25ae85747",
+        "r2-right-target-named-copyobject.aml": "fad9a90bd9261994b5e5ecf9b7579e4f5b64dec1328de05cf23e832691e1d001",
+        "r2-right-target-named-copyobject.dsl": "d05150724e00f371685969db9b1fd955d9e305aab954bfc9e9b6058759113dba",
+        "r2-right-target-named-copyobject-compile.log": "9df3af282d2128c523b7ac11d95cce0c28b48604d21fda15ad5a9acd7af4524a",
+        "r2-right-target-named-copyobject-disassemble.log": "b3c99109df21d75d3cc2f05941cc39ebf2783a15a8a405dc5b67b5729c5c5c72",
+        "r2-right-target-named-copyobject-execute.log": "30fa927de9a36e5cc3d4368c185e4df3f14168147a62b21252f45b93181cbc30"
+      }
+    }
+  ],
+  "scope": "Exact16compiledbodies; bothwidths fullreturned/targetbytes andsourcecontrol repeated. Rawteardownwarnings retained. No replay yet."
+}

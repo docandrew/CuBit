@@ -1,0 +1,672 @@
+{
+  "assumptions": [
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 1,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 3,
+        "predicate": "CLAIM_AORTE"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 2,
+        "predicate": "CLAIM_POST"
+      }
+    },
+    {
+      "assumptions": [
+      ],
+      "claim": {
+        "arg": 2,
+        "predicate": "CLAIM_AORTE"
+      }
+    }
+  ],
+  "entities": {
+    " 1": {
+      "name": "ACPI_EC_Clock_Policy.Slice",
+      "sloc": [
+        {
+          "file": "acpi_ec_clock_policy.ads",
+          "line": 30
+        }
+      ]
+    },
+    " 2": {
+      "name": "ACPI_EC_Clock_Policy.Decode",
+      "sloc": [
+        {
+          "file": "acpi_ec_clock_policy.ads",
+          "line": 16
+        }
+      ]
+    },
+    " 3": {
+      "name": "ACPI_EC_Clock_Policy",
+      "sloc": [
+        {
+          "file": "acpi_ec_clock_policy.ads",
+          "line": 4
+        }
+      ]
+    }
+  },
+  "flow": [
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 1,
+      "file": "acpi_ec_clock_policy.ads",
+      "how_proved": "flow",
+      "line": 30,
+      "msg_id": 0,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 11,
+      "entity": 1,
+      "file": "acpi_ec_clock_policy.ads",
+      "how_proved": "flow",
+      "line": 32,
+      "msg_id": 1,
+      "rule": "GLOBAL_WRONG",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 13,
+      "entity": 2,
+      "file": "acpi_ec_clock_policy.ads",
+      "how_proved": "flow",
+      "line": 16,
+      "msg_id": 2,
+      "rule": "SUBPROGRAM_TERMINATION",
+      "severity": "info"
+    },
+    {
+      "check_tree": {
+      },
+      "col": 11,
+      "entity": 2,
+      "file": "acpi_ec_clock_policy.ads",
+      "how_proved": "flow",
+      "line": 17,
+      "msg_id": 3,
+      "rule": "GLOBAL_WRONG",
+      "severity": "info"
+    }
+  ],
+  "pragma_assume": [
+  ],
+  "progress": "PROGRESS_PROOF",
+  "proof": [
+    {
+      "check_col": 76,
+      "check_file": "acpi_ec_clock_policy.adb",
+      "check_line": 8,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.01480000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.07500000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 76,
+      "entity": 2,
+      "file": "acpi_ec_clock_policy.adb",
+      "how_proved": "prover",
+      "line": 8,
+      "msg_id": 4,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 1.01479999721050E-02
+        }
+      }
+    },
+    {
+      "check_col": 34,
+      "check_file": "acpi_ec_clock_policy.ads",
+      "check_line": 22,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.13200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 34,
+      "entity": 2,
+      "file": "acpi_ec_clock_policy.ads",
+      "how_proved": "prover",
+      "line": 22,
+      "msg_id": 5,
+      "rule": "VC_DISCRIMINANT_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 1,
+          "max_steps": 1,
+          "max_time": 7.13199982419610E-03
+        }
+      }
+    },
+    {
+      "check_col": 71,
+      "check_file": "acpi_ec_clock_policy.ads",
+      "check_line": 22,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.36000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.54600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 71,
+      "entity": 2,
+      "file": "acpi_ec_clock_policy.ads",
+      "how_proved": "prover",
+      "line": 22,
+      "msg_id": 6,
+      "rule": "VC_RANGE_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 6.54600001871586E-03
+        }
+      }
+    },
+    {
+      "check_col": 16,
+      "check_file": "acpi_ec_clock_policy.ads",
+      "check_line": 18,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 1.04220000000000E-02
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.94200000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 7.97100000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.80700000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 16,
+      "entity": 2,
+      "file": "acpi_ec_clock_policy.ads",
+      "how_proved": "prover",
+      "line": 18,
+      "msg_id": 7,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 4,
+          "max_steps": 1,
+          "max_time": 1.04219997301698E-02
+        }
+      }
+    },
+    {
+      "check_col": 23,
+      "check_file": "acpi_ec_clock_policy.adb",
+      "check_line": 15,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.15900000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.03600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 23,
+      "entity": 1,
+      "file": "acpi_ec_clock_policy.adb",
+      "how_proved": "prover",
+      "line": 15,
+      "msg_id": 8,
+      "rule": "VC_OVERFLOW_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 5.15899993479252E-03
+        }
+      }
+    },
+    {
+      "check_col": 17,
+      "check_file": "acpi_ec_clock_policy.adb",
+      "check_line": 14,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 3.05300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 2.92100000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 17,
+      "entity": 1,
+      "file": "acpi_ec_clock_policy.adb",
+      "how_proved": "prover",
+      "line": 14,
+      "msg_id": 9,
+      "rule": "VC_OVERFLOW_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 3.05299996398389E-03
+        }
+      }
+    },
+    {
+      "check_col": 27,
+      "check_file": "acpi_ec_clock_policy.ads",
+      "check_line": 34,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.78600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 2.99100000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 27,
+      "entity": 1,
+      "file": "acpi_ec_clock_policy.ads",
+      "how_proved": "prover",
+      "line": 34,
+      "msg_id": 10,
+      "rule": "VC_OVERFLOW_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 4.78600012138486E-03
+        }
+      }
+    },
+    {
+      "check_col": 78,
+      "check_file": "acpi_ec_clock_policy.ads",
+      "check_line": 35,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.87700000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 6.03000000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 78,
+      "entity": 1,
+      "file": "acpi_ec_clock_policy.ads",
+      "how_proved": "prover",
+      "line": 35,
+      "msg_id": 11,
+      "rule": "VC_OVERFLOW_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 6.02999981492758E-03
+        }
+      }
+    },
+    {
+      "check_col": 40,
+      "check_file": "acpi_ec_clock_policy.ads",
+      "check_line": 35,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.00700000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.15400000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 40,
+      "entity": 1,
+      "file": "acpi_ec_clock_policy.ads",
+      "how_proved": "prover",
+      "line": 35,
+      "msg_id": 12,
+      "rule": "VC_OVERFLOW_CHECK",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 2,
+          "max_steps": 1,
+          "max_time": 4.15399996563792E-03
+        }
+      }
+    },
+    {
+      "check_col": 16,
+      "check_file": "acpi_ec_clock_policy.ads",
+      "check_line": 33,
+      "check_tree": [
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 5.24600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 2.84600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 3.95300000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        },
+        {
+          "proof_attempts": {
+            "CVC5": {
+              "result": "Valid",
+              "steps": 1,
+              "time": 4.70600000000000E-03
+            }
+          },
+          "transformations": {
+          }
+        }
+      ],
+      "col": 16,
+      "entity": 1,
+      "file": "acpi_ec_clock_policy.ads",
+      "how_proved": "prover",
+      "line": 33,
+      "msg_id": 13,
+      "rule": "VC_POSTCONDITION",
+      "severity": "info",
+      "stats": {
+        "CVC5": {
+          "count": 4,
+          "max_steps": 1,
+          "max_time": 5.24599989876151E-03
+        }
+      }
+    }
+  ],
+  "skip_flow_proof": [
+  ],
+  "skip_proof": [
+  ],
+  "spark": {
+    " 1": "all",
+    " 2": "all",
+    " 3": "all"
+  },
+  "stop_reason": "STOP_REASON_NONE",
+  "timings": {
+    " 1": {
+      "gnat2why.vc_generation": 1.01610003039241E-02,
+      "gnatwhy3.init": 2.27161005139351E-01,
+      "gnatwhy3.register_vcs": 4.09500021487474E-03,
+      "gnatwhy3.run_vcs": 9.00000031833770E-06,
+      "gnatwhy3.save_session": 2.94200005009770E-03,
+      "gnatwhy3.schedule_vcs": 9.89499874413013E-03,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 1.06999895069748E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 2.47999007115141E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 7.00000009601354E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 5.43000001925975E-04,
+      "gnatwhy3.transformations.eliminate_builtin": 5.76000020373613E-04,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 4.07999003073201E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 2.65998998656869E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 3.15999001031741E-04,
+      "gnatwhy3.transformations.eliminate_inductive": 2.91000003926456E-04,
+      "gnatwhy3.transformations.eliminate_literal": 2.74999008979648E-04,
+      "gnatwhy3.transformations.eliminate_projections_sums": 8.00998997874558E-04,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 6.00000021222513E-06,
+      "gnatwhy3.transformations.inline_trivial": 1.01250000298023E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 7.99900044512469E-06,
+      "gnatwhy3.transformations.remove_unused": 3.12500004656613E-03,
+      "gnatwhy3.transformations.simplify_formula": 3.22000007145107E-04,
+      "gnatwhy3.transformations.split_goal_wp_conj": 1.87299901153892E-03
+    },
+    " 2": {
+      "gnat2why.vc_generation": 5.30010014772415E-02,
+      "gnatwhy3.init": 2.37224996089935E-01,
+      "gnatwhy3.register_vcs": 6.99800020083785E-03,
+      "gnatwhy3.run_vcs": 7.00000009601354E-06,
+      "gnatwhy3.save_session": 1.80900003761053E-03,
+      "gnatwhy3.schedule_vcs": 2.14360002428293E-02,
+      "gnatwhy3.transformations.counterexamples_dependent_intros": 3.50199895910919E-03,
+      "gnatwhy3.transformations.detect_polymorphism": 2.13998995604925E-04,
+      "gnatwhy3.transformations.discriminate_if_poly": 6.00000021222513E-06,
+      "gnatwhy3.transformations.eliminate_algebraic_if_poly": 5.60000014957041E-04,
+      "gnatwhy3.transformations.eliminate_builtin": 1.56700005754828E-03,
+      "gnatwhy3.transformations.eliminate_definition_conditionally": 4.75998996989802E-04,
+      "gnatwhy3.transformations.eliminate_epsilon": 4.00999007979408E-04,
+      "gnatwhy3.transformations.eliminate_gnatprove_guard_epsilon": 6.07998983468860E-04,
+      "gnatwhy3.transformations.eliminate_inductive": 5.36000006832182E-04,
+      "gnatwhy3.transformations.eliminate_literal": 5.51000004634261E-04,
+      "gnatwhy3.transformations.eliminate_projections_sums": 6.38000026810914E-04,
+      "gnatwhy3.transformations.encoding_smt_if_poly": 3.99900000047637E-06,
+      "gnatwhy3.transformations.inline_trivial": 2.22800001502037E-02,
+      "gnatwhy3.transformations.prepare_for_counterexmp": 7.00000009601354E-06,
+      "gnatwhy3.transformations.remove_unused": 6.21100002899766E-03,
+      "gnatwhy3.transformations.simplify_formula": 6.84000027831644E-04,
+      "gnatwhy3.transformations.split_goal_wp_conj": 4.40300023183227E-03
+    },
+    "global": {
+      "flow analysis": 5.51200006157160E-03,
+      "globals (advanced)": 6.22000021394342E-04,
+      "globals (basic)": 1.04120001196861E-02,
+      "init_why_sections": 2.68099992536008E-03,
+      "marking": 1.92700000479817E-03,
+      "properties (advanced)": 7.59999966248870E-05,
+      "translation of standard": 4.12219986319542E-02
+    }
+  }
+}

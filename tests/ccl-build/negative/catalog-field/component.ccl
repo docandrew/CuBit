@@ -1,0 +1,4 @@
+# The catalog follows from the kind: it cannot be given, so it cannot
+# contradict the kind.
+(Component name => "neg" kind => Kind.Driver
+  source => (Source.Ada (Ada_Source catalog => Catalog.Native_Runtime)))

@@ -1,0 +1,14 @@
+project Transfer_Metrics_Store is
+ for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/runtime/gnat", "../../userspace/services/metricsvc");
+ for Source_Files use
+  ("transfer_metrics_store_tests.adb", "compositor_work_metrics.ads", "compositor_work_metrics.adb",
+   "compositor_frame_trace.ads", "compositor_frame_trace.adb", "compositor_elapsed.ads",
+   "cubit.ads", "cubit-metric_records.ads", "cubit-metric_records.adb", "cubit-metric_protocol.ads",
+   "metric_store.ads", "metric_store.adb", "metric_histograms.ads", "metric_histograms.adb");
+ for Object_Dir use "build/transfer-metrics-store/obj";
+ for Exec_Dir use "build/transfer-metrics-store";
+ for Main use ("transfer_metrics_store_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+ end Compiler;
+end Transfer_Metrics_Store;

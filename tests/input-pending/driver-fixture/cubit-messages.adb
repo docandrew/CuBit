@@ -1,0 +1,150 @@
+with Ada.Command_Line;
+with Ada.Text_IO;
+with CuBit.Input;
+with CuBit.Handles.Fixture;
+with Startup;
+package body CuBit.Messages is
+   Mode : constant String := Ada.Command_Line.Argument (1);
+   Packets : constant Positive := (if Mode = "overflow" then 40 else 6);
+   Byte_Index : Natural := 0;
+   Byte_Limit : Natural := 0;
+   IRQ_Waits, Timer_Waits, Refusals, Delivered : Natural := 0;
+   Consumer : Unsigned_64 := 1;
+   --  The driver under test, as the kernel would name it.
+   Publisher : constant Process_ID := 16#100_0042#;
+   Overflow_Seen : Boolean := False;
+   function Empty return Message is ((others => <>));
+   procedure debugPrint (Text : String) is
+   begin
+      if Text = "ps2: pointer retention overflow; resynchronizing" & ASCII.LF then
+         Overflow_Seen := True;
+      end if;
+   end debugPrint;
+   function syscall (Number : Unsigned_64; Arg : Unsigned_64 := 0) return Unsigned_64 is
+   begin
+      pragma Assert (Number = SYSCALL_GETTIME or else Number = SYSCALL_SLEEP);
+      return 100;
+   end syscall;
+   function getInfo (Number, Arg : Unsigned_64) return Unsigned_64 is
+   begin
+      pragma Assert (Number = SYSINFO_REGISTERED_DRIVER);
+      return (if Arg = DRIVER_MOUSE then Consumer else 0);
+   end getInfo;
+   function portOutp8 (Ports : CuBit.Handles.IO_Ports; Port : Unsigned_16; Value : Unsigned_8) return Unsigned_64 is
+      pragma Unreferenced (Ports);
+   begin
+      return 0;
+   end portOutp8;
+   function portInp8 (Ports : CuBit.Handles.IO_Ports; Port : Unsigned_16) return Unsigned_64 is
+      Packet : Natural;
+      Part : Natural;
+   begin
+      --  The driver uses the handle its manifest names for each port.
+      pragma Assert ((Port = 16#60#) = (CuBit.Handles.Fixture.Word_Of (Ports) = Startup.Data_Word));
+      if Port = 16#64# then
+         return (if Byte_Index < Byte_Limit then 16#21# else 0);
+      end if;
+      pragma Assert (Port = 16#60#);
+      if Byte_Index = Byte_Limit then return 0; end if;
+      Packet := Byte_Index / 3 + 1;
+      Part := Byte_Index mod 3;
+      Byte_Index := Byte_Index + 1;
+      if Consumer = 2 then
+         return (if Part = 0 then 8 else 0);
+      elsif Mode = "overflow" then
+         -- Button transitions only: these are never coalesced, so 40 of
+         -- them overflow the 32-report retention bound.
+         return (if Part = 0 then (if Packet mod 2 = 1 then 9 else 8) else 0);
+      elsif Packet > 4 then
+         -- A button down/up pair after the four -70 displacement packets.
+         return (if Part = 0 then (if Packet = 5 then 9 else 8) else 0);
+      end if;
+      return (case Part is when 0 => 16#18#, when 1 => 186, when others => 0);
+   end portInp8;
+   function Registered_Driver (Driver : Unsigned_64) return Process_ID is
+     (getInfo (SYSINFO_REGISTERED_DRIVER, Driver));
+   function capSend (Target : CuBit.Handles.Endpoint; Msg : Message; Deadline : Unsigned_64) return MessageTag is
+   begin
+      return (others => <>);
+   end capSend;
+   function trySendEvent
+     (Dest : Process_ID; Msg : Message; Authority : CuBit.Handles.Notification) return Boolean is
+      Report : CuBit.Input.Source_Report;
+      Valid : Boolean;
+      Authenticated : Message := Msg;
+      Expected : Natural;
+      Payload : Unsigned_64;
+   begin
+      pragma Assert (Dest = Consumer);
+      --  Mouse reports go through the mouse publication handle.
+      pragma Assert (CuBit.Handles.Fixture.Word_Of (Authority) = Startup.Mouse_Events_Word);
+      --  As the kernel delivers it: the publication handle's input badge,
+      --  and the publisher (this driver) named by the kernel.
+      Authenticated.authorityTag := CuBit.Input.Publisher_Tag;
+      CuBit.Input.Decode (Authenticated, Publisher, Report, Valid);
+      pragma Assert (Valid);
+      if Timer_Waits = 0 then
+         Refusals := Refusals + 1;
+         return False;
+      end if;
+      Delivered := Delivered + 1;
+      -- Four -70 motion packets coalesce by agreement: the first stays
+      -- alone (it opens the stream), the next three sum to -210. The
+      -- button down/up pair stays two ordered reports. Replacement drops
+      -- the old consumer's four reports and starts at sequence five.
+      Expected := (if Mode = "overflow" then 32 + Delivered
+                   elsif Mode = "replace" then 5 else Delivered);
+      pragma Assert (Report.sequence = Unsigned_64 (Expected));
+      pragma Assert (Report.flags (CuBit.Input.RESYNCHRONIZE) = (Delivered = 1));
+      Payload := (if Mode = "replace" then 0
+                  elsif Mode = "overflow" then Unsigned_64 (Expected mod 2)
+                  else (case Expected is
+                          when 1 => 16#FBA# * 256,
+                          when 2 => Unsigned_64 (4096 - 210) * 256,
+                          when 3 => 1,
+                          when others => 0));
+      pragma Assert (Report.payload = Payload);
+      pragma Assert ((Report.snapshot and 16#FF#) = (Payload and 16#FF#));
+      pragma Assert (CuBit.Input.Pointer_Time (Report.snapshot) = 100);
+      --  LAT-002: the sub-millisecond part rides in the header.
+      pragma Assert (CuBit.Input.Source_Time_Us (Authenticated) = 100_250);
+      return True;
+   end trySendEvent;
+   function Poll_Event (Msg : out Message) return Boolean is
+   begin
+      Msg := Empty;
+      return False;
+   end Poll_Event;
+   function Wait_For_Activity_Until (Deadline : Unsigned_64) return Activity_Result is
+   begin
+      --  No deadline: the idle wait for the controller's interrupt event.
+      if Deadline = Unsigned_64'Last then
+         IRQ_Waits := IRQ_Waits + 1;
+         if IRQ_Waits = 1 then
+            Byte_Limit := Packets * 3;
+            return Work_Available;
+         elsif Mode = "replace" and IRQ_Waits = 2 then
+            pragma Assert (Timer_Waits = 1 and Delivered = 0);
+            Byte_Index := 0;
+            Byte_Limit := 3;
+            return Work_Available;
+         end if;
+         raise Finished;
+      end if;
+      --  A deadline: the retry timer for a refused packet.
+      pragma Assert (Deadline = 101 and Byte_Index = Byte_Limit);
+      Timer_Waits := Timer_Waits + 1;
+      pragma Assert (Timer_Waits = 1);
+      if Mode = "replace" then Consumer := 2; end if;
+      return Deadline_Reached;
+   end Wait_For_Activity_Until;
+   procedure Verify is
+   begin
+      pragma Assert (Timer_Waits = 1 and Refusals >= Packets);
+      pragma Assert (Delivered = (if Mode = "overflow" then 8
+                                  elsif Mode = "replace" then 1 else 4));
+      pragma Assert (Overflow_Seen = (Mode = "overflow"));
+      Ada.Text_IO.Put_Line ("PS2-PUBLICATION: PASS " & Mode &
+        " exact source packets, final timed retry, refusals=" & Refusals'Image);
+   end Verify;
+end CuBit.Messages;

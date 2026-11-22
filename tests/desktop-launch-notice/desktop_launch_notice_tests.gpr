@@ -1,0 +1,23 @@
+--  Hosted tests and proofs for Desktop_Launch_Notice (run.sh).
+project Desktop_Launch_Notice_Tests is
+   Runtime_Src := "../../userspace/runtime/gnat";
+   Desktop_Src := "../../userspace/services/desktop";
+   for Source_Dirs use (".", Runtime_Src, Desktop_Src);
+   for Source_Files use ("cubit.ads", "cubit-launch_arguments.ads",
+                         "cubit-launch_arguments.adb",
+                         "cubit-launch_failure_text.ads",
+                         "cubit-child_exits.ads", "cubit-process_ids.ads",
+                         "cubit-process_ids.adb",
+                         "desktop_launch_notice.ads", "desktop_launch_notice.adb",
+                         "main.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O1", "-gnata", "-gnato", "-gnatwa", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Desktop_Launch_Notice_Tests;

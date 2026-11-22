@@ -1,0 +1,13 @@
+# Filesystem benchmark (tests/fs-bench): files under @nvme:0/fs-bench only,
+# through filesystem.svc (the libc's file layer). It starts itself again as
+# the other process of its coherence checks (procmgr, posix_spawn).
+(executable-manifest v1
+  (identity "com.cubit.fs-bench")
+  (version "0.1.0")
+  (request-service process-manager read-write process-manager)
+  (request-service launch read-write launch)
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@nvme:0/fs-bench")
+  # Its diagnostics (cubit_debug_write, the libc's records: CuBit.Libc_Log).
+  (request-service logstore read-write logstore)
+  (optional logstore))

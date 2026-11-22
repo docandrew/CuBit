@@ -1,0 +1,863 @@
+ASL Input:     /home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/MAIN.asl -    2115 bytes   1893 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw/oracle/arithmetic-n32.aml -   26070 bytes   1378 opcodes     515 named objects
+Source Output: /home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw/oracle/arithmetic-n32.src -  163005 bytes
+Preprocessor:  /home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw/oracle/arithmetic-n32.i -    2115 bytes
+Listing File:  /home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw/oracle/arithmetic-n32.lst -  808023 bytes
+Hex Dump:      /home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw/oracle/arithmetic-n32.hex -  257896 bytes
+Namespace:     /home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw/oracle/arithmetic-n32.nsp -  131783 bytes
+ASM Source:    /home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw/oracle/arithmetic-n32.asm -  821843 bytes
+C Source:      /home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw/oracle/arithmetic-n32.c -  922348 bytes
+C Include:     /home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw/oracle/arithmetic-n32.h -   22923 bytes
+Offset Table:  /home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw/oracle/arithmetic-n32.offset.h -   56772 bytes
+Device Map:    /home/doc/git/.acpi-proof-work/aslts-arithmetic32-original-5UUDKw/oracle/arithmetic-n32.map -     366 bytes
+
+Compilation successful. 0 Errors, 245 Warnings, 38 Remarks, 0 Optimizations
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl    390:     Method (RPT0, 0, NotSerialized)
+Remark   2120 -                                 Control Method should be made Serialized due to creation of named objects within ^  (\RPT0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl    394:         Name (B000, Buffer (0x04){})
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\RPT0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl    917:         Name (LPN0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\PRN0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl    918:         Name (LPC0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\PRN0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1137:         Name (N000, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1138:         Name (NCUR, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1155:         Name (B000, Buffer (Local0){})
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1186:         Divide (Local1, 0x08, Local2, Local0)
+Warning  3144 -                                                                                                   Method Local is set but never used ^  (Local2)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1201:         Name (PREV, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1202:         Name (MS00, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1203:         Name (MS01, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1204:         Name (MS02, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1205:         Name (MS03, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1206:         Name (TAIL, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1207:         Name (LBT0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1210:         Name (LPN0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1211:         Name (LPC0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1214:         Name (NB01, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1217:         Name (NREG, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1220:         Name (NB08, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1223:         Name (NB09, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1226:         Name (REST, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1240:         Name (B000, Buffer (NB01){})
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\SFT1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1362:         Name (TMP0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M4C0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1363:         Name (TMP1, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M4C0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1406:         Name (S000, " ")
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\M4A1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1422:         DataTableRegion (HDR, "DSDT", "", "")
+Remark   2173 -               Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\STRT)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   1442:         If ((REV < 0x02))
+Remark   2132 -                                64-bit return value will be truncated to 32 bits (DSDT or SSDT version < 2) ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2021:         Name (LPN0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\RERR)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2022:         Name (LPC0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\RERR)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2069:         Name (LPN0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\RRM0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2070:         Name (LPC0, 0x00)
+Remark   2173 -     Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\RRM0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2107:         Local6 = (Local7 - TMT0) /* \TMT0 */
+Remark   2132 -                                    64-bit return value will be truncated to 32 bits (DSDT or SSDT version < 2) ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2159:     Method (TRC0, 3, NotSerialized)
+Remark   2146 -                                                                                    Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2177:     Method (TRC1, 3, NotSerialized)
+Remark   2146 -                                                                                    Method Argument is never used ^  (Arg0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/common.asl   2240:         Divide (Local1, 0x000F4240, Local0, Local2)
+Warning  3144 -                                                                                                         Method Local is set but never used ^  (Local0)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/ehandle.asl    793:         Name (EBUF, Buffer (ISZC){})
+Remark   2173 -      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\ST16)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/ehandle.asl    796:         Name (RBUF, Buffer (0x04){})
+Remark   2173 -      Creation of named objects within a method is highly inefficient, use globals or method local variables instead ^  (\ST16)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/ehandle.asl    917:     Method (CH06, 3, NotSerialized)
+Remark   2146 -                                                                                     Method Argument is never used ^  (Arg1)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/ehandle.asl    934:     Method (CH07, 7, NotSerialized)
+Remark   2146 -                                                                                     Method Argument is never used ^  (Arg4)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/cntl/ehandle.asl   1038:             Local7 = 0x01
+Warning  3144 -                                                                                  Method Local is set but never used ^  (Local7)
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    329:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    330:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    331:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    332:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    333:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    334:         0x0F0F0F0F0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    335:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    336:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    338:         0x0F0F0F0F0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    340:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    341:         0x1111111111111111,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    342:         0x0F0F0F0F0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    343:         0x1111111111111111,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    344:         0x8765432199118822,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    345:         0x90AB66887799CDFE
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    358:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    359:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    360:         0x0F0F0F0F0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    361:         0x123456780AF9BCED
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    413:         0x12345678DCABEF98,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    414:         0x6BCDEF0119283746,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    415:         0x72345678DCABEF98,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    416:         0x5BCDEF0119283746,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    419:         0x1000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    420:         0x9000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    428:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    431:         0x12345678DCABEF98,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    432:         0xF000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    433:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    434:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    436:         0xFFFFFFFFFFFFFFFF
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    442:         0x0000000102345678,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    443:         0x00000001FFFFFFFE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    444:         0x7E024579F5D426DE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    445:         0xCE024579F5D426DE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    447:         0xA000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    451:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    454:         0x02345678DCABEF98,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    455:         0xFFFFFFFFFFFFFFFE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    534:         0x12345678DCABEF98,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    535:         0x6BCDEF0119283746,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    536:         0x72345678DCABEF98,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    537:         0x5BCDEF0119283746,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    540:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    543:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    544:         0x9000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    545:         0x1000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    546:         0x1000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    547:         0x9000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    560:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    561:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    562:         0x12345678DCABEF98,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    563:         0xF000000000000000
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    569:         0xFFFFFFFF789ABCDF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    570:         0xFFFFFFFFA6666777,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    571:         0xFFFFFFFF80000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    572:         0xFFFFFFFFFFFFFF01,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    573:         0xFFFFFFFFFFFF0001,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    574:         0xA6666777C383B852,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    575:         0x16666777C383B852,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    577:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    579:         0x8000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    580:         0x8000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    582:         0xFFFFFFFFFFFFFF01,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    584:         0xFFFFFFFFFFFF0001,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    586:         0xFFFFFFFF00000001,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    588:         0x22345678DCABEF98
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    659:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    661:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    664:         0x6781234511992288,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    669:         0x4567812377665544,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    670:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    671:         0xFFFFFFFFFFFFFFFF
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    676:         0x621E9265A81528C0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    677:         0xA28BCC2CA81528C0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    679:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    682:         0xCF02468A23324510,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    685:         0xD036836A6632FFCC,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    757:         0x1234567811223344,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    759:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    760:         0x4000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    761:         0x7812345699887766,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    762:         0x8000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    763:         0x7812345600448866,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    767:         0x78123456AABBCCDD,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    768:         0x110022BD33CA4784,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    769:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    771:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    772:         0x8000000000000000
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    778:         0x0001234567811223,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    781:         0x3FFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    783:         0x7812345699887766,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    784:         0x3C091A2B00224433,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    789:         0x0111412A4033D841,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    790:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    793:         0x7FFFFFFFFFFFFFFF
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    832:         0xFFFFFFFFFFFFFFFE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    833:         0x1233457988339042,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    834:         0x7FFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    835:         0x8000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    836:         0xFFFFFFFFFFFFFFFF
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    840:         0x0000000100000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    841:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    842:         0x1233457988339043,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    843:         0x8000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    844:         0x8000000000000001,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    884:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    885:         0x1233457966887700,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    886:         0x8000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    887:         0x7FFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    888:         0x8000000000000001
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    892:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    893:         0xFFFFFFFFFFFFFFFE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    894:         0x12334579668876FF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    895:         0x7FFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    896:         0x7FFFFFFFFFFFFFFE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    897:         0x8000000000000000
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    932:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    933:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    934:         0x0F0F0F0F0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    937:         0x1010101010101010,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    938:         0x0101010101010101,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    939:         0x8021420011118822
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    968:         0xFFFFFFFFE7DEBD77
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    972:         0x9A3353AC395C9353,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    973:         0x39A966CAA36A3A66
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    977:         0xE7DEBD77DEB7EDBD
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    994:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    995:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    996:         0xFFFFFFFF00000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    997:         0xFFFFFFFF0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    998:         0xFFFFFFFFF0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl    999:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1000:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1001:         0xFFFFFFFFEFEFEFEF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1002:         0xFFFFFFFFFEFEFEFE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1003:         0xFFFFFFFF7FDEBEDF
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1007:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1008:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1010:         0x0F0F0F0F0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1011:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1012:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1013:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1014:         0xEFEFEFEFEFEFEFEF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1015:         0xFEFEFEFEFEFEFEFE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1016:         0x7FDEBDFFEEEE77DD
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1048:         0xFFFFFFFF44448811
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1052:         0x9A3353AC993CA39C,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1053:         0x39A966CA3356A5C9
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1057:         0x4444881144815822
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1074:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1075:         0xFFFFFFFF00000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1076:         0xFFFFFFFF00000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1077:         0xFFFFFFFF00000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1078:         0xFFFFFFFF00000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1079:         0xFFFFFFFF0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1080:         0xFFFFFFFFF0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1081:         0xFFFFFFFF0E0E0E0E,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1082:         0xFFFFFFFFE0E0E0E0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1083:         0xFFFFFFFF68103000
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1087:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1092:         0x0F0F0F0F0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1093:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1094:         0x0E0E0E0E0E0E0E0E,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1095:         0xE0E0E0E0E0E0E0E0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1096:         0x6810985600663201
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1127:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1128:         0xFFFFFFFF00000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1129:         0xFFFFFFFF0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1130:         0xFFFFFFFFF0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1131:         0xFFFFFFFFEDCBA987
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1135:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1137:         0x0F0F0F0F0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1138:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1139:         0xEDCBA987F5064312
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1168:         0x9A3353AC99A3DCEB,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1169:         0x39A966CA12887634
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1173:         0xBBBB77EE9BABFEFF
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1191:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1192:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1193:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1194:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1195:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1196:         0x0F0F0F0F0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1197:         0xF1F1F1F1F1F1F1F1,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1198:         0x1F1F1F1F1F1F1F1F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1199:         0x97EF67A9FF99CDFE
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1231:         0x9A3653AC19283745,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1232:         0x39A966CABBAAEF45
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1236:         0xA39F3566A282D800
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1254:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1256:         0x0F0F0F0F0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1257:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1258:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1259:         0x0F0F0F0F0F0F0F0F,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1260:         0xE1E1E1E1E1E1E1E1,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1261:         0x1E1E1E1E1E1E1E1E,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1262:         0x17CE25A9EE8845DC
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1315:         0x3FFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1316:         0x7812345699887766,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1319:         0x0111412A4033D841,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1321:         0x7FFFFFFFFFFFFFFF
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1434:         0x00000001FFFFFFFE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1435:         0x00003FFFFFFFC000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1436:         0x7FFFFFFF80000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1437:         0xFFFFFFFF00000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1438:         0xFFFFFFFE00000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1442:         0x00000001E1E1E1E0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1443:         0x0001E1E1E1E00000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1444:         0x7878787800000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1445:         0xF0F0F0F000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1447:         0x000000010ECA8642,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1448:         0x00010ECA86420000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1449:         0x43B2A19080000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1450:         0x8765432100000000
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1454:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1456:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1458:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1460:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1462:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1464:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1466:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1468:         0xF0F0F0F0F0F0F0F0,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1470:         0x87654321BCDEF098,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1472:         0x87654321BCDEF098,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1477:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1478:         0xFFFFFFFFFFFFFFFE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1479:         0xFFFFFFFFFFFE0000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1480:         0xFFFE000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1483:         0x7878787878780000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1484:         0x8787878000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1485:         0x2A190DE6F784C000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1486:         0xC260000000000000
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1535:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1536:         0x7FFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1537:         0x00007FFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1541:         0x0001E1E1E1E1E1E1,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1543:         0x0010ECA864379BDE,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1583:         0xFFFFFFFFFFFFFFFF,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1584:         0x8000000000000000,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1586:         0x02A0FD4119FD0560,
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+
+/home/doc/git/.acpi-proof-work/aslts-name-original-dDgi8H/upstream/tests/aslts/src/runtime/collections/functional/arithmetic/arithmetic.asl   1587:         0x0456F2007CED8400
+Warning  3038 -                                                                                                            Truncating 64-bit constant found in 32-bit table ^ 
+

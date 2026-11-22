@@ -1,0 +1,32 @@
+# The Bible app (APP-005). Its core (userspace/lib/bible: the proved
+# reference parser, image reader and search) is compiled -O3 -gnatp. The
+# reader's three faces, Literata (the default), Source Serif 4 and EB
+# Garamond, are linked in from their pinned downloads (the same pins as
+# assets/bible/sources.json's), each licensed under the SIL OFL 1.1.
+(Component name => "bible" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    main => (Main.File "bible_main.adb")
+    sources => ["userspace/lib/bible" "userspace/lib/bible/native"]
+    libraries => ["ui-toolkit"]
+    language => Ada_Language.Ada_2022
+    debug_info => false
+    units => [(Unit_Code ["bible_references.adb" "bible_parser.adb" "bible_images.adb" "bible_search.adb"
+                          "bible_text.adb"] "proved")]))
+  embedded => [(Blob name => "literata"
+                 source => (fetch
+                   "https://raw.githubusercontent.com/googlefonts/literata/0c2761b727a1b3a7cffd313c37f0f5163dfc7a63/fonts/ttf/Literata-Regular.ttf"
+                   (SHA256_Digest 0x0390890d 0xe9bb9d58 0x62a6ba41 0x25b82c61
+                                  0x792ccc3d 0x66b63e73 0xeee75c1a 0x16fcd208))
+                 licence => "userspace/lib/ui/licenses/LITERATA_OFL.txt")
+               (Blob name => "source-serif-4"
+                 source => (fetch
+                   "https://raw.githubusercontent.com/adobe-fonts/source-serif/2823e993c53fca27c5c8749f529b56a5a7c77b6b/TTF/SourceSerif4-Regular.ttf"
+                   (SHA256_Digest 0xe5a4ee6a 0x3d87bb90 0x24796be3 0x90c6771e
+                                  0x2a0eb188 0x3dae25ef 0xfaf57ca0 0x1668e24b))
+                 licence => "userspace/lib/ui/licenses/SOURCE_SERIF_OFL.md")
+               (Blob name => "eb-garamond"
+                 source => (fetch
+                   "https://raw.githubusercontent.com/octaviopardo/EBGaramond12/106a4a6d377987459ae5e68673a4570f13b957fb/fonts/ttf/EBGaramond-Regular.ttf"
+                   (SHA256_Digest 0x2028dc06 0xd3c130b4 0x76169348 0x1436a32a
+                                  0x8e35ed50 0x0bf58c25 0xc53de004 0x106125b8))
+                 licence => "userspace/lib/ui/licenses/EB_GARAMOND_OFL.txt")])

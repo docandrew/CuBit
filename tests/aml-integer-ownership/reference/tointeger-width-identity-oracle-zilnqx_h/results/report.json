@@ -1,0 +1,520 @@
+[
+  {
+    "key": "r1-direct",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-direct.asl",
+    "methods": [
+      "TEST"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.asl"
+        ],
+        "log": "results/r1-direct-base-compile.log",
+        "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-direct.asl"
+        ],
+        "log": "results/r1-direct-source-compile.log",
+        "sha256": "5959e21791b6e73a796fc6a9bc7a6e2b055b1dbd03236d80d634e6028040ee97"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-direct.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.aml"
+      ],
+      "log": "results/r1-direct-execute.log",
+      "sha256": "1f6923ec16ac9d0e28292119ac7c3f7468c697bd8173f6a1e7c1106384503193"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-arg",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg.asl",
+    "methods": [
+      "TEST"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.asl"
+        ],
+        "log": "results/r1-arg-base-compile.log",
+        "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg.asl"
+        ],
+        "log": "results/r1-arg-source-compile.log",
+        "sha256": "3d278bf0e15113b622f1e00ea24101773b289149c072af2fbaff55c188f43454"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.aml"
+      ],
+      "log": "results/r1-arg-execute.log",
+      "sha256": "6612552d6c650c9ca369401db4f224f8cd69b7360fc81ddfda102b5c87c70648"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-local",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-local.asl",
+    "methods": [
+      "TEST"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.asl"
+        ],
+        "log": "results/r1-local-base-compile.log",
+        "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-local.asl"
+        ],
+        "log": "results/r1-local-source-compile.log",
+        "sha256": "e67c643bb3d2cb772345c3153250081b74da29cf6ec4311aa3a2877486136bdc"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-local.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.aml"
+      ],
+      "log": "results/r1-local-execute.log",
+      "sha256": "1bb20a42ce644a4f19ade0324b2ff1568a0499bfbccc00b26ada44e3dc5c846c"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-arg-target-source",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-target-source.asl",
+    "methods": [
+      "TEST"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.asl"
+        ],
+        "log": "results/r1-arg-target-source-base-compile.log",
+        "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-source.asl"
+        ],
+        "log": "results/r1-arg-target-source-source-compile.log",
+        "sha256": "f6aa9392f33f446706e845edcb0489ca451aed5fe7f8dc6f4a3c3509cfa82042"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-source.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.aml"
+      ],
+      "log": "results/r1-arg-target-source-execute.log",
+      "sha256": "7025fb3fc612bc4b67714f26eb04dc136b86489dcf8eaf8c052cd62e6dd56bda"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-arg-target-dest",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-arg-target-dest.asl",
+    "methods": [
+      "TEST"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.asl"
+        ],
+        "log": "results/r1-arg-target-dest-base-compile.log",
+        "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-dest.asl"
+        ],
+        "log": "results/r1-arg-target-dest-source-compile.log",
+        "sha256": "0a8f8aeee88cfa7dafd8b5eb3a02cad48b5806be82dc0514b286b8df511fcd2f"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-arg-target-dest.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.aml"
+      ],
+      "log": "results/r1-arg-target-dest-execute.log",
+      "sha256": "f38cc8ce3a8797d64b7a5dfee9fda0df71f6620cf63fb0010a29093568db4ddc"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r1-package",
+    "revision": 1,
+    "base": "cases/base1.asl",
+    "source": "cases/r1-package.asl",
+    "methods": [
+      "PRAW",
+      "TEST",
+      "PAFT"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base1.asl"
+        ],
+        "log": "results/r1-package-base-compile.log",
+        "sha256": "859b6159e73ef3839298d793f452434333b132def85d9a2bde587a188a19f653"
+      },
+      {
+        "rc": 255,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r1-package.asl"
+        ],
+        "log": "results/r1-package-source-compile.log",
+        "sha256": "d3d5a8902a90cff2b4e54bddf589909224e842197abffaef34beab4438c7d4ff"
+      }
+    ],
+    "classification": "compiler_process_failure"
+  },
+  {
+    "key": "r2-direct",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-direct.asl",
+    "methods": [
+      "TEST"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.asl"
+        ],
+        "log": "results/r2-direct-base-compile.log",
+        "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-direct.asl"
+        ],
+        "log": "results/r2-direct-source-compile.log",
+        "sha256": "46a85c72e9a139997642c819ee180474ad62113f8186a2db715889a6c35027da"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-direct.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.aml"
+      ],
+      "log": "results/r2-direct-execute.log",
+      "sha256": "d6b533424086cbdd66c897ebf4716268dbddf4bf8e71113f05772758edf2d5c6"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-arg",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg.asl",
+    "methods": [
+      "TEST"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.asl"
+        ],
+        "log": "results/r2-arg-base-compile.log",
+        "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg.asl"
+        ],
+        "log": "results/r2-arg-source-compile.log",
+        "sha256": "3ea6c7f69dc308c5e8110a1d96382297650ca250b6888e5c1d7c2bf8ed56b4cd"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.aml"
+      ],
+      "log": "results/r2-arg-execute.log",
+      "sha256": "a461c6a141262cfb6bb8d79f314533a4b9d444d039b41416c534ca6f2cd50f3b"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-local",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-local.asl",
+    "methods": [
+      "TEST"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.asl"
+        ],
+        "log": "results/r2-local-base-compile.log",
+        "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-local.asl"
+        ],
+        "log": "results/r2-local-source-compile.log",
+        "sha256": "c0e6845f46598bf4799345fa299d3853067182f0693d95c81e8ed1e7d7979721"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-local.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.aml"
+      ],
+      "log": "results/r2-local-execute.log",
+      "sha256": "bbedccacac320f61391516dfc02104d01bc46226856ab0d3976900336126ea59"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-arg-target-source",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-target-source.asl",
+    "methods": [
+      "TEST"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.asl"
+        ],
+        "log": "results/r2-arg-target-source-base-compile.log",
+        "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-source.asl"
+        ],
+        "log": "results/r2-arg-target-source-source-compile.log",
+        "sha256": "429a02c51af7f9d9022844c612e6e9d9a06466332835d9b27106af008dff46a4"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-source.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.aml"
+      ],
+      "log": "results/r2-arg-target-source-execute.log",
+      "sha256": "59909f255cdfb81314a25c1d1e7f070626a0b3f3a75dc842b643a7a5f82f8e50"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-arg-target-dest",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-arg-target-dest.asl",
+    "methods": [
+      "TEST"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.asl"
+        ],
+        "log": "results/r2-arg-target-dest-base-compile.log",
+        "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+      },
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-dest.asl"
+        ],
+        "log": "results/r2-arg-target-dest-source-compile.log",
+        "sha256": "8e79a374448a616fa485154c147bd7459d92cc033d2eede25ac39973d832f3b6"
+      }
+    ],
+    "execute": {
+      "rc": 0,
+      "command": [
+        "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+        "-b",
+        "osi install CuBitProbeSupported;osi;load /home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-arg-target-dest.aml;execute TEST",
+        "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.aml"
+      ],
+      "log": "results/r2-arg-target-dest-execute.log",
+      "sha256": "0c864741b497369517158b9bc3e6b35b252da1a7245392eed2fdaa8718be77de"
+    },
+    "teardown_cache_warning": true,
+    "classification": "executed",
+    "statuses": []
+  },
+  {
+    "key": "r2-package",
+    "revision": 2,
+    "base": "cases/base2.asl",
+    "source": "cases/r2-package.asl",
+    "methods": [
+      "PRAW",
+      "TEST",
+      "PAFT"
+    ],
+    "compiles": [
+      {
+        "rc": 0,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/base2.asl"
+        ],
+        "log": "results/r2-package-base-compile.log",
+        "sha256": "101e6c01c91f52ad0e02df79bf0194e882b7efadc8caf1c3945d1d17f53ea87d"
+      },
+      {
+        "rc": 255,
+        "command": [
+          "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+          "-oa",
+          "/home/doc/git/.acpi-proof-work/tointeger-width-identity-oracle-zilnqx_h/cases/r2-package.asl"
+        ],
+        "log": "results/r2-package-source-compile.log",
+        "sha256": "6aa942046f5322b2ca617c2ee29463565934a2bb2b5a1a2ff3bb57e81bdc0e22"
+      }
+    ],
+    "classification": "compiler_process_failure"
+  }
+]

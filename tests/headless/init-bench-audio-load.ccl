@@ -1,0 +1,5 @@
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "bench-load.app" (priority 4) (trace approve-declared))
+  (start "bench-audio.app" (priority 4))
+)

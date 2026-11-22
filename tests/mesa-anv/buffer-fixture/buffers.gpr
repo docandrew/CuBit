@@ -1,0 +1,40 @@
+project Buffers is
+   for Languages use ("Ada", "C");
+   for Source_Dirs use (".", "../../../userspace/mesa/anv",
+                        "../../../userspace/services/intel-gpu",
+                        "../../../userspace/runtime/gnat",
+                        "../../../shared/capabilities", "../memory-fixture");
+   for Object_Dir use "../target/buffer-requests-host";
+   -- This is the wire/C-ABI fixture, not the prepared Mesa-type adapter test.
+   for Source_Files use
+     ("buffer_bridge_tests.adb", "buffer_c_test.c", "cubit.ads",
+      "cubit-handles.ads", "cubit-handles-c_abi.ads", "capability_abi.ads", "capability_abi.adb",
+      "broker_handles_fixture.ads", "broker_handles_fixture.adb",
+      "cubit-messages.ads", "cubit-messages.adb", "cubit-call_census.ads", "cubit-call_census.adb", "cubit-grant_references.ads",
+      "native_gpu_calls.ads", "native_gpu_calls.adb", "native_gpu_buffers.ads", "native_gpu_buffers.adb",
+      "intel_gpu_buffer_requests.ads", "intel_gpu_buffer_requests.adb",
+      "intel_gpu_buffer_requests-binding.ads", "intel_gpu_buffer_requests-binding.adb",
+      "intel_gpu_buffer_backing.ads", "intel_gpu_buffer_reply.ads", "intel_gpu_buffer_reply.adb",
+      "intel_gpu_buffer_handles.ads", "intel_gpu_buffer_handles.adb",
+     "intel_gpu_name_index.ads", "intel_gpu_name_index.adb",
+      "intel_gpu_physical_extents.ads", "intel_gpu_physical_extents.adb",
+      "intel_gpu_record_store.ads", "intel_gpu_record_store.adb",
+      "intel_gpu_client_budgets.ads", "intel_gpu_client_budgets.adb",
+      "intel_gpu_client_budget_policy.ads", "intel_gpu_client_budget_policy.adb",
+      "intel_gpu_vm_table_store.ads", "intel_gpu_vm_table_store.adb",
+      "intel_gpu_extent_directory.ads", "intel_gpu_extent_directory.adb",
+      "intel_gpu_vm_image.ads", "intel_gpu_vm_image.adb",
+      "intel_gpu_vm_update.ads", "intel_gpu_vm_update.adb",
+      "intel_gpu_vm_buffer.ads", "intel_gpu_vm_buffer.adb",
+      "intel_gpu_adln_ppgtt.ads", "intel_gpu_adln_ppgtt.adb",
+      "intel_gpu_ppgtt_scratch.ads");
+   for Main use ("buffer_bridge_tests.adb");
+   package Naming is
+      for Spec ("CuBit.Handles.Fixture") use "broker_handles_fixture.ads";
+      for Body ("CuBit.Handles.Fixture") use "broker_handles_fixture.adb";
+   end Naming;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+      for Default_Switches ("C") use ("-std=c11", "-Wall", "-Wextra", "-Werror");
+   end Compiler;
+end Buffers;

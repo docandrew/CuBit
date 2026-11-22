@@ -1,0 +1,10 @@
+project Sampling is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat");
+   for Source_Files use ("sampling_tests.adb", "compositor_sampling.ads", "compositor_sampling.adb", "cubit.ads", "cubit-display_geometry.ads", "cubit-display_geometry.adb");
+   for Object_Dir use "build/sampling/obj";
+   for Exec_Dir use "build/sampling";
+   for Main use ("sampling_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Sampling;

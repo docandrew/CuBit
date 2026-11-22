@@ -1,0 +1,9 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/direct-r2.asl -    1008 bytes     27 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/field-initializer-normal-runtime-feqwecy7/results/direct-r2.aml -     243 bytes     14 opcodes      13 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 7 Optimizations

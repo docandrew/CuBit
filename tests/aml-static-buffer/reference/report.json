@@ -1,0 +1,672 @@
+[
+  {
+    "case": "s_hex",
+    "revision": 1,
+    "source_sha256": "649fd783141d28e3367fe4d208253a773e161568b6e8addc6cb14b7a06859e2a",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002493274980224669,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0139790690736845,
+    "integer_hex": [
+      "0000000000000012"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_prefixed",
+    "revision": 1,
+    "source_sha256": "cd46f1f58472519a416f1fa508d7898d78aa6be6b1581f97941ed5f738424111",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002543445909395814,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0138464770279825,
+    "integer_hex": [
+      "0000000000000012"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_upper",
+    "revision": 1,
+    "source_sha256": "0a0d23dbb2d5b7d1a0accd70bbab4fb29c52c8765783ca1297e473bdea1d1186",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002531136036850512,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0137033950304613,
+    "integer_hex": [
+      "0000000000000012"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_space",
+    "revision": 1,
+    "source_sha256": "4ba2ea3fc4b1ef45c7e50adef253be3eac0edb5b1adb66364a802d5db9f5f021",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0026299470337107778,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0138679769588634,
+    "integer_hex": [
+      "0000000000000012"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_plus",
+    "revision": 1,
+    "source_sha256": "85d702cbf5264051a39276b7d8c2e45be14dc2a0837f29a5de10804b1b5088b2",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002552966005168855,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0138610679423437,
+    "integer_hex": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_minus",
+    "revision": 1,
+    "source_sha256": "fbee2b66a93bdf5b9860582d93f4e9e319ecf5331f17ac73086dc899a308076b",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002666736952960491,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0149745129747316,
+    "integer_hex": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_suffix",
+    "revision": 1,
+    "source_sha256": "9772f7d0d9d793850322268e12376ed04d525f8754f41f936d6d1f187ad893dc",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0025815150002017617,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0137788269203156,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_empty",
+    "revision": 1,
+    "source_sha256": "e2cae2a38655d7ac98decb9f3813af9fc3b3e253af1d0999a5a8c3efa38269b1",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002603985951282084,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0138312879716977,
+    "integer_hex": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_nonnumeric",
+    "revision": 1,
+    "source_sha256": "4514ae0589e5b055d3200003fbf77d4b40bb16689d579c314f84490b8aa7a8c8",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0028087079990655184,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0138597269542515,
+    "integer_hex": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_leadingzeros",
+    "revision": 1,
+    "source_sha256": "e49a7b955b2ab3f2371238f88d44898b0a274e33037615a64a99db06fe696b9c",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0029006999684497714,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0138821279397234,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_width",
+    "revision": 1,
+    "source_sha256": "cca321b40eff9e6e06b6400600acdb92d9cb0790b2be725ef843513baca8aa51",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0027039280394092202,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.1589749610284343,
+    "integer_hex": [
+      "0000000010000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_one",
+    "revision": 1,
+    "source_sha256": "5b178c3b8e85dca3fd2d000926823016140cf5523aca0e81732706eef440346b",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002808938967064023,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.014026019955054,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_empty",
+    "revision": 1,
+    "source_sha256": "31942d43c03ca0b1a43e480af92a540ea58528af956835e23b494fe414665785",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.003040352021344006,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0139572989428416,
+    "integer_hex": [],
+    "diagnostics": [
+      "Final data object initialization: ACPI Error: AE_TYPE, Opcode is not deferred [BUF0] (Buffer) (20260408/nsinit-591)",
+      "ACPI Error: AE_TYPE, Could not execute arguments for [BUF0] (Buffer) (20260408/nsinit-599)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_BAD_ADDRESS) (20260408/psparse-688)",
+      "ACPI Error: AE_BAD_ADDRESS, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_BAD_ADDRESS",
+      "ACPI Error: 8 (0x8) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_four",
+    "revision": 1,
+    "source_sha256": "2291abd3985814914155848c5b1a2395ed2c18e767849b8fa7c44d99f6af4ac0",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0026236670091748238,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0139911189908162,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_eight",
+    "revision": 1,
+    "source_sha256": "e618236bcf401f98f0eeef1ec608f7ce9c0d1e3921bd8d5f9ec5aa8e76e0ff5a",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002843050053343177,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0139170680195093,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_oversized",
+    "revision": 1,
+    "source_sha256": "f39aaf87c8bdab7a3e5b79f7985342da62353f630c421694b256d4111bb58eb9",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0028137690387666225,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.014087600982748,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "package",
+    "revision": 1,
+    "source_sha256": "47632afbd2ae5fc7e4f728dcd3734dcaaee3d4ad22b65fb2d02e0c19308bf5fd",
+    "compile_exit": 255,
+    "compile_timeout": false,
+    "compile_seconds": 0.0030014620861038566
+  },
+  {
+    "case": "s_mutation",
+    "revision": 1,
+    "source_sha256": "44a7bb5c6d332846ed74e2e4edb945ac83b309174391945eeea42df810088671",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0023306029615923762,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.014014079933986,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_mutation",
+    "revision": 1,
+    "source_sha256": "c55fcd1de47a565f784373509084b1e1277248a90ca0e2f8331394ee58e4ce1a",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002764067961834371,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0139566889265552,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_hex",
+    "revision": 2,
+    "source_sha256": "27d4c25f5619080d766d0d632f3181a71baffa4a05edcc3ded5ccedb7a0da14b",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002882080036215484,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0140480400295928,
+    "integer_hex": [
+      "0000000000000012"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_prefixed",
+    "revision": 2,
+    "source_sha256": "d3ebbf7df47111c1365e3a11d83495a8521e83dc69b93220c9829d1ea9b8ca7b",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0030556919518858194,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.014740671031177,
+    "integer_hex": [
+      "0000000000000012"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_upper",
+    "revision": 2,
+    "source_sha256": "a0d99bfac40e2c4448dd4ecd29540dbe14b22f3e69e3275ff6e5aafe5e1e16f9",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0028491689590737224,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.014016910106875,
+    "integer_hex": [
+      "0000000000000012"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_space",
+    "revision": 2,
+    "source_sha256": "997291a58f6513dfa87039ff961a9fd5b3bbe87b5da37d5a6bc3189b977dff28",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002990140928886831,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0143781049409881,
+    "integer_hex": [
+      "0000000000000012"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_plus",
+    "revision": 2,
+    "source_sha256": "e026bc8ff0db4f2df062621e66a2e938efee8b9e0ca151b40a69b13fdcf4662e",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002909719944000244,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0143351949518546,
+    "integer_hex": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_minus",
+    "revision": 2,
+    "source_sha256": "e21fd34ad053c2120552b872826fc8d2214e2d05db4b63409402c31f37e1f633",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0029390109702944756,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0139833899447694,
+    "integer_hex": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_suffix",
+    "revision": 2,
+    "source_sha256": "51c8a33eed0107157f17c58f8f5923336eca003a53a38b70fdc20e009d349afe",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0028761799912899733,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0140589899383485,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_empty",
+    "revision": 2,
+    "source_sha256": "d17b942467d311c44dc254eb9cc25b109efd28db4ef1601da60918f860dbb9ac",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0029190609930083156,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0143892649793997,
+    "integer_hex": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_nonnumeric",
+    "revision": 2,
+    "source_sha256": "70f325e79393356ab8d119e6f9fd03b69b4b9a784cd08d42af479ee0c534ed82",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002822709036991,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0139712089439854,
+    "integer_hex": [
+      "0000000000000000"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_leadingzeros",
+    "revision": 2,
+    "source_sha256": "09ff87409172b861eed90d1e90b691eb5a91183cb500893ea8e618fb36f70f64",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0028559690108522773,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0139564400305972,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "s_width",
+    "revision": 2,
+    "source_sha256": "d6cca6a3e9264ec83e7ea3b647aa843df8ba99e2b5a15e8c164e78561ae04874",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0029022200033068657,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0139674600213766,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_one",
+    "revision": 2,
+    "source_sha256": "1c197b15553a6f73bc063b6bcafb44a8aa577ca558184965b7cde81b097a7f07",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.002879459992982447,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0147105200449005,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_empty",
+    "revision": 2,
+    "source_sha256": "64c381a52059a76a3dd87a28d5ac1f3a454a25a006b78242cd253eba50885b5e",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.003200965002179146,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0203559880610555,
+    "integer_hex": [],
+    "diagnostics": [
+      "Final data object initialization: ACPI Error: AE_TYPE, Opcode is not deferred [BUF0] (Buffer) (20260408/nsinit-591)",
+      "ACPI Error: AE_TYPE, Could not execute arguments for [BUF0] (Buffer) (20260408/nsinit-599)",
+      "ACPI Error: Aborting method \\TEST due to previous error (AE_BAD_ADDRESS) (20260408/psparse-688)",
+      "ACPI Error: AE_BAD_ADDRESS, while executing \\TEST from AML Debugger (20260408/dbexec-334)",
+      "Evaluation of \\TEST failed with status AE_BAD_ADDRESS",
+      "ACPI Error: 8 (0x8) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_four",
+    "revision": 2,
+    "source_sha256": "791f1f07e4f2f8912938de709c3c1310caa31a724fedd237df91622df6fb9315",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.003126612980850041,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0141233319882303,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_eight",
+    "revision": 2,
+    "source_sha256": "033ff780b27d09a226124b42e98ff59b06a1e187dd6aafd0886aaff581c3dc5c",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.003191694966517389,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.014364383998327,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_oversized",
+    "revision": 2,
+    "source_sha256": "3bd557f4f52aa786bfe31699dcec28295b57b0fbec1d354fdd32a1563b9bd6f2",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0028522799257189035,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0143292440334335,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "package",
+    "revision": 2,
+    "source_sha256": "f2e44349ee22c8e0ebde907734fac4da5d094a7c986c06bfb2e6704ccbab3143",
+    "compile_exit": 255,
+    "compile_timeout": false,
+    "compile_seconds": 0.002998292096890509
+  },
+  {
+    "case": "s_mutation",
+    "revision": 2,
+    "source_sha256": "eacb5d2c11ee1f61deded26961d7b0f511054e8c9646201aefae4fe33de9ee7b",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.0024547840002924204,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0139785199426115,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  },
+  {
+    "case": "b_mutation",
+    "revision": 2,
+    "source_sha256": "240489e90d0c000b77e77b0f1b5454f66147b5d0206e0c8b25aae751014d058e",
+    "compile_exit": 0,
+    "compile_timeout": false,
+    "compile_seconds": 0.00289725000038743,
+    "runtime_exit": 0,
+    "runtime_timeout": false,
+    "runtime_seconds": 1.0139172790804878,
+    "integer_hex": [
+      "0000000000000003"
+    ],
+    "diagnostics": [
+      "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+    ],
+    "resource_failure": false
+  }
+]

@@ -1,0 +1,104 @@
+{
+  "scope": "Native CuBit software archive and negative storage tests; portable pure-SPARK codec/framing plus hosted reader. Not hardware performance.",
+  "native_capture": {
+    "path": "fixtures/native201.cubittrace",
+    "sha256": "250097b02a1aea0de9f402297f0fd3b8ecf4aa17507bac48066c3bcdd8115f9e",
+    "bytes": 20480,
+    "events": 78,
+    "run": "/home/doc/git/compositor-test-artifacts/trace-archive-native-run-201/result.json"
+  },
+  "native_fault_tests": {
+    "exclusive_create": {
+      "result": {
+        "status": "EXPECTED_REFUSAL_PASS",
+        "scope": "Actual native collector refused exclusive open and emitted no saved marker; preexisting archive bytes remain unchanged",
+        "runner_exit": 1,
+        "retained_sha256": "7962c4e3a81c82fe644c261dff3d5b59f19cc47ed767052632fb0c51094b468f",
+        "serial_sha256": "bd09fef1481ab437917b15240af6a7ceec8460f9e67862eabb2701f76537bf40"
+      },
+      "result_path": "/home/doc/git/compositor-test-artifacts/trace-archive-collision-203/result.json"
+    },
+    "volatile_flush": {
+      "result": {
+        "status": "EXPECTED_FLUSH_REFUSAL_PASS",
+        "scope": "Actual native collector completed exact-count writes on RAM volume, received REPLY_DURABILITY_UNSUPPORTED 0xF00D at flush and emitted no saved marker",
+        "runner_exit": 1,
+        "serial_sha256": "94d0acce69bbbc94b40c515a9b9770e8997e2884bba09d1bb6823eacd9dbba6c"
+      },
+      "result_path": "/home/doc/git/compositor-test-artifacts/trace-archive-volatile-213/result.json"
+    },
+    "full_volume": {
+      "result": {
+        "status": "EXPECTED_FULL_VOLUME_REFUSAL_PASS",
+        "scope": "Actual native collector opened capture on full RAM volume, received REPLY_NO_SPACE 0xF002 at write and emitted no saved marker",
+        "runner_exit": 1,
+        "serial_sha256": "bf428e0b4c2455e9eee301785e06e710d34a71f01f86c4be8c274c681c4cf23e"
+      },
+      "result_path": "/home/doc/git/compositor-test-artifacts/trace-archive-full-215/result.json"
+    }
+  },
+  "preserved_failed_attempts": [
+    208,
+    210,
+    211
+  ],
+  "limits": [
+    "Native adapter not published by this core/test package",
+    "No native interrupted-write or observer-restart archive test",
+    "No CCL viewer or on-device capture UI",
+    "No hardware timing or 240 Hz claim"
+  ],
+  "portable_validation": {
+    "proof": "proof.txt",
+    "proof_sha256": "ab81370d021e741b0db5271fb04aa12919d101c8ed87afc4bc0064aa1d8cfc70",
+    "checks": 48,
+    "flow": 22,
+    "provers": 26,
+    "unproved": 0,
+    "hosted_chunk_checks": 2049017,
+    "hosted_framing_checks": 17165,
+    "reader_faults": {
+      "status": "PASS",
+      "scope": "Actual native file, independent byte-level checksums, reader rejects seven corrupted/truncated/reordered variants; not filesystem fault injection",
+      "original_sha256": "250097b02a1aea0de9f402297f0fd3b8ecf4aa17507bac48066c3bcdd8115f9e",
+      "chunks": 80,
+      "cases": {
+        "missing-footer": {
+          "exit": 1,
+          "bytes": 20224,
+          "sha256": "8d22689e65ef8f921c8e7736ea06ec104dedb1817faf20b29813751af77b8e22"
+        },
+        "short-footer": {
+          "exit": 1,
+          "bytes": 20479,
+          "sha256": "580106e987303e84a6e014a1047d21f7c320cda64bc7259f551437de8d066957"
+        },
+        "extra-byte": {
+          "exit": 1,
+          "bytes": 20481,
+          "sha256": "5ae4e98ae01c6500150ec09b17ca16eb171f6dc7a6f8fd93bf61c9aafd959fd4"
+        },
+        "replayed-event": {
+          "exit": 1,
+          "bytes": 20736,
+          "sha256": "cfd769e54cb3897856ddf0a96fdce4e6539c2b336db329f7e82c436babf5746b"
+        },
+        "reordered-events": {
+          "exit": 1,
+          "bytes": 20480,
+          "sha256": "032fe9cd13bc21b72d71a8cce533bcef3662a70e19e1160dd1d7bf601f6c1653"
+        },
+        "payload-corruption": {
+          "exit": 1,
+          "bytes": 20480,
+          "sha256": "3dc6d8cd01f73916142f5604f69f46c5f22a5414da331a0d9f95e4be31170a09"
+        },
+        "footer-corruption": {
+          "exit": 1,
+          "bytes": 20480,
+          "sha256": "f8b7f89f9668c8a24bb402a9d504de85dd5ee19037e297bb9d8102080b214761"
+        }
+      }
+    }
+  }
+}

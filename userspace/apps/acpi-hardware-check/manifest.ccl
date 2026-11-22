@@ -1,0 +1,11 @@
+# ACPI hardware windows regression (tests/headless, acpi-hardware): stands
+# in for acpi.svc's launch (ACPI-ONE-001; coordination/acpi-region-boundary.md).
+# The startup plan approves its firmware snapshot reader and its hardware
+# windows on one entry; the same image without the hardware approval must be
+# refused at launch.
+(Executable_Manifest
+  identity => "com.cubit.acpi-hardware-check"
+  version => "0.1.0"
+  requests => [
+    (Request.Firmware_Snapshot "tables")
+    (Request.ACPI_Hardware "hardware")])

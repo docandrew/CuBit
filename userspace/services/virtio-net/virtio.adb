@@ -1,0 +1,155 @@
+------------------------------------------------------------------------------
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--
+--  @summary
+--  Virtio legacy PCI transport layer - body.
+--  All device register access is port I/O through its register-port handle.
+------------------------------------------------------------------------------
+with CuBit.Messages; use CuBit.Messages;
+
+with CuBit.Virtio_Net_Control;
+
+package body Virtio is
+
+   --  The legacy register ports (its manifest's "registers" binding).
+   Ports : CuBit.Handles.IO_Ports := CuBit.Handles.No_IO_Ports;
+
+   procedure Bind_Ports (Item : CuBit.Handles.IO_Ports) is
+   begin
+      Ports := Item;
+   end Bind_Ports;
+
+   function Bound_Ports return CuBit.Handles.IO_Ports is (Ports);
+
+   ---------------------------------------------------------------------------
+   --  outb / inp8 / outp16 / inp16 / outp32 / inp32 wrappers
+   ---------------------------------------------------------------------------
+   procedure outb (port : Unsigned_16; val : Unsigned_8) is
+      ignore : Unsigned_64;
+   begin
+      ignore := portOutp8 (Ports, port, val);
+   end outb;
+
+   function inb (port : Unsigned_16) return Unsigned_8 is
+   begin
+      return Unsigned_8 (portInp8 (Ports, port) and 16#FF#);
+   end inb;
+
+   procedure outw (port : Unsigned_16; val : Unsigned_16) is
+      ignore : Unsigned_64;
+   begin
+      ignore := portOutp16 (Ports, port, val);
+   end outw;
+
+   function inw (port : Unsigned_16) return Unsigned_16 is
+   begin
+      return Unsigned_16 (portInp16 (Ports, port) and 16#FFFF#);
+   end inw;
+
+   procedure outl (port : Unsigned_16; val : Unsigned_32) is
+      ignore : Unsigned_64;
+   begin
+      ignore := portOutp32 (Ports, port, val);
+   end outl;
+
+   function inl (port : Unsigned_16) return Unsigned_32 is
+   begin
+      return Unsigned_32 (portInp32 (Ports, port) and 16#FFFF_FFFF#);
+   end inl;
+
+   ---------------------------------------------------------------------------
+   --  resetDevice - write 0 to device status register
+   ---------------------------------------------------------------------------
+   procedure resetDevice (ioBase : Unsigned_16) is
+   begin
+      outb (ioBase + REG_DEVICE_STATUS, STATUS_RESET);
+   end resetDevice;
+
+   ---------------------------------------------------------------------------
+   --  initDevice - perform virtio device initialization sequence
+   --  ACKNOWLEDGE -> DRIVER -> negotiate features -> DRIVER_OK
+   ---------------------------------------------------------------------------
+   procedure initDevice (ioBase : Unsigned_16; Agreed : out Unsigned_32) is
+      devFeatures : Unsigned_32;
+      drvFeatures : Unsigned_32;
+      status      : Unsigned_8;
+   begin
+      --  1. Reset
+      resetDevice (ioBase);
+
+      --  2. Set ACKNOWLEDGE
+      status := STATUS_ACKNOWLEDGE;
+      outb (ioBase + REG_DEVICE_STATUS, status);
+
+      --  3. Set DRIVER
+      status := status or STATUS_DRIVER;
+      outb (ioBase + REG_DEVICE_STATUS, status);
+
+      --  4. Read device features, negotiate
+      devFeatures := inl (ioBase + REG_DEVICE_FEATURES);
+
+      --  The MAC address and the link status, if the device has them.
+      drvFeatures := devFeatures and (VIRTIO_NET_F_MAC or VIRTIO_NET_F_STATUS);
+      outl (ioBase + REG_DRIVER_FEATURES, drvFeatures);
+      Agreed := drvFeatures;
+
+   end initDevice;
+
+   function netStatus (ioBase : Unsigned_16) return Unsigned_16 is
+     (inw (ioBase + REG_NET_STATUS));
+
+   procedure startDevice (ioBase : Unsigned_16) is
+   begin
+      --  Only expose DRIVER_OK after descriptors and MSI-X mappings exist.
+      outb (ioBase + REG_DEVICE_STATUS,
+            STATUS_ACKNOWLEDGE or STATUS_DRIVER or STATUS_DRIVER_OK);
+   end startDevice;
+
+   function setQueueVector (ioBase : Unsigned_16) return Boolean is
+   begin
+      outw (ioBase + REG_QUEUE_MSIX_VECTOR, CuBit.Virtio_Net_Control.MSIX_Entry);
+      return inw (ioBase + REG_QUEUE_MSIX_VECTOR) = CuBit.Virtio_Net_Control.MSIX_Entry;
+   end setQueueVector;
+
+   ---------------------------------------------------------------------------
+   --  readISR - read and acknowledge interrupt status
+   ---------------------------------------------------------------------------
+   function readISR (ioBase : Unsigned_16) return Unsigned_8 is
+   begin
+      return inb (ioBase + REG_ISR_STATUS);
+   end readISR;
+
+   ---------------------------------------------------------------------------
+   --  selectQueue - select a virtqueue by index
+   ---------------------------------------------------------------------------
+   procedure selectQueue (ioBase : Unsigned_16; idx : Unsigned_16) is
+   begin
+      outw (ioBase + REG_QUEUE_SELECT, idx);
+   end selectQueue;
+
+   ---------------------------------------------------------------------------
+   --  getQueueSize - read the device's queue size for selected queue
+   ---------------------------------------------------------------------------
+   function getQueueSize (ioBase : Unsigned_16) return Unsigned_16 is
+   begin
+      return inw (ioBase + REG_QUEUE_SIZE);
+   end getQueueSize;
+
+   ---------------------------------------------------------------------------
+   --  setQueueAddr - write the physical page frame number of the vring
+   ---------------------------------------------------------------------------
+   procedure setQueueAddr (ioBase : Unsigned_16; pfn : Unsigned_32) is
+   begin
+      outl (ioBase + REG_QUEUE_ADDRESS, pfn);
+   end setQueueAddr;
+
+   ---------------------------------------------------------------------------
+   --  notifyQueue - kick the device to process a queue
+   ---------------------------------------------------------------------------
+   procedure notifyQueue (ioBase : Unsigned_16; idx : Unsigned_16) is
+   begin
+      outw (ioBase + REG_QUEUE_NOTIFY, idx);
+   end notifyQueue;
+
+end Virtio;

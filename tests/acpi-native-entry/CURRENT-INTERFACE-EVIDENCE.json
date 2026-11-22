@@ -1,0 +1,125 @@
+{
+  "runs": [
+    {
+      "directory": "/home/doc/git/.acpi-proof-work/native-entry-current-work/candidate/tests/acpi-native-entry/results/checked-GtKQa2gt",
+      "profile": "checked",
+      "selections": 17,
+      "alis": 16,
+      "objects": 0
+    },
+    {
+      "directory": "/home/doc/git/.acpi-proof-work/native-entry-current-work/candidate/tests/acpi-native-entry/results/release-GB457uGz",
+      "profile": "release",
+      "selections": 17,
+      "alis": 16,
+      "objects": 0
+    }
+  ],
+  "fixtures": 272,
+  "mirror_reconciliations": {
+    "authority": "/home/doc/git/.acpi-proof-work/native-startup-current-work/PUBLISHED-SINCE-CHECKPOINT.json",
+    "rows": [
+      {
+        "copy": "tests/acpi-native-entry/fixtures/actual/acpi_native_instance.adb",
+        "original": "userspace/services/acpi/native/acpi_native_instance.adb",
+        "before": "b9b9e1f826661c7a8c6aa34027a17043255bf53d75790898fa55bdacce75f6e0",
+        "current": "cc6f4257af8de00a62d5ae088812282bc30cfbb1547cbdb5cb49e0807684a606"
+      },
+      {
+        "copy": "tests/acpi-native-entry/fixtures/actual/acpi_native_log.adb",
+        "original": "userspace/services/acpi/native/acpi_native_log.adb",
+        "before": "b10fec514cf4887a19067d77c3938825200bbaba2a1085536dbfe1e75ae5af9c",
+        "current": "f58f1a89e1baf99b2c741e3ac98aceb9edd2826971fa16bed58864b51ec2a030"
+      },
+      {
+        "copy": "tests/acpi-native-entry/fixtures/actual/acpi_native_log.ads",
+        "original": "userspace/services/acpi/native/acpi_native_log.ads",
+        "before": "cf6bf9ba595c7952c93670e363fa6020f04fa8c30cbe72eb327714c44b935a12",
+        "current": "3f40f6ceb218748846e88c05f1e60d57a996ff15b69271c99ae14ba2ac3f8c2b"
+      },
+      {
+        "copy": "tests/acpi-native-entry/fixtures/actual/acpi_native_server.adb",
+        "original": "userspace/services/acpi/native/acpi_native_server.adb",
+        "before": "b9f54bb545c059b325257877292daa1d368f3d21551a2d24089ae8c2794abfed",
+        "current": "d254d8d673ef9bbb354a03a0d440c37906a262193b8e49ccd00be6a58946064b"
+      },
+      {
+        "copy": "tests/acpi-native-entry/fixtures/actual/acpi_native_server.ads",
+        "original": "userspace/services/acpi/native/acpi_native_server.ads",
+        "before": "3b5306ea901e7c51f42de1c50ad9563cbe32ca8b24b402de7660274e336f2b8b",
+        "current": "066a645dae454e1e493b6d0913d6154c2b60c2cd91ffaddda2379960decb4661"
+      },
+      {
+        "copy": "tests/acpi-native-entry/fixtures/actual/aml_field_layout.ads",
+        "original": "userspace/services/acpi/lib/aml_field_layout.ads",
+        "before": "90ca517c567cd4ffc1fb0a53828f8c10b803d9aa8dc7f19eb01f90d2bb065659",
+        "current": "e018fd6bfd063c2781fc6177d4b630f62959077dce8768f37b3907ee38a5d637"
+      },
+      {
+        "copy": "tests/acpi-native-entry/fixtures/actual/aml_field_plans.ads",
+        "original": "userspace/services/acpi/lib/aml_field_plans.ads",
+        "before": "0a73ece7e14d286ddf36485e0187cdc4fc24bfe3c40dbbfc261d7e4f41c57778",
+        "current": "f9c024dfafe7025dadebd17e3447c5579bc7aae9716e7e90935b97816e038c62"
+      },
+      {
+        "copy": "tests/acpi-native-entry/reference/catalog.ccl",
+        "original": "userspace/ccl/catalogs/native-runtime-services.ccl",
+        "before": "e6659413952dd9b9c57a5e802a4838d1ba98b1aec625188befce5d88a1b29599",
+        "current": "b9eab825620c8d1670cae5c178330b9b838d3b959375caac85da66dbb8f37b3e"
+      }
+    ]
+  },
+  "generation": {
+    "tool": "/home/doc/git/.acpi-proof-work/native-entry-current-work/tool-source/userspace/ccl/build/manifest/ccl-manifest",
+    "tool_sha256": "37c29bb00ad364866c80523af524d144d48c1ba2f6299c71d6db137d3cc42998",
+    "repository_source_files": 668,
+    "source_inputs": "/home/doc/git/.acpi-proof-work/native-entry-current-work/TOOL-SOURCE-INPUTS.json",
+    "sources_rechecked": true,
+    "dependency_environment": "Pinned Nix development environment; SPARK crates supplied through its CUBIT_SPARK_CRATES",
+    "inputs": [
+      {
+        "path": "userspace/ccl/catalogs/native-runtime-services.ccl",
+        "sha256": "b9eab825620c8d1670cae5c178330b9b838d3b959375caac85da66dbb8f37b3e"
+      },
+      {
+        "path": "userspace/ccl/interfaces/executable-manifest.ccl",
+        "sha256": "348f13f239b991e5c53c64d2b33d6d91130d3a211f61f9ac37a07e9d8f9ab7be"
+      },
+      {
+        "path": "userspace/services/acpi/native/manifest.ccl",
+        "sha256": "9972a14831ed499b59c74722ddf1d13c177984e0fd0af13dfa417f5d5a6a0653"
+      }
+    ],
+    "outputs": [
+      {
+        "path": "startup.ads",
+        "sha256": "1c2fdc7d4d030789b16ac9d44b77b289c13a5288332fe9900a303ea11999264c"
+      },
+      {
+        "path": "startup.adb",
+        "sha256": "4dd0263c995fb27ad32e821d62326f1b8c895ea2557e0581a74deea9f0e2255c"
+      },
+      {
+        "path": "parameters.ads",
+        "sha256": "a79a0f46caf074fa5d3335f280479bffe4d5f60cccb3723490b20d66993bd0d6"
+      },
+      {
+        "path": "parameters.adb",
+        "sha256": "83fdb742f13deee53a4b5966406a0725a81299cb8bcdbff60b8d9179f5e72880"
+      },
+      {
+        "path": "manifest.S",
+        "sha256": "20b6cdd428674f83509684d086561fb813118b4df5580cf51dbe6d0717d8baa2"
+      }
+    ],
+    "startup_exactly_matches_checked_fixtures": true,
+    "shared_binary_attempt": "Existing shared Oct19 tool refused input with generic access/4096-bound diagnostic; no changes or workaround to it. Fresh current-source tool succeeded."
+  },
+  "production_changed": false,
+  "new_proof": false,
+  "new_acpica_run": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

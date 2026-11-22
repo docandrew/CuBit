@@ -1,0 +1,1661 @@
+with CuBit.Channel_Limits;
+with CCL.Evaluation;
+with CCL.Catalog;
+with CCL.Host_Values;
+with CCL.Language;
+with CCL.Objects;
+with CCL.Objects.Views;
+with CCL.Resource_Sections;
+with CCL.Scheduling_Limits;
+with CuBit.Network_Authority;
+with CuBit.TLS_Scopes;
+with CCL.Manifests.Model;
+with CCL.Manifests.Encoding;
+with CCL.Manifests.Keywords;
+with CCL.Diagnostics;
+with CCL.Parameter_Signatures;
+with CCL.Types;
+with CuBit.Failures;
+with CuBit.Program_Descriptions;
+with CuBit.Startup_Tables;
+with CuBit.ACPI_Hardware_Authority;
+with CuBit.Publication_Grants;
+
+package body CCL.Manifests.Typed with SPARK_Mode => On is
+   use Standard.Interfaces;
+   use Model;
+   use all type CCL.Resource_Sections.Basis_Kind;
+   use all type CCL.Resource_Sections.Platform_Device;
+   use all type CCL.Resource_Sections.Interrupt_Mode;
+   use type CCL.Language.Interpretation_Status;
+   package Views renames CCL.Objects.Views;
+
+   --  Evaluation of a manifest is pure: no host operation is visible.
+   type No_Host is null record;
+   procedure Refuse
+     (Context : in out No_Host; Binding : Unsigned_32; Argument : CCL.Host_Values.Value;
+      Reply : out CCL.Host_Values.Call_Result)
+   is
+      pragma Unreferenced (Context, Binding, Argument);
+   begin
+      Reply := (Value => CCL.Host_Values.Integer_Constant (0), Success => False, Why => <>);
+   end Refuse;
+   procedure Evaluate is new CCL.Evaluation.Evaluate_Object_With_Values (No_Host, Refuse);
+
+   MANIFEST_FUEL : constant := 100_000;
+   MAXIMUM_DISTANCE : constant := 2;
+   --  The catalog service a com.cubit-os.stdmetric outlet declaration
+   --  requests: metrics.svc's publisher role (CuBit.Metric_Protocol).
+   METRIC_PUBLISHER_SERVICE : constant String := "metrics";
+
+   --  Edit distance, for "did you mean": names are at most 64 characters.
+   function Distance (Left, Right : String) return Natural is
+      Row : array (0 .. Right'Length) of Natural;
+      Diagonal, Above : Natural;
+   begin
+      if Left'Length > Binding_Name_Length'Last or else Right'Length > Binding_Name_Length'Last then
+         return Natural'Last;
+      end if;
+      for J in Row'Range loop Row (J) := J; end loop;
+      for I in 1 .. Left'Length loop
+         Diagonal := Row (0);
+         Row (0) := I;
+         for J in 1 .. Right'Length loop
+            Above := Row (J);
+            Row (J) := Natural'Min (Natural'Min (Row (J) + 1, Row (J - 1) + 1),
+                                    Diagonal + (if Left (Left'First + I - 1) = Right (Right'First + J - 1)
+                                                then 0 else 1));
+            Diagonal := Above;
+         end loop;
+      end loop;
+      return Row (Right'Length);
+   end Distance;
+
+   --  The name at Position in Source (1-based), as source wrote it.
+   function Name_At (Source : String; Position : Positive) return String is
+      First : constant Natural := Source'First + Position - 1;
+      Last : Natural;
+      function Name_Character (C : Character) return Boolean is
+        (C in 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' | '.' | '?' | '+' | '*' | '/' | '%' | '<' | '>' | '=');
+   begin
+      if First not in Source'Range or else not Name_Character (Source (First)) then return ""; end if;
+      Last := First;
+      while Last < Source'Last and then Name_Character (Source (Last + 1)) loop Last := Last + 1; end loop;
+      return Source (First .. Last);
+   end Name_At;
+
+   ROOT_TYPE_NAME : constant String := "Executable_Manifest";
+   --  The manifest's value never leaves this process: an in-process key.
+   LOCAL_KEY : constant CCL.Objects.Schema_Key :=
+     [16#4D41_4E49_4645_5354#, 16#2D4C_4F43_414C_0001#, 0, 0];
+
+   --  The schema without its comment lines and indentation: it is prepended
+   --  to every manifest, and CCL sizes its storage by what it reads
+   --  (diagnostics point into the manifest only). Schema lines hold no
+   --  multi-line text.
+   procedure Compact (Schema : String; Text : out String; Length : out Natural)
+   with Pre => Text'First = 1 and then Text'Length >= Schema'Length;
+   procedure Compact (Schema : String; Text : out String; Length : out Natural) is
+      Comment : constant Character := '#';
+      Line_Start : Boolean := True;
+      In_Comment : Boolean := False;
+   begin
+      Text := [others => ' '];
+      Length := 0;
+      for C of Schema loop
+         if C = ASCII.LF then
+            if not In_Comment and then not Line_Start then
+               Length := Length + 1;
+               Text (Length) := C;
+            end if;
+            Line_Start := True;
+            In_Comment := False;
+         elsif In_Comment then
+            null;
+         elsif Line_Start and then (C = ' ' or else C = ASCII.HT) then
+            null;
+         elsif Line_Start and then C = Comment then
+            In_Comment := True;
+         else
+            Line_Start := False;
+            Length := Length + 1;
+            Text (Length) := C;
+         end if;
+      end loop;
+   end Compact;
+
+   --  Program is the schema, then the manifest: one CCL program whose result
+   --  must be an Executable_Manifest. Checked is its analysis, in storage
+   --  sized by it (CCL.Language.Analysis_Of).
+   procedure Compile_Checked
+     (Source, Catalog_Source, Schema_Source, Program : String; Checked : CCL.Language.Sized_Analysis;
+      Result : out Compilation_Result);
+   procedure Compile_Checked
+     (Source, Catalog_Source, Schema_Source, Program : String; Checked : CCL.Language.Sized_Analysis;
+      Result : out Compilation_Result) is
+      Manifest_Type : CCL.Types.Type_Reference;
+      Decl : Declaration;
+      Cat : Catalog_Model;
+      Catalog : constant CCL.Catalog.Interface_Catalog := CCL.Catalog.Empty_Catalog;
+      Grants : CCL.Catalog.Granted_Bindings;
+      Contract : CCL.Objects.Binding;
+      Published, Captured : Boolean;
+      Host : No_Host;
+      Value : CCL.Language.Object_Interpretation_Result;
+      Object : Views.Snapshot;
+      Failed : Boolean := False;
+
+      --  The entry being read, for messages: "requests entry 2".
+      Where : String (1 .. 32) := [others => ' '];
+      Where_Length : Natural range 0 .. 32 := 0;
+      procedure Locate (Text : String) is
+      begin
+         Where_Length := Natural'Min (Text'Length, Where'Length);
+         Where (1 .. Where_Length) := Text (Text'First .. Text'First + Where_Length - 1);
+      end Locate;
+      function Entry_Text (List : String; Index : Positive) return String is
+        (List & " entry" & Positive'Image (Index));
+
+      procedure Fail (Code : Diagnostic_Code; Detail : String := ""; Remedy : String := "") is
+         Context : constant String := Where (1 .. Where_Length);
+      begin
+         if not Failed then
+            Failed := True;
+            Result.Success := False;
+            Result.Diagnostic := Code;
+            Result.Why := CuBit.Failures.Failed
+              (CuBit.Failures.Invalid_Argument,
+               (if Context'Length > 0 then Context & ": " else "") &
+               (if Detail'Length > 0 then Detail else Diagnostic_Code'Image (Code)),
+               Remedy);
+         end if;
+      end Fail;
+
+      function Text (At_Cursor : Views.Cursor) return String is (Views.Text (Object, At_Cursor));
+      function Number (At_Cursor : Views.Cursor) return Integer_64 is
+        (CCL.Objects.Integer_Of (Views.Scalar (Object, At_Cursor)));
+      function Flag (At_Cursor : Views.Cursor) return Boolean is (Views.Scalar (Object, At_Cursor).First = 1);
+      --  An enum or variant's alternative, from 1, and its name.
+      function Choice (At_Cursor : Views.Cursor) return Natural is (Views.Alternative (Object, At_Cursor));
+      function Alt (At_Cursor : Views.Cursor) return String is
+        (if Choice (At_Cursor) in 1 .. Views.Describe (Object, At_Cursor).Count
+         then CCL.Types.Image (Views.Describe (Object, At_Cursor).Parts (Choice (At_Cursor)).Identifier)
+         else "");
+      --  A record's field by name: the schema (interfaces/executable-manifest.ccl), not
+      --  this reader, decides the order.
+      function Named (At_Cursor : Views.Cursor; Name : String) return Views.Cursor is
+         Shape : constant CCL.Types.Description := Views.Describe (Object, At_Cursor);
+      begin
+         for Part in 1 .. Shape.Count loop
+            if CCL.Types.Image (Shape.Parts (Part).Identifier) = Name then
+               return Views.Field (Object, At_Cursor, Part);
+            end if;
+         end loop;
+         return Views.No_Value;
+      end Named;
+
+      procedure Set_Text (Item : out Metadata_Text; Value : String) is
+      begin
+         Item := (others => <>);
+         Item.Length := Value'Length;
+         Item.Data (1 .. Value'Length) := Value;
+      end Set_Text;
+
+      procedure Metadata (At_Cursor : Views.Cursor; Item : out Metadata_Text) is
+         Value : constant String := Text (At_Cursor);
+      begin
+         Item := (others => <>);
+         if not Valid_Metadata_Text (Value) then
+            Fail (Invalid_Text, """" & Value & """ is not 1 to 64 letters, digits, '.', '-' or '_'");
+            return;
+         end if;
+         Set_Text (Item, Value);
+      end Metadata;
+
+      procedure Binding (At_Cursor : Views.Cursor; Item : in out Request) is
+         Value : constant String := Text (At_Cursor);
+      begin
+         if not Valid_Binding_Name (Value) then
+            Fail (Invalid_Binding_Name, "binding """ & Value & """ is not a lowercase kebab name",
+                  "start with a letter; use a-z, 0-9 and single hyphens");
+            return;
+         end if;
+         Set_Text (Item.Name, Value);
+      end Binding;
+
+      function Rights_Of (Name : String) return Rights_Kind is
+        (if Name in "Read" | "Publish" then Read_Only
+         elsif Name in "Write" | "Manage" then Write_Only else Read_Write);
+
+      procedure Store (Item : Request) is
+      begin
+         if Failed then return; end if;
+         for Index in 1 .. Decl.Count loop
+            if Decl.Requests (Index).Name = Item.Name then
+               Fail (Duplicate_Binding, "binding """ & Item.Name.Data (1 .. Item.Name.Length) & """ is used twice",
+                     "give each request its own binding name");
+               return;
+            end if;
+         end loop;
+         if Decl.Count = MAX_REQUESTS then Fail (Too_Many_Requests); return; end if;
+         Decl.Count := Decl.Count + 1;
+         Decl.Requests (Decl.Count) := Item;
+      end Store;
+
+      --  The catalog's closest name of one kind to Name, if one is close.
+      function Closest (Kind : Request_Kind; Name : String) return String is
+         Best : Natural := MAXIMUM_DISTANCE + 1;
+         Found : Metadata_Text;
+      begin
+         for Entry_Binding of Cat.Services (1 .. Cat.Service_Count) loop
+            if Entry_Binding.Kind = Kind and then
+              Distance (Name, Entry_Binding.Name.Data (1 .. Entry_Binding.Name.Length)) < Best
+            then
+               Best := Distance (Name, Entry_Binding.Name.Data (1 .. Entry_Binding.Name.Length));
+               Found := Entry_Binding.Name;
+            end if;
+         end loop;
+         return Found.Data (1 .. Found.Length);
+      end Closest;
+
+      --  The catalog's names of one kind, for a message (cut to fit).
+      function Known (Kind : Request_Kind) return String is
+         --  Room beside the remedy's own words ("use one of: ").
+         Text : String (1 .. CuBit.Failures.MAXIMUM_TEXT - 16) := [others => ' '];
+         Length : Natural := 0;
+      begin
+         for Entry_Binding of Cat.Services (1 .. Cat.Service_Count) loop
+            if Entry_Binding.Kind = Kind then
+               declare
+                  Name : constant String :=
+                    (if Length = 0 then "" else ", ") & Entry_Binding.Name.Data (1 .. Entry_Binding.Name.Length);
+               begin
+                  if Length + Name'Length + 5 > Text'Length then
+                     Text (Length + 1 .. Length + 5) := ", ...";
+                     Length := Length + 5;
+                     exit;
+                  end if;
+                  Text (Length + 1 .. Length + Name'Length) := Name;
+                  Length := Length + Name'Length;
+               end;
+            end if;
+         end loop;
+         return Text (1 .. Length);
+      end Known;
+
+      --  A catalog service or notification by name, with its offered rights.
+      procedure Catalogued
+        (Name : String; Kind : Request_Kind; Item : in out Request; Requested : Rights_Kind)
+      is
+         Found : Boolean := False;
+         Offered : Rights_Kind := Read_Only;
+      begin
+         for Entry_Binding of Cat.Services (1 .. Cat.Service_Count) loop
+            if Entry_Binding.Name.Data (1 .. Entry_Binding.Name.Length) = Name and then Entry_Binding.Kind = Kind then
+               Item.Service := Entry_Binding.ID;
+               Item.Client := Entry_Binding.Client;
+               Offered := Entry_Binding.Rights;
+               Found := True;
+            end if;
+         end loop;
+         if not Found then
+            Fail ((if Kind = Notification_Request then Unknown_Notification else Unknown_Service),
+                  "the catalog has no " & (if Kind = Notification_Request then "notification" else "service") &
+                  " named """ & Name & """" &
+                  (if Closest (Kind, Name)'Length > 0 then "; did you mean """ & Closest (Kind, Name) & """?" else ""),
+                  (if Closest (Kind, Name)'Length > 0 then "write """ & Closest (Kind, Name) & """"
+                   else "use one of: " & Known (Kind)));
+         elsif Offered /= Read_Write and then Requested /= Offered then
+            Fail (Rights_Not_Offered, """" & Name & """ is offered with other rights",
+                  "request the rights the catalog offers for it");
+         end if;
+         Item.Rights := Requested;
+      end Catalogued;
+
+      --  Canonical dotted-decimal IPv4 only: no shorthand, octal or truncation.
+      procedure IPv4 (Address : String; Network : out Unsigned_32) is
+         Octet : Natural range 0 .. 255 := 0;
+         Digits_Seen : Natural range 0 .. 3 := 0;
+         Octets : Natural range 0 .. 4 := 0;
+      begin
+         Network := 0;
+         if Address'Length not in 7 .. 15 then Fail (Invalid_Network_Scope); return; end if;
+         for C of Address loop
+            if C = '.' then
+               if Digits_Seen = 0 or else Octets = 3 then Fail (Invalid_Network_Scope); return; end if;
+               Network := Shift_Left (Network, 8) or Unsigned_32 (Octet);
+               Octets := Octets + 1;
+               Octet := 0;
+               Digits_Seen := 0;
+            elsif C in '0' .. '9' then
+               if Digits_Seen = 3 or else (Digits_Seen > 0 and then Octet = 0)
+                 or else Octet * 10 + Character'Pos (C) - Character'Pos ('0') > 255
+               then
+                  Fail (Invalid_Network_Scope); return;
+               end if;
+               Octet := Octet * 10 + Character'Pos (C) - Character'Pos ('0');
+               Digits_Seen := Digits_Seen + 1;
+            else
+               Fail (Invalid_Network_Scope); return;
+            end if;
+         end loop;
+         if Octets /= 3 or else Digits_Seen = 0 then Fail (Invalid_Network_Scope); return; end if;
+         Network := Shift_Left (Network, 8) or Unsigned_32 (Octet);
+      end IPv4;
+
+      function In_Range (Value, Low, High : Integer_64) return Boolean is (Value in Low .. High);
+
+      procedure Add_Request (At_Cursor : Views.Cursor) is
+         Item : Request;
+         Kind : constant String := Alt (At_Cursor);
+         Body_Cursor : constant Views.Cursor := Views.Payload (Object, At_Cursor);
+         Number_Value : Integer_64;
+      begin
+         if Kind = "Service" then
+               Item.Kind := Service_Request;
+               Catalogued (Text (Named (Body_Cursor, "service")), Service_Request, Item,
+                           Rights_Of (Alt (Named (Body_Cursor, "access"))));
+               Binding (Named (Body_Cursor, "binding"), Item);
+         elsif Kind = "Notification" then
+               Item.Kind := Notification_Request;
+               Catalogued (Text (Named (Body_Cursor, "notification")), Notification_Request, Item,
+                           Rights_Of (Alt (Named (Body_Cursor, "access"))));
+               Binding (Named (Body_Cursor, "binding"), Item);
+         elsif Kind = "Framebuffer" then
+               Item.Kind := Framebuffer_Request;
+               Item.Rights := Rights_Of (Alt (Named (Body_Cursor, "access")));
+               Binding (Named (Body_Cursor, "binding"), Item);
+         elsif Kind = "Render" or else Kind = "Optional_Render" then
+               --  One admitted session per launch.
+               for Existing of Decl.Requests (1 .. Decl.Count) loop
+                  if Existing.Kind = Render_Request then Fail (Duplicate_Field); end if;
+               end loop;
+               Item.Kind := Render_Request;
+               if Kind = "Optional_Render" then
+                  Item.Service := 1;
+                  Item.Requirement := CuBit.Startup_Tables.Optional;
+               end if;
+               Item.Rights := Read_Write;
+               Binding (Body_Cursor, Item);
+         elsif Kind = "Firmware_Snapshot" then
+               --  One reader per program (Firmware_Snapshot_ABI).
+               for Existing of Decl.Requests (1 .. Decl.Count) loop
+                  if Existing.Kind = Firmware_Snapshot_Request then
+                     Fail (Duplicate_Field, "a second firmware snapshot request",
+                           "declare (Request.Firmware_Snapshot ...) once");
+                     return;
+                  end if;
+               end loop;
+               Item.Kind := Firmware_Snapshot_Request;
+               Item.Rights := Read_Only;
+               Binding (Body_Cursor, Item);
+         elsif Kind = "ACPI_Hardware" then
+               --  One grant per program (coordination/acpi-region-boundary.md);
+               --  its windows' startup names extend the binding.
+               for Existing of Decl.Requests (1 .. Decl.Count) loop
+                  if Existing.Kind = ACPI_Hardware_Request then
+                     Fail (Duplicate_Field, "a second ACPI hardware request",
+                           "declare (Request.ACPI_Hardware ...) once");
+                     return;
+                  end if;
+               end loop;
+               if Text (Body_Cursor)'Length > CuBit.ACPI_Hardware_Authority.Maximum_Binding_Length then
+                  Fail (Invalid_Binding_Name,
+                        "ACPI hardware binding """ & Text (Body_Cursor) & """ is too long for its window names",
+                        "use at most" & Natural'Image (CuBit.ACPI_Hardware_Authority.Maximum_Binding_Length) &
+                        " characters");
+                  return;
+               end if;
+               Item.Kind := ACPI_Hardware_Request;
+               Item.Rights := Read_Write;
+               Binding (Body_Cursor, Item);
+         elsif Kind = "Publication" then
+               --  A kernel publication by name (CuBit.Publication_Grants).
+               Item.Kind := Publication_Request;
+               Item.Rights := Read_Only;
+               for P in CuBit.Publication_Grants.SP.Granted_Publication loop
+                  if Text (Body_Cursor) = CuBit.Publication_Grants.Name (P) then
+                     Item.Service := CuBit.Publication_Grants.Code (P);
+                  end if;
+               end loop;
+               if Item.Service = 0 then
+                  Fail (Unknown_Publication,
+                        "no kernel publication is named """ & Text (Body_Cursor) & """",
+                        "name one of CuBit.Publication_Grants, such as """ &
+                        CuBit.Publication_Grants.CPU_Times_Name & """");
+                  return;
+               end if;
+               Binding (Body_Cursor, Item);
+         elsif Kind = "Offerable_Self" then
+               --  The program's own endpoint, Read and Grant (CuBit.Self_Offers).
+               for Existing of Decl.Requests (1 .. Decl.Count) loop
+                  if Existing.Kind = Offerable_Self_Request then
+                     Fail (Duplicate_Field, "a second offerable self endpoint",
+                           "declare (Request.Offerable_Self ...) once");
+                     return;
+                  end if;
+               end loop;
+               Item.Kind := Offerable_Self_Request;
+               Item.Rights := Read_Only;
+               Binding (Body_Cursor, Item);
+         elsif Kind = "Kernel_Object" then
+               --  A kernel object reached through Call, Write only, at most
+               --  one of each: the platform power object (KERN-004,
+               --  CuBit.Platform_Power_Authority), the trace object
+               --  (Trace_ABI, CuBit.Trace_Authority), the test console
+               --  object (Test_Console_ABI, CuBit.Test_Console_Authority) or
+               --  the VM creation authority (VMM-001,
+               --  CuBit.VM_Create_Authority).
+               declare
+                  Object : constant String := Alt (Named (Body_Cursor, "object"));
+                  Wanted : constant Request_Kind :=
+                    (if Object = "Trace" then Trace_Request
+                     elsif Object = "Test_Console" then Test_Console_Request
+                     elsif Object = "VM_Create" then VM_Create_Request
+                     else Platform_Power_Request);
+                  Noun : constant String :=
+                    (case Wanted is
+                        when Trace_Request => "trace",
+                        when Test_Console_Request => "test console",
+                        when VM_Create_Request => "VM creation",
+                        when others => "platform power");
+               begin
+                  for Existing of Decl.Requests (1 .. Decl.Count) loop
+                     if Existing.Kind = Wanted then
+                        Fail (Duplicate_Field, "a second " & Noun & " request",
+                              "declare (Request.Kernel_Object (Kernel_Object_Request Kernel_Object." &
+                                Object & " ...)) once");
+                        return;
+                     end if;
+                  end loop;
+                  Item.Kind := Wanted;
+               end;
+               Item.Rights := Write_Only;
+               Binding (Named (Body_Cursor, "binding"), Item);
+         elsif Kind = "Network" then
+               Item.Kind := Network_Request;
+               Item.Rights := Read_Write;
+               Item.Network.Action :=
+                 (if Alt (Named (Body_Cursor, "action")) = "TCP_Connect" then CuBit.Network_Authority.Connect_TCP
+                  elsif Alt (Named (Body_Cursor, "action")) = "TCP_Listen" then CuBit.Network_Authority.Listen_TCP
+                  else CuBit.Network_Authority.Connect_UDP);
+               IPv4 (Text (Named (Body_Cursor, "address")), Item.Network.Network);
+               Number_Value := Number (Named (Body_Cursor, "prefix"));
+               if not In_Range (Number_Value, 0, 32) then Fail (Invalid_Network_Scope); return; end if;
+               Item.Network.Prefix := Natural (Number_Value);
+               Number_Value := Number (Named (Body_Cursor, "first_port"));
+               if not In_Range (Number_Value, 1, 65_535) then Fail (Invalid_Network_Scope); return; end if;
+               Item.Network.First_Port := Unsigned_16 (Number_Value);
+               Number_Value := Number (Named (Body_Cursor, "last_port"));
+               if not In_Range (Number_Value, 1, 65_535) then Fail (Invalid_Network_Scope); return; end if;
+               Item.Network.Last_Port := Unsigned_16 (Number_Value);
+               Item.Network.Resolve_Names := Flag (Named (Body_Cursor, "resolve_names"));
+               Number_Value := Number (Named (Body_Cursor, "connections"));
+               if not In_Range (Number_Value, 1, Integer_64 (CuBit.Network_Authority.Connection_Count'Last)) then
+                  Fail (Invalid_Network_Scope); return;
+               end if;
+               Item.Network.Connections := CuBit.Network_Authority.Connection_Count (Number_Value);
+               if not CuBit.Network_Authority.Valid (Item.Network) then Fail (Invalid_Network_Scope); return; end if;
+               Binding (Named (Body_Cursor, "binding"), Item);
+         elsif Kind in "Device_Memory" | "IO_Ports" | "Interrupt" | "DMA" then
+               --  Resources are relative to the matched device.
+               if Decl.Basis.Kind = No_Basis then Fail (Missing_Device_Match); return; end if;
+               --  An ACPI device's resources are its admitted memory spans
+               --  and its one parent line (docs/device-matching.md "ACPI
+               --  launch").
+               if Decl.Basis.Kind = ACPI_Basis and then Kind not in "Device_Memory" | "Interrupt" then
+                  Fail (Invalid_Device_Resource); return;
+               end if;
+               Binding (Named (Body_Cursor, "binding"), Item);
+               if Kind = "Device_Memory" then
+                     Item.Kind := Device_Memory_Request;
+                     Number_Value := Number (Named (Body_Cursor, "index"));
+                     if not In_Range (Number_Value, 0, Integer_64 (CCL.Resource_Sections.Index_Limit (Decl.Basis.Kind)) - 1)
+                     then Fail (Invalid_Device_Resource); return; end if;
+                     Item.Index := Unsigned_32 (Number_Value);
+                     Number_Value := Number (Named (Body_Cursor, "max_bytes"));
+                     if not In_Range (Number_Value, PAGE_BYTES, MAX_DEVICE_MEMORY_BYTES)
+                       or else Number_Value mod PAGE_BYTES /= 0
+                     then Fail (Invalid_Device_Resource); return; end if;
+                     Item.Amount := Unsigned_64 (Number_Value);
+                     Item.Rights := Rights_Of (Alt (Named (Body_Cursor, "access")));
+                     if Item.Rights = Write_Only then Fail (Invalid_Device_Resource); return; end if;
+               elsif Kind = "IO_Ports" then
+                     Item.Kind := IO_Port_Request;
+                     Number_Value := Number (Named (Body_Cursor, "index"));
+                     if not In_Range (Number_Value, 0, Integer_64 (CCL.Resource_Sections.Index_Limit (Decl.Basis.Kind)) - 1)
+                     then Fail (Invalid_Device_Resource); return; end if;
+                     Item.Index := Unsigned_32 (Number_Value);
+                     Number_Value := Number (Named (Body_Cursor, "count"));
+                     if not In_Range (Number_Value, 1, IO_PORT_SPACE) then Fail (Invalid_Device_Resource); return; end if;
+                     Item.Amount := Unsigned_64 (Number_Value);
+                     Item.Rights := Read_Write;
+               elsif Kind = "Interrupt" then
+                     Item.Kind := Interrupt_Request;
+                     Item.Rights := Read_Only;
+                     if Alt (Named (Body_Cursor, "mode")) = "Platform_Line" then
+                           if Decl.Basis.Kind not in Platform_Basis | ACPI_Basis then
+                              Fail (Invalid_Device_Resource); return;
+                           end if;
+                           Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep (Platform_Line));
+                           Number_Value := Number (Named (Body_Cursor, "index"));
+                           --  An ACPI device's platform line is its parent line:
+                           --  the first interrupt of its _CRS, declared once.
+                           if Decl.Basis.Kind = ACPI_Basis then
+                              if Number_Value /= CCL.Resource_Sections.ACPI_PARENT_LINE_INDEX
+                                or else (for some Existing of Decl.Requests (1 .. Decl.Count) =>
+                                           Existing.Kind = Interrupt_Request)
+                              then
+                                 Fail (Invalid_Device_Resource); return;
+                              end if;
+                           elsif not In_Range (Number_Value, 0, MAX_PLATFORM_RESOURCES - 1) then
+                              Fail (Invalid_Device_Resource); return;
+                           end if;
+                           Item.Index := Unsigned_32 (Number_Value);
+                           Item.Amount := 1;
+                     elsif Decl.Basis.Kind = ACPI_Basis then
+                           Fail (Invalid_Device_Resource); return;
+                     elsif Alt (Named (Body_Cursor, "mode")) = "Line" then
+                           if Decl.Basis.Kind = Platform_Basis then Fail (Invalid_Device_Resource); return; end if;
+                           Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep (Line));
+                           Item.Amount := 1;
+                     else
+                           if Decl.Basis.Kind = Platform_Basis then Fail (Invalid_Device_Resource); return; end if;
+                           Item.Extra := Unsigned_64 (Interrupt_Mode'Enum_Rep
+                             ((if Alt (Named (Body_Cursor, "mode")) = "MSI_X" then MSI_X else MSI)));
+                           Number_Value := Number (Named (Body_Cursor, "vectors"));
+                           if not In_Range (Number_Value, 1, MAX_INTERRUPT_VECTORS) then
+                              Fail (Invalid_Device_Resource); return;
+                           end if;
+                           Item.Amount := Unsigned_64 (Number_Value);
+                     end if;
+               else
+                     Item.Kind := DMA_Request;
+                     Number_Value := Number (Named (Body_Cursor, "bytes"));
+                     if not In_Range (Number_Value, PAGE_BYTES, MAX_DMA_BYTES)
+                       or else Number_Value mod PAGE_BYTES /= 0
+                     then Fail (Invalid_Device_Resource); return; end if;
+                     Item.Amount := Unsigned_64 (Number_Value);
+                     Item.Rights := Read_Write;
+               end if;
+         elsif Kind = "Scheduling" then
+               Item.Kind := Scheduling_Request;
+               Item.Rights := Read_Only;
+               Binding (Named (Body_Cursor, "binding"), Item);
+               declare
+                  Budget : constant Integer_64 := Number (Named (Body_Cursor, "budget_us"));
+                  Period : constant Integer_64 := Number (Named (Body_Cursor, "period_us"));
+               begin
+                  if not In_Range (Budget, 1, CCL.Scheduling_Limits.MAX_MICROSECONDS)
+                    or else not In_Range (Period, 1, CCL.Scheduling_Limits.MAX_MICROSECONDS)
+                    or else not CCL.Scheduling_Limits.Admissible (Budget, Period)
+                  then Fail (Invalid_Scheduling); return; end if;
+                  Item.Amount := Unsigned_64 (Budget);
+                  Item.Extra := Unsigned_64 (Period);
+               end;
+         else
+            Fail (Invalid_Expression, "request kind """ & Kind & """ is not one this tool encodes");
+            return;
+         end if;
+         Store (Item);
+      end Add_Request;
+
+      --  Startup capabilities (CAP-002, docs/capability-handles.md): the
+      --  requests named in `optional`, the handle limit, the channels this
+      --  program serves; catalog connections (step 4) are refused for now.
+      procedure Add_Startup (Root : Views.Cursor) is
+         package ST renames CuBit.Startup_Tables;
+         use type ST.Need;
+         Optional : constant Views.Cursor := Named (Root, "optional");
+         Limit : constant Views.Cursor := Named (Root, "handles");
+         Channels : constant Views.Cursor := Named (Root, "channels");
+         Connections : constant Views.Cursor := Named (Root, "connections");
+      begin
+         for Index in 1 .. Views.Length (Object, Optional) loop
+            Locate (Entry_Text ("optional", Index));
+            declare
+               Name : constant String := Text (Views.Element (Object, Optional, Index));
+               Found : Natural := 0;
+            begin
+               for Request_Index in 1 .. Decl.Count loop
+                  if Decl.Requests (Request_Index).Name.Data (1 .. Decl.Requests (Request_Index).Name.Length) = Name
+                  then
+                     Found := Request_Index;
+                  end if;
+               end loop;
+               if Found = 0 then
+                  Fail (Unknown_Optional_Name, """" & Name & """ is not the binding of a request",
+                        "name a request's binding");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = Firmware_Snapshot_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is a firmware snapshot reader, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = Platform_Power_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is the platform power object, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = Trace_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is the kernel trace object, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = Test_Console_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is the test console object, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = VM_Create_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is the VM creation authority, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = ACPI_Hardware_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is an ACPI hardware grant, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
+                  return;
+               end if;
+               if Decl.Requests (Found).Requirement = ST.Optional then
+                  Fail (Unknown_Optional_Name, """" & Name & """ is listed twice", "list each binding once");
+                  return;
+               end if;
+               Decl.Requests (Found).Requirement := ST.Optional;
+            end;
+         end loop;
+
+         Locate ("handles");
+         if Alt (Limit) = "At_Most" then
+            declare
+               Count : constant Integer_64 := Number (Views.Payload (Object, Limit));
+            begin
+               if not In_Range (Count, 1, ST.Maximum_Handle_Limit) then
+                  Fail (Invalid_Handle_Limit,
+                        "At_Most" & Integer_64'Image (Count) & " is not 1 to" &
+                        Natural'Image (ST.Maximum_Handle_Limit) & " handles",
+                        "write Handle_Limit.Kernel_Limit for no limit of the program's own");
+                  return;
+               end if;
+               Decl.Handles := (Kind => ST.At_Most, Count => ST.Handle_Count (Count));
+            end;
+         elsif Alt (Limit) = "Kernel_Limit" then
+            Decl.Handles := (Kind => ST.Kernel_Limit);
+         else
+            Decl.Handles := (Kind => ST.Standard_Limit);
+         end if;
+
+         for Index in 1 .. Views.Length (Object, Channels) loop
+            Locate (Entry_Text ("channels", Index));
+            declare
+               Offer : constant Views.Cursor := Views.Element (Object, Channels, Index);
+               Contract : constant String := Text (Named (Offer, "contract"));
+               Item : Channel_Offer;
+               Valid_Limits : Boolean := True;
+
+               --  A Channel_Limit value: Server_Limit, or (At_Most N) with N
+               --  1 to MAX_CHANNEL_TOTAL.
+               procedure Limit_Of (Field : String; Limit : out Channel_Limit) is
+                  Value : constant Views.Cursor := Named (Offer, Field);
+               begin
+                  Limit := (Kind => CuBit.Channel_Limits.Server_Limit);
+                  if Alt (Value) = "Server_Limit" then
+                     return;
+                  elsif Alt (Value) = "At_Most" then
+                     declare
+                        Count : constant Integer_64 := Number (Views.Payload (Object, Value));
+                     begin
+                        if In_Range (Count, 1, MAX_CHANNEL_TOTAL) then
+                           Limit := (Kind => CuBit.Channel_Limits.At_Most,
+                                     Count => CuBit.Channel_Limits.Limit_Count (Count));
+                           return;
+                        end if;
+                        Fail (Invalid_Channel_Limit, Field & " At_Most" & Integer_64'Image (Count) &
+                              " is not 1 to" & Natural'Image (MAX_CHANNEL_TOTAL),
+                              "write Channel_Limit.Server_Limit for the server's own capacity");
+                     end;
+                  else
+                     Fail (Invalid_Channel_Limit, Field & " is not a Channel_Limit",
+                           "write Channel_Limit.Server_Limit or (Channel_Limit.At_Most N)");
+                  end if;
+                  Valid_Limits := False;
+               end Limit_Of;
+            begin
+               if not Valid_Metadata_Text (Contract) then
+                  Fail (Invalid_Channel_Limit, "contract """ & Contract &
+                        """ is not 1 to 64 letters, digits, '.', '-' or '_'");
+                  return;
+               end if;
+               Limit_Of ("total", Item.Total);
+               if not Valid_Limits then
+                  return;
+               end if;
+               Limit_Of ("per_client", Item.Per_Client);
+               if not Valid_Limits then
+                  return;
+               end if;
+               if not CuBit.Channel_Limits."=" (Item.Per_Client.Kind, CuBit.Channel_Limits.Server_Limit)
+                 and then not CuBit.Channel_Limits."=" (Item.Total.Kind, CuBit.Channel_Limits.Server_Limit)
+                 and then Item.Per_Client.Count > Item.Total.Count
+               then
+                  Fail (Invalid_Channel_Limit, "per_client" & Natural'Image (Item.Per_Client.Count) &
+                        " is more than the total" & Natural'Image (Item.Total.Count));
+                  return;
+               end if;
+               for Existing of Decl.Channels (1 .. Decl.Channel_Count) loop
+                  if Existing.Contract.Data (1 .. Existing.Contract.Length) = Contract then
+                     Fail (Invalid_Channel_Limit, "contract """ & Contract & """ is listed twice");
+                     return;
+                  end if;
+               end loop;
+               if Decl.Channel_Count = MAX_CHANNEL_OFFERS then
+                  Fail (Invalid_Channel_Limit, "at most" & Natural'Image (MAX_CHANNEL_OFFERS) &
+                        " contracts may be served");
+                  return;
+               end if;
+               Set_Text (Item.Contract, Contract);
+               Item.Class :=
+                 (if Alt (Named (Offer, "class")) = "Urgent" then CuBit.Channel_Limits.Urgent
+                  elsif Alt (Named (Offer, "class")) = "Interactive" then CuBit.Channel_Limits.Interactive
+                  else CuBit.Channel_Limits.Normal);
+               Decl.Channel_Count := Decl.Channel_Count + 1;
+               Decl.Channels (Decl.Channel_Count) := Item;
+            end;
+         end loop;
+
+         if Views.Length (Object, Connections) > 0 then
+            Locate ("connections");
+            Fail (Not_Yet_Supported, "offers, uses and aliases come with the catalog and Connect",
+                  "leave connections empty until CAP-002 step 4");
+         end if;
+      end Add_Startup;
+
+      procedure Add_Scope (At_Cursor : Views.Cursor) is
+         Item : Scope;
+         Kind : constant String := Alt (At_Cursor);
+         Body_Cursor : constant Views.Cursor := Views.Payload (Object, At_Cursor);
+      begin
+         if Kind = "TLS" then
+            declare
+               Pattern : constant String := Text (Body_Cursor);
+               Parsed : CuBit.TLS_Scopes.Scope;
+               Valid : Boolean;
+            begin
+               Item.Domain := Tls_Domain;
+               Item.Rights (Read_File) := True;
+               if Pattern'Length not in 1 .. MAX_NAME_TEXT then Fail (Invalid_Path); return; end if;
+               CuBit.TLS_Scopes.Parse (Pattern, Parsed, Valid);
+               if not Valid then Fail (Invalid_Path); return; end if;
+               Set_Text (Item.Path, Pattern);
+            end;
+         elsif Kind = "Metrics" then
+            --  Read only; a series-name prefix, or every series.
+            Item.Domain := Metrics_Domain;
+            Item.Rights (Read_File) := True;
+            if Alt (Body_Cursor) = "Under" then
+               declare
+                  Prefix : constant String := Text (Views.Payload (Object, Body_Cursor));
+               begin
+                  if not Valid_Metric_Prefix (Prefix) then Fail (Invalid_Path); return; end if;
+                  Set_Text (Item.Path, Prefix);
+               end;
+            end if;
+         else
+            Item.Domain := (if Kind = "Filesystem" then Filesystem_Domain else Config_Domain);
+            declare
+               Rights : constant Views.Cursor := Named (Body_Cursor, "rights");
+               Place : constant Views.Cursor := Named (Body_Cursor, "place");
+               Right : Access_Right;
+            begin
+               if Views.Length (Object, Rights) = 0 then Fail (Invalid_Access_Rights); return; end if;
+               for Index in 1 .. Views.Length (Object, Rights) loop
+                  declare
+                     Name : constant String := Alt (Views.Element (Object, Rights, Index));
+                  begin
+                     Right := (if Name = "Read" then Read_File elsif Name = "Write" then Write_File
+                               elsif Name = "Execute" then Execute_File else Create_File);
+                  end;
+                  if (Item.Domain = Config_Domain and then Right in Execute_File | Create_File)
+                    or else Item.Rights (Right)
+                  then
+                     Fail (Invalid_Access_Rights); return;
+                  end if;
+                  Item.Rights (Right) := True;
+               end loop;
+               if Alt (Place) = "Under" then
+                  declare
+                     Path : constant String := Text (Views.Payload (Object, Place));
+                  begin
+                     --  Broad access is the explicit Everything, never an empty path.
+                     if not Valid_Scope_Path (Path) then Fail (Invalid_Path); return; end if;
+                     Set_Text (Item.Path, Path);
+                  end;
+               end if;
+            end;
+         end if;
+         for Existing of Decl.Scopes (1 .. Decl.Scope_Count) loop
+            if Existing.Domain = Item.Domain and then Existing.Path = Item.Path then
+               Fail (Duplicate_Scope); return;
+            end if;
+         end loop;
+         if Decl.Scope_Count = MAX_SCOPES then Fail (Too_Many_Scopes); return; end if;
+         Decl.Scope_Count := Decl.Scope_Count + 1;
+         Decl.Scopes (Decl.Scope_Count) := Item;
+      end Add_Scope;
+
+      --  A program's outlets and inlets and, for a ported Unix program,
+      --  which file descriptor feeds which (docs/ccl-launch-parameters.md,
+      --  "Inlets and outlets, not stdio"). Names are fully qualified.
+      --  unix.* names are legacy glue with fixed directions. com.cubit.*
+      --  names are CuBit contracts with a fixed shape. A run's outcome is
+      --  not a connector (it is a Task). In the description the outlets
+      --  come first, then the inlets.
+      procedure Add_Connectors (Outlets, Inlets, Descriptors : Views.Cursor) is
+         package PP renames CuBit.Program_Descriptions;
+         use type PP.Connector_Direction;
+         use type PP.Element_Kind;
+         use type PP.Signal_Kind;
+         S : PP.Signature renames Decl.Description;
+
+         procedure Add_One (At_Cursor : Views.Cursor; Direction : PP.Connector_Direction) is
+            Name : constant String := Text (Named (At_Cursor, "name"));
+            Element_Name : constant String := Alt (Named (At_Cursor, "element"));
+            Element : constant PP.Element_Kind :=
+              (if Element_Name = "Text" then PP.Text_Lines
+               elsif Element_Name = "Raw_Bytes" then PP.Raw_Bytes
+               elsif Element_Name = "Integers" then PP.Integers
+               elsif Element_Name = "Metric_Records" then PP.Metric_Records else PP.Log_Records);
+            Signal : constant PP.Signal_Kind :=
+              PP.Signal_Kind'Value (Alt (Named (At_Cursor, "signal")));
+            Pages : constant Integer_64 := Number (Named (At_Cursor, "pages"));
+            Kind : constant String := (if Direction = PP.Outlet then "outlet" else "inlet");
+            Found : Boolean;
+            Existing : PP.Connector_Index;
+            function Is_Contract (Expected : String) return Boolean is (Name = Expected);
+         begin
+            if not PP.Valid_Connector_Name (Name) then
+               Fail (Invalid_Connector, Kind & " """ & Name & """ is not a qualified name",
+                     "use dot-separated components of [a-z0-9-], such as unix.stderr or " &
+                     "org.example.tool.progress");
+               return;
+            end if;
+            PP.Find_Connector (S, Name, Existing, Found);
+            if Found then
+               Fail (Invalid_Connector, """" & Name & """ is declared twice");
+               return;
+            end if;
+            if not In_Range (Pages, 1, 255) then
+               Fail (Invalid_Connector, Kind & " """ & Name & """ asks for" &
+                     Integer_64'Image (Pages) & " ring pages, not 1 to 255");
+               return;
+            end if;
+            if (Is_Contract ("com.cubit.stdlog") or else Is_Contract ("com.cubit.audit"))
+              and then (Direction /= PP.Outlet or else Element /= PP.Log_Records
+                        or else Signal /= PP.Stream)
+            then
+               Fail (Invalid_Connector, Name & " is a CuBit contract: an outlet streaming Log_Records");
+               return;
+            elsif Is_Contract (PP.Metric_Outlet_Name)
+              and then (Direction /= PP.Outlet or else Element /= PP.Metric_Records
+                        or else Signal /= PP.Stream)
+            then
+               Fail (Invalid_Connector, Name & " is a CuBit contract: an outlet streaming Metric_Records",
+                     "declare (Outlet """ & PP.Metric_Outlet_Name & """ Element.Metric_Records)");
+               return;
+            elsif Element = PP.Metric_Records and then not Is_Contract (PP.Metric_Outlet_Name) then
+               Fail (Invalid_Connector, "Metric_Records travel only on " & PP.Metric_Outlet_Name,
+                     "publish through CuBit.Metrics");
+               return;
+            elsif Is_Contract ("unix.stdin") and then Direction /= PP.Inlet then
+               Fail (Invalid_Connector, "unix.stdin is an inlet");
+               return;
+            elsif (Is_Contract ("unix.stdout") or else Is_Contract ("unix.stderr"))
+              and then Direction /= PP.Outlet
+            then
+               Fail (Invalid_Connector, Name & " is an outlet");
+               return;
+            elsif Name'Length > 5 and then Name (Name'First .. Name'First + 4) = "unix."
+              and then not (Is_Contract ("unix.stdin") or else Is_Contract ("unix.stdout")
+                            or else Is_Contract ("unix.stderr"))
+            then
+               Fail (Invalid_Connector, "unix.* names only stdin, stdout and stderr",
+                     "name it under the program's own identity");
+               return;
+            end if;
+            S.Connectors (S.Connector_Total) :=
+              (Direction => Direction, Element => Element, Signal => Signal,
+               Pages => Positive (Pages), Name => [others => ' '], Name_Length => Name'Length);
+            S.Connectors (S.Connector_Total).Name (1 .. Name'Length) := Name;
+            S.Connector_Total := S.Connector_Total + 1;
+         end Add_One;
+
+         --  A declared com.cubit-os.stdmetric outlet requests metrics.svc's
+         --  publisher endpoint as the optional startup entry
+         --  PP.Metric_Outlet_Binding (CuBit.Metric_Outlet): the launcher
+         --  badges it for this program, or leaves it Absent while metrics.svc
+         --  is not running. Without the declaration the program has no outlet.
+         procedure Request_Metric_Outlet;
+         procedure Request_Metric_Outlet is
+            Item : Request;
+            Outlet_At : PP.Connector_Index;
+            Declared : Boolean;
+            Offered : Boolean := False;
+         begin
+            PP.Find_Connector (S, PP.Metric_Outlet_Name, Outlet_At, Declared);
+            if not Declared then
+               return;
+            end if;
+            for Entry_Binding of Cat.Services (1 .. Cat.Service_Count) loop
+               if Entry_Binding.Kind = Service_Request
+                 and then Entry_Binding.Name.Data (1 .. Entry_Binding.Name.Length) = METRIC_PUBLISHER_SERVICE
+               then
+                  Item.Service := Entry_Binding.ID;
+                  Item.Client := Entry_Binding.Client;
+                  Offered := True;
+               end if;
+            end loop;
+            if not Offered then
+               Fail (Unknown_Service,
+                     PP.Metric_Outlet_Name & " needs the catalog's service """ & METRIC_PUBLISHER_SERVICE &
+                     """ (metrics.svc's publisher endpoint), which this catalog does not name",
+                     "build with a catalog that names it, or remove the outlet");
+               return;
+            end if;
+            Item.Kind := Service_Request;
+            Item.Rights := Read_Write;
+            Item.Requirement := CuBit.Startup_Tables.Optional;
+            Set_Text (Item.Name, PP.Metric_Outlet_Binding);
+            for Existing of Decl.Requests (1 .. Decl.Count) loop
+               if Existing.Name = Item.Name then
+                  Fail (Reserved_Binding_Name,
+                        "binding """ & PP.Metric_Outlet_Binding & """ is the " & PP.Metric_Outlet_Name &
+                        " outlet's own startup entry",
+                        "give the request another binding name; the outlet requests this one");
+                  return;
+               end if;
+            end loop;
+            Store (Item);
+         end Request_Metric_Outlet;
+      begin
+         if Views.Length (Object, Outlets) + Views.Length (Object, Inlets) > PP.Maximum_Connectors then
+            Fail (Invalid_Connector, "at most" & Natural'Image (PP.Maximum_Connectors) &
+                  " outlets and inlets together");
+            return;
+         end if;
+         if Views.Length (Object, Descriptors) > PP.Maximum_Descriptors then
+            Fail (Invalid_Connector, "at most" & Natural'Image (PP.Maximum_Descriptors) & " descriptors");
+            return;
+         end if;
+         for Index in 1 .. Views.Length (Object, Outlets) loop
+            exit when Failed;
+            Locate (Entry_Text ("outlets", Index));
+            Add_One (Views.Element (Object, Outlets, Index), PP.Outlet);
+         end loop;
+         for Index in 1 .. Views.Length (Object, Inlets) loop
+            exit when Failed;
+            Locate (Entry_Text ("inlets", Index));
+            Add_One (Views.Element (Object, Inlets, Index), PP.Inlet);
+         end loop;
+         if Failed then return; end if;
+         Request_Metric_Outlet;
+         if Failed then return; end if;
+         for Index in 1 .. Views.Length (Object, Descriptors) loop
+            Locate (Entry_Text ("descriptors", Index));
+            declare
+               At_Cursor : constant Views.Cursor := Views.Element (Object, Descriptors, Index);
+               Number_Value : constant Integer_64 := Number (Named (At_Cursor, "number"));
+               Target_Name : constant String := Text (Named (At_Cursor, "name"));
+               Target : PP.Connector_Index;
+               Found : Boolean;
+            begin
+               if not In_Range (Number_Value, 0, 255) then
+                  Fail (Invalid_Connector, "descriptor" & Integer_64'Image (Number_Value) & " is not 0 to 255");
+                  return;
+               end if;
+               PP.Find_Connector (S, Target_Name, Target, Found);
+               if not Found then
+                  Fail (Invalid_Connector, "no outlet or inlet """ & Target_Name & """");
+                  return;
+               end if;
+               if (Number_Value = 0) /= (S.Connectors (Target).Direction = PP.Inlet) then
+                  Fail (Invalid_Connector,
+                        "descriptor" & Integer_64'Image (Number_Value) &
+                        (if Number_Value = 0 then " reads, so it must name an inlet"
+                         else " writes, so it must name an outlet"));
+                  return;
+               end if;
+               for D of S.Descriptors (1 .. S.Descriptor_Total) loop
+                  if D.Number = Natural (Number_Value) then
+                     Fail (Invalid_Connector, "descriptor" & Integer_64'Image (Number_Value) & " is mapped twice");
+                     return;
+                  end if;
+               end loop;
+               S.Descriptor_Total := S.Descriptor_Total + 1;
+               S.Descriptors (S.Descriptor_Total) := (Number => Natural (Number_Value), Target => Target);
+            end;
+         end loop;
+      end Add_Connectors;
+
+      --  A program this executable may start: its exact name, as the
+      --  launch table (CuBit.Launch_Authority) holds it.
+      procedure Add_Launch (At_Cursor : Views.Cursor) is
+         Program : constant String := Text (Named (At_Cursor, "program"));
+         Name : Metadata_Text;
+      begin
+         if Views.Length (Object, Named (At_Cursor, "invoked_as")) > 0 then
+            Fail (Invalid_Launch, "invoked_as aliases need the next launch table version",
+                  "name the program as procmgr launches it, without aliases");
+            return;
+         end if;
+         if Program'Length not in 1 .. MAX_NAME_TEXT or else
+           (for some C of Program => C not in '!' .. '~')
+         then
+            Fail (Invalid_Launch, "program """ & Program & """ is not 1 to 64 printable characters without spaces");
+            return;
+         end if;
+         Set_Text (Name, Program);
+         for Existing of Decl.Launches (1 .. Decl.Launch_Count) loop
+            if Existing = Name then Fail (Invalid_Launch, "program """ & Program & """ is listed twice"); return; end if;
+         end loop;
+         if Decl.Launch_Count = MAX_LAUNCHES then
+            Fail (Invalid_Launch, "at most" & Natural'Image (MAX_LAUNCHES) & " programs may be listed");
+            return;
+         end if;
+         Decl.Launch_Count := Decl.Launch_Count + 1;
+         Decl.Launches (Decl.Launch_Count) := Name;
+      end Add_Launch;
+
+      --  A ported tool's argv parameters and the argv they render into
+      --  (CuBit.Program_Descriptions). Every parameter must be rendered by
+      --  some piece, so no value is granted without being passed.
+      procedure Add_Argv (Parameters, Pieces : Views.Cursor) is
+         package PP renames CuBit.Program_Descriptions;
+         use type PP.Kind;
+         S : PP.Signature renames Decl.Description;
+         Rendered : array (PP.Parameter_Index) of Boolean := [others => False];
+         --  Declared in_arguments => false: a place delegated to the program
+         --  that never appears in its argv (a work or toolchain directory).
+         Place_Only : array (PP.Parameter_Index) of Boolean := [others => False];
+
+         function Index_Of (Name : String) return Integer is
+         begin
+            for P in 0 .. S.Parameter_Total - 1 loop
+               if S.Parameters (P).Name (1 .. S.Parameters (P).Name_Length) = Name then
+                  return P;
+               end if;
+            end loop;
+            return -1;
+         end Index_Of;
+
+         function Valid_Text (Item : String; Limit : Positive) return Boolean is
+           (Item'Length in 1 .. Limit and then (for all C of Item => C in ' ' .. '~'));
+      begin
+         if Views.Length (Object, Parameters) > PP.Maximum_Parameters then
+            Fail (Invalid_Parameters, "at most" & Natural'Image (PP.Maximum_Parameters) & " parameters");
+            return;
+         end if;
+         if Views.Length (Object, Pieces) > PP.Maximum_Pieces then
+            Fail (Invalid_Parameters, "at most" & Natural'Image (PP.Maximum_Pieces) & " argument pieces");
+            return;
+         end if;
+         for Index in 1 .. Views.Length (Object, Parameters) loop
+            Locate (Entry_Text ("argv parameters", Index));
+            declare
+               At_Cursor : constant Views.Cursor := Views.Element (Object, Parameters, Index);
+               Name : constant String := Text (Named (At_Cursor, "name"));
+               Kind : constant PP.Kind := PP.Kind'Value (Alt (Named (At_Cursor, "kind")));
+               Many : constant Boolean := Flag (Named (At_Cursor, "many"));
+               P : constant PP.Parameter_Index := S.Parameter_Total;
+            begin
+               if Name'Length not in 1 .. PP.Maximum_Name_Bytes
+                 or else (for some C of Name => C not in 'a' .. 'z' | '0' .. '9' | '_' | '-')
+               then
+                  Fail (Invalid_Parameters, "name """ & Name & """ is not 1 to 32 of [a-z0-9_-]");
+                  return;
+               end if;
+               if Index_Of (Name) >= 0 then
+                  Fail (Invalid_Parameters, "parameter """ & Name & """ is declared twice");
+                  return;
+               end if;
+               if Many and then Kind = PP.Flag then
+                  Fail (Invalid_Parameters, "flag """ & Name & """ cannot take many values");
+                  return;
+               end if;
+               if not Flag (Named (At_Cursor, "in_arguments")) then
+                  if Kind in PP.Flag | PP.Text then
+                     Fail (Invalid_Parameters,
+                           "parameter """ & Name & """ is not a file or directory, so it must be in arguments",
+                           "only a place can be delegated without appearing in argv");
+                     return;
+                  end if;
+                  Place_Only (P) := True;
+               end if;
+               S.Parameters (P) :=
+                 (Of_Kind => Kind, Many => Many,
+                  Optional => not Flag (Named (At_Cursor, "required")) or else Kind = PP.Flag,
+                  Name => [others => ' '], Name_Length => Name'Length);
+               S.Parameters (P).Name (1 .. Name'Length) := Name;
+               S.Parameter_Total := P + 1;
+            end;
+         end loop;
+         for Index in 1 .. Views.Length (Object, Pieces) loop
+            Locate (Entry_Text ("argv pieces", Index));
+            declare
+               At_Cursor : constant Views.Cursor := Views.Element (Object, Pieces, Index);
+               Kind : constant String := Alt (At_Cursor);
+               Payload : constant Views.Cursor := Views.Payload (Object, At_Cursor);
+               Item : PP.Piece;
+               Target : Integer := 0;
+            begin
+               if Kind = "Literal" then
+                  declare
+                     Literal : constant String := Text (Payload);
+                  begin
+                     if not Valid_Text (Literal, PP.Maximum_Text_Bytes) then
+                        Fail (Invalid_Parameters, "literal is not 1 to 48 printable characters");
+                        return;
+                     end if;
+                     Item.Of_Kind := PP.Literal;
+                     Item.Text (1 .. Literal'Length) := Literal;
+                     Item.Text_Length := Literal'Length;
+                  end;
+               else
+                  declare
+                     Name : constant String :=
+                       (if Kind = "Value" then Text (Payload) else Text (Named (Payload, "parameter")));
+                  begin
+                     Target := Index_Of (Name);
+                     if Target < 0 then
+                        Fail (Invalid_Parameters, "no parameter """ & Name & """");
+                        return;
+                     end if;
+                     Rendered (Target) := True;
+                     Item.Parameter := Target;
+                     if Kind = "Value" then
+                        if S.Parameters (Target).Of_Kind = PP.Flag then
+                           Fail (Invalid_Parameters, "flag """ & Name & """ has no value",
+                                 "render a flag with when-set");
+                           return;
+                        end if;
+                        Item.Of_Kind := PP.Value;
+                     else
+                        declare
+                           Literal : constant String := Text (Named (Payload, "text"));
+                        begin
+                           if not Valid_Text (Literal, PP.Maximum_Text_Bytes) then
+                              Fail (Invalid_Parameters, "literal is not 1 to 48 printable characters");
+                              return;
+                           end if;
+                           Item.Of_Kind := PP.When_Set;
+                           Item.Text (1 .. Literal'Length) := Literal;
+                           Item.Text_Length := Literal'Length;
+                        end;
+                     end if;
+                  end;
+               end if;
+               S.Piece_Total := S.Piece_Total + 1;
+               S.Pieces (S.Piece_Total) := Item;
+            end;
+         end loop;
+         Locate ("argv parameters");
+         for P in 0 .. S.Parameter_Total - 1 loop
+            if Place_Only (P) and then Rendered (P) then
+               Fail (Invalid_Parameters,
+                     "parameter """ & S.Parameters (P).Name (1 .. S.Parameters (P).Name_Length)
+                     & """ is declared in_arguments => false but is rendered",
+                     "remove it from the argv pieces, or drop in_arguments => false");
+               return;
+            elsif not Place_Only (P) and then not Rendered (P) then
+               Fail (Invalid_Parameters,
+                     "parameter """ & S.Parameters (P).Name (1 .. S.Parameters (P).Name_Length)
+                     & """ is never rendered",
+                     "name it in the argv pieces, or declare it in_arguments => false (a place only)");
+               return;
+            end if;
+         end loop;
+      end Add_Argv;
+
+      --  "line L, column C" of Offset (from 1) in the manifest.
+      function Line_Column (Offset : Positive) return String is
+         Line, Column : Positive := 1;
+      begin
+         for I in Source'First .. Source'First + Natural'Min (Offset, Source'Length + 1) - 2 loop
+            if Source (I) = ASCII.LF then Line := Line + 1; Column := 1; else Column := Column + 1; end if;
+         end loop;
+         return "line" & Positive'Image (Line) & ", column" & Positive'Image (Column);
+      end Line_Column;
+
+      --  Where Text first occurs in the manifest (from 1), or 0.
+      function Offset_Of (Text : String) return Natural is
+      begin
+         for I in Source'First .. Source'Last - Text'Length + 1 loop
+            if Source (I .. I + Text'Length - 1) = Text then
+               return I - Source'First + 1;
+            end if;
+         end loop;
+         return 0;
+      end Offset_Of;
+
+      --  Typed program parameters (docs/ccl-launch-parameters.md):
+      --  (Parameter_Signature.Declared "Record") names a record type the
+      --  manifest declares ahead of its Executable_Manifest; its fields are
+      --  the parameters. CCL.Parameter_Signatures checks what the CCL type
+      --  check cannot (declared here, no bare Integer, no defaulted numbers,
+      --  Ada-usable names) and renders the canonical signature.
+      procedure Add_Typed_Parameters (Signature : Views.Cursor) is
+         package PS renames CCL.Parameter_Signatures;
+         use type PS.Refusal;
+         Rendered : PS.Result;
+      begin
+         Locate ("parameters");
+         if Alt (Signature) /= "Declared" then
+            return;
+         end if;
+         declare
+            Root_Name : constant String := Text (Views.Payload (Object, Signature));
+            Quoted : constant Natural := Offset_Of ("""" & Root_Name & """");
+            function Where_Named return String is
+              (if Quoted > 0 then Line_Column (Quoted) & ": " else "");
+            function Where_Declared (Name : String) return String is
+              (if Offset_Of ("(type " & Name & " ") > 0
+               then Line_Column (Offset_Of ("(type " & Name & " ")) & ": " else Where_Named);
+         begin
+            --  The schema's own types come first in the registry.
+            declare
+               Schema_Checked : constant CCL.Language.Sized_Analysis :=
+                 CCL.Language.Analysis_Of (Schema_Source & ASCII.LF & "0", CCL.Catalog.Empty_Catalog);
+            begin
+               PS.Render (CCL.Language.Analysis_Types (Checked), Root_Name,
+                          CCL.Types."+" (CCL.Types.Last (CCL.Language.Analysis_Types (Schema_Checked)), 1), Rendered);
+            end;
+            declare
+               Culprit : constant String := CCL.Types.Image (Rendered.Culprit_Type);
+               Field : constant String := CCL.Types.Image (Rendered.Culprit_Field);
+               Subject : constant String :=
+                 (if Field'Length > 0 then "field " & Field & " of " & Culprit else Culprit);
+            begin
+               case Rendered.Why is
+                  when PS.Accepted =>
+                     Set_Text (Result.Parameter_Root, Root_Name);
+                     Result.Parameter_Signature (1 .. Rendered.Length) := Rendered.Text (1 .. Rendered.Length);
+                     Result.Parameter_Signature_Length := Rendered.Length;
+                  when PS.Unknown_Type =>
+                     Fail (Invalid_Parameters, Where_Named & "parameters names """ & Root_Name &
+                           """, a type this manifest does not declare",
+                           "declare (type " & Root_Name & " (record ...)) ahead of the Executable_Manifest");
+                  when PS.Not_A_Record =>
+                     Fail (Invalid_Parameters, Where_Named & "parameters names " & Root_Name & ", which is not a record",
+                           "declare the parameters as the fields of a record type");
+                  when PS.Schema_Type =>
+                     Fail (Invalid_Parameters, Where_Named & Culprit &
+                           " is a manifest schema type, not one this manifest declares",
+                           "declare the parameter types in the manifest itself");
+                  when PS.Unsupported_Type =>
+                     Fail (Invalid_Parameters, Where_Named & "a parameter type reaches " &
+                           (if Culprit'Length > 0 then Culprit else "a type") &
+                           ", which is not a record, variant, enumeration, range, Boolean or String",
+                           "parameters hold no lists, functions or streams");
+                  when PS.Bare_Integer =>
+                     Fail (Invalid_Parameters, Where_Declared (Culprit) & Subject & " is a bare Integer",
+                           "declare a range type with its bounds, (type Count (range 1 4096))");
+                  when PS.Defaulted_Number =>
+                     Fail (Invalid_Parameters, Where_Declared (Culprit) & Subject &
+                           " has a default, but it holds a number (a limit, capacity or deadline)",
+                           "remove the default: the launcher gives every limit, capacity and deadline");
+                  when PS.Unusable_Name =>
+                     Fail (Invalid_Parameters, Where_Declared (Culprit) & """" &
+                           (if Field'Length > 0 then Field else Culprit) &
+                           """ cannot be an Ada name in the generated binding",
+                           "rename it: letters, digits and single underscores, not an Ada reserved word, " &
+                           "Value, Identity or Parameters");
+                  when PS.Too_Long =>
+                     Fail (Invalid_Parameters, Where_Named & "the signature of " & Root_Name & " is over" &
+                           Natural'Image (PS.Maximum_Signature_Bytes) & " bytes",
+                           "use fewer or shorter types and names");
+               end case;
+            end;
+         end;
+      end Add_Typed_Parameters;
+
+      --  One `drives` entry (docs/device-matching.md).
+      procedure Add_Drive (At_Cursor : Views.Cursor) is
+         Kind : constant String := Alt (At_Cursor);
+         Body_Cursor : constant Views.Cursor := Views.Payload (Object, At_Cursor);
+         Item : Devices.Device_Match;
+         Number_Value : Integer_64;
+         Accepted : Boolean;
+         Why : Diagnostic_Code;
+
+         --  A field of 0 .. Last, or a failure naming it.
+         procedure Field (Name : String; Last : Integer_64; Value : out Integer_64; Ok : out Boolean) is
+         begin
+            Value := Number (Named (Body_Cursor, Name));
+            Ok := In_Range (Value, 0, Last);
+            if not Ok then
+               Fail (Invalid_Device_Match, Kind & ": " & Name &
+                     " is outside 0 .. " & Integer_64'Image (Last) (2 .. Integer_64'Image (Last)'Last),
+                     "write it in hexadecimal (0x...) within that range");
+            end if;
+         end Field;
+
+         procedure Triple (First, Second, Third : String) is
+            Ok : Boolean;
+         begin
+            Field (First, PCI_CODE_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.Class := Unsigned_8 (Number_Value);
+            Field (Second, PCI_CODE_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.Subclass := Unsigned_8 (Number_Value);
+            Field (Third, PCI_CODE_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.Program := Unsigned_8 (Number_Value);
+         end Triple;
+
+         Ok : Boolean;
+      begin
+         if Kind = "PCI_IDs" then
+            Item.Kind := Devices.PCI_IDs;
+            Field ("vendor", PCI_ID_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.Vendor := Unsigned_16 (Number_Value);
+            Field ("first", PCI_ID_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.First := Unsigned_16 (Number_Value);
+            Field ("last", PCI_ID_LAST, Number_Value, Ok);
+            if not Ok then return; end if;
+            Item.Last := Unsigned_16 (Number_Value);
+            if Item.Vendor = Devices.NO_VENDOR then
+               Fail (Invalid_Device_Match, "PCI_IDs: vendor 0xFFFF is ""no device""",
+                     "write the device's vendor ID");
+               return;
+            elsif Item.First > Item.Last then
+               Fail (Invalid_Device_Match, "PCI_IDs: first is above last",
+                     "write the range low to high");
+               return;
+            end if;
+         elsif Kind = "PCI_Class" then
+            Item.Kind := Devices.PCI_Class;
+            Triple ("class", "subclass", "interface");
+         elsif Kind = "USB_Class" then
+            Item.Kind := Devices.USB_Class;
+            Triple ("class", "subclass", "protocol");
+         elsif Kind = "ACPI_ID" then
+            Item.Kind := Devices.ACPI_ID;
+            declare
+               ID : constant String := Text (Body_Cursor);
+            begin
+               if ID'Length not in Devices.ACPI_ID_MIN .. Devices.ACPI_ID_MAX
+                 or else (for some C of ID => C not in 'A' .. 'Z' | '0' .. '9')
+               then
+                  Fail (Invalid_Device_Match, "ACPI_ID """ & ID &
+                        """ is not an ACPI ID", "write 7 or 8 characters of A-Z and 0-9, as PNP0C50");
+                  return;
+               end if;
+               Item.ID_Length := ID'Length;
+               for I in 1 .. ID'Length loop
+                  Item.ID (I) := ID (ID'First + I - 1);
+               end loop;
+            end;
+         elsif Kind = "Platform" then
+            Item.Kind := Devices.Platform;
+            Item.Device :=
+              (if Alt (Body_Cursor) = "PS2_Controller" then PS2_Controller
+               elsif Alt (Body_Cursor) = "ATA_Primary" then ATA_Primary else CMOS_RTC);
+         else
+            Fail (Invalid_Device_Match, "device match """ & Kind & """ is not one this tool encodes");
+            return;
+         end if;
+         if Failed then return; end if;
+         Model.Add_Drive (Decl, Item, Accepted, Why);
+         if not Accepted then
+            Fail (Why, (case Why is
+                          when Duplicate_Device_Match => "drives lists this entry twice",
+                          when Too_Many_Requests => "drives has more than 16 entries",
+                          when others => "drives mixes PCI and Platform devices, or two Platform devices; "
+                                         & "resource indexes refer to one kind of device"),
+                  "remove the extra entry");
+         end if;
+      end Add_Drive;
+      --  For a misspelled member (File_Right.Reed): that type's members.
+      function Members_Of (Qualified : String) return String is
+         Types : constant CCL.Types.Registry := CCL.Language.Analysis_Types (Checked);
+         Dot : Natural := 0;
+      begin
+         for I in Qualified'Range loop
+            if Qualified (I) = '.' then Dot := I; end if;
+         end loop;
+         if Dot = 0 or else Dot - Qualified'First > CCL.Types.Maximum_Name_Length then return ""; end if;
+         declare
+            Owner : constant CCL.Types.Type_Reference :=
+              CCL.Types.Find (Types, CCL.Types.Named (Qualified (Qualified'First .. Dot - 1)));
+            Shape : constant CCL.Types.Description := CCL.Types.Describe (Types, Owner);
+            Text : String (1 .. CuBit.Failures.MAXIMUM_TEXT) := [others => ' '];
+            Length : Natural := 0;
+         begin
+            if CCL.Types."/=" (Shape.Form, CCL.Types.Sum) then return ""; end if;
+            for Part in 1 .. Shape.Count loop
+               declare
+                  Name : constant String := (if Length = 0 then "" else ", ") &
+                    Qualified (Qualified'First .. Dot) & CCL.Types.Image (Shape.Parts (Part).Identifier);
+               begin
+                  exit when Length + Name'Length > Text'Length;
+                  Text (Length + 1 .. Length + Name'Length) := Name;
+                  Length := Length + Name'Length;
+               end;
+            end loop;
+            return (if Length = 0 then "" else "use one of: " & Text (1 .. Length));
+         end;
+      end Members_Of;
+      --  A failure the CCL checker found: in the schema, or in the manifest
+      --  (positions then count from the manifest's own first character).
+      procedure Explain_Checker_Failure
+        (Status : CCL.Language.Interpretation_Status; Diagnostic : CCL.Language.Diagnostic_Code;
+         At_Position : Natural; Subject : CCL.Types.Name)
+      is
+         Offset : constant Natural := Schema_Source'Length + 1;
+         In_Schema : constant Boolean := At_Position in 1 .. Offset;
+         Position : constant Natural := (if At_Position > Offset then At_Position - Offset else 0);
+         Line, Column : Positive := 1;
+         Message : constant String :=
+           (if Subject.Length > 0 then "field " & CCL.Types.Image (Subject) & ": "
+            elsif Position > 0 and then Name_At (Source, Position)'Length > 0
+            then """" & Name_At (Source, Position) & """: " else "") &
+           (if CCL.Language."=" (Diagnostic, CCL.Language.No_Diagnostic) then CCL.Diagnostics.Message (Status)
+            elsif CCL.Language."=" (Diagnostic, CCL.Language.Unknown_Name) then "no such name"
+            else CCL.Diagnostics.Message (Diagnostic));
+      begin
+         for I in Source'First .. Source'First + Natural'Min (Position, Source'Length) - 2 loop
+            if Source (I) = ASCII.LF then Line := Line + 1; Column := 1; else Column := Column + 1; end if;
+         end loop;
+         if In_Schema then
+            Fail (Invalid_Expression, "the manifest schema (interfaces/executable-manifest.ccl) does not check at character" &
+                  Natural'Image (At_Position) & ": " & Message);
+         else
+            Fail (Invalid_Expression,
+                  (if Position > 0 then "line" & Positive'Image (Line) & ", column" & Positive'Image (Column) & ": "
+                   else "the manifest is not an Executable_Manifest: ") & Message,
+                  (if Position > 0 then Members_Of (Name_At (Source, Position)) else ""));
+         end if;
+         Result.Expression_Diagnostic := Diagnostic;
+         Result.Position := Position;
+      end Explain_Checker_Failure;
+   begin
+      Result := (others => <>);
+      Result.In_Catalog := True;
+      Keywords.Read_Catalog (Catalog_Source, Cat, Result);
+      if not Result.Success then return; end if;
+      Result := (others => <>);
+      if Schema_Source'Length = 0 then
+         Fail (Invalid_Expression, "no manifest schema was given",
+               "keep interfaces/executable-manifest.ccl beside the catalogs directory");
+         return;
+      end if;
+      CCL.Catalog.Initialize (Grants);
+      if CCL.Language."/=" (CCL.Language.Analysis_Status_Of (Checked), CCL.Language.Analysis_Succeeded) then
+         Explain_Checker_Failure
+           ((if CCL.Language."=" (CCL.Language.Analysis_Status_Of (Checked), CCL.Language.Analysis_Type_Check_Failed)
+             then CCL.Language.Type_Check_Failed else CCL.Language.Parse_Failed),
+            CCL.Language.Analysis_Diagnostic (Checked), CCL.Language.Analysis_Diagnostic_Position (Checked),
+            CCL.Language.Analysis_Diagnostic_Subject (Checked));
+         return;
+      end if;
+      Manifest_Type := CCL.Types.Find (CCL.Language.Analysis_Types (Checked), CCL.Types.Named (ROOT_TYPE_NAME));
+      CCL.Objects.Bind (CCL.Language.Analysis_Types (Checked), Manifest_Type, LOCAL_KEY, Contract, Published);
+      if not Published then
+         Fail (Invalid_Expression, "the manifest schema does not declare a persistable " & ROOT_TYPE_NAME);
+         return;
+      end if;
+      Evaluate (Program, MANIFEST_FUEL, Catalog, Grants, Host, Contract, Value);
+      if Value.Status = CCL.Language.Evaluation_Object_Storage_Exhausted then
+         --  A named ceiling, reported as one: the manifest's value is read
+         --  from one native object image (CCL.Objects).
+         Fail (Value_Too_Large,
+               "the manifest's value needs more than one object image holds (" &
+               Natural'Image (CCL.Objects.Maximum_Cells) & " cells," &
+               Natural'Image (CCL.Objects.Maximum_Text_Bytes) & " text bytes, CCL.Objects)",
+               "shorten its lists or strings");
+         Result.Why.Why := CuBit.Failures.Exhausted;
+         return;
+      end if;
+      if Value.Status /= CCL.Language.Succeeded or else not Value.Has_Value then
+         Explain_Checker_Failure (Value.Status, Value.Diagnostic, Value.Diagnostic_Position, Value.Diagnostic_Subject);
+         return;
+      end if;
+      Views.Capture (Object, Contract, Value.Value, Captured);
+      if not Captured then Fail (Invalid_Expression); return; end if;
+      declare
+         Root : constant Views.Cursor := Views.Root (Object);
+         Requests : constant Views.Cursor := Named (Root, "requests");
+         Scopes : constant Views.Cursor := Named (Root, "scopes");
+      begin
+         Locate ("identity");
+         Metadata (Named (Root, "identity"), Decl.Identity);
+         Locate ("version");
+         Metadata (Named (Root, "version"), Decl.Version);
+         --  The device matches first: resources are relative to them.
+         declare
+            Drives : constant Views.Cursor := Named (Root, "drives");
+         begin
+            for Index in 1 .. Views.Length (Object, Drives) loop
+               exit when Failed;
+               Locate (Entry_Text ("drives", Index));
+               Add_Drive (Views.Element (Object, Drives, Index));
+            end loop;
+         end;
+         for Index in 1 .. Views.Length (Object, Requests) loop
+            exit when Failed;
+            Locate (Entry_Text ("requests", Index));
+            Add_Request (Views.Element (Object, Requests, Index));
+         end loop;
+         for Index in 1 .. Views.Length (Object, Scopes) loop
+            exit when Failed;
+            Locate (Entry_Text ("scopes", Index));
+            Add_Scope (Views.Element (Object, Scopes, Index));
+         end loop;
+         if not Failed then
+            Add_Startup (Root);
+         end if;
+         Decl.Explicit_No_Requests := Flag (Named (Root, "requests_none"));
+         declare
+            Launches : constant Views.Cursor := Named (Root, "may_launch");
+         begin
+            for Index in 1 .. Views.Length (Object, Launches) loop
+               exit when Failed;
+               Locate (Entry_Text ("may_launch", Index));
+               Add_Launch (Views.Element (Object, Launches, Index));
+            end loop;
+         end;
+         if not Failed then
+            declare
+               --  (Argv.Mapped (Argv_Mapping parameters => [...] pieces => [...])),
+               --  or Argv.None for a program with no argv mapping.
+               Argv : constant Views.Cursor := Named (Root, "argv");
+            begin
+               if Alt (Argv) = "Mapped" then
+                  Add_Argv (Named (Views.Payload (Object, Argv), "parameters"),
+                            Named (Views.Payload (Object, Argv), "pieces"));
+               end if;
+            end;
+         end if;
+         if not Failed then
+            Add_Connectors (Named (Root, "outlets"), Named (Root, "inlets"), Named (Root, "descriptors"));
+         end if;
+         if not Failed then
+            Add_Typed_Parameters (Named (Root, "parameters"));
+         end if;
+      end;
+      if Failed then return; end if;
+      declare
+         --  Encoding starts the result afresh; the signature is kept apart.
+         Root_Name : constant Binding_Name := Result.Parameter_Root;
+         Signature : constant String := Result.Parameter_Signature (1 .. Result.Parameter_Signature_Length);
+      begin
+         Encoding.Encode (Decl, 0, Result);
+         if Result.Success then
+            Result.Parameter_Root := Root_Name;
+            Result.Parameter_Signature (1 .. Signature'Length) := Signature;
+            Result.Parameter_Signature_Length := Signature'Length;
+         end if;
+      end;
+   end Compile_Checked;
+
+   --  The manifest without its comments' text: each comment, '#' to the
+   --  end of its line outside a string, is dropped but its line break kept,
+   --  so every expression keeps its line and column (diagnostics stay
+   --  exact) and comments' text never reaches CCL.
+   procedure Strip_Comments (Source : String; Text : out String; Length : out Natural)
+   with Pre => Text'First = 1 and then Text'Length >= Source'Length;
+   procedure Strip_Comments (Source : String; Text : out String; Length : out Natural) is
+      Comment : constant Character := '#';
+      Quote : constant Character := '"';
+      Escape : constant Character := '\';
+      In_String, Escaped, In_Comment : Boolean := False;
+   begin
+      Text := [others => ' '];
+      Length := 0;
+      for C of Source loop
+         if In_Comment then
+            if C = ASCII.LF then
+               In_Comment := False;
+               Length := Length + 1;
+               Text (Length) := C;
+            end if;
+         elsif not In_String and then C = Comment then
+            In_Comment := True;
+         else
+            if In_String then
+               if Escaped then
+                  Escaped := False;
+               elsif C = Escape then
+                  Escaped := True;
+               elsif C = Quote then
+                  In_String := False;
+               end if;
+            elsif C = Quote then
+               In_String := True;
+            end if;
+            Length := Length + 1;
+            Text (Length) := C;
+         end if;
+      end loop;
+   end Strip_Comments;
+
+   procedure Compile (Source, Catalog_Source, Schema_Source : String; Result : out Compilation_Result) is
+      Schema_Text : String (1 .. Schema_Source'Length);
+      Schema_Length : Natural;
+      Manifest_Text : String (1 .. Source'Length);
+      Manifest_Length : Natural;
+   begin
+      Compact (Schema_Source, Schema_Text, Schema_Length);
+      Strip_Comments (Source, Manifest_Text, Manifest_Length);
+      declare
+         Program : constant String := Schema_Text (1 .. Schema_Length) & ASCII.LF & Manifest_Text (1 .. Manifest_Length);
+      begin
+         Compile_Checked
+           (Manifest_Text (1 .. Manifest_Length), Catalog_Source, Schema_Text (1 .. Schema_Length), Program,
+            CCL.Language.Analysis_Of (Program, CCL.Catalog.Empty_Catalog), Result);
+      end;
+   end Compile;
+end CCL.Manifests.Typed;

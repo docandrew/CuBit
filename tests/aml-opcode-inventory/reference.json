@@ -1,0 +1,19 @@
+{
+  "commit": "232ff3f8ae1a4da11c709f61d9154482cfe8e6df",
+  "archive_sha256": "91addf34cf6f00c310dcff1d456c2e04629c2b45efe409385068e9fc5e9fe43b",
+  "files": {
+    "source/include/amlcode.h": {
+      "file": "reference/amlcode.h",
+      "sha256": "27974af36d0bcd62d562b8d4701f9e7251464484bea4587b6df3edcec80ae05a"
+    },
+    "source/components/parser/psopcode.c": {
+      "file": "reference/psopcode.c",
+      "sha256": "551f3fb3539c8ad271d022dc40738fd2afeadfda5c2ef8081128dc21902744d4"
+    },
+    "source/components/parser/psopinfo.c": {
+      "file": "reference/psopinfo.c",
+      "sha256": "0e076ef1f1ec8e2465b656fda0714debf70518dbd277a632333a2dcb49c60678"
+    }
+  },
+  "scope": "Pinned ACPICA interpreter dispatch inventory; ACPI normative grammar audit remains separate"
+}

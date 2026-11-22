@@ -1,0 +1,15 @@
+{
+  "scope": "Historical exact31f helper proofs:76entities859proved/0unproved each,small3/6/50 and actual30559/default generation separately; not generic or full interpreter. Hosted composition accepted separately; no new proof or portable smoke claimed.",
+  "receipts": {
+    "/home/doc/git/.acpi-proof-work/scalar-swvt-small-final-b2sa2qlz/review.json": "c16540a6e81d979955da59d529ec3eddad94e341e72f5e5b112ca92189aa07b8",
+    "/home/doc/git/.acpi-proof-work/scalar-swvt-actual-final-cwtj4rr4/review.json": "84abd9f0d7da8087a543380039c8390438f09f07e6229369efa0e11a39323d79",
+    "/home/doc/git/.acpi-proof-work/root-capture-composition-review-d9frwbwi/ledger-removed-extension-small-reviewed.json": "0912db3816d9232cc62e415f175cbe13016b6a0cd6a1462d7df40050ddb46380",
+    "/home/doc/git/.acpi-proof-work/root-capture-composition-review-d9frwbwi/ledger-removed-extension-actual-reviewed.json": "56bddb7eda3fda50b059e852592ae642ab28f177b63e04fe00a71170562e3a77"
+  },
+  "selectors_parent": "/home/doc/git/.acpi-proof-work/scalar-ledger-sizing-reanchored-source-swvt7kqa",
+  "sizing": "/home/doc/git/.acpi-proof-work/scalar-ledger-sizing-snapshot-ddncrvoc",
+  "composition_receipts": {
+    "/home/doc/git/.acpi-proof-work/ledger-current-composition-final-0hiyt5fi/review.json": "91b83bf2ba3bac3ca6ba21c83b5e69401079ff01ec01f2c898d4aa189c4987e0",
+    "/home/doc/git/.acpi-proof-work/root-capture-composition-review-d9frwbwi/ledger-current-composition-runtime-reviewed.json": "f98881d759bac7e3916201874c6206e2a60f002fdf4c6c96d4b8e2587ab8ce7e"
+  }
+}

@@ -1,0 +1,9 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+ASL Input:     /home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-held.asl -     248 bytes      9 keywords      0 source lines
+AML Output:    /home/doc/git/.acpi-proof-work/deref-frame-predicate-oracle-rognfw92/cases/r1-arg-held.aml -     102 bytes      7 opcodes       2 named objects
+
+Compilation successful. 0 Errors, 0 Warnings, 0 Remarks, 0 Optimizations

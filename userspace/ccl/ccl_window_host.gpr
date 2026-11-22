@@ -1,0 +1,11 @@
+--  HOSTED/LINUX: the SDL ccl_window_* boundary, the preview's only C source.
+--  Kept apart so C files in the shared UI directories never enter this build.
+project CCL_Window_Host is
+   for Languages use ("C");
+   for Source_Dirs use ("tools/ccl-ui-preview");
+   for Source_Files use ("native_window.c");
+   for Object_Dir use "build/ccl-window-host";
+   package Compiler is
+      for Default_Switches ("C") use ("-O2", "-Wall", "-Wextra", "-Werror");
+   end Compiler;
+end CCL_Window_Host;

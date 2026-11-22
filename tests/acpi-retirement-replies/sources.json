@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/native/acpi_power_retirement_replies.ads",
+      "sha256": "6e8b0f5163b23e5a958fb065e0e66332ba66863432ed147678b2648873f8ebd8",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_power_retirement_replies.adb",
+      "sha256": "77617240e5c421acbec29ca0ec18c0913ee4c896690958fb3ddbfd883d23d924",
+      "kind": "production"
+    },
+    {
+      "path": "tests/acpi-retirement-replies/tests.adb",
+      "sha256": "b1a3685f021c99a1262941e05fd02068ff8c31524d4862f266eebfc7960d17a7",
+      "kind": "test"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit.ads",
+      "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c",
+      "kind": "runtime"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-power_event_exchange.ads",
+      "sha256": "51807f43322b687f0386aa967230b5ad63afc08a15af6f928ad1f97b1f8e147c",
+      "kind": "runtime"
+    }
+  ],
+  "native_context_inputs": [
+    {
+      "path": "userspace/services/acpi/native/acpi_native_instance.adb",
+      "sha256": "babd1dfb4a418e48a789dadaaab55d6fe64de0991590021375434324e946b020",
+      "kind": "native-context"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_one_service.adb",
+      "sha256": "cde2536e1e2a556d6ff1cad0bbb26088212ae75a06c23da46b33d65c84efa43c",
+      "kind": "native-context"
+    }
+  ],
+  "tests": [
+    {
+      "main": "tests",
+      "label": "ACPI retirement reply checks",
+      "checks": 6285
+    }
+  ],
+  "scope": "Pure terminal power refusal codec with actual Power_Event_Exchange ABI. Includes large request IDs/press counts, status precedence, flags, length, malformed sleep layout and unknown labels. Does not execute native registration, queueing, retirement callbacks or firmware. New SPARK_Mode source is tested; no new proof or native/hardware result."
+}

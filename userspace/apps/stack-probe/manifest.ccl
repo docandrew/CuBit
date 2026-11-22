@@ -1,0 +1,9 @@
+# LOG-004: recurses until its stack reservation runs out, so the kernel
+# stops it with a typed fault report ("page fault ... (stack overflow)")
+# under its own identity (tests/headless/run.sh, CCL_CONSOLE_DEMO=kernel-log).
+# No authority.
+(executable-manifest v1
+  (identity "com.cubit.stack-probe")
+  (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore))

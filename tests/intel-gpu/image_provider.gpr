@@ -1,0 +1,12 @@
+project Image_Provider extends "presentation_lifecycle.gpr" is
+   for Source_Dirs use (".", "view-retention-fixture",
+     "../../userspace/services/intel-gpu", "../../userspace/runtime/gnat");
+   for Object_Dir use "build-image-provider";
+   for Source_Files use Presentation_Lifecycle'Source_Files &
+     ("image_provider_tests.adb", "intel_gpu_buffer_requests-images.ads",
+      "intel_gpu_buffer_requests-images.adb", "intel_gpu_image_lease.ads",
+      "intel_gpu_image_lease.adb", "intel_gpu_image_layout.ads",
+      "intel_gpu_image_layout.adb", "intel_gpu_image_consumers.ads",
+      "intel_gpu_image_consumers.adb");
+   for Main use ("image_provider_tests.adb");
+end Image_Provider;

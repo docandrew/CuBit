@@ -1,0 +1,70 @@
+#ifndef CUBIT_DESKTOP_H
+#define CUBIT_DESKTOP_H
+#include "cubit.h"
+
+/* Checked input envelope, matching the SPARK codec. Status-only errors must
+ * never be interpreted as input event numbers. Packed payloads remain the
+ * port ABI; check their bounds before a C frontend narrows them. */
+static inline int cubit_desktop_input_reply_valid(
+    uint32_t expected, uint32_t label, uint8_t length, uint8_t protocol,
+    uint16_t reserved, const uint64_t words[4])
+{
+    uint64_t kind = words[0], first = words[2], second = words[3];
+    if ((expected != 0x0821 && expected != 0x0822) || label != expected ||
+        length != 4 || protocol > 1 || reserved || kind > 10)
+        return 0;
+    switch (kind) {
+    case 0: return first == 0 && second == 0 && protocol == 0;
+    /* Key press: modifiers in the low word, the repeat flag (bit 32) above. */
+    case 1: return first <= 127 && (second & 0xffffffffu) <= 15 && (second >> 32) <= 1;
+    case 2: return first <= 127 && second <= 15;
+    case 10: return first == 0 && second == 0;
+    case 6: return first <= 255 && (second == 0 || second == (1ull << 32));
+    case 8: return first <= 65535 && second <= 65535;
+    default:
+        if ((first & 0xffffffffu) > 65535 || (first >> 32) > 65535)
+            return 0;
+        if (kind == 9) return (second >> 32) <= 15;
+        if (kind == 7) return 1; /* Signed 32-bit wheel + 32-bit buttons. */
+        return second <= 0xffffffffu;
+    }
+}
+
+/* Native fixed-BGRA8888 attachment; mirrors CuBit.Desktop_Protocol.
+ * desktop is this process's endpoint to Desktop (a handle, CAP-002).
+ * grant_slot is a global grant slot (CuBit.Grant_References), not an
+ * address and not a capability. The server acquires the generation-bearing
+ * grant. Successful replacement releases the previous server acquisition.
+ */
+static inline int cubit_desktop_attach_buffer(cubit_endpoint desktop,
+                                             uint64_t surface, uint64_t grant_slot,
+                                             uint32_t width, uint32_t height,
+                                             uint32_t pitch)
+{
+    cubit_async_message_t message = {0};
+    long generation;
+    /* Global namespace, matching CuBit.Grant_References.Maximum_Slot:
+     * 256 process owners with 4096 local slots each. Kernel ownership and
+     * generation checks remain authoritative; do not mask to a local slot. */
+    if (!cubit_endpoint_present(desktop) ||
+        !surface || grant_slot > 256u * 4096u - 1u || !width || !height ||
+        width > 65535 || height > 65535 || pitch < width * 4 ||
+        pitch > (16u * 1024u * 1024u) / height)
+        return -1;
+    generation = syscall1(SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION, grant_slot);
+    if (generation <= 0 || (uint64_t)generation > 0xffffffffu)
+        return -1;
+    message.tag.label = 0x0814;
+    message.tag.length = 4;
+    message.words[0] = surface;
+    message.words[1] = grant_slot;
+    message.words[2] = (uint64_t)generation;
+    message.words[3] = (uint64_t)width | ((uint64_t)height << 16) |
+                       ((uint64_t)pitch << 32);
+    if (syscall3(SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY, desktop.opaque,
+                 &message, CUBIT_WAIT_FOREVER) == -1 || message.tag.label != 0x0814 ||
+        message.tag.length != 1 || message.words[0] != 0)
+        return -1;
+    return 0;
+}
+#endif

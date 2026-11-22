@@ -1,0 +1,14 @@
+# Generated ELF metadata is tied to this executable; requests are not grants.
+# Test-only input publisher; not an ordinary app grant. The kernel trace
+# object (Trace_ABI) records, freezes and dumps the CPU's event timeline on
+# LATENCY_TRACE kernels; the benchmark profiles approve it,
+# (trace approve-declared).
+(Executable_Manifest
+  identity => "com.cubit.bench-input"
+  version => "0.1.0"
+  requests => [(service "desktop" "desktop")
+               (notification "keyboard" Notify_Access.Publish "keyboard")
+               (Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Trace "trace"))
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

@@ -1,0 +1,287 @@
+{
+  "results": [
+    {
+      "level": 1,
+      "report": "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/level1/obj/gnatprove/delay_proof_model.spark",
+      "sha256": "addd71c2e808a4a87291e5cf68f4b49303729e37197a96f84c13c91355cf0338",
+      "entities": 6,
+      "flow": 7,
+      "proof": 16,
+      "checks": 23,
+      "dependencies": [
+        {
+          "name": "Delay_Proof_Model.Waits.Run",
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Duration",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Proof_Inputs.Sleep_Raw",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Duration",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Proof_Inputs.Sleep_Raw",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Duration",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Proof_Inputs.Sleep_Raw",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Duration",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Proof_Inputs.Sleep_Raw",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Proof_Inputs.Read_Raw",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Proof_Inputs.Read_Raw",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Proof_Inputs.Read_Raw",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Proof_Inputs.Read_Raw",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits",
+          "predicate": "CLAIM_AORTE"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "report": "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/level2/obj/gnatprove/delay_proof_model.spark",
+      "sha256": "bdac6dff9b2a67bb425047f369e3010869c95c4785e33e24ed39a31583845007",
+      "entities": 6,
+      "flow": 7,
+      "proof": 16,
+      "checks": 23,
+      "dependencies": [
+        {
+          "name": "Delay_Proof_Model.Waits.Run",
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Duration",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Proof_Inputs.Sleep_Raw",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Duration",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Proof_Inputs.Sleep_Raw",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_POST"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Duration",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Proof_Inputs.Sleep_Raw",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Duration",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits.Run.Sample",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Proof_Inputs.Sleep_Raw",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Proof_Inputs.Read_Raw",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Proof_Inputs.Read_Raw",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Proof_Inputs.Read_Raw",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Proof_Inputs.Read_Raw",
+          "predicate": "CLAIM_AORTE"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits",
+          "predicate": "CLAIM_EFFECTS"
+        },
+        {
+          "name": "Delay_Proof_Model.Waits",
+          "predicate": "CLAIM_AORTE"
+        }
+      ]
+    }
+  ],
+  "inputs": {
+    "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove": "ef4dd76057294453d4cc43781aa0f25fad9b351533e380cc9a60a9b86fa797ef",
+    "/nix/store/kpamqxdkwynzxyzhqj4csy6h5qj0pz21-cvc5-1.3.4/bin/cvc5": "06fba7a8fe0e188ba77e049c4b08acf932f5280183830dfc5838f420678626d1",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/userspace/services/acpi/native-clock/acpi_delay_waits.ads": "e8b506f7a457e3e8470859742f46c772021ad7eb9780dd2f5fb0977d340b2c64",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/acpi_delay_waits.ads": "e8b506f7a457e3e8470859742f46c772021ad7eb9780dd2f5fb0977d340b2c64",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/userspace/services/acpi/native-clock/acpi_delay_waits.adb": "ca53c78849ddae355e5553af64274d1d72bc75011100c25b9903235f6f36c968",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/acpi_delay_waits.adb": "ca53c78849ddae355e5553af64274d1d72bc75011100c25b9903235f6f36c968",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/userspace/services/acpi/lib/aml_delays.ads": "5ee7a14647a61ee99ee4e315461a55b817284f589cbfa7f77de5c8173137f0ef",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/aml_delays.ads": "5ee7a14647a61ee99ee4e315461a55b817284f589cbfa7f77de5c8173137f0ef",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/userspace/services/acpi/lib/aml_delays.adb": "8f4d5734bf180113e5fb66bd71d4e03f8485e1d223c7008067fd55c6c1dfb025",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/aml_delays.adb": "8f4d5734bf180113e5fb66bd71d4e03f8485e1d223c7008067fd55c6c1dfb025",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/userspace/services/acpi/lib/aml_decode.ads": "3f312c98587da55cabbd1a800b8dd4634a7adbc502e95e1fbbac11ac91567bfa",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/aml_decode.ads": "3f312c98587da55cabbd1a800b8dd4634a7adbc502e95e1fbbac11ac91567bfa",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/userspace/services/acpi/lib/aml_decode.adb": "9fee3a0bb3c6aaa12ccc34eb7df4ffcba8488b337b7f8613284d10495006ea87",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/aml_decode.adb": "9fee3a0bb3c6aaa12ccc34eb7df4ffcba8488b337b7f8613284d10495006ea87",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/shared/firmware/firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/firmware_tables.adb": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/models/proof_inputs.ads": "7544dd34715cff726602fb655d9b4811240f3ead3d3698f8d5d274124de7f29f",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/proof_inputs.ads": "7544dd34715cff726602fb655d9b4811240f3ead3d3698f8d5d274124de7f29f",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/models/proof_inputs.adb": "7998d224cd6d3d91ccb77aa2e36d8cbd8c4356a3da1409fd139ab137fbfcdace",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/proof_inputs.adb": "7998d224cd6d3d91ccb77aa2e36d8cbd8c4356a3da1409fd139ab137fbfcdace",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/models/delay_proof_model.ads": "7fd32587eaa2f55c7c5e64e6c7ea27788aba1ba14f341b1adbb9bcece42ad09e",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/delay_proof_model.ads": "7fd32587eaa2f55c7c5e64e6c7ea27788aba1ba14f341b1adbb9bcece42ad09e",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/models/delay_proof_model.adb": "0d3ae51db10a26c33024c21c80f5bc78fc5f15e0afcc5f62dc320806ea3a10e7",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/source/delay_proof_model.adb": "0d3ae51db10a26c33024c21c80f5bc78fc5f15e0afcc5f62dc320806ea3a10e7",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/run.sh": "9c2d35c542bc8e7c3859fb8eff18a5891f0b3f0b2a9d7e57dfd9cd232b509b78",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/run.mjs": "5adef0929aa096f061b08d7b5d9858e886fd4a4747942120f9dd3f70bbb406c2",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/check-proof.mjs": "f5fd3be0cb284bd11f246b657c73e3d36c32456aa0bd1aeec20e62c37deb5fef",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/README.md": "079687b05a20ed2bf6bf9c8b04c61718b6061ade3777585673223bdd75fe0362",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/sources.json": "c5e16b3a59b607646fc55681a30b0a7937d5930eff60d18d6cb301e27abaac1c",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/level1/proof.gpr": "a6894758764a8172a5d4a393eb98c8506110124153bdaa3bb34543b80fb96e52",
+    "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/level2/proof.gpr": "a6894758764a8172a5d4a393eb98c8506110124153bdaa3bb34543b80fb96e52"
+  },
+  "commands": [
+    {
+      "level": 1,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/level1/proof.gpr",
+        "-u",
+        "delay_proof_model.adb",
+        "--level=1",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    },
+    {
+      "level": 2,
+      "args": [
+        "/nix/store/9xvbsfi448cx9fjk4ivla9fsq390a8gn-gnatprove-fsf-15_2025-06-10/bin/gnatprove",
+        "-P",
+        "/home/doc/git/.acpi-proof-work/owned-table-native-rebase-GS9EJt/candidate/tests/acpi-native-delay-proof/results/proof-HwXR04/level2/proof.gpr",
+        "-u",
+        "delay_proof_model.adb",
+        "--level=2",
+        "--timeout=5",
+        "-j1",
+        "--report=all",
+        "--prover=cvc5"
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null
+    }
+  ],
+  "accepted": true,
+  "negative_controls": 24,
+  "checks_per_level": 23,
+  "scope": "Current1000us-slice delay policy instance: selected flow,bounds,termination and completion metadata only. Clock accuracy,callback termination,scheduler behavior,native facade and whole interpreter/service are outside."
+}

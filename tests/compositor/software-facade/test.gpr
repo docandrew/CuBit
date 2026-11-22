@@ -1,0 +1,5 @@
+project Test is
+for Source_Dirs use ("."); for Languages use ("Ada", "C");
+for Object_Dir use "obj"; for Exec_Dir use "."; for Main use ("software_facade_tests.adb");
+package Compiler is for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2"); end Compiler;
+end Test;

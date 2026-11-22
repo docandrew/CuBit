@@ -1,0 +1,553 @@
+/* HOSTED/LINUX CCL desktop adapter only.  CuBit presents the same shared canvas
+ * through display-service IPC and does not link SDL. */
+#define SDL_MAIN_HANDLED
+#include <SDL2/SDL.h>
+#include <stdint.h>
+#include <stdio.h>
+
+struct ccl_window {
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    SDL_Texture *texture;
+    int frames_left;
+    const char *screenshot_path;
+    int debug_input;
+    /* The letter of an Alt+letter menu key just sent: SDL may follow it with
+       that letter as text, which is not typing. */
+    int menu_key_letter;
+    Uint64 last_click_ms;
+    int click_origin_x;
+    int click_origin_y;
+    unsigned int click_count;
+    int canvas_width;
+    int canvas_height;
+    SDL_Cursor *cursors[5];
+    int pointer_cursor;
+};
+
+/* CCL_Desktop_Platform.Window_Event: the same names and values. */
+enum ccl_event {
+    CCL_EVENT_NO_EVENT = 0,
+    CCL_EVENT_CLOSE_REQUEST = 1,
+    CCL_EVENT_TEXT_INPUT = 2,
+    CCL_EVENT_BACKSPACE = 3,
+    CCL_EVENT_ENTER = 4,
+    CCL_EVENT_LEFT = 5,
+    CCL_EVENT_RIGHT = 6,
+    CCL_EVENT_HOME = 7,
+    CCL_EVENT_END_KEY = 8,
+    CCL_EVENT_DELETE = 9,
+    CCL_EVENT_SELECT_ALL = 10,
+    CCL_EVENT_POINTER_DOWN = 11,
+    CCL_EVENT_POINTER_DRAG = 12,
+    CCL_EVENT_POINTER_UP = 13,
+    CCL_EVENT_DOUBLE_CLICK = 14,
+    CCL_EVENT_TRIPLE_CLICK = 15,
+    CCL_EVENT_UP = 16,
+    CCL_EVENT_DOWN = 17,
+    CCL_EVENT_WHEEL_UP = 18,
+    CCL_EVENT_WHEEL_DOWN = 19,
+    CCL_EVENT_PAGE_UP = 20,
+    CCL_EVENT_PAGE_DOWN = 21,
+    CCL_EVENT_ESCAPE = 22,
+    CCL_EVENT_UNDO = 23,
+    CCL_EVENT_REDO = 24,
+    CCL_EVENT_RUN_SOURCE = 25,
+    CCL_EVENT_POINTER_HOVER = 26,
+    CCL_EVENT_WHEEL_LEFT = 27,
+    CCL_EVENT_WHEEL_RIGHT = 28,
+    CCL_EVENT_MATCH_PARENTHESIS = 29,
+    CCL_EVENT_SELECT_TO_PARENTHESIS = 30,
+    CCL_EVENT_ADD_NEXT_OCCURRENCE = 31,
+    CCL_EVENT_OPEN_FIND = 32,
+    CCL_EVENT_FIND_NEXT = 33,
+    CCL_EVENT_OPEN_SOURCE = 34,
+    CCL_EVENT_SAVE_SOURCE = 35,
+    CCL_EVENT_TAB = 36,
+    CCL_EVENT_TOGGLE_REPL = 37,
+    CCL_EVENT_TOGGLE_WATCH = 38,
+    CCL_EVENT_COMPLETE_OPERATION = 39,
+    CCL_EVENT_TOGGLE_SYNTAX = 40,
+    CCL_EVENT_COPY_SELECTION = 41,
+    CCL_EVENT_CUT_SELECTION = 42,
+    CCL_EVENT_PASTE_CLIPBOARD = 43,
+    CCL_EVENT_OPEN_MENU = 44,
+    CCL_EVENT_ALT_CHANGED = 45
+};
+
+enum {
+    CCL_MULTI_CLICK_MS = 500,
+    CCL_MULTI_CLICK_RADIUS = 5
+};
+
+static unsigned int ccl_count_click(struct ccl_window *state, int x, int y)
+{
+    Uint64 now = SDL_GetTicks64();
+    int dx = x - state->click_origin_x;
+    int dy = y - state->click_origin_y;
+    int continues = state->click_count > 0 && state->click_count < 3 &&
+                    now - state->last_click_ms <= CCL_MULTI_CLICK_MS &&
+                    dx >= -CCL_MULTI_CLICK_RADIUS &&
+                    dx <= CCL_MULTI_CLICK_RADIUS &&
+                    dy >= -CCL_MULTI_CLICK_RADIUS &&
+                    dy <= CCL_MULTI_CLICK_RADIUS;
+
+    if (continues)
+        ++state->click_count;
+    else {
+        state->click_count = 1;
+        state->click_origin_x = x;
+        state->click_origin_y = y;
+    }
+    state->last_click_ms = now;
+    return state->click_count;
+}
+
+/* The application's window title, from CCL_Desktop_Platform.Activate. */
+static char ccl_window_title[96] = "CCL - Linux preview";
+
+void ccl_window_set_title(const char *title, int length)
+{
+    static const char suffix[] = " - Linux preview";
+    int limit = (int)sizeof(ccl_window_title) - (int)sizeof(suffix);
+    if (length < 0) length = 0;
+    if (length > limit) length = limit;
+    SDL_memcpy(ccl_window_title, title, (size_t)length);
+    SDL_memcpy(ccl_window_title + length, suffix, sizeof(suffix));
+}
+
+void *ccl_window_open(int width, int height)
+{
+    struct ccl_window *state = NULL;
+    SDL_Rect display_bounds;
+    int window_width = width;
+    int window_height = height;
+    int have_display_bounds;
+
+    SDL_SetMainReady();
+    SDL_SetHint(SDL_HINT_VIDEO_HIGHDPI_DISABLED, "1");
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) return NULL;
+    state = SDL_calloc(1, sizeof(*state));
+    if (state == NULL) { SDL_Quit(); return NULL; }
+    {
+        const char *frames = SDL_getenv("CCL_UI_PREVIEW_FRAMES");
+        state->frames_left = frames != NULL ? SDL_atoi(frames) : -1;
+        state->screenshot_path = SDL_getenv("CCL_UI_SCREENSHOT");
+        state->debug_input = SDL_getenv("CCL_UI_DEBUG_INPUT") != NULL;
+    }
+    have_display_bounds = SDL_GetDisplayUsableBounds(0, &display_bounds) == 0;
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
+    state->window = SDL_CreateWindow(ccl_window_title,
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width,
+        window_height, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+    if (state->window == NULL) goto fail;
+    state->renderer = SDL_CreateRenderer(state->window, -1,
+        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (state->renderer == NULL)
+        state->renderer = SDL_CreateRenderer(state->window, -1, SDL_RENDERER_SOFTWARE);
+    if (state->renderer == NULL) goto fail;
+    if (have_display_bounds) {
+        int output_width;
+        int output_height;
+        int current_width;
+        int current_height;
+        SDL_GetWindowSize(state->window, &current_width, &current_height);
+        if (current_width > 0 && current_height > 0 &&
+            SDL_GetRendererOutputSize(state->renderer, &output_width,
+                                      &output_height) == 0 &&
+            output_width > 0 && output_height > 0) {
+            /* Fractional desktop scaling otherwise leaves a sharp 1x canvas
+             * stranded in the upper-left of a larger drawable. Pick the
+             * largest integral canvas scale that fits the usable display,
+             * then compensate the SDL window size for the drawable ratio. */
+            int available_output_width =
+                display_bounds.w * output_width / current_width * 9 / 10;
+            int available_output_height =
+                display_bounds.h * output_height / current_height * 9 / 10;
+            int scale_width = available_output_width / width;
+            int scale_height = available_output_height / height;
+            int scale = scale_width < scale_height ? scale_width : scale_height;
+            if (scale < 1) scale = 1;
+            if (scale > 2) scale = 2;
+            window_width =
+                (width * scale * current_width + output_width / 2) /
+                output_width;
+            window_height =
+                (height * scale * current_height + output_height / 2) /
+                output_height;
+            SDL_SetWindowSize(state->window, window_width, window_height);
+            SDL_SetWindowPosition(state->window, SDL_WINDOWPOS_CENTERED,
+                                  SDL_WINDOWPOS_CENTERED);
+            SDL_SetWindowMinimumSize
+                (state->window,
+                 (width * current_width + output_width - 1) / output_width,
+                 (height * current_height + output_height - 1) /
+                    output_height);
+        }
+    }
+    {
+        const char *requested_width = SDL_getenv("CCL_UI_WINDOW_WIDTH");
+        const char *requested_height = SDL_getenv("CCL_UI_WINDOW_HEIGHT");
+        if (requested_width != NULL && requested_height != NULL) {
+            int test_width = SDL_atoi(requested_width);
+            int test_height = SDL_atoi(requested_height);
+            if (test_width > 0 && test_height > 0) {
+                SDL_SetWindowSize(state->window, test_width, test_height);
+                SDL_SetWindowPosition(state->window, SDL_WINDOWPOS_CENTERED,
+                                      SDL_WINDOWPOS_CENTERED);
+            }
+        }
+    }
+    if (
+        SDL_RenderSetLogicalSize(state->renderer, width, height) != 0 ||
+        SDL_RenderSetIntegerScale(state->renderer, SDL_TRUE) != 0) goto fail;
+    state->texture = SDL_CreateTexture(state->renderer, SDL_PIXELFORMAT_ARGB8888,
+        SDL_TEXTUREACCESS_STREAMING, width, height);
+    if (state->texture == NULL) goto fail;
+    state->canvas_width = width;
+    state->canvas_height = height;
+    SDL_StartTextInput();
+    return state;
+fail:
+    SDL_DestroyTexture(state->texture); SDL_DestroyRenderer(state->renderer);
+    SDL_DestroyWindow(state->window); SDL_free(state); SDL_Quit(); return NULL;
+}
+
+int ccl_window_prepare_frame(void *handle, int minimum_width,
+                             int minimum_height, int maximum_width,
+                             int maximum_height, int *width, int *height)
+{
+    struct ccl_window *state = handle;
+    SDL_Texture *replacement;
+    int output_width;
+    int output_height;
+    int scale;
+    int canvas_width;
+    int canvas_height;
+
+    if (state == NULL || width == NULL || height == NULL ||
+        minimum_width < 1 || minimum_height < 1 ||
+        maximum_width < minimum_width || maximum_height < minimum_height ||
+        SDL_GetRendererOutputSize(state->renderer, &output_width,
+                                  &output_height) != 0)
+        return 1;
+
+    scale = output_width >= minimum_width * 2 &&
+            output_height >= minimum_height * 2 ? 2 : 1;
+    canvas_width = output_width / scale;
+    canvas_height = output_height / scale;
+    if (canvas_width > maximum_width) canvas_width = maximum_width;
+    if (canvas_height > maximum_height) canvas_height = maximum_height;
+    if (canvas_width < 1 || canvas_height < 1) return 1;
+
+    if (canvas_width != state->canvas_width ||
+        canvas_height != state->canvas_height) {
+        replacement = SDL_CreateTexture
+            (state->renderer, SDL_PIXELFORMAT_ARGB8888,
+             SDL_TEXTUREACCESS_STREAMING, canvas_width, canvas_height);
+        if (replacement == NULL) return 1;
+        SDL_DestroyTexture(state->texture);
+        state->texture = replacement;
+        state->canvas_width = canvas_width;
+        state->canvas_height = canvas_height;
+        if (SDL_RenderSetLogicalSize(state->renderer, canvas_width,
+                                     canvas_height) != 0 ||
+            SDL_RenderSetIntegerScale(state->renderer, SDL_TRUE) != 0)
+            return 1;
+    }
+    *width = canvas_width;
+    *height = canvas_height;
+    return 0;
+}
+
+int ccl_window_poll(void *handle, int *kind, unsigned int *character,
+                    unsigned int *modifiers, int *x, int *y)
+{
+    SDL_Event event;
+    struct ccl_window *state = handle;
+    SDL_Keymod mods;
+    if (state->frames_left == 0) { *kind = CCL_EVENT_CLOSE_REQUEST; return 1; }
+    while (SDL_PollEvent(&event) != 0) {
+        if (event.type == SDL_QUIT) {
+            if (state->debug_input)
+                fprintf(stderr, "close event type=%u\n", event.type);
+            *kind = CCL_EVENT_CLOSE_REQUEST; return 1;
+        }
+        if (event.type == SDL_TEXTINPUT && state->menu_key_letter != 0) {
+            int letter = state->menu_key_letter;
+            state->menu_key_letter = 0;
+            if (SDL_tolower((unsigned char)event.text.text[0]) == letter) continue;
+        }
+        if (event.type == SDL_KEYDOWN) state->menu_key_letter = 0;
+        if (event.type == SDL_TEXTINPUT && (unsigned char)event.text.text[0] < 128) {
+            if (state->debug_input)
+                fprintf(stderr, "text input byte=%u ('%c')\n",
+                        (unsigned char)event.text.text[0], event.text.text[0]);
+            *kind = CCL_EVENT_TEXT_INPUT; *character = (unsigned char)event.text.text[0];
+            *modifiers = 0; return 1;
+        }
+        if (event.type == SDL_MOUSEBUTTONDOWN &&
+            event.button.button == SDL_BUTTON_LEFT) {
+            unsigned int click_count;
+            *x = event.button.x; *y = event.button.y;
+            click_count = ccl_count_click(state, *x, *y);
+            if (state->debug_input)
+                fprintf(stderr, "mouse down window=%d,%d logical=%d,%d clicks=%u\n",
+                        event.button.x, event.button.y, *x, *y,
+                        click_count);
+            mods = SDL_GetModState();
+            *modifiers = ((mods & KMOD_SHIFT) != 0 ? 1u : 0u) |
+                         ((mods & KMOD_CTRL) != 0 ? 2u : 0u) |
+                         ((mods & KMOD_ALT) != 0 ? 4u : 0u);
+            if (click_count == 3)
+                *kind = CCL_EVENT_TRIPLE_CLICK;
+            else if (click_count == 2)
+                *kind = CCL_EVENT_DOUBLE_CLICK;
+            else
+                *kind = CCL_EVENT_POINTER_DOWN;
+            return 1;
+        }
+        if (event.type == SDL_MOUSEMOTION) {
+            *x = event.motion.x; *y = event.motion.y;
+            if (state->debug_input)
+                fprintf(stderr, "mouse motion window=%d,%d logical=%d,%d\n",
+                        event.motion.x, event.motion.y, *x, *y);
+            *kind = (event.motion.state & SDL_BUTTON_LMASK) != 0 ? CCL_EVENT_POINTER_DRAG : CCL_EVENT_POINTER_HOVER;
+            return 1;
+        }
+        if (event.type == SDL_MOUSEBUTTONUP &&
+            event.button.button == SDL_BUTTON_LEFT) {
+            *x = event.button.x; *y = event.button.y;
+            if (state->debug_input)
+                fprintf(stderr, "mouse up window=%d,%d logical=%d,%d\n",
+                        event.button.x, event.button.y, *x, *y);
+            *kind = CCL_EVENT_POINTER_UP; return 1;
+        }
+        if (event.type == SDL_MOUSEWHEEL) {
+            mods = SDL_GetModState();
+            *modifiers = ((mods & KMOD_SHIFT) != 0 ? 1u : 0u) |
+                         ((mods & KMOD_CTRL) != 0 ? 2u : 0u) |
+                         ((mods & KMOD_ALT) != 0 ? 4u : 0u);
+            if (event.wheel.x != 0 || (*modifiers & 1u) != 0) {
+                if (event.wheel.x != 0)
+                    *kind = event.wheel.x > 0 ? CCL_EVENT_WHEEL_RIGHT : CCL_EVENT_WHEEL_LEFT;
+                else
+                    *kind = event.wheel.y > 0 ? CCL_EVENT_WHEEL_LEFT : CCL_EVENT_WHEEL_RIGHT;
+            } else {
+                *kind = event.wheel.y > 0 ? CCL_EVENT_WHEEL_UP : CCL_EVENT_WHEEL_DOWN;
+            }
+            return 1;
+        }
+        if ((event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) &&
+            (event.key.keysym.sym == SDLK_LALT || event.key.keysym.sym == SDLK_RALT)) {
+            if (event.key.repeat != 0) continue;
+            *kind = CCL_EVENT_ALT_CHANGED;
+            *character = event.type == SDL_KEYDOWN ? 1u : 0u;
+            *modifiers = 0; return 1;
+        }
+        if (event.type != SDL_KEYDOWN) continue;
+        mods = event.key.keysym.mod;
+        if (state->debug_input)
+            fprintf(stderr, "key down sym=%d scancode=%d modifiers=%u\n",
+                    event.key.keysym.sym, event.key.keysym.scancode,
+                    (unsigned int)mods);
+        *modifiers = ((mods & KMOD_SHIFT) != 0 ? 1u : 0u) |
+                     ((mods & KMOD_CTRL) != 0 ? 2u : 0u) |
+                     ((mods & KMOD_ALT) != 0 ? 4u : 0u);
+        if (event.key.keysym.sym == SDLK_z && (*modifiers & 2u) != 0) {
+            *kind = (*modifiers & 1u) != 0 ? CCL_EVENT_REDO : CCL_EVENT_UNDO; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_y && (*modifiers & 2u) != 0) {
+            *kind = CCL_EVENT_REDO; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_d && (*modifiers & 2u) != 0) {
+            *kind = CCL_EVENT_ADD_NEXT_OCCURRENCE; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_f && (*modifiers & 2u) != 0) {
+            *kind = CCL_EVENT_OPEN_FIND; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_F3) { *kind = CCL_EVENT_FIND_NEXT; return 1; }
+        if (event.key.keysym.sym == SDLK_SPACE && (*modifiers & 2u) != 0) {
+            *kind = CCL_EVENT_COMPLETE_OPERATION; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_TAB) { *kind = CCL_EVENT_TAB; return 1; }
+        if (event.key.keysym.sym == SDLK_F6) { *kind = CCL_EVENT_TOGGLE_REPL; return 1; }
+        if (event.key.keysym.sym == SDLK_F7) { *kind = CCL_EVENT_TOGGLE_WATCH; return 1; }
+        if (event.key.keysym.sym == SDLK_F8) { *kind = CCL_EVENT_TOGGLE_SYNTAX; return 1; }
+        if (event.key.keysym.sym == SDLK_F10 && *modifiers == 0) {
+            *kind = CCL_EVENT_OPEN_MENU; *character = 0; return 1;
+        }
+        if (*modifiers == 4u && event.key.keysym.sym >= SDLK_a && event.key.keysym.sym <= SDLK_z) {
+            *kind = CCL_EVENT_OPEN_MENU; *character = (unsigned int)event.key.keysym.sym;
+            state->menu_key_letter = (int)event.key.keysym.sym; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_o && (*modifiers & 2u) != 0) {
+            *kind = CCL_EVENT_OPEN_SOURCE; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_s && (*modifiers & 2u) != 0) {
+            *kind = CCL_EVENT_SAVE_SOURCE; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_F5 ||
+            ((event.key.keysym.sym == SDLK_RETURN ||
+              event.key.keysym.sym == SDLK_KP_ENTER) &&
+             (*modifiers & 2u) != 0)) {
+            *kind = CCL_EVENT_RUN_SOURCE; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_RIGHTBRACKET &&
+            (*modifiers & 2u) != 0) {
+            *kind = (*modifiers & 1u) != 0 ? CCL_EVENT_SELECT_TO_PARENTHESIS : CCL_EVENT_MATCH_PARENTHESIS; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_BACKSLASH &&
+            (*modifiers & 3u) == 3u) {
+            *kind = CCL_EVENT_MATCH_PARENTHESIS; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_ESCAPE) { *kind = CCL_EVENT_ESCAPE; return 1; }
+        if (event.key.keysym.sym == SDLK_BACKSPACE) { *kind = CCL_EVENT_BACKSPACE; return 1; }
+        if (event.key.keysym.sym == SDLK_RETURN ||
+            event.key.keysym.sym == SDLK_KP_ENTER) { *kind = CCL_EVENT_ENTER; return 1; }
+        if (event.key.keysym.sym == SDLK_LEFT) { *kind = CCL_EVENT_LEFT; return 1; }
+        if (event.key.keysym.sym == SDLK_RIGHT) { *kind = CCL_EVENT_RIGHT; return 1; }
+        if (event.key.keysym.sym == SDLK_HOME) { *kind = CCL_EVENT_HOME; return 1; }
+        if (event.key.keysym.sym == SDLK_END) { *kind = CCL_EVENT_END_KEY; return 1; }
+        if (event.key.keysym.sym == SDLK_DELETE) { *kind = CCL_EVENT_DELETE; return 1; }
+        if (event.key.keysym.sym == SDLK_UP) { *kind = CCL_EVENT_UP; return 1; }
+        if (event.key.keysym.sym == SDLK_DOWN) { *kind = CCL_EVENT_DOWN; return 1; }
+        if (event.key.keysym.sym == SDLK_PAGEUP) { *kind = CCL_EVENT_PAGE_UP; return 1; }
+        if (event.key.keysym.sym == SDLK_PAGEDOWN) { *kind = CCL_EVENT_PAGE_DOWN; return 1; }
+        if ((*modifiers & 2u) != 0 && event.key.keysym.sym == SDLK_c) {
+            *kind = CCL_EVENT_COPY_SELECTION; return 1;
+        }
+        if ((*modifiers & 2u) != 0 && event.key.keysym.sym == SDLK_x) {
+            *kind = CCL_EVENT_CUT_SELECTION; return 1;
+        }
+        if ((*modifiers & 2u) != 0 && event.key.keysym.sym == SDLK_v) {
+            *kind = CCL_EVENT_PASTE_CLIPBOARD; return 1;
+        }
+        if (event.key.keysym.sym == SDLK_a && (*modifiers & 2u) != 0) {
+            *kind = CCL_EVENT_SELECT_ALL; return 1;
+        }
+    }
+    return 0;
+}
+
+int ccl_window_present(void *handle, const uint32_t *pixels, int pitch,
+                       int x, int y, int width, int height)
+{
+    struct ccl_window *state = handle;
+    SDL_Rect damage;
+    const uint8_t *source;
+    if (state == NULL || pixels == NULL || pitch <= 0 || x < 0 || y < 0 ||
+        width <= 0 || height <= 0 || x >= state->canvas_width ||
+        y >= state->canvas_height)
+        return 1;
+    if (width > state->canvas_width - x) width = state->canvas_width - x;
+    if (height > state->canvas_height - y) height = state->canvas_height - y;
+    damage.x = x; damage.y = y; damage.w = width; damage.h = height;
+    source = (const uint8_t *)pixels + (size_t)y * (size_t)pitch +
+             (size_t)x * sizeof(uint32_t);
+    if (SDL_UpdateTexture(state->texture, &damage, source, pitch) != 0 ||
+        SDL_RenderClear(state->renderer) != 0 ||
+        SDL_RenderCopy(state->renderer, state->texture, NULL, NULL) != 0) {
+        fprintf(stderr, "CCL presentation failed: %s\n", SDL_GetError());
+        return 1;
+    }
+    if (state->screenshot_path != NULL) {
+        int width;
+        int height;
+        SDL_Surface *capture;
+        if (SDL_GetRendererOutputSize(state->renderer, &width, &height) != 0)
+            return 1;
+        capture = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32,
+                                                 SDL_PIXELFORMAT_ARGB8888);
+        if (capture == NULL ||
+            SDL_RenderReadPixels(state->renderer, NULL, SDL_PIXELFORMAT_ARGB8888,
+                                 capture->pixels, capture->pitch) != 0 ||
+            SDL_SaveBMP(capture, state->screenshot_path) != 0) {
+            SDL_FreeSurface(capture);
+            return 1;
+        }
+        SDL_FreeSurface(capture);
+        state->screenshot_path = NULL;
+    }
+    SDL_RenderPresent(state->renderer);
+    if (state->frames_left > 0 && --state->frames_left == 0) {
+        /* The bounded preview must also wake the event-driven wait after its
+         * final frame. Poll's frame-limit check alone cannot wake SDL_WaitEvent. */
+        SDL_Event finished = { .type = SDL_QUIT };
+        if (SDL_PushEvent(&finished) < 0) return 1;
+    }
+    return 0;
+}
+
+void ccl_window_set_cursor(void *handle, int style)
+{
+    struct ccl_window *state = handle;
+    static const SDL_SystemCursor system_cursors[5] = {
+        SDL_SYSTEM_CURSOR_ARROW,
+        SDL_SYSTEM_CURSOR_IBEAM,
+        SDL_SYSTEM_CURSOR_SIZEWE,
+        SDL_SYSTEM_CURSOR_SIZENS,
+        SDL_SYSTEM_CURSOR_SIZENWSE
+    };
+    if (state == NULL || style < 0 || style >= 5 ||
+        style == state->pointer_cursor)
+        return;
+    if (state->cursors[style] == NULL)
+        state->cursors[style] = SDL_CreateSystemCursor(system_cursors[style]);
+    if (state->cursors[style] != NULL) {
+        SDL_SetCursor(state->cursors[style]);
+        state->pointer_cursor = style;
+    }
+}
+
+void ccl_window_wait(int may_block)
+{
+    SDL_Event event;
+    if (may_block != 0) {
+        if (SDL_WaitEvent(&event) != 0) SDL_PushEvent(&event);
+    } else {
+        SDL_Delay(1);
+    }
+}
+
+void ccl_window_wait_until(uint64_t deadline)
+{
+    SDL_Event event;
+    uint64_t now = SDL_GetTicks64();
+    if (now >= deadline) return;
+    uint64_t remaining = deadline - now;
+    int timeout = remaining > 0x7fffffffU ? 0x7fffffff : (int)remaining;
+    if (SDL_WaitEventTimeout(&event, timeout) != 0) SDL_PushEvent(&event);
+}
+
+uint64_t ccl_window_ticks(void) { return SDL_GetTicks64(); }
+
+uint64_t ccl_window_clock_monotonic(int *success)
+{
+    if (success != NULL) *success = 1;
+    return SDL_GetTicks64();
+}
+
+int ccl_window_has_system_chrome(void) { return 0; }
+
+/* console.title: the window's title, as the console sets it. */
+void ccl_window_retitle(void *handle, const char *text, int length)
+{
+    struct ccl_window *state = handle;
+    char title[96];
+    if (state == NULL || text == NULL || length <= 0) return;
+    if (length > (int)sizeof(title) - 1) length = (int)sizeof(title) - 1;
+    SDL_memcpy(title, text, (size_t)length);
+    title[length] = '\0';
+    SDL_SetWindowTitle(state->window, title);
+}
+
+void ccl_window_close(void *handle)
+{
+    struct ccl_window *state = handle;
+    int i;
+    for (i = 0; i < 5; ++i) SDL_FreeCursor(state->cursors[i]);
+    SDL_StopTextInput(); SDL_DestroyTexture(state->texture);
+    SDL_DestroyRenderer(state->renderer); SDL_DestroyWindow(state->window);
+    SDL_free(state); SDL_Quit();
+}

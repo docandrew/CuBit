@@ -1,0 +1,129 @@
+# ccl-remote: the LAN remote session for a host's cubit-remote client
+# (tools/cubit-remote): typed CCL evaluation over read-only interfaces,
+# files in a workspace, ccl-build jobs and a mailbox. Requested authority
+# only; the startup entry decides, and its arguments say whether it listens
+# at all (every parameter is required: no hidden default).
+#
+#   listen   Remote_Listen.Off, or Remote_Listen.LAN: port 8445 on every
+#            address netstack's interfaces hold (the network request below)
+#   display  where the pairing code is shown: Window (the desktop) or
+#            Test_Console (the test console object: the QEMU tests, with
+#            the test variant of this manifest, tests/headless/
+#            ccl-remote-test; never logstore, the code is a secret)
+#   work     the work root holding the workspace and the mailbox
+#            ("@system/work": the system volume's, the only one builds
+#            accept; or a named volume's, "@ufs:0/work")
+#   files    the host may write the workspace
+#   builds   the host may start ccl-build on workspace components and
+#            replace apps with their products
+#   mail     the host may use the mailbox
+(type Remote_Listen (enum Off LAN))
+(type Pairing_Display (enum Window Test_Console))
+(type Remote_Parameters (record (listen Remote_Listen) (display Pairing_Display)
+(work String) (files Boolean) (builds Boolean) (mail Boolean)))
+(Executable_Manifest
+identity => "com.cubit.ccl-remote"
+version => "0.1.0"
+requests => [
+# "started", "a host paired", refusals: never the token or contents.
+(service "logstore" "logstore")
+(service "clock" "clock")
+# (logs.recent "service"), (logs.minimum): read-only log observation.
+(service "log-observer" "log-observer")
+# metrics.*: the series store (MET-002), in the scope below.
+(service "metrics-observer" "series")
+# (proc.list), through procmgr's observer role.
+(service "process-observer" "process-observer")
+# Global non-secret Config read, never write/admin.
+(service "config" "config")
+(service "filesystem" "filesystem")
+# Which addresses netstack's interfaces hold (inspection only).
+(service "network-stack" "network-stack")
+# Port 8445 on this machine's addresses (a listen scope is one port):
+# one listener per interface (at most four) and its connection.
+(network Network_Action.TCP_Listen "0.0.0.0" 0 8445 8445 false 8 "network")
+# Builds: ccl-build.app, below.
+(service "process-manager" "process-manager") (service "launch-remote" "launch")
+# The pairing window (display => Window).
+(service "desktop" "desktop")
+# Screenshots: only with (display-capture approve-declared) and the
+# Deskbar's "Allow screen capture" on (its Remote access section).
+(service "display-capture" "display-capture")
+# ---- DEVELOPMENT-ONLY: app replace (SELF-002) -------------------------
+# A staged app runs with at most this endpoint's authority (procmgr
+# attenuates it as for any launch), so swapping a shipped app in from the
+# workspace needs what that app asks for. Granted here, as for any
+# program, through this manifest and the startup plan's approval; each
+# is optional (absent while its provider is not running, and then not
+# passed on). Listed by (hello) and in the "development-only authority"
+# log line at start (Remote_Development). The observer roles it holds
+# (log-observer, process-observer and series above, log-control here) it
+# also passes on to the apps it swaps in, as procmgr passes any role a
+# launcher holds (Logs, Boot Logs, the Workbench, the console, Metrics'
+# series). A release strips this block,
+# the scopes block below and the outlet. Which apps need each:
+#   log-control      ccl-console, ccl-workbench, logs
+#   lexicon          ccl-console, ccl-workbench, dictionary
+#   installer wifi power-console
+#                    ccl-console
+#   llm secrets      agent, ccl-console
+#   device-manager   devices, gpu-viewer
+#   gpu              gpu-viewer
+#   mixer            sameboy
+(service "log-control" "log-control")
+(service "lexicon" "lexicon")
+(service "installer" "installer")
+(service "wifi" "wifi")
+(service "power-console" "power")
+(service "llm" "llm")
+(service "secrets" "secrets")
+(service "device-manager" "device-manager")
+(service "gpu" "gpu-probe")
+(service "mixer" "mixer")]
+# ---- end DEVELOPMENT-ONLY ---------------------------------------------
+optional => ["series" "log-observer" "process-observer" "process-manager" "launch" "desktop" "display-capture"
+  # DEVELOPMENT-ONLY (app replace), as above.
+  "log-control" "lexicon" "installer" "wifi" "power" "llm" "secrets" "device-manager" "gpu-probe" "mixer"]
+scopes => [
+# Global non-secret Config: read (config-all [File_Right.Read]); widened to
+# read write in the DEVELOPMENT-ONLY block below (one scope per service).
+# Every series, read only.
+(Scope.Metrics Scope_Place.Everything)
+# The workspace and the mailbox, under the work root.
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/work")
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@ufs:0/work")
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/work")
+# What builds delegate to ccl-build (D2) and its manifest names.
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
+(filesystem [File_Right.Read] "@system/toolchain")
+(filesystem [File_Right.Read] "@system/tools")
+(filesystem [File_Right.Read] "@system/cubit-src")
+# ---- DEVELOPMENT-ONLY: app replace (SELF-002), as above ---------------
+# Each covers a shipped app's own declared scopes (at most 16 scopes a
+# manifest: hence whole volumes where one app reads a volume).
+#   @nvme:0/ read write create   metricsview (Documents/Dashboards), text
+#                                (Documents/, and reading the disk), files,
+#                                bible, sameboy, ccl-console (toolchain)
+#   @mem:0/ read                 files
+#   @cd:0/ read                  bible, sameboy, ccl-console (bible assets)
+#   @ufs:0/Assets/cubit-bible/   bible
+#   @system/Recovery/com.cubit.text/   text
+#   config-all read write        bible ("bible."), calculator
+#                                ("calculator."), ccl-workbench (its demo
+#                                key); a release puts back
+#                                (config-all [File_Right.Read]) here
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/")
+(filesystem [File_Right.Read] "@mem:0/")
+(filesystem [File_Right.Read] "@cd:0/")
+(filesystem [File_Right.Read] "@ufs:0/Assets/cubit-bible/")
+(filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/Recovery/com.cubit.text/")
+(config-all [File_Right.Read File_Right.Write])]
+# ---- end DEVELOPMENT-ONLY ---------------------------------------------
+# DEVELOPMENT-ONLY (app replace): metricsview's com.cubit-os.stdmetric
+# outlet asks for metrics.svc's publisher endpoint, which a launcher must
+# hold to pass on; declaring the outlet is how a program asks for it.
+outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)]
+# Builds; apps built here (procmgr asks "Allow app replacement").
+may_launch => [(Launch "ccl-build.app") (Launch "@system/work/generations/")]
+parameters => (Parameter_Signature.Declared "Remote_Parameters"))

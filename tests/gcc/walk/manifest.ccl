@@ -1,0 +1,8 @@
+# archive-walk (tests/gcc): a diagnostic that reads an archive's headers
+# three ways; it reads only the places delegated to it.
+(Executable_Manifest
+  identity => "com.cubit.archive-walk"
+  version => "0.1.0"
+  requests => [(service "filesystem" "filesystem")]
+  outlets => [(Outlet "unix.stderr" Element.Text pages => 4)]
+  descriptors => [(Descriptor 2 "unix.stderr")])

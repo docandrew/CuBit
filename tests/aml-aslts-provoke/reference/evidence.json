@@ -1,0 +1,13 @@
+{
+  "original_suite_hosted": {
+    "receipt": "aslts-provoke-original-pass-c0jmb1i0/receipt.json",
+    "sha256": "4d6aeea27188a826ceebdc4c5cea2b8b12d90a735076bb14c4a135710151e7e6",
+    "claim": "original expectation pass, not differential"
+  },
+  "reference_failure": {
+    "receipt": "aslts-provoke-normal-failed-1ju7oj_m/receipt.json",
+    "sha256": "8b53abfdc2966c08a3d266ff3411cb619fab8147aa7c8cc48ce0bbe233992283"
+  },
+  "portable_combined_status": "release original-suite pass in worker80224; not ACPICA differential pass",
+  "spec": "https://uefi.org/specs/ACPI/6.6/19_ASL_Reference.html#argx-objects"
+}

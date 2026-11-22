@@ -1,0 +1,79 @@
+{
+  "scope": "Internal same-Core six-root sleep-state point observations with descriptive register model,one total host/AML budget,first-failure stop and recovery diagnostics; no transition or register capability",
+  "hosted": {
+    "directory": "/home/doc/cubit-build-tmp/acpi-sleep-owner-XFvS2U",
+    "checks_per_profile": 456,
+    "commands": 26,
+    "processes_per_profile": 8,
+    "counts": {
+      "checked": {
+        "1": {
+          "normal": 72,
+          "invalid": 50,
+          "fatal": 51,
+          "empty": 55
+        },
+        "2": {
+          "normal": 72,
+          "invalid": 50,
+          "fatal": 51,
+          "empty": 55
+        }
+      },
+      "release": {
+        "1": {
+          "normal": 72,
+          "invalid": 50,
+          "fatal": 51,
+          "empty": 55
+        },
+        "2": {
+          "normal": 72,
+          "invalid": 50,
+          "fatal": 51,
+          "empty": 55
+        }
+      }
+    }
+  },
+  "semantic": {
+    "checked": {
+      "directory": "/home/doc/git/.acpi-proof-work/sleep-owner-work/candidate/tests/acpi-native-entry/results/checked-IsVJ4cGL",
+      "selections": 33,
+      "alis": 32,
+      "objects": 0
+    },
+    "release": {
+      "directory": "/home/doc/git/.acpi-proof-work/sleep-owner-work/candidate/tests/acpi-native-entry/results/release-cpHaMFEE",
+      "selections": 33,
+      "alis": 32,
+      "objects": 0
+    }
+  },
+  "acpica": {
+    "runs": 2,
+    "normal_packages_and_counter_effect": true,
+    "preflight": "AcpiExec invokes sleep objects in AeMiscellaneousTests/AeTestSleepData before debugger commands. CALL is observed1before/2after,so the direct S3 query adds exactly one; host first-scan CALL0->1 is a different initial state",
+    "initial_reference_attempt": "Preserved; raw normal counter2 differed from initial expectation1,and invalid fixture triggers the later fatal S3 during automatic preflight. Neither initial case counted as a reference pass",
+    "diagnostics": [
+      {
+        "revision": 1,
+        "diagnostics": [
+          "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        ]
+      },
+      {
+        "revision": 2,
+        "diagnostics": [
+          "ACPI Error: 4 (0x4) Outstanding cache allocations (20260408/uttrack-902)"
+        ]
+      }
+    ],
+    "scope": "Raw normal packages and one ordered effect only; budget/readiness/recovery/native authority are separate host policy tests"
+  },
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "all_own_jobs_terminal": true,
+  "goal": "active and incomplete"
+}

@@ -1,0 +1,58 @@
+[
+  {
+    "case": "r1-arg-control",
+    "classification": "executed",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r1-arg-ref",
+    "classification": "compiler_process_failure"
+  },
+  {
+    "case": "r1-arg-held",
+    "classification": "compiler_process_failure"
+  },
+  {
+    "case": "r1-local-control",
+    "classification": "executed",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r1-local-ref",
+    "classification": "compiler_process_failure"
+  },
+  {
+    "case": "r1-local-held",
+    "classification": "compiler_process_failure"
+  },
+  {
+    "case": "r2-arg-control",
+    "classification": "executed",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r2-arg-ref",
+    "classification": "compiler_process_failure"
+  },
+  {
+    "case": "r2-arg-held",
+    "classification": "compiler_process_failure"
+  },
+  {
+    "case": "r2-local-control",
+    "classification": "executed",
+    "integer": 18446744073709551615,
+    "cache_warning": true
+  },
+  {
+    "case": "r2-local-ref",
+    "classification": "compiler_process_failure"
+  },
+  {
+    "case": "r2-local-held",
+    "classification": "compiler_process_failure"
+  }
+]

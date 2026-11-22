@@ -1,0 +1,8 @@
+# First launch has declarations but no approval. Second is explicitly approved.
+(startup v1
+  # ABI-002: services' debug text reaches serial only through logstore's mirror.
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "network-check.app" (priority 5))
+  (start "network-check.app" (priority 5) (network approve-declared))
+  (start "capability-test.app" (priority 5))
+)

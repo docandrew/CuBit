@@ -1,0 +1,1018 @@
+#!/usr/bin/env python3
+"""Boot the real USB-only live image; no ATA/NVMe or second initrd fallback.
+
+Retains serial, monitor, screenshots and command line in a fresh /tmp directory.
+Run under nix develop. The UI test uses native PS/2 keyboard navigation and a
+USB mouse while the optical drive shares its xHCI controller.
+"""
+import argparse
+import array
+import json
+import math
+import os
+import pathlib
+import re
+import socket
+import sys
+import subprocess
+import tempfile
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--cpus', type=int, default=1)
+parser.add_argument('--ufs', action='store_true',
+                    help='add QEMU\'s UFS controller with a GPT disk laid out like the IdeaPad\'s '
+                         '(read only) and require the UFS driver\'s bring-up (HW-001)')
+parser.add_argument('--without-ps2', action='store_true',
+                    help='remove i8042; check USB mouse and desktop boot (no keyboard app-launch test)')
+parser.add_argument('--image', type=pathlib.Path, help='explicit read-only image for boot regressions')
+parser.add_argument('--sparse-apic-ids', action='store_true',
+                    help='six CPUs: two sockets, three cores each (APIC IDs 0,1,2,4,5,6)')
+parser.add_argument('--stall-ap-fixture', action='store_true',
+                    help='with PIT-free fixture: halt first AP at Ada entry; require bounded failure')
+parser.add_argument('--uefi', action='store_true', help='boot the UEFI companion ISO with OVMF')
+parser.add_argument('--pit-free-fixture', action='store_true',
+                    help='omit PIT; seed CPUID.15 cache via GDB to match a KVM-scaled N95-rate TSC')
+parser.add_argument('--invalid-clock-fixture', action='store_true',
+                    help='seed a zero CPUID.15 denominator and require the real PIT fallback')
+parser.add_argument('--uefi-firmware', type=pathlib.Path, default=pathlib.Path('/usr/share/OVMF/OVMF_CODE_4M.fd'))
+parser.add_argument('--timeout', type=int, default=180)
+parser.add_argument('--memory', default='4G',
+                    help='guest RAM; 8G/16G check boot allocation sized from the memory map (BUG-002)')
+parser.add_argument('--disk-first', action='store_true', help='non-optical LUN 0, CD LUN 1')
+parser.add_argument('--usb-flash', action='store_true',
+                    help='boot the ISO image on a 512-byte USB disk, as with dd to a flash drive')
+parser.add_argument('--mouse-first', action='store_true')
+parser.add_argument('--usb-hub', action='store_true',
+                    help='exercise USB keyboard and mouse behind a hub; may combine with --teapots')
+parser.add_argument('--usb-hub-ports', type=int, default=4, choices=range(2, 16),
+                    help='hub port count; the keyboard takes the last port. QEMU sizes the '
+                         'obsolete PortPwrCtrlMask ceil(ports/8) bytes, so 8 ports send a '
+                         '10-byte hub descriptor')
+parser.add_argument('--eject', action='store_true', help='test fail-closed media removal after app launch')
+parser.add_argument('--early-text', action='store_true', help='check the early text diagnostic boot entry')
+parser.add_argument('--without-audio', action='store_true',
+                    help='omit HDA hardware and verify optional audio cannot block boot')
+parser.add_argument('--sameboy', action='store_true', help='also exercise the native Game Boy frontend')
+parser.add_argument('--settings', action='store_true', help='exercise Settings and live shared-toolkit theme changes')
+parser.add_argument('--ccl-ui-hooks', action='store_true', help='exercise native REPL clock, label hooks and retained button callback')
+parser.add_argument('--ccl-samples', action='store_true', help='open an ISO-seeded workspace sample and invoke its button')
+parser.add_argument('--config', action='store_true', help='write/read typed Config through native Workbench bytecode')
+parser.add_argument('--servo', action='store_true', help='launch the bundled Servo shell and require a rendered page')
+parser.add_argument('--apps', action='store_true',
+                    help='screenshot Apps > Tools, then launch Calculator and Dictionary from optical media')
+parser.add_argument('--teapots', action='store_true', help='launch the Vulkan teapot gallery from optical media (QEMU: placeholder, no Intel GPU)')
+parser.add_argument('--boot-logs', action='store_true', help='verify on-screen boot viewer and typed USB startup log replay')
+parser.add_argument('--boot-log-delivery', action='store_true',
+                    help='require real logstore and clock replay through the boot viewer, including quiet USB images')
+parser.add_argument('--boot-log-window-controls', action='store_true',
+                    help='exercise boot viewer minimize/restore/maximize/close using native USB input')
+parser.add_argument('--quiet-xhci', action='store_true', help='skip USB-log-dependent checks (xhci now always logs its bring-up stages)')
+parser.add_argument('--boot-logs-menu', action='store_true', help='launch an additional boot viewer from Apps and verify log replay')
+parser.add_argument('--sameboy-audio', action='store_true',
+                    help='capture the original test ROM tone and verify volume, mute and pause')
+parser.add_argument('--taskbar', action='store_true',
+                    help='exercise native master volume and wallpaper restoration (requires SameBoy audio)')
+parser.add_argument('--sameboy-local-rom', action='store_true',
+                    help='also launch explicitly staged ROM 01; never supplies or downloads a cartridge')
+parser.add_argument('--sameboy-second-local-rom', action='store_true',
+                    help='also exercise explicitly staged ROM 02')
+parser.add_argument('--device-build', type=pathlib.Path, metavar='BUILD_DIR',
+                    help='SELF-002, the device-build live image: a NIC with the guest\'s ccl-remote '
+                         'port forwarded, then tests/device-builds/device_build.py against the live '
+                         'system (BUILD_DIR: tests/device-builds/build, the Linux references)')
+parser.add_argument('--device-build-port', type=int, default=18449,
+                    help='host loopback port forwarded to the guest\'s ccl-remote (8445)')
+parser.add_argument('--device-build-options', default='',
+                    help='further device_build.py options, e.g. "--build-only"')
+parser.add_argument('--bench-build', type=pathlib.Path, metavar='RESULTS',
+                    help='with --device-build: PERF-010\'s build benchmark (tests/device-builds/'
+                         'bench_build.py) on the live RAM root instead of device_build.py; its '
+                         'results JSON at RESULTS')
+parser.add_argument('--install-to', type=pathlib.Path, metavar='DISK',
+                    help='SYS-001 from the device-build live image: a blank writable UFS disk at DISK '
+                         '(--install-disk-mib) and, typed at the CCL console, an install onto it '
+                         'from @cd:0/install; QEMU then quits (tests/install-reboot boots the disk)')
+parser.add_argument('--install-disk-mib', type=int, default=2048)
+args = parser.parse_args()
+if args.install_to and args.ufs:
+    parser.error('--install-to brings its own UFS disk; drop --ufs')
+if args.boot_log_window_controls and not args.boot_log_delivery:
+    parser.error('--boot-log-window-controls requires --boot-log-delivery')
+if args.quiet_xhci and (args.boot_logs or args.boot_logs_menu or args.eject):
+    parser.error('quiet-xhci cannot use USB-log-dependent replay/ejection/hub assertions')
+if args.usb_flash and args.disk_first:
+    parser.error('--usb-flash and --disk-first are separate fixtures')
+if args.usb_hub and not args.without_ps2:
+    parser.error('--usb-hub requires --without-ps2 so keyboard tests cannot use PS/2')
+if args.pit_free_fixture and args.invalid_clock_fixture:
+    parser.error('select only one CPU-clock fixture')
+if args.uefi and args.early_text:
+    parser.error('--early-text is a BIOS-only diagnostic entry')
+if args.taskbar and not args.sameboy_audio:
+    parser.error('--taskbar requires --sameboy-audio')
+if args.sameboy_audio and (not args.sameboy or args.without_audio):
+    parser.error('--sameboy-audio requires --sameboy and HDA hardware')
+if args.sameboy_local_rom and not args.sameboy:
+    parser.error('--sameboy-local-rom requires --sameboy')
+if args.sameboy_second_local_rom and not args.sameboy_local_rom:
+    parser.error('--sameboy-second-local-rom requires --sameboy-local-rom')
+root = pathlib.Path(__file__).resolve().parents[2]
+if args.stall_ap_fixture and (not args.pit_free_fixture or args.cpus < 2):
+    parser.error('--stall-ap-fixture requires --pit-free-fixture and --cpus >= 2')
+image = root / ('kernel/cubit_live_uefi.img' if args.uefi else 'kernel/cubit_laptop_usb.img')
+if args.image:
+    image = args.image.resolve(strict=True)
+run = pathlib.Path(tempfile.mkdtemp(prefix='cubit-usb-live.'))
+serial = run / 'serial.log'
+monitor = run / 'monitor.sock'
+mouse_port, cd_port = (1, 2) if args.mouse_first else (2, 1)
+lun = 1 if args.disk_first else 0
+command = ['qemu-system-x86_64', '-enable-kvm', '-machine', 'q35', '-cpu', 'host',
+           # 8 MiB of VGA memory: the fixtures below assume the 1920x1080
+           # firmware mode, and the live GRUB entry asks for 3840x2160 and
+           # 2560x1440 first (they do not fit, so 1920x1080 is chosen).
+           '-smp', str(args.cpus), '-m', args.memory, '-nodefaults', '-device', 'VGA,vgamem_mb=8',
+           '-device', 'qemu-xhci,id=xhci',
+           '-drive', f'file={image},if=none,id=cd,media=cdrom,format=raw,readonly=on',
+           '-device', f'usb-bot,id=usbcd,bus=xhci.0,port={cd_port}',
+           '-device', f'scsi-cd,bus=usbcd.0,lun={lun},drive=cd,bootindex=1',
+           '-device', f'usb-mouse,bus=xhci.0,port={mouse_port}',
+           '-serial', f'file:{serial}', '-qmp', f'unix:{monitor},server,nowait',
+           '-display', 'none', '-no-reboot']
+if args.ufs:
+    ufs_disk = run / 'ufs.img'
+    subprocess.run([sys.executable, '-I', str(root / 'tests/ufs/make-disk.py'), str(ufs_disk)],
+                   check=True)
+    command += ['-drive', f'file={ufs_disk},if=none,id=ufs0,format=raw,readonly=on',
+                '-device', 'ufs,serial=cubitufs,id=ufs',
+                '-device', 'ufs-lu,drive=ufs0,bus=ufs,lun=0']
+if args.install_to:
+    # QEMU's UFS model (4 KiB blocks, as the IdeaPad's disk), blank and
+    # writable: the installer formats it.
+    with args.install_to.open('wb') as blank:
+        blank.truncate(args.install_disk_mib * 1024 * 1024)
+    command += ['-drive', f'file={args.install_to},if=none,id=ufs0,format=raw',
+                '-device', 'ufs,serial=cubitufs,id=ufs',
+                '-device', 'ufs-lu,drive=ufs0,bus=ufs,lun=0']
+# The device-build driver's own QMP connection (this script keeps the first).
+device_build_monitor = run / 'device-build.sock'
+if args.device_build:
+    command += ['-netdev', f'user,id=net0,hostfwd=tcp:127.0.0.1:{args.device_build_port}-:8445',
+                '-device', 'virtio-net-pci,netdev=net0',
+                '-qmp', f'unix:{device_build_monitor},server,nowait']
+if args.usb_flash:
+    command[command.index(f'file={image},if=none,id=cd,media=cdrom,format=raw,readonly=on')] = f'file={image},if=none,id=cd,format=raw,readonly=on'
+    command[command.index(f'scsi-cd,bus=usbcd.0,lun={lun},drive=cd,bootindex=1')] = f'scsi-hd,bus=usbcd.0,lun={lun},drive=cd,bootindex=1'
+if args.usb_hub:
+    index = command.index(f'usb-mouse,bus=xhci.0,port={mouse_port}')
+    command[index:index + 1] = [
+        f'usb-hub,id=inputhub,bus=xhci.0,port={mouse_port},ports={args.usb_hub_ports},port-power=on',
+        '-device', f'usb-mouse,bus=xhci.0,port={mouse_port}.1',
+        '-device', f'usb-kbd,bus=xhci.0,port={mouse_port}.{args.usb_hub_ports}']
+if args.pit_free_fixture or args.invalid_clock_fixture:
+    # QEMU's ordinary CPU model does not expose leaf 15 on this host. Keep
+    # the real virtual TSC coherent with the injected firmware/CPU metadata.
+    # No software ticks, calibration result, or branch outcome is patched.
+    if args.pit_free_fixture:
+        command[command.index('-machine') + 1] = 'q35,pit=off'
+    command[command.index('-cpu') + 1] = (
+        'host,vendor=GenuineIntel,level=0x16,+invtsc,tsc-frequency=1689600000')
+    command += ['-S', '-gdb', f'unix:{run}/gdb.sock,server=on,wait=off']
+if args.sparse_apic_ids:
+    command[command.index('-smp') + 1] = '6,sockets=2,cores=3,threads=1'
+if args.without_ps2:
+    command[command.index('-machine') + 1] += ',i8042=off'
+if args.uefi:
+    command += ['-drive', f'if=pflash,format=raw,unit=0,readonly=on,file={args.uefi_firmware}']
+if args.taskbar:
+    command += ['-rtc', 'base=2026-07-01T12:34:00,clock=vm']
+if not args.without_audio:
+    backend = (f'wav,id=sound,path={run}/audio.wav,out.frequency=48000'
+               if args.sameboy_audio else 'none,id=sound')
+    command += ['-audiodev', backend, '-device', 'ich9-intel-hda',
+                '-device', 'hda-output,audiodev=sound']
+if args.disk_first:
+    disk = run / 'ignored-disk.img'
+    with disk.open('wb') as fixture:
+        fixture.truncate(32 * 1024 * 1024)
+    command += ['-drive', f'file={disk},if=none,id=disk,format=raw,readonly=on',
+                '-device', 'scsi-hd,bus=usbcd.0,lun=0,drive=disk']
+(run / 'command.json').write_text(json.dumps(command, indent=2))
+print(f'USB live test logs: {run}', flush=True)
+with (run / 'qemu.log').open('w') as log:
+    process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+    connection = None
+    try:
+        deadline = time.monotonic() + args.timeout
+        while not monitor.exists() and process.poll() is None:
+            if time.monotonic() >= deadline:
+                raise RuntimeError('monitor not created')
+            time.sleep(0.05)
+        connection = socket.socket(socket.AF_UNIX)
+        connection.connect(str(monitor))
+        connection.settimeout(2)
+        stream = connection.makefile('rb')
+        json.loads(stream.readline())
+        sequence = 0
+
+        def qmp(operation, arguments=None):
+            global sequence
+            sequence += 1
+            request = {'execute': operation, 'id': sequence}
+            if arguments is not None:
+                request['arguments'] = arguments
+            connection.sendall((json.dumps(request) + '\n').encode())
+            while True:
+                response = json.loads(stream.readline())
+                if response.get('id') == sequence:
+                    if 'error' in response:
+                        raise RuntimeError(response)
+                    return response['return']
+
+        qmp('qmp_capabilities')
+        if args.pit_free_fixture or args.invalid_clock_fixture:
+            denominator = 0 if args.invalid_clock_fixture else 2
+            injection = [
+                'set language c', 'hbreak *time__try_cpu_tsc', 'continue',
+                f'set *(unsigned int *)&cpuid__tscratiodenominator = {denominator}',
+                'set *(unsigned int *)&cpuid__tscrationumerator = 88',
+                'set *(unsigned int *)&cpuid__crystalclockhz = 38400000',
+                f'printf "Seeded CPUID15 D={denominator} N=88 C=38400000; invtsc=%u\\n", '
+                '*(unsigned char *)&cpuid__hasinvarianttsc',
+                'detach']
+            if args.stall_ap_fixture:
+                injection[-1:] = [
+                    'delete breakpoints', 'hbreak *apEnter', 'continue',
+                    'set $rip = (unsigned long)&hang', 'detach']
+            with (run / 'gdb.log').open('w') as debugger_log:
+                subprocess.run(
+                    ['gdb', '-q', '-nx', '-batch', str(root / 'kernel/cubit_kernel'),
+                     '-ex', f'target remote {run}/gdb.sock'] +
+                    [item for step in injection for item in ('-ex', step)],
+                    stdout=debugger_log, stderr=subprocess.STDOUT,
+                    timeout=60, check=True)
+
+        def hmp(text):
+            return qmp('human-monitor-command', {'command-line': text})
+
+        def wait_for(marker, count=1):
+            # A tuple of markers: any one of them is enough.
+            markers = marker if isinstance(marker, tuple) else (marker,)
+            while time.monotonic() < deadline and process.poll() is None:
+                text = serial.read_text(errors='replace') if serial.exists() else ''
+                # A marker starting with "re:" is a regular expression.
+                if any((len(re.findall(m[3:], text)) if m.startswith('re:') else text.count(m)) >= count
+                       for m in markers):
+                    return
+                if 'EXCEPTION' in text or 'storage transport quarantined' in text:
+                    raise RuntimeError('native fault; see serial.log')
+                time.sleep(0.2)
+            if process.poll() is None:
+                for name, command in [('registers', 'info registers'),
+                                      ('interrupts', 'info irq'),
+                                      ('lapic', 'info lapic')]:
+                    (run / f'{name}.txt').write_text(hmp(command))
+            raise RuntimeError(f'timeout waiting for {marker}')
+
+        def key(name):
+            hmp(f'sendkey {name}')
+            time.sleep(0.2)
+
+        # The Apps menu lists the live settings' desktop.launch.* entries, typed
+        # Launch_Entry values (CCL.Interfaces.Desktop_Launch), in key order,
+        # starting on the first. Navigate by label, so new entries do not
+        # silently shift every launch to the wrong program.
+        live_settings = (pathlib.Path(__file__).resolve().parents[1] /
+                         'hardware/system-live.ccl').read_text()
+        launch_entries = sorted(re.findall(
+            r'\(setting "desktop\.launch\.([^"]+)"\s*\(Launch_Entry\s+label\s*=>\s*"([^"\\]+)"([^\n]*)',
+            live_settings))
+        apps_menu = [label for _, label, _ in launch_entries]
+        if not apps_menu:
+            raise RuntimeError('no desktop.launch entries found in system-live.ccl')
+        # The menu's top rows are the categories that hold entries, in
+        # App_Category order (CCL.Interfaces.Desktop_Launch; the default is
+        # Tools); each opens a submenu of its entries in key order (UI-013).
+        categories = ['System', 'Development', 'Web', 'Games', 'Media', 'Tools', 'Reference']
+        def category_of(rest):
+            found = re.search(r'category\s*=>\s*App_Category\.(\w+)', rest)
+            return found.group(1) if found else 'Tools'
+        entry_category = {label: category_of(rest) for _, label, rest in launch_entries}
+        menu_rows = [c for c in categories if c in entry_category.values()]
+
+        def launch(label):
+            category = entry_category[label]
+            members = [l for _, l, _ in launch_entries if entry_category[l] == category]
+            key('meta_l')
+            for _ in range(menu_rows.index(category)):
+                key('down')
+            key('right')
+            for _ in range(members.index(label)):
+                key('down')
+            key('ret')
+
+        if args.early_text:
+            wait_for('GNU GRUB')
+            key('down'); key('down'); key('ret')
+            wait_for('EARLY: memory initialization complete')
+            hmp(f'screendump {run}/early-text.ppm')
+            print('EARLY TEXT PASS: kernel checkpoints precede framebuffer allocation.', flush=True)
+            sys.exit(0)
+
+        if args.uefi:
+            wait_for('Multiboot2: owned boot metadata admitted')
+            wait_for('ACPI: validated Multiboot2 root handoff')
+        if args.stall_ap_fixture:
+            wait_for('SMP FAILED cpu= 1 apic= 1 stage= 1')
+            hmp(f'screendump {run}/smp-timeout.ppm')
+            if 'Starting userspace...' in serial.read_text(errors='replace'):
+                raise RuntimeError('continued boot after incomplete CPU startup')
+            print('SMP TIMEOUT PASS: halted AP reports logical ID, APIC ID and stage', flush=True)
+            sys.exit(0)
+        wait_for('desktop: display info ready')
+        if args.install_to:
+            # The console (started last, so it has the keyboard) answers
+            # with the disk's identity; the install names it back. QEMU's
+            # UFS model reports no serial number.
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                'send_text', root / 'tests/ccl-console/send-text.py')
+            send_text = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(send_text)
+            wait_for('installer: registered')
+            wait_for('ufs: bring-up complete')
+            wait_for('ccl-console: first frame presented')
+            time.sleep(2)
+            # The console's window is the last surface the Desktop placed:
+            # a click in it gives it the keyboard whatever opened before.
+            surfaces = re.findall(r'desktop: surface \d+ at (\d+), (\d+) size (\d+) x (\d+)',
+                                  serial.read_text(errors='replace'))
+            if surfaces:
+                x, y, w, h = (int(v) for v in surfaces[-1])
+                mouse_step, corner_steps = 60, 60
+                for _ in range(corner_steps):
+                    hmp(f'mouse_move {-mouse_step} {-mouse_step}')
+                at = [0, 0]
+                target = [x + w // 2, y + h // 2]
+                while at != target:
+                    dx, dy = (max(-mouse_step, min(mouse_step, b - a)) for a, b in zip(at, target))
+                    hmp(f'mouse_move {dx} {dy}')
+                    at = [at[0] + dx, at[1] + dy]
+                time.sleep(0.2)
+                hmp('mouse_button 1')
+                time.sleep(0.1)
+                hmp('mouse_button 0')
+                time.sleep(0.5)
+            hmp(f'screendump {run}/install-before.ppm')
+            # The UFS model's block, the smallest ESP (Disk_Layout), and a
+            # bytes-per-inode ratio with room for the payload's ~4,000 files.
+            ufs_block_bytes, esp_mib, inode_ratio = 4096, 260, 16384
+            key_seconds = 0.05
+            blocks = args.install_disk_mib * 1024 * 1024 // ufs_block_bytes
+            entry = ('(wait (system.install (Install_Request disk => 0 confirm => '
+                     f'(Disk_Identity "QEMU UFS" "" {blocks} {ufs_block_bytes}) '
+                     f'inode_ratio => {inode_ratio} esp_mib => {esp_mib} source => "@cd:0/install")))')
+            started = time.monotonic()
+            for c in entry:
+                hmp(f'sendkey {send_text.key(c)}')
+                time.sleep(key_seconds)
+            hmp('sendkey ret')
+            time.sleep(2)
+            hmp(f'screendump {run}/install-typed.ppm')
+            wait_for('REPL completed: Install_Report:')
+            hmp(f'screendump {run}/install-done.ppm')
+            text = serial.read_text(errors='replace')
+            outcome = re.findall(r'installer: install (?:done|refused or failed): ([^\n]*)', text)
+            print(f'install: {outcome[-1] if outcome else "no outcome"} in '
+                  f'{time.monotonic() - started:.1f} s', flush=True)
+            for line in re.findall(r'installer: installing to disk[^\n]*', text):
+                print(line, flush=True)
+            if not outcome or outcome[-1].strip() != 'installed':
+                raise RuntimeError('the install from @cd:0/install failed; see serial.log')
+            print('DEVICE-BUILD INSTALL PASS: installed onto the UFS disk from the live image', flush=True)
+            sys.exit(0)
+        if args.device_build:
+            wait_for('ccl-remote: listening on ')
+            if args.bench_build:
+                driver = [sys.executable, str(root / 'tests/device-builds/bench_build.py'),
+                          '--serial', str(serial), '--qmp', str(device_build_monitor),
+                          '--timeout', str(max(1, int(deadline - time.monotonic()))),
+                          '--port', str(args.device_build_port), '--out', str(args.bench_build.resolve()),
+                          '--linux', str(args.device_build.resolve() / 'bench-linux.json'),
+                          str(args.device_build.resolve())] + args.device_build_options.split()
+                os.environ['BENCH_BUILD_KEEP_RUNNING'] = '1'
+            else:
+                driver = [sys.executable, str(root / 'tests/device-builds/device_build.py'),
+                          str(serial), str(device_build_monitor),
+                          str(max(1, int(deadline - time.monotonic()))), str(args.device_build_port),
+                          str(args.device_build.resolve()), '--memory-report', str(run / 'memory.json'),
+                          '--qemu-pid', str(process.pid)] + args.device_build_options.split()
+            os.environ['DEVICE_BUILD_KEEP_RUNNING'] = '1'
+            result = subprocess.run(driver)
+            text = serial.read_text(errors='replace')
+            if any(marker in text for marker in ['EXCEPTION', 'PANIC']):
+                raise RuntimeError('native fault; see serial.log')
+            if result.returncode != 0:
+                raise RuntimeError('device-build driver reported failures')
+            print(f'DEVICE-BUILD LIVE PASS (logs: {run})', flush=True)
+            sys.exit(0)
+        if args.boot_log_delivery:
+            wait_for('boot-logs: window ready')
+            wait_for('boot-logs: logstore: typed diagnostics ready')
+            wait_for('boot-logs: clock: service ready')
+            wait_for('desktop: asynchronous frame released')
+            hmp(f'screendump {run}/boot-log-delivery.ppm')
+            text = serial.read_text(errors='replace')
+            if re.search(r'panic|^EXCEPTION:|TEST: FAIL|general protection', text,
+                         flags=re.IGNORECASE | re.MULTILINE):
+                raise RuntimeError('fault during boot log delivery; see serial.log')
+            print('BOOT LOG DELIVERY PASS: viewer received collector and clock records.', flush=True)
+        if args.boot_log_window_controls:
+            from PIL import Image
+
+            def window_snapshot(name):
+                time.sleep(0.7)
+                path = run / f'{name}.ppm'
+                hmp(f'screendump {path}')
+                return Image.open(path).convert('RGB')
+
+            initial = window_snapshot('boot-log-window-initial')
+            width, height = initial.size
+            if (width, height) != (1920, 1080):
+                raise RuntimeError('window controls fixture requires 1920x1080 UEFI mode')
+
+            def move_relative(dx, dy):
+                while dx or dy:
+                    x, y = max(-80, min(80, dx)), max(-80, min(80, dy))
+                    hmp(f'mouse_move {x} {y}')
+                    dx -= x
+                    dy -= y
+                    time.sleep(0.04)
+
+            def window_click(x, y):
+                move_relative(-width * 2, -height * 2)
+                move_relative(x, y)
+                time.sleep(0.2)
+                hmp('mouse_button 1')
+                time.sleep(0.15)
+                hmp('mouse_button 0')
+
+            # Fixed live-image fixture: sole initial 960x646 decorated window
+            # at (98,82). Check large interior regions, not cursor/button pixels.
+            panel = initial.getpixel((400, 300))
+
+            def panel_present(frame, box):
+                colors = frame.crop(box).getcolors(1)
+                return colors is not None and colors[0][1] == panel
+
+            interior = (350, 300, 650, 500)
+            outside = (1200, 300, 1500, 500)
+            if not panel_present(initial, interior) or panel_present(initial, outside):
+                raise RuntimeError('unexpected initial boot viewer geometry')
+            window_click(1004, 94)
+            minimized = window_snapshot('boot-log-minimized')
+            if panel_present(minimized, interior):
+                raise RuntimeError('minimize did not remove the viewer')
+            window_click(180, 1062)
+            restored = window_snapshot('boot-log-restored')
+            if not panel_present(restored, interior):
+                raise RuntimeError('taskbar restore did not restore the viewer')
+            window_click(1022, 94)
+            maximized = window_snapshot('boot-log-maximized')
+            if not panel_present(maximized, outside):
+                raise RuntimeError('maximize did not expand the viewer')
+            window_click(width - 34, 13)
+            normal = window_snapshot('boot-log-normal')
+            if not panel_present(normal, interior) or panel_present(normal, outside):
+                raise RuntimeError('maximize restore did not restore original bounds')
+            window_click(1040, 94)
+            closed = window_snapshot('boot-log-closed')
+            if panel_present(closed, interior):
+                raise RuntimeError('close did not remove the viewer')
+            text = serial.read_text(errors='replace')
+            if re.search(r'panic|^EXCEPTION:|TEST: FAIL|general protection|retirement uncertain',
+                         text, flags=re.IGNORECASE | re.MULTILINE):
+                raise RuntimeError('fault during viewer window controls; see serial.log')
+            print('BOOT LOG WINDOW PASS: minimize, taskbar restore, maximize, restore, close.', flush=True)
+        # Hub enumeration traces are optional production diagnostics. With
+        # i8042 disabled, the pointer pixel test and subsequent keyboard-driven
+        # app responses below must succeed through the configured USB hub.
+        if args.without_ps2:
+            wait_for('ps2: controller unavailable (status FF); skipping')
+            # The first asynchronous frame can be the renderer-startup splash
+            # (the Vulkan build tries GPU startup before software); the
+            # baseline must be the drawn desktop.
+            # Mesa-composited or CPU-fallback desktop, whichever drew.
+            wait_for(('desktop: physical output client drawing active',
+                      'desktop: software rendering ('))
+            from PIL import Image
+            from input_pixels import check_usb_pointer
+
+            def input_snapshot(name):
+                path = run / f'{name}.ppm'
+                hmp(f'screendump {path}')
+                with Image.open(path) as frame:
+                    return frame.convert('RGB')
+
+            def input_healthy():
+                if process.poll() is not None:
+                    raise RuntimeError('VM exited during USB input check')
+                text = serial.read_text(errors='replace')
+                if re.search(r'panic|^EXCEPTION:|TEST: FAIL|general protection',
+                             text, flags=re.IGNORECASE | re.MULTILINE):
+                    raise RuntimeError('native fault during USB input check')
+
+            check_usb_pointer(hmp, input_snapshot, input_healthy)
+            print('NO PS2 PASS: USB pointer opened and closed Apps twice', flush=True)
+            if not args.usb_hub:
+                sys.exit(0)
+        if args.sparse_apic_ids:
+            boot_log = serial.read_text(errors='replace')
+            for logical, apic in [(1, 1), (2, 2), (3, 4), (4, 5), (5, 6)]:
+                if f'SMP start logical= {logical} apic= {apic}' not in boot_log:
+                    raise RuntimeError('sparse APIC destination missing; see serial.log')
+                if f'SMP ready logical= {logical} apic= {apic}' not in boot_log:
+                    raise RuntimeError('secondary CPU acknowledgment missing; see serial.log')
+            print('SPARSE APIC PASS: all six CPUs started with firmware destinations', flush=True)
+        if args.pit_free_fixture:
+            clock_log = serial.read_text(errors='replace')
+            if ('BOOT-CLOCK: CPUID.15 TSC; PIT interrupts not required' not in clock_log or
+                    'APIC timer calibration:' not in clock_log or
+                    'Setting up PIT and enabling timer interrupts' in clock_log):
+                raise RuntimeError('Did not take the PIT-independent timer path')
+            print('PIT-FREE TIMER PASS: no PIT device, CPUID cache fixture, real LAPIC delivery',
+                  flush=True)
+        if args.invalid_clock_fixture:
+            clock_log = serial.read_text(errors='replace')
+            if ('PIT interrupts received; TSC calibrated' not in clock_log or
+                    'BOOT-CLOCK: CPUID.15' in clock_log):
+                raise RuntimeError('Invalid CPU clock information did not select PIT fallback')
+            print('INVALID CPU CLOCK PASS: rejected zero denominator; PIT fallback booted',
+                  flush=True)
+        if args.boot_logs:
+            wait_for('boot-logs: window ready')
+            wait_for(r're:boot-logs: xhci: \S+ bring-up complete')
+            wait_for(r're:boot-logs: xhci: logstore attached after \d+ ms; captured \d+ lines, lost 0')
+            hmp(f'screendump {run}/boot-logs.ppm')
+            print('BOOT LOGS PASS: viewer opened and replayed USB startup without capture losses.', flush=True)
+        if args.boot_logs_menu:
+            before = serial.read_text(errors='replace')
+            windows = before.count('boot-logs: window ready')
+            replays = len(re.findall(r'boot-logs: xhci: \S+ bring-up complete', before))
+            launch('Boot Diagnostics')
+            wait_for('boot-logs: window ready', windows + 1)
+            wait_for(r're:boot-logs: xhci: \S+ bring-up complete', replays + 1)
+            hmp(f'screendump {run}/boot-logs-menu.ppm')
+            print('BOOT LOGS MENU PASS: Apps launched a new viewer with log read authority and replay.', flush=True)
+        time.sleep(2)
+        hmp(f'screendump {run}/desktop.ppm')
+        if args.taskbar or args.ccl_ui_hooks or args.ccl_samples:
+            from PIL import Image, ImageChops
+            width, height = Image.open(run / 'desktop.ppm').size
+
+            def move_relative(dx, dy):
+                while dx or dy:
+                    x = max(-80, min(80, dx))
+                    y = max(-80, min(80, dy))
+                    hmp(f'mouse_move {x} {y}')
+                    dx -= x; dy -= y
+                    time.sleep(0.04)
+
+            def move_to(x, y):
+                move_relative(-width * 2, -height * 2)
+                move_relative(x, y)
+                time.sleep(0.15)
+
+            def click():
+                hmp('mouse_button 1'); time.sleep(0.15)
+                hmp('mouse_button 0'); time.sleep(0.25)
+
+            def screenshot(name):
+                time.sleep(0.3)
+                path = run / f'{name}.ppm'
+                hmp(f'screendump {path}')
+                return Image.open(path).convert('RGB')
+
+        if args.taskbar:
+            wait_for('clock: RTC-derived UTC ready')
+            move_to(0, 0)
+            original = screenshot('wallpaper-clean')
+            move_to(width - 130, height - 18); click()
+            screenshot('master-popup')
+            key('esc')
+            move_to(0, 0)
+            restored = screenshot('wallpaper-restored')
+            # The clock may tick during a slow run; compare desktop artwork,
+            # excluding only the taskbar. Menu/cursor damage must be exact.
+            diff = ImageChops.difference(original, restored).crop((0, 0, width, height - 36))
+            if diff.getbbox() is not None:
+                diff.save(run / 'wallpaper-damage.png')
+                raise RuntimeError('popup/cursor left wallpaper damage')
+            print('WALLPAPER DAMAGE PASS: popup and pointer restore exact background.', flush=True)
+        if args.sameboy:
+            launch('SameBoy')
+            wait_for('sameboy: loaded ROM 00')
+            if args.without_audio:
+                wait_for('sameboy: mixer unavailable; continuing silently')
+            wait_for('sameboy: 120 emulated frames')
+            if args.sameboy_audio:
+                wait_for('sameboy: native audio started')
+                measurements = {}
+
+                def measure(name):
+                    # File offsets measure actual captured PCM, not guest/host
+                    # clock synchronization. Trim transitions and backend buffering.
+                    time.sleep(0.5)
+                    path = run / 'audio.wav'
+                    begin = path.stat().st_size
+                    time.sleep(2)
+                    end = path.stat().st_size
+                    payload = path.read_bytes()[begin:end]
+                    if name == 'paused' and not payload:
+                        # Stopping the final stream stops HDA and QEMU's WAV
+                        # producer, rather than writing endless silent frames.
+                        measurements[name] = 0.0
+                        return
+                    samples = array.array('h', payload[:len(payload)//4*4])
+                    if sys.byteorder != 'little':
+                        samples.byteswap()
+                    samples = samples[::2][4800:-4800]
+                    if len(samples) < 48000:
+                        raise RuntimeError(f'{name}: missing captured audio frames')
+                    measurements[name] = math.sqrt(sum(x*x for x in samples)/len(samples))
+
+                measure('volume_70')
+                if args.taskbar:
+                    # Ten system-volume key presses must halve final PCM,
+                    # without changing the application's own 70% stream gain.
+                    for _ in range(10): key('volumedown')
+                    measure('master_50')
+                    key('audiomute'); measure('master_muted')
+                    key('audiomute')
+                    for _ in range(10): key('volumeup')
+                    measure('master_restored')
+                    base = measurements['volume_70']
+                    if not 0.45 < measurements['master_50'] / base < 0.55:
+                        raise RuntimeError('master-volume keys did not halve PCM')
+                    if measurements['master_muted'] > 1:
+                        raise RuntimeError('master mute did not silence PCM')
+                    if not 0.9 < measurements['master_restored'] / base < 1.1:
+                        raise RuntimeError('master volume did not recover')
+                    # Also exercise the actual taskbar slider, not just keys.
+                    move_to(width - 130, height - 18); click()
+                    move_to(width - 128, height - 102); click()
+                    measure('master_slider_50')
+                    if not 0.43 < measurements['master_slider_50'] / base < 0.57:
+                        raise RuntimeError('taskbar slider did not change mixer gain')
+                    screenshot('master-slider-50')
+                    key('esc')
+                    for _ in range(11): key('volumeup')
+                    print('MASTER AUDIO PASS: media keys, mute and native popup slider.', flush=True)
+                for _ in range(7):
+                    key('f9')
+                wait_for('sameboy: volume=35 mute=0')
+                measure('volume_35')
+                key('f8')
+                wait_for('sameboy: volume=35 mute=1')
+                measure('muted')
+                key('f8')
+                measure('unmuted_35')
+                for _ in range(7):
+                    key('f10')
+                measure('restored_70')
+                key('p')
+                measure('paused')
+                key('p')
+                measure('resumed_70')
+                (run / 'sameboy-audio.json').write_text(json.dumps(measurements, indent=2))
+                baseline = measurements['volume_70']
+                if baseline < 100:
+                    raise RuntimeError('SameBoy test tone is silent')
+                for name in ('volume_35', 'unmuted_35'):
+                    if not 0.45 < measurements[name]/baseline < 0.55:
+                        raise RuntimeError(f'{name}: volume scaling failed')
+                for name in ('muted', 'paused'):
+                    if measurements[name] > 1:
+                        raise RuntimeError(f'{name}: expected silence')
+                for name in ('restored_70', 'resumed_70'):
+                    if not 0.9 < measurements[name]/baseline < 1.1:
+                        raise RuntimeError(f'{name}: playback did not recover')
+                if 'audio stalled/overflowed' in serial.read_text(errors='replace'):
+                    raise RuntimeError('SameBoy audio fell back to silence')
+                print('SAMEBOY AUDIO PASS: tone, volume ratio, mute, pause and resume.', flush=True)
+            time.sleep(4)
+            key('p')
+            hmp(f'screendump {run}/sameboy-before.ppm')
+            key('p')
+            hmp('sendkey right 500')
+            time.sleep(1)
+            key('p')
+            hmp(f'screendump {run}/sameboy-after.ppm')
+            if (run / 'sameboy-before.ppm').read_bytes() == (run / 'sameboy-after.ppm').read_bytes():
+                raise RuntimeError('SameBoy framebuffer did not respond to Right input')
+            if args.sameboy_local_rom:
+                key('f2')
+                wait_for('sameboy: loaded ROM 01')
+                time.sleep(12)
+                hmp(f'screendump {run}/sameboy-local-intro.ppm')
+                key('ret')
+                time.sleep(2)
+                hmp(f'screendump {run}/sameboy-local-start.ppm')
+                key('ret')
+                time.sleep(2)
+                for _ in range(6):
+                    key('x')
+                    time.sleep(0.5)
+                hmp(f'screendump {run}/sameboy-local-game.ppm')
+                print('LOCAL CARTRIDGE: loaded ROM 01; inspect intro/start/game screenshots.', flush=True)
+                if args.sameboy_second_local_rom:
+                    key('f2')
+                    wait_for('sameboy: loaded ROM 02')
+                    time.sleep(5)
+                    hmp(f'screendump {run}/sameboy-second-local.ppm')
+                    key('ret')
+                    time.sleep(3)
+                    hmp(f'screendump {run}/sameboy-second-local-start.ppm')
+                    print('LOCAL CARTRIDGE: loaded ROM 02; inspect screenshots.', flush=True)
+            if args.sameboy_audio and not args.sameboy_local_rom:
+                key('p')  # Exit from running audio, not an already closed pause.
+                time.sleep(1)
+            key('esc')
+            wait_for('sameboy: clean exit')
+            if args.sameboy_audio:
+                time.sleep(0.5)
+                stopped_size = (run / 'audio.wav').stat().st_size
+                time.sleep(1)
+                if (run / 'audio.wav').stat().st_size != stopped_size:
+                    raise RuntimeError('SameBoy exit left the audio hardware running')
+                print('SAMEBOY AUDIO CLOSE PASS: final stream stopped hardware.', flush=True)
+            print('SAMEBOY PASS: cartridge read from USB CD, frames and keyboard response, clean exit.', flush=True)
+        launch('DOOM')
+        wait_for('doom.elf')
+        for _ in range(100):
+            hmp('mouse_move 2 1')
+            hmp('mouse_move -2 -1')
+            time.sleep(0.02)
+        time.sleep(5)
+        hmp(f'screendump {run}/doom-title.ppm')
+        key('ret'); key('ret'); key('ret')
+        time.sleep(5)
+        hmp(f'screendump {run}/doom-game.ppm')
+        wait_for('DOOM: Running inside desktop surface')
+        launch('CCL Workbench')
+        wait_for('ccl-workbench: native window ready')
+        time.sleep(2)
+        hmp(f'screendump {run}/workbench.ppm')
+        if args.config:
+            wait_for('CONFIG-STORAGE: volatile live session (no reboot persistence)')
+            wait_for('CONFIG-STORAGE: ready')
+
+            def run_ccl(source, completed):
+                key('ctrl-a')
+                mapping = {'(': 'shift-9', ')': 'shift-0', ' ': 'spc',
+                           '-': 'minus', '.': 'dot', '=': 'equal', '/': 'slash'}
+                for char in source:
+                    code = 'shift-' + char.lower() if char.isupper() else mapping.get(char, char)
+                    reply = hmp(f'sendkey {code} 10')
+                    if reply.strip():
+                        raise RuntimeError('rejected source key: ' + reply)
+                    time.sleep(0.035)
+                key('ctrl-f5')
+                marker = 'ccl-workbench: bytecode completed'
+                while time.monotonic() < deadline and process.poll() is None:
+                    if serial.read_text(errors='replace').count(marker) >= completed:
+                        break
+                    time.sleep(0.1)
+                else:
+                    raise RuntimeError('Config bytecode did not complete')
+                time.sleep(1)
+                hmp(f'screendump {run}/config-{completed}.ppm')
+
+            write = '(let ((c (config-values.open))) (let ((r (config-values.read c))) (let ((w (config-values.write c 42))) (let ((closed (config-values.close c))) w))))'
+            read = ' '.join(line.strip() for line in
+                           (root / 'userspace/ccl/samples/config-counter-read.ccl').read_text().splitlines()
+                           if not line.lstrip().startswith('#'))
+            run_ccl(write, 1)
+            run_ccl(f'(let ((observed {read})) (if (= observed 42) observed (/ 1 0)))', 2)
+            print('CONFIG LIVE PASS: native Workbench/IPC/Turso write and asserted read42; volatile session.', flush=True)
+        if args.ccl_samples:
+            key('ctrl-o')
+            screenshot('ccl-sample-picker')
+            # The demo workspace places button-clock first. No source typing
+            # or mock file reads: native directory enumeration and FS IPC.
+            key('ret')
+            wait_for('ccl-workbench: workspace opened button-clock.ccl')
+            screenshot('ccl-sample-loaded')
+            key('f5')
+            registered = screenshot('ccl-sample-registered')
+            move_to(540, 162); click(); move_to(0, 0)
+            clicked = screenshot('ccl-sample-clicked')
+            label_bounds = (610, 149, 1000, 176)
+            if ImageChops.difference(registered.crop(label_bounds),
+                                     clicked.crop(label_bounds)).getbbox() is None:
+                raise RuntimeError('loaded clock sample did not update its label on click')
+            print('CCL SAMPLE PASS: file-picker load from live workspace, registration and clock callback.', flush=True)
+            # Close registration before other optional callback tests.
+            move_to(322, 162); click(); move_to(0, 0)
+        if args.ccl_ui_hooks:
+            key('f6')
+            def repl_command(source):
+                for ch in source:
+                    key({'(': 'shift-9', ')': 'shift-0', '.': 'dot',
+                         '-': 'minus', ' ': 'spc', '"': 'shift-apostrophe'}.get(
+                             ch, 'shift-' + ch.lower() if ch.isupper() else ch))
+                key('ret')
+                time.sleep(1)
+            repl_command('(ui.label-value 42)')
+            hmp(f'screendump {run}/ccl-label.ppm')
+            repl_command('(ui.label-visible false)')
+            repl_command('(clock.monotonic-ms)')
+            hmp(f'screendump {run}/ccl-clock-repl.ppm')
+            repl_command('(define (greet (name String)) String (concat "hello " name)) '
+                         '(ui.label-text (greet "cubit"))')
+            hmp(f'screendump {run}/ccl-text-label.ppm')
+            if serial.read_text(errors='replace').count('ccl-workbench: REPL completed') < 4:
+                raise RuntimeError('native REPL did not complete all four submissions')
+            repl_command('(define (clicked) Boolean (ui.label-text "Clicked!")) '
+                         '(ui.button-on-click (handler clicked))')
+            registered = screenshot('ccl-button-registered')
+            # Workbench's native client origin is (120, 124); the shared
+            # button is at client (366, 25); Desktop owns native title chrome.
+            move_to(540, 162)
+            click()
+            move_to(0, 0)
+            clicked = screenshot('ccl-button-clicked')
+            label_bounds = (610, 149, 1000, 176)
+            if ImageChops.difference(registered.crop(label_bounds),
+                                     clicked.crop(label_bounds)).getbbox() is None:
+                raise RuntimeError('native CCL button click did not change its label')
+            print('CCL BUTTON PASS: native input dispatched retained CCL and repainted its label.', flush=True)
+        launch('Files')
+        wait_for('files: native window ready')
+        time.sleep(2)
+        hmp(f'screendump {run}/files.ppm')
+        if args.apps:
+            # The apps on the live disc (docs/calculator.md, docs/lexicon.md):
+            # lexicon.svc reads its image from the disc's asset package.
+            wait_for('lexicon: image loaded')
+            key('meta_l')
+            for _ in range(menu_rows.index('Tools')):
+                key('down')
+            key('right')
+            time.sleep(1)
+            hmp(f'screendump {run}/apps-menu-tools.ppm')
+            key('left')
+            key('esc')
+            typed = {'Calculator': ['1', 'slash', '7', 'ret'],
+                     'Dictionary': ['w', 'h', 'a', 'r', 'f', 'ret']}
+            for label in ('Calculator', 'Dictionary'):
+                launch(label)
+                wait_for(f'{label.lower()}: window ready')
+                time.sleep(1)
+                for name in typed[label]:
+                    key(name)
+                time.sleep(2)
+                hmp(f'screendump {run}/{label.lower()}.ppm')
+            if 'calculator: evaluated 1/7' not in serial.read_text(errors='replace'):
+                raise RuntimeError('Calculator did not evaluate typed input')
+            print('APPS LIVE PASS: Calculator and Dictionary launched from the disc; inspect screenshots.',
+                  flush=True)
+        if args.servo:
+            launch('Penny')
+            wait_for('CUBITSHELL: desktop window')
+            wait_for('CUBITSHELL: PASS')
+            time.sleep(2)
+            hmp(f'screendump {run}/servo.ppm')
+            print('SERVO LIVE PASS: native optical load and rendered built-in page; inspect screenshot.', flush=True)
+        if args.teapots:
+            launch('Teapots')
+            wait_for('teapots: canvas ')
+            time.sleep(2)
+            hmp(f'screendump {run}/teapots.ppm')
+            text = serial.read_text(errors='replace')
+            # QEMU has no Intel GPU: the canvas must report Unavailable and
+            # draw its placeholder, never fail.
+            if 'teapots: canvas failed' in text:
+                raise RuntimeError('teapot gallery canvas failed')
+            key('esc')
+            wait_for('teapots: closed')
+            print('TEAPOTS LIVE PASS: optical Apps launch, canvas state logged, close; inspect screenshot.', flush=True)
+        if args.settings:
+            launch('Settings')
+            time.sleep(1)
+            hmp(f'screendump {run}/settings-light.ppm')
+            key('tab'); key('ret')  # Select Alloy Dark, still only a preview.
+            # On to Apply: Slate, Ocean, the wallpaper list and its Up/Down,
+            # Fill, Fit, Center (Desktop_Settings.Control order).
+            for _ in range(9): key('tab')
+            key('ret')
+            wait_for('desktop: appearance applied')
+            time.sleep(2)
+            hmp(f'screendump {run}/settings-dark.ppm')
+            from PIL import Image
+            light = Image.open(run / 'settings-light.ppm').convert('RGB')
+            dark = Image.open(run / 'settings-dark.ppm').convert('RGB')
+            # Shared Alloy taskbar face changes, not just the Settings preview.
+            point = (light.width // 2, light.height - 2)
+            if light.getpixel(point) == dark.getpixel(point):
+                raise RuntimeError('Settings Apply did not change desktop theme')
+            if dark.getpixel(point) != (48, 58, 66):
+                raise RuntimeError(f'wrong dark taskbar color: {dark.getpixel(point)}')
+            if dark.getpixel((800, 600)) != (35, 44, 51):
+                raise RuntimeError('existing Files client did not repaint with the dark palette')
+            if serial.read_text(errors='replace').count('desktop: CCL theme loaded') < 4:
+                raise RuntimeError('missing startup and Apply CCL theme-loading evidence')
+            # Apply currently has focus. Select the solid Ocean background
+            # (back over Center, Fit, Fill, the wallpaper list's Down/Up and
+            # the list), then apply it live.
+            for _ in range(7): key('shift-tab')
+            key('ret')
+            for _ in range(7): key('tab')
+            key('ret')
+            time.sleep(2)
+            hmp(f'screendump {run}/settings-ocean.ppm')
+            ocean = Image.open(run / 'settings-ocean.ppm').convert('RGB')
+            background = (dark.width - 10, 10)
+            if ocean.getpixel(background) == dark.getpixel(background):
+                raise RuntimeError('Ocean Apply did not change the wallpaper')
+            if ocean.getpixel(point) != dark.getpixel(point):
+                raise RuntimeError('wallpaper change unexpectedly changed the theme')
+            # Reopen an already-running Workbench to inspect its repainted UI.
+            key('meta_l'); key('ret')
+            time.sleep(2)
+            hmp(f'screendump {run}/workbench-dark.ppm')
+            print('SETTINGS PASS: keyboard selection, Apply, live palette and Ocean background.', flush=True)
+        if args.eject:
+            qmp('eject', {'device': 'cd', 'force': True})
+            launch('Devices')
+            # A fresh Devices launch must need directory/image reads. The
+            # storage session is invalidated, but the mouse must remain live.
+            removal_deadline = time.monotonic() + 10
+            while time.monotonic() < removal_deadline:
+                if 'storage transport quarantined' in serial.read_text(errors='replace'):
+                    break
+                time.sleep(0.1)
+            else:
+                raise RuntimeError('removed media did not invalidate storage session')
+            for index in range(320):
+                hmp('mouse_move 2 1' if index % 2 else 'mouse_move -2 -1')
+                if index % 32 == 0:
+                    hmp('mouse_button 1')
+                if index % 32 == 16:
+                    hmp('mouse_button 0')
+                time.sleep(0.02)
+            hmp('mouse_button 0')
+            time.sleep(2)
+            hmp(f'screendump {run}/media-removed.ppm')
+        text = serial.read_text(errors='replace')
+        required = ['FS: native USB ISO9660 apps mounted',
+                    'devmgr: loaded from filesystem: procmgr.svc',
+                    # HW-002: devmgr bound the devices by the driver index.
+                    'devmgr: drivers bound to',
+                    'desktop: display info ready']
+        if not args.quiet_xhci:
+            for pattern in (r'xhci: \S+ optical LUN=', r'xhci: \S+ stage reset ok',
+                            r'xhci: \S+ stage handoff ok'):
+                if not re.search(pattern, text):
+                    raise RuntimeError(f'missing xHCI bring-up evidence: {pattern}')
+        if not all(marker in text for marker in required):
+            raise RuntimeError('missing native optical boot evidence')
+        if args.ufs and ('ufs: bring-up complete' not in text
+                         or 'ufs: stage partitions ok gpt n=4' not in text):
+            raise RuntimeError('UFS bring-up incomplete; see serial.log')
+        if args.without_audio:
+            # Without a device capability, sysinfo may itself deny the
+            # physical-address query; mapping rejection is also a safe exit.
+            if not any(marker in text for marker in (
+                    'hda: missing controller/DMA allocation',
+                    'hda: controller mapping failed')):
+                raise RuntimeError('missing HDA absence diagnostic')
+            if 'hda: no usable output, exiting' not in text:
+                raise RuntimeError('missing HDA failure handshake')
+            if 'hda: registered, entering service loop' in text:
+                raise RuntimeError('absent HDA was incorrectly registered')
+        if any(marker in text for marker in ['EXCEPTION', 'PANIC']):
+            raise RuntimeError('native fault; see serial.log')
+        if not args.eject and 'storage transport quarantined' in text:
+            raise RuntimeError('unexpected storage failure')
+        if args.eject:
+            after = text.split('storage transport quarantined', 1)[1]
+            if 'FS Server: ATA driver not registered' in after or 'FS: file not found' in after:
+                raise RuntimeError('failed CD lookup incorrectly fell through to writable backends')
+            if 'procmgr: OP_OPEN failed' not in after or 'Loaded module devices.app' in after:
+                raise RuntimeError('Devices launch did not fail closed after removal')
+            counters = re.findall(r'xhci: \S+ stats events=(\d+) reports=(\d+) motion=(\d+) buttons=(\d+) errors=(\d+)', after)
+            if not counters or int(counters[-1][1]) < 330 or int(counters[-1][3]) < 8 or int(counters[-1][4]) != 0:
+                raise RuntimeError('mouse did not remain healthy after optical removal')
+            print('USB MEDIA REMOVAL PASS: storage fails closed, HID remains live.', flush=True)
+        print('USB LIVE BOOT PASS; inspect DOOM screenshots for rendering/gameplay.', flush=True)
+    finally:
+        if connection is not None:
+            connection.close()
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()

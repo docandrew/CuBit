@@ -1,0 +1,13 @@
+project Shared_Copies is
+   for Source_Dirs use (".", "../../userspace/services/filesystem", "../../userspace/lib/partitions",
+     "../../userspace/runtime/gnat");
+   for Source_Files use ("shared_copies_tests.adb", "cubit.ads", "cubit-shared_copies.ads",
+     "cubit-shared_copies.adb", "iso_records.ads", "iso_records.adb",
+     "partition_tables.ads", "partition_tables.adb");
+   for Object_Dir use external ("SEC025_OBJECT_DIR", "build");
+   for Exec_Dir use external ("SEC025_OBJECT_DIR", "build");
+   for Main use ("shared_copies_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+   end Compiler;
+end Shared_Copies;

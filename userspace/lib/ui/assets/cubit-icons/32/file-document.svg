@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="paper" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ebeef6"/></linearGradient>
+</defs>
+<g fill="#1d1530" stroke="#1d1530" stroke-width="4" stroke-linejoin="round">
+  <path d="M5 2 L17 2 L25 10 L25 27 L5 27Z" transform="translate(2 2)"/>
+  <path d="M5 2 L17 2 L25 10 L25 27 L5 27Z" transform="translate(1 1)"/>
+  <path d="M5 2 L17 2 L25 10 L25 27 L5 27Z"/>
+</g>
+<path d="M5 2 L17 2 L25 10 L25 27 L5 27Z" fill="#959db3" transform="translate(2 2)"/>
+<path d="M5 2 L17 2 L25 10 L25 27 L5 27Z" fill="#959db3" transform="translate(1 1)"/>
+<path d="M5 2 L17 2 L25 10 L25 27 L5 27Z" fill="url(#paper)"/>
+<path d="M17 2 L17 10 L25 10Z" fill="#c6cddd"/>
+<path d="M17 2 L17 10 L25 10" fill="none" stroke="#1d1530" stroke-width="1" stroke-linecap="butt" opacity="0.45"/>
+<path d="M9 6 L16 6 L16 8 L9 8Z" fill="#3b1e96"/>
+<path d="M9 11.5 L21 11.5" fill="none" stroke="#5a32d6" stroke-width="1" stroke-linecap="butt"/>
+<path d="M9 14.5 L21 14.5" fill="none" stroke="#5a32d6" stroke-width="1" stroke-linecap="butt"/>
+<path d="M9 17.5 L21 17.5" fill="none" stroke="#5a32d6" stroke-width="1" stroke-linecap="butt"/>
+<path d="M9 20.5 L17 20.5" fill="none" stroke="#5a32d6" stroke-width="1" stroke-linecap="butt"/>
+</svg>

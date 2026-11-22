@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-data64-normalized-EWKpNeKx/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-data64-normalized-EWKpNeKx/source/tests/aml-index-data64/results/release-yacvgzsf",
+  "mode": "release",
+  "inputs": 231,
+  "references": 16,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 315,
+  "stages": 2,
+  "logs": {
+    "index_width_tests": "Index width checks 496"
+  },
+  "ALI": 77,
+  "dependencies": 1061,
+  "strict_commands": 76,
+  "audit_sha256": "47f50dde4f97154b4d1c214de7253284f5dbea03cf0850c480fb3383f45be446",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

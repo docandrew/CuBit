@@ -1,0 +1,23 @@
+Phase 1 of 3: generation of data representation information ...
+Phase 2 of 3: generation of Global contracts ...
+Phase 3 of 3: flow analysis and proof ...
+Summary logged in /home/doc/cubit-build-tmp/ec-field-proof-p8RmCV/aml_field_plans-level2/obj/gnatprove/gnatprove.out
+aml_field_plans.adb:24:07: info: initialization of "Width" proved
+aml_field_plans.adb:25:07: info: initialization of "Update" proved
+aml_field_plans.adb:26:07: info: initialization of "Datums" proved
+aml_field_plans.adb:74:49: info: range check proved
+aml_field_plans.adb:79:23: info: precondition proved
+aml_field_plans.adb:79:86: info: range check proved
+aml_field_plans.adb:86:53: info: precondition proved
+aml_field_plans.adb:102:48: info: division check proved
+aml_field_plans.adb:102:81: info: range check proved
+aml_field_plans.ads:19:13: info: implicit aspect Always_Terminates on "Valid" has been proved, subprogram will terminate
+aml_field_plans.ads:20:13: info: implicit aspect Always_Terminates on "Count" has been proved, subprogram will terminate
+aml_field_plans.ads:21:13: info: implicit aspect Always_Terminates on "Prepare" has been proved, subprogram will terminate
+aml_field_plans.ads:22:20: info: postcondition proved
+aml_field_plans.ads:23:13: info: implicit aspect Always_Terminates on "Rule" has been proved, subprogram will terminate
+aml_field_plans.ads:24:13: info: implicit aspect Always_Terminates on "Datum_At" has been proved, subprogram will terminate
+aml_field_plans.ads:27:13: info: implicit aspect Always_Terminates on "Matches" has been proved, subprogram will terminate
+aml_field_plans.ads:30:13: info: implicit aspect Always_Terminates on "Result_Form" has been proved, subprogram will terminate
+aml_field_plans.ads:32:13: info: implicit aspect Always_Terminates on "Buffer_Length" has been proved, subprogram will terminate
+aml_field_plans.ads:33:41: info: postcondition proved

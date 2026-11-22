@@ -1,0 +1,539 @@
+------------------------------------------------------------------------------
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--
+--  @summary
+--  Small immediate-mode UI drawing primitives for user surfaces
+------------------------------------------------------------------------------
+with Interfaces; use Interfaces;
+with System;
+with CuBit.Theme;
+with CuBit.Appearance;
+with Client_Canvas_Geometry;
+with CuBit.UI_Metrics;
+with CuBit.UI_Masking;
+
+package CuBit.UI is
+   use type CuBit.Appearance.Color_Scheme;
+   subtype Color is Unsigned_32;
+
+   type Rect is record
+      x : Natural := 0;
+      y : Natural := 0;
+      w : Natural := 0;
+      h : Natural := 0;
+   end record;
+
+   type Canvas is record
+      addr : System.Address := System.Null_Address;
+      width : Natural := 0;
+      height : Natural := 0;
+      pitch : Natural := 0;
+      -- Logical geometry; pitch and address always describe physical storage.
+      -- Fills, bitmaps, font masks and nested views share this density.
+      -- Applications must still obtain a configured physical buffer.
+      densityNumerator, densityDenominator : Client_Canvas_Geometry.Component := 1;
+      originX, originY : Client_Canvas_Geometry.Logical_Edge := 0;
+      clipEnabled : Boolean := False;
+      clip : Rect := (others => 0);
+      -- Optional hit geometry independent of the current repaint clip.
+      inputClipEnabled : Boolean := False;
+      inputClip : Rect := (others => 0);
+   end record;
+
+   subtype Theme_Color is Color range 0 .. 16#FFFFFF#;
+   type Theme is record
+      desktop : Theme_Color := 16#2D3343#;
+      panel   : Theme_Color := 16#343B4D#;
+      face    : Theme_Color := 16#3D465C#;
+      edge    : Theme_Color := 16#596172#;
+      shadow  : Theme_Color := 16#1F2430#;
+      text    : Theme_Color := 16#D9DEE8#;
+      muted   : Theme_Color := 16#9AA5B5#;
+      accent  : Theme_Color := 16#FFCC66#;
+      good    : Theme_Color := 16#95E6CB#;
+      danger  : Theme_Color := 16#F28779#;
+      field   : Theme_Color := 16#FFFFFF#;
+      selection : Theme_Color := 16#000080#;
+      selectionText : Theme_Color := 16#FFFFFF#;
+      highlight : Theme_Color := 16#FFFFFF#;
+      darkShadow : Theme_Color := 16#404040#;
+      activeTitleTop : Theme_Color := 16#4D668F#;
+      activeTitleBottom : Theme_Color := 16#343B4D#;
+      inactiveTitleTop : Theme_Color := 16#596172#;
+      inactiveTitleBottom : Theme_Color := 16#343B4D#;
+      --  The window title bar and the client menu bar continuing it
+      --  (CuBit.UI.Window_Chrome), and the menu bar's bottom edge.
+      titleBar : Theme_Color := 16#343B4D#;
+      menuRule : Theme_Color := 16#596172#;
+   end record;
+
+   Mirage : constant Theme :=
+     (desktop => 16#2D3343#,
+      panel   => 16#343B4D#,
+      face    => 16#3D465C#,
+      edge    => 16#596172#,
+      shadow  => 16#1F2430#,
+      text    => 16#D9DEE8#,
+      muted   => 16#9AA5B5#,
+      accent  => 16#FFCC66#,
+      good    => 16#95E6CB#,
+      danger  => 16#F28779#,
+      field => 16#343B4D#,
+      selection => 16#4D668F#,
+      selectionText => 16#FFFFFF#,
+      highlight => 16#596172#,
+      darkShadow => 16#151923#,
+      activeTitleTop => 16#4D668F#,
+      activeTitleBottom => 16#343B4D#,
+      inactiveTitleTop => 16#596172#,
+      inactiveTitleBottom => 16#343B4D#,
+      titleBar => 16#343B4D#,
+      menuRule => 16#596172#);
+
+   Classic : constant Theme :=
+     (desktop => CuBit.Theme.Desktop,
+      panel   => CuBit.Theme.Panel,
+      face    => CuBit.Theme.Face,
+      edge    => CuBit.Theme.Edge,
+      shadow  => CuBit.Theme.Shadow,
+      text    => CuBit.Theme.Text,
+      muted   => CuBit.Theme.Muted,
+      accent  => CuBit.Theme.Accent,
+      good    => CuBit.Theme.Good,
+      danger  => CuBit.Theme.Danger,
+      field => CuBit.Theme.Face,
+      selection => CuBit.Theme.Accent,
+      selectionText => CuBit.Theme.White,
+      highlight => CuBit.Theme.White,
+      darkShadow => CuBit.Theme.Desktop,
+      activeTitleTop => CuBit.Theme.Accent,
+      activeTitleBottom => CuBit.Theme.Accent,
+      inactiveTitleTop => CuBit.Theme.Panel,
+      inactiveTitleBottom => CuBit.Theme.Panel,
+      titleBar => CuBit.Theme.Face,
+      menuRule => CuBit.Theme.Edge);
+
+   CuBit_Classic : constant Theme :=
+     (desktop => 16#808080#,
+      panel => 16#C0C0C0#,
+      face => 16#C0C0C0#,
+      edge => 16#DFDFDF#,
+      shadow => 16#808080#,
+      text => 16#000000#,
+      muted => 16#404040#,
+      accent => 16#000080#,
+      good => 16#006000#,
+      danger => 16#A00000#,
+      field => 16#FFFFFF#,
+      selection => 16#000080#,
+      selectionText => 16#FFFFFF#,
+      highlight => 16#FFFFFF#,
+      darkShadow => 16#404040#,
+      activeTitleTop => 16#000080#,
+      activeTitleBottom => 16#000080#,
+      inactiveTitleTop => 16#808080#,
+      inactiveTitleBottom => 16#808080#,
+      titleBar => 16#C0C0C0#,
+      menuRule => 16#808080#);
+
+   CuBit_Alloy : constant Theme :=
+     (desktop => 16#545D63#,
+      panel => 16#D1D5D7#,
+      face => 16#D1D5D7#,
+      edge => 16#E6E9EA#,
+      shadow => 16#899298#,
+      text => 16#172026#,
+      muted => 16#4F5B64#,
+      accent => 16#2E7180#,
+      good => 16#39795A#,
+      danger => 16#A74949#,
+      field => 16#FFFFFF#,
+      selection => 16#28788A#,
+      selectionText => 16#FFFFFF#,
+      highlight => 16#F5F7F8#,
+      darkShadow => 16#424A50#,
+      activeTitleTop => 16#47768E#,
+      activeTitleBottom => 16#294E68#,
+      inactiveTitleTop => 16#AAB1B5#,
+      inactiveTitleBottom => 16#8D969C#,
+      titleBar => 16#F4F6F8#,
+      menuRule => 16#D3D8DE#);
+
+   CuBit_Alloy_Dark : constant Theme :=
+     (desktop => 16#20282E#, panel => 16#303A42#, face => 16#303A42#,
+      edge => 16#53616B#, shadow => 16#1C242A#, text => 16#E7ECEF#,
+      muted => 16#ACBAC3#, accent => 16#69B2C1#, good => 16#81C7A3#,
+      danger => 16#F09187#, field => 16#232C33#, selection => 16#306B7D#,
+      selectionText => 16#FFFFFF#, highlight => 16#63727D#,
+      darkShadow => 16#151C21#, activeTitleTop => 16#416A80#,
+      activeTitleBottom => 16#233E53#, inactiveTitleTop => 16#414D57#,
+      inactiveTitleBottom => 16#2E3942#, titleBar => 16#2B343B#,
+      menuRule => 16#3A454E#);
+
+   function Default_Palette (Scheme : CuBit.Appearance.Color_Scheme) return Theme is
+     (if Scheme = CuBit.Appearance.Alloy_Light then CuBit_Alloy
+      else CuBit_Alloy_Dark);
+   function Palette (Scheme : CuBit.Appearance.Color_Scheme) return Theme;
+   procedure Install_Palette (Scheme : CuBit.Appearance.Color_Scheme; Value : Theme);
+   --  Native harness updates this only on the application's UI dispatch thread.
+   --  Explicit palettes remain available for custom-themed content/previews.
+   procedure Set_Color_Scheme (Scheme : CuBit.Appearance.Color_Scheme);
+   procedure Set_Theme (Value : Theme);
+   function Current_Theme return Theme;
+
+   type Button_Style is (Button_Normal, Button_Hot, Button_Pressed,
+                         Button_Disabled, Button_Active);
+
+   --  Semantic pointer feedback.  These representation values are also used
+   --  by the desktop surface protocol; applications request a meaning rather
+   --  than supplying compositor-specific cursor pixels.
+   type Pointer_Cursor_Style is
+     (Pointer_Default, Pointer_Text, Pointer_Resize_Horizontal,
+      Pointer_Resize_Vertical, Pointer_Resize_Diagonal);
+   for Pointer_Cursor_Style use
+     (Pointer_Default => 0, Pointer_Text => 1,
+      Pointer_Resize_Horizontal => 2, Pointer_Resize_Vertical => 3,
+      Pointer_Resize_Diagonal => 4);
+   for Pointer_Cursor_Style'Size use 8;
+
+   type Pointer_State is record
+      x : Natural := 0;
+      y : Natural := 0;
+      down : Boolean := False;
+      pressed : Boolean := False;
+      released : Boolean := False;
+      enabled : Boolean := True;
+   end record;
+
+   type Widget_Result is record
+      hot : Boolean := False;
+      active : Boolean := False;
+      activated : Boolean := False;
+   end record;
+
+   function Is_Empty (r : Rect) return Boolean;
+   function Point_In_Rect (x, y : Natural; r : Rect) return Boolean;
+   function Union_Rect (a, b : Rect) return Rect;
+   function Inflate_Rect (r : Rect; amount : Natural) return Rect;
+   function Clamp_Rect (c : Canvas; r : Rect) return Rect;
+   function With_Clip (c : Canvas; clip : Rect) return Canvas;
+   function Input_Rect (c : Canvas; r : Rect) return Rect;
+   function With_Repair_Clip (c : Canvas; repair : Rect) return Canvas;
+
+   procedure Set_Pixel (c : Canvas; x, y : Natural; fill : Color);
+
+   --  Row, column order; straight-alpha ARGB pixels. Clipped to the canvas.
+   --  Disabled artwork is desaturated and faded over the existing background.
+   type ARGB_Bitmap is array (Natural range <>, Natural range <>) of Color;
+   procedure Draw_Bitmap
+     (c : Canvas; x, y : Natural; pixels : ARGB_Bitmap;
+      enabled : Boolean := True);
+   --  The bitmap 1:1 in the canvas's physical pixels, never resampled,
+   --  centred on the physical span of the logical rectangle r (a larger
+   --  bitmap overhangs r, clipped only by the canvas's clip): icons drawn
+   --  from the export nearest the density (Icon_Edge_Choice) stay crisp.
+   procedure Draw_Bitmap_Native
+     (c : Canvas; r : Rect; pixels : ARGB_Bitmap; enabled : Boolean := True);
+   procedure Fill_Rect (c : Canvas; r : Rect; fill : Color);
+   --  Scroll-by-copy: Area of c gets the pixels Source has in the rows of
+   --  Area moved to start at row From_Y (Source is normally the frame
+   --  painted before, CuBit.UI.App.Previous_Canvas), within c's clip.
+   --  Copied is False when nothing was copied: no source, a different
+   --  layout or density, a scaled canvas (unit density only), or source
+   --  rows outside it; the caller then draws Area itself.
+   procedure Copy_Moved (c, Source : Canvas; Area : Rect; From_Y : Natural; Copied : out Boolean);
+   procedure Fill_Vertical_Gradient
+      (c : Canvas; r : Rect; topColor, bottomColor : Color);
+   procedure Stroke_Rect
+      (c : Canvas; r : Rect; light : Color; dark : Color);
+   --  The keyboard focus ring (CuBit.UI.Focus): a one-pixel line in the
+   --  theme's selection colour, Focus_Ring_Inset inside r.
+   Focus_Ring_Inset : constant := 2;
+   procedure Draw_Focus_Ring (c : Canvas; r : Rect; colors : Theme);
+   procedure Draw_Glyph
+      (c : Canvas; x, y : Natural; ch : Character; fg, bg : Color);
+   procedure Draw_Text
+      (c : Canvas; x, y : Natural; text : String; fg, bg : Color);
+   function UI_Text_Width (text : String) return Natural;
+   function UI_Text_Height return Natural;
+   procedure Draw_UI_Text
+      (c : Canvas; x, y : Natural; text : String; fg, bg : Color);
+   procedure Draw_UI_Text_Transparent
+      (c : Canvas; x, y : Natural; text : String; fg : Color);
+   --  The emphasis face (CuBit.Fonts.Sans_Semibold) for headings in an
+   --  app's content, measured and placed as UI text is.
+   function Emphasis_Text_Width (text : String) return Natural;
+   procedure Draw_Emphasis_Text_Transparent
+      (c : Canvas; x, y : Natural; text : String; fg : Color);
+   --  Styled text: a face and a size of the one text layout. Reading_Face
+   --  is the reading face chosen among those the program offered
+   --  (CuBit.Reading_Faces, APP-005); with none it measures 0 and draws
+   --  nothing. Its text may hold Windows-1252 above 16#7F# (curly
+   --  quotes, dashes, the pilcrow: Bible_Text.To_Face). Heading_Size is twice
+   --  the base em, Superscript_Size three quarters of it. A run is drawn with
+   --  its line box's top at y; Styled_Baseline is the baseline's row in it.
+   type Text_Face is (Interface_Face, Emphasis_Face, Code_Face, Reading_Face);
+   type Text_Size is (Body_Size, Heading_Size, Superscript_Size);
+   function Styled_Text_Width (text : String; face : Text_Face; size : Text_Size := Body_Size) return Natural;
+   function Styled_Line_Height (face : Text_Face; size : Text_Size := Body_Size) return Natural;
+   function Styled_Baseline (face : Text_Face; size : Text_Size := Body_Size) return Natural;
+   procedure Draw_Styled_Text_Transparent
+      (c : Canvas; x, y : Natural; text : String; fg : Color; face : Text_Face; size : Text_Size := Body_Size);
+   function Code_Text_Width (text : String) return Natural;
+   function Code_Text_Height return Natural;
+   procedure Draw_Code_Text
+      (c : Canvas; x, y : Natural; text : String; fg, bg : Color);
+   --  Over what is already drawn: no background fill, glyph edges blend with
+   --  the pixels beneath (for text on an already filled row or panel).
+   procedure Draw_Code_Text_Transparent
+      (c : Canvas; x, y : Natural; text : String; fg : Color);
+   --  One-line labels that may not fit: the whole text, else its longest
+   --  prefix that still fits followed by "...", else "" (Text_Fit, proved;
+   --  measured with UI_Text_Width / Code_Text_Width, ellipsis in context).
+   function Fit_UI_Text (text : String; width : Natural) return String;
+   function Fit_Code_Text (text : String; width : Natural) return String;
+   --  How many characters of text Fit_Code_Text shows (before its "...").
+   function Kept_Code_Text (text : String; width : Natural) return Natural;
+   --  The same keeping the end instead ("..." first): paths.
+   function Fit_UI_Text_Tail (text : String; width : Natural) return String;
+   --  Draw_UI_Text / Draw_Code_Text clipped to box and elided so the text
+   --  ends at box's right edge instead of being cut mid-glyph.
+   procedure Draw_UI_Text_Fitted
+      (c : Canvas; box : Rect; x, y : Natural; text : String; fg, bg : Color);
+   procedure Draw_Code_Text_Fitted
+      (c : Canvas; box : Rect; x, y : Natural; text : String; fg, bg : Color);
+   --  Label insets: a button's text keeps BUTTON_TEXT_INSET from both
+   --  sides; a tab's starts TAB_TEXT_LEFT in and ends TAB_TEXT_INSET short.
+   --  Wider than the label and these, a button or tab shows it whole
+   --  (CuBit.UI.Boxes sizes them so); narrower, it is elided.
+   BUTTON_TEXT_INSET : constant := CuBit.UI_Metrics.Space_S + CuBit.UI_Metrics.Space_XS;
+   TAB_TEXT_LEFT : constant := CuBit.UI_Metrics.Space_M + CuBit.UI_Metrics.Space_XS;
+   TAB_TEXT_INSET : constant := CuBit.UI_Metrics.Space_M;
+   procedure Draw_Button_Frame
+      (c : Canvas; r : Rect; colors : Theme; style : Button_Style);
+   type Arrow_Direction is (Arrow_Up, Arrow_Down, Arrow_Left, Arrow_Right);
+   procedure Draw_Arrow_Button
+      (c : Canvas; r : Rect; colors : Theme; style : Button_Style;
+       direction : Arrow_Direction);
+   procedure Draw_Button
+      (c : Canvas; r : Rect; colors : Theme; style : Button_Style;
+       label : String);
+   procedure Draw_Menu_Bar
+      (c : Canvas; r : Rect; colors : Theme);
+   procedure Draw_Menu_Title
+      (c : Canvas; r : Rect; colors : Theme;
+       hot : Boolean; active : Boolean; label : String);
+   --  A menu bar title is its label between MENU_TITLE_PADDING on each
+   --  side: lay titles out at Menu_Title_Width so none is cut.
+   MENU_TITLE_PADDING : constant := CuBit.UI_Metrics.Space_M + CuBit.UI_Metrics.Space_XS;
+   function Menu_Title_Width (label : String) return Natural;
+   procedure Draw_Status_Bar
+      (c : Canvas; r : Rect; colors : Theme; left, right : String);
+   procedure Draw_Pane
+      (c : Canvas; r : Rect; colors : Theme; title : String);
+   type Table_Column_Layout is record
+      First_Width  : Natural := 64;
+      Second_Width : Natural := 72;
+      Cell_Padding : Natural := 5;
+   end record;
+   Default_Table_Columns : constant Table_Column_Layout :=
+     (First_Width => 64, Second_Width => 72, Cell_Padding => 5);
+   type Table_Text_Style is (Table_Interface_Text, Table_Code_Text);
+   Table_Header_Height : constant Positive := CuBit.UI_Metrics.Header_Height;
+   type Table_Regions is record
+      Header : Rect;
+      Rows   : Rect;
+   end record;
+   function Table_Interior (r : Rect) return Rect;
+   function Layout_Table (viewport : Rect) return Table_Regions;
+   procedure Draw_Table_Viewport
+      (c : Canvas; r : Rect; colors : Theme);
+   --  Its sunken frame only: for callers that fill the interior themselves
+   --  and would otherwise paint it twice.
+   procedure Draw_Table_Viewport_Frame
+      (c : Canvas; r : Rect; colors : Theme);
+   procedure Draw_Table_Header
+      (c : Canvas; r : Rect; colors : Theme; c1, c2, c3 : String;
+       layout : Table_Column_Layout := Default_Table_Columns);
+   procedure Draw_Table_Row
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean;
+       c1, c2, c3 : String;
+       layout : Table_Column_Layout := Default_Table_Columns;
+       textStyle : Table_Text_Style := Table_Interface_Text;
+       detail3 : String := "");
+   procedure Draw_Vertical_Splitter
+      (c : Canvas; r : Rect; colors : Theme;
+       hot : Boolean; active : Boolean);
+   type Tab_Orientation is (Horizontal, Vertical);
+   procedure Draw_Tab_Strip
+      (c : Canvas; r : Rect; colors : Theme);
+   procedure Draw_Tab
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean; active : Boolean;
+       label : String;
+       orientation : Tab_Orientation := Horizontal);
+   --  Synchronous control decomposition for canvas and physical-output renderers.
+   --  Required primitives prevent accidental fallback to direct canvas writes.
+   generic
+      with procedure Fill_Rect (C : Canvas; R : Rect; Fill : Color);
+      with procedure Stroke_Rect (C : Canvas; R : Rect; Light, Dark : Color);
+      with procedure Draw_UI_Text
+        (C : Canvas; X, Y : Natural; Text : String; FG, BG : Color);
+   package Control_Renderer is
+      procedure Stroke_Sunken (C : Canvas; R : Rect; Colors : Theme);
+      procedure Stroke_Raised (C : Canvas; R : Rect; Colors : Theme);
+      procedure Draw_Button_Frame
+        (C : Canvas; R : Rect; Colors : Theme; Style : Button_Style);
+      procedure Draw_Button
+        (C : Canvas; R : Rect; Colors : Theme; Style : Button_Style; Label : String);
+      procedure Draw_Tab
+        (C : Canvas; R : Rect; Colors : Theme; Selected, Hot, Active : Boolean;
+         Label : String; Orientation : Tab_Orientation := Horizontal);
+   end Control_Renderer;
+
+   procedure Draw_Natural_Value
+      (c : Canvas; r : Rect; colors : Theme; value : Natural);
+   procedure Draw_Progress_Bar
+      (c : Canvas; r : Rect; colors : Theme;
+       minValue, maxValue, value : Natural);
+   procedure Draw_Swatch
+      (c : Canvas; r : Rect; colors : Theme;
+       fill : Color; label : String);
+   procedure Draw_Text_Field
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       focused : Boolean; hot : Boolean);
+   --  How a masked text field stands in for its secret (Draw_Text_Edit_Field).
+   subtype Mask_Style is CuBit.UI_Masking.Style;
+   Fixed_Length  : constant Mask_Style := CuBit.UI_Masking.Fixed_Length;
+   Per_Character : constant Mask_Style := CuBit.UI_Masking.Per_Character;
+   procedure Draw_Text_Edit_Field
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       cursor, selectionStart, selectionEnd : Natural;
+       focused : Boolean; hot : Boolean; suggestion : String := "";
+       masked : Boolean := False; mask : Mask_Style := Fixed_Length);
+   --  A masked (secret) field never shows its content. Fixed_Length shows
+   --  Secret_Mask whatever the text's length, so the length is hidden too;
+   --  the caret sits after the mask and any selection covers it.
+   --  Per_Character shows one Mask_Character per character, with the caret
+   --  and selection where they are in the text, for secrets whose length
+   --  need not be hidden (a Wi-Fi passphrase). An empty field shows nothing.
+   Secret_Mask : constant String := CuBit.UI_Masking.Fixed_Mask;
+   --  Optional display-only suffix, clipped inside the field and drawn in the
+   --  muted theme color. It never participates in selection or caret geometry.
+   --  The multi-line text grid (monospace): the first character's line box
+   --  is Multiline_Text_Left, Multiline_Text_Top inside r, and lines are
+   --  Code_Text_Height + Multiline_Line_Gap apart (CuBit.UI.Text_Views hit
+   --  tests against the same grid).
+   Multiline_Text_Left : constant := 6;
+   Multiline_Text_Top  : constant := 5;
+   Multiline_Line_Gap  : constant := 2;
+   procedure Draw_Multiline_Text_Edit
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       firstLine, visibleLines, cursor, selectionStart, selectionEnd : Positive;
+       focused : Boolean; hot : Boolean; firstColumn : Positive := 1);
+   type Text_Cursor_State is record
+      cursor, selectionStart, selectionEnd : Positive;
+   end record;
+   type Text_Cursor_States is array (Positive range <>) of Text_Cursor_State;
+   type Text_Decoration is (No_Text_Decoration, Text_Underline);
+   type Text_Style_Span is record
+      firstPosition, lastPosition : Positive;
+      foreground : Color;
+      decoration : Text_Decoration := No_Text_Decoration;
+      decorationColor : Color := 0;
+   end record;
+   --  Style spans are one-based, inclusive, ordered, and non-overlapping.
+   --  The renderer ignores the complete set if any span is invalid.
+   type Text_Style_Spans is array (Positive range <>) of Text_Style_Span;
+   procedure Draw_Multiline_Text_Edit_Multiple
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       firstLine, visibleLines : Positive; cursors : Text_Cursor_States;
+       focused : Boolean; hot : Boolean; firstColumn : Positive := 1);
+   procedure Draw_Multiline_Text_Edit_Multiple_Styled
+      (c : Canvas; r : Rect; colors : Theme; text : String;
+       firstLine, visibleLines : Positive; cursors : Text_Cursor_States;
+       styles : Text_Style_Spans;
+       focused : Boolean; hot : Boolean; firstColumn : Positive := 1);
+   --  Disabled (enabled False): greyed, the face colour with a muted edge
+   --  and mark; it still shows whether it is checked.
+   procedure Draw_Checkbox
+      (c : Canvas; r : Rect; colors : Theme;
+       checked : Boolean; hot : Boolean; active : Boolean;
+       enabled : Boolean := True);
+   procedure Draw_Radio_Button
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean; active : Boolean;
+       label : String);
+   procedure Draw_List_Item
+      (c : Canvas; r : Rect; colors : Theme;
+       selected : Boolean; hot : Boolean; label : String);
+   procedure Draw_Menu_Item
+      (c : Canvas; r : Rect; colors : Theme;
+       hot : Boolean; active : Boolean; enabled : Boolean;
+       label : String);
+   procedure Draw_Horizontal_Slider
+      (c : Canvas; r : Rect; colors : Theme;
+       minValue, maxValue, value : Natural;
+       hot : Boolean; active : Boolean);
+   type Horizontal_Slider_Layout is record
+      track         : Rect := (others => 0);
+      thumb         : Rect := (others => 0);
+      minimumThumbX : Natural := 0;
+      maximumThumbX : Natural := 0;
+   end record;
+   function Layout_Horizontal_Slider
+      (r : Rect;
+       minValue, maxValue, value : Natural) return Horizontal_Slider_Layout;
+   type Scrollbar_Part is
+     (Scrollbar_None, Scrollbar_Decrement, Scrollbar_Thumb,
+      Scrollbar_Increment, Scrollbar_Track);
+   type Vertical_Scrollbar_Layout is record
+      decrementButton : Rect := (others => 0);
+      incrementButton : Rect := (others => 0);
+      trackFrame      : Rect := (others => 0);
+      track           : Rect := (others => 0);
+      thumb           : Rect := (others => 0);
+      maximumValue    : Natural := 0;
+   end record;
+   type Horizontal_Scrollbar_Layout is record
+      decrementButton : Rect := (others => 0);
+      incrementButton : Rect := (others => 0);
+      trackFrame      : Rect := (others => 0);
+      track           : Rect := (others => 0);
+      thumb           : Rect := (others => 0);
+      maximumValue    : Natural := 0;
+   end record;
+   function Layout_Vertical_Scrollbar
+      (r : Rect;
+       minValue, maxValue, value : Natural;
+       pageSize : Positive := 1) return Vertical_Scrollbar_Layout;
+   function Layout_Horizontal_Scrollbar
+      (r : Rect;
+       minValue, maxValue, value : Natural;
+       pageSize : Positive := 1) return Horizontal_Scrollbar_Layout;
+   procedure Apply_Wheel_Scroll
+       (value : in out Natural;
+       minValue, maxValue : Natural;
+       wheelDelta : Integer;
+       step : Positive := 3);
+   procedure Draw_Vertical_Scrollbar
+      (c : Canvas; r : Rect; colors : Theme;
+       minValue, maxValue, value : Natural;
+       hot : Boolean; active : Boolean; pageSize : Positive := 1;
+       pressedPart : Scrollbar_Part := Scrollbar_Thumb);
+   procedure Draw_Horizontal_Scrollbar
+      (c : Canvas; r : Rect; colors : Theme;
+       minValue, maxValue, value : Natural;
+       hot : Boolean; active : Boolean; pageSize : Positive := 1;
+       pressedPart : Scrollbar_Part := Scrollbar_Thumb);
+
+   function Button
+      (bounds : Rect; pointer : Pointer_State) return Widget_Result;
+private
+   --  Shared with the child control packages (CuBit.UI.Tables).
+   function Content_Rect (R : Rect; X_Pad, Y_Pad : Natural) return Rect;
+   function Control_Edge (Colors : Theme) return Color;
+   function Center_Text_Y (r : Rect) return Natural;
+end CuBit.UI;

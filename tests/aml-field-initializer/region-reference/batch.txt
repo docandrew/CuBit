@@ -1,0 +1,1 @@
+execute RSET;execute _INI;execute \_SB._INI;execute \_SB.DEV0._REG 3 1;execute \_SB.DEV0._REG 3 1;execute \_SB.DEV0._STA;execute \_SB.DEV0._INI;execute QCNT;execute QSPC;execute QCON;execute QVAL;execute QDON;execute QROT;execute QSEQ;execute \_SB.DEV0._REG 3 0;execute \_SB.DEV0._REG 3 0;execute QCNT;execute QSPC;execute QCON;execute QVAL;execute QDON;execute QROT;execute QSEQ

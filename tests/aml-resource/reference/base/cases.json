@@ -1,0 +1,152 @@
+[
+  {
+    "name": "EMPTY",
+    "declarations": "Name(LBUF,Buffer(){}) Name(RBUF,Buffer(){})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "CHECK",
+    "declarations": "Name(LBUF,Buffer(){0x79,0x5A}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "TRAIL",
+    "declarations": "Name(LBUF,Buffer(){0x79,0,0xFF,0xFF}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "PAYLOAD",
+    "declarations": "Name(LBUF,Buffer(){0x72,0x79,0xAA,0x79,0}) Name(RBUF,Buffer(){0x71,0x42,0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "SINGLE",
+    "declarations": "Name(LBUF,Buffer(){0x79}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "MISSING",
+    "declarations": "Name(LBUF,Buffer(){0x71,0x42}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "ENDZERO",
+    "declarations": "Name(LBUF,Buffer(){0x78,0}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "ENDTWO",
+    "declarations": "Name(LBUF,Buffer(){0x7A,0,0}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "RESERVED",
+    "declarations": "Name(LBUF,Buffer(){0,0,0x79,0}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "FIXED",
+    "declarations": "Name(LBUF,Buffer(){0x2A,0,0,0x79,0}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "BADFIX",
+    "declarations": "Name(LBUF,Buffer(){0x29,0,0x79,0}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "OVERRUN",
+    "declarations": "Name(LBUF,Buffer(){0x77,0,0x79,0}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "LARGE",
+    "declarations": "Name(LBUF,Buffer(){0x84,0,0,0x79,0}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "LARGEFULL",
+    "declarations": "Name(LBUF,Buffer(){0x84,1,0,0x42,0x79,0}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "HEADER",
+    "declarations": "Name(LBUF,Buffer(){0x84,0}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "LARGERES",
+    "declarations": "Name(LBUF,Buffer(){0x83,1,0,0,0x79,0}) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "INTEGER",
+    "declarations": "Name(LBUF,0x79) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "STRING",
+    "declarations": "Name(LBUF,\"y\") Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "BADINTEGER",
+    "declarations": "Name(LBUF,Zero) Name(RBUF,Buffer(){0x79,0})",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "ORDER",
+    "declarations": "Name(LBUF,Buffer(){0x79,0}) Name(RBUF,Buffer(){0x79,0}) Name(DEST,Buffer(4){}) Method(LEFT,0){Store(Add(Multiply(MARK,10),1),MARK) Return(LBUF)} Method(RGHT,0){Store(Add(Multiply(MARK,10),2),MARK) Return(RBUF)} Method(TARG,0){Store(Add(Multiply(MARK,10),3),MARK) Return(Zero)}",
+    "body": "Return(ConcatenateResTemplate(LEFT(),RGHT(),Index(DEST,TARG())))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "ERROR",
+    "declarations": "Name(LBUF,Buffer(){0x78,0}) Name(RBUF,Buffer(){0,0}) Name(DEST,Buffer(4){}) Method(TARG,0){Store(One,MARK) Return(Zero)}",
+    "body": "Return(ConcatenateResTemplate(LBUF,RBUF,Index(DEST,TARG())))",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "LOCAL",
+    "declarations": "Name(LBUF,Buffer(){0x79,0})",
+    "body": "Store(9,Index(ConcatenateResTemplate(LBUF,LBUF,Local0),Zero)) Return(Local0)",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "NAMED",
+    "declarations": "Name(LBUF,Buffer(){0x79,0}) Name(DEST,Buffer(1){})",
+    "body": "ConcatenateResTemplate(LBUF,LBUF,DEST) Return(DEST)",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "NINT",
+    "declarations": "Name(LBUF,Buffer(){0x79,0}) Name(DEST,Zero)",
+    "body": "ConcatenateResTemplate(LBUF,LBUF,DEST) Return(DEST)",
+    "method_opcode": "ConcatenateResTemplate"
+  },
+  {
+    "name": "NSTR",
+    "declarations": "Name(LBUF,Buffer(){0x79,0}) Name(DEST,\"abc\")",
+    "body": "ConcatenateResTemplate(LBUF,LBUF,DEST) Return(ToBuffer(DEST))",
+    "method_opcode": "ConcatenateResTemplate"
+  }
+]

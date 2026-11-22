@@ -1,0 +1,17 @@
+project Desktop_GPU_Scene_Real extends "vulkan_target_bundle.gpr" is
+   for Source_Dirs use (".", "../../userspace/lib/compositor", "../../userspace/lib/display", "../../userspace/runtime/gnat", "../../userspace/services/desktop", "../../userspace/mesa");
+   for Source_Files use Vulkan_Target_Bundle'Source_Files &
+      ("compositor_shadow.ads", "compositor_shadow.adb", "desktop_gpu_scene-drawing.ads", "desktop_gpu_scene-drawing.adb", "desktop_gpu_scene.ads", "desktop_gpu_scene.adb", "desktop_glyph_residency.ads", "desktop_glyph_residency.adb", "desktop_glyph_upload.ads", "desktop_glyph_upload.adb", "compositor_glyph_ffi.ads", "compositor_glyph_ffi.adb", "desktop_vulkan_startup.ads", "desktop_vulkan_startup.adb", "vulkan_device_owner.ads", "vulkan_device_owner.adb",
+       "vulkan_device_ffi.ads", "vulkan_device_ffi.adb", "vulkan_device_upload_ffi.ads", "vulkan_device_upload_ffi.adb",
+       "mesa_service.ads", "mesa_service.adb", "desktop_gpu_scene_real_bridge.ads", "desktop_gpu_scene_real_bridge.adb", "desktop_gpu_scene_real_host.c", "desktop_gpu_scene_real_tests.adb");
+   for Object_Dir use "build/desktop-gpu-scene-real/obj";
+   for Exec_Dir use "build/desktop-gpu-scene-real";
+   for Main use ("desktop_gpu_scene_real_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+      for Default_Switches ("C") use ("-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-DCUBIT_DESKTOP_REAL_TEST=1");
+   end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use (External ("CUBIT_FONT_HOST_ARCHIVE"), "-lpthread", "-ldl", "-lm", "-Wl,--wrap=cubit_font_raster_mask", "-Wl,--wrap=cubit_vulkan_device_upload_prepare", "-lvulkan", "-Wl,--wrap=cubit_vulkan_device_context_request", "-Wl,--wrap=cubit_vulkan_device_targets_prepare");
+   end Linker;
+end Desktop_GPU_Scene_Real;

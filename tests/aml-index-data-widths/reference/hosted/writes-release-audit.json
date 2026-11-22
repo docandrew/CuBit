@@ -1,0 +1,20 @@
+{
+  "source": "/home/doc/git/.acpi-proof-work/index-data-update-Ho0dUXUe/source",
+  "output": "/home/doc/git/.acpi-proof-work/index-data-update-Ho0dUXUe/source/tests/aml-field-graph-writes/results/release-1q9pvlmj",
+  "mode": "release",
+  "inputs": 231,
+  "references": 9,
+  "tools": 5,
+  "runtime_sources": 1582,
+  "binaries": 1,
+  "artifacts": 315,
+  "stages": 2,
+  "logs": {
+    "bank_access_tests": "Bank access checks 3474"
+  },
+  "ALI": 77,
+  "dependencies": 1058,
+  "strict_commands": 76,
+  "audit_sha256": "df38b679329f029677d1dc3bdc981157069512e96db5fa77e5a4b6dfa258b9d9",
+  "scope": "Hosted runtime evidence for the exact selected source/profile only; no native delivery or whole-interpreter proof."
+}

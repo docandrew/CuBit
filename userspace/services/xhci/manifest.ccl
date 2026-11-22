@@ -1,0 +1,22 @@
+# xhci.drv's authority (docs/ccl-driver-manifests.md, CAP-002). devmgr
+# answers every binding when it launches the driver: the register window,
+# the interrupter's vector (MSI-X, else MSI) and its endpoint to devmgr.
+# Its keyboards' and mice's reports go to Desktop on source rings
+# (IPC-009), opened through an endpoint devmgr hands it on request.
+# Sizes are upper bounds; devmgr grants what the device reports.
+(Executable_Manifest
+  identity => "com.cubit.xhci"
+  version => "0.1.0"
+  drives => [(Device_Match.PCI_Class (PCI_Class 0x0C 0x03 0x30))]
+  requests => [
+    (device-memory "registers" 0 65536 Access.Read_Write)
+    # Interrupter 0. MSI-X when the controller has it, else one MSI.
+    (interrupt "events" Interrupt_Mode.MSI_X 1)
+    # Every device slot and scratchpad the protocol allows (255 slots, 1023
+    # scratchpads: 3079 pages, a 16 MiB order); devmgr allocates what the
+    # controller reports (HCSPARAMS1/2).
+    (dma "rings" 16777216)
+    (service "device-manager" "ready")
+    # ABI-002: its lines, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

@@ -1,0 +1,86 @@
+{
+  "copy1": {
+    "PRAW": {
+      "kind": "package_element",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "PDRE": {
+      "kind": "scalar",
+      "value": "00000000FFFFFFFF"
+    },
+    "PAFT": {
+      "kind": "package_element",
+      "value": "00000000FFFFFFFF"
+    },
+    "PLOC": {
+      "kind": "package_element",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "CLOC": {
+      "kind": "scalar",
+      "value": "00000000FFFFFFFF"
+    },
+    "CEXP": {
+      "kind": "scalar",
+      "value": "00000000FFFFFFFF"
+    },
+    "CSRC": {
+      "kind": "scalar",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "CDST": {
+      "kind": "scalar",
+      "value": "00000000FFFFFFFF"
+    },
+    "PASS": {
+      "kind": "scalar",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "DRET": {
+      "kind": "scalar",
+      "value": "FFFFFFFFFFFFFFFF"
+    }
+  },
+  "copy2": {
+    "PRAW": {
+      "kind": "package_element",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "PDRE": {
+      "kind": "scalar",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "PAFT": {
+      "kind": "package_element",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "PLOC": {
+      "kind": "package_element",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "CLOC": {
+      "kind": "scalar",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "CEXP": {
+      "kind": "scalar",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "CSRC": {
+      "kind": "scalar",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "CDST": {
+      "kind": "scalar",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "PASS": {
+      "kind": "scalar",
+      "value": "FFFFFFFFFFFFFFFF"
+    },
+    "DRET": {
+      "kind": "scalar",
+      "value": "FFFFFFFFFFFFFFFF"
+    }
+  }
+}

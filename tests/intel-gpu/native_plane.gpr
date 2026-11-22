@@ -1,0 +1,16 @@
+project Native_Plane is
+   for Source_Dirs use (".", "../../userspace/services/intel-gpu");
+   for Source_Files use ("native_plane_tests.adb", "intel_gpu_native_plane.ads",
+     "intel_gpu_plane_registers.ads", "intel_gpu_plane_registers.adb",
+     "intel_gpu_native_plane.adb", "intel_gpu_plane_collect.ads", "intel_gpu_plane_collect.adb",
+     "intel_gpu_plane_control.ads",
+     "intel_gpu_plane_decode.ads", "intel_gpu_plane_decode.adb",
+     "intel_gpu_scanout_range.ads", "intel_gpu_scanout_range.adb",
+     "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb",
+     "intel_gpu_display_topology.ads", "intel_gpu_display_topology.adb");
+   for Object_Dir use "build-native-plane";
+   for Main use ("native_plane_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+end Native_Plane;

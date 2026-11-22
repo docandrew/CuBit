@@ -1,0 +1,23 @@
+--  The authority delegation model (CAP-012): the SPARK model, its
+--  exhaustive check and the CCL inventory check (run.sh).
+with "../../userspace/ccl/cubit_shared.gpr";
+project Model is
+   for Source_Dirs use
+     (".", "../../userspace/ccl/src", "../../userspace/ccl/modules",
+      external ("CBOR_ADA_SRC") & "/src");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("exhaustive.adb", "inventory_check.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata");
+      for Switches ("authority_model.adb") use
+        ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ", "-gnatwe");
+      for Switches ("exhaustive.adb") use
+        ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ", "-gnatwe");
+      for Switches ("inventory_check.adb") use
+        ("-O2", "-gnat2022", "-gnata", "-gnatwa", "-gnatwJ", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--counterexamples=off");
+   end Prove;
+end Model;

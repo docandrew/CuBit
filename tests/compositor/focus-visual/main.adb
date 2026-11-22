@@ -1,0 +1,27 @@
+with CuBit.Console_Route;
+with CuBit.Waits;
+with Interfaces; use Interfaces;
+with CuBit.Messages; use CuBit.Messages;
+with CuBit.Desktop_Protocol; use CuBit.Desktop_Protocol;
+with CuBit.Desktop_Messages; use CuBit.Desktop_Messages;
+with Startup;
+procedure Main is
+ function Send (Wire : Wire_Message) return Wire_Message is
+  Msg : Message := From_Wire(Wire);
+ begin Msg.tag:=capCall(Startup.Desktop,Msg,Wait_Forever);return To_Wire(Msg);end;
+ A,B : Creation_Result;
+ Ignore : Wire_Message;
+ Slept : Unsigned_64;
+begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
+ A:=Decode_Creation_Result(Send(Encode_Create((300,200,Window_Surface, Desktop_Sized))));
+ B:=Decode_Creation_Result(Send(Encode_Create((300,200,Window_Surface, Desktop_Sized))));
+ if A.Status/=Success or B.Status/=Success then
+  debugPrint("TEST: FAIL focus windows" & ASCII.LF);return;
+ end if;
+ Ignore:=Send(Encode_Title((A.Surface,Make_Title("Focus One"))));
+ Ignore:=Send(Encode_Title((B.Surface,Make_Title("Focus Two"))));
+ debugPrint("TEST: focus windows ready" & ASCII.LF);
+ loop Slept:=CuBit.Waits.Sleep_For (1000);end loop;
+end Main;

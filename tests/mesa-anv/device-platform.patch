@@ -1,0 +1,39 @@
+--- a/src/intel/dev/intel_device_info.c
++++ b/src/intel/dev/intel_device_info.c
+@@ -31,13 +31,14 @@
+-#include "util/libdrm.h"
+-
+ #include "intel_device_info.h"
+ #include "intel_hwconfig.h"
+ #include "intel_wa.h"
++#include "i915/intel_device_info.h" /* Pure mask builder still needs extraction. */
++#if !defined(__cubit__)
++#include "util/libdrm.h"
+-#include "i915/intel_device_info.h"
+ #include "xe/intel_device_info.h"
+ #include "virtio/intel_virtio.h"
+ 
+ #include "common/intel_gem.h"
++#endif
+ #include "util/u_debug.h"
+ #include "util/log.h"
+ #include "util/macros.h"
+@@ -1922,6 +1923,9 @@
++#if !defined(__cubit__)
++/* Native CuBit discovery is capability-based. Do not compile DRM entrypoints
++ * or provide success stubs; remaining callers must be ported explicitly. */
+ bool
+ intel_get_device_info_from_fd(int fd, struct intel_device_info *devinfo, int min_ver, int max_ver)
+ {
+    if (NULL != os_get_option("INTEL_STUB_GPU_JSON")) {
+       /* This call will succeed when shim-drm has been initialized with a
+        * serialized intel_device_info structure.
+@@ -2059,6 +2063,8 @@
+ }
+ 
++#endif
++
+ enum intel_wa_steppings
+ intel_device_info_wa_stepping(struct intel_device_info *devinfo)
+ {
+    /* When adding platforms to this function, check to see if

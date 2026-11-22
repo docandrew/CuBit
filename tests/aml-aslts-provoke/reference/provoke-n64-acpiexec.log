@@ -1,0 +1,244 @@
+
+Intel ACPI Component Architecture
+AML Execution/Debug Utility version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+
+Input file /home/doc/git/.acpi-proof-work/aslts-provoke-normal-oracle-k8zhb1fq/results/provoke-n64.aml, Length 0x491A (18714) bytes
+
+ACPI: RSDP 0x00005555555FF180 000024 (v02 Intel )
+ACPI: XSDT 0x0000555555601D90 000034 (v00 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: FACP 0x00005555555FEFA0 000114 (v05 Intel  AcpiExec 00001001 INTL 20260408)
+ACPI: DSDT 0x0000555555609170 00491A (v02 Intel  Many     00000001 INTL 20260408)
+ACPI: FACS 0x00005555555FF140 000040
+
+ACPI table initialization:
+Table [DSDT: Many    ] (id 01) -  393 Objects with   0 Devices,   0 Regions,   73 Methods (15/58/1 Serial/Non/Cvt)
+ACPI: 1 ACPI AML tables successfully acquired and loaded
+
+Final data object initialization: Namespace contains 402 (0x192) objects
+Initializing General Purpose Events (GPEs):
+    Initialized GPE 00 to 7F [_GPE] 16 regs on interrupt 0x0 (SCI)
+    Initialized GPE 80 to FF [_GPE] 16 regs on interrupt 0x0 (SCI)
+Initializing Device/Processor/Thermal objects and executing _INI/_STA methods:
+    Executed 0 _INI methods requiring 0 _STA executions (examined 2 objects)
+Evaluating \MN00
+   tbfind-0258 [00]  TbFindTable                                     : Found table [DSDT]
+ACPI Debug:  "64-bit mode"
+ACPI Debug:  "Release of parent ACPICA code 0x0000000020260408"
+ACPI Debug:  "Release of ASLTS test suite  0x0000000000000016"
+ACPI Debug:  "Settings of ASLTS test suite 0x0000000000000005"
+ACPI Debug:  "TEST (complex), Check operators under the known critical conditions"
+ACPI Debug:  "m130 test started"
+ACPI Debug:  ":CTST:complex:provoke:m130:PASS:"
+ACPI Debug:  "m132 test started"
+ACPI Debug:  ":CTST:complex:provoke:m132:PASS:"
+ACPI Debug:  "m133 test started"
+ACPI Error: Needed [Integer/String/Buffer], found [Reference] 0x555555619e80 (20260408/exresop-550)
+ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [Decrement] (20260408/exoparg1-824)
+ACPI Exec: Exception override, new status AE_OK
+
+ACPI Debug:  "---------- ERROR    : PRV0"
+ACPI Debug:  "TITLE               : Check operators under the known critical conditions"
+ACPI Debug:  "COLLECTION          : complex"
+ACPI Debug:  "TEST CASE           : provoke"
+ACPI Debug:  "TEST                : m133"
+ACPI Debug:  "ERROR,    File      : provoke.asl"
+ACPI Debug:  "          Line      : 86"
+ACPI Debug:  "**** Expected Result: 0x0x9, (9)"
+ACPI Debug:  "**** Actual Result  : 0x0xA, (10)"
+ACPI Debug:  "---------- END
+"
+ACPI Debug:  "Unexpected exceptions (count 0000000000000001), the last is AE_AML_OPERAND_TYPE, 0000000000003003"
+ACPI Debug:  "---------- ERROR    : PRV0"
+ACPI Debug:  "TITLE               : Check operators under the known critical conditions"
+ACPI Debug:  "COLLECTION          : complex"
+ACPI Debug:  "TEST CASE           : provoke"
+ACPI Debug:  "TEST                : m133"
+ACPI Debug:  "ERROR,    File      : ehandle.asl"
+ACPI Debug:  "          Line      : 779"
+ACPI Debug:  "CHECKING, File      : provoke.asl"
+ACPI Debug:  "             Method : PRV0"
+ACPI Debug:  "             Line   : 89"
+ACPI Debug:  "**** Expected Result: 0x0x0, (0)"
+ACPI Debug:  "**** Actual Result  : 0x0x0, (0)"
+ACPI Debug:  "---------- END
+"
+ACPI Debug:  ":CTST:complex:provoke:m133:FAIL:Errors # 0x02 0x00 0x00 0x00:"
+ACPI Debug:  "m134 test started"
+ACPI Error: Needed [Integer/String/Buffer], found [Reference] 0x7ffff7f66040 (20260408/exresop-550)
+ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [Decrement] (20260408/exoparg1-824)
+ACPI Exec: Exception override, new status AE_OK
+
+ACPI Debug:  "---------- ERROR    : PRV0"
+ACPI Debug:  "TITLE               : Check operators under the known critical conditions"
+ACPI Debug:  "COLLECTION          : complex"
+ACPI Debug:  "TEST CASE           : provoke"
+ACPI Debug:  "TEST                : m134"
+ACPI Debug:  "ERROR,    File      : provoke.asl"
+ACPI Debug:  "          Line      : 98"
+ACPI Debug:  "**** Expected Result: 0x0x9, (9)"
+ACPI Debug:  "**** Actual Result  : 0x0xA, (10)"
+ACPI Debug:  "---------- END
+"
+ACPI Debug:  "Unexpected exceptions (count 0000000000000001), the last is AE_AML_OPERAND_TYPE, 0000000000003003"
+ACPI Debug:  "---------- ERROR    : PRV0"
+ACPI Debug:  "TITLE               : Check operators under the known critical conditions"
+ACPI Debug:  "COLLECTION          : complex"
+ACPI Debug:  "TEST CASE           : provoke"
+ACPI Debug:  "TEST                : m134"
+ACPI Debug:  "ERROR,    File      : ehandle.asl"
+ACPI Debug:  "          Line      : 779"
+ACPI Debug:  "CHECKING, File      : provoke.asl"
+ACPI Debug:  "             Method : PRV0"
+ACPI Debug:  "             Line   : 101"
+ACPI Debug:  "**** Expected Result: 0x0x0, (0)"
+ACPI Debug:  "**** Actual Result  : 0x0x0, (0)"
+ACPI Debug:  "---------- END
+"
+ACPI Debug:  ":CTST:complex:provoke:m134:FAIL:Errors # 0x02 0x00 0x00 0x00:"
+ACPI Debug:  "m136 test started"
+ACPI Debug:  ":CTST:complex:provoke:m136:PASS:"
+ACPI Debug:  "Run time (in seconds): 0x0000000000000000"
+ACPI Debug:  "The total number of exceptions handled: 0x0000000000000002"
+ACPI Debug:  "========= ERRORS SUMMARY (max 400):"
+ACPI Debug:  "provoke, provoke.asl, 0000000000000056"
+ACPI Debug:  "provoke, ehandle.asl, 000000000000030B, provoke.asl, 0000000000000059, PRV0"
+ACPI Debug:  "provoke, provoke.asl, 0000000000000062"
+ACPI Debug:  "provoke, ehandle.asl, 000000000000030B, provoke.asl, 0000000000000065, PRV0"
+ACPI Debug:  "========= END."
+ACPI Debug:  "========= ROOT METHODS SUMMARY (max 600):"
+ACPI Debug:  ":STST:complex:provoke:m130:PASS:"
+ACPI Debug:  ":STST:complex:provoke:m132:PASS:"
+ACPI Debug:  ":STST:complex:provoke:m133:FAIL:Errors # 0x02 0x00 0x00 0x00:"
+ACPI Debug:  ":STST:complex:provoke:m134:FAIL:Errors # 0x02 0x00 0x00 0x00:"
+ACPI Debug:  ":STST:complex:provoke:m136:PASS:"
+ACPI Debug:  "========= END."
+ACPI Debug:  "TEST ACPICA: 64-bit : FAIL : Errors # 0x0000000000000004, Failed tests # 0x0000000000000002"
+0x1C Outstanding allocations after evaluation of \MN00
+Evaluation of \MN00 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+Evaluating \ERRS
+Evaluation of \ERRS returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000004
+
+Evaluating \MN00
+   tbfind-0258 [37]                                       TbFindTable : Found table [DSDT]
+ACPI Debug:  "64-bit mode"
+ACPI Debug:  "Release of parent ACPICA code 0x0000000020260408"
+ACPI Debug:  "Release of ASLTS test suite  0x0000000000000016"
+ACPI Debug:  "Settings of ASLTS test suite 0x0000000000000005"
+ACPI Debug:  "TEST (complex), Check operators under the known critical conditions"
+ACPI Debug:  "m130 test started"
+ACPI Debug:  ":CTST:complex:provoke:m130:PASS:"
+ACPI Debug:  "m132 test started"
+ACPI Debug:  ":CTST:complex:provoke:m132:PASS:"
+ACPI Debug:  "m133 test started"
+ACPI Error: Needed [Integer/String/Buffer], found [Reference] 0x7ffff7f16040 (20260408/exresop-550)
+ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [Decrement] (20260408/exoparg1-824)
+ACPI Exec: Exception override, new status AE_OK
+
+ACPI Debug:  "---------- ERROR    : PRV0"
+ACPI Debug:  "TITLE               : Check operators under the known critical conditions"
+ACPI Debug:  "COLLECTION          : complex"
+ACPI Debug:  "TEST CASE           : provoke"
+ACPI Debug:  "TEST                : m133"
+ACPI Debug:  "ERROR,    File      : provoke.asl"
+ACPI Debug:  "          Line      : 86"
+ACPI Debug:  "**** Expected Result: 0x0x9, (9)"
+ACPI Debug:  "**** Actual Result  : 0x0xA, (10)"
+ACPI Debug:  "---------- END
+"
+ACPI Debug:  "Unexpected exceptions (count 0000000000000001), the last is AE_AML_OPERAND_TYPE, 0000000000003003"
+ACPI Debug:  "---------- ERROR    : PRV0"
+ACPI Debug:  "TITLE               : Check operators under the known critical conditions"
+ACPI Debug:  "COLLECTION          : complex"
+ACPI Debug:  "TEST CASE           : provoke"
+ACPI Debug:  "TEST                : m133"
+ACPI Debug:  "ERROR,    File      : ehandle.asl"
+ACPI Debug:  "          Line      : 779"
+ACPI Debug:  "CHECKING, File      : provoke.asl"
+ACPI Debug:  "             Method : PRV0"
+ACPI Debug:  "             Line   : 89"
+ACPI Debug:  "**** Expected Result: 0x0x0, (0)"
+ACPI Debug:  "**** Actual Result  : 0x0x0, (0)"
+ACPI Debug:  "---------- END
+"
+ACPI Debug:  ":CTST:complex:provoke:m133:FAIL:Errors # 0x02 0x00 0x00 0x00:"
+ACPI Debug:  "m134 test started"
+ACPI Error: Needed [Integer/String/Buffer], found [Reference] 0x7ffff7f7c040 (20260408/exresop-550)
+ACPI Error: AE_AML_OPERAND_TYPE, While resolving operands for [Decrement] (20260408/exoparg1-824)
+ACPI Exec: Exception override, new status AE_OK
+
+ACPI Debug:  "---------- ERROR    : PRV0"
+ACPI Debug:  "TITLE               : Check operators under the known critical conditions"
+ACPI Debug:  "COLLECTION          : complex"
+ACPI Debug:  "TEST CASE           : provoke"
+ACPI Debug:  "TEST                : m134"
+ACPI Debug:  "ERROR,    File      : provoke.asl"
+ACPI Debug:  "          Line      : 98"
+ACPI Debug:  "**** Expected Result: 0x0x9, (9)"
+ACPI Debug:  "**** Actual Result  : 0x0xA, (10)"
+ACPI Debug:  "---------- END
+"
+ACPI Debug:  "Unexpected exceptions (count 0000000000000001), the last is AE_AML_OPERAND_TYPE, 0000000000003003"
+ACPI Debug:  "---------- ERROR    : PRV0"
+ACPI Debug:  "TITLE               : Check operators under the known critical conditions"
+ACPI Debug:  "COLLECTION          : complex"
+ACPI Debug:  "TEST CASE           : provoke"
+ACPI Debug:  "TEST                : m134"
+ACPI Debug:  "ERROR,    File      : ehandle.asl"
+ACPI Debug:  "          Line      : 779"
+ACPI Debug:  "CHECKING, File      : provoke.asl"
+ACPI Debug:  "             Method : PRV0"
+ACPI Debug:  "             Line   : 101"
+ACPI Debug:  "**** Expected Result: 0x0x0, (0)"
+ACPI Debug:  "**** Actual Result  : 0x0x0, (0)"
+ACPI Debug:  "---------- END
+"
+ACPI Debug:  ":CTST:complex:provoke:m134:FAIL:Errors # 0x02 0x00 0x00 0x00:"
+ACPI Debug:  "m136 test started"
+ACPI Debug:  ":CTST:complex:provoke:m136:PASS:"
+ACPI Debug:  "Run time (in seconds): 0x0000000000000000"
+ACPI Debug:  "The total number of exceptions handled: 0x0000000000000002"
+ACPI Debug:  "========= ERRORS SUMMARY (max 400):"
+ACPI Debug:  "provoke, provoke.asl, 0000000000000056"
+ACPI Debug:  "provoke, ehandle.asl, 000000000000030B, provoke.asl, 0000000000000059, PRV0"
+ACPI Debug:  "provoke, provoke.asl, 0000000000000062"
+ACPI Debug:  "provoke, ehandle.asl, 000000000000030B, provoke.asl, 0000000000000065, PRV0"
+ACPI Debug:  "provoke, provoke.asl, 0000000000000056"
+ACPI Debug:  "provoke, ehandle.asl, 000000000000030B, provoke.asl, 0000000000000059, PRV0"
+ACPI Debug:  "provoke, provoke.asl, 0000000000000062"
+ACPI Debug:  "provoke, ehandle.asl, 000000000000030B, provoke.asl, 0000000000000065, PRV0"
+ACPI Debug:  "========= END."
+ACPI Debug:  "========= ROOT METHODS SUMMARY (max 600):"
+ACPI Debug:  ":STST:complex:provoke:m130:PASS:"
+ACPI Debug:  ":STST:complex:provoke:m132:PASS:"
+ACPI Debug:  ":STST:complex:provoke:m133:FAIL:Errors # 0x02 0x00 0x00 0x00:"
+ACPI Debug:  ":STST:complex:provoke:m134:FAIL:Errors # 0x02 0x00 0x00 0x00:"
+ACPI Debug:  ":STST:complex:provoke:m136:PASS:"
+ACPI Debug:  ":STST:complex:provoke:m130:PASS:"
+ACPI Debug:  ":STST:complex:provoke:m132:PASS:"
+ACPI Debug:  ":STST:complex:provoke:m133:FAIL:Errors # 0x02 0x00 0x00 0x00:"
+ACPI Debug:  ":STST:complex:provoke:m134:FAIL:Errors # 0x02 0x00 0x00 0x00:"
+ACPI Debug:  ":STST:complex:provoke:m136:PASS:"
+ACPI Debug:  "========= END."
+ACPI Debug:  "TEST ACPICA: 64-bit : FAIL : Errors # 0x0000000000000008, Failed tests # 0x0000000000000004"
+0x13 Outstanding allocations after evaluation of \MN00
+Evaluation of \MN00 returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000001
+
+Evaluating \ERRS
+Evaluation of \ERRS returned object 0x555555601dd0, external buffer length 18
+  [Integer] = 0000000000000008
+
+0x7ffff7f7c040 Length 0x0048   utcache-0453 [Operand Object]    Reference  RefCount 0x0001
+0x7ffff7f66040 Length 0x0048   utcache-0453 [Operand Object]    Reference  RefCount 0x0001
+0x7ffff7f16040 Length 0x0048   utcache-0453 [Operand Object]    Reference  RefCount 0x0001
+0x555555644970 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+0x555555619e80 Length 0x0048   utcache-0453 [Operand Object]    Reference  RefCount 0x0001
+0x555555607ce0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x555555607ba0 Length 0x0023  nsxfname-0723 [Not a Descriptor] 
+0x5555556079f0 Length 0x0048   utcache-0453 [Operand Object]       Method  RefCount 0x0001
+ACPI Error: 8 (0x8) Outstanding cache allocations (20260408/uttrack-902)

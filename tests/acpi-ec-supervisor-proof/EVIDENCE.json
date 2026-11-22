@@ -1,0 +1,57 @@
+{
+  "hosted_checks": 16324,
+  "runtime_processes": 102,
+  "evidence": {
+    "owner": {
+      "path": "/home/doc/cubit-build-tmp/acpi-native-notifications-zQ60eN/COMPLETE.json",
+      "sha256": "8c3e073b0a75f5ffb5152f3e149ab44e246aae716eb789caf35f938c15b819f0",
+      "checks": 15324,
+      "runtime_processes": 100
+    },
+    "control": {
+      "path": "/home/doc/cubit-build-tmp/ec-supervisor-control-n8NVli/COMPLETE.json",
+      "sha256": "18c2ae4a0d7791c6cd6ef64139f54bb9c7618340bd4abf0ee15ea0d4e94bc116",
+      "checks": 1000,
+      "runtime_processes": 2
+    },
+    "proof": {
+      "path": "/home/doc/cubit-build-tmp/ec-supervisor-proof-g2r9og/COMPLETE.json",
+      "sha256": "1ca46462f6ccd451035f65bb2aa632b86ee77c8bca5ba1838ea43c8e65f9395a",
+      "reports": [
+        {
+          "level": 1,
+          "entities": 18,
+          "proof": 12,
+          "flow": 37,
+          "valid_CVC5": 70,
+          "valid_Trivial": 10,
+          "external_dependencies": 0,
+          "skips": 0,
+          "rejected_controls": 20
+        },
+        {
+          "level": 2,
+          "entities": 18,
+          "proof": 12,
+          "flow": 37,
+          "valid_CVC5": 70,
+          "valid_Trivial": 10,
+          "external_dependencies": 0,
+          "skips": 0,
+          "rejected_controls": 20
+        }
+      ],
+      "scope": "Actual supervisor admission/retained-completion policy only under its contracts. Callback truth,source authentication,Core/GC,loop and physical lifetime remain outside; no whole-driver/interpreter/hardware proof."
+    }
+  },
+  "production_paths": [
+    "userspace/services/acpi/native/acpi_ec_supervisor_control.ads",
+    "userspace/services/acpi/native/acpi_ec_supervisor_control.adb",
+    "userspace/services/acpi/native/acpi_native_server-with_ec_events.ads",
+    "userspace/services/acpi/native/acpi_native_server-with_ec_events.adb"
+  ],
+  "new_proof": true,
+  "whole_service_proved": false,
+  "native_executed": false,
+  "hardware_validated": false
+}

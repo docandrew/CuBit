@@ -1,0 +1,10 @@
+project Test is
+ for Source_Dirs use (".", "../../../userspace/lib/compositor");
+ for Source_Files use ("compositor_backend_selection.ads", "compositor_backend_selection.adb", "check.adb");
+ for Object_Dir use external ("BACKEND_SELECTION_OBJECT_DIR", "build");
+ for Exec_Dir use external ("BACKEND_SELECTION_OBJECT_DIR", "build");
+ for Main use ("check.adb");
+ package Compiler is
+   for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato");
+ end Compiler;
+end Test;

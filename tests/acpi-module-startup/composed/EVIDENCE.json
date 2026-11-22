@@ -1,0 +1,42 @@
+{
+  "portable": {
+    "path": "/home/doc/cubit-build-tmp/acpi-module-composed-0hrRrj/COMPLETE.json",
+    "sha256": "6f72331a9db0e5977761c72566248f52101975f8ced85040303f99dafd77fe07",
+    "checks": 15596,
+    "runtime_processes": 716
+  },
+  "parent_regression": {
+    "path": "/home/doc/git/.acpi-proof-work/module-composed-startup-20261029/REGRESSION-VALIDATED.json",
+    "sha256": "4cab645ba94e59a698652927a79cf72ae4b4d6ff5fddbe7e687c5d7c9e097d82",
+    "selected_checks": 2060,
+    "selected_processes": 90,
+    "excluded_duplicate_budget_checks": 56,
+    "scope": "Candidate body replay; original spec differs only by the exact comment replacement recorded in SPEC-COMMENT-ONLY.json."
+  },
+  "semantic": [
+    {
+      "profile": "checked",
+      "directory": "/home/doc/git/.acpi-proof-work/module-composed-startup-20261029/publication/candidate/tests/acpi-native-entry/results/checked-zTneVhpk",
+      "objects": 0,
+      "kind": "semantic-only",
+      "selections": 60,
+      "alis": 57
+    },
+    {
+      "profile": "release",
+      "directory": "/home/doc/git/.acpi-proof-work/module-composed-startup-20261029/publication/candidate/tests/acpi-native-entry/results/release-6SMDluBN",
+      "objects": 0,
+      "kind": "semantic-only",
+      "selections": 60,
+      "alis": 57
+    }
+  ],
+  "hosted_checks": 17656,
+  "runtime_processes": 806,
+  "reference_value_matches": 19,
+  "reference_known_differences": 1,
+  "new_proof": false,
+  "native_executed": false,
+  "hardware_validated": false,
+  "goal_complete": false
+}
