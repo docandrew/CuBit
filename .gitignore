@@ -82,6 +82,8 @@ src/build.ads
 # Session coordination notes and the advisory build lock are local working
 # state, not repository content.
 /coordination/
+# Design notes stay local until the docs sweep (DOC-001); not published.
+/docs/
 /.build-workspaces/
 
 # --- Scratch from isolated regression and proof runs ---
