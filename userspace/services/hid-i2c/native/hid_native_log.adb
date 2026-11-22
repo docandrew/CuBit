@@ -15,6 +15,7 @@ package body HID_Native_Log is
    function Detached return Boolean is (May_End);
    Success, Failure : array (Bringup_Stage) of Boolean := [others => False];
    Repeats : Interfaces.Unsigned_64 := 0;
+   Notices : array(Notice_Kind)of Boolean := [others=>False];
    Completed : Natural range 0 .. Bringup_Stage'Pos (Bringup_Stage'Last) + 1 := 0;
    Last_Reached : Bringup_Stage := Identify;
    function Name (Item : Bringup_Stage) return String is
@@ -57,6 +58,15 @@ package body HID_Native_Log is
       else Failure (Item) := True; end if;
       Line ("stage " & Name (Item) & (if OK then " ok " else " fail ") & Reason'Image (Why) & Details, not OK);
    end Stage;
+   procedure Notice (Item : Notice_Kind) is
+   begin
+      if Notices(Item)then return;end if;Notices(Item):=True;
+      Line((case Item is
+         when Reset_Ack_Timeout=>"reset ack not observed within1000ms; continue only after confirmed GPIO release",
+         when Elan_Bogus_IRQ=>"Elan IRQ length0xffff ignored as no data"),True);
+   end Notice;
+   procedure Startup_Detail (Details : String) is
+   begin Line("startup "&Details,True);end Startup_Detail;
    function Hex (Key : String; Value : Interfaces.Unsigned_64) return String is
       Alphabet : constant String := "0123456789abcdef";
       Radix : constant Interfaces.Unsigned_64 := 16;

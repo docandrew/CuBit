@@ -371,6 +371,7 @@ begin
    App_Complete([],20);Check(App.Observe.At_Phase=App.Device.Resetting);
    App_Complete ([], 30); Check (App.Wake_Deadline (31, 5000) = 1000); App.Step (40, True);
    App_Complete ([0, 0], 50); Check (App.Observe.At_Phase = App.Device.Releasing_Reset); GPIO_Complete (51);
+   Check(App.Observe.At_Phase=App.Device.Post_Reset_Power_On);App_Complete([],55);
    App_Complete (Descriptor (0 .. Used - 1), 60);
    Check (App.Ready and then App.Admission.Outcome = App.Source_Configured and then App.Admission.Touchpad = 2);
    Payload (0); Check (App.Head.Recover and then App.Head.Observed_Ms = 60);
@@ -452,7 +453,7 @@ begin
       Ambiguous.Start (Server, 16#20#, Config, 1000, 200, True, Status); Check (Status = Ambiguous.Started);
       Ambiguous_Complete (Header, 210); Ambiguous_Complete ([], 220); Ambiguous.Reset_Interrupt (42, Event);
       Ambiguous_Complete ([], 230); Ambiguous.Step (240, True); Ambiguous_Complete ([0, 0], 250);
-      Ambiguous_Complete (Descriptor (0 .. Used - 1), 260);
+      Ambiguous_Complete ([], 255); Ambiguous_Complete (Descriptor (0 .. Used - 1), 260);
       Check (not Ambiguous.Ready and then Ambiguous.Admission.Outcome = Ambiguous.Touchpad_Ambiguous and then Ambiguous.Quiescent);
       Ambiguous.Close (Ambiguous_Closed); Check (Ambiguous_Closed = C_Ambiguous.Closed);
    end;
@@ -465,7 +466,7 @@ begin
       Budgeted.Start (Server, 16#20#, Config, 1000, 300, True, Status); Check (Status = Budgeted.Started);
       Budgeted_Complete (Header, 310); Budgeted_Complete ([], 320); Budgeted.Reset_Interrupt (42, Event);
       Budgeted_Complete ([], 330); Budgeted.Step (340, True); Budgeted_Complete ([0, 0], 350);
-      Budgeted_Complete (Descriptor (0 .. Used - 1), 360);
+      Budgeted_Complete ([], 355); Budgeted_Complete (Descriptor (0 .. Used - 1), 360);
       Check (not Budgeted.Ready and then Budgeted.Admission.Outcome = Budgeted.Root_Budget_Exhausted
          and then Budgeted.Admission.Root_Charge = 1 and then Budgeted.Admission.Binding_Charge = 0);
       Budgeted.Close (Budgeted_Closed); Check (Budgeted_Closed = C_Budgeted.Closed);
@@ -478,7 +479,7 @@ begin
       Too_Small.Start (Server, 16#20#, Config, 1000, 400, True, Status); Check (Status = Too_Small.Started);
       Small_Complete (Header, 410); Small_Complete ([], 420); Too_Small.Reset_Interrupt (42, Event);
       Small_Complete ([], 430); Too_Small.Step (440, True); Small_Complete ([0, 0], 450);
-      Small_Complete (Descriptor (0 .. Used - 1), 460);
+      Small_Complete ([], 455); Small_Complete (Descriptor (0 .. Used - 1), 460);
       Check (not Too_Small.Ready and then Too_Small.Admission.Outcome = Too_Small.Parser_Refused
          and then Too_Small.Admission.Parser = Too_Small.Schema.Need_Capacity and then Too_Small.Admission.Fields_Required > 1);
       Too_Small.Close (Small_Closed); Check (Small_Closed = C_Small.Closed);

@@ -343,11 +343,11 @@
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_device.adb",
-      "sha256": "4e951372eb016eb9ff5af4cb5c7e3d75633bec78545205399eb8299b6d65be2a"
+      "sha256": "98b21aaa2d64852e00b50e6189b79366c44837c83a1611fd005c3f3dfec26d0f"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_device.ads",
-      "sha256": "ccf043deab8a36a6abad7e732760c64eae34d4c9752c8a9bb54c0af10245857c"
+      "sha256": "dd831f5d5deafe1175c2efa382e928fb519b0601ad7f583cee80f3c0c4e6a4d5"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_touchpad.adb",
@@ -484,12 +484,20 @@
     {
       "path": "tests/gpio-native/models/main/cubit-waits.adb",
       "sha256": "9d5013ccded4b59e562370cc88925cda035f6bc984ec7196a4f5ec5c92d53a93"
+    },
+    {
+      "path": "userspace/services/hid-i2c/lib/hid_reset_policy.ads",
+      "sha256": "eea0e060f366bb7cb7c5aa63f58958a01809642dd751aec72ca2a8c583243c8f"
+    },
+    {
+      "path": "userspace/services/hid-i2c/lib/hid_reset_policy.adb",
+      "sha256": "fa34a36aa942533e23cad6cbe6a1a385b8114fa2990691130c136e23b219703c"
     }
   ],
   "local": [
     {
       "name": "gpio_hid_i2c_tests.adb",
-      "sha256": "58a9779bc1d349807a13c437d032998fd967357b4b1c96e060e79a1c8b88c1f5"
+      "sha256": "fde3a3da3bbe552f740737c46cb95ce1a5547dd3209897962dd542e1ebde976b"
     },
     {
       "name": "i2c_hid_channel_model.adb",

@@ -14,6 +14,10 @@ package HID_Native_Log is
       Operation_Refused, Effects_Uncertain, Cleanup_Pending);
    procedure Stage (Item : Bringup_Stage; OK : Boolean; Why : Reason;
       Details : String := "");
+   type Notice_Kind is (Reset_Ack_Timeout, Elan_Bogus_IRQ);
+   procedure Notice (Item : Notice_Kind);
+   procedure Startup_Detail (Details : String);
+   -- Copied compiled enum/numeric observations before readiness decline.
    procedure Summary;
    procedure Grant_Notice (Item : CuBit.Control_Events.Event);
    procedure Disable;

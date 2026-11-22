@@ -113,8 +113,17 @@ procedure Main is
    end Coordinate_Details;
    procedure Report_Once (Item : Startup_Policy.Outgoing) is
       Limit : constant Launch.Deadline_Result := Launch.Deadline (Now, Raw.timing.control);
+      Snapshot : constant App.Device.Report := App.Observe;
    begin
       Ack := False;
+      if Item=Startup_Policy.Report_Declined then
+         -- Copy before a readiness RPC can retire this process. No clock,
+         -- MMIO, command retry or ownership transition is performed here.
+         Log.Startup_Detail("phase="&Snapshot.At_Phase'Image&" reason="&Snapshot.Reason'Image&
+            " control="&Snapshot.Pending_Control'Image&" armed="&Snapshot.Reset_Still_Armed'Image&
+            " uncertain="&Snapshot.Latch_Uncertain'Image&Log.Hex("lease",Snapshot.Reset_Ticket)&
+            Log.Hex("ack-until",Snapshot.Reset_Ack_Until));
+      end if;
       if Available and then Limit.Available then Reports.Send (Item, Limit.Limit, Ack);
       elsif Item = Startup_Policy.Report_Declined then
          Reports.Decline_Without_Clock (Queued);
@@ -128,7 +137,7 @@ procedure Main is
 begin
    Log.Initialize (Binding_Result);
    Log.Stage (Log.Identify, True, Log.Confirmed,
-      " acpi-id=PNP0C50 mode=polled" & Log.Hex ("descriptor-register", W.Word (Raw.descriptor_register)));
+      " acpi-id=PNP0C50 i2c=channel gpio=irq" & Log.Hex ("descriptor-register", W.Word (Raw.descriptor_register)));
    Clock.Sample_Time (Now, Available); Clock.Cache_Time (Now, Available);
    Startup_Limit := Launch.Deadline (Now, Raw.timing.startup);
    Can_Start := GPIO_Binding.Status = GPIO.Endpoint_Resolved and then
@@ -167,6 +176,8 @@ begin
          else Pump.No_Startup_Deadline);
       begin Pump.Turn (Dispatch_Limit, Progress); end;
       Clock.Cached_Time (Now, Available);
+      if App.Observe.Reset_Ack_Timed_Out then Log.Notice(Log.Reset_Ack_Timeout);end if;
+      if App.Observe.Bogus_IRQ_Ignored then Log.Notice(Log.Elan_Bogus_IRQ);end if;
       if App.Observe.Descriptor.Status = D.Decoded then
          Log.Stage (Log.Descriptor, True, Log.Confirmed,
             Log.Hex ("vendor", W.Word (App.Observe.Descriptor.Value.Vendor_ID)) &

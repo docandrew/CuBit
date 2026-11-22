@@ -88,7 +88,7 @@
     },
     {
       "path": "tests/hid-i2c-native/touchpad_publication_tests.adb",
-      "sha256": "bdaa22debdb7341bf7709233877b398d5e11183ecd3c15739b406d88f2d6d583",
+      "sha256": "db0a84688bb9da7e3cbe01b9de499d8aafe8171a3f6b3ce1005267e0f6b1b390",
       "kind": "test"
     },
     {
@@ -473,12 +473,12 @@
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_device.adb",
-      "sha256": "4e951372eb016eb9ff5af4cb5c7e3d75633bec78545205399eb8299b6d65be2a",
+      "sha256": "98b21aaa2d64852e00b50e6189b79366c44837c83a1611fd005c3f3dfec26d0f",
       "kind": "production"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_device.ads",
-      "sha256": "ccf043deab8a36a6abad7e732760c64eae34d4c9752c8a9bb54c0af10245857c",
+      "sha256": "dd831f5d5deafe1175c2efa382e928fb519b0601ad7f583cee80f3c0c4e6a4d5",
       "kind": "production"
     },
     {
@@ -760,6 +760,16 @@
       "kind": "model",
       "path": "tests/hid-i2c-native/host/cubit-monotonic.adb",
       "sha256": "5b8b8dcdc2f8451aee8c1969631a97306a4dec6d8c0c728e5f89a9c6df630021"
+    },
+    {
+      "path": "userspace/services/hid-i2c/lib/hid_reset_policy.ads",
+      "sha256": "eea0e060f366bb7cb7c5aa63f58958a01809642dd751aec72ca2a8c583243c8f",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/services/hid-i2c/lib/hid_reset_policy.adb",
+      "sha256": "fa34a36aa942533e23cad6cbe6a1a385b8114fa2990691130c136e23b219703c",
+      "kind": "production"
     }
   ],
   "tests": [
@@ -798,6 +808,46 @@
     {
       "main": "hid_i2c_interop_tests",
       "prefix": "HID I2C channel interoperability checks"
+    },
+    {
+      "id": "reset_timeout",
+      "main": "touchpad_publication_tests",
+      "args": [
+        "reset-timeout"
+      ],
+      "prefix": "HID touchpad publication checks"
+    },
+    {
+      "id": "reset_pending",
+      "main": "touchpad_publication_tests",
+      "args": [
+        "reset-pending"
+      ],
+      "prefix": "HID touchpad publication checks"
+    },
+    {
+      "id": "reset_bogus",
+      "main": "touchpad_publication_tests",
+      "args": [
+        "reset-bogus"
+      ],
+      "prefix": "HID touchpad publication checks"
+    },
+    {
+      "id": "elan_input_bogus",
+      "main": "touchpad_publication_tests",
+      "args": [
+        "elan-input-bogus"
+      ],
+      "prefix": "HID touchpad publication checks"
+    },
+    {
+      "id": "reset_release_uncertain",
+      "main": "touchpad_publication_tests",
+      "args": [
+        "reset-release-uncertain"
+      ],
+      "prefix": "HID touchpad publication checks"
     }
   ],
   "proof_inputs": [

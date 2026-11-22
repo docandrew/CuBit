@@ -30,7 +30,7 @@ package HID_I2C_Device with SPARK_Mode is
    package T renames Bus.Transactions;
    use type T.Phase, L.Operation;
    type Phase is (Cold, Fetch_HID, Power_On, Arming_Reset, Resetting, Await_Reset,
-      Read_Reset, Releasing_Reset, Fetch_Report, Serving, Read_Input, Draining, Stopped, Faulted);
+      Read_Reset, Releasing_Reset, Post_Reset_Power_On, Fetch_Report, Serving, Read_Input, Draining, Stopped, Faulted);
    type Failure is (None, Requested_Stop, Buffer_Setup_Failed, Clock_Unavailable,
       Clock_Reversed, Deadline_Expired, Token_Unavailable, Submit_Refused,
       Transfer_Failed, Read_Refused, Descriptor_Refused, Capacity_Refused,
@@ -49,6 +49,8 @@ package HID_I2C_Device with SPARK_Mode is
       Reset_Still_Armed, Latch_Uncertain, Memory_Uncertain : Boolean := False;
       Pending_Control : L.Operation := L.No_Control;
       Last_Control : L.Reply;
+      Reset_Ack_Until : W.Word := 0;
+      Reset_Ack_Timed_Out, Bogus_IRQ_Ignored : Boolean := False;
       Input_Packets : W.Word := 0;
    end record;
    type Request_Result is (Accepted, Not_Ready, Busy);

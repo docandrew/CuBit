@@ -91,3 +91,19 @@ Linux v6.12 i2c-hid informed the ordering behaviour; no source was copied.
 Current schema regeneration preserves the committed typed parameter decoder
 and descriptor bytes exactly; provenance records the current schema/tool.
 These are hosted tests with modeled kernel/MMIO/transport boundaries.
+
+## Confirmed reset acknowledgment timeout and Elan quirks
+
+After a confirmed successful RESET send, acknowledgment has its own finite
+1000ms deadline within the overall startup limit. Expiry records a warning
+and may continue only after the existing GPIO release is confirmed. An
+in-flight send or uncertain release remains owned: no cancellation, replay,
+new report command or readiness is inferred. Reset timeout, unresolved send,
+bogus reset frame, uncertain release, and live bogus input have dedicated
+actual-owner scenarios with explicit host boundaries.
+
+Generic devices receive SET_POWER ON after reset release. Elan04f3 skips
+that wake;0xffff input lengths are ignored as no data, with a one-time
+warning flag. Serving input still reads before GPIO ACK/unmask. Main logs
+copied startup phase/control/lease state before declining readiness. These
+behaviours reference Linux v6.12 i2c-hid facts; no source code was copied.

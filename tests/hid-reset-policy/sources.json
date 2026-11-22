@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "tests/hid-reset-policy/policy_tests.adb",
+      "sha256": "70e99fd4ede3a29eef7e7797cc6b79314c22c31887c8300a93e9a4b4d9478a30"
+    },
+    {
+      "path": "userspace/services/hid-i2c/lib/hid_reset_policy.ads",
+      "sha256": "eea0e060f366bb7cb7c5aa63f58958a01809642dd751aec72ca2a8c583243c8f"
+    },
+    {
+      "path": "userspace/services/hid-i2c/lib/hid_reset_policy.adb",
+      "sha256": "fa34a36aa942533e23cad6cbe6a1a385b8114fa2990691130c136e23b219703c"
+    }
+  ],
+  "tools": {
+    "gprbuild": {
+      "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+      "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+    }
+  }
+}
