@@ -63,6 +63,9 @@ package HID_I2C_Device with SPARK_Mode is
       Now : W.Word; Clock_Available : Boolean; Result : out Request_Result);
    procedure Step (S : in out State; Now : W.Word; Clock_Available : Boolean);
    procedure Reset_Interrupt (S : in out State; Ticket : W.Word; Result : out Interrupt_Result);
+   -- Outer owner authenticates publisher/badge/frame. Only a confirmed ARM
+   -- lease is accepted, including before Power_On/RESET. Polling an already
+   -- delivered control receipt creates no authority and never resends ARM.
    procedure Request_Input (S : in out State; Deadline : W.Millisecond;
       Now : W.Word; Clock_Available : Boolean; Result : out Request_Result);
    procedure Request_Stop (S : in out State);

@@ -78,3 +78,16 @@ cases exercise repeated receive-credit replenishment. Exact command count,
 final STOP, repeated START for combined transfers, copied bytes, grant
 retirement and no replay are checked. This is a bounded hosted instance,
 not a claim about real FIFO depth or physical controller timing.
+
+## Reset IRQ order
+
+The actual reset owner confirms GPIO ARM before SET_POWER ON and RESET.
+Only the confirmed lease is accepted across those writes. Tests cover an
+ARM receipt followed by a matching event before the next owner Step; an
+unconfirmed or wrong lease is not retained. Reset-read completion precedes
+GPIO release, and serving input still follows read-before-ACK/unmask.
+Linux v6.12 i2c-hid informed the ordering behaviour; no source was copied.
+
+Current schema regeneration preserves the committed typed parameter decoder
+and descriptor bytes exactly; provenance records the current schema/tool.
+These are hosted tests with modeled kernel/MMIO/transport boundaries.

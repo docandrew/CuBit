@@ -7,7 +7,7 @@
     },
     {
       "path": "shared/capabilities/capability_abi.ads",
-      "sha256": "845dec7e6ce5b6e8aa2fb618ca6710322c949cd16ede3dcd213b9dd4b96e01bc"
+      "sha256": "3cb666bc1f49820880887dfb9d0598e4bd406dcb71576f52569998851d8cfaba"
     },
     {
       "path": "tests/gpio-hid-i2c/i2c_hid_channel_model.adb",
@@ -159,19 +159,19 @@
     },
     {
       "path": "userspace/lib/input/input_pending.adb",
-      "sha256": "e7b2b59f8bae09da6e55328c3a4be312854266c6fd5cee98e0c4bb9f8791bcf3"
+      "sha256": "6a1b829703a161bd668e0f93f83c77d59259bb4b757371be5b1ca6355ebaa811"
     },
     {
       "path": "userspace/lib/input/input_pending.ads",
-      "sha256": "628cf99950c97b1def2bd021c0539a8cf179da7bfb4d375001eae32f416f5485"
+      "sha256": "56718b24e2219bc250906e6fea0d93aef4022f75790006274e1670557ab993a5"
     },
     {
       "path": "userspace/lib/input/pointer_pending.adb",
-      "sha256": "be19741d53c24bd84872f43bdc1b1c6d5df242fdc320bbdcbe378552f8124d42"
+      "sha256": "86c01935923d8fce8455e2e682ada912ee8d02389abf78dc0fba3494232a3182"
     },
     {
       "path": "userspace/lib/input/pointer_pending.ads",
-      "sha256": "8fdf3f33e5e7a882455da31974a3acd079aae4dc74e76602cd7883e2276da713"
+      "sha256": "f38fb9251fb3d2567db2d02e08d44f76a74812534c6b8ed7cb92ac4798145bfd"
     },
     {
       "path": "userspace/runtime/gnat/cubit-canonical_readers.adb",
@@ -187,19 +187,19 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-input.adb",
-      "sha256": "cdd7d07dc539effebc5fc1bbba75353bce5dc1d72d7aa6ccae8a6102816c339d"
+      "sha256": "083d011186309496750a2c384e3576e98f7a9bcdc3935c37204785af5e25f000"
     },
     {
       "path": "userspace/runtime/gnat/cubit-input.ads",
-      "sha256": "d9aacc43abbb203c59968ad1e6a7b21e16d2a8e5e4e10d8edbb6f250b5aeda98"
+      "sha256": "89a1d8dba9525c0cac5bb232ed2f22f897e647544e6d009e6dd903a9a4ea5a8b"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_arguments.adb",
-      "sha256": "077a7ba88117f75a45e021b26fa154b09440a4e85c2919d5ea3317ba5ae18629"
+      "sha256": "5fe3e455409590dd7eaa19923b95eb2bea6f4b20cab0cb1bfdd7160ef279e1ed"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_arguments.ads",
-      "sha256": "65beb6b48dc22c31474e67607c1b7cf20ccf8d7b0a462b08ec953b9606422b75"
+      "sha256": "f495defa4aee738b6fb029c051341566e836867a0bcacb0fb6b010a848e9275d"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_parameters.ads",
@@ -235,11 +235,11 @@
     },
     {
       "path": "userspace/services/acpi/hid-i2c/hid_i2c_descriptors.adb",
-      "sha256": "2f29b334a5e1801d05fb405ee89ec91c6379b55553448755fce66e149dc09849"
+      "sha256": "41d8bada3643713e1ace117714c619d70cded0f05d7f17fe5905800b2fae5dca"
     },
     {
       "path": "userspace/services/acpi/hid-i2c/hid_i2c_descriptors.ads",
-      "sha256": "9b2369243cbbf2d99f71e15eaa5940a808f44444c285287d89762451585f5db4"
+      "sha256": "ea57ff7cce99c173da1e8d629ce4f3a385f612661e88654bdb72806c47e93263"
     },
     {
       "path": "userspace/services/acpi/hid-i2c/hid_i2c_wire.adb",
@@ -279,11 +279,11 @@
     },
     {
       "path": "userspace/services/gpio/lib/intel_adln_gpio.adb",
-      "sha256": "3c9ce5a4f7e615c1574c661cfa037d7bedf4914383d081f6f334e8db063bd159"
+      "sha256": "74116b564512250c8ab0f5df99416aa737ec1f0b7eb3fcd542bd372e2036d788"
     },
     {
       "path": "userspace/services/gpio/lib/intel_adln_gpio.ads",
-      "sha256": "ae24574897c996d4116cad9d0d222ba5bffede7b29eef2c3a9a1e116cdca8cf1"
+      "sha256": "4dc2283bf20ace8a72db2bb307ed113234baa6998b6fb613ef74a2c8e2cf5622"
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_controller.adb",
@@ -303,11 +303,11 @@
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.adb",
-      "sha256": "26dc73d667b24a6626bb20860cd405b1b1468f239c5905881717290459a6245e"
+      "sha256": "857c484a6e32452fcb03eb3657252d7e2554b0f3052d0f84e4b0fad4b562288d"
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.ads",
-      "sha256": "c515aca26679c5be38b4951d48c7611278ce7639c5cace6567eda378f868d3f8"
+      "sha256": "d8dad407c9cf2949137a34f424477d762472dd2847211d50bcdca709f646c96d"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_gpio_input.adb",
@@ -343,11 +343,11 @@
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_device.adb",
-      "sha256": "c89a81ab7cfb5373037933530d7b2eee4dcc2ebb656dcc9113c6e2913054179b"
+      "sha256": "4e951372eb016eb9ff5af4cb5c7e3d75633bec78545205399eb8299b6d65be2a"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_device.ads",
-      "sha256": "552abb7f98f90904cedc471269dffedc4ca20c02dab884e0a640a8d6c4052a0c"
+      "sha256": "ccf043deab8a36a6abad7e732760c64eae34d4c9752c8a9bb54c0af10245857c"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_touchpad.adb",
@@ -399,7 +399,7 @@
     },
     {
       "path": "userspace/services/hid-i2c/native/hid_touchpad_native_wait.adb",
-      "sha256": "11f623a18dcc8462dfa0c48381a6adc76e31bf2f7b2e6fd12c5cb287c9793109"
+      "sha256": "547c2ee3762199c34910d7717ba695fd61b966f652ca8dfdb5643df8817e7620"
     },
     {
       "path": "userspace/services/hid-i2c/native/hid_touchpad_native_wait.ads",
@@ -476,12 +476,20 @@
     {
       "path": "userspace/services/i2c-dw/transfer/dw_i2c_interrupt_policy.adb",
       "sha256": "d7472400c735b7c119b8a0c9cea38a00ff50c59c7eb8e34c4455577f5e9e62d5"
+    },
+    {
+      "path": "tests/gpio-native/models/main/cubit-waits.ads",
+      "sha256": "6b1e561ab127259e5a5da2ff5fdf470aa1f704aba950e103b6f16bc4373078f9"
+    },
+    {
+      "path": "tests/gpio-native/models/main/cubit-waits.adb",
+      "sha256": "9d5013ccded4b59e562370cc88925cda035f6bc984ec7196a4f5ec5c92d53a93"
     }
   ],
   "local": [
     {
       "name": "gpio_hid_input_tests.adb",
-      "sha256": "88162ed358b06515d8f48a35adf1b003a0f31be8c2439bac97ca34b18360db0d"
+      "sha256": "261dc86fb10658c3b6176bf40e4374efb574a4cc5425123971387c574cc37896"
     },
     {
       "name": "gpio_hid_server_model.adb",
@@ -563,15 +571,15 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-channel_bells.adb",
-      "sha256": "0cabc9edd7bf449ba5169bb34ae03d04439e030f97ec89a44bbee4969525e931"
+      "sha256": "d91ec675c0eb2b49cea4711bc8755bfaaa91953751906b5bdae7ac87737ef72f"
     },
     {
       "path": "userspace/runtime/gnat/cubit-channel_bells.ads",
-      "sha256": "5b32e05b56375ab0d64690acb7448b7f645e7f71b71518542a31e3655964d891"
+      "sha256": "c009700b353e20bded6d4eb3a011bacf87897daf8ce3bd41ab712362c0f0a6ae"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles.ads",
-      "sha256": "a974a7110bef7339a223fb254a77c530768821a547f34ff7a8f1db4adcd8197d"
+      "sha256": "172b4d844c30af183cf30a6a613e014c1a89681b73da286df3299e69f1bd2f24"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_parameters.adb",
@@ -579,11 +587,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-messages.adb",
-      "sha256": "0a1cc66a5f7aeff67286f6264790f0b0928b322ef255847dae8356b6c41f5866"
+      "sha256": "7efedb8ca75f084a43423605c888b4f981ac5b0b03f5450c3391980281858d6a"
     },
     {
       "path": "userspace/runtime/gnat/cubit-messages.ads",
-      "sha256": "5821c8bfe49dca95b486dc76b93d4a43377edc3f9bf8a62c1d07d023c9eac2b2"
+      "sha256": "498977f539745f88eeca515e25be2c395dcae9794fd48ad0db3da38397f63a3b"
     },
     {
       "path": "userspace/runtime/gnat/g-souinf.ads",

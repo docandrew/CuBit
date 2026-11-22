@@ -368,11 +368,13 @@ begin
    Settings.X_Range := (0, 0); Settings.Y_Range := (0, 0);
    App.Start (Server, 16#20#, Settings, 1000, 1, True, Started);
    Check (Started = App.Started and then not App.Ready and then Input_Page (0 .. 1) = [16#20#, 0]);
-   App_Complete (Header, 10); App_Complete ([], 20);
-   Check (App.Observe.At_Phase = App.Device.Arming_Reset and then Submit_Calls = 2);
-   Check (Reset.Wake_Deadline (20, 5000) = 1000);
-   Check (Native.Wake_Deadline (20, 19, False) = 19);
-   GPIO_Complete (21); Native_Event (42); Check (Event_Result = Native.Reset_Latched);
+   App_Complete (Header, 10);
+   Check (App.Observe.At_Phase = App.Device.Arming_Reset and then Submit_Calls = 1);
+   Check (Reset.Wake_Deadline (10, 5000) = 1000);
+   Check (Native.Wake_Deadline (10, 9, False) = 9);
+   GPIO_Complete (11); Native_Event (42); Check (Event_Result = Native.Reset_Latched);
+   Check(App.Observe.At_Phase=App.Device.Power_On and then Submit_Calls=2);
+   App_Complete([],20);Check(App.Observe.At_Phase=App.Device.Resetting);
    App_Complete ([], 30); Check (App.Wake_Deadline (31, 5000) = 1000); App.Step (40, True);
    App_Complete ([0, 0], 50); Check (App.Observe.At_Phase = App.Device.Releasing_Reset); GPIO_Complete (51);
    App_Complete (Descriptor (0 .. Used - 1), 60);

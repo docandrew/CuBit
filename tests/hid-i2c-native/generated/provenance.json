@@ -1,10 +1,10 @@
 {
   "manifest_path": "userspace/services/hid-i2c/manifest.ccl",
   "manifest_sha256": "92fbb7b57713b7c71567dd358f403828d53c98aab36c2a9f99c83ad7634366b3",
-  "schema_sha256": "3958d43985949d019b8878388b6fe67070b8720dda26a24de7446e3929b0587b",
+  "schema_sha256": "4f642ab93eaf3b081be17ad5d3531b72a2056eb55a1f561c472f502e465b862d",
   "descriptor_sha256": "ac70e49e47019a5b8fa3dc10430b1c891e0bc70cecd9738a27cc8495a1f9f765",
   "descriptor_identity": "41b4bf30d05d9a2d77bb660330fd7815acf97ff6c056c0b870d254fa35548b23",
   "descriptor_root": "HID_Parameters",
-  "tool_sha256": "1f66128c165814565fa0a559cdbca7074662ea5502c2deb4318ff2e125eb5902",
-  "fixture_scope": "Fresh regeneration on rel 30c14c5675c3f6153486d30389c54daa27365cdc with source-built hosted CCL tools; parameters.ads, parameters.adb and descriptor.bin byte-identical to previous fixtures. Linux-hosted only."
+  "tool_sha256": "3ea9e3809ba388099925484f8dedd0e31dea6541c906a973f9a0ded1014ca32f",
+  "fixture_scope": "Regenerated against exactff0784ee8 manifest/schema with pinned existing CCL manifest tool; parameters.ads/.adb and extracted .cubit.parameters bytes exactly match committed fixtures. Hosted only."
 }

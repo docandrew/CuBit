@@ -8,7 +8,7 @@
     },
     {
       "path": "shared/capabilities/capability_abi.ads",
-      "sha256": "4f102b15b4749adbf69e6d3ddc135faccd269a9898260ceaa85f40145ded4329",
+      "sha256": "3cb666bc1f49820880887dfb9d0598e4bd406dcb71576f52569998851d8cfaba",
       "kind": "runtime-pure"
     },
     {
@@ -88,7 +88,7 @@
     },
     {
       "path": "tests/hid-i2c-native/touchpad_publication_tests.adb",
-      "sha256": "b26f59a5747b0bb38ba47612fe7719b654dce214a974fb1cab28479ca521dcc3",
+      "sha256": "bdaa22debdb7341bf7709233877b398d5e11183ecd3c15739b406d88f2d6d583",
       "kind": "test"
     },
     {
@@ -473,12 +473,12 @@
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_device.adb",
-      "sha256": "c89a81ab7cfb5373037933530d7b2eee4dcc2ebb656dcc9113c6e2913054179b",
+      "sha256": "4e951372eb016eb9ff5af4cb5c7e3d75633bec78545205399eb8299b6d65be2a",
       "kind": "production"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_device.ads",
-      "sha256": "552abb7f98f90904cedc471269dffedc4ca20c02dab884e0a640a8d6c4052a0c",
+      "sha256": "ccf043deab8a36a6abad7e732760c64eae34d4c9752c8a9bb54c0af10245857c",
       "kind": "production"
     },
     {
@@ -1611,12 +1611,12 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-boot_roots.adb",
-      "sha256": "7c0d876e13ab3bbec30d391b23c4a5550e79005e6a47649ef3f9be93bfa3be5a",
+      "sha256": "35ea63b77370a055acada8b30219812ba0909706b170f11778d1267985e6a522",
       "kind": "native-context"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-boot_roots.ads",
-      "sha256": "84eec5bdc8c2b4bee21c44c8734cb3f485f1055f442d054740a99e2e72e5eca5",
+      "sha256": "4e9bed27e4c5c904cf5d3de7d01069a350ebf5c97a1840690ef4cdeb32496043",
       "kind": "native-context"
     },
     {
@@ -1666,12 +1666,12 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-ipc.adb",
-      "sha256": "233208ddb3e9c877982e5ec8c36b8fe1c84ddf246c5af07e9dbaad33f92c608a",
+      "sha256": "cecfdf63870f12c09c4c8893bb8981979be753345d0f2d619956a6ddc3907a07",
       "kind": "native-context"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-ipc.ads",
-      "sha256": "8278df1c1d5d0752b655c964aee4413c752ae4e5844c9495c3c0f0daf3b18f20",
+      "sha256": "17bc4b74dc228329e9a37287391889f62ae39ce106413f8116f7f1540bc828b0",
       "kind": "native-context"
     },
     {
@@ -1681,7 +1681,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-kernel.ads",
-      "sha256": "3886acc60a89db85913bc887d70e2604282cd5a37b8ae990e3edf055e953ecdb",
+      "sha256": "4a221bf691815683021eb355aa8ccecabc5237f4467af1567dae9bc666c3cc60",
       "kind": "native-context"
     },
     {
@@ -1691,12 +1691,12 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-startup.adb",
-      "sha256": "c353715e15d58ef3f7f1a608d6b79462648cedcfff616f1507ff84300451b971",
+      "sha256": "eca0d179630a00525010d7f9af24494af7bc456e38de9fdc89161497ddcb9f30",
       "kind": "native-context"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-startup.ads",
-      "sha256": "b827c41b430abfb2c3b5f3099785e2af13fc3b7783322b9b36209c7aa4bd91f9",
+      "sha256": "b3b7beebf9fd12fe3d65219879d7654c552fa1f077a145bbb02ee0691ab998ed",
       "kind": "native-context"
     },
     {
@@ -1711,7 +1711,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles.ads",
-      "sha256": "a03c5350517401524797711af9d97543a4e265834b0b8671bdcd5243d28cc221",
+      "sha256": "172b4d844c30af183cf30a6a613e014c1a89681b73da286df3299e69f1bd2f24",
       "kind": "native-context"
     },
     {
@@ -2401,7 +2401,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-startup_tables.ads",
-      "sha256": "f8a479458780c939b1fde89b88ef8ba2e9b5f345b029544a80f4fd6f7364857a",
+      "sha256": "2f0d2cce31811ac1dae513013a449486fff1f127272cb768553f9d40c08f6944",
       "kind": "native-context"
     },
     {

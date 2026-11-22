@@ -213,7 +213,7 @@ procedure Touchpad_Publication_Tests is
    Generation : GW.Word := 0;
    procedure App_Step (Now : W.Word; Available : Boolean) is
    begin Cached_Now := Now; Native.Step (Now, Available); end App_Step;
-   procedure GPIO_Complete (Now : W.Word) is
+   procedure GPIO_Complete (Now : W.Word; Advance_Now : Boolean := True) is
       Result : Native.Completion_Report;
       Entry_Value : M.CompletionEntry := M.NULL_COMPLETION;
       Reply_Lease : constant GW.Word := (if Live.Observe.At_Phase = Live.Owner.Cold then 42 else 43);
@@ -226,7 +226,7 @@ procedure Touchpad_Publication_Tests is
       Entry_Value.msg.tag.length := Words'Length;
       for Index in Words'Range loop Entry_Value.msg.words (Index - Words'First) := Words (Index); end loop;
       Native.Receive_Completion (Entry_Value, Now, True, Result);
-      Check (Result.Frame_Valid and then Result.Routed_To = Expected and then Result.GPIO_Result = Controls.Accepted); App_Step (Now, True);
+      Check (Result.Frame_Valid and then Result.Routed_To = Expected and then Result.GPIO_Result = Controls.Accepted); if Advance_Now then App_Step (Now, True);end if;
    end GPIO_Complete;
    procedure Native_Event (Lease, Epoch : GW.Word) is
       Message : M.Message := M.NULL_MESSAGE;
@@ -337,11 +337,19 @@ begin
    Settings.X_Range := (0, 0); Settings.Y_Range := (0, 0);
    App.Start (Server, 16#20#, Settings, 1000, 1, True, Started);
    Check (Started = App.Started and then not App.Ready and then Input_Page (0 .. 1) = [16#20#, 0]);
-   App_Complete (Header, 10); App_Complete ([], 20);
-   Check (App.Observe.At_Phase = App.Device.Arming_Reset and then Submit_Calls = 2);
-   Check (Reset.Wake_Deadline (20, 5000) = 1000);
-   Check (Native.Wake_Deadline (20, 19, False) = 19);
-   GPIO_Complete (21); Native_Event (42, 1); Check (Event_Result = Native.Reset_Latched);
+   App_Complete (Header, 10);
+   Check (App.Observe.At_Phase = App.Device.Arming_Reset and then Submit_Calls = 1);
+   Check (Reset.Wake_Deadline (10, 5000) = 1000);
+   Check (Native.Wake_Deadline (10, 9, False) = 9);
+   Native_Event (42, 1); Check (Event_Result = Native.Unrelated); -- no confirmed lease yet
+   GPIO_Complete (11,False);
+   Check(App.Observe.At_Phase=App.Device.Arming_Reset and then Submit_Calls=1);
+   Native_Event (42, 1); Check(Event_Result=Native.Reset_Latched); -- receipt/event before owner Step
+   App_Step(11,True);
+   Check(App.Observe.At_Phase=App.Device.Power_On and then Submit_Calls=2);
+   Native_Event (41, 1); Check (Event_Result=Native.Unrelated);
+   Native_Event (42, 1); Check (Event_Result = Native.Reset_Latched); -- before POWER_ON completion/RESET
+   App_Complete ([], 20);Check(App.Observe.At_Phase=App.Device.Resetting);
    App_Complete ([], 30); Check (App.Wake_Deadline (31, 5000) = 1000); App.Step (40, True);
    App_Complete ([0, 0], 50); Check (App.Observe.At_Phase = App.Device.Releasing_Reset); GPIO_Complete (51);
    App_Complete (Descriptor (0 .. Used - 1), 60);
