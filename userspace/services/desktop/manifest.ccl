@@ -30,6 +30,14 @@
     # Lend_Buffer request. Without it Desktop copies frames to Display.
     (Request.Offerable_Self "self-offer")
     (service "process-manager" "process-manager")
+    # The Apps menu's launches (CAP-012, docs/authority-model.md 7.5): a
+    # Launch badge into the user session. Each program gets its approval
+    # within the session's envelope; Desktop holds none of it.
+    (service "launch" "launch")
+    # What runs (window owners alive, the launch entry of a window's
+    # program): procmgr's process-observer role, which alone holds the
+    # kernel's process-list object (Process_List_ABI).
+    (service "process-observer" "process-observer")
     # Wallpapers and icons (docs/assets.md): read-only, exactly the wallpaper
     # and icon packages on each image's system volume; system.assets.root
     # names the asset root.
@@ -66,6 +74,13 @@
     (filesystem [File_Right.Read] "@cd:0/Assets/cubit-wallpapers/")
     (filesystem [File_Right.Read] "@cd:0/Assets/cubit-icons/")
     (config [File_Right.Read] "system.assets.")]
+  # The Apps menu's programs (system.ccl desktop.launch.*): nothing else.
+  may_launch => [(Launch "ccl-workbench.app") (Launch "ccl-console.app") (Launch "logs.app")
+    (Launch "boot-logs.app") (Launch "metricsview.app") (Launch "agent.app") (Launch "doom.elf")
+    (Launch "devices.app") (Launch "cubitshell.app") (Launch "files.app") (Launch "text.app")
+    (Launch "calculator.app") (Launch "dictionary.app") (Launch "bible.app")
+    (Launch "sameboy.app") (Launch "config-inspector.app") (Launch "teapots.app")
+    (Launch "debugger.app")]
   # LAT-002's display-latency samples and the frame-time series
   # (Desktop_Metrics, CuBit.Metrics), into metrics.svc's store (MET-002).
   outlets => [(Outlet "com.cubit-os.stdmetric" Element.Metric_Records)])

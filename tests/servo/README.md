@@ -80,8 +80,9 @@ logical-cell round trips. The pure helper uses signed ceiling arithmetic,
 subtracts the containing canvas's physical origin and saturates only at the
 foreign signed32 bounds. The full native input dispatcher is not SPARK-proved.
 
-`test_port_patches.py` privately checks both fresh and previously patched
-dependency caches. The GC adaptation uses aligned libc allocations and paired
+`test_port_patches.py` privately checks the crate fixes on the pinned
+pristine crates: fresh, untouched on a second run, and rebuilt from pristine
+when a fix changes. The GC adaptation uses aligned libc allocations and paired
 `free`, preserving accounting and real page-protection calls. It does not
 pretend that CuBit supports partial `munmap`. No active dependency tree is
 modified by this hosted test.
@@ -108,9 +109,9 @@ private ext2 image, including its false-success failure mode. Run with
 `test_render_limits.py` compares the production SWGL options against actual
 WebRender minimums and CuBit mapping limits, including atlas allocator margin
 and image tiling. It does not bound every page-dependent engine allocation.
-`test_overlay_patch.py` runs the real patcher against private source copies,
-checks old-cache and upstream graphics/font paths, and verifies idempotent
-bytes and timestamps. Both run as `nix develop -c python3 tests/servo/<name>`.
+`test_overlay_patch.py` runs the real patcher on private copies of the pinned
+commit's files, verifies idempotent bytes and timestamps, and that the build
+checkout's patched files equal that fresh result. Both run as `nix develop -c python3 tests/servo/<name>`.
 
 `secondary_stack_host.c` exercises the actual standalone Ada/runtime objects
 on Linux: getter before binder initialization, then 1,000 aligned bounded

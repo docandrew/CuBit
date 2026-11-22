@@ -1,5 +1,5 @@
 pragma Ada_2022;
-with CuBit.Messages;
+with CuBit.Monotonic;
 package body HID_Native_Clock is
    package W renames I2C_Transfer_Wire;
    use type W.Word;
@@ -7,7 +7,7 @@ package body HID_Native_Clock is
    Valid : Boolean := False;
    procedure Sample_Time (Now : out W.Word; Available : out Boolean) is
    begin
-      Now := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME);
+      Now := CuBit.Monotonic.Milliseconds;
       Available := Now /= W.Word'Last;
    end Sample_Time;
    procedure Cache_Time (Now : W.Word; Available : Boolean) is

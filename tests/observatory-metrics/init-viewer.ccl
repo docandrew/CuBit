@@ -5,7 +5,7 @@
 # CLI shell, because shell.app owns legacy framebuffer/input paths and will
 # visually take the machine back to the CLI after desktop.svc starts.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "clock.svc" (priority 5))
   # Typed Config persistence is a real Turso worker, not Workbench-local state.
   (start "config-storage.svc" (priority 5) (role config-storage))

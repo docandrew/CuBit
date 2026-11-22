@@ -1,0 +1,1 @@
+with CuBit.Process_IDs;with CuBit.Messages;with ACPI_SCI_Quiesce;package ACPI_SCI_Events is procedure Acknowledge_Only(Publisher:CuBit.Process_IDs.Process_ID;Item:CuBit.Messages.Message;Result:out ACPI_SCI_Quiesce.Acknowledgement);Acknowledgements:Natural:=0;end ACPI_SCI_Events;

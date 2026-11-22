@@ -4,6 +4,8 @@
   (catalog "cubit-native-v1")
   (layout bootstrap-only)
   (provider "disk")
+  # The image's trust list (SIGN-001; ccl-image --import cubit-signing-ca=...).
+  (builder host-development (import "cubit-signing-ca") (identities "*") (ceiling hardware-and-system))
   (settings "system-llm-test")
   (file bootstrap "devmgr" "devmgr.svc")
   (file bootstrap "filesystem" "filesystem.svc")

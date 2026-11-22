@@ -50,6 +50,10 @@ package CuBit.Handles with Pure, SPARK_Mode is
    type Scheduling is private;     --  reserve real-time CPU
    type Firmware_Snapshot is private;  --  read the sealed firmware tables
    type Platform_Power is private;     --  enter S5 or reset (KERN-004)
+   type Trace is private;              --  reset and summarize the kernel trace
+   type Process_Listing is private;    --  list the kernel's processes (procmgr)
+   type Test_Console is private;       --  a line on the serial console (test logstore)
+   type VM_Create is private;          --  create virtual machines (VMM-001)
 
    --  The null handle of each kind: the kernel never resolves it
    --  (generation 0 is never issued).
@@ -64,6 +68,10 @@ package CuBit.Handles with Pure, SPARK_Mode is
    No_Scheduling    : constant Scheduling;
    No_Firmware_Snapshot : constant Firmware_Snapshot;
    No_Platform_Power    : constant Platform_Power;
+   No_Trace             : constant Trace;
+   No_Process_Listing   : constant Process_Listing;
+   No_Test_Console      : constant Test_Console;
+   No_VM_Create         : constant VM_Create;
 
    --  Whether a handle could name an entry (it is not a null handle).
    --  A valid handle may still be stale; the kernel decides.
@@ -78,6 +86,10 @@ package CuBit.Handles with Pure, SPARK_Mode is
    function Valid (Item : Scheduling) return Boolean;
    function Valid (Item : Firmware_Snapshot) return Boolean;
    function Valid (Item : Platform_Power) return Boolean;
+   function Valid (Item : Trace) return Boolean;
+   function Valid (Item : Process_Listing) return Boolean;
+   function Valid (Item : Test_Console) return Boolean;
+   function Valid (Item : VM_Create) return Boolean;
 
    ---------------------------------------------------------------------------
    --  Rights a derived copy keeps (a subset of its source's).
@@ -120,6 +132,10 @@ package CuBit.Handles with Pure, SPARK_Mode is
    function Copy (Item : Scheduling; Kept : Rights) return Derivation;
    function Copy (Item : Firmware_Snapshot; Kept : Rights) return Derivation;
    function Copy (Item : Platform_Power; Kept : Rights) return Derivation;
+   function Copy (Item : Trace; Kept : Rights) return Derivation;
+   function Copy (Item : Process_Listing; Kept : Rights) return Derivation;
+   function Copy (Item : Test_Console; Kept : Rights) return Derivation;
+   function Copy (Item : VM_Create; Kept : Rights) return Derivation;
 
    --  A copy of an untagged endpoint carrying Tag (nonzero): the server
    --  sees Tag as the authority of every message sent through it.
@@ -178,6 +194,10 @@ private
    type Scheduling is new Word_Holder;
    type Firmware_Snapshot is new Word_Holder;
    type Platform_Power is new Word_Holder;
+   type Trace is new Word_Holder;
+   type Process_Listing is new Word_Holder;
+   type Test_Console is new Word_Holder;
+   type VM_Create is new Word_Holder;
    type Foreign_Handle is new Word_Holder;
 
    No_Endpoint      : constant Endpoint := (Word => ABI.No_Handle);
@@ -191,6 +211,10 @@ private
    No_Scheduling    : constant Scheduling := (Word => ABI.No_Handle);
    No_Firmware_Snapshot : constant Firmware_Snapshot := (Word => ABI.No_Handle);
    No_Platform_Power    : constant Platform_Power := (Word => ABI.No_Handle);
+   No_Trace             : constant Trace := (Word => ABI.No_Handle);
+   No_Process_Listing   : constant Process_Listing := (Word => ABI.No_Handle);
+   No_Test_Console      : constant Test_Console := (Word => ABI.No_Handle);
+   No_VM_Create         : constant VM_Create := (Word => ABI.No_Handle);
 
    function Valid (Item : Endpoint) return Boolean is (ABI.Is_Handle_Word (Item.Word));
    function Valid (Item : Reply) return Boolean is (ABI.Is_Handle_Word (Item.Word));
@@ -203,6 +227,10 @@ private
    function Valid (Item : Scheduling) return Boolean is (ABI.Is_Handle_Word (Item.Word));
    function Valid (Item : Firmware_Snapshot) return Boolean is (ABI.Is_Handle_Word (Item.Word));
    function Valid (Item : Platform_Power) return Boolean is (ABI.Is_Handle_Word (Item.Word));
+   function Valid (Item : Trace) return Boolean is (ABI.Is_Handle_Word (Item.Word));
+   function Valid (Item : Process_Listing) return Boolean is (ABI.Is_Handle_Word (Item.Word));
+   function Valid (Item : Test_Console) return Boolean is (ABI.Is_Handle_Word (Item.Word));
+   function Valid (Item : VM_Create) return Boolean is (ABI.Is_Handle_Word (Item.Word));
 
    type Derivation is record
       Words  : ABI.Derivation := [others => 0];
@@ -237,6 +265,14 @@ private
      (Make (ABI.Firmware_Snapshot, Item.Word, Kept, 0, 0, 0, 0));
    function Copy (Item : Platform_Power; Kept : Rights) return Derivation is
      (Make (ABI.Platform_Power, Item.Word, Kept, 0, 0, 0, 0));
+   function Copy (Item : Trace; Kept : Rights) return Derivation is
+     (Make (ABI.Trace, Item.Word, Kept, 0, 0, 0, 0));
+   function Copy (Item : Process_Listing; Kept : Rights) return Derivation is
+     (Make (ABI.Process_List, Item.Word, Kept, 0, 0, 0, 0));
+   function Copy (Item : Test_Console; Kept : Rights) return Derivation is
+     (Make (ABI.Test_Console, Item.Word, Kept, 0, 0, 0, 0));
+   function Copy (Item : VM_Create; Kept : Rights) return Derivation is
+     (Make (ABI.VM_Create, Item.Word, Kept, 0, 0, 0, 0));
 
    function Badged (Item : Endpoint; Kept : Rights; Tag : Unsigned_64)
      return Derivation is

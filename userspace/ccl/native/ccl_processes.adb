@@ -3,6 +3,7 @@ with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Process_Observer;
 with CCL_Native_Bindings;
+with CuBit.Monotonic;
 
 --  proc.list on CuBit: procmgr's process-observer role. The console lends
 --  procmgr one page at a time; procmgr fills it with the kernel's process
@@ -30,7 +31,7 @@ package body CCL_Processes is
      (Unsigned_64 (U32 (At_Byte)) or Shift_Left (Unsigned_64 (U32 (At_Byte + 4)), 32));
 
    procedure Each (Seen, Total : out Natural; Result : out Result_Kind) is
-      Now : constant Unsigned_64 := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       --  The position of the next page's first record.
       First : Natural := 0;
       Written : Natural;
@@ -81,7 +82,9 @@ package body CCL_Processes is
                Started : constant Unsigned_64 := U64 (Base + PO.Started_Offset);
                Item : Listed;
             begin
-               if State in STATE_OFFSET .. STATE_OFFSET + Processes.Run_State'Pos (Processes.Run_State'Last) then
+               --  Every live process is listed: a kernel state this console
+               --  does not know yet is Unknown, never a reason to drop it.
+               if State >= STATE_OFFSET then
                   Item.Pid := Natural (U32 (Base + PO.Pid_Offset));
                   Item.Process := U64 (Base + PO.Pid_Offset);
                   Item.Name_Length := Name_Length;
@@ -92,7 +95,10 @@ package body CCL_Processes is
                   for I in 1 .. Identity_Length loop
                      Item.Identity (I) := Character'Val (Page (Base + PO.Identity_Offset + I - 1));
                   end loop;
-                  Item.State := Processes.Run_State'Val (State - STATE_OFFSET);
+                  Item.State :=
+                    (if State - STATE_OFFSET <= Processes.Kernel_Run_State'Pos (Processes.Kernel_Run_State'Last)
+                     then Processes.Run_State'Val (State - STATE_OFFSET)
+                     else Processes.Unknown);
                   Item.Memory := Unsigned_64 (U32 (Base + PO.Frames_Offset)) * FRAME_BYTES;
                   Item.Launcher := Natural (U32 (Base + PO.Launcher_Offset));
                   Item.Age_Ms := (if Started in 1 .. Now then Now - Started else 0);

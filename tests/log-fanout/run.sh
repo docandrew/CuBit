@@ -13,6 +13,7 @@ cp ../userspace/runtime/gnat/cubit.ads ../userspace/runtime/gnat/cubit-process_i
    ../userspace/runtime/gnat/cubit-datagram_rings.ads ../userspace/runtime/gnat/cubit-datagram_rings.adb \
    ../userspace/runtime/gnat/cubit-log_streams.ads ../userspace/runtime/gnat/cubit-log_streams.adb \
    ../userspace/runtime/gnat/cubit-log_sources.ads ../userspace/runtime/gnat/cubit-log_sources.adb \
+   ../userspace/runtime/gnat/cubit-log_sources-texts.ads \
    ../userspace/services/logstore/source_identities.ads ../userspace/services/logstore/source_identities.adb \
    ../userspace/lib/heap/heap_arrays.ads ../userspace/lib/heap/heap_arrays.adb \
    ../userspace/services/logstore/log_fanout.ads ../userspace/services/logstore/log_fanout.adb \
@@ -35,5 +36,5 @@ alr exec -- gnatprove -P ../tests/log-fanout/fanout.gpr -u cubit-authority_polic
     --level=2 --report=all --checks-as-errors=on -j2
 alr exec -- gnatprove -P ../tests/log-fanout/fanout.gpr -u cubit-log_streams.adb \
     --level=2 --report=fail --checks-as-errors=on -j2
-alr exec -- gnatprove -P ../tests/log-fanout/fanout.gpr -u cubit-log_sources.adb \
+alr exec -- gnatprove -P ../tests/log-fanout/fanout.gpr -u cubit-log_sources.adb cubit-log_sources-texts.ads \
     --level=2 --report=fail --checks-as-errors=on -j2

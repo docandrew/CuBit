@@ -80,6 +80,7 @@ with Compositor_Close_Request;
 with Compositor_Dispatch_Budget;
 with CuBit.Monotonic;
 with CuBit.Process_List;
+with CuBit.Process_Observer_Lists;
 with CuBit.Timing_Histograms;
 with Compositor_Requests;
 with Compositor_Presentation;
@@ -147,6 +148,7 @@ with Desktop_Launch_Refresh;
 with CuBit.Child_Exits;
 with CuBit.Control_Events;
 with CuBit.Launch_Arguments;
+with CuBit.Launch_Grants;
 with Desktop_Status_Refresh;
 with Desktop_Network_Refresh;
 with Desktop_Network_Model;
@@ -206,6 +208,7 @@ with Desktop_Composition;
 with Compositor_Damage;
 with Compositor_Transition;
 with Desktop_Compositor;
+with CuBit.Console_Route;
 
 procedure main is
    procedure debugPrint (Text : String) renames Desktop_Logs.Write;
@@ -240,7 +243,6 @@ procedure main is
    OP_DESKTOP_HELLO    : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Hello);
    OP_DESKTOP_BYE      : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Goodbye);
    OP_DESKTOP_GET_INFO : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Get_Information);
-   OP_SPAWN            : constant Unsigned_32 := 16#0100#;
    OP_SURFACE_CREATE   : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Create_Surface);
    OP_SURFACE_DESTROY  : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Destroy_Surface);
    OP_SURFACE_PRESENT  : constant Unsigned_32 := DP.Operation'Enum_Rep (DP.Present_Surface);
@@ -1630,8 +1632,8 @@ procedure main is
    type Phase_Counts is array (Call_Phase) of Unsigned_64;
    phaseCalls : Phase_Counts := [others => 0];
    phaseMarkAt : Unsigned_64 := 0;
-   --  The same calls by call number (CuBit.Call_Census), the marks' own
-   --  READ_STATISTICS left out: which calls each phase makes.
+   --  The same calls by call number (CuBit.Call_Census): which calls each
+   --  phase makes. The marks read their counts from a page (no call).
    type Phase_Census is array (Call_Phase) of CuBit.Call_Census.Counts;
    phaseCensus : Phase_Census := [others => [others => 0]];
    censusAt : CuBit.Call_Census.Counts := [others => 0];
@@ -1643,12 +1645,7 @@ procedure main is
    --  Calls the timing report made this period (subtracted from DESKTOP-CALLS).
    reportCalls : Unsigned_64 := 0;
    function threadCalls return Unsigned_64 is
-      Statistics : CuBit.System_Facts.SP.Statistics;
-      Read : Boolean;
-   begin
-      CuBit.System_Facts.Read_Statistics (Statistics, Read);
-      return (if Read then Statistics.Thread_System_Calls else 0);
-   end threadCalls;
+     (CuBit.System_Facts.Thread_System_Calls);
    --  The phase that just ended was Ended.
    procedure phaseMark (Ended : Call_Phase) is
       Now : Unsigned_64;
@@ -1656,16 +1653,13 @@ procedure main is
       if not Desktop_Timing_Policy.Enabled then return; end if;
       Now := threadCalls;
       if phaseMarkAt /= 0 and then Now > phaseMarkAt then
-         phaseCalls (Ended) := phaseCalls (Ended) + (Now - phaseMarkAt - 1);
+         phaseCalls (Ended) := phaseCalls (Ended) + (Now - phaseMarkAt);
          declare
             Taken : constant CuBit.Call_Census.Counts := CuBit.Call_Census.Census;
          begin
             for N in CuBit.Call_Census.Number loop
                phaseCensus (Ended) (N) := phaseCensus (Ended) (N) + (Taken (N) - censusAt (N));
             end loop;
-            --  This mark's own READ_STATISTICS.
-            phaseCensus (Ended) (Natural (CuBit.Kernel_ABI.Read_Statistics)) :=
-              phaseCensus (Ended) (Natural (CuBit.Kernel_ABI.Read_Statistics)) - 1;
          end;
       end if;
       censusAt := CuBit.Call_Census.Census;
@@ -2362,26 +2356,17 @@ procedure main is
       if now < statsStartMs or else now - statsStartMs < 1000 then
          return;
       end if;
-      --  This process's mailbox drops (kernel READ_STATISTICS); Last when
-      --  the kernel refused.
-      declare
-         Statistics : CuBit.System_Facts.SP.Statistics;
-         Read : Boolean;
-      begin
-         CuBit.System_Facts.Read_Statistics (Statistics, Read);
-         eventDrops := (if Read then Statistics.Event_Drops else Unsigned_64'Last);
-      end;
+      --  This process's mailbox drops (its readiness page).
+      eventDrops := CuBit.System_Facts.Event_Drops;
       DI.Observe_Drops (Input_Diagnostic, eventDrops);
 
-      if eventDrops /= Unsigned_64'Last then
-         if eventDrops >= lastEventDrops then
-            eventDropsThisPeriod := eventDrops - lastEventDrops;
-         else
-            --  Unsigned telemetry wrapped between observations.
-            eventDropsThisPeriod := eventDrops;
-         end if;
-         lastEventDrops := eventDrops;
+      if eventDrops >= lastEventDrops then
+         eventDropsThisPeriod := eventDrops - lastEventDrops;
+      else
+         --  Unsigned telemetry wrapped between observations.
+         eventDropsThisPeriod := eventDrops;
       end if;
+      lastEventDrops := eventDrops;
 
       if inputQueueOverflows >= lastInputQueueOverflows then
          inputOverflowsThisPeriod :=
@@ -2394,94 +2379,90 @@ procedure main is
       capturePeriod (eventDropsThisPeriod, inputOverflowsThisPeriod);
       if Desktop_Timing_Policy.Enabled then
          declare
-            Statistics : CuBit.System_Facts.SP.Statistics;
-            Read : Boolean;
+            Calls : constant Unsigned_64 := CuBit.System_Facts.Thread_System_Calls;
          begin
-            CuBit.System_Facts.Read_Statistics (Statistics, Read);
-            if Read then
-               debugPrint ("DESKTOP-CALLS: calls=" &
-                 Decimal (Statistics.Thread_System_Calls - lastThreadCalls - reportCalls) &
-                 " report_calls=" & Decimal (reportCalls) &
-                 " frames=" & Decimal (statsPresentOps) & " requests=" & Decimal (statsRequests) &
-                 " present_requests=" & Decimal (statsPresentReq) & " input_requests=" &
-                 Decimal (statsInputReq) & " events=" & Decimal (statsEvents) & LF);
-               lastThreadCalls := Statistics.Thread_System_Calls;
-               reportCalls := 0;
-               declare
-                  Line : String (1 .. 400) := [others => ' '];
-                  Used : Natural := 0;
-               begin
-                  for P in Call_Phase loop
-                     declare Item : constant String := " " & phaseName (P) & "=" & Decimal (phaseCalls (P));
-                     begin
-                        Line (Used + 1 .. Used + Item'Length) := Item;
-                        Used := Used + Item'Length;
-                     end;
-                  end loop;
-                  debugPrint ("DESKTOP-CALL-PHASES:" & Line (1 .. Used) & LF);
-                  --  Where the period's drawing time went, by path: pixels/us.
-                  declare
-                     T : Desktop_Path_Timing.Frame_Paths;
-                     Frames : Unsigned_64;
-                     Text : String (1 .. 1024);
-                     N : Natural := 0;
-                     procedure Add (Item : String) is
-                     begin
-                        if N + Item'Length <= Text'Length then
-                           Text (N + 1 .. N + Item'Length) := Item;
-                           N := N + Item'Length;
-                        end if;
-                     end Add;
+            debugPrint ("DESKTOP-CALLS: calls=" &
+              Decimal (Calls - lastThreadCalls - reportCalls) &
+              " report_calls=" & Decimal (reportCalls) &
+              " frames=" & Decimal (statsPresentOps) & " requests=" & Decimal (statsRequests) &
+              " present_requests=" & Decimal (statsPresentReq) & " input_requests=" &
+              Decimal (statsInputReq) & " events=" & Decimal (statsEvents) & LF);
+            lastThreadCalls := Calls;
+            reportCalls := 0;
+            declare
+               Line : String (1 .. 400) := [others => ' '];
+               Used : Natural := 0;
+            begin
+               for P in Call_Phase loop
+                  declare Item : constant String := " " & phaseName (P) & "=" & Decimal (phaseCalls (P));
                   begin
-                     Desktop_Path_Timing.Take_Period (T, Frames);
-                     if Frames > 0 then
-                        for P in Desktop_Path_Timing.Path loop
-                           if T.Pixels (P) /= 0 or else T.Micros (P) /= 0 then
-                              Add (" " & Desktop_Path_Timing.Name (P) & "=" & Decimal (T.Pixels (P)) &
-                                   "/" & Decimal (T.Micros (P)) &
-                                   (if T.Items (P) /= 0 then "/" & Decimal (T.Items (P)) else ""));
-                           end if;
-                        end loop;
-                        for R in Desktop_Path_Timing.Sampler_Reason loop
-                           if T.Sampler_Pixels (R) /= 0 then
-                              Add (" sampler_" & Desktop_Path_Timing.Name (R) & "_px=" & Decimal (T.Sampler_Pixels (R)));
-                           end if;
-                        end loop;
-                        debugPrint ("DESKTOP-PATHS: frames=" & Decimal (Frames) & " total_us=" &
-                                    Decimal (T.Total_Micros) & " other_us=" & Decimal (T.Other_Micros) &
-                                    " overdraw_px=" & Decimal (T.Overdraw_Pixels) & " (px/us)" &
-                                    Text (1 .. N) & LF);
+                     Line (Used + 1 .. Used + Item'Length) := Item;
+                     Used := Used + Item'Length;
+                  end;
+               end loop;
+               debugPrint ("DESKTOP-CALL-PHASES:" & Line (1 .. Used) & LF);
+               --  Where the period's drawing time went, by path: pixels/us.
+               declare
+                  T : Desktop_Path_Timing.Frame_Paths;
+                  Frames : Unsigned_64;
+                  Text : String (1 .. 1024);
+                  N : Natural := 0;
+                  procedure Add (Item : String) is
+                  begin
+                     if N + Item'Length <= Text'Length then
+                        Text (N + 1 .. N + Item'Length) := Item;
+                        N := N + Item'Length;
+                     end if;
+                  end Add;
+               begin
+                  Desktop_Path_Timing.Take_Period (T, Frames);
+                  if Frames > 0 then
+                     for P in Desktop_Path_Timing.Path loop
+                        if T.Pixels (P) /= 0 or else T.Micros (P) /= 0 then
+                           Add (" " & Desktop_Path_Timing.Name (P) & "=" & Decimal (T.Pixels (P)) &
+                                "/" & Decimal (T.Micros (P)) &
+                                (if T.Items (P) /= 0 then "/" & Decimal (T.Items (P)) else ""));
+                        end if;
+                     end loop;
+                     for R in Desktop_Path_Timing.Sampler_Reason loop
+                        if T.Sampler_Pixels (R) /= 0 then
+                           Add (" sampler_" & Desktop_Path_Timing.Name (R) & "_px=" & Decimal (T.Sampler_Pixels (R)));
+                        end if;
+                     end loop;
+                     debugPrint ("DESKTOP-PATHS: frames=" & Decimal (Frames) & " total_us=" &
+                                 Decimal (T.Total_Micros) & " other_us=" & Decimal (T.Other_Micros) &
+                                 " overdraw_px=" & Decimal (T.Overdraw_Pixels) & " (px/us)" &
+                                 Text (1 .. N) & LF);
+                  end if;
+               end;
+               phaseCalls := [others => 0];
+               --  By call number: "phase number:count ...".
+               for P in Call_Phase loop
+                  declare
+                     Sites : String (1 .. 1024);
+                     Count : Natural := 0;
+                  begin
+                     for N in CuBit.Call_Census.Number loop
+                        if phaseCensus (P) (N) /= 0 then
+                           declare
+                              Item : constant String :=
+                                " " & Decimal (Unsigned_64 (N)) & ":" & Decimal (phaseCensus (P) (N));
+                           begin
+                              if Count + Item'Length <= Sites'Length then
+                                 Sites (Count + 1 .. Count + Item'Length) := Item;
+                                 Count := Count + Item'Length;
+                              end if;
+                           end;
+                        end if;
+                     end loop;
+                     if Count /= 0 then
+                        debugPrint ("DESKTOP-CALL-SITES: phase=" & phaseName (P) &
+                                    Sites (1 .. Count) & LF);
                      end if;
                   end;
-                  phaseCalls := [others => 0];
-                  --  By call number: "phase number:count ...".
-                  for P in Call_Phase loop
-                     declare
-                        Sites : String (1 .. 1024);
-                        Count : Natural := 0;
-                     begin
-                        for N in CuBit.Call_Census.Number loop
-                           if phaseCensus (P) (N) /= 0 then
-                              declare
-                                 Item : constant String :=
-                                   " " & Decimal (Unsigned_64 (N)) & ":" & Decimal (phaseCensus (P) (N));
-                              begin
-                                 if Count + Item'Length <= Sites'Length then
-                                    Sites (Count + 1 .. Count + Item'Length) := Item;
-                                    Count := Count + Item'Length;
-                                 end if;
-                              end;
-                           end if;
-                        end loop;
-                        if Count /= 0 then
-                           debugPrint ("DESKTOP-CALL-SITES: phase=" & phaseName (P) &
-                                       Sites (1 .. Count) & LF);
-                        end if;
-                     end;
-                  end loop;
-                  phaseCensus := [others => [others => 0]];
-               end;
-            end if;
+               end loop;
+               phaseCensus := [others => [others => 0]];
+            end;
          end;
       end if;
 
@@ -3356,9 +3337,8 @@ procedure main is
       if not ensureProcessListBuffer then
          return;
       end if;
-      Count := CuBit.Handles.Control.Process_List
-        (CuBit.Handles.Startup.Process_Named (CuBit.Startup_Tables.Self_Process_Text),
-         psBufAddr, PS_BUF_SIZE);
+      Count := CuBit.Process_Observer_Lists.Read
+        (Startup.Process_Observer, psBufAddr, PS_BUF_SIZE);
       if Count = Unsigned_64'Last then
          Count := 0;
       end if;
@@ -3389,10 +3369,10 @@ procedure main is
          return True;
       end if;
 
-      --  Any process handle with Read lists processes: Desktop's own.
-      count := CuBit.Handles.Control.Process_List
-        (CuBit.Handles.Startup.Process_Named (CuBit.Startup_Tables.Self_Process_Text),
-         psBufAddr, PS_BUF_SIZE);
+      --  procmgr's process-observer role lists them (only procmgr holds
+      --  the kernel's process-list object).
+      count := CuBit.Process_Observer_Lists.Read
+        (Startup.Process_Observer, psBufAddr, PS_BUF_SIZE);
       if count = Unsigned_64'Last then
          return True;
       end if;
@@ -3412,9 +3392,8 @@ procedure main is
       if Owner = No_Process or else not ensureProcessListBuffer then
          return 0;
       end if;
-      count := CuBit.Handles.Control.Process_List
-        (CuBit.Handles.Startup.Process_Named (CuBit.Startup_Tables.Self_Process_Text),
-         psBufAddr, PS_BUF_SIZE);
+      count := CuBit.Process_Observer_Lists.Read
+        (Startup.Process_Observer, psBufAddr, PS_BUF_SIZE);
       if count = 0 or else count = Unsigned_64'Last then
          return 0;
       end if;
@@ -3728,9 +3707,14 @@ procedure main is
 
    procedure collectLaunch (C : CompletionEntry) is
       M : Message renames C.msg;
+      --  One word; or, for Request_Withheld, the withheld request's label
+      --  after it (CuBit.Launch_Arguments.Encode_Label).
       Envelope_OK : constant Boolean := C.valid and C.status = COMPLETION_OK and
-        M.tag.length = 1 and M.tag.protocol = 0 and M.tag.reserved = 0 and
-        M.words (1) = 0 and M.words (2) = 0 and M.words (3) = 0;
+        M.tag.protocol = 0 and M.tag.reserved = 0 and
+        ((M.tag.length = 1 and M.words (1) = 0 and M.words (2) = 0 and M.words (3) = 0) or else
+         (M.tag.length = 4 and M.tag.label = REPLY_ERR and
+          M.words (0) = CuBit.Launch_Arguments.Launch_Failure'Enum_Rep
+                          (CuBit.Launch_Arguments.Request_Withheld)));
       --  The reply names the new process by its full identity (KERN-003).
       Success : constant Boolean := Envelope_OK and M.tag.label = REPLY_OK and
         Is_Process (From_Word (M.words (0)));
@@ -11526,17 +11510,22 @@ procedure main is
          end loop;
       end;
 
-      msg.tag := (label  => OP_SPAWN,
-                  length => Unsigned_8 (len),
+      --  procmgr's OP_LAUNCH (CuBit.Launch_Arguments): the program must be
+      --  in Desktop's launch table (manifest may_launch), and it goes through
+      --  Desktop's Launch badge: the program gets its approval within the
+      --  user session's envelope, none of Desktop's authority (CAP-012).
+      --  The name alone: no arguments, delegated places or rings.
+      msg.tag := (label  => CuBit.Launch_Arguments.Launch_Operation,
+                  length => CuBit.Launch_Arguments.Launch_Request_Words,
                   protocol  => 0, ipc => <>,
                   reserved  => 0);
       msg.words (0) := CuBit.Grant_References.Encode (spawnGrant);
+      msg.words (1) := Unsigned_64 (len);
+      msg.words (2) := 0;
       --  Scheduling priority: higher runs first. Launched applications run
       --  below desktop.svc (4) so a busy app cannot starve the compositor,
       --  which also draws the software cursor.
-      msg.words (1) := APP_PRIORITY;
-      msg.words (2) := 0;
-      msg.words (3) := 0;
+      msg.words (3) := CuBit.Launch_Grants.Request_Word (Unsigned_32 (APP_PRIORITY), 0);
       CR.Allocate (requestSequence, New_Token);
       CR.Begin_Request (launchRequest, New_Token, Accepted);
       if not Accepted then
@@ -11549,7 +11538,7 @@ procedure main is
       launchLabel (1 .. launchLabelLength) :=
         label (label'First .. label'First + launchLabelLength - 1);
       launchInputAnnounced := False;
-      if capSubmit (Desktop_Endpoints.Process_Manager, msg, New_Token) then
+      if capSubmit (Desktop_Endpoints.Launch, msg, New_Token) then
          debugPrint ("desktop: launch submitted token=" & Decimal (New_Token) & LF);
       else
          CR.Quarantine (launchRequest);
@@ -13772,13 +13761,17 @@ procedure main is
       seatButtons : Unsigned_64 := lastButtons;
    begin
       statsEvents := statsEvents + 1;
-      --  The kernel's notice that a child Desktop launched has ended
-      --  (Desktop is its parent): asynchronous, never a call back.
-      if publisher = No_Process and then
-        eventMsg.tag.label = CuBit.Child_Exits.Event_Label
+      --  That a child Desktop launched has ended: procmgr's notice (the
+      --  child was launched into the session, whose supervisor is a node
+      --  in procmgr, its kernel parent), only through procmgr's badge
+      --  (CuBit.Child_Exits.Is_Exit); or the kernel's own event.
+      --  Asynchronous, never a call back.
+      if (publisher = No_Process and then eventMsg.tag.label = CuBit.Child_Exits.Event_Label)
+        or else eventMsg.tag.label = CuBit.Child_Exits.Notice_Label
       then
-         if CuBit.Child_Exits.Valid
-              (eventMsg.tag.length, eventMsg.words (0), eventMsg.words (1), eventMsg.words (2))
+         if CuBit.Child_Exits.Is_Exit
+              (eventMsg.tag.label, eventMsg.tag.length, eventMsg.authorityTag,
+               eventMsg.words (0), eventMsg.words (1), eventMsg.words (2))
          then
             declare
                Ending : constant CuBit.Child_Exits.Report :=
@@ -15644,6 +15637,10 @@ procedure main is
    running  : Boolean := True;
    displayInfoOk : Boolean := False;
 begin
+   --  ABI-002: Desktop's debug text (every debugPrint, this program's
+   --  and the runtime's) goes into its logstore ring from here on, never
+   --  to the kernel console; Desktop_Logs' records share that ring.
+   CuBit.Console_Route.Route_To (Startup.Logstore);
    debugPrint ("desktop: starting" & LF);
    --  Timing builds: which calls each loop phase makes (DESKTOP-CALL-SITES).
    CuBit.Call_Census.Enabled := Desktop_Timing_Policy.Enabled;
@@ -16014,8 +16011,7 @@ begin
                maybePrintStats;
                runHousekeeping;
                phaseMark (Phase_Report);
-               --  This bracket's two reads count as report calls too.
-               reportCalls := reportCalls + (threadCalls - Before) + 1;
+               reportCalls := reportCalls + (threadCalls - Before);
             end;
          else
             maybePrintStats;

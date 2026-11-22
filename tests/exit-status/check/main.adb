@@ -17,6 +17,7 @@
 --  The headless test pairs each PID with procmgr's "exited code N" line.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Ada.Command_Line;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -37,8 +38,10 @@ procedure Main is
 
    --  As procmgr prints it ("pid N").
    Pid : constant String :=
-     CuBit.Process_IDs.Text.Image (CuBit.Process_IDs.From_Word (syscall (SYSCALL_GETPID)));
+     CuBit.Process_IDs.Text.Image (CuBit.Process_IDs.From_Word (Own_Process_Word));
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("exit-status-check: pid " & Pid & " ends " &
                (case P.ending is
                    when Returns => "Returns",

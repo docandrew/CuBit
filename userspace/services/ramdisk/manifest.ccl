@@ -5,4 +5,7 @@
   identity => "com.cubit.ramdisk"
   version => "0.1.0"
   requests => [
-    (service "device-manager" "ready")])
+    (service "device-manager" "ready")
+    # ABI-002: its debug text, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

@@ -5,6 +5,7 @@
 --  @summary
 --  Unified, authority-scoped hardware inventory and diagnostics
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with CuBit.Logging;
 with Interfaces; use Interfaces;
 with CuBit.Handles;
@@ -618,13 +619,11 @@ procedure main is
             "Physical memory");
          y := y + 34;
          declare
-            Statistics : CuBit.System_Facts.SP.Statistics;
-            Read : Boolean;
+            Free : constant Unsigned_64 := CuBit.System_Facts.Free_Memory_Bytes;
          begin
-            CuBit.System_Facts.Read_Statistics (Statistics, Read);
             Pair ("Total", Decimal (CuBit.System_Facts.Memory_Bytes / (1024 * 1024)) & " MiB");
             Pair ("Available",
-                  (if Read then Decimal (Statistics.Free_Memory_Bytes / (1024 * 1024)) & " MiB"
+                  (if Free /= 0 then Decimal (Free / (1024 * 1024)) & " MiB"
                    else "unknown"));
          end;
          Pair ("Authority", "Inspection only");
@@ -945,6 +944,8 @@ procedure main is
 
    Announced : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("devices: starting read-only hardware inspector" & LF);
    CuBit.Logging.Announce ("devices: started (read-only inspector)", Announced, Startup.Logstore);
    Load_Inventory;

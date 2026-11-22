@@ -17,6 +17,7 @@
 --    0x6000+          : Packet buffers (112 x 2K: 0-31 RX, 32-111 TX; the
 --                       256 KiB region devmgr allocates holds 116)
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -810,6 +811,9 @@ procedure main is
    end Reject_Configuration;
    --  devQSz is used in queue setup debug output
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;

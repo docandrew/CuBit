@@ -8,7 +8,7 @@
 # it gets no endpoint, and devmgr refuses it through the ordinary one. No
 # image or init plan approves acpi-firmware-data; only this test does.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "acpi-data-unapproved.app" (priority 3)
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared))
   (start "acpi-data-check.app" (priority 3)

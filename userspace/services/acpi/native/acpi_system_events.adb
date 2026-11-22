@@ -21,9 +21,8 @@ package body ACPI_System_Events with SPARK_Mode is
       then return Rejected; end if;
       if Item.tag.label = Channel_Wake_ABI.Wake_Label then
          if Natural (Item.tag.length) not in 1 .. Channel_Wake_ABI.Wakes_Per_Event then return Rejected; end if;
-         for Index in 0 .. Natural (Item.tag.length) - 1 loop
-            if not G.Valid_Wire (Item.words (Index)) then return Rejected; end if;
-         end loop;
+         -- Process-wide wake notices name no grant. The kernel envelope
+         -- above authenticates this hint; each channel checks its own ring.
          return Channel_Wake;
       end if;
       Value := CV.Decode (Item.tag.label, Item.tag.length,

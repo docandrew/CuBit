@@ -11,7 +11,7 @@
 # what it holds for app replace (its development-only block) is what they
 # grant it at its start; the survey swaps in apps that need them.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "metrics.svc" (priority 5))
   (start "lexicon.svc" (priority 4))
   (start "clock.svc" (priority 5))
@@ -21,8 +21,8 @@
   # DEVELOPMENT-ONLY: this entry also approves what ccl-remote's manifest
   # asks for so app replace can swap in any shipped app (its marked block;
   # named in (hello) and its start log line). A release strips that block.
-  (start "ccl-remote.app" (priority 4) (network approve-declared) (display-capture approve-declared)
+  (start "ccl-remote.app" (priority 4) (network approve-declared) (test-console approve-declared) (display-capture approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
-      display => Pairing_Display.Kernel_Console work => "@system/work"
+      display => Pairing_Display.Test_Console work => "@system/work"
       files => true builds => true mail => true)))
 )

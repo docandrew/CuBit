@@ -56,6 +56,7 @@ with Display_Frame_Rings;
 with CuBit.Call_Census;
 with CuBit.Readiness;
 
+with CuBit.Console_Route;
 procedure main is
    --  Every line also reaches logstore (Display_Logs), not only the console.
    procedure debugPrint (Text : String) renames Display_Logs.Write;
@@ -3762,6 +3763,11 @@ procedure main is
       end if;
    end takeEvent;
 begin
+   --  ABI-002: with logstore (the manifest declares it optional), Display's
+   --  debug text goes into its logstore ring, not the kernel console.
+   if Startup.Logstore.Present then
+      CuBit.Console_Route.Route_To (Startup.Logstore.Value);
+   end if;
    debugPrint ("display: starting" & LF);
    --  Its statistics say which calls it makes (display: stats ... calls).
    CuBit.Call_Census.Enabled := True;

@@ -14,6 +14,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.SameBoy_Batches;
 with CuBit.SameBoy_Frames; use CuBit.SameBoy_Frames;
 with CuBit.SameBoy_Keys;
+with CuBit.Monotonic;
 
 package body CuBit.SameBoy_Frontend is
 
@@ -259,7 +260,7 @@ package body CuBit.SameBoy_Frontend is
       Add (L, Buffer (First .. Buffer'Last));
    end Add_Number;
 
-   function Now_Ms return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Now_Ms return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
 
    procedure Sleep_Ms (Milliseconds : Unsigned_64) is
       Ignored : Unsigned_64;

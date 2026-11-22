@@ -25,8 +25,8 @@ with Interfaces; use Interfaces;
 package IPC_Labels with
     SPARK_Mode => On
 is
-    -- Process operations
-    OP_SPAWN   : constant Unsigned_32 := 16#0100#;
+    -- Process operations (16#0100#, procmgr's unattenuated OP_SPAWN, is
+    -- retired: CAP-012; every launch is OP_LAUNCH or Start_Child)
     OP_EXIT    : constant Unsigned_32 := 16#0101#;
     OP_WAIT    : constant Unsigned_32 := 16#0102#;
     -- Spawn with launch arguments (procmgr, docs/process-arguments.md).

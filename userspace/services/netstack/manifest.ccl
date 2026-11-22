@@ -6,4 +6,7 @@
   version => "0.1.0"
   requests => [
     (notification "netstack" Notify_Access.Manage "registration")
-    (service "device-manager" "ready")])
+    (service "device-manager" "ready")
+    # ABI-002: its debug text, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

@@ -63,7 +63,7 @@ procedure Battery_Events_Tests is
       Result:out C.Values.Result;Status:out C.Values.Access_Status) is
       Ignored:R.Outcome;
    begin
-      R.Evaluate_Named(Service,Item,Budget,Result,Status);
+      R.Evaluate_Sample(Service,Item,Budget,Result,Status);
       if Status=C.Values.Available then
          if C.Values.Node_Name(Item)="_BIX" then
             Bix_Calls:=Bix_Calls+1;
@@ -123,11 +123,24 @@ begin
    Windows.Enter_Runtime(Server,Outcome);Check(Outcome=R.Status.Runtime_Entered,"transfer once");
    E.Start(Server,Accepted);Check(Accepted,"start battery consumer");E.Advance(Server,Result);
    if Mode in "limit"|"budget"|"stopped" then
-      Check(Result=E.Status.Refused and Reports=0 and R.Current=R.Status.Stopped,"incomplete inventory cannot publish partial data");
+      if Mode="stopped" then
+         Check(Result=E.Status.Refused and R.Current=R.Status.Stopped,"unsafe owner stop is never isolated");
+      else
+         Check(Result=E.Status.Isolated and R.Current=R.Status.Idle and Close_Calls=0 and Stop_Calls=0,
+            "ordinary incomplete inventory suspends only its family at a closed owner boundary");
+      end if;
+      Check(Reports=0,"incomplete inventory cannot publish partial data");
       if Mode="limit" then Check(E.Collection_Report.Outcome=E.Inventory_Limit and E.Collection_Report.Count=2 and Bst_Calls=2,"third battery refuses without observing it");
       elsif Mode="budget" then Check(E.Collection_Report.Outcome=E.Budget_Exhausted and Bix_Calls=0 and Bif_Calls=0 and Bst_Calls=0,"one shared inventory budget stops before queries");
       else Check(E.Collection_Report.Outcome=E.Recovery_Required and Bif_Calls=0,"shared runtime stop never triggers legacy replay");end if;
       Check(E.Read(Server,(True,22),100).Status=Inventory.Samples.Not_Ready,"failed complete-inventory observation hidden");
+      if Mode/="stopped" then
+         declare Before : constant Natural:=Bst_Calls+Bif_Calls+Bix_Calls; begin
+            E.Advance(Server,Result);Check(Result=E.Status.Refused and R.Current=R.Status.Idle,
+               "suspended family cannot silently restart sampling");
+            Check(Bst_Calls+Bif_Calls+Bix_Calls=Before,"no AML retry after isolated refusal");
+         end;
+      end if;
    else
       Check(Result=E.Status.Pending and Reports=0 and R.Current=R.Status.Idle,"entire inventory collected in one closed window");
       Check(E.Read(Server,(True,21),100).Status=Inventory.Samples.Not_Ready,"pending inventory never exposed");

@@ -1,0 +1,23 @@
+--  Hosted tests and proof (level 2) of the launch handle's decisions
+--  (CAP-012, DBG-001): userspace/services/procmgr/handle_admission and its
+--  wire encoding, userspace/runtime/gnat/cubit-launch_handles.
+project Launch_Handles_Tests is
+   for Source_Dirs use (".", "../../userspace/services/procmgr",
+                        "../../userspace/runtime/gnat", "../../shared/capabilities");
+   for Source_Files use
+     ("main.adb", "handle_admission.ads", "handle_admission.adb",
+      "session_launch.ads", "session_launch.adb",
+      "launch_attenuation.ads", "launch_attenuation.adb",
+      "cubit.ads", "cubit-launch_handles.ads", "cubit-child_exits.ads",
+      "cubit-process_ids.ads", "cubit-process_ids.adb", "debug_abi.ads");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnata", "-gnato", "-O2", "-gnatwa", "-gnatwJ");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--counterexamples=off");
+   end Prove;
+end Launch_Handles_Tests;

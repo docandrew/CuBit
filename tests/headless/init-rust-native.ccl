@@ -1,6 +1,6 @@
 # Same Rust code, different manifest authority ceilings; no desktop needed.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "ccl-test-host.svc" (priority 5))
   (start "clock.svc" (priority 5))
   (start "rust-probe.app" (priority 5))

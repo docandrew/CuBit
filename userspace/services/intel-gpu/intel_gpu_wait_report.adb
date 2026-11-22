@@ -17,16 +17,8 @@ package body Intel_GPU_Wait_Report is
    Last_Value : Unsigned_32 := 0;
    Observed : Boolean := False;
 
-   --  How often a wait lets the diagnostics publisher run (grant request,
-   --  grant reply, publication), independent of heartbeat lines.
-   Publisher_Interval_Us : constant H.Microseconds := 50_000;
-   Next_Publisher_Us : H.Microseconds := 0;
-
    Microseconds_Per_Millisecond : constant := 1_000;
 
-   function Plus (Now, Interval : H.Microseconds) return H.Microseconds is
-     (if Now <= H.Microseconds'Last - Interval then Now + Interval
-      else H.Microseconds'Last);
 
    function Hex (Value : Unsigned_32) return String is
       Digits_Text : constant String := "0123456789ABCDEF";
@@ -73,11 +65,6 @@ package body Intel_GPU_Wait_Report is
              else ""),
             (if Line = H.Entry_Line then CuBit.Log_Records.Information
              else CuBit.Log_Records.Warning));
-         --  Capture ran the publisher.
-         Next_Publisher_Us := Plus (Stamp.Microseconds, Publisher_Interval_Us);
-      elsif Stamp.Microseconds >= Next_Publisher_Us then
-         Next_Publisher_Us := Plus (Stamp.Microseconds, Publisher_Interval_Us);
-         Intel_GPU_Diagnostics.Tick;
       end if;
    end Pulse;
 

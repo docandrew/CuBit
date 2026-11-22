@@ -65,6 +65,12 @@ SWITCH_AT = re.compile(rb"desktop: status panel open at [0-9,]+ \(\d+x\d+\); "
 SWITCH_ALLOWED = b"procmgr: staged app launches allowed by the Desktop switch"
 CONSOLE_SPAWNED = b"procmgr: spawn: ccl-console.app"
 REPL = re.compile(rb"ccl-console: REPL completed: ([^\n]*)")
+# ABI-002: the console's debug text reaches serial through logstore's
+# mirror, one record per line after this prefix. A line longer than one
+# record (CuBit.Console_Lines.Maximum_Line_Bytes, Log_Records'
+# Maximum_Text_Bytes) continues in the console's next record.
+CONSOLE_PREFIX = b"ccl-console.app: "
+RECORD_TEXT_BYTES = 512
 HELLO = "userspace/apps/hello"
 SOURCES = ("component.ccl", "manifest.ccl", "main.adb")
 PRODUCT = "out/%s/build/hello.app" % HELLO
@@ -110,6 +116,26 @@ def serial_bytes():
         return Path(serial).read_bytes()
     except OSError:
         return b""
+
+
+def console_text(data):
+    """The console's own lines in serial data, a line split over records
+    joined again. A line whose continuation has not arrived yet is left
+    out, so a long REPL result is never read cut short."""
+    lines, pending = [], None
+    for line in data.split(b"\n"):
+        if not line.startswith(CONSOLE_PREFIX):
+            continue
+        body = line[len(CONSOLE_PREFIX):]
+        pending = body if pending is None else pending + body
+        if len(body) < RECORD_TEXT_BYTES:
+            lines.append(pending)
+            pending = None
+    return b"\n".join(lines)
+
+
+def repl_results():
+    return REPL.findall(console_text(serial_bytes()))
 
 
 def wait_for_serial(marker, seconds=20, count=1):
@@ -161,6 +187,10 @@ class Monitor:
         self.hmp("mouse_button 0")
 
     def close(self):
+        # The stream holds the socket open too, and QEMU serves one QMP
+        # client at a time: a live Monitor whose socket alone was closed
+        # stalls the next connection.
+        self.stream.close()
         self.connection.close()
 
 
@@ -184,7 +214,7 @@ def key(c):
 def console(text):
     """Type an entry into the console and Enter; its REPL result line (or
     "" when none came)."""
-    before = len(REPL.findall(serial_bytes()))
+    before = len(repl_results())
     monitor = Monitor()
     try:
         for c in text:
@@ -194,7 +224,7 @@ def console(text):
         monitor.close()
     end = min(deadline, time.monotonic() + REPL_SECONDS)
     while time.monotonic() < end:
-        found = REPL.findall(serial_bytes())
+        found = repl_results()
         if len(found) > before:
             result = found[before].decode("utf-8", "replace")
             print("console-run-staged: %s -> %s" % (text, result[:400]), flush=True)
@@ -305,7 +335,20 @@ def run_hello(name, line, label, raises=False):
     return greeting
 
 
+def check_console_text():
+    """console_text joins a REPL result longer than one log record, past
+    another publisher's line, and holds back one whose rest is missing."""
+    line = b"ccl-console: REPL completed: " + b"x" * (RECORD_TEXT_BYTES + 60)
+    first, rest = line[:RECORD_TEXT_BYTES], line[RECORD_TEXT_BYTES:]
+    data = (CONSOLE_PREFIX + first + b"\ndesktop.svc: desktop: a frame\n" + CONSOLE_PREFIX + rest + b"\n"
+            + CONSOLE_PREFIX + first + b"\n")
+    found = REPL.findall(console_text(data))
+    check(found == [line[len(b"ccl-console: REPL completed: "):]],
+          "a REPL result longer than one log record is read whole, and a cut one is not read")
+
+
 def main():
+    check_console_text()
     host = pair()
     if host is None:
         return

@@ -127,11 +127,11 @@
     },
     {
       "path": "shared/capabilities/capability_abi.ads",
-      "sha256": "845dec7e6ce5b6e8aa2fb618ca6710322c949cd16ede3dcd213b9dd4b96e01bc"
+      "sha256": "3cb666bc1f49820880887dfb9d0598e4bd406dcb71576f52569998851d8cfaba"
     },
     {
       "path": "shared/capabilities/channel_wake_abi.ads",
-      "sha256": "ef921b0ac679aff21ba9bbe4909f07b0ca904a03842b9596feee06d3b33bfeea"
+      "sha256": "c802b6bec8ad6876b38d076f919b5796ce6d7f7f7cf4dc26ff4ba1921f152882"
     },
     {
       "path": "shared/capabilities/firmware_data_abi.ads",
@@ -331,15 +331,15 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-ipc.ads",
-      "sha256": "9be31d1553a61cf2627dd3ff732b5cdb901386deda24d0fc701b8f332cfb031d"
+      "sha256": "17bc4b74dc228329e9a37287391889f62ae39ce106413f8116f7f1540bc828b0"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles.ads",
-      "sha256": "a974a7110bef7339a223fb254a77c530768821a547f34ff7a8f1db4adcd8197d"
+      "sha256": "172b4d844c30af183cf30a6a613e014c1a89681b73da286df3299e69f1bd2f24"
     },
     {
       "path": "userspace/runtime/gnat/cubit-memory_grants.ads",
-      "sha256": "f338947f267391543eda29562cea527fabf56fc05d7905e7a5062d67f92b37b7"
+      "sha256": "0dac95aae3846a63cca73f4ab321c872fee3270317036c6cc242e692628b242c"
     },
     {
       "path": "userspace/runtime/gnat/cubit.ads",
@@ -355,11 +355,11 @@
     },
     {
       "path": "userspace/services/acpi/acpi_bootstrap.adb",
-      "sha256": "1915c38a7af6b2bf117ada1fc578d49d7479e84a8d946e206b96460aa4e59223"
+      "sha256": "3db67cd4ddb1be36cbfc20d9f026f2d677d00e097f5ac6c15b805c90c1d09110"
     },
     {
       "path": "userspace/services/acpi/acpi_bootstrap.ads",
-      "sha256": "236afb497fd25f274bcfe1b2fde8867d8c104a7426a4314bb8680be6714e2f41"
+      "sha256": "c1ae73b64dd8e8a53d1571a75fff0b88795c8ceb090b69932ae3c0999d7ee512"
     },
     {
       "path": "userspace/services/acpi/acpi_capacity_diagnostics.adb",
@@ -411,11 +411,11 @@
     },
     {
       "path": "userspace/services/acpi/acpi_fatal_diagnostics.adb",
-      "sha256": "001fcf6d6c28430ecb558a8f4258811a24355d959bfd0ca581820caffe5f2cc2"
+      "sha256": "21812a36163815f36f318c81005d5e4098d4a7e0940478209caf45d703b3db71"
     },
     {
       "path": "userspace/services/acpi/acpi_fatal_diagnostics.ads",
-      "sha256": "ceb739821c3ac66ea94fee4c107dee3882131ca0110ffb284d43ef59b289006c"
+      "sha256": "a6ac0e14f862db451dfe24b6719053fab9f911664c2aadaabd684d52dc4c9033"
     },
     {
       "path": "userspace/services/acpi/acpi_field_diagnostics.adb",
@@ -475,11 +475,11 @@
     },
     {
       "path": "userspace/services/acpi/acpi_service_core.adb",
-      "sha256": "a54eaae5bec912a5ba7970e1ac3e9d1f9ad845c7c772c45843d941dd86aa62d9"
+      "sha256": "de95416739ece03edae1a3a12ef26a912e15f2f9b7e586533af9e6a336ad13c7"
     },
     {
       "path": "userspace/services/acpi/acpi_service_core.ads",
-      "sha256": "e5238b8d5a9bbfb907d7873a1a53fd8028a6080753cdaa18442fb14d4c6570b6"
+      "sha256": "9f204841315482de209e83b3445d13acbc1f3884b4c056ffe27825b5de946558"
     },
     {
       "path": "userspace/services/acpi/acpi_service.ads",
@@ -495,11 +495,11 @@
     },
     {
       "path": "userspace/services/acpi/acpi_startup_evaluation.adb",
-      "sha256": "2940e802472bdb756c0a55de68b7e22b82d18093969f3dcae0070472b9d3900b"
+      "sha256": "2a2c681c6dbb40f1e7c946bd391f375e570f4f6ebe10c7181f238582beb5bad9"
     },
     {
       "path": "userspace/services/acpi/acpi_startup_evaluation.ads",
-      "sha256": "953e6c1fe55886f67179f46117576e04e0d5d3d4623a91b828755c5ac6726696"
+      "sha256": "c2762be681ad7d0633ba2d1876af06d33bdd6682eb8c38ffcd184f217f5e6797"
     },
     {
       "path": "userspace/services/acpi/acpi_unprovisioned_regions.adb",
@@ -739,7 +739,7 @@
     },
     {
       "path": "userspace/services/acpi/backend/acpi_firmware_data_frames.ads",
-      "sha256": "0a1738a1c537bc0011da9fd14906289a52d300e7810a8fbffd3c1009ac85bff4"
+      "sha256": "a90daf4aa54000b67f8d8d9070d3cf6457484ccc87e5b5d24a404e5388a9dba2"
     },
     {
       "path": "userspace/services/acpi/backend/acpi_firmware_data_framing.ads",
@@ -779,11 +779,11 @@
     },
     {
       "path": "userspace/services/acpi/backend/acpi_firmware_data_protocol.adb",
-      "sha256": "981231961d7f34cb0aad20c13919456ed10590f6fca65f7bc9a8d7aaa8ed126c"
+      "sha256": "69522829b36a336a6779afd85aa9c47fa4e20b60af9a20b68b2fcdd240ccd85e"
     },
     {
       "path": "userspace/services/acpi/backend/acpi_firmware_data_protocol.ads",
-      "sha256": "9afcee43b17a1c581acd4c08bebe213ee36c30a31dd709c660e6cdaa056cdaf5"
+      "sha256": "d1e8ca1ce77d8be465439efc4b989b41240bfa23528fe8224a18471a38991de8"
     },
     {
       "path": "userspace/services/acpi/backend/acpi_firmware_data_publications.adb",
@@ -899,11 +899,11 @@
     },
     {
       "path": "userspace/services/acpi/backend/acpi_local_field_scope.adb",
-      "sha256": "f21bd90e18ef806a64d2d3481f7fef5cc8641158191e8d639a75868604f038df"
+      "sha256": "4adc5cff963eeb713ea04e9ee071bf9641c23eaafb7b52f77a33ecb1509ed23b"
     },
     {
       "path": "userspace/services/acpi/backend/acpi_local_field_scope.ads",
-      "sha256": "a694bb4a5f60e49d163ce8a1826fa0b44008e76408c50c8ff784dd323a49432f"
+      "sha256": "1f1912ac5492f00385966fb063ff51d2fb95d2feadf456aded2cf5d8c4fabc33"
     },
     {
       "path": "userspace/services/acpi/backend/acpi_local_module_startup.adb",
@@ -947,11 +947,11 @@
     },
     {
       "path": "userspace/services/acpi/backend/acpi_local_runtime.adb",
-      "sha256": "49fda651ad6ef54b0ebf388684466fae1ed148ef0e289c46b51dc94c018d591f"
+      "sha256": "7021618783e084980cd5cf9dffaea57f6fea09b834c927178783322c59d5a2a4"
     },
     {
       "path": "userspace/services/acpi/backend/acpi_local_runtime.ads",
-      "sha256": "1dfda3b98a522e7d698247efd340e3686d4321a9f186a2166f7396559cd1dbeb"
+      "sha256": "e78f92d752b78893b4d985287377810324c5de3229265323977d98c7a8b6d1fa"
     },
     {
       "path": "userspace/services/acpi/backend/acpi_locked_nvs.adb",
@@ -1239,11 +1239,11 @@
     },
     {
       "path": "userspace/services/acpi/events/acpi_gpe_methods.adb",
-      "sha256": "eac97fce27f099e2d6d30933e2f1af8cf75a3b637c39889023f454eea2af1874"
+      "sha256": "d817c17237dd6d6c1d97552631f32a8231a15e1e8116f37683bf5851a9787448"
     },
     {
       "path": "userspace/services/acpi/events/acpi_gpe_methods.ads",
-      "sha256": "de1c8ae0f381249d8e3a071c894bfe5cafa695f46c93b049ef2f8d6bdaa0534a"
+      "sha256": "38f192091ea0cc8b6bdcb8926a66bf1373dc258d13bdb67415e74d0eca0d0159"
     },
     {
       "path": "userspace/services/acpi/field-client/acpi_region_client.adb",
@@ -1371,7 +1371,7 @@
     },
     {
       "path": "userspace/services/acpi/field-client/provider/acpi_field_provider_view.ads",
-      "sha256": "34d6ef8d93be6648f169d7deafe3daddbb47dcf3b0f45137cc04af2574af4725"
+      "sha256": "70bb1053f73296bad1113070c0f656e24c30b37992db86cda6195b263f8e62b5"
     },
     {
       "path": "userspace/services/acpi/field-client/provider/acpi_field_remote_provider.adb",
@@ -1483,19 +1483,19 @@
     },
     {
       "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_module_startup.adb",
-      "sha256": "b6a5662a4e20a1f8844c9a6c54b0c659e42774b5490901accf1ee42d76ccf264"
+      "sha256": "ede35beba8d50ec7a393c7f01502247be5859a6f4b4b8e3a6fb88531cf9689c9"
     },
     {
       "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_module_startup.ads",
-      "sha256": "54e086bdd545c7509db26b6bb313d3e97442b278c431839188e42fd670e8e9ea"
+      "sha256": "731f1a2f9ac03e71a6d2067b1927b17e8138473f283dd8fbd183cfe72bff0b3b"
     },
     {
       "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_startup_owner.adb",
-      "sha256": "54714142aebf9d59f8a2d0f9904b0ede39129698eed525a879bbfdc0fff71ff1"
+      "sha256": "1d9c5ba3764f7663ae63405dc8deed7f7540e23c286233e888124dc628e34e90"
     },
     {
       "path": "userspace/services/acpi/field-client/provider/startup/acpi_field_startup_owner.ads",
-      "sha256": "5afd43bf6edbd5e883f89a331f2c94c0840da13c905a6f6c2725fc4797e93d31"
+      "sha256": "7e3bff3ddbc22576b61fdb9666e13358fe604a6e972e7a70621a12bb8d700640"
     },
     {
       "path": "userspace/services/acpi/field-client/provider/startup/acpi_firmware_data_startup.adb",
@@ -1627,11 +1627,11 @@
     },
     {
       "path": "userspace/services/acpi/hid-i2c/hid_i2c_descriptors.adb",
-      "sha256": "2f29b334a5e1801d05fb405ee89ec91c6379b55553448755fce66e149dc09849"
+      "sha256": "41d8bada3643713e1ace117714c619d70cded0f05d7f17fe5905800b2fae5dca"
     },
     {
       "path": "userspace/services/acpi/hid-i2c/hid_i2c_descriptors.ads",
-      "sha256": "9b2369243cbbf2d99f71e15eaa5940a808f44444c285287d89762451585f5db4"
+      "sha256": "ea57ff7cce99c173da1e8d629ce4f3a385f612661e88654bdb72806c47e93263"
     },
     {
       "path": "userspace/services/acpi/hid-i2c/hid_i2c_wire.adb",
@@ -1891,11 +1891,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.adb",
-      "sha256": "adff59af50e3f6653cf4890dd97defb4d55e930f6179a3051ced8d72e495d6dd"
+      "sha256": "ca39e9994a9f707d40d2520fbe1c832d41cbf1594cb3d83b5961ccc106b05919"
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.ads",
-      "sha256": "61bda295752b81e49fa6182ebb9747c67c0a5ecda695610750b657b3504957db"
+      "sha256": "8743f699368a28d401e7b792cf33334ecb533c450f2d45e07c486226b0026462"
     },
     {
       "path": "userspace/services/acpi/lib/aml_execution_limits.ads",
@@ -2052,7 +2052,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_mutexes.ads",
-      "sha256": "e0ac360bbdaaafd1b11c2e327d742b5a86670247098aa7811a8bd149fe449594"
+      "sha256": "17d168f51a2fcc3914e4f2fdbd91fa313b719cb95ef03a7affcc6531ac1afe82"
     },
     {
       "path": "userspace/services/acpi/lib/aml_names.adb",
@@ -2064,11 +2064,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "16d29476dcc073f52e389a4e9ebf296bef25a8a6f8a5e4d3ea2ee204a054889c"
+      "sha256": "113f33c8ab272890f64a10cbdd066e7e24f684ebdbc85efc278789afd99b0775"
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",
-      "sha256": "0dc55c01930b7d6eb5a2622ad17e18768197f007d937e4fa8b492189c94d2cb0"
+      "sha256": "819008011c3c901547429a149a05fcd9cee9b19a451a2cce8a5f609d816e6f2b"
     },
     {
       "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",
@@ -2352,11 +2352,11 @@
     },
     {
       "path": "userspace/services/acpi/native-clock/acpi_delay_domains.adb",
-      "sha256": "e8a89588ce66ddf0f2d326e8b7dae32df510566fe96c2dc017db0d868e54ebe4"
+      "sha256": "2d956a5e8490fd756ea179fa8077a5ef808c2b96288b0ebe1241a4bdcebb2fd3"
     },
     {
       "path": "userspace/services/acpi/native-clock/acpi_delay_domains.ads",
-      "sha256": "2416d8f7e9a79f62eadbfb0ff999fe61c329c0e1489107e76795446f9e72b2e9"
+      "sha256": "d9b0b9958e277405133157d4bf615c6f47e607577d7fb06627e12fe4072f1ded"
     },
     {
       "path": "userspace/services/acpi/native-clock/acpi_delay_waits.adb",
@@ -2368,11 +2368,11 @@
     },
     {
       "path": "userspace/services/acpi/native-clock/acpi_native_delays.adb",
-      "sha256": "0c4aa8dba436612a5876d3f868518b1e45ee521bac777b8447b36d209ea3e93a"
+      "sha256": "f23e3cd0d31c65ea395f0b07acf57576e9625d6ac9dbd6b31e0d13edd7130649"
     },
     {
       "path": "userspace/services/acpi/native-clock/acpi_native_delays.ads",
-      "sha256": "5d982eb7233883277ff88c159fa877495ff5468ac63a8808057b528ac93df192"
+      "sha256": "35899dd48c935e930c49177e447380e4c6d2ab9d57f72022ac70ad455beee84e"
     },
     {
       "path": "userspace/services/acpi/native/acpi_ec_supervisor_control.adb",
@@ -2392,11 +2392,11 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_endpoint.adb",
-      "sha256": "1d4ed36e9af0b0b90cea584c2eef261fac545b6f053c382d8741c40c37a376ad"
+      "sha256": "8d8ab4a78bf434750483a0a3c1a304af3b5b841183204b9b1220d744a52be780"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_endpoint.ads",
-      "sha256": "41ab4e47609e86fa36bbf295f3fdabcdc7770d5147b136eb9eb8037359015a88"
+      "sha256": "f0f4173fbf7327fdc768b25c924066f549ac46cbf1bee63760b1fa5b7fc4c7f5"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_events.adb",
@@ -2432,15 +2432,15 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_server.adb",
-      "sha256": "9e81acf72f728d1bc3952973faa6fa70971f460d9616702220d62a23f26d882c"
+      "sha256": "40342f01eb82bf53d1f4380414e18558a5f56a5d559355f96fca36c695862c4c"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_server.ads",
-      "sha256": "049eb4e2b94971465dc5e847f62f94367d48f1f3f0383aaab6b1553e3f75d8a5"
+      "sha256": "46329ef8e2018da4cf35c2c5c5958cd17c0ee145dd5c1f841a19d40f63b1dc62"
     },
     {
       "path": "userspace/services/acpi/native/acpi_system_events.adb",
-      "sha256": "adf9ba3f3a895302e50f0d0315b9646b3f1ec38a1a89520787e2bef0f22a856d"
+      "sha256": "2c484f343a303a3c2d80d91e8e3a75814637134d853a859aee4e8e612b62fcf6"
     },
     {
       "path": "userspace/services/acpi/native/acpi_system_events.ads",
@@ -2492,7 +2492,7 @@
     },
     {
       "path": "userspace/services/acpi/passive/acpi_observer_loans.ads",
-      "sha256": "90ab5fd9daecc566abb4a6c6389ae3975bf64da1fced28de7d78ab6fb1830ced"
+      "sha256": "151991cd46a8ed58b87c8459adaab15476a60e89914a94a7a57ae50efb3460f8"
     },
     {
       "path": "userspace/services/acpi/passive/acpi_passive_dependencies.adb",
@@ -2688,7 +2688,7 @@
     },
     {
       "path": "userspace/services/acpi/power/acpi_battery_information_reader.adb",
-      "sha256": "f5dd5fa85cbb407aabcbd8d500ae8e03724827a12c5fdd87446665bae4a14daf"
+      "sha256": "57c5d23a06e783ce3d9e930ae28b8a4810628297d807ac766f23187572c1beeb"
     },
     {
       "path": "userspace/services/acpi/power/acpi_battery_information_reader.ads",
@@ -2876,11 +2876,11 @@
     },
     {
       "path": "userspace/services/acpi/request-driver/acpi_requests-with_driver.adb",
-      "sha256": "6271cdf82b840d13179b5dd87106f4b5dfc1e85a160726f5bdd5cdffaa3c8c06"
+      "sha256": "f3c95cd5aeacaf08126f8a6cf2ec639be650f8f06bd412910fbcfa52351fc45e"
     },
     {
       "path": "userspace/services/acpi/request-driver/acpi_requests-with_driver.ads",
-      "sha256": "79d7c202ac5711aebb3215dfc96632a681820d45e767e58d53378bb225dc797a"
+      "sha256": "752682c9dc8032120ef0fe55a450ce0d49b38e60770d8b2045469f3a52506cb0"
     },
     {
       "path": "userspace/services/acpi/resource-consumer/acpi_controller_source.adb",
@@ -3036,11 +3036,11 @@
     },
     {
       "path": "userspace/services/acpi/snapshot/acpi_snapshot_startup-with_driver.adb",
-      "sha256": "3c67a2dc999e5f5eb55cd436e641c60518f7202af47f64f3b427ba92ca9e5f6a"
+      "sha256": "590f8e88be4e4698ef7eebbb8577c2e5b883deea9580a06e22e7f756de3d2f70"
     },
     {
       "path": "userspace/services/acpi/snapshot/acpi_snapshot_startup-with_driver.ads",
-      "sha256": "1349b21c3a60b07754cc68b6e24d9231f9e67dec5dcb376d1a9d62def3a8ef50"
+      "sha256": "68a5772eea8e04bfc7d67bfa8eb05bbf61734d3cc0812c03bc095e5f427edba8"
     },
     {
       "path": "userspace/services/acpi/snapshot/acpi_snapshot_startup.adb",
@@ -3057,12 +3057,16 @@
     {
       "path": "userspace/services/acpi/snapshot/acpi_startup_diagnostics.ads",
       "sha256": "f120281b974b2a23cc7dc9ef664ea1cfdd4bb17405d005498dbdf4132f57cd15"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_global_locks.ads",
+      "sha256": "e24bb2999e7e6fb2f6f3ea9f3f6b9f3a64563f80ebb2876a242aa67f8a6c2e58"
     }
   ],
   "helpers": [
     {
       "path": "run.mjs",
-      "sha256": "7614964f45d743954700ddb226b0574a16493d5217d63fa69c4ceb365c6e5796"
+      "sha256": "6680549902d34f3fcbb09a3c16cf05b6e11a1dd61e9b35c9b9f4b83a05679791"
     },
     {
       "path": "run.sh",
@@ -3070,15 +3074,15 @@
     },
     {
       "path": "README.md",
-      "sha256": "2bc1418a253cd39b328e2908d391fcf6166a7724e0c3a997ae29bd101f50079c"
+      "sha256": "10862b966afa34519dbf0092f28ded5a66d77ce3d2a4b27bc24e7f070c959318"
     },
     {
       "path": "runtime_tests.adb",
-      "sha256": "4e90b393c68672a3d7a266a21ce56d8b3748adc3cc8f5e217c087669657164e8"
+      "sha256": "9d98ec63320502ed2bc628691666f5bfd31b3b511a8c5f5726ff7f6a57c2e9fe"
     },
     {
       "path": "runtime.asl",
-      "sha256": "a9724cd730d4518bf41d23e547c88fb454b56093999d3b1695efea383669dc41"
+      "sha256": "f90b0e015f2365cd06c422fcb2a0250383a24d84c5dac50b499eb62c9cf81a90"
     }
   ]
 }

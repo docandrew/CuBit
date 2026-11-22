@@ -18,6 +18,7 @@
 --  until the next boot. Values are never logged; names and uses are.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Log;
@@ -235,6 +236,8 @@ procedure Main is
    Found : Boolean;
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Log.Info ("secrets: starting (v0: in memory only, not encrypted at rest)");
    declare
       Granted : constant String := CuBit.Canonical_Readers.Image (Parameters.Value.grant.secret);

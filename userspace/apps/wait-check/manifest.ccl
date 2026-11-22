@@ -2,4 +2,6 @@
 # checks. No authority beyond the program's own self endpoint.
 (executable-manifest v1
   (identity "com.cubit.wait-check")
-  (version "0.1.0"))
+  (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore))

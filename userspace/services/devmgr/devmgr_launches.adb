@@ -10,8 +10,11 @@ with CuBit.Input;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Envelopes;
 with CuBit.Launch_Failure_Text;
-with CuBit.Messages;
 with CuBit.Startup_Builder;
+with CuBit.Introduction_Ledgers;
+with CuBit.Late_Introduction;
+with CuBit.Handles.IPC;
+with CuBit.Process_IDs.Text;
 with Devmgr_Children;
 
 package body Devmgr_Launches is
@@ -132,6 +135,12 @@ package body Devmgr_Launches is
       Name_Length : Natural range 0 .. Devmgr_Children.Name_Bytes := 0;
       --  PWR-003: its declared root-stop stage is Power_Tail.
       Tail        : Boolean := False;
+      --  Give_Service_Later: the role answered later, and its badge.
+      Later_Role  : Unsigned_32 := 0;
+      Later_Tag   : Unsigned_64 := 0;
+      Later       : Boolean := False;
+      --  A decision was kept: it gets the introducer endpoint.
+      Late_Kept   : Boolean := False;
    end record;
 
    Launches : array (Child range 1 .. Child'Last) of Launch;
@@ -348,6 +357,126 @@ package body Devmgr_Launches is
       end loop;
    end Give_Service;
 
+   ---------------------------------------------------------------------------
+   --  Late introduction (CuBit.Late_Introduction).
+   ---------------------------------------------------------------------------
+   package LIL renames CuBit.Introduction_Ledgers;
+   package LI renames CuBit.Late_Introduction;
+   package IPC renames CuBit.Handles.IPC;
+   use type LIL.Delivery, IPC.Reply_Outcome;
+   Late : LIL.Ledger := LIL.Empty;
+   Late_Replies : array (LIL.Slot) of H.Reply := [others => H.No_Reply];
+
+   --  The rights a decision keeps, as the ledger's mask (Read 1, Write 2).
+   function Mask_Of (Kept : H.Rights) return Unsigned_64 is
+     ((if Kept.Read then 1 else 0) or (if Kept.Write then 2 else 0));
+   function Rights_From (Mask : Unsigned_64) return H.Rights is
+     ((Read => (Mask and 1) /= 0, Write => (Mask and 2) /= 0, others => False));
+
+   function Late_Copy (D : LIL.Decision; Service : H.Endpoint) return H.Derivation is
+     (if D.Tag /= 0 then H.Badged (Service, Rights_From (D.Rights), D.Tag)
+      else H.Copy (Service, Rights_From (D.Rights)));
+
+   function Answer (Label : Unsigned_32) return CuBit.Messages.Message is
+     ((tag => (label => Label, length => 0, protocol => 0, ipc => <>, reserved => 0),
+       authorityTag => 0, words => [others => 0]));
+
+   procedure Give_Service_Later (Item : Child; Role : Unsigned_32; Tag : Unsigned_64) is
+   begin
+      Launches (Item).Later_Role := Role;
+      Launches (Item).Later_Tag := Tag;
+      Launches (Item).Later := True;
+   end Give_Service_Later;
+
+   procedure Introduce (Role : Unsigned_32; Service : H.Endpoint) is
+      S : LIL.Slot_Count;
+      From : LIL.Slot := LIL.Slot'First;
+   begin
+      if not H.Valid (Service) then
+         return;
+      end if;
+      loop
+         S := LIL.Next_For (Late, Unsigned_64 (Role), From);
+         exit when S = 0;
+         if Late (S).Way = LIL.Saved_Reply then
+            declare
+               Sent : constant IPC.Reply_Result := IPC.Reply_Saved_With
+                 (Late_Replies (S), Answer (LI.Introduced), Late_Copy (Late (S), Service));
+            begin
+               CuBit.Messages.debugPrint
+                 ("devmgr: pid" & CuBit.Process_IDs.Text.Image (CuBit.Process_IDs.From_Word (Late (S).Holder)) &
+                  (if Sent.Outcome = IPC.Transferred then " introduced late to role" else
+                     " not introduced (undelivered) to role") &
+                  Unsigned_32'Image (Role) & ASCII.LF);
+               Late_Replies (S) := H.No_Reply;
+               LIL.Remove (Late, S);
+            end;
+         end if;
+         exit when S = LIL.Slot'Last;
+         From := S + 1;
+      end loop;
+   end Introduce;
+
+   procedure Await (From : Process_ID; Request : CuBit.Messages.Message) is
+      S : LIL.Slot_Count := 0;
+      Ignore : Unsigned_64;
+   begin
+      if Request.tag.length = LI.Await_Words then
+         S := LIL.Find (Late, CuBit.Process_IDs.To_Word (From), Request.words (LI.Index_Word));
+      end if;
+      if S = 0 then
+         CuBit.Messages.debugPrint
+           ("devmgr: pid" & CuBit.Process_IDs.Text.Image (From) &
+            " asked to be introduced for an entry it was not started without (refused)" & ASCII.LF);
+         Ignore := CuBit.Messages.reply (From, Answer (LI.Not_Declared));
+         return;
+      elsif Late (S).Waiting then
+         Ignore := CuBit.Messages.reply (From, Answer (LI.Withdrawn));
+         return;
+      end if;
+      if Late (S).Role <= Unsigned_64 (Unsigned_32'Last)
+        and then H.Valid (Service_Of (Unsigned_32 (Late (S).Role)))
+      then
+         declare
+            Sent : constant IPC.Reply_Result := IPC.Reply_With
+              (From, Answer (LI.Introduced), Late_Copy (Late (S), Service_Of (Unsigned_32 (Late (S).Role))));
+         begin
+            if Sent.Outcome = IPC.Refused then
+               Ignore := CuBit.Messages.reply (From, Answer (LI.Withdrawn));
+            end if;
+            LIL.Remove (Late, S);
+         end;
+         return;
+      end if;
+      declare
+         Saved : constant IPC.Saved_Reply := IPC.Save_Reply;
+      begin
+         if Saved.Saved then
+            Late_Replies (S) := Saved.Handle;
+            LIL.Set_Waiting (Late, S);
+         else
+            Ignore := CuBit.Messages.reply (From, Answer (LI.Withdrawn));
+            LIL.Remove (Late, S);
+         end if;
+      end;
+   end Await;
+
+   procedure Forget_Introductions (Process : Process_ID) is
+      Word : constant Unsigned_64 := CuBit.Process_IDs.To_Word (Process);
+      Ignore : IPC.Close_Result;
+   begin
+      if Word = LIL.No_Holder then
+         return;
+      end if;
+      for S in LIL.Slot loop
+         if LIL.Used (Late (S)) and then Late (S).Holder = Word and then H.Valid (Late_Replies (S)) then
+            Ignore := IPC.Close (Late_Replies (S));
+            Late_Replies (S) := H.No_Reply;
+         end if;
+      end loop;
+      LIL.Forget (Late, Word);
+   end Forget_Introductions;
+
    function Resources_Of (Item : Child) return CCL.Resource_Sections.Section_Plan is
      (if Launches (Item).Manifest.Resources_Found then Launches (Item).Manifest.Resources
       else (others => <>));
@@ -433,6 +562,7 @@ package body Devmgr_Launches is
       L : Launch renames Launches (Into.Item);
       Origin : constant Driver_Manifests.Source := Driver_Manifests.Source_Of (L.Manifest, Index);
       use type Driver_Manifests.Source_Kind;
+      use type ST.Need;
    begin
       Handle := 0;
       Outcome := SB.Not_Available;
@@ -464,6 +594,19 @@ package body Devmgr_Launches is
                   Install_Copy (Into.Item,
                     H.Copy (Service_Of (Request.Service), Rights_Of (Request.Rights)),
                     Handle, Outcome);
+               elsif L.Later and then Request.Service = L.Later_Role
+                 and then Item.Requirement = ST.Optional
+               then
+                  --  Give_Service_Later: Absent now, the decision kept.
+                  declare
+                     Into_Slot : LIL.Slot_Count;
+                  begin
+                     LIL.Keep (Late, (Holder => CuBit.Process_IDs.To_Word (PID (Into.Item)),
+                                      Index => Unsigned_64 (Index), Role => Unsigned_64 (Request.Service),
+                                      Rights => Mask_Of (Rights_Of (Request.Rights)), Tag => L.Later_Tag,
+                                      Way => LIL.Saved_Reply, Waiting => False), Into_Slot);
+                     L.Late_Kept := L.Late_Kept or else Into_Slot /= 0;
+                  end;
                end if;
             when ST.Notification =>
                --  An input role's publish notification (Read: publication;
@@ -545,6 +688,32 @@ package body Devmgr_Launches is
                       else ""));
             return False;
          end if;
+         --  The introducer (CuBit.Late_Introduction): devmgr's endpoint,
+         --  badged, after the declared entries, when a decision was kept.
+         if L.Late_Kept then
+            declare
+               Label : constant ST.Name := ST.To_Name (LI.Binding);
+               Handle : Unsigned_64;
+               Outcome : SB.Mint_Outcome;
+               use type SB.Mint_Outcome;
+            begin
+               if Built.Count < ST.Maximum_Entries and then ST.Find (Built, Label) = 0 then
+                  Install_Copy (Item, H.Badged (Service_Of (Unsigned_32 (CuBit.Messages.DRIVER_DEVMGR)),
+                                                H.Read_Write, LI.Introducer_Tag), Handle, Outcome);
+                  if Outcome = SB.Granted then
+                     Built.Count := Built.Count + 1;
+                     Built.Entries (Built.Count) :=
+                       (Label => Label, Kind => ST.Endpoint, Requirement => ST.Optional,
+                        State => ST.Granted, Handle => Handle);
+                  end if;
+               end if;
+               if ST.Find (Built, Label) = 0 then
+                  Refusal ("devmgr: " & Name_Of (Item) & ": no room for its introducer; " &
+                           "its optional services stay absent");
+                  Forget_Introductions (PID (Item));
+               end if;
+            end;
+         end if;
          declare
             Table : ST.Bytes (1 .. ST.Maximum_Table_Bytes);
             Table_Length : ST.Table_Length;
@@ -580,6 +749,7 @@ package body Devmgr_Launches is
    procedure Abandon (Item : Child) is
       Ignore : Boolean;
    begin
+      Forget_Introductions (PID (Item));
       Ignore := HC.Kill (Launches (Item).Spawned.Child, Launches (Item).Spawned.Control);
    end Abandon;
 

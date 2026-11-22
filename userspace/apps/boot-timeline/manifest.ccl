@@ -1,7 +1,11 @@
 # boot-timeline (BOOT-001, docs/boot-timeline.md): reads the kernel's boot
-# timeline through procmgr's process-observer role and prints it. Observes
-# only; writes nothing and reaches no network.
-(executable-manifest v1
-  (identity "com.cubit.boot-timeline")
-  (version "0.1.0")
-  (request-service process-observer read-write process-observer))
+# timeline, a granted publication mapped read-only only for a program that
+# declares it, and prints it. Observes only; writes nothing and reaches no
+# network.
+(Executable_Manifest
+  identity => "com.cubit.boot-timeline"
+  version => "0.1.0"
+  requests => [(Request.Publication "boot-timeline")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

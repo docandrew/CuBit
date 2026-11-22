@@ -7,6 +7,12 @@ package ACPI_One_Service is
    package C renames ACPI_Service;package T renames ACPI_EC_Types;
    Boot_Ready:Boolean:=True;
    Now:Interfaces.Unsigned_64:=100;
+   Expire_After_Candidate : Boolean := False;
+   Delay_After_Candidate : Interfaces.Unsigned_64 := 0;
+   Maximum_Window_Length, Last_Window_Length : Interfaces.Unsigned_64 := 0;
+   function Current_Event_Deadline return Interfaces.Unsigned_64;
+   Read_Clock_Available : Boolean := True;
+   Clock_Observations : Natural := 0;
    Reads,Writes,Enters,Leaves,Eval_Calls:Natural:=0;
    Pause_Fails,Leave_Fails,Status_Unknown,End_Fails,Event_Zero,New_Edge_On_Empty:Boolean:=False;
    Guard:Boolean:=False;
@@ -24,6 +30,8 @@ package ACPI_One_Service is
          type EC_Boot_Report is record
             Status:EC_Boot_Status:=EC_Ready;
             Control:Interfaces.Unsigned_64:=16#66#;
+            UID:Interfaces.Unsigned_32:=0;
+            GPE:T.Byte:=16#6E#;
             Data:Interfaces.Unsigned_64:=16#62#;
          end record;
          function EC_Boot_Observation return EC_Boot_Report;

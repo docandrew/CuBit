@@ -5,4 +5,7 @@
   requests => [
     (service "display" "display")
     # Scanout loans (UI-020), as Desktop: offered to display read-only.
-    (Request.Offerable_Self "self-offer")])
+    (Request.Offerable_Self "self-offer")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

@@ -3,7 +3,7 @@ project GGTT_Mapping is
      "../../userspace/runtime/gnat", "../support/handles", "../../shared/capabilities");
    for Source_Files use ("intel_gpu_wait_report.ads", "fixture_wait_report.adb", "intel_gpu_diagnostics.ads", "fixture_diagnostics.adb",
      "ggtt_mapping_tests.adb", "cubit.ads",
-     "fixture_messages.ads", "fixture_messages.adb",
+     "fixture_messages.ads", "fixture_messages.adb", "cubit-monotonic.ads", "cubit-monotonic.adb",
      "fixture_supervisor.ads", "fixture_supervisor.adb",
      "fixture_devices.ads", "fixture_devices.adb",
      "cubit-handles.ads", "cubit-handles-fixture.ads", "cubit-handles-fixture.adb",

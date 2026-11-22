@@ -55,7 +55,14 @@ package Capability_Install with SPARK_Mode is
     function Transferable (Kind : CapabilityType) return Boolean is
         (Kind in CAP_ENDPOINT | CAP_NOTIFICATION | CAP_IOPORT | CAP_IRQ |
                  CAP_PROCESS | CAP_DEVICE_MEM | CAP_SCHEDULING |
-                 CAP_FIRMWARE_SNAPSHOT | CAP_PLATFORM_POWER);
+                 CAP_FIRMWARE_SNAPSHOT | CAP_PLATFORM_POWER | CAP_TRACE |
+                 CAP_PROCESS_LIST | CAP_TEST_CONSOLE |
+                 -- Debug sessions: procmgr passes what it minted on.
+                 CAP_DEBUG_OBSERVE | CAP_DEBUG_PAUSE | CAP_DEBUG_MODIFY |
+                 CAP_DEBUG_INSTRUMENT |
+                 -- VM creation (VMM-001): devmgr to procmgr to the program
+                 -- its startup plan approves.
+                 CAP_VM_CREATE);
 
     -- Kinds whose object is a range (first, count or bytes): device memory
     -- (base, bytes), I/O ports (first port, count), interrupt vectors

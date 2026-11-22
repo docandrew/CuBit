@@ -1,19 +1,23 @@
 package Process.User_Memory is
-   -- Reads the currently executing caller's own normal user RAM, or its
-   -- explicit readable mapping of permanently reserved initrd bytes. Received
-   -- grants, large pages and MMIO are not accepted by this initial interface.
-   -- A failure can leave a copied prefix in Destination; callers must discard
-   -- that output. No user virtual address is directly dereferenced.
+   -- The currently executing caller's own memory, through its own mapping
+   -- (KERN-014 slice 2): never through the kernel's linear map, and with no
+   -- page walk or frame pin. The range must lie in the user half and outside
+   -- the received-grant aperture (User_Access_Ranges); the hardware checks
+   -- the rest: every page present and user-accessible, and writable for a
+   -- store (CR0.WP). A page fault is recovered and refused (interrupt
+   -- handlers' fault-resume table). MMIO and large pages the caller maps are
+   -- accepted like its other pages: it can reach them anyway.
+   --
+   -- Reads Length bytes at Source into Destination (kernel memory). A
+   -- failure can leave a copied prefix in Destination; callers must discard
+   -- that output.
    procedure Copy
      (Caller : ProcessID; Source : Unsigned_64; Destination : System.Address;
       Length : Storage_Count; Success : out Boolean);
 
-   -- Writes Length bytes from Source (kernel memory) to the currently
-   -- executing caller's own normal user RAM at Destination, through its
-   -- page tables: every page must be present, user-accessible, writable and
-   -- owned by the caller (not a received grant, not MMIO, not the kernel).
-   -- No user virtual address is directly dereferenced. A failure can leave
-   -- a written prefix (IPC syscalls, docs/ipc-fastpath.md, "User memory").
+   -- Writes Length bytes from Source (kernel memory) to the caller's memory
+   -- at Destination, as Copy. A failure can leave a written prefix (IPC
+   -- syscalls, docs/ipc-fastpath.md, "User memory").
    procedure Copy_To_User
      (Caller : ProcessID; Destination : Unsigned_64; Source : System.Address;
       Length : Storage_Count; Success : out Boolean);
@@ -42,9 +46,8 @@ package Process.User_Memory is
       Success : out Boolean);
 
    -- Atomic 32-bit access to one aligned word of the calling process's own
-   -- normal user RAM (futex words, thread-exit words). The address must be
-   -- 4-byte aligned and outside the grant aperture; a store also requires a
-   -- user-writable mapping. Nothing is dereferenced through user mappings.
+   -- memory (futex words, thread-exit words), as Copy: 4-byte aligned and
+   -- outside the grant aperture; a store needs a user-writable mapping.
    procedure Load_Word32
      (Caller : ProcessID; Address : Unsigned_64; Value : out Unsigned_32;
       Success : out Boolean);
@@ -53,11 +56,16 @@ package Process.User_Memory is
       Success : out Boolean);
 
    --  A shared futex word (IPC-010): the caller's 32-bit word at Address
-   --  in a grant Owner owns, through the caller's own mapping (its owned
-   --  pages, or its received window when it is the grantee). The frame
-   --  must be Owner's; Process.IPC.resolveSharedWord checked the caller
-   --  is a party of the live grant and Address is inside it.
+   --  in a grant Owner owns, read through the caller's own mapping (its
+   --  owned pages, or its received window when it is the grantee). The
+   --  frame the caller's tables name must be Owner's (checked and pinned
+   --  around the read); Process.IPC.resolveSharedWord checked the caller is
+   --  a party of the live grant and Address is inside it.
    procedure Load_Shared_Word32
      (Caller : ProcessID; Owner : ProcessID; Address : Unsigned_64;
       Value : out Unsigned_32; Success : out Boolean);
+
+   -- Kernel accesses to user memory that faulted and were refused since
+   -- boot (the fault-resume path). Diagnostics and tests.
+   function Recovered_Faults return Unsigned_64;
 end Process.User_Memory;

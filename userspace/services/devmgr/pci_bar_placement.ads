@@ -17,16 +17,24 @@ with Interfaces; use Interfaces;
 --  - Windows are where the host bridge decodes memory to PCI. They come from
 --    _CRS through acpi.svc, never from memory-map holes, which may hold
 --    hidden devices.
+--  - Allowed is where devmgr may place at all: the device-memory runs the
+--    kernel granted it. A window is only a candidate where it meets one of
+--    them, so a place is legal when it is found, not refused afterwards
+--    (the IdeaPad's _CRS lists the legacy VGA hole 0xA0000..0xBFFFF first,
+--    which no device-memory run covers).
 --  - Taken is every extent already claimed: other BARs, bridge windows,
 --    ACPI's claims and firmware reservations.
 --  - A BAR of Pages pages (a power of two) is placed at the lowest address
---    that is aligned to its size, lies inside one window and overlaps
---    nothing taken. It searches Windows in the caller's order, so the caller
---    lists the window it prefers first (above 4 GiB for a 64-bit BAR).
+--    that is aligned to its size, lies inside one window and one allowed
+--    run and overlaps nothing taken. It searches Windows in the caller's
+--    order, so the caller lists the window it prefers first (below 4 GiB
+--    for a non-prefetchable BAR); within a window, it tries Allowed in the
+--    caller's order (devmgr passes the runs ascending).
 --
 --  Spans are page ranges [First, Past), Past exclusive. Proved: a found
---  span is aligned, exactly Pages long, inside a window, and disjoint from
---  every taken span; "not found" means no candidate the search visited fit.
+--  span is aligned, exactly Pages long, inside a window and an allowed run,
+--  and disjoint from every taken span; "not found" means no candidate the
+--  search visited fit.
 ------------------------------------------------------------------------------
 package PCI_BAR_Placement with SPARK_Mode, Pure is
    --  Physical page numbers: 52-bit physical addresses at most.
@@ -46,6 +54,11 @@ package PCI_BAR_Placement with SPARK_Mode, Pure is
    function Inside (Inner, Outer : Span) return Boolean is
      (Outer.First <= Inner.First and then Inner.Past <= Outer.Past);
 
+   --  Where A and B meet (not Valid when they do not).
+   function Meet (A, B : Span) return Span is
+     ((Page'Max (A.First, B.First), Page'Min (A.Past, B.Past)))
+   with Post => (if Valid (Meet'Result) then Inside (Meet'Result, A) and then Inside (Meet'Result, B));
+
    type Span_Array is array (Positive range <>) of Span;
 
    --  A BAR's size in pages: a power of two, at least one page.
@@ -56,6 +69,7 @@ package PCI_BAR_Placement with SPARK_Mode, Pure is
 
    procedure Place
      (Windows : Span_Array;
+      Allowed : Span_Array;
       Taken   : Span_Array;
       Pages   : Page;
       Result  : out Outcome;
@@ -68,6 +82,7 @@ package PCI_BAR_Placement with SPARK_Mode, Pure is
           and then Where.Past - Where.First = Pages
           and then (Where.First and (Pages - 1)) = 0
           and then (for some W of Windows => Valid (W) and then Inside (Where, W))
+          and then (for some R of Allowed => Valid (R) and then Inside (Where, R))
           and then (for all T of Taken => not Overlaps (Where, T))
         elsif Result = Invalid_Size then not Power_Of_Two (Pages));
 end PCI_BAR_Placement;

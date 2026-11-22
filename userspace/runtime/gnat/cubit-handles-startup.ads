@@ -142,4 +142,25 @@ package CuBit.Handles.Startup with SPARK_Mode is
    with Global => CuBit.Startup_State.Loaded_Table,
         Pre    => Kind in ST.Platform_Power;
 
+   --  The test console object (Test_Console_ABI), by name: the null
+   --  handle when the table holds none. Only test builds' logstore asks,
+   --  without declaring it in its shipped manifest (the test variant
+   --  does), so an absent one is ordinary, not a failed startup.
+   function Test_Console_Named
+     (Label : String; Kind : ST.Capability_Kind := ST.Test_Console) return Test_Console
+   with Global => CuBit.Startup_State.Loaded_Table,
+        Pre    => Kind in ST.Test_Console;
+
+   --  Required only, likewise (CuBit.Trace_Authority).
+   function Trace_Named
+     (Label : String; Kind : ST.Capability_Kind := ST.Trace) return Trace
+   with Global => CuBit.Startup_State.Loaded_Table,
+        Pre    => Kind in ST.Trace;
+
+   --  Required only, likewise (CuBit.VM_Create_Authority, VMM-001).
+   function VM_Create_Named
+     (Label : String; Kind : ST.Capability_Kind := ST.VM_Create) return VM_Create
+   with Global => CuBit.Startup_State.Loaded_Table,
+        Pre    => Kind in ST.VM_Create;
+
 end CuBit.Handles.Startup;

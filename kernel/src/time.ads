@@ -27,6 +27,15 @@ is
     procedure Read_Monotonic (Microseconds : out Unsigned_64;
                              Success : out Boolean) with SPARK_Mode => Off;
 
+    -- The clock user space reads (CuBit.Monotonic, CuBit.Published_Clock):
+    -- the clock publication's conversion when user space has it
+    -- (Clock_Page.Shared), else msTicks, the page's millisecond word, in
+    -- microseconds. Timer waits (Wait_ABI.Timer) take their absolute
+    -- instants on this clock. In-kernel busy waits keep Read_Monotonic: its
+    -- HPET fallback advances with interrupts off, msTicks does not.
+    procedure Read_User_Monotonic (Microseconds : out Unsigned_64;
+                                   Success : out Boolean) with SPARK_Mode => Off;
+
     ---------------------------------------------------------------------------
     -- msTicks is a running count, updated by the interruptHandler.
     ---------------------------------------------------------------------------

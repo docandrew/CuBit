@@ -265,6 +265,36 @@ is
     ---------------------------------------------------------------------------
     -- get CR2 register
     ---------------------------------------------------------------------------
+    function getDR6 return Unsigned_64 is
+        ret : Unsigned_64;
+    begin
+        Asm("mov %%dr6, %0",
+            Outputs => Unsigned_64'Asm_Output("=r", ret),
+            Volatile => True);
+        return ret;
+    end getDR6;
+
+    procedure setDR6 (value : Unsigned_64) is
+    begin
+        Asm("mov %0, %%dr6",
+            Inputs => Unsigned_64'Asm_Input("r", value),
+            Volatile => True);
+    end setDR6;
+
+    procedure setDR0 (value : Unsigned_64) is
+    begin
+        Asm("mov %0, %%dr0",
+            Inputs => Unsigned_64'Asm_Input("r", value),
+            Volatile => True);
+    end setDR0;
+
+    procedure setDR7 (value : Unsigned_64) is
+    begin
+        Asm("mov %0, %%dr7",
+            Inputs => Unsigned_64'Asm_Input("r", value),
+            Volatile => True);
+    end setDR7;
+
     function getCR2 return Unsigned_64 is
         ret : Unsigned_64;
     begin
@@ -530,6 +560,26 @@ is
             Clobber  => "memory",
             Volatile => True);
     end rep_movsb;
+
+    procedure rep_stosb (dst   : in System.Address;
+                         value : in System.Storage_Elements.Storage_Element;
+                         len   : in System.Storage_Elements.Storage_Count) is
+        dstl : System.Address := dst;
+        lenl : Storage_Count  := len;
+    begin
+        Asm("rep stosb",
+            Outputs => (
+                System.Address'Asm_Output("=D", dstl),
+                Storage_Count'Asm_Output("=c", lenl)
+            ),
+            Inputs => (
+                System.Address'Asm_Input("0", dstl),
+                Storage_Count'Asm_Input("1", lenl),
+                Storage_Element'Asm_Input("a", value)
+            ),
+            Clobber  => "memory",
+            Volatile => True);
+    end rep_stosb;
 
     ---------------------------------------------------------------------------
     -- Word-at-a-time memory comparison with exact byte-order fallback.

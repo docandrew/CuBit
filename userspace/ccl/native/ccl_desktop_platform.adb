@@ -19,6 +19,7 @@ with CCL_Application;
 with CCL_Native_Execution;
 with CCL_Llm_Link;
 with CCL_Native_Bindings;
+with CuBit.Monotonic;
 
 package body CCL_Desktop_Platform is
    function Code_Of (Event : Window_Event) return Integer_32 is
@@ -262,7 +263,7 @@ package body CCL_Desktop_Platform is
 
 
    function Count_Click (X, Y : Integer_32) return Natural is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       DX : constant Integer_64 := Integer_64 (X) - Click_Origin_X;
       DY : constant Integer_64 := Integer_64 (Y) - Click_Origin_Y;
       Continues : constant Boolean :=
@@ -452,7 +453,7 @@ package body CCL_Desktop_Platform is
    with Export, Convention => C, External_Name => "ccl_window_ticks";
 
    function Window_Ticks return Unsigned_64 is
-     (syscall (SYSCALL_GETTIME));
+     (CuBit.Monotonic.Milliseconds);
 
    function Window_Clock_Monotonic
      (Success : access Integer_32) return Unsigned_64
@@ -559,7 +560,7 @@ package body CCL_Desktop_Platform is
       function Next_Deadline return Unsigned_64 is
          Wanted : constant Unsigned_64 := Wake_At;
          Retry : constant Unsigned_64 :=
-           (if CCL_Native_Execution.Cleanup_Needs_Retry then syscall (SYSCALL_GETTIME) + 10 else 0);
+           (if CCL_Native_Execution.Cleanup_Needs_Retry then CuBit.Monotonic.Milliseconds + 10 else 0);
       begin
          return (if Wanted = 0 then Retry
                  elsif Retry = 0 then Wanted

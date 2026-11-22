@@ -36,6 +36,8 @@ SHUTDOWN_TIMEOUT_SECONDS=90
 NETWORK_AUTHORITY_TIMEOUT_SECONDS=100
 # net-link and net-multi: boot, DHCP, and each pulled cable (tests/net-link).
 NET_LINK_TIMEOUT_SECONDS=150
+# vm-linux boots the guest twice (one vCPU, then two), each bounded at 60 s.
+VM_LINUX_TIMEOUT_SECONDS=240
 BENCH_LATENCY_TIMEOUT_SECONDS=300
 # PERF-010 bench-build: two apps, cold, warm and edited, on CuBit.
 BENCH_BUILD_TIMEOUT_SECONDS=2400
@@ -92,7 +94,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, exit-status, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, large-manifest, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, ui-latency, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, display-latency, metrics-latency, metricsview, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, desktop-live-replace, console-run-staged, bench-build, nvme-timeout, nvme-stuck, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, exit-status, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, large-manifest, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, ui-latency, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, desktop-session, desktop-session-no-invtsc, display-latency, metrics-latency, metricsview, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, desktop-live-replace, console-run-staged, bench-build, nvme-timeout, nvme-stuck, or boot-timeline (--accel kvm --timeout 60)
   --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, ui-latency, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
@@ -129,7 +131,9 @@ fs-coherence-CASE: one cross-process coherence case, CASE from
 bench-latency: tests/sched-latency (build tests/sched-latency/build-cubit.sh
   and bench-ipc-server first); defaults to 300 s. QEMU quits at its done marker.
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
-Observability: log-fields (build logstore log-fields-check first); log-retention
+Observability: log-fields (build logstore log-fields-check first); console-route
+(build logstore-test console-route-check first); late-introduction (build
+logstore-test late-intro-check first); log-retention
 (build logstore log-retention-check first); metrics
   (build metricsvc metrics-check; needs procmgr metrics tag issuance).
 Render denial: render-launch-policy (build procmgr devmgr devices render-launch-policy first).
@@ -305,7 +309,7 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-protocol|files|text|calculator|ui-latency|lexicon|dictionary|bible|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart|desktop-reap|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel)
+        desktop-display|desktop-session|desktop-session-no-invtsc|desktop-protocol|files|text|calculator|ui-latency|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart|desktop-reap|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         shutdown|acpi-shutdown)
             TIMEOUT_SECONDS=$SHUTDOWN_TIMEOUT_SECONDS ;;
@@ -313,6 +317,10 @@ if [ -z "$TIMEOUT_SECONDS" ]; then
             TIMEOUT_SECONDS=$NETWORK_AUTHORITY_TIMEOUT_SECONDS ;;
         net-link|net-multi)
             TIMEOUT_SECONDS=$NET_LINK_TIMEOUT_SECONDS ;;
+        vm-linux)
+            TIMEOUT_SECONDS=$VM_LINUX_TIMEOUT_SECONDS ;;
+        vm-desktop)
+            TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         bench-latency)
             TIMEOUT_SECONDS=$BENCH_LATENCY_TIMEOUT_SECONDS ;;
         bench-build)
@@ -354,15 +362,24 @@ case "$TEST_NAME" in
     config-objects|config-objects-reopen|config-objects-benchmark|config-storage)
         CONFIG_STORAGE_TEST=1
         ;;
-    grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
+    grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|cpu-refusal)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
         exit 2
         ;;
 esac
+# desktop-session-no-invtsc: desktop-session on run-desktop's CPU without
+# the invariant TSC (QEMU_RUN_CPU before +invtsc, or a host or TCG without
+# it): no clock publication, so user space and the kernel's timer waits
+# both run on the millisecond word.
+DESKTOP_SESSION_NO_INVTSC=0
+if [ "$TEST_NAME" = "desktop-session-no-invtsc" ]; then
+    TEST_NAME=desktop-session
+    DESKTOP_SESSION_NO_INVTSC=1
+fi
 
 PIN_ARGS=()
 if [ -n "$VCPU_CPUS" ]; then
@@ -496,6 +513,16 @@ trap cleanup EXIT INT TERM
 
 HEADLESS_TEST_FAILED=1
 
+# The signing directory (SIGN-001): images name its CA, and the builds below
+# sign with its key. Named explicitly, never a default: a run never reads or
+# creates the person's own key (~/.config/cubit/signing) behind their back.
+if [ -z "${CUBIT_SIGNING:-}" ]; then
+    echo "headless: CUBIT_SIGNING is unset: name the signing directory to use" \
+         "(make -C kernel signing-key CUBIT_SIGNING=DIR makes one)" >&2
+    exit 1
+fi
+export CUBIT_SIGNING
+
 if [ "$BUILD_WORLD" -eq 1 ]; then
     make -C "$KERNEL_DIR" world
 fi
@@ -571,7 +598,7 @@ case "$TEST_NAME" in
     log-authority)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-log-authority.ccl"
         ;;
-    log-fields|log-retention|metrics)
+    log-fields|log-retention|console-route|late-introduction|metrics)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-$TEST_NAME.ccl"
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|gpu-viewer)
@@ -670,6 +697,16 @@ with open(sys.argv[1], "wb") as f:
     logs)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-logs.ccl"
         ;;
+    debugger-gui)
+        # DBG-001: the Debugger attached to debug-demo (cooperative preview).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-debugger-gui.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-2G}"
+        ;;
+    debugger-gui-rs)
+        # DBG-001: the same, attached to the Rust demo (debug-demo-rs).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-debugger-gui-rs.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-2G}"
+        ;;
     metricsview)
         # MET-002's app: Desktop's display latency and its own, live from
         # metrics.svc (tests/headless/init-metricsview.ccl).
@@ -690,6 +727,34 @@ with open(sys.argv[1], "wb") as f:
         # SYSCALL with RFLAGS.TF set: the kernel masks TF on entry and
         # survives; the process dies for the user-mode single-step trap.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-trap-flag.ccl"
+        ;;
+    direction-flag)
+        # A user process runs with RFLAGS.DF set while timer interrupts and
+        # page faults enter the kernel: the entry stubs must clear DF before
+        # any compiled kernel code (REP MOVS/STOS) runs.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-direction-flag.ccl"
+        ;;
+    alignment-flag)
+        # A user process runs with RFLAGS.AC set while timer interrupts and
+        # page faults enter the kernel: the entry stubs must clear AC, or
+        # interrupt handlers run with SMAP off (SEC-026). Needs a kernel
+        # built SMAP_ENTRY_PROBE=1 and a CPU model with SMAP.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-alignment-flag.ccl"
+        ;;
+    kernel-map-probe)
+        # KERN-014: what the kernel's own map reaches. Needs a kernel built
+        # KERN014_PROBE=1 (make -C kernel world KERN014_PROBE=1 after
+        # removing kernel/build/libcubit.a, so build.ads is regenerated).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-kernel-map-probe.ccl"
+        ;;
+    mov-ss-debug)
+        # DBG-001 (CVE-2018-8897 class): a data breakpoint deferred past MOV SS
+        # fires on the kernel's first instruction after SYSCALL or INT3. Needs
+        # a kernel built DEBUG_REGISTER_PROBE=1 (make -C kernel world
+        # DEBUG_REGISTER_PROBE=1 after removing kernel/build/libcubit.a). One
+        # CPU, so the armed breakpoint stays with the process that asked.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-mov-ss.ccl"
+        if [ "$QEMU_CPUS_EXPLICIT" = 0 ]; then QEMU_CPUS=1; fi
         ;;
     nmi)
         # NMIs injected while a user process spins: the kernel's NMI path
@@ -722,6 +787,10 @@ with open(sys.argv[1], "wb") as f:
         ;;
     capability-security)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-capability-security.ccl"
+        ;;
+    launch-gate)
+        # CAP-012: launches attenuated by the launcher's table and rights.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-launch-gate.ccl"
         ;;
     ccl-remote)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-ccl-remote.ccl"
@@ -810,6 +879,12 @@ with open(sys.argv[1], "wb") as f:
         INIT_PROFILE="$ROOT_DIR/tests/fs-bench/init-bench-fs.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
+    kern014-bench)
+        # tests/kern014-bench (build it with its build.sh): KERN-014's A/B
+        # benchmark of frame commit/decommit, TLB rounds, zeroing and spawn.
+        INIT_PROFILE="$ROOT_DIR/tests/kern014-bench/init-kern014-bench.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-1G}"
+        ;;
     bench-cualloc)
         # tests/userspace-allocator/cubit: CuAlloc through the libc malloc
         # family, single-threaded and with POSIX threads. Its medium trace
@@ -853,6 +928,38 @@ with open(sys.argv[1], "wb") as f:
         # IPC-010: shared futexes across processes (wake, wait, FIFO,
         # revocation, a refused outsider, wake-plus-wait, starvation).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-futex-share.ccl"
+        ;;
+    debug-engine)
+        # DBG-001: the debugger engine attaches to debug-demo (cooperative,
+        # read-only grants) and checks real frames, locals, values and graph.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-debug-engine.ccl"
+        ;;
+    debug-engine-rs)
+        # DBG-001: the same engine attached to the Rust demo (debug-demo-rs).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-debug-engine-rs.ccl"
+        ;;
+    debug-gate-disabled|debug-gate-production|debug-gate-development)
+        # DBG-001: the image's debugging gate, the startup plan's (policy
+        # (System_Policy debugging => ...)), one test per value.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-$TEST_NAME.ccl"
+        ;;
+    debug-kernel)
+        # DBG-001, CAP-012: the engine through the kernel (Debug_Observe
+        # minted by procmgr through a launch handle and through the
+        # session's debug authority); the targets have no stub.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-debug-kernel.ccl"
+        ;;
+    tlb-tags)
+        # Address-space tags (PCIDs): tlb-check launches tlb-probe life
+        # after life on reused PIDs; on every second life it revokes pages
+        # a waiting thread of the life cached on its CPU (the kernel unmaps
+        # them in tlb-check's address space). Two CPUs: lives often run
+        # where the last one cached its translations, and the two threads
+        # often on different CPUs. Only Intel CPUs (PCID and INVPCID) in a
+        # TAGGED_TLB=1 kernel tag; the AMD hosts' guests and TCG pass
+        # without exercising stale translations.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-tlb-tags.ccl"
+        if [ "$QEMU_CPUS_EXPLICIT" = 0 ]; then QEMU_CPUS=2; fi
         ;;
     secondary-stacks)
         # secondary-stack-check (build: make -C kernel secondary-stack-check):
@@ -964,6 +1071,54 @@ with open(sys.argv[1], "wb") as f:
             *invtsc*) ;;
             *) QEMU_CPU_MODEL="$QEMU_CPU_MODEL,+invtsc" ;;
         esac
+        ;;
+    virt-report)
+        # VMM-001 slice 0: the boot report of hardware virtualization. On
+        # an AMD host with kvm_amd nested=1, -cpu host,+svm gives the guest
+        # SVM with nested paging; the kernel reads CPUID and VM_CR only.
+        if [ "$QEMU_ACCEL" != kvm ]; then
+            echo "headless: virt-report needs --accel kvm (nested SVM)" >&2
+            exit 2
+        fi
+        QEMU_CPU_MODEL="host,+svm"
+        ;;
+    vm-desktop)
+        # VMM-001 slice 1: vmm on the desktop, the guest's serial console in
+        # its window; screenshots into CUBIT_VM_SHOTS (default
+        # /home/doc/cubit-build-tmp/vmm/shots); nested SVM.
+        if [ "$QEMU_ACCEL" != kvm ]; then
+            echo "headless: vm-desktop needs --accel kvm (nested SVM)" >&2
+            exit 2
+        fi
+        QEMU_CPU_MODEL="host,+svm"
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-vm-desktop.ccl"
+        # The guest's 128 MiB, beside the desktop.
+        QEMU_MEMORY="${QEMU_MEMORY:-1G}"
+        ;;
+    vm-linux)
+        # VMM-001 slice 1: the pinned Linux guest to its shell prompt
+        # (userspace/apps/vm-linux-check, the monitor core); nested SVM.
+        if [ "$QEMU_ACCEL" != kvm ]; then
+            echo "headless: vm-linux needs --accel kvm (nested SVM)" >&2
+            exit 2
+        fi
+        QEMU_CPU_MODEL="host,+svm"
+        # The guest's 128 MiB is the monitor's own memory.
+        QEMU_MEMORY="${QEMU_MEMORY:-1G}"
+        ;;
+    vm-hello)
+        # VMM-001 slice 1: the VM mechanism (kernel/src/vm_objects.ads),
+        # checked from procmgr's place by a tiny monitor; needs nested SVM
+        # (kvm_amd nested=1, -cpu host,+svm under KVM).
+        if [ "$QEMU_ACCEL" != kvm ]; then
+            echo "headless: vm-hello needs --accel kvm (nested SVM)" >&2
+            exit 2
+        fi
+        QEMU_CPU_MODEL="host,+svm"
+        ;;
+    virt-report-none)
+        # The same report on a CPU with neither VMX nor SVM.
+        QEMU_CPU_MODEL="$QEMU_CPU_MODEL,-vmx,-svm"
         ;;
     cpu-refusal)
         # A CPU without x86-64-v3 (Westmere: no AVX) is refused at boot with
@@ -1101,7 +1256,8 @@ with open(sys.argv[1], "wb") as f:
         ;;
     servo)
         # Servo (docs/servo-port.md): an 85 MB program whose heap grows
-        # eagerly; fonts are installed on the disk below.
+        # eagerly. Its fonts are linked in: the disk has none, like the
+        # laptop's live USB.
         # SERVO_DESKTOP=1: launch it from the desktop's Apps menu instead.
         if [ -n "${SERVO_DESKTOP:-}" ]; then
             INIT_PROFILE="$ROOT_DIR/tests/headless/init-servo-desktop.ccl"
@@ -1162,6 +1318,12 @@ with open(sys.argv[1], "wb") as f:
         if [ "$TEST_NAME" = desktop-display ] && [ -n "${CUBIT_TEST_INIT_PROFILE:-}" ]; then
             INIT_PROFILE="$CUBIT_TEST_INIT_PROFILE"
         fi
+        ;;
+    desktop-session)
+        # make -C kernel run-desktop's own boot (the README's quick start):
+        # its startup profile (DESKTOP_INIT), its disk (prepare-desktop-disk,
+        # below), its devices, memory and CPU model (below).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-desktop-session.ccl"
         ;;
     boot-timeline)
         # docs/boot-timeline.md: the desktop-display boot plus the reader.
@@ -1293,10 +1455,11 @@ with open(sys.argv[1], "wb") as f:
     desktop-doom)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-doom-desktop.ccl"
         ;;
-    virtio-gpu|virtio-vga-primary)
-        if [ "$TEST_NAME" = "virtio-vga-primary" ]; then
-            INIT_PROFILE="$ROOT_DIR/init.ccl"
-        fi
+    virtio-gpu|virtio-vga-primary|audio-grants|boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|nvme-timeout|nvme-stuck)
+        # The shipped plan with logstore's test console approved: the
+        # launchers' and drivers' lines (devmgr, procmgr, ps2, nvme, mixer,
+        # hda, virtio-gpu) reach serial only through its mirror.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-default.ccl"
         ;;
 esac
 
@@ -1363,7 +1526,7 @@ LARGE_MODULE_MIB=340
 LARGE_MODULE="$KERNEL_DIR/isodir/boot/large-module.img"
 # desktop-vm mirrors run-desktop (2 GiB): large GPU banks (modes up to
 # 1920x1080) need at least 1 GiB (devmgr LARGE_BANK_MINIMUM_MEMORY).
-if [ "$TEST_NAME" = desktop-vm ]; then
+if [ "$TEST_NAME" = desktop-vm ] || [ "$TEST_NAME" = desktop-session ]; then
     QEMU_MEMORY="${QEMU_MEMORY:-2G}"
 fi
 # CUBIT_TEST_VIDEO_SIZE=WxH (desktop-display, calculator, remote-screenshot): the firmware mode, as
@@ -1395,6 +1558,18 @@ if [ -n "$INIT_PROFILE" ]; then
     if ! debugfs -w -R "write $INIT_PROFILE init.ccl" "$TEMP_DISK" >/dev/null 2>&1; then
         echo "headless: failed to install $TEST_NAME init.ccl" >&2
         exit 1
+    fi
+    if [ "$TEST_NAME" = "desktop-session" ]; then
+        # The disk run-desktop boots: its own rule (prepare-desktop-disk
+        # overlays the staged desktop programs, assets and samples on the
+        # base disk and writes DESKTOP_INIT as init.ccl), into this scratch
+        # copy. Only logstore's test variant (below) differs.
+        if ! make -s --no-print-directory -C "$KERNEL_DIR" prepare-desktop-disk \
+          DESKTOP_BASE_DISK="$BASE_DISK" DESKTOP_SCRATCH_DISK="$TEMP_DISK" \
+          DESKTOP_INIT="$INIT_PROFILE" >/dev/null; then
+            echo "headless: prepare-desktop-disk failed for $TEST_NAME" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "desktop-live-replace" ]; then
         # The app-replace survey puts every shipped app in the workspace and
@@ -1632,6 +1807,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "lexicon" ] ||
        [ "$TEST_NAME" = "dictionary" ] ||
        [ "$TEST_NAME" = "bible" ] ||
+       [ "$TEST_NAME" = "debugger-gui" ] || [ "$TEST_NAME" = "debugger-gui-rs" ] ||
        [ "$TEST_NAME" = "logs" ] ||
        [ "$TEST_NAME" = "devmem-denials" ] ||
        [ "$TEST_NAME" = "process-kill" ] ||
@@ -1647,7 +1823,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "startup-health" ] ||
        [ "$TEST_NAME" = "launch-failure" ] ||
        [ "$TEST_NAME" = "text" ] ||
-       [ "$TEST_NAME" = "calculator" ] ||
+       [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "vm-desktop" ] ||
        [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "metrics-latency" ] ||
        [ "$TEST_NAME" = "ui-latency" ] ||
        [ "$TEST_NAME" = "clipboard" ] ||
@@ -1824,7 +2000,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
        [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
        [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] || [ "$TEST_NAME" = "bible" ] ||
-       [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "metricsview" ]; then
+       [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "metricsview" ] || [ "$TEST_NAME" = "debugger-gui" ] || [ "$TEST_NAME" = "debugger-gui-rs" ]; then
         if [ "$TEST_NAME" = "ccl-vm" ]; then
             CCL_IMAGES="ccl-vm.app ccl-test-host.svc clock.svc"
         elif [ "$TEST_NAME" = "ccl-console" ]; then
@@ -1858,6 +2034,10 @@ if [ -n "$INIT_PROFILE" ]; then
             CCL_IMAGES="dictionary.app lexicon.svc clock.svc desktop.svc display.svc logstore.svc"
         elif [ "$TEST_NAME" = "bible" ]; then
             CCL_IMAGES="bible.app clock.svc desktop.svc display.svc logstore.svc"
+        elif [ "$TEST_NAME" = "debugger-gui" ]; then
+            CCL_IMAGES="debugger.app debug-demo.app clock.svc desktop.svc display.svc logstore.svc"
+        elif [ "$TEST_NAME" = "debugger-gui-rs" ]; then
+            CCL_IMAGES="debugger.app debug-demo-rs.app clock.svc desktop.svc display.svc logstore.svc"
         else
             CCL_IMAGES="ccl-workbench.app clock.svc desktop.svc display.svc"
             if [ "${CUBIT_DESKTOP_METRICS_TEST:-0}" = 1 ]; then
@@ -1937,6 +2117,29 @@ if [ -n "$INIT_PROFILE" ]; then
                     debugfs -w -R "write $SOURCE_DIR/$PROGRAM_INPUT work/$PROGRAM_INPUT" \
                       "$TEMP_DISK" >/dev/null 2>&1 || exit 1
                 done
+            fi
+            if [ "${CCL_CONSOLE_DEMO:-}" = debug ]; then
+                # debug.* (DBG-001): clock.svc's build-id debug file in the
+                # @system/Debug layout, for the console's engine.
+                DEBUG_ELF="$KERNEL_DIR/isodir/boot/clock.svc"
+                DEBUG_ID=$(readelf -nW "$DEBUG_ELF" | sed -n 's/.*Build ID: \([0-9a-f]*\).*/\1/p')
+                DEBUG_FILE="${TEMP_DISK%.img}-clock.debug"
+                DEBUG_SPLIT="$KERNEL_DIR/debug/.build-id/${DEBUG_ID:0:2}/${DEBUG_ID:2}.debug"
+                if [ -n "$DEBUG_ID" ] && [ -f "$DEBUG_SPLIT" ]; then
+                    DEBUG_COPY=(objcopy --decompress-debug-sections "$DEBUG_SPLIT")
+                else
+                    DEBUG_COPY=(objcopy --only-keep-debug "$DEBUG_ELF")
+                fi
+                if [ -z "$DEBUG_ID" ] || ! "${DEBUG_COPY[@]}" "$DEBUG_FILE"; then
+                    echo "headless: ccl-console debug demo: no build-id debug file for clock.svc" >&2
+                    exit 1
+                fi
+                for DEBUG_DIR in Debug Debug/.build-id "Debug/.build-id/${DEBUG_ID:0:2}"; do
+                    debugfs -w -R "mkdir $DEBUG_DIR" "$TEMP_DISK" >/dev/null 2>&1
+                done
+                debugfs -w -R "write $DEBUG_FILE Debug/.build-id/${DEBUG_ID:0:2}/${DEBUG_ID:2}.debug" \
+                  "$TEMP_DISK" >/dev/null 2>&1
+                rm -f "$DEBUG_FILE"
             fi
         fi
         for CCL_IMAGE_ENTRY in $CCL_IMAGES; do
@@ -2099,6 +2302,17 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
+    if [ "$TEST_NAME" = "vm-desktop" ]; then
+        if ! make -C "$KERNEL_DIR" vmm >/dev/null; then
+            echo "headless: failed to build vmm.app" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm vmm.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/vmm.app vmm.app" "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install vmm.app" >&2
+            exit 1
+        fi
+    fi
     if [ "$TEST_NAME" = "bench-ipc" ]; then
         for BENCH_IMAGE_NAME in bench-ipc-client.app bench-ipc-server.app; do
             BENCH_IMAGE="$KERNEL_DIR/isodir/boot/$BENCH_IMAGE_NAME"
@@ -2220,6 +2434,12 @@ if [ -n "$INIT_PROFILE" ]; then
                 echo "headless: failed to install $BENCH_NET_IMAGE (tests/net-bench/build-cubit.sh)" >&2
                 exit 1
             fi
+        done
+    fi
+    if [ "$TEST_NAME" = "kern014-bench" ]; then
+        for K_IMAGE in logstore.svc clock.svc kern014-bench.app kern014-child.app; do
+            debugfs -w -R "rm $K_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$K_IMAGE $K_IMAGE" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
     fi
     if [ "$TEST_NAME" = "bench-cualloc" ]; then
@@ -2375,6 +2595,176 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$SHARE_IMAGE $SHARE_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $SHARE_IMAGE (make -C kernel futex-share)" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "debug-engine" ] || [ "$TEST_NAME" = "debugger-gui" ]; then
+        # The demo, the engine's check, and the demo's build-id debug file
+        # and sources in the @system/Debug layout (docs/image-debug-info.md).
+        # debugger-gui (the Debugger app's test) attaches to the same demo.
+        for DEBUG_IMAGE in logstore.svc debug-demo.app debug-engine-check.app; do
+            debugfs -w -R "rm $DEBUG_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$DEBUG_IMAGE $DEBUG_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $DEBUG_IMAGE (make -C kernel debug-demo debug-engine-check)" >&2
+                exit 1
+            fi
+        done
+        DEBUG_DEMO="$KERNEL_DIR/isodir/boot/debug-demo.app"
+        DEBUG_ID=$(readelf -nW "$DEBUG_DEMO" | sed -n 's/.*Build ID: \([0-9a-f]*\).*/\1/p')
+        DEBUG_FILE="${TEMP_DISK%.img}.debug"
+        # The sign step (SIGN-001, tools/sign_programs.py) strips the staged
+        # program and keeps its debug information on the host by build-id,
+        # zlib-compressed; the engine reads uncompressed sections only.
+        DEBUG_SPLIT="$KERNEL_DIR/debug/.build-id/${DEBUG_ID:0:2}/${DEBUG_ID:2}.debug"
+        if [ -n "$DEBUG_ID" ] && [ -f "$DEBUG_SPLIT" ]; then
+            DEBUG_COPY=(objcopy --decompress-debug-sections "$DEBUG_SPLIT")
+        else
+            DEBUG_COPY=(objcopy --only-keep-debug "$DEBUG_DEMO")
+        fi
+        if [ -z "$DEBUG_ID" ] || ! "${DEBUG_COPY[@]}" "$DEBUG_FILE"; then
+            echo "headless: debug-engine: no build-id debug file for debug-demo" >&2
+            exit 1
+        fi
+        for DEBUG_DIR in Debug Debug/.build-id "Debug/.build-id/${DEBUG_ID:0:2}" Debug/Source \
+          "Debug/Source/$DEBUG_ID"; do
+            debugfs -w -R "mkdir $DEBUG_DIR" "$TEMP_DISK" >/dev/null 2>&1
+        done
+        debugfs -w -R "write $DEBUG_FILE Debug/.build-id/${DEBUG_ID:0:2}/${DEBUG_ID:2}.debug" \
+          "$TEMP_DISK" >/dev/null 2>&1
+        rm -f "$DEBUG_FILE"
+        for DEBUG_SOURCE in "$ROOT_DIR"/userspace/apps/debug-demo/*.ad[sb] \
+          "$ROOT_DIR"/userspace/lib/debug/stub/*.ad[sb]; do
+            debugfs -w -R "write $DEBUG_SOURCE Debug/Source/$DEBUG_ID/${DEBUG_SOURCE##*/}" \
+              "$TEMP_DISK" >/dev/null 2>&1
+        done
+        if [ "$TEST_NAME" = "debugger-gui" ]; then
+            # Attach to process...: clock.svc's debug file too (no stub).
+            CLOCK_ELF="$KERNEL_DIR/isodir/boot/clock.svc"
+            CLOCK_ID=$(readelf -nW "$CLOCK_ELF" | sed -n 's/.*Build ID: \([0-9a-f]*\).*/\1/p')
+            CLOCK_FILE="${TEMP_DISK%.img}-clock.debug"
+            CLOCK_SPLIT="$KERNEL_DIR/debug/.build-id/${CLOCK_ID:0:2}/${CLOCK_ID:2}.debug"
+            if [ -n "$CLOCK_ID" ] && [ -f "$CLOCK_SPLIT" ]; then
+                CLOCK_COPY=(objcopy --decompress-debug-sections "$CLOCK_SPLIT")
+            else
+                CLOCK_COPY=(objcopy --only-keep-debug "$CLOCK_ELF")
+            fi
+            if [ -n "$CLOCK_ID" ] && "${CLOCK_COPY[@]}" "$CLOCK_FILE"; then
+                debugfs -w -R "mkdir Debug/.build-id/${CLOCK_ID:0:2}" "$TEMP_DISK" >/dev/null 2>&1
+                debugfs -w -R "write $CLOCK_FILE Debug/.build-id/${CLOCK_ID:0:2}/${CLOCK_ID:2}.debug" \
+                  "$TEMP_DISK" >/dev/null 2>&1
+                # Its sources, and the runtime units its waiting thread sits in.
+                debugfs -w -R "mkdir Debug/Source/$CLOCK_ID" "$TEMP_DISK" >/dev/null 2>&1
+                for CLOCK_SOURCE in "$ROOT_DIR"/userspace/services/clock/*.ad[sb] \
+                  "$ROOT_DIR"/userspace/runtime/gnat/cubit-kernel_calls.adb \
+                  "$ROOT_DIR"/userspace/runtime/gnat/cubit-waits.adb \
+                  "$ROOT_DIR"/userspace/runtime/gnat/cubit-messages.adb; do
+                    debugfs -w -R "write $CLOCK_SOURCE Debug/Source/$CLOCK_ID/${CLOCK_SOURCE##*/}" \
+                      "$TEMP_DISK" >/dev/null 2>&1
+                done
+            fi
+            rm -f "$CLOCK_FILE"
+        fi
+    fi
+    case "$TEST_NAME" in debug-gate-*)
+        if ! make -C "$KERNEL_DIR" debug-kernel >/dev/null; then
+            echo "headless: make -C kernel debug-kernel failed" >&2
+            exit 1
+        fi
+        for DEBUG_IMAGE in debug-plain.app debug-gate-check.app; do
+            debugfs -w -R "rm $DEBUG_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$DEBUG_IMAGE $DEBUG_IMAGE" "$TEMP_DISK" \
+              >/dev/null 2>&1 || exit 1
+        done
+        ;;
+    esac
+    if [ "$TEST_NAME" = "debug-kernel" ]; then
+        # The plain target (no stub), the engine's kernel-path check, and
+        # the build-id debug files of debug-plain and clock.svc in the
+        # @system/Debug layout (docs/image-debug-info.md).
+        if ! make -C "$KERNEL_DIR" debug-kernel >/dev/null; then
+            echo "headless: make -C kernel debug-kernel failed" >&2
+            exit 1
+        fi
+        for DEBUG_IMAGE in debug-plain.app debug-kernel-check.app; do
+            debugfs -w -R "rm $DEBUG_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$DEBUG_IMAGE $DEBUG_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $DEBUG_IMAGE (make -C kernel debug-kernel)" >&2
+                exit 1
+            fi
+        done
+        debugfs -w -R "mkdir Debug" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "mkdir Debug/.build-id" "$TEMP_DISK" >/dev/null 2>&1
+        for DEBUG_PROGRAM in debug-plain.app clock.svc; do
+            DEBUG_ELF="$KERNEL_DIR/isodir/boot/$DEBUG_PROGRAM"
+            DEBUG_ID=$(readelf -nW "$DEBUG_ELF" | sed -n 's/.*Build ID: \([0-9a-f]*\).*/\1/p')
+            DEBUG_FILE="${TEMP_DISK%.img}-$DEBUG_PROGRAM.debug"
+            # The sign step keeps each program's debug information on the
+            # host by build-id, zlib-compressed (SIGN-001).
+            DEBUG_SPLIT="$KERNEL_DIR/debug/.build-id/${DEBUG_ID:0:2}/${DEBUG_ID:2}.debug"
+            if [ -n "$DEBUG_ID" ] && [ -f "$DEBUG_SPLIT" ]; then
+                DEBUG_COPY=(objcopy --decompress-debug-sections "$DEBUG_SPLIT")
+            else
+                DEBUG_COPY=(objcopy --only-keep-debug "$DEBUG_ELF")
+            fi
+            if [ -z "$DEBUG_ID" ] || ! "${DEBUG_COPY[@]}" "$DEBUG_FILE"; then
+                echo "headless: debug-kernel: no build-id debug file for $DEBUG_PROGRAM" >&2
+                exit 1
+            fi
+            debugfs -w -R "mkdir Debug/.build-id/${DEBUG_ID:0:2}" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $DEBUG_FILE Debug/.build-id/${DEBUG_ID:0:2}/${DEBUG_ID:2}.debug" \
+              "$TEMP_DISK" >/dev/null 2>&1
+            rm -f "$DEBUG_FILE"
+        done
+    fi
+    if [ "$TEST_NAME" = "debug-engine-rs" ] || [ "$TEST_NAME" = "debugger-gui-rs" ]; then
+        # The Rust demo, the engine's Rust check, and the demo's build-id
+        # debug file and sources in the @system/Debug layout.
+        for DEBUG_IMAGE in logstore.svc debug-demo-rs.app debug-engine-rs-check.app; do
+            debugfs -w -R "rm $DEBUG_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$DEBUG_IMAGE $DEBUG_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $DEBUG_IMAGE (make -C kernel debug-demo-rs debug-engine-rs-check)" >&2
+                exit 1
+            fi
+        done
+        DEBUG_DEMO="$KERNEL_DIR/isodir/boot/debug-demo-rs.app"
+        DEBUG_ID=$(readelf -nW "$DEBUG_DEMO" | sed -n 's/.*Build ID: \([0-9a-f]*\).*/\1/p')
+        DEBUG_FILE="${TEMP_DISK%.img}.debug"
+        # The sign step (SIGN-001, tools/sign_programs.py) strips the staged
+        # program and keeps its debug information on the host by build-id,
+        # zlib-compressed; the engine reads uncompressed sections only.
+        DEBUG_SPLIT="$KERNEL_DIR/debug/.build-id/${DEBUG_ID:0:2}/${DEBUG_ID:2}.debug"
+        if [ -n "$DEBUG_ID" ] && [ -f "$DEBUG_SPLIT" ]; then
+            DEBUG_COPY=(objcopy --decompress-debug-sections "$DEBUG_SPLIT")
+        else
+            DEBUG_COPY=(objcopy --only-keep-debug "$DEBUG_DEMO")
+        fi
+        if [ -z "$DEBUG_ID" ] || ! "${DEBUG_COPY[@]}" "$DEBUG_FILE"; then
+            echo "headless: debug-engine-rs: no build-id debug file for debug-demo-rs" >&2
+            exit 1
+        fi
+        for DEBUG_DIR in Debug Debug/.build-id "Debug/.build-id/${DEBUG_ID:0:2}" Debug/Source \
+          "Debug/Source/$DEBUG_ID"; do
+            debugfs -w -R "mkdir $DEBUG_DIR" "$TEMP_DISK" >/dev/null 2>&1
+        done
+        debugfs -w -R "write $DEBUG_FILE Debug/.build-id/${DEBUG_ID:0:2}/${DEBUG_ID:2}.debug" \
+          "$TEMP_DISK" >/dev/null 2>&1
+        rm -f "$DEBUG_FILE"
+        for DEBUG_SOURCE in "$ROOT_DIR"/userspace/apps/debug-demo-rs/src/main.rs \
+          "$ROOT_DIR"/userspace/lib/debug/stub-rs/src/lib.rs; do
+            debugfs -w -R "write $DEBUG_SOURCE Debug/Source/$DEBUG_ID/${DEBUG_SOURCE##*/}" \
+              "$TEMP_DISK" >/dev/null 2>&1
+        done
+    fi
+    if [ "$TEST_NAME" = "tlb-tags" ]; then
+        for TLB_IMAGE in logstore.svc tlb-check.app tlb-probe.app; do
+            debugfs -w -R "rm $TLB_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$TLB_IMAGE $TLB_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $TLB_IMAGE (make -C kernel tlb-tags)" >&2
                 exit 1
             fi
         done
@@ -2612,8 +3002,12 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
         done
     fi
-    if [ "$TEST_NAME" = "process-kill" ] || [ "$TEST_NAME" = "trap-flag" ] || [ "$TEST_NAME" = "nmi" ]; then
-        for KILL_IMAGE in logstore.svc clock.svc fault-check.app trap-flag-check.app nmi-check.app; do
+    if [ "$TEST_NAME" = "process-kill" ] || [ "$TEST_NAME" = "trap-flag" ] || [ "$TEST_NAME" = "nmi" ] ||
+       [ "$TEST_NAME" = "direction-flag" ] || [ "$TEST_NAME" = "alignment-flag" ] ||
+       [ "$TEST_NAME" = "kernel-map-probe" ] || [ "$TEST_NAME" = "mov-ss-debug" ]; then
+        for KILL_IMAGE in logstore.svc clock.svc fault-check.app trap-flag-check.app nmi-check.app \
+                          direction-flag-check.app alignment-flag-check.app kernel-map-probe.app \
+                          mov-ss-check.app; do
             debugfs -w -R "rm $KILL_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$KILL_IMAGE $KILL_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
@@ -2843,9 +3237,9 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
         for EXPECTED in \
-          "line 13, column 10: parameters-check.app requires its parameters, a Check_Parameters" \
-          "line 16, column 16: parameters-check.app: not a Check_Parameters: Value is outside the range of its type" \
-          "line 19, column 16: parameters-plain.app declares no parameters, so it takes no arguments"; do
+          "line 16, column 10: parameters-check.app requires its parameters, a Check_Parameters" \
+          "line 19, column 16: parameters-check.app: not a Check_Parameters: Value is outside the range of its type" \
+          "line 22, column 16: parameters-plain.app declares no parameters, so it takes no arguments"; do
             if ! grep -qF "$EXPECTED" "$PARAMETER_CHECK"; then
                 echo "headless: image check did not report: $EXPECTED" >&2
                 cat "$PARAMETER_CHECK" >&2
@@ -3061,6 +3455,9 @@ if [ -n "$INIT_PROFILE" ]; then
         SERVO_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/cubit-servo-stage.XXXXXX")"
         debugfs -R "rdump / $SERVO_STAGE" "$TEMP_DISK" >/dev/null 2>&1
         rm -rf "$SERVO_STAGE/lost+found"
+        # No font directory, whatever the base image carries (Penny's fonts
+        # are linked in; the laptop's disk has none).
+        rm -rf "$SERVO_STAGE/fonts"
         rm -f "$TEMP_DISK"
         if ! mke2fs -q -t ext2 -b 4096 -F -d "$SERVO_STAGE" "$TEMP_DISK" 512M; then
             rm -rf "$SERVO_STAGE"
@@ -3075,23 +3472,18 @@ if [ -n "$INIT_PROFILE" ]; then
                 exit 1
             fi
         done
-        debugfs -w -R "mkdir fonts" "$TEMP_DISK" >/dev/null 2>&1
-        SERVO_FONT_DIR="$(dirname "${IBM_PLEX_SANS_FONT:?run inside nix develop}")"
-        for SERVO_FONT in IBMPlexSans-Regular.ttf IBMPlexSans-Bold.ttf \
-          IBMPlexSerif-Regular.ttf IBMPlexMono-Regular.ttf; do
-            if ! servo_install "$SERVO_FONT_DIR/$SERVO_FONT" "fonts/$SERVO_FONT"; then
-                echo "headless: failed to install fonts/$SERVO_FONT" >&2
-                exit 1
-            fi
-        done
         # The pages cubitshell loads: a data: page, then one the host serves
-        # over HTTP (tests/servo/http_server.py) through netstack.
+        # over HTTP (tests/servo/http_server.py) through netstack, one over
+        # HTTPS, and a page of text only, whose ink can only be glyphs
+        # (tests/servo/check_text_glyphs.py).
         SERVO_PAGES="$(mktemp "${TMPDIR:-/tmp}/cubit-servo-pages.XXXXXX")"
         cat > "$SERVO_PAGES" <<'SERVO_PAGES_EOF'
 data:text/html,<body style='background:%23fff'><h1 style='color:%23135'>Servo on CuBit</h1><div style='width:200px;height:100px;background:%23e33'></div></body>
 http://10.0.2.2:18470/servo-test.html
 https://tls-test.cubit.internal:18460/
+data:text/html,<title>penny-text-check</title><body style='background:%23fff;color:%23000;font:32px sans-serif'>Penny draws text. 0123456789 ABCDEFGHIJKLM nopqrstuvwxyz</body>
 SERVO_PAGES_EOF
+        SERVO_TEXT_PAGE=$(( $(grep -n 'penny-text-check' "$SERVO_PAGES" | cut -d: -f1) - 1 ))
         # Opt-in extra pages, e.g. public sites (needs the host's internet):
         # SERVO_EXTRA_PAGES="https://example.com/ https://www.wikipedia.org/"
         for SERVO_EXTRA_PAGE in ${SERVO_EXTRA_PAGES:-}; do
@@ -3136,6 +3528,12 @@ SERVO_PAGES_EOF
             fi
         fi
         rm -f "$SERVO_FLAG"
+        # Opt-in: per-frame paint/present timing (PENNY-FRAME lines).
+        if [ -n "${SERVO_PERF_CHECK:-}" ]; then
+            SERVO_FLAG="$(mktemp "${TMPDIR:-/tmp}/cubit-servo-flag.XXXXXX")"
+            servo_install "$SERVO_FLAG" "servo/perf-check"
+            rm -f "$SERVO_FLAG"
+        fi
         # Opt-in: dump each frame to the serial log (tests/servo/frame_from_log.py).
         if [ -n "${SERVO_DUMP_FRAMES:-}" ]; then
             SERVO_FLAG="$(mktemp "${TMPDIR:-/tmp}/cubit-servo-flag.XXXXXX")"
@@ -3218,6 +3616,16 @@ SERVO_PAGES_EOF
             echo "headless: failed to install capability-test.app" >&2
             exit 1
         fi
+    fi
+    if [ "$TEST_NAME" = "launch-gate" ]; then
+        if ! make -C "$KERNEL_DIR" launch-gate >/dev/null; then
+            echo "headless: make -C kernel launch-gate failed" >&2
+            exit 1
+        fi
+        for app in capability-test launch-gate-check launch-gate-child launch-gate-greedy; do
+            debugfs -w -R "rm $app.app" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$app.app $app.app" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
     fi
     if [ "$TEST_NAME" = "capability-security" ]; then
         for fixture in bad-phdr.app bad-segment.app bad-stack.app overlap.app; do
@@ -3302,6 +3710,30 @@ SERVO_PAGES_EOF
                 exit 1
             fi
         done
+    fi
+    if [ "$TEST_NAME" = "late-introduction" ]; then
+        if [ ! -f "$KERNEL_DIR/isodir/boot/late-intro-check.app" ]; then
+            echo "headless: build late-intro-check first (late-intro-check.app missing)" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm late-intro-check.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/late-intro-check.app late-intro-check.app" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install late-intro-check.app" >&2
+            exit 1
+        fi
+    fi
+    if [ "$TEST_NAME" = "console-route" ]; then
+        if [ ! -f "$KERNEL_DIR/isodir/boot/console-route-check.app" ]; then
+            echo "headless: build console-route-check first (console-route-check.app missing)" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm console-route-check.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/console-route-check.app console-route-check.app" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install console-route-check.app" >&2
+            exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "storage-grants" ]; then
         debugfs -w -R "symlink nav-link lost+found" "$TEMP_DISK" >/dev/null 2>&1
@@ -3395,6 +3827,42 @@ SERVO_PAGES_EOF
             exit 1
         fi
     fi
+    # The test console (Test_Console_ABI, ABI-002): a plan whose logstore
+    # entry says (test-console approve-declared) runs logstore's test variant
+    # (make logstore-test), which mirrors the console text programs publish
+    # onto the serial console as "<source>: <text>". Last, so no test's own
+    # copy of logstore.svc replaces it.
+    # LOGSTORE_IMAGE: the logstore the disk carries (tests that pin or copy
+    # it, service-switch, must start from the same program and manifest).
+    LOGSTORE_IMAGE="$KERNEL_DIR/isodir/boot/logstore.svc"
+    if grep -Eq '"logstore\.svc".*\(test-console approve-declared\)' "$INIT_PROFILE"; then
+        LOGSTORE_IMAGE="$KERNEL_DIR/isodir/boot/logstore-test.svc"
+        if [ ! -f "$KERNEL_DIR/isodir/boot/logstore-test.svc" ]; then
+            echo "headless: build logstore-test first (logstore-test.svc missing)" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm logstore.svc" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/logstore-test.svc logstore.svc" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install logstore-test.svc" >&2
+            exit 1
+        fi
+    fi
+    # The same for ccl-remote (ABI-002): a plan whose ccl-remote entry
+    # approves the test console runs its test variant (make ccl-remote-test),
+    # which shows the pairing code there (display => Test_Console).
+    if grep -Eq '"ccl-remote\.app".*\(test-console approve-declared\)' "$INIT_PROFILE"; then
+        if [ ! -f "$KERNEL_DIR/isodir/boot/ccl-remote-test.app" ]; then
+            echo "headless: build ccl-remote-test first (ccl-remote-test.app missing)" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm ccl-remote.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/ccl-remote-test.app ccl-remote.app" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install ccl-remote-test.app" >&2
+            exit 1
+        fi
+    fi
         DISK_IMAGE="$TEMP_DISK"
 fi
 
@@ -3423,6 +3891,7 @@ if [ "$TEST_NAME" = "storage-grants" ]; then
     if ! make -C "$KERNEL_DIR" laptop_live_rw.img >/dev/null ||
        ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
           "$ROOT_DIR/tests/headless/storage-initrd.ccl" \
+          --import "cubit-signing-ca=$CUBIT_SIGNING/builder-ca.der" \
           --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
         echo "headless: failed to prepare volatile block-storage fixture" >&2
         exit 1
@@ -3432,6 +3901,7 @@ if [ "$TEST_NAME" = "device-build" ] || [ "$TEST_NAME" = "console-run-staged" ] 
     # The development bootstrap set with storage.system-volume = ufs:0.
     if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
           "$ROOT_DIR/tests/device-builds/initrd.ccl" \
+          --import "cubit-signing-ca=$CUBIT_SIGNING/builder-ca.der" \
           --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
         echo "headless: failed to prepare the device-build initrd" >&2
         exit 1
@@ -3441,6 +3911,7 @@ if [ "$TEST_NAME" = "tls-service" ]; then
     # Development initrd whose tls.hosts maps the fixture name to the host.
     if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
           "$ROOT_DIR/tests/tls/tls-initrd.ccl" \
+          --import "cubit-signing-ca=$CUBIT_SIGNING/builder-ca.der" \
           --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
         echo "headless: failed to prepare tls-service settings fixture" >&2
         exit 1
@@ -3450,6 +3921,7 @@ if [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_
     # Development initrd whose tls.hosts maps the mock's name to the host.
     if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
           "$ROOT_DIR/tests/llm/llm-initrd.ccl" \
+          --import "cubit-signing-ca=$CUBIT_SIGNING/builder-ca.der" \
           --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
         echo "headless: failed to prepare the llm-mock settings fixture" >&2
         exit 1
@@ -3458,6 +3930,7 @@ fi
 if [ "$CONFIG_STORAGE_TEST" = 1 ]; then
     if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
           "$ROOT_DIR/tests/config-turso/native/storage-initrd.ccl" \
+          --import "cubit-signing-ca=$CUBIT_SIGNING/builder-ca.der" \
           --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
         echo "headless: failed to prepare Config storage settings fixture" >&2
         exit 1
@@ -3467,8 +3940,54 @@ if [ "$TEST_NAME" = "timesync" ]; then
     # Development initrd whose settings point time.servers at the fixture.
     if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
           "$ROOT_DIR/tests/timesync/timesync-initrd.ccl" \
+          --import "cubit-signing-ca=$CUBIT_SIGNING/builder-ca.der" \
           --output "$KERNEL_DIR/isodir/boot/initrd.img" >/dev/null; then
         echo "headless: failed to prepare timesync settings fixture" >&2
+        exit 1
+    fi
+fi
+if [ "$TEST_NAME" = "debug-observe" ]; then
+    # The Debug_Observe check (DBG-001) in procmgr's place: it holds the
+    # process root and checks the kernel's debug sessions on a target of its
+    # own making (kernel/src/debug_sessions.ads).
+    if ! make -C "$KERNEL_DIR" debug-observe-check >/dev/null ||
+       ! python3 "$ROOT_DIR/tests/spawn-rules/swap-procmgr.py" \
+          "$KERNEL_DIR/isodir/boot/initrd.img" \
+          "$KERNEL_DIR/isodir/boot/debug-observe-check.app" >/dev/null; then
+        echo "headless: failed to put the Debug_Observe check in procmgr's place" >&2
+        exit 1
+    fi
+fi
+if [ "$TEST_NAME" = "vm-linux" ]; then
+    # The Linux guest check (VMM-001) in procmgr's place.
+    if ! make -C "$KERNEL_DIR" vm-linux-check >/dev/null ||
+       ! python3 "$ROOT_DIR/tests/spawn-rules/swap-procmgr.py" \
+          "$KERNEL_DIR/isodir/boot/initrd.img" \
+          "$KERNEL_DIR/isodir/boot/vm-linux-check.app" >/dev/null; then
+        echo "headless: failed to put the Linux guest check in procmgr's place" >&2
+        exit 1
+    fi
+fi
+if [ "$TEST_NAME" = "vm-hello" ]; then
+    # The VM mechanism check (VMM-001) in procmgr's place: it holds the VM
+    # creation authority devmgr gives procmgr.
+    if ! make -C "$KERNEL_DIR" vm-hello-check >/dev/null ||
+       ! python3 "$ROOT_DIR/tests/spawn-rules/swap-procmgr.py" \
+          "$KERNEL_DIR/isodir/boot/initrd.img" \
+          "$KERNEL_DIR/isodir/boot/vm-hello-check.app" >/dev/null; then
+        echo "headless: failed to put the VM check in procmgr's place" >&2
+        exit 1
+    fi
+fi
+if [ "$TEST_NAME" = "spawn-rules" ]; then
+    # The SPAWN rules check (CAP-012) in procmgr's place: it holds the
+    # handles devmgr gives procmgr and checks the kernel's SPAWN rules
+    # (kernel/src/spawn_admission.ads) with an image of its own making.
+    if ! make -C "$KERNEL_DIR" spawn-rules-check >/dev/null ||
+       ! python3 "$ROOT_DIR/tests/spawn-rules/swap-procmgr.py" \
+          "$KERNEL_DIR/isodir/boot/initrd.img" \
+          "$KERNEL_DIR/isodir/boot/spawn-rules-check.app" >/dev/null; then
+        echo "headless: failed to put the SPAWN rules check in procmgr's place" >&2
         exit 1
     fi
 fi
@@ -3535,6 +4054,19 @@ if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = large ]; then
     #  Desktop's 1080p output buffers do not fit the 512M desktop default.
     QEMU_MEMORY=2G
 fi
+# DBG-001: the Debugger's screenshots at 1080p, or with
+# DEBUGGER_SHOT_SIZE=1440p or 4k.
+if { [ "$TEST_NAME" = "debugger-gui" ] || [ "$TEST_NAME" = "debugger-gui-rs" ]; }; then
+    if [ "${DEBUGGER_SHOT_SIZE:-1080p}" = 4k ]; then
+        VIDEO_ARGS=(-vga none -device virtio-vga,xres=3840,yres=2160)
+    elif [ "${DEBUGGER_SHOT_SIZE:-1080p}" = 1440p ]; then
+        # Today above 1080p virtio-gpu.drv refuses the EDID mode (its
+        # scanout budget) and the display falls back to 1024x768.
+        VIDEO_ARGS=(-vga none -device virtio-vga,xres=2560,yres=1440)
+    else
+        VIDEO_ARGS=(-vga none -device virtio-vga,xres=1920,yres=1080)
+    fi
+fi
 if [ "$TEST_NAME" = "desktop-vm" ]; then
     # run-desktop's devices: virtio-vga plus a virtio tablet (absolute
     # pointer). VNC carries host resizes (SetDesktopSize, as a resized GTK
@@ -3546,6 +4078,10 @@ if [ "$TEST_NAME" = "desktop-vm" ]; then
                 -device virtio-tablet-pci
                 -vnc "unix:$VM_VNC_SOCKET"
                 -D "$VM_TRACE_LOG" -trace enable=virtio_gpu_update_cursor)
+fi
+if [ "$TEST_NAME" = "desktop-session" ]; then
+    # run-desktop's devices (QEMU_DESKTOP_DEVICE, QEMU_POINTER_DEVICE).
+    VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768 -device virtio-tablet-pci)
 fi
 if [ "$TEST_NAME" = "virtio-gpu-multi-output" ] ||
    [ "$TEST_NAME" = "display-discovery-multi-output" ]; then
@@ -3579,7 +4115,14 @@ fi
 # masks it unless asked, even with -cpu host). Without it the kernel does not
 # share the clock publication page, every clock read becomes a syscall, and
 # per-frame and per-message syscall counts are inflated. TCG drops the flag.
-if [ "$QEMU_ACCEL" = "kvm" ]; then
+# desktop-session boots run-desktop's own CPU model (QEMU_RUN_CPU), as is.
+if [ "$TEST_NAME" = "desktop-session" ]; then
+    QEMU_CPU_MODEL="$(make -s --no-print-directory -C "$KERNEL_DIR" print-run-cpu)" || exit 1
+    if [ "$DESKTOP_SESSION_NO_INVTSC" = 1 ]; then
+        QEMU_CPU_MODEL="${QEMU_CPU_MODEL//,+invtsc/}"
+    fi
+    echo "headless: desktop-session cpu=$QEMU_CPU_MODEL"
+elif [ "$QEMU_ACCEL" = "kvm" ]; then
     case "$QEMU_CPU_MODEL" in
         *invtsc*) ;;
         *) QEMU_CPU_MODEL="$QEMU_CPU_MODEL,+invtsc" ;;
@@ -3612,6 +4155,16 @@ fi
 # edu test profile's CHIPSET_SHARED member (devmgr declares it with edu).
 if [ "$TEST_NAME" = "acpi-one-service" ] || [ "$TEST_NAME" = "acpi-sci" ] || [ "$TEST_NAME" = "acpi-live-replace" ] || [ "$TEST_NAME" = "acpi-shutdown" ]; then
     TEST_DEVICE_ARGS=(-device edu -acpitable "file=$ROOT_DIR/tests/headless/acpi/acpi-one-service-pool.aml")
+fi
+# Opt-in ordinary consumer refusal regression on the real shutdown profile.
+# Compile the supplied SSDT with the pinned IASL first; every run owns its
+# temporary QEMU disk as usual. No alternate ACPI service or power stand-in.
+if [ -n "${ACPI_SHUTDOWN_REFUSAL_TABLE:-}" ]; then
+    if [ "$TEST_NAME" != "acpi-shutdown" ] || [ ! -f "$ACPI_SHUTDOWN_REFUSAL_TABLE" ]; then
+        echo "headless: ACPI_SHUTDOWN_REFUSAL_TABLE requires acpi-shutdown and a compiled fixture" >&2
+        exit 1
+    fi
+    TEST_DEVICE_ARGS+=(-acpitable "file=$ACPI_SHUTDOWN_REFUSAL_TABLE")
 fi
 # Two xHCI controllers, a USB keyboard on one and a USB optical drive on
 # the other (a disc with the apps/ tree @cd:0 mounts, holding one file),
@@ -3677,6 +4230,7 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
    [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
    [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] || [ "$TEST_NAME" = "bible" ] ||
+   [ "$TEST_NAME" = "debugger-gui" ] || [ "$TEST_NAME" = "debugger-gui-rs" ] ||
    [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "scanout-repair" ] || [ "$TEST_NAME" = "metricsview" ] ||
    [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "boot-timeline" ] ||
    { [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; }; then
@@ -4584,6 +5138,30 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             sleep 2
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-programs.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
             sleep 0.5
+            elif [ "${CCL_CONSOLE_DEMO:-}" = debug ]; then
+            # The debugger engine from the console (CCL_CONSOLE_DEMO=debug,
+            # DBG-001): what an agent types. clock.svc has no stub: attach
+            # through the kernel (Debug_Observe from procmgr's debug-session
+            # authority), its threads, its main thread's frames and the
+            # innermost frame's locals; procmgr itself is refused.
+            send_text() {
+                python3 "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$1"
+            }
+            sleep 0.5
+            send_text '(debug.attach (Attach_Query "clock.svc" 2000))'
+            sleep 3
+            send_text '(debug.threads 1)'
+            sleep 2
+            send_text '(debug.frames (Frame_Query 1 1 2000))'
+            sleep 2
+            send_text '(debug.locals (Locals_Query 1 1 0))'
+            sleep 2
+            send_text '(debug.attach (Attach_Query "procmgr.svc" 2000))'
+            sleep 2
+            send_text '(debug.detach 1)'
+            sleep 2
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-demo-debug.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            sleep 0.5
             elif [ "${CCL_CONSOLE_DEMO:-}" = wifi ]; then
             # What the radios heard (CCL_CONSOLE_DEMO=wifi, NET-WIFI-001 W1):
             # QEMU has no RTL8852BE, so wifi.scan answers through netstack
@@ -5006,12 +5584,16 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             # Bring a window to the keyboard: Desktop names the window keys
             # go to ("desktop: keys to TITLE"); Shift alone is a harmless probe.
             clip_focus() {
-                local probe routed
+                local probe routed look
                 for ((probe = 0; probe < 4; probe++)); do
                     clip_keys shift
-                    sleep 0.3
-                    routed="$(grep -a "desktop: keys to " "$SERIAL_LOG" | tail -1 | tr -d '\r')"
-                    [ "$routed" = "desktop: keys to $1" ] && return 0
+                    # Desktop's line reaches serial through logstore's mirror
+                    # ("desktop.svc: desktop: keys to ..."), a little later.
+                    for ((look = 0; look < 5; look++)); do
+                        sleep 0.2
+                        routed="$(grep -a "desktop: keys to " "$SERIAL_LOG" | tail -1 | tr -d '\r')"
+                        [[ "$routed" == *"desktop: keys to $1" ]] && return 0
+                    done
                     clip_keys alt-tab
                     sleep 0.4
                 done
@@ -5210,6 +5792,93 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
                 lexicon_shot dictionary-thesaurus
                 lexicon_keys esc r e c i e v e
                 lexicon_shot dictionary-not-found
+            fi
+        elif { [ "$TEST_NAME" = "debugger-gui" ] || [ "$TEST_NAME" = "debugger-gui-rs" ]; }; then
+            # DBG-001: the Debugger attached to debug-demo through the engine
+            # (cooperative attach, preview). Shots: as attached; after F5
+            # (run to the next checkpoint: changed values marked); with the
+            # locals tree opened by keyboard. Every value is read from
+            # debug-demo; the checks below match the log against its source.
+            dbg_wait() {
+                local attempt
+                for ((attempt = 0; attempt < 600; attempt++)); do
+                    grep -aF "$1" "$SERIAL_LOG" >/dev/null 2>&1 && return 0
+                    sleep 0.1
+                done
+                echo "headless: the Debugger did not report: $1" >&2
+                exit 1
+            }
+            dbg_keys() {
+                local key
+                for key in "$@"; do
+                    printf 'sendkey %s\n' "$key"
+                    sleep 0.2
+                done | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            }
+            dbg_shot() {
+                sleep 1
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-debugger-$1.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+                sleep 0.5
+            }
+            dbg_wait "debugger: window ready"
+            dbg_wait "debugger: first full frame"
+            sleep 2
+            dbg_shot attached
+            dbg_keys f5
+            dbg_wait "debugger: continue"
+            dbg_shot continued
+            # Source -> Locals, open the first two values.
+            dbg_keys tab right down right
+            dbg_shot locals
+            dbg_keys f5
+            sleep 0.3
+            dbg_shot changed
+            # Live (L): the target runs; the views re-read it ten a second.
+            dbg_keys l
+            dbg_wait "debugger: live on"
+            sleep 1.5
+            dbg_shot live
+            dbg_keys l
+            dbg_wait "debugger: live off"
+            # The data-structure graph focused (Tab from Locals), filling
+            # the window (F) and fitted, then panned down to the sensor tree.
+            dbg_keys tab f
+            dbg_shot graph
+            dbg_keys down down down down down
+            dbg_shot graph-tree
+            if [ "$TEST_NAME" = "debugger-gui" ]; then
+                # Attach to process... (A): what runs, in the Threads pane;
+                # "clo" picks clock.svc, which has no stub, and Enter
+                # attaches through the kernel (Debug_Observe from procmgr).
+                dbg_keys f a
+                dbg_wait "debugger: attach to process: "
+                dbg_keys c l o
+                dbg_wait "debugger: pick clock.svc"
+                dbg_shot pick
+                dbg_keys ret
+                dbg_wait "debugger: attached to clock.svc through the kernel"
+                dbg_wait "debugger: shows clock pid"
+                dbg_shot attach-clock
+            fi
+            if [ "$TEST_NAME" = "debugger-gui-rs" ]; then
+                # The Rust demo's heap structures live in its threads'
+                # frames. The jobs thread's run_jobs: F back to the panes,
+                # Tab to the call stack, "r" (type-ahead) selects run_jobs;
+                # in Locals "q" and Right open queue (Vec<Job>), "o" and
+                # Right owners (HashMap), then "q" and G graph the queue.
+                dbg_keys f tab tab tab r
+                dbg_wait "run_jobs (selected)"
+                dbg_keys tab tab q right o right q g
+                dbg_shot jobs
+                # The sensors thread ("s" in Threads) at run_sensors: G on
+                # tree (Box nodes) and on history (Arc-shared readings),
+                # then the graph full-size (Tab, F).
+                dbg_keys shift-tab shift-tab shift-tab s
+                dbg_wait "debugger: shows debug-demo-rs pid"
+                dbg_keys tab r
+                dbg_wait "run_sensors (selected)"
+                dbg_keys tab tab t g h g tab f
+                dbg_shot sensors
             fi
         elif [ "$TEST_NAME" = "bible" ]; then
             # The Bible (APP-005) by keyboard: it opens at John 1; a typed
@@ -5602,6 +6271,9 @@ if [ "$TEST_NAME" = "acpi-shutdown" ] || [ "$TEST_NAME" = "shutdown" ] || [ "$TE
     MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
     if [ "$TEST_NAME" = "acpi-shutdown" ]; then
         SHUTDOWN_READY=("acpi: stage runtime-selection ok one-service mode=LOCAL_RUNTIME" "acpi: SCI armed" "power: ready" "shutdown-cooperative: running" "shutdown-stubborn: running")
+        if [ -n "${ACPI_SHUTDOWN_REFUSAL_TABLE:-}" ]; then
+            SHUTDOWN_READY+=("acpi: sample refusal family=BATTERY isolated=TRUE" "acpi: battery guard=" "acpi: AC ONLINE" "acpi: lid OPEN")
+        fi
     elif [ "$TEST_NAME" = "shutdown" ]; then
         SHUTDOWN_READY=("shutdown-standin: watch kept" "shutdown-cooperative: running" "shutdown-stubborn: running")
     elif [ "$TEST_NAME" = "shutdown-text" ]; then
@@ -5708,7 +6380,7 @@ if [ "$TEST_NAME" = "gnat" ]; then
     INPUT_INJECTOR_PID=$!
 fi
 case "$TEST_NAME" in
-    bench-fs|bench-cualloc|fs-coherence-*)
+    bench-fs|bench-cualloc|kern014-bench|fs-coherence-*)
         # Quit at the program's last line, not the timeout.
         QMP_SOCKET="$(qemu_socket qmp)"
         QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
@@ -5716,6 +6388,8 @@ case "$TEST_NAME" in
             FS_TEST_ENDS=("fs-bench: done" "fs-bench: FAIL")
         elif [ "$TEST_NAME" = "bench-cualloc" ]; then
             FS_TEST_ENDS=("cualloc-bench: done" "cualloc-bench: FAIL")
+        elif [ "$TEST_NAME" = "kern014-bench" ]; then
+            FS_TEST_ENDS=("kern014: done")
         else
             FS_TEST_ENDS=("fs-coherence: end")
         fi
@@ -5724,6 +6398,46 @@ case "$TEST_NAME" in
         INPUT_INJECTOR_PID=$!
         ;;
 esac
+if [ "$TEST_NAME" = "vm-desktop" ]; then
+    # Screenshots once the guest's prompt is on the serial log, then quit.
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/vm-desktop-shots.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "${CUBIT_VM_SHOTS:-/home/doc/cubit-build-tmp/vmm/shots}" &
+    INPUT_INJECTOR_PID=$!
+fi
+if [ "$TEST_NAME" = "vm-linux" ]; then
+    # Quit at the check's last line (the timeout is only the bound).
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "vm-linux: done PASS" "vm-linux: done FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
+if [ "$TEST_NAME" = "vm-hello" ]; then
+    # Quit at the check's last line (the timeout is only the bound).
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "vm-hello: done PASS" "vm-hello: done FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
+if [ "$TEST_NAME" = "debug-observe" ]; then
+    # Quit at the check's last line (the timeout is only the bound).
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "debug-observe: done PASS" "debug-observe: done FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
+if [ "$TEST_NAME" = "spawn-rules" ]; then
+    # Quit at the check's last line (the timeout is only the bound).
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "spawn-rules: done PASS" "spawn-rules: done FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "usb-slots" ]; then
     # Quit once devmgr has every controller's reply (the timeout is only
     # the bound); check.py reads the rest.
@@ -5808,7 +6522,7 @@ if [ "$TEST_NAME" = "service-switch" ]; then
     python3 "$ROOT_DIR/tests/service-switch/service_switch.py" \
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$SERVICE_SWITCH_PORT" \
         "$KERNEL_DIR/isodir/boot/lexicon.svc" "$KERNEL_DIR/isodir/boot/clock.svc" \
-        "$KERNEL_DIR/isodir/boot/logstore.svc" &
+        "${LOGSTORE_IMAGE:-$KERNEL_DIR/isodir/boot/logstore.svc}" &
     INPUT_INJECTOR_PID=$!
 fi
 if [ "$TEST_NAME" = "acpi-live-replace" ]; then
@@ -5842,7 +6556,7 @@ if [ "$TEST_NAME" = "service-switch-reboot" ]; then
     QMP_SOCKET="$(qemu_socket qmp)"
     QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
     python3 "$ROOT_DIR/tests/service-switch/service_switch.py" --after-reboot \
-        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$KERNEL_DIR/isodir/boot/logstore.svc" &
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "${LOGSTORE_IMAGE:-$KERNEL_DIR/isodir/boot/logstore.svc}" &
     INPUT_INJECTOR_PID=$!
 fi
 if [ "$TEST_NAME" = "device-build" ]; then
@@ -6060,11 +6774,13 @@ fi
 
 case "$TEST_NAME" in
     boot-shell-nvme|nvme-timeout|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module)
+        # The shipped plan starts no desktop, so ps2.drv waits for one
+        # before it opens its input rings: devmgr's line says it is ready.
         required_markers="
 devmgr: startup complete, entering service loop
 procmgr: ready, entering receive loop
 shell: cwd=@nvme:0/
-ps2: input source rings open, entering event loop
+devmgr: PS/2 driver started
 "
         ;;
     rust-native)
@@ -6081,7 +6797,7 @@ TEST: PASS rust-clock-authorized
 TEST: PASS rust-clock-denied
 TEST: PASS rust-heap-rollback
 TEST: PASS rust-native
-startup: com.cubit.rust-probe: its startup table has no \"clock\"; stopping (CAP-003 startup check)
+exited code 78 (stopped by its CAP-003 startup check)
 "
         ;;
     config-storage|config-objects|config-objects-reopen|config-objects-benchmark)
@@ -6165,7 +6881,7 @@ config-inspector: native window ready
     log-authority)
         required_markers="
 logstore: authorized typed diagnostics ready
-TEST: PASS log-unapproved
+TEST: PASS log-launched
 TEST: PASS log-burst
 TEST: PASS log-disconnect
 TEST: log collector exiting with acquired grant
@@ -6177,6 +6893,37 @@ TEST: PASS log-authority
         required_markers="
 logstore: authorized typed diagnostics ready
 TEST: PASS log-fields
+"
+        ;;
+    console-route)
+        # Only logstore's mirror prints these (under the program's name);
+        # the exactly-once and no-unprefixed checks follow below.
+        required_markers="
+logstore: logstore: authorized typed diagnostics ready
+console-route-check.app: CONSOLE-ROUTE: routed
+console-route-check.app: CONSOLE-ROUTE: in three pieces
+console-route-check.app: CONSOLE-ROUTE: bell?tab	end
+console-route-check.app: CONSOLE-ROUTE: logged once
+console-route-check.app: CONSOLE-ROUTE: after the announcement, announced=true
+console-route-check.app: CONSOLE-ROUTE: after its own publisher, accepted=true
+console-route-check.app: CONSOLE-ROUTE: lost= 0
+"
+        ;;
+    late-introduction)
+        # Started before logstore: its lines queue, procmgr introduces
+        # logstore when it starts, and they reach the console through
+        # logstore's mirror. Asked for an entry it was not started
+        # without, procmgr refuses (nothing undeclared is introduced).
+        required_markers="
+procmgr: late-intro-check.app: optional service \"logstore\" not running; started without it; introduced when it starts
+logstore: logstore: authorized typed diagnostics ready
+late-intro-check.app: LATE-INTRO: queued before logstore
+late-intro-check.app: LATE-INTRO: undeclared NOT_DECLARED
+asked to be introduced for an entry it was not started without (refused)
+introduced late to role
+late-intro-check.app: LATE-INTRO: attached
+late-intro-check.app: LATE-INTRO: lost= 0
+late-intro-check.app: LATE-INTRO: exiting
 "
         ;;
     log-retention)
@@ -6245,7 +6992,7 @@ procmgr: staged app launches allowed by the Desktop switch
 procmgr: switch refused: MANIFEST_CHANGED
 procmgr: switch lexicon.svc switched; it runs @system/storehouse/executables/
 procmgr: switch lexicon.svc rolled back (the program ended inside its health window)
-procmgr: switch clock.svc not switched: the running instance did not end
+procmgr: switch clock.svc switched; it runs @system/storehouse/executables/
 procmgr: switch lexicon.svc switched; it runs lexicon.svc pid
 procmgr: logstore.svc -> @system/storehouse/executables/
  admitted for the next boot
@@ -6360,6 +7107,8 @@ capability-test: all tests passed
 net-link-check: udp send while down is unreachable PASS
 net-link-check: udp works after the link is back PASS
 net-link-check: tcp stream survived the flap and kept transferring in order PASS
+net-link-check: the idle stream's bytes arrive PASS
+net-link-check: a stream read empty lets its reader sleep PASS
 TEST: PASS net-link
 "
         ;;
@@ -6383,7 +7132,19 @@ BENCH: spread elapsed_ms
         required_markers="
 net-bench: start
 net-bench: done
+netstack: busy-poll windows=
 "
+        # netstack's busy-poll window polls memory: at most one kernel call
+        # per ten turns (each turn used to make two, a request poll and
+        # GETTIME: about 107,000 a second while ccl-remote streamed).
+        WINDOW_LINE=$(grep -aoE 'netstack: busy-poll windows= [0-9]+ turns= [0-9]+ kernel calls= [0-9]+' \
+                      "$SERIAL_LOG" | tail -1)
+        WINDOW_TURNS=$(echo "$WINDOW_LINE" | sed -E 's/.*turns= ([0-9]+).*/\1/')
+        WINDOW_CALLS=$(echo "$WINDOW_LINE" | sed -E 's/.*calls= ([0-9]+)$/\1/')
+        if [ -n "$WINDOW_LINE" ] && [ $((WINDOW_CALLS * 10)) -gt "$WINDOW_TURNS" ]; then
+            echo "headless: bench-net: netstack's busy-poll window made $WINDOW_CALLS kernel calls in $WINDOW_TURNS turns (at most one in ten)" >&2
+            exit 1
+        fi
         ;;
     ufs)
         required_markers="
@@ -6453,6 +7214,17 @@ cualloc-bench: done
             exit 1
         fi
         grep -a 'cualloc-bench: ' "$SERIAL_LOG" || true
+        ;;
+    kern014-bench)
+        required_markers="
+kern014: start
+kern014: done
+"
+        if grep -qa 'kern014: FAIL' "$SERIAL_LOG"; then
+            echo "headless: kern014-bench reported a failure" >&2
+            exit 1
+        fi
+        grep -a 'kern014: ' "$SERIAL_LOG" || true
         ;;
     fs-coherence-*)
         required_markers="
@@ -6561,6 +7333,8 @@ desktop: pixel teardown charged= 0
     libc)
         required_markers="
 libc-check: hello from musl on CuBit
+libc-check: an unimplemented system call is ENOSYS PASS
+libc-check.app: cubit-libc: unimplemented system call 999
 libc-check: malloc large and small PASS
 libc-check: pthread mutex across 8 threads PASS
 libc-check: __thread variables per thread and join values PASS
@@ -6836,6 +7610,9 @@ desktop: shut down: cancelled; nothing sent
     acpi-shutdown)
         required_markers=""
         bash "$ROOT_DIR/tests/headless/check-acpi-shutdown.sh" "$SERIAL_LOG" "$qemu_status" || exit 1
+        if [ -n "${ACPI_SHUTDOWN_REFUSAL_TABLE:-}" ]; then
+            python3 -I "$ROOT_DIR/tests/headless/check-acpi-consumer-refusal.py" "$SERIAL_LOG" || exit 1
+        fi
         # No driver forced, none slow, nothing after the drivers' report
         # before it; S5 may cut the console's tail (LOG-009).
         if ! python3 -I "$ROOT_DIR/tests/driver-stop/check_driver_stops.py" --lossy-tail --services \
@@ -6859,7 +7636,7 @@ power: POWER_OFF requested by DESKTOP
 procmgr: shutdown: stopping com.cubit.desktop pid
 display: Stop: output 0:
 "
-            SHUTDOWN_ORDER="com.cubit.test.shutdown-stubborn com.cubit.desktop com.cubit.display com.cubit.logstore"
+            SHUTDOWN_ORDER="com.cubit.test.shutdown-stubborn com.cubit.desktop com.cubit.display"
         elif [ "$TEST_NAME" = "shutdown-text" ]; then
             required_markers="
 power: POWER_OFF requested by POWER_BUTTON
@@ -6872,7 +7649,7 @@ procmgr: shutdown: com.cubit.text pid
  STOPPED_CLEAN after
 procmgr: shutdown: stopping com.cubit.desktop pid
 "
-            SHUTDOWN_ORDER="com.cubit.text com.cubit.desktop com.cubit.display com.cubit.logstore"
+            SHUTDOWN_ORDER="com.cubit.text com.cubit.desktop com.cubit.display"
         elif [ "$TEST_NAME" = "shutdown" ]; then
             required_markers="
 shutdown-standin: registered (STAND-IN for acpi.svc;
@@ -6885,7 +7662,7 @@ procmgr: shutdown: stopping com.cubit.test.shutdown-cooperative pid
 shutdown-cooperative: Stop received; quiescing
 shutdown-cooperative: quiesced; exiting 0
 "
-            SHUTDOWN_ORDER="com.cubit.test.shutdown-stubborn com.cubit.test.shutdown-cooperative com.cubit.logstore"
+            SHUTDOWN_ORDER="com.cubit.test.shutdown-stubborn com.cubit.test.shutdown-cooperative"
         else
             required_markers="
 power: ready
@@ -6896,7 +7673,7 @@ procmgr: shutdown: stopping com.cubit.display pid
 display: session lent scanout: the compositor composes into the scanout buffers
 display: Stop: output 0: 0 loans revoked; returned to the GPU driver 3 of 3 lent buffers and 3 of 3 scanout mappings
 "
-            SHUTDOWN_ORDER="com.cubit.ccl-console com.cubit.test.shutdown-stubborn com.cubit.desktop com.cubit.display com.cubit.logstore"
+            SHUTDOWN_ORDER="com.cubit.ccl-console com.cubit.test.shutdown-stubborn com.cubit.desktop com.cubit.display"
         fi
         required_markers="$required_markers
 procmgr: shutdown requested by com.cubit.power pid
@@ -6910,7 +7687,10 @@ procmgr: shutdown: keeping com.cubit.power pid
  (the requester)
 procmgr: shutdown: keeping com.cubit.acpi pid
  (Power_Tail: the firmware step)
-procmgr: shutdown: stopping com.cubit.logstore pid
+procmgr: shutdown: keeping com.cubit.logstore pid
+ (logstore: the final lines)
+logstore: storage stopping:
+procmgr: shutdown: logstore detached its storage:
 procmgr: shutdown: the filesystem commits (deadline 10000 ms)
 FS: stop: nvme:0 committed and detached (journal empty, needs_recovery clear)
 procmgr: shutdown: storage COMMITTED
@@ -6953,7 +7733,18 @@ procmgr: shutdown: com.cubit.test.shutdown-stubborn pid
               BEGIN { n = split(order, names, " ") }
               { for (i = 1; i <= n; i++)
                   if (!at[i] && index($0, "procmgr: shutdown: stopping " names[i] " pid")) at[i] = NR }
-              /FS: stop: storage / && !fs { fs = NR }
+              # the narration by procmgr of the commit. Lines of routed programs
+              # reach serial through the logstore mirror in drain order;
+              # across programs they keep the order of the steps only
+              # because each side flushes its lines into logstore before it
+              # hands the step on (ABI-002): filesystem.svc before it
+              # answers the commit, devmgr before it answers procmgr,
+              # procmgr before it calls them and before it answers power.svc.
+              /procmgr: shutdown: storage / && !fs { fs = NR }
+              /FS: stop: storage / && !fs_own { fs_own = NR }
+              /logstore: storage stopping:/ && !detach { detach = NR }
+              /procmgr: shutdown: stopping com.cubit.logstore pid/ { stopped_logs = NR }
+              /procmgr: shutdown: stopped in/ && !final { final = NR }
               /shutdown-standin: Prepare_To_Sleep S5 answered/ && !prep { prep = NR }
               /devmgr: shutdown: procmgr asks to stop the drivers/ && !dev { dev = NR }
               /shutdown-standin: entering S5/ && !s5 { s5 = NR }
@@ -6963,11 +7754,19 @@ procmgr: shutdown: com.cubit.test.shutdown-stubborn pid
               / other CPUs parked/ && !parked { parked = NR }
               END {
                 for (i = 1; i <= n; i++) if (!at[i] || (i > 1 && at[i] < at[i - 1])) exit 1
+                # logstore: never stopped; it detached its storage after
+                # the last service and before the commit, and took
+                # procmgr final lines after the drivers stopped.
+                if (stopped_logs || !detach || detach < at[n] || detach > fs || !final || final < dev) exit 1
+                # Flushed at each hand-over: the line of the filesystem
+                # before procmgr hears the outcome; the final line of procmgr
+                # before power.svc reports the stop.
+                if (!fs_own || fs_own > fs || !report || final > report) exit 1
                 exit !(prep && prep < at[1] && fs > at[n] && dev > fs && s5 > dev &&
                        report > dev && ask > report && kernel > ask && kernel > s5 &&
                        parked > kernel)
               }' "$SERIAL_LOG"; then
-            echo "headless: $TEST_NAME: not prepare-to-sleep, then reverse startup order, storage, drivers, S5 (with the whole console tail before the kernel's S5 line)" >&2
+            echo "headless: $TEST_NAME: not prepare-to-sleep, then reverse startup order, logstore's storage detached, storage, drivers, procmgr's final lines, S5 (with the whole console tail before the kernel's S5 line)" >&2
             exit 1
         fi
         # The filesystem detached the journaled volume: no recovery needed,
@@ -7130,6 +7929,265 @@ wifi-crypto-check: pbkdf2-sha1-pmk=ok aes-cmac=ok xmd-sha256=ok PASS
 font-masks: glyphs=570 failed=0 all=
 "
         ;;
+    launch-gate)
+        # CAP-012 (docs/authority-model.md 7.5): Launch-into-S
+        # (userspace/apps/launch-gate-check).
+        required_markers="
+launch-gate: procmgr's endpoint alone starts nothing (OP_SPAWN is retired) PASS
+launch-gate: a launch without a Launch badge is refused PASS
+launch-gate: with the badge, a child starts into the user session PASS
+launch-gate-child: the clock given PASS
+launch-gate-child: clock control and the framebuffer withheld PASS
+launch-gate: a required request the session withholds is refused by name (clock-control) PASS
+launch-gate: the launch hands back a launch handle with Observe, Stop, Attach, Introduce, Debug PASS
+launch-gate: the requester's own control message to the child is refused (procmgr is its parent) PASS
+launch-gate: Observe through the handle: the child runs PASS
+launch-gate: a launch handle reaches no other procmgr operation (OP_LAUNCH refused) PASS
+launch-gate: a handle operation without a launch handle is refused PASS
+launch-gate: the narrowed handle may not debug (Right_Missing) PASS
+launch-gate: Debug through the handle hands over Debug_Observe on the child PASS
+launch-gate: the debug session lists the child's threads PASS
+launch-gate: procmgr's exit notice for the child arrives PASS
+launch-gate: after it ends, Observe gives its outcome (exited, code 0) PASS
+launch-gate: the handle dies with the child: Debug answers Child_Ended PASS
+launch-gate: revoking reaches the handle narrowed from it PASS
+launch-gate: the session's debug authority observes clock.svc, a system service PASS
+launch-gate: procmgr itself is never debuggable PASS
+launch-gate: launching left the requester's handle table as it was (
+launch-gate: checks done
+"
+        ;;
+    debug-gate-disabled)
+        # DBG-001: Disabled: no debug-session authority, no debug session.
+        required_markers="
+procmgr: system policy: debugging Disabled: debugging is disabled for this image
+debug-gate: debug-session withheld
+debug-gate: handle Debug answers DEBUGGING_DISABLED
+debug-gate: done
+"
+        ;;
+    debug-gate-production)
+        # DBG-001: Production refuses as Disabled until the owner's approval
+        # path exists, and says so.
+        required_markers="
+procmgr: system policy: debugging Production: production debugging needs owner approval (not built yet)
+debug-gate: debug-session withheld
+debug-gate: handle Debug answers APPROVAL_NEEDED
+debug-gate: done
+"
+        ;;
+    debug-gate-development)
+        # DBG-001: Development behaves as built.
+        required_markers="
+procmgr: system policy: debugging Development: Debug_Observe within the session's debug envelope
+debug-gate: debug-session granted; session debug answers DONE
+debug-gate: handle Debug answers DONE
+debug-gate: done
+"
+        ;;
+    debug-kernel)
+        # DBG-001, CAP-012: the engine through the kernel, no stub
+        # (userspace/apps/debug-kernel-check, debug-plain).
+        required_markers="
+debug-kernel: debug-plain (no stub) starts into the user session with a launch handle PASS
+debug-kernel: the launch handle's Debug right gets Debug_Observe from procmgr PASS
+debug-kernel: attach to debug-plain through the kernel PASS
+debug-kernel: the build-id comes from the target's own memory PASS
+debug-kernel: the thread waits Sleeping or on a futex PASS
+debug-kernel: Plain_Work.Pause_Between is on the stack in plain_work.adb, unwound from the kernel's registers PASS
+debug-kernel: its caller Plain_Work.Run is on the stack too PASS
+debug-kernel: local Remaining of Plain_Work.Pause_Between has a value PASS
+debug-kernel: Totals read live through a view PASS
+debug-kernel: memory at Totals reads through the kernel PASS
+debug-kernel: the session's debug authority gets Debug_Observe on clock.svc PASS
+debug-kernel: clock.svc's frames, unwound with its debug information PASS
+debug-kernel: ALL PASS
+"
+        if grep -a 'debug-kernel: ' "$SERIAL_LOG" | grep -qF ' FAIL'; then
+            echo "headless: debug-kernel checks failed" >&2
+            exit 1
+        fi
+        ;;
+    debug-observe)
+        # The kernel's debug sessions (DBG-001, Debug_Sessions), checked from
+        # procmgr's place (userspace/apps/debug-observe-check).
+        required_markers="
+debug-observe: the target spawns PASS
+debug-observe: the target resumes PASS
+debug-observe: the target's Control mints Debug_Observe PASS
+debug-observe: Describe names the kind and the target's identity PASS
+debug-observe: the session's slice lies in the view aperture PASS
+debug-observe: Threads: one thread, in a futex wait with no deadline PASS
+debug-observe: Registers: the general block is written PASS
+debug-observe: Registers: a blocked thread's callee-saved registers are exact PASS
+debug-observe: Registers: RIP follows the SYSCALL, and its arguments are kept PASS
+debug-observe: Registers: a system-call frame, with the user selectors PASS
+debug-observe: Registers: the XSAVE image, with the reset MXCSR PASS
+debug-observe: Registers: a stale thread generation is refused PASS
+debug-observe: Map_View maps the target's code page PASS
+debug-observe: the view shows the target's bytes PASS
+debug-observe: a second view on one page is Occupied PASS
+debug-observe: the kernel refuses to read the aperture PASS
+debug-observe: the kernel refuses to write the aperture PASS
+debug-observe: Unmap_View removes the view PASS
+debug-observe: the page maps again after Unmap PASS
+debug-observe: Map_View refuses a page the target does not map PASS
+debug-observe: Map_View refuses another session's slice PASS
+debug-observe: Map_View refuses a kernel-half target PASS
+debug-observe: the target's Control mints PAUSE PASS
+debug-observe: PAUSE Threads answers Not_Yet PASS
+debug-observe: PAUSE Describe answers PASS
+debug-observe: PAUSE detaches PASS
+debug-observe: PAUSE is revoked after Detach PASS
+debug-observe: the target's Control mints MODIFY PASS
+debug-observe: MODIFY Threads answers Not_Yet PASS
+debug-observe: MODIFY detaches PASS
+debug-observe: the target's Control mints INSTRUMENT PASS
+debug-observe: INSTRUMENT Threads answers Not_Yet PASS
+debug-observe: INSTRUMENT detaches PASS
+debug-observe: a Control without Grant does not mint PASS
+debug-observe: a stale or absent identity mints nothing PASS
+debug-observe: Revoke_Debug through the Control PASS
+debug-observe: a revoked session answers Revoked PASS
+debug-observe: Revoke removed the views (the slice maps again) PASS
+debug-observe: the target is stopped PASS
+debug-observe: a stopped target's session ends PASS
+debug-observe: done PASS
+"
+        ;;
+    spawn-rules)
+        # The kernel's SPAWN rules (CAP-012, Spawn_Admission), checked from
+        # procmgr's place (userspace/apps/spawn-rules-check).
+        required_markers="
+spawn-rules: the process root spawns, with control, endpoint and CSPACE PASS
+spawn-rules: a child's Control does not spawn (rule 1) PASS
+spawn-rules: a Read and Execute copy of the root is derived PASS
+spawn-rules: a spawn authority without Grant spawns PASS
+spawn-rules: without Grant: no endpoint and no CSPACE (rule 2) PASS
+spawn-rules: without Write: the child's Control cannot stop it (rule 2) PASS
+spawn-rules: without Grant: another process is not named parent (rule 3) PASS
+spawn-rules: with Grant over every process: another parent is named PASS
+spawn-rules: done PASS
+"
+        ;;
+    vm-desktop)
+        required_markers="
+vmm guest: CuBit guest: Linux is up under the CuBit hypervisor (guest serial console)
+vmm guest: CuBit guest: 2 CPUs online
+vmm guest: CuBit guest: shell ready
+desktop: keys to Guest serial console
+vmm guest: typed-42
+vmm: key to echo
+vmm guest: interrupted-5
+vm-desktop-shots: key to echo
+vm-desktop-shots: done PASS
+"
+        grep -a 'vm-desktop-shots: key to echo\|vmm guest: typed-\|vmm guest: interrupted-' "$SERIAL_LOG" || true
+        if grep -aq 'vmm guest: .*sleep 100' "$SERIAL_LOG" &&
+           ! grep -aq 'vmm guest: .*\^C' "$SERIAL_LOG"; then
+            echo "headless: vm-desktop: no ^C after the typed Ctrl+C" >&2
+            exit 1
+        fi
+        ;;
+    vm-linux)
+        required_markers="
+guest: CuBit guest: Linux is up under the CuBit hypervisor (guest serial console)
+guest: # uname -a
+guest: CuBit guest: shell ready
+guest: CuBit guest: spec_store_bypass: Mitigation: Speculative Store Bypass disabled via prctl
+guest: CuBit guest: spectre_v2: Mitigation:
+vm-linux: [1 vCPU] the guest reached its shell prompt PASS
+vm-linux: [2 vCPU] the guest reached its shell prompt PASS
+vm-linux: [2 vCPU] the guest started its AP with INIT and SIPI PASS
+vm-linux: [2 vCPU] the guest reports 2 CPUs online PASS
+vm-linux: [2 vCPU] INIT, SIPI and the AP's mode switch left the nested tables unchanged, its tag flushed PASS
+guest: typed-42
+guest: interrupted-5
+vm-linux: [1 vCPU] keys typed one at a time reach the shell and each is echoed: typed-42 PASS
+vm-linux: [1 vCPU] Ctrl+C ends a foreground sleep 100
+vm-linux: [1 vCPU] a command longer than the receive FIFO arrives whole: interrupted-5 PASS
+vm-linux: [2 vCPU] keys typed one at a time reach the shell and each is echoed: typed-42 PASS
+vm-linux: [2 vCPU] Ctrl+C ends a foreground sleep 100
+vm-linux: [2 vCPU] a command longer than the receive FIFO arrives whole: interrupted-5 PASS
+vm-linux: done PASS
+"
+        if grep -a 'vm-linux: \[[12] vCPU\] Ctrl+C ends' "$SERIAL_LOG" | grep -qv ' PASS'; then
+            echo "headless: vm-linux: Ctrl+C did not bring the prompt back" >&2
+            exit 1
+        fi
+        grep -a 'vm-linux: \[\|guest: Linux\|guest: # \|guest: model name\|guest: CuBit\|guest: typed-\|guest: interrupted-' "$SERIAL_LOG" | grep -v ' exit [0-9]' | head -80 || true
+        # The guest mitigates with the speculation controls the kernel
+        # switches for it (docs/hypervisor.md 9.2): IBPB everywhere, and on
+        # a host with AutoIBRS (QEMU's -cpu host passes it on) AutoIBRS, not
+        # retpolines.
+        if ! grep -aF 'guest: CuBit guest: spectre_v2:' "$SERIAL_LOG" | grep -qF 'IBPB: conditional'; then
+            echo "headless: vm-linux: the guest's spectre_v2 line has no IBPB" >&2
+            exit 1
+        fi
+        if grep -qw auto_ibrs /proc/cpuinfo &&
+           ! grep -aF 'guest: CuBit guest: spectre_v2:' "$SERIAL_LOG" | grep -qF 'Enhanced / Automatic IBRS'; then
+            echo "headless: vm-linux: the host has AutoIBRS but the guest does not use it" >&2
+            exit 1
+        fi
+        ;;
+    vm-hello)
+        required_markers="
+vm: SVM enabled (EFER.SVME, host save area); guests run as kernel objects
+vm-hello: Create_VM gives a VM handle PASS
+vm-hello: Add_RAM pins and maps 16 pages PASS
+vm-hello: an overlapping Add_RAM is refused PASS
+vm-hello: Add_RAM of memory the monitor does not own is refused PASS
+vm-hello: Create_VCPU gives a vCPU handle PASS
+vm-hello: guest serial: Hello from a CuBit guest
+vm-hello: the guest's port output reaches the monitor PASS
+vm-hello: HLT stays in the kernel until the deadline PASS
+vm-hello: Add_RAM after the first run is refused PASS
+vm-hello: a store outside guest RAM is a nested fault at its address 0000000000020000 PASS
+vm-hello: VMMCALL exits to the monitor PASS
+vm-hello: a guest spinning with interrupts off returns at the deadline PASS
+vm-hello: an architectural reset leaves every nested-table leaf unchanged PASS
+vm-hello: the guest's tag is flushed before it runs again PASS
+vm-hello: a CPUID answered through Set_State advances past the instruction PASS
+vm-hello: a SPEC_CTRL write of a reserved bit is #GP in the guest (the kernel decides) PASS
+vm-hello: a SPEC_CTRL write the host allows is kept and its later writes pass through PASS
+vm-hello: the host's SPEC_CTRL is back after the exit PASS
+vm-hello: the guest reads back its SPEC_CTRL after exits and re-entries PASS
+vm-hello: the host's SPEC_CTRL is unchanged after the guest ran with a different value PASS
+vm-hello: the host's SPEC_CTRL is unchanged after the timed exits PASS
+vm-hello: with writes passed through, the CPU refuses a reserved bit (#GP) and the value stays PASS
+vm-hello: Set_State refuses a SPEC_CTRL bit the host lacks PASS
+vm-hello: after a state round trip the guest runs on PASS
+vm-hello: a guest shutdown (int3 with an empty IDT) stops the vCPU and returns Shutdown PASS
+vm-hello: an external interrupt below 32 is refused PASS
+vm-hello: #GP without its error code is refused PASS
+vm-hello: an external interrupt 48 is accepted PASS
+vm-hello: a second pending event is Busy PASS
+vm-hello: Destroy PASS
+vm-hello: the vCPU handle is stale after Destroy PASS
+vm-hello: the VM handle is stale after Destroy PASS
+vm-hello: a second VM, left for the reaper PASS
+vm-hello: done PASS
+"
+        if grep -a 'vm-hello: ' "$SERIAL_LOG" | grep -qF 'FAIL'; then
+            echo "headless: vm-hello checks failed" >&2
+            exit 1
+        fi
+        ;;
+    virt-report)
+        required_markers="
+virt: svm usable
+"
+        grep -F 'virt: ' "$SERIAL_LOG" || true
+        if ! grep -qE '^.*virt: svm revision=[0-9]+ asids=[0-9]+ npt=yes nrip=yes' "$SERIAL_LOG"; then
+            echo "headless: virt-report: no SVM feature line with npt and nrip" >&2
+            exit 1
+        fi
+        ;;
+    virt-report-none)
+        required_markers="
+virt: none: the CPU reports neither VMX nor SVM
+"
+        ;;
     cpu-refusal)
         required_markers="
 CuBit needs an x86-64-v3 CPU; this one lacks: AVX2 FMA BMI1 BMI2 MOVBE F16C LZCNT OSXSAVE AVX XCR0.AVX. Halted.
@@ -7146,9 +8204,8 @@ avx-check: all 16 YMM registers kept across 20000 yields PASS
 clock-check: clock publication present PASS
 clock-check: 1000000 page reads are published and monotonic PASS
 clock-check: 1000000 page millisecond reads are monotonic PASS
-clock-check: a page read is cheaper than either system call PASS
-clock-check: READ_MONOTONIC_MICROSECONDS lies between two page reads PASS
-clock-check: the page is never behind GETTIME, and at most 10 ms ahead PASS
+clock-check: page microseconds and milliseconds agree PASS
+clock-check: the page is never behind the kernel's msTicks, and at most 10 ms ahead PASS
 clock-check: a futex deadline from the page does not expire early PASS
 clock-check: sleeping until a page microsecond does not return early PASS
 TEST: PASS clock
@@ -7156,10 +8213,14 @@ clock-check: write to the clock page armed
 "
         grep -F 'clock-check: cost ' "$SERIAL_LOG" || true
         # The write must fault at the page's address (0x5B00_0000_0000) and
-        # retire the process; nothing may print after the write.
+        # retire the process; nothing may print after the write. Only the
+        # kernel's own lines (the fault, then the reclaim) are in the
+        # guest's order: clock-check's "armed" reaches serial through
+        # logstore's mirror (ABI-002), later, so it is required present,
+        # not before the fault.
         if grep -F 'clock-check: ' "$SERIAL_LOG" | grep -qF 'FAIL' ||
-           ! awk '/clock-check: write to the clock page armed/ { seen = 1 }
-                  seen && /USER-MEMORY-FAULT: pid [0-9]+ address 100055558127616 kind=write-protection/ { fault = 1 }
+           ! grep -qF 'clock-check: write to the clock page armed' "$SERIAL_LOG" ||
+           ! awk '/USER-MEMORY-FAULT: pid [0-9]+ address 100055558127616 kind=write-protection/ { fault = 1 }
                   fault && /reclaimProcess: stopped PID/ { found = 1 }
                   END { exit !found }' "$SERIAL_LOG"; then
             echo "headless: clock checks failed, or the page write was not refused" >&2
@@ -7213,7 +8274,7 @@ completed= 2
 acpi: stage sleep-registers ok 
 acpi: stage finish-startup ok setup=CLOSED
 acpi: stage runtime ok LOCAL_IDLE
-acpi: stage ec-scan status=NO_EC absent= 0 pruned= 0 node-errors= 0 ecdt=FALSE
+acpi: stage ec-scan status=NO_EC absent= 0 pruned= 0 node-errors= 0 relevance-links= 0 ecdt=FALSE
 acpi: stage events ok CONSUMERS ec=NO_EC general= 2
 acpi: stage registration ok STARTING
 acpi: bring-up reached registration (4/4) hardware=LOCAL
@@ -7279,7 +8340,6 @@ TEST: PASS firmware-snapshot
 procmgr: firmware snapshot refused: firmware-denied.app is not approved by the startup plan
 procmgr: init spawn failed: firmware-denied.app
 firmware-undeclared: no handle not authorized PASS
-firmware-undeclared: own endpoint not authorized PASS
 firmware-undeclared: own process not authorized PASS
 firmware-undeclared: forged handle word not authorized PASS
 firmware-undeclared: no acpi endpoint PASS
@@ -7410,25 +8470,7 @@ acpi-pci-check: attempting forbidden write at 0000600000000000
             echo "headless: ACPI PCI configuration checks failed, or the unapproved image got the window" >&2
             exit 1
         fi
-        if ! python3 -I - "$SERIAL_LOG" <<'PCI_CHECK'
-import re, sys
-text = open(sys.argv[1], errors="replace").read().replace("\r", "")
-read = re.search(r"^acpi-pci-check: host bridge 00:00\.0 ([0-9A-F]{4}):([0-9A-F]{4})$", text, re.M)
-assert read, "no host bridge IDs read through the window"
-ids = f"{read.group(1)}:{read.group(2)}"
-enumerated = re.search(r"^devmgr: match 00:00\.0 ([0-9A-F]{4}:[0-9A-F]{4}) class", text, re.M)
-assert enumerated, "devmgr did not report 00:00.0"
-assert enumerated.group(1) == ids, f"window read {ids}, devmgr enumerated {enumerated.group(1)}"
-marker = text.index("acpi-pci-check: attempting forbidden write at 0000600000000000")
-loaded = re.findall(r"Loaded module acpi-pci-check\.a\S* w/ process ID\s+(\d+)\b", text[:marker])
-assert loaded, "no process identity for acpi-pci-check.app"
-pid = int(loaded[-1])
-fault = re.search(rf"USER-MEMORY-FAULT: pid\s+{pid}\s+address\s+{0x600000000000}\s+kind=write-protection\b",
-                  text[marker:])
-assert fault, "the write to the read-only PCI configuration mapping did not fault"
-assert "forbidden write was not stopped" not in text, "the write was not stopped"
-print(f"PASS: host bridge {ids} through the window matches devmgr; the write faulted (pid {pid})")
-PCI_CHECK
+        if ! python3 -I "$ROOT_DIR/tests/acpi-headless-checks/check-launch.py" pci-config "$SERIAL_LOG"
         then
             echo "headless: PCI configuration window read/fault check failed" >&2
             exit 1
@@ -7542,7 +8584,7 @@ gpio-bootstrap-check: another GPIO controller is GPIO_NOT_ADMITTED PASS
 gpio-bootstrap-check: an epoch with no admitted GPIO controller is GPIO_NOT_ADMITTED PASS
 gpio-bootstrap-check: offering the touchpad
  QUEUED detail 0 epoch 1 device \_SB_.PCI0.I2C1.TPD0 i2c \_SB_.PCI0.I2C1 pci 0x0:0x0:0x150000 (00:15.0
-i2c-badge 0x4932101500061A80 gpio-badge 0x475010000001004C queue position 1
+i2c-badge 0x4932101500061A80
 gpio-bootstrap-check: the touchpad offer is QUEUED at position 1 PASS
 gpio-bootstrap-check: the same offer again gets the same answer PASS
 gpio-bootstrap-check: a second offer of the touchpad is DUPLICATE_DEVICE PASS
@@ -7560,7 +8602,7 @@ gpio-launch-check: stage bounded ok past-second refused=TRUE past-first refused=
 gpio-launch-check: bring-up complete
 devmgr: acpi driver ready for CBIT1057 \_SB_.GPI0
 devmgr: hid offer \_SB_.PCI0.I2C1.TPD0 (request 30): the GPIO driver and the I2C controller's driver (generic-check.drv at 00:15.0
-i2c-target badge 0x4932101500061A80 gpio-input badge 0x475010000001004C descriptor register 0x20
+i2c-target badge 0x4932101500061A80 gpio-input badge 0x475010000001004C
 devmgr: hid offer \_SB_.PCI0.I2C1.TPD0 (request 30): starting hid-launch-check.drv held through procmgr's Start_Child (class PNP0C50, fact descriptor_register = 32, i2c on pid
 procmgr: parameters hid-launch-check.drv: (HID_Parameters descriptor_register => 32 x => (HID_Axis numerator => 1 denominator => 1 direction => HID_Direction.As_Reported)
 procmgr: held PID
@@ -7629,16 +8671,11 @@ procmgr: supervised child com.cubit.test.hid-launch-check pid
             echo "headless: gpio-launch: the HID offer's launch step ran before the GPIO driver registered" >&2
             exit 1
         fi
-        # The HID driver runs only after its GPIO sink is admitted: held by
-        # procmgr, admitted at the GPIO driver, released, then its first line.
-        if ! awk '/procmgr: held PID/ && !held { held = NR }
-                  /gpio-launch-check: sink admission ok/ && !admitted { admitted = NR }
-                  /procmgr: held pid.* released by devmgr/ && !released { released = NR }
-                  /hid-launch-check: parameters / && !ran { ran = NR }
-                  END { exit !(held && admitted && released && ran &&
-                               held < admitted && admitted < released && released < ran) }' \
-             "$SERIAL_LOG"; then
-            echo "headless: gpio-launch: the HID driver ran before its GPIO sink was admitted" >&2
+        # Verify the held child's sink ownership before its first output.
+        # ABI-002 routes procmgr's narration through logstore; the release
+        # line can reach serial after the resumed child's direct output.
+        if ! python3 -I "$ROOT_DIR/tests/acpi-headless-checks/check-launch.py" gpio-launch "$SERIAL_LOG"; then
+            echo "headless: gpio-launch: held child/sink admission evidence failed" >&2
             exit 1
         fi
         ;;
@@ -7728,6 +8765,8 @@ futex-share-outsider: wake without the grant refused PASS
 futex-share-outsider: wait without the grant refused PASS
 futex-share: a peer wake through a grant without the notify flag refused PASS
 futex-share: a peer wake ends an activity wait PASS
+futex-share: 2000 notified grants taken and given back PASS
+futex-share: an idle activity loop sleeps after grant-return notices PASS
 futex-share-outsider: peer wake without being a party refused PASS
 futex-share-outsider: ALL PASS
 msr-safe: an absent MSR faulted and was recovered
@@ -7736,6 +8775,70 @@ msr-safe: an absent MSR faulted and was recovered
            grep -aqF 'futex-share-server: pong FAIL' "$SERIAL_LOG" ||
            grep -aqF 'futex-share-server: peer wake FAIL' "$SERIAL_LOG"; then
             echo "headless: futex-share checks failed" >&2
+            exit 1
+        fi
+        ;;
+    debug-engine)
+        required_markers="
+debug-engine: attach to debug-demo PASS
+debug-engine: attach is cooperative PASS
+debug-engine: two observed threads PASS
+debug-engine: pause: both threads parked at a checkpoint PASS
+debug-engine: frame 0 is the stub's checkpoint PASS
+debug-engine: Demo_World.Advance is on the stack in demo_world.adb PASS
+debug-engine: local Step of Demo_World.Advance has a value PASS
+debug-engine: Demo_World.Insert is on the stack in demo_world.adb PASS
+debug-engine: local Depth of Demo_World.Insert has a value PASS
+debug-engine: The_World read live PASS
+debug-engine: graph holds the job list PASS
+debug-engine: graph holds the sensor tree PASS
+debug-engine: source demo_world.adb from @system/Debug/Source PASS
+debug-engine: The_World.Generation moved while running PASS
+debug-engine: Generation is marked changed since the last read PASS
+debug-engine: a shared page cannot be acquired for writing PASS
+debug-engine: a shared page can be acquired for reading PASS
+debug-engine: ALL PASS
+"
+        if grep -a 'debug-engine: ' "$SERIAL_LOG" | grep -qF ' FAIL'; then
+            echo "headless: debug-engine checks failed" >&2
+            exit 1
+        fi
+        ;;
+    debug-engine-rs)
+        required_markers="
+debug-engine-rs: attach to debug-demo-rs PASS
+debug-engine-rs: the target is the Rust demo PASS
+debug-engine-rs: two observed Rust threads, jobs and sensors PASS
+debug-engine-rs: pause: both Rust threads parked at a checkpoint PASS
+debug-engine-rs: frame 0 is the Rust stub's checkpoint PASS
+debug-engine-rs: debug_demo_rs::advance is on the stack in main.rs PASS
+debug-engine-rs: queue is a Vec<Job> of its jobs PASS
+debug-engine-rs: graph of queue: the Vec and its Job nodes PASS
+debug-engine-rs: debug_demo_rs::insert is on the stack in main.rs PASS
+debug-engine-rs: tree is Some(Box<Sensor>) (a niche enum) PASS
+debug-engine-rs: graph holds the sensor tree PASS
+debug-engine-rs: the Rust stub's pages cannot be acquired for writing PASS
+debug-engine-rs: debug_demo_rs::GENERATION moved while running PASS
+debug-engine-rs: ALL PASS
+"
+        if grep -a 'debug-engine-rs: ' "$SERIAL_LOG" | grep -qF ' FAIL'; then
+            echo "headless: debug-engine-rs checks failed" >&2
+            exit 1
+        fi
+        ;;
+    tlb-tags)
+        required_markers="
+Address-space tags (PCID)
+tlb-check: every life checked its fresh pages PASS
+tlb-check: every revoke life faulted on its revoked grant PASS
+with Buffer at the same address PASS
+tlb-check: ALL PASS
+process killed: tlb-probe.app
+"
+        if grep -aF 'tlb-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           grep -aqF 'tlb-probe: FAIL' "$SERIAL_LOG" ||
+           [ "$(grep -acF 'process killed: tlb-probe.app' "$SERIAL_LOG")" -ne 6 ]; then
+            echo "headless: tlb-tags checks failed" >&2
             exit 1
         fi
         ;;
@@ -8228,6 +9331,99 @@ nmi-check: done
             exit 1
         fi
         ;;
+    direction-flag)
+        required_markers="
+direction-flag-check: running with DF set
+direction-flag-check: round 8
+direction-flag-check: rounds done; faulting with DF set
+kind=exception vector=6
+com.cubit.direction-flag-check
+"
+        # Before the fix the kernel ran its interrupt handlers with the
+        # process's DF: building the stop record for the UD2 zeroed a return
+        # address, and the kernel recursed on its own faults until the
+        # machine reset (no stop record, often no message at all).
+        if grep -aqF 'DOUBLE FAULT' "$SERIAL_LOG" ||
+           grep -aqF 'direction-flag-check: FAIL' "$SERIAL_LOG" ||
+           grep -aqF 'NXE violation in kernel' "$SERIAL_LOG" ||
+           grep -aqF 'KERNEL PANIC' "$SERIAL_LOG" ||
+           grep -aqF 'kernel exception' "$SERIAL_LOG"; then
+            echo "headless: direction-flag: the kernel faulted with the process's DF set" >&2
+            exit 1
+        fi
+        ;;
+    alignment-flag)
+        required_markers="
+SMAP enabled
+SMAP probe: armed
+alignment-flag-check: running with AC set
+SMAP probe: user memory faulted in an interrupt handler (kernel AC=0)
+alignment-flag-check: round 8
+alignment-flag-check: done
+"
+        # Before the fix interrupt handlers ran with the process's AC, so
+        # under SMAP a kernel read of user memory went through.
+        if grep -aqF 'SMAP probe: an interrupt handler read user memory' "$SERIAL_LOG" ||
+           grep -aqF 'alignment-flag-check: FAIL' "$SERIAL_LOG" ||
+           grep -aqF 'KERNEL PANIC' "$SERIAL_LOG" ||
+           grep -aqF 'kernel exception' "$SERIAL_LOG"; then
+            echo "headless: alignment-flag: an interrupt handler ran with the process's AC set" >&2
+            exit 1
+        fi
+        ;;
+    kernel-map-probe)
+        required_markers="
+KERN014 probe: armed
+KERN014-PROBE: freed frame holds allocator links: no
+kernel-map-probe: marker 0x4b45524e30313421
+KERN014-PROBE: user write stored
+kernel-map-probe: writable page holds the store
+kernel-map-probe: read-only page unchanged
+kernel-map-probe: done
+"
+        # Since KERN-014 slice 4 a process's pages come from regions the
+        # kernel's linear map no longer covers: the probe's read through it
+        # faults ("unmapped"). Before, it read the marker. Since slice 1
+        # the buddy allocator's free-list links live out of the blocks: a
+        # freed frame holds none ("yes" before).
+        KERNEL_MAP_READ=$(grep -a -o 'KERN014-PROBE: process page through the kernel map: [a-z]*[ 0-9a-fx]*' "$SERIAL_LOG" | head -1)
+        echo "headless: kernel-map-probe: ${KERNEL_MAP_READ:-no probe report}"
+        # Since slice 2 the kernel stores into a process's memory through its
+        # own mapping: refused into a read-only page, a reserved page with no
+        # frame and the kernel half; the first two fault and are recovered.
+        KERNEL_MAP_REFUSED=$(grep -a -c 'KERN014-PROBE: user write refused' "$SERIAL_LOG")
+        KERNEL_MAP_FAULTS=$(grep -a -o 'KERN014-PROBE: user-access faults recovered [0-9]*' "$SERIAL_LOG" | grep -o '[0-9]*$' | head -1)
+        echo "headless: kernel-map-probe: stores refused ${KERNEL_MAP_REFUSED}, faults recovered ${KERNEL_MAP_FAULTS:-none}"
+        if [ "$KERNEL_MAP_REFUSED" != 3 ] || [ "${KERNEL_MAP_FAULTS:-0}" -lt 2 ] ||
+           grep -aqF "KERN-014: user access refused: caller's tables not loaded" "$SERIAL_LOG" ||
+           [ "$KERNEL_MAP_READ" != "KERN014-PROBE: process page through the kernel map: unmapped" ] ||
+           grep -aqF 'kernel-map-probe: FAIL' "$SERIAL_LOG" ||
+           grep -aqF 'KERNEL PANIC' "$SERIAL_LOG" ||
+           grep -aqF 'kernel exception' "$SERIAL_LOG"; then
+            echo "headless: kernel-map-probe: unexpected kernel-map reach" >&2
+            exit 1
+        fi
+        ;;
+    mov-ss-debug)
+        required_markers="
+DBGK-PROBE: armed
+mov-ss-check: MOV SS from a watched word, then SYSCALL
+mov-ss-check: SYSCALL variant survived, kernel #DB taken
+mov-ss-check: MOV SS from a watched word, then INT3
+kind=exception vector=3
+com.cubit.mov-ss-check
+"
+        # The kernel took each deferred #DB on its own stack with its own GS
+        # base: no double fault (the user stack under SMAP), no kernel
+        # exception or panic, and the INT3 reached user mode as a #BP.
+        if grep -aqF 'DOUBLE FAULT' "$SERIAL_LOG" ||
+           grep -aqF 'mov-ss-check: FAIL' "$SERIAL_LOG" ||
+           grep -aqF 'kernel exception' "$SERIAL_LOG" ||
+           grep -aqF 'KERNEL PANIC' "$SERIAL_LOG"; then
+            echo "headless: mov-ss-debug: kernel faulted on a deferred debug exception" >&2
+            exit 1
+        fi
+        ;;
     trap-flag)
         required_markers="
 trap-flag-check: setting TF, then SYSCALL
@@ -8355,6 +9551,16 @@ ccl-console: REPL completed: String: 2e-21
 ccl-console: REPL completed: String: 0.5
 ccl-console: REPL completed: Calc_Number: (Calc_Number true \"0\" \"1\" \"0\" Calc_Form.Integer_Form \"\" \"00\" \"000\" \"00000000\" true)
 "
+        elif [ "${CCL_CONSOLE_DEMO:-}" = debug ]; then
+            required_markers="$required_markers
+ccl-console: REPL completed: Debug_Session: (Debug_Session 1 
+kernel attach (Debug_Observe)
+ccl-console: REPL completed: List<Debug_Thread>: [(Debug_Thread 1
+ccl-console: REPL completed: List<Debug_Frame>: [(Debug_Frame 0
+ccl-console: REPL completed: List<Debug_Binding>:
+ccl-console: REPL completed: debug.attach was refused by its service: procmgr.svc is never debuggable
+ccl-console: REPL completed: Boolean: true
+"
         elif [ "${CCL_CONSOLE_DEMO:-}" = wifi ]; then
             required_markers="$required_markers
 ccl-console: REPL completed: List<Wifi_Network>: (list-of Wifi_Network)
@@ -8453,6 +9659,27 @@ dictionary: window ready
 ui-app: protected frame published
 "
         ;;
+    debugger-gui|debugger-gui-rs)
+        required_markers="
+debugger: attach ATTACHED
+debugger: window ready
+debugger: first full frame
+debugger: continue
+debugger: live on
+debugger: live off
+ui-app: protected frame published
+"
+        if [ "$TEST_NAME" = "debugger-gui" ]; then
+            # Attach to process... (DBG-001): clock.svc, no stub, through
+            # the kernel (procmgr's Debug_Observe, the session's authority).
+            required_markers="$required_markers
+debugger: attach to process clock.svc
+procmgr: debug: Debug_Observe on com.cubit.clock
+debugger: attached to clock.svc through the kernel (kernel attach (Debug_Observe))
+debugger: shows clock pid
+"
+        fi
+        ;;
     bible)
         required_markers="
 bible: starting
@@ -8511,7 +9738,7 @@ capability-test: syscall registers unknown call PASS
 capability-test: syscall registers denied call PASS
 capability-test: syscall registers blocking return PASS
 capability-test: getpid PASS
-capability-test: startup table holds only the self entries, with the declared limit PASS
+capability-test: startup table holds only the self entries and logstore, with the declared limit PASS
 capability-test: self entries are current handles PASS
 capability-test: no firmware-memory window without the ACPI hardware grant PASS
 capability-test: firmware pages never map through a forged or foreign handle PASS
@@ -8578,7 +9805,11 @@ capability-test: handle limit reached (Limit_Reached) PASS
 capability-test: the refused message was kept (kernel) PASS
 capability-test: the refused message was kept (read-only) PASS
 capability-test: the refused message was kept (unmapped) PASS
+capability-test: retired BOOT_TIMELINE rejected PASS
+capability-test: a plain process cannot list processes PASS
+capability-test: no boot-timeline publication without declaring it PASS
 capability-test: all tests passed
+capability-test: read of the undeclared boot timeline armed
 "
         ;;
     storage-grants)
@@ -8654,6 +9885,16 @@ ccl-workbench: native window ready
 desktop: status network wired=shown wifi=hidden (no adapter)
 desktop: status memory bar
 desktop: status CPU bar
+"
+        ;;
+    desktop-session)
+        # run-desktop's session reaches its first frame on the virtio-vga.
+        required_markers="
+virtio-gpu: ready
+display: backend virtio-gpu
+procmgr: init launched: desktop.svc
+desktop: active outputs= 1 primary= 0
+desktop: asynchronous frame released
 "
         ;;
     boot-timeline)
@@ -8984,7 +10225,16 @@ boot-logs: window ready
 boot-logs: files: started
 boot-logs: calculator: started
 boot-logs: desktop: gpu waitboost on (configured)
+shell: idle system calls in 1000 ms=
 "
+        # The shell idles in an activity wait: it used to poll for events
+        # and sleep 1 ms, about 2,000 system calls a second.
+        SHELL_IDLE_CALLS=$(grep -aoE 'shell: idle system calls in 1000 ms= [0-9]+' "$SERIAL_LOG" |
+                           tail -1 | grep -oE '[0-9]+$')
+        if [ -n "$SHELL_IDLE_CALLS" ] && [ "$SHELL_IDLE_CALLS" -gt 50 ]; then
+            echo "headless: startup-health: the idle shell made $SHELL_IDLE_CALLS system calls in 1 s (at most 50)" >&2
+            exit 1
+        fi
         ;;
     launch-failure)
         required_markers="
@@ -9130,16 +10380,19 @@ display: test output generation advanced
 DISPLAY-OUTPUT-REBIND-CHECK: PASS"
 fi
 if [ "${CUBIT_DISPLAY_TEST_MODE:-production}" = delayed ] && [ "$TEST_NAME" = input-stream ]; then
-    # Input must be dispatched between the delayed reader's two fingerprints,
-    # for the SAME frame, not merely while a submission was queued somewhere.
+    # Input must be dispatched while the delayed reader held a frame, for
+    # the SAME frame, not merely while a submission was queued somewhere:
+    # Desktop names the frame its input arrived during. (Its line reaches
+    # serial through logstore's mirror, ABI-002, so its position against
+    # Display's lines says nothing; the frame number does.)
     if ! awk '
-        /display-test: hold / { held[$NF] = NR }
-        /desktop: input during frame / { input[$NF] = NR }
-        /display-test: stable / {
-            stable++;
-            if (held[$NF] && input[$NF] > held[$NF] && input[$NF] < NR) progressed++;
+        /display-test: hold / { held[$NF] = 1 }
+        /desktop: input during frame / { input[$NF] = 1 }
+        /display-test: stable / { stable++; settled[$NF] = 1 }
+        END {
+            for (f in input) if (held[f] && settled[f]) progressed++;
+            exit !(stable >= 2 && progressed >= 1)
         }
-        END { exit !(stable >= 2 && progressed >= 1) }
     ' "$SERIAL_LOG"; then
         echo "headless: no input progress during a stable delayed frame loan" >&2
         exit 1
@@ -9183,6 +10436,45 @@ if [ "$missing" -ne 0 ]; then
     exit 1
 fi
 
+if [ "$TEST_NAME" = "console-route" ]; then
+    # ABI-002: every line came through logstore's mirror, once: none was
+    # written to the kernel console by the program itself (an unprefixed
+    # copy), CuBit.Log's echo made no second record, and the long line went
+    # on as a second record rather than being dropped.
+    console_failed=0
+    if grep -aq '^CONSOLE-ROUTE:' "$SERIAL_LOG"; then
+        echo "headless: console-route: a line reached the console without logstore" >&2
+        console_failed=1
+    fi
+    for once in "CONSOLE-ROUTE: routed" "CONSOLE-ROUTE: logged once" "CONSOLE-ROUTE: in three pieces"; do
+        seen=$(grep -acF "$once" "$SERIAL_LOG")
+        if [ "$seen" -ne 1 ]; then
+            echo "headless: console-route: \"$once\" seen $seen times, not once" >&2
+            console_failed=1
+        fi
+    done
+    # 600 L's: 492 complete the first record's 512 bytes, 108 continue.
+    if ! grep -aqE ": CONSOLE-ROUTE: long L{492}[[:space:]]*$" "$SERIAL_LOG" ||
+       ! grep -aqE "^[^ ]+: L{108}[[:space:]]*$" "$SERIAL_LOG"; then
+        echo "headless: console-route: the long line was not split into 512 + 108 bytes" >&2
+        console_failed=1
+    fi
+    if [ "$console_failed" -ne 0 ]; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    echo "headless: console-route: every line once, through logstore's mirror"
+fi
+
+if [ "$TEST_NAME" = "servo" ] && [ -z "${SERVO_DESKTOP:-}" ]; then
+    # A page of text only must reach the frame as glyphs: no fonts (or no
+    # glyph rasterization) leaves it blank.
+    if ! python3 "$ROOT_DIR/tests/servo/check_text_glyphs.py" "$SERIAL_LOG" "$SERVO_TEXT_PAGE"; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
+
 if [ "$TEST_NAME" = "ui-latency" ] && [ "$QEMU_ACCEL" = "kvm" ]; then
     # LAT-002: a key delivered to the probe is published within 1 ms in
     # every report period. The window used to hear its answer only at the
@@ -9204,7 +10496,9 @@ if [ "$TEST_NAME" = "ui-latency" ] && [ "$QEMU_ACCEL" = "kvm" ]; then
         echo "headless: serial log: $SERIAL_LOG" >&2
         exit 1
     fi
-    cold=$(awk '/^desktop: glyph cache warmed/ {w=1} w && /^DESKTOP-TEXT-SLOW:/ {n++} END {print n+0}' "$SERIAL_LOG")
+    # Unanchored: Desktop's lines reach serial behind their source's name
+    # (logstore's mirror, ABI-002).
+    cold=$(awk '/desktop: glyph cache warmed/ {w=1} w && /DESKTOP-TEXT-SLOW:/ {n++} END {print n+0}' "$SERIAL_LOG")
     if [ "$cold" -ne 0 ]; then
         echo "headless: ui-latency: $cold slow text batches after the glyph cache was warmed" >&2
         grep -a "DESKTOP-TEXT-SLOW" "$SERIAL_LOG" >&2
@@ -9216,7 +10510,7 @@ fi
 
 if [ "$TEST_NAME" = "cpu-refusal" ]; then
     # Refused before userspace: no program was started.
-    if grep -aq "^procmgr: " "$SERIAL_LOG"; then
+    if grep -aEq "^(procmgr\.svc: )?procmgr: " "$SERIAL_LOG"; then
         echo "headless: cpu-refusal: programs started on a CPU without x86-64-v3" >&2
         echo "headless: serial log: $SERIAL_LOG" >&2
         exit 1
@@ -9262,10 +10556,11 @@ if [ "$TEST_NAME" = "desktop-restart" ]; then
     echo "headless: the input source rings opened again to the restarted desktop"
     # IPC-009: the failed Desktop's frame ring ends at Display, and the
     # restarted Desktop's frames reach Display through a new one.
-    if ! awk '/display: frame ring [0-9]+ opened/ { opened++ }
+    # Display's own lines, in Display's order: opened, ended, opened again
+    # (Desktop's restart line reaches serial through logstore's mirror,
+    # ABI-002, so its position against Display's lines is not evidence).
+    if ! awk '/display: frame ring [0-9]+ opened/ { opened++; if (ended) reopened = 1 }
               /display: frame ring [0-9]+ ended/ && opened == 1 { ended = 1 }
-              /DESKTOP-TEST-FAULT: restarted; taking the display over/ { restarted = NR }
-              /display: frame ring [0-9]+ opened/ && restarted { reopened = 1 }
               END { exit !(ended && reopened && opened >= 2) }' "$SERIAL_LOG"; then
         echo "headless: desktop restart: the frame ring to Display did not end and open again" >&2
         echo "headless: serial log: $SERIAL_LOG" >&2
@@ -9417,6 +10712,32 @@ case "$TEST_NAME" in
         fi
         ;;
 esac
+
+# ABI-002, no lost events: every numbered line late-intro-check queued
+# before the introduction and published after it reached serial, in order,
+# while the program still ran (before the kernel reclaimed it).
+if [ "$TEST_NAME" = "late-introduction" ]; then
+    if ! awk '
+          match($0, /Loaded module late-intro-check w\/ process ID [0-9]+/) && !pid {
+              pid = substr($0, RSTART, RLENGTH); sub(/.* /, "", pid) }
+          pid && $0 ~ ("Process.reclaimProcess: stopped PID " pid "$") && !gone { gone = NR }
+          match($0, /LATE-INTRO: (before|after) [0-9]+$/) {
+              n = split(substr($0, RSTART, RLENGTH), w, " ")
+              key = w[2] " " w[3]; if (!(key in at)) { at[key] = NR; count++ } }
+          END {
+              if (count != 40 || !gone) exit 1
+              last = 0
+              for (side = 1; side <= 2; side++)
+                  for (i = 1; i <= 20; i++) {
+                      key = (side == 1 ? "before" : "after") " " i
+                      if (!(key in at) || at[key] < last || at[key] > gone) exit 1
+                      last = at[key] }
+          }' "$SERIAL_LOG"; then
+        echo "headless: late-introduction: numbered lines before and after the introduction not all delivered, in order, before the program ended" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
 
 if [ "$TEST_NAME" = "multi-instance" ]; then
     if ! python3 "$ROOT_DIR/tests/multi-instance/check.py" "$SERIAL_LOG"; then
@@ -9626,31 +10947,82 @@ if [ "$TEST_NAME" = "managed-ui" ]; then
         exit 1
     fi
 fi
+if { [ "$TEST_NAME" = "debugger-gui" ] || [ "$TEST_NAME" = "debugger-gui-rs" ]; }; then
+    # DBG-001: what the Debugger showed is the demo's real state: its
+    # current line is a line of the demo's own source (debug-demo's Ada,
+    # or debug-demo-rs's Rust), and it listed variables and data-structure
+    # nodes read from the target.
+    if [ "$TEST_NAME" = "debugger-gui-rs" ]; then
+        dbg_demo=debug-demo-rs
+        dbg_sources=("$ROOT_DIR"/userspace/apps/debug-demo-rs/src/*.rs)
+    else
+        dbg_demo=debug-demo
+        dbg_sources=("$ROOT_DIR"/userspace/apps/debug-demo/*.adb)
+    fi
+    # The demo's: the last current line before Attach to process... moved
+    # the Debugger to clock.svc (debugger-gui), checked on its own below.
+    dbg_line="$(tr -d '\r' < "$SERIAL_LOG" | sed '/debugger: attach to process clock.svc/,$d' |
+      sed -n 's/^.*debugger: current line: //p' | tail -n 1)"
+    if [ -z "$(printf '%s' "$dbg_line" | tr -d ' ')" ] ||
+       ! cat "${dbg_sources[@]}" | grep -qxF -- "$dbg_line"; then
+        echo "headless: the Debugger's current line is not debug-demo source: '$dbg_line'" >&2
+        exit 1
+    fi
+    if ! grep -aEq 'debugger: local [A-Za-z_.:]+ : .+ = .+' "$SERIAL_LOG" ||
+       ! grep -aEq 'debugger: node [A-Za-z_.:<>, ]+ fields [1-9]' "$SERIAL_LOG" ||
+       ! grep -aEq "debugger: shows $dbg_demo pid [0-9]+ threads [1-9]" "$SERIAL_LOG"; then
+        echo "headless: the Debugger showed no variables, nodes or threads of debug-demo" >&2
+        exit 1
+    fi
+    if grep -aF "test double" "$SERIAL_LOG" >/dev/null; then
+        echo "headless: the Debugger ran the test double" >&2
+        exit 1
+    fi
+    # Attach to process...: clock.svc (no stub) shown with real frames
+    # unwound through the kernel, and a current line of its own source.
+    if [ "$TEST_NAME" = "debugger-gui" ]; then
+        if ! tr -d '\r' < "$SERIAL_LOG" | grep -aqE 'debugger: shows clock pid [0-9]+ threads [1-9][0-9]* frames [1-9]'; then
+            echo "headless: the Debugger showed no clock.svc frames through the kernel" >&2
+            exit 1
+        fi
+        clock_line="$(tr -d '\r' < "$SERIAL_LOG" | sed -n '/debugger: attach to process clock.svc/,$p' |
+          sed -n 's/^.*debugger: current line: //p' | tail -n 1)"
+        if [ -z "$(printf '%s' "$clock_line" | tr -d ' ')" ] ||
+           ! cat "$ROOT_DIR"/userspace/services/clock/*.ad[sb] "$ROOT_DIR"/userspace/runtime/gnat/*.ad[sb] |
+             grep -qxF -- "$clock_line"; then
+            echo "headless: the Debugger's current line is not clock.svc's source: '$clock_line'" >&2
+            exit 1
+        fi
+    fi
+fi
 if [ "$TEST_NAME" = "devices" ]; then
     # HW-002: devmgr binds each present device to the driver that declares
     # it (devices.index) and says so, one line per device; unmatched devices
     # say "-> unmatched" (docs/device-matching.md). Each line carries the
     # function's MSI and MSI-X capabilities: QEMU's virtio-net and NVMe
     # have MSI-X, intel-hda one MSI vector, the host bridge neither.
+    # Each match starts a line or follows logstore's mirror prefix anywhere
+    # in one: the kernel's own console text (Process.Loader's line, written
+    # in pieces) can share the serial line with a mirrored one (k3w25).
     for match in \
-        '^devmgr: match [0-9A-F:.]+ 1AF4:1000 class 02\.00\.00 msi=(0|1/[0-9]+) msix=1/[0-9]+ -> virtio-net\.drv \(PCI_IDs 1AF4:1000\.\.1000\)' \
-        '^devmgr: match [0-9A-F:.]+ 1B36:0010 class 01\.08\.02 msi=(0|1/[0-9]+) msix=1/[0-9]+ -> nvme\.drv \(PCI_Class 01\.08\.02\)' \
-        '^devmgr: match [0-9A-F:.]+ 8086:2668 class 04\.03\.00 msi=1/1 msix=0 -> hda\.drv \(PCI_Class 04\.03\.00\)' \
-        '^devmgr: match [0-9A-F:.]+ 8086:29C0 class 06\.00\.00 msi=0 msix=0 -> unmatched' \
-        '^devmgr: match platform PS2_Controller -> ps2\.drv' \
-        '^devmgr: drivers bound to [0-9]+ PCI devices; [0-9]+ matched no driver'; do
+        '(^|devmgr\.svc: )devmgr: match [0-9A-F:.]+ 1AF4:1000 class 02\.00\.00 msi=(0|1/[0-9]+) msix=1/[0-9]+ -> virtio-net\.drv \(PCI_IDs 1AF4:1000\.\.1000\)' \
+        '(^|devmgr\.svc: )devmgr: match [0-9A-F:.]+ 1B36:0010 class 01\.08\.02 msi=(0|1/[0-9]+) msix=1/[0-9]+ -> nvme\.drv \(PCI_Class 01\.08\.02\)' \
+        '(^|devmgr\.svc: )devmgr: match [0-9A-F:.]+ 8086:2668 class 04\.03\.00 msi=1/1 msix=0 -> hda\.drv \(PCI_Class 04\.03\.00\)' \
+        '(^|devmgr\.svc: )devmgr: match [0-9A-F:.]+ 8086:29C0 class 06\.00\.00 msi=0 msix=0 -> unmatched' \
+        '(^|devmgr\.svc: )devmgr: match platform PS2_Controller -> ps2\.drv' \
+        '(^|devmgr\.svc: )devmgr: drivers bound to [0-9]+ PCI devices; [0-9]+ matched no driver'; do
         if ! tr -d '\r' < "$SERIAL_LOG" | grep -Eq "$match"; then
             echo "headless: devmgr match line missing: $match" >&2
             exit 1
         fi
     done
-    if tr -d '\r' < "$SERIAL_LOG" | grep -Eq '^devmgr: (match .* -> ambiguous|no valid devices\.index)'; then
+    if tr -d '\r' < "$SERIAL_LOG" | grep -Eq '^(devmgr\.svc: )?devmgr: (match .* -> ambiguous|no valid devices\.index)'; then
         echo "headless: devmgr could not bind by the driver index" >&2
         exit 1
     fi
     # A prefix match would accept the old malformed id with two version-header
     # bytes appended. Require exactly the canonical identity from the loader.
-    if ! tr -d '\r' < "$SERIAL_LOG" | grep -Fx 'procmgr: pkg id=com.cubit.devices' >/dev/null; then
+    if ! tr -d '\r' < "$SERIAL_LOG" | grep -Ex '(procmgr\.svc: )?procmgr: pkg id=com\.cubit\.devices' >/dev/null; then
         echo "headless: Devices package identity is malformed or missing" >&2
         exit 1
     fi
@@ -9698,9 +11070,19 @@ if [ "${CUBIT_DESKTOP_METRICS_TEST:-0}" = 1 ]; then
 fi
 
 FAULT_SIGNATURE='panic|assert|double fault|triple fault|general protection|machine check exception|^EXCEPTION:|deadlock|TEST: FAIL|BENCH: FAIL|CLOCK: FAIL|SCHED-ALARM: fallback|failed launch .*cleanup rejected'
-if grep -Ei "$FAULT_SIGNATURE" "$SERIAL_LOG" >/dev/null 2>&1; then
+# A VM guest's serial console (VMM-001: "guest: " from vm-linux-check,
+# "vmm guest: " from vmm.app) is the guest's text, not this machine's: its
+# kernel command line says panic=-1, and a guest may oops without the host
+# failing. The monitor's own lines are checked like every other.
+fault_scan() {
+    case "$TEST_NAME" in
+        vm-linux|vm-desktop) grep -av -e '^guest: ' -e 'vmm guest: ' "$SERIAL_LOG" ;;
+        *) cat "$SERIAL_LOG" ;;
+    esac
+}
+if fault_scan 2>/dev/null | grep -Ei "$FAULT_SIGNATURE" >/dev/null 2>&1; then
     echo "headless: fault signature found in serial log: $SERIAL_LOG" >&2
-    grep -Ein "$FAULT_SIGNATURE" "$SERIAL_LOG" >&2
+    fault_scan | grep -Ein "$FAULT_SIGNATURE" >&2
     exit 1
 fi
 
@@ -9722,6 +11104,19 @@ if [ "$TEST_NAME" = "ccl-workspace" ]; then
 fi
 if [ "$TEST_NAME" = "capability-security" ]; then
     python3 "$ROOT_DIR/tests/process-construction/check-log.py" "$SERIAL_LOG"
+    # The boot timeline is a granted publication (ABI-002): capability-test
+    # declares none, so its read of the page (0x5B00_0000_9000) faults as
+    # unmapped and retires it.
+    # The armed line is a record logstore mirrors (ABI-002): it can reach
+    # serial after the kernel's own fault line. Only the kernel's two lines
+    # are ordered.
+    if ! awk '/capability-test: read of the undeclared boot timeline armed/ { seen = 1 }
+              /USER-MEMORY-FAULT: pid [0-9]+ address 100055558164480 kind=unmapped/ { fault = 1 }
+              fault && /reclaimProcess: stopped PID/ { found = 1 }
+              END { exit !(seen && found) }' "$SERIAL_LOG"; then
+        echo "headless: an undeclared process could read the boot timeline" >&2
+        exit 1
+    fi
 fi
 if [ "$TEST_NAME" = "text" ]; then
     saved_text="$(debugfs -R 'cat Documents/notes.txt' "$TEMP_DISK" 2>/dev/null)"

@@ -1,0 +1,17 @@
+project Thread_Slots_Tests is
+   Kernel_Src := external ("KERNEL_SRC", "../../kernel/src");
+   Shared_Src := external ("SHARED_SRC", "../../shared");
+   for Source_Dirs use (".", Kernel_Src, Shared_Src & "/publications", Shared_Src & "/time");
+   for Source_Files use ("main.adb", "thread_slots.ads", "thread_slots.adb",
+                         "readiness_publication.ads", "clock_publication.ads", "clock_publication.adb",
+                         "slot_protocol.ads", "slot_protocol.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--timeout=60");
+   end Prove;
+end Thread_Slots_Tests;

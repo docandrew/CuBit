@@ -7,6 +7,8 @@ package ACPI_Native_Power_Buttons is
    procedure Fixed_Press;
    procedure Configure_Control_Method (Available : Boolean);
    procedure Withdraw_Control_Method;
+   -- Terminal event-enrollment failure; settle any saved startup watch.
+   procedure Withdraw_Sources;
    procedure Control_Method_Press;
    procedure Dispatch (Request : CuBit.Messages.Message; Owner_Quiet : Boolean;
       Reply : out CuBit.Messages.Message; Handled, Reply_Now : out Boolean);

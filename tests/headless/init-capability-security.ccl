@@ -1,5 +1,7 @@
 # Capability non-amplification regression profile.
 (startup v1
+  # ABI-002: services' debug text reaches serial only through logstore's mirror.
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   # Rejection before construction, then repeated failure after partial mapping.
   # The final authorityless app must still launch and pass all its checks.
   (start "bad-phdr.app" (priority 5))

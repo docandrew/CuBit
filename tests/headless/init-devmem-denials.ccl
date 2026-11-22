@@ -2,7 +2,7 @@
 # asks for device memory it has no authority for, before the desktop starts;
 # the kernel's records must reach logstore and the Desktop bootstrap screen.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "clock.svc" (priority 5))
   (start "devmem-check.app" (priority 5))
   (start "display.svc" (priority 5))

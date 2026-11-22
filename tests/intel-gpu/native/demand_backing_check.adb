@@ -15,7 +15,7 @@ with Intel_GPU_Record_Growth;
 -- IPC exchange. Never grant an ordinary application process authority to run it.
 procedure Demand_Backing_Check is
    package V renames Intel_GPU_Buffer_Reply;
-   PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   PID : constant Unsigned_64 := Own_Process_Word;
    -- Runs in devmgr's place: the boot roots' process authority allocates.
    Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
    function Allocate_DMA (Order, Virtual, Mode, Ceiling : Unsigned_64) return Unsigned_64 is

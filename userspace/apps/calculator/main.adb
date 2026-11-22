@@ -5,6 +5,7 @@
 --  (tests/calculator). This translates the desktop's input into shell
 --  events and waits once, in CuBit.UI.App.Run (Activity_Wait), for input.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Protocol;
@@ -17,6 +18,7 @@ with CuBit.UI.State;
 with Calc_Host_Native;
 with Calc_Shell;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    package Shell renames Calc_Shell;
@@ -210,7 +212,7 @@ procedure Main is
                              elsif Event.kind = CuBit.UI.Input.INPUT_POINTER_UP then Shell.Release
                              else Shell.Move),
                   X => CuBit.UI.Input.Pointer_X (Event), Y => CuBit.UI.Input.Pointer_Y (Event),
-                  Time_Ms => syscall (SYSCALL_GETTIME), Control => Control, Shift => Shift, Alt => Alt,
+                  Time_Ms => CuBit.Monotonic.Milliseconds, Control => Control, Shift => Shift, Alt => Alt,
                   others => <>));
       elsif Event.kind = CuBit.UI.Input.INPUT_POINTER_WHEEL then
          Shell.Handle (App, (Kind => Shell.Wheel_Event, Steps => CuBit.UI.Input.Pointer_Wheel_Delta (Event),
@@ -227,6 +229,8 @@ procedure Main is
    procedure Run is new CuBit.UI.App.Run
      (UI, Controls, Render => Render, Handle_Event => Handle_Event, Activity_Wait => True);
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("calculator: starting" & ASCII.LF);
    CuBit.Logging.Announce ("calculator: started", Opened, Startup.Logstore);
    Shell.Initialize

@@ -1,0 +1,6 @@
+# Address-space tags (PCIDs): tlb-check launches tlb-probe life after life
+# and revokes a grant under a waiting thread.
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "tlb-check.app" (priority 5))
+)

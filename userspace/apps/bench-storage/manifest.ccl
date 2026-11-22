@@ -2,5 +2,7 @@
 (executable-manifest v1
   (identity "com.cubit.bench.storage")
   (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore)
   (request-service filesystem read-write filesystem)
   (filesystem-scope (rights read write create) "@nvme:0/"))

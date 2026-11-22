@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System;
 with System.Machine_Code; use System.Machine_Code;
@@ -13,7 +14,7 @@ procedure Main is
    type Register_Image is array (0 .. 31) of Unsigned_8;
    type Register_File is array (0 .. 15) of Register_Image with Alignment => 32;
    Want, Got : Register_File;
-   Seed : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   Seed : constant Unsigned_64 := Own_Process_Word;
    ROUNDS : constant := 20_000;
    AVX_ECX_OSXSAVE : constant Unsigned_32 := 2 ** 27;
    AVX_ECX_AVX : constant Unsigned_32 := 2 ** 28;
@@ -64,6 +65,8 @@ procedure Main is
            Volatile => True);
    end Round_Trip;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    if not AVX_Available then
       debugPrint ("avx-check: AVX unavailable on this CPU" & LF);
       return;

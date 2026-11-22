@@ -10,6 +10,5 @@ cd "$root/kernel"
 alr exec -- gnatprove -P ../tests/xhci-hotplug/xhci_hotplug_tests.gpr \
     -u xhci_registers.ads xhci_rings.adb xhci_port_machine.adb xhci_endpoint_recovery.adb \
        xhci_controller_identity.ads usb_device_roles.ads xhci_completions.adb xhci_ports.adb \
-       driver_log_grant.adb \
     --level=2 --report=fail --checks-as-errors=on -j2
 cat ../tests/xhci-hotplug/build/gnatprove/gnatprove.out | sed -n '/Summary of SPARK/,/^$/p'

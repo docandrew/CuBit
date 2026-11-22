@@ -116,9 +116,13 @@ package Mem_mgr is
 
     ---------------------------------------------------------------------------
     -- switchAddressSpace
-    -- switch to the top-level set of page tables in Mem_mgr (kernelP4).
+    -- switch to the top-level set of page tables in Mem_mgr (kernelP4),
+    -- keeping cached translations where CPUs tag them (TLB_Context).
     ---------------------------------------------------------------------------
     procedure switchAddressSpace;
+
+    -- The kernel's top-level page table (physical), as CR3 holds it.
+    function kernelRoot return Virtmem.PhysAddress;
 
     ---------------------------------------------------------------------------
     -- mapIOArea
@@ -132,25 +136,21 @@ package Mem_mgr is
         Pre => area.kind = MemoryAreas.IO;
 
     ---------------------------------------------------------------------------
-    -- mapKernelMemIntoProcess - during syscalls, this copies the kernel's
-    -- higher-half P4 mappings into a process' page tables. Reloads the 
-    -- CR3 register to flush TLB. 
+    -- mapKernelMemIntoProcess - copy the kernel's higher-half P4 entries
+    -- into a new process's page tables. No TLB flush: no CPU has loaded
+    -- them yet, and the slot's address-space tag begins a new life
+    -- (TLB_Context.Begin_Life).
     --
-    -- NOTE: This isn't useful yet, as for KPTI to be feasible we need to
-    -- get this function (and whatever it needs to call) linked in a separate
-    -- page table that can always be in the process' address space.
-    --
-    -- @param procP4 - The active process' P4 table.
-    --
-    -- @TODO - determine how to use PCID to avoid the TLB flush here.
+    -- @param procP4 - The new process's P4 table.
     ---------------------------------------------------------------------------
     procedure mapKernelMemIntoProcess (procP4 : in out Virtmem.P4);
 
     ---------------------------------------------------------------------------
-    -- unmapKernelMemFromProcess - on exit from syscall, zeroize a process'
-    -- upper-half of memory to unmap kernel memory/implement KPTI.
+    -- unmapKernelMemFromProcess - before a process's page tables are freed,
+    -- clear their kernel half so only the process's own tables are deleted.
+    -- No TLB flush: no CPU has them loaded any more.
     --
-    -- @param procP4 - The active process' P4 table.
+    -- @param procP4 - The ended process's P4 table.
     ---------------------------------------------------------------------------
     procedure unmapKernelMemFromProcess (procP4 : in out Virtmem.P4);
 
@@ -186,6 +186,29 @@ package Mem_mgr is
     -- single-CPU boot (no shootdown); the caller frees the frame afterwards.
     ---------------------------------------------------------------------------
     procedure retireKernelImagePage (physAddr : in Virtmem.PhysAddress);
+
+    ---------------------------------------------------------------------------
+    -- detachLinearRegion / attachLinearRegion (KERN-014 slice 4): the 2 MiB
+    -- region at Base (2 MiB aligned RAM) leaves the kernel's linear map, or
+    -- returns to it. Detach clears the region's one P2 entry (a 2 MiB page or
+    -- the P1 table under it) and hands it back as Saved; the CALLER runs the
+    -- TLB round before any frame of the region is used. Attach writes Saved
+    -- back: a not-present entry is never cached, so it needs no round.
+    ---------------------------------------------------------------------------
+    procedure detachLinearRegion
+      (Base : Virtmem.PhysAddress; Saved : out Virtmem.PageTableEntry);
+    procedure attachLinearRegion
+      (Base : Virtmem.PhysAddress; Saved : Virtmem.PageTableEntry);
+
+    ---------------------------------------------------------------------------
+    -- installKernelTable - a new kernel-half area (KERN-014: the per-CPU
+    -- window): point the empty kernel P4 entry Index at Table, a zeroed
+    -- kernel-owned P3. Boot only, before any process copies the kernel half
+    -- (mapKernelMemIntoProcess), so no address space lacks it.
+    ---------------------------------------------------------------------------
+    procedure installKernelTable
+      (Index : Virtmem.PageTableIndex; Table : Virtmem.PhysAddress)
+      with Pre => Virtmem."<=" (256, Index);
 
 private
     ---------------------------------------------------------------------------

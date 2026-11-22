@@ -9,8 +9,9 @@ with Intel_GPU_Buffer_Requests;
 with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Extent_Allocator;
+with CuBit.Monotonic;
 procedure Client_Quota_Check is
-   PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   PID : constant Unsigned_64 := Own_Process_Word;
    -- Runs in devmgr's place: boot roots allocate, and two badged copies of
    -- the self endpoint stand for two client sessions.
    Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
@@ -64,10 +65,10 @@ procedure Client_Quota_Check is
                   protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [Request (0), Request (1), Request (2), Request (3)];
       Check (capSubmit (Target, Msg, Token), "submit");
-      Deadline := syscall (SYSCALL_GETTIME) + 10_000;
+      Deadline := CuBit.Monotonic.Milliseconds + 10_000;
       loop
          Poll_Service_Request (From, Msg, Found); exit when Found;
-         Check (syscall (SYSCALL_GETTIME) < Deadline, "request deadline");
+         Check (CuBit.Monotonic.Milliseconds < Deadline, "request deadline");
       end loop;
       Check (CuBit.Process_IDs.To_Word (From) = PID, "kernel sender");
       if Query then
@@ -105,7 +106,7 @@ procedure Client_Quota_Check is
       else Check (reply (From, Response) = 1, "immediate delivery"); end if;
       loop
          exit when Poll_Completion (Receipt'Address) /= 0;
-         Check (syscall (SYSCALL_GETTIME) < Deadline, "reply deadline");
+         Check (CuBit.Monotonic.Milliseconds < Deadline, "reply deadline");
       end loop;
       Check (Receipt.token = Token and then Receipt.status = COMPLETION_OK and then
         Receipt.msg.tag = Response.tag and then Receipt.msg.words = Response.words, "reply contents");

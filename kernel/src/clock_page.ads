@@ -42,6 +42,11 @@ is
     -- User space has the parameters; READ_MONOTONIC_MICROSECONDS uses them.
     function Shared return Boolean;
 
+    -- Publish msTicks in the page's millisecond word
+    -- (Clock_Publication.Milliseconds_Address): CPU 0, each tick that
+    -- advances it, and once at Publish.
+    procedure Note_Milliseconds (Milliseconds : Unsigned_64);
+
     -- Nanoseconds at TSC value Counter. Requires Converting.
     procedure Read (Counter     : Unsigned_64;
                     Nanoseconds : out Unsigned_64;

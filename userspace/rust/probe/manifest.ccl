@@ -2,4 +2,7 @@
   (identity "com.cubit.rust-probe")
   (version "0.1.0")
   (request-service ccl-test-host read-write test-host)
-  (request-service clock read-write clock))
+  (request-service clock read-write clock)
+  # Its diagnostics (cubit_debug_write, the libc's records: CuBit.Libc_Log).
+  (request-service logstore read-write logstore)
+  (optional logstore))

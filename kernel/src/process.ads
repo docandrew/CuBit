@@ -58,6 +58,10 @@ with Object_Table;
 with Retained_Record_Blocks;
 with Quiescent_Reclamation;
 with Page_Allocation;
+with Process_Frames;
+with Readiness_Pages;
+with Readiness_Publication;
+with Thread_Slots;
 with Process_Lifetime;
 with Scheduling_Shadow;
 with Scheduling_Turns;
@@ -178,7 +182,8 @@ package Process is
         WAITINGFORREPLY,            -- Receiver got message, sender waiting for reply
         WAITINGFORCOMPLETION,       -- Blocked in waitCompletion()
         SUSPENDED,                  -- Suspended until a resume call.
-        FUTEXWAITING                -- Blocked in FUTEX_WAIT (Process.Futex)
+        FUTEXWAITING,               -- Blocked in FUTEX_WAIT (Process.Futex)
+        VMHALTED                    -- A vCPU's guest halted (VM_Objects, VMM-001)
     );
 
     -- Wait channels are just a pointer to some resource that a process is
@@ -774,9 +779,13 @@ package Process is
         -- for the work-stealing age check.
         queuedTSC           : Unsigned_64 := 0;
         readiness           : Readiness_Origin := Rescheduled;
-        -- System calls this thread has made (READ_STATISTICS reports the
-        -- caller's): visibility for "how many calls does this path take".
-        systemCalls         : Unsigned_64 := 0;
+        -- Where system call entry counts this thread's calls: the kernel
+        -- address of its line in its process's thread-count pages
+        -- (Readiness_Publication, "how many calls does this path take"),
+        -- or uncountedCalls for a thread without one. Only this thread
+        -- writes it. countSlot is the line's slot, given back at exit.
+        callCounter         : System.Address := System.Null_Address;
+        countSlot           : Thread_Slots.Slot := Readiness_Publication.Main_Thread_Slot;
         -- The thread this one last readied with readySync (it is about to
         -- block): when it blocks in a receive, it runs that thread next,
         -- directly, if it still waits on this CPU (yieldToSyncWakee).
@@ -916,13 +925,6 @@ package Process is
         selfHandle          : Unsigned_64 := 0;
         selfProcessHandle   : Unsigned_64 := 0;
 
-        -- Number of events published to this process that were refused
-        -- because their publisher's ring here was full (the publisher is
-        -- told and keeps them). Backpressure must be observable: a
-        -- latency-sensitive consumer cannot otherwise tell a quiet device
-        -- from an overloaded input path.
-        eventDrops          : Unsigned_64 := 0;
-
         -- Device IRQ delivery is a persistent doorbell, not a counted event.
         -- Multiple interrupts may coalesce while the driver is runnable; the
         -- bit is cleared only when the driver observes it and then drains its
@@ -930,7 +932,17 @@ package Process is
         irqNotificationPending : Boolean := False;
         -- The readiness page (KERN-013, Readiness_Pages): the kernel's
         -- frame, mapped read-only at Readiness_Publication.Page_Address.
+        -- It also counts the events published to this process that were
+        -- refused because their publisher's ring here was full (the
+        -- publisher is told and keeps them): backpressure must be
+        -- observable, or a latency-sensitive consumer cannot tell a quiet
+        -- device from an overloaded input path.
         readinessFrame : Virtmem.PhysAddress := 0;
+        -- Its thread-count pages, and which slots its live threads own
+        -- (Thread_Slots; changed with threadCount under lock).
+        threadCountFrames : Readiness_Pages.Count_Frames :=
+          Readiness_Pages.No_Count_Frames;
+        threadSlots : Thread_Slots.Slot_Set := [others => False];
 
         -- Which of the process's message-signaled device vectors fired
         -- since it last took the doorbell (Device_Vector_ABI layout). Set
@@ -1212,20 +1224,21 @@ package Process is
     --
     -- @param Process
     -- @param mapTo - Process virtual address that this page should be mapped to
-    -- @param storage - Linear-mapped address of the underlying storage allocated
-    --  for this page.
+    -- @param frame - the frame the process now owns (KERN-014: no kernel
+    --  address; the kernel writes into it only through Kernel_Window).
     -- @param flags - Page Table flags for this mapping.
     ---------------------------------------------------------------------------
     type Page_Allocation_Result is new Page_Allocation.Result;
 
-    -- Expected resource failures do not raise. On failure storage is null;
+    -- Expected resource failures do not raise. On failure frame is No_Frame;
     -- no data frame or list node is leaked, and no leaf mapping is published.
     -- Intermediate page tables may remain linked for reuse / normal teardown.
     -- Requires serialized address-space mutation. Local runtime calls have an
     -- execution pin and one executing member; privileged remote mapping paths
     -- still need a common mutation-lock audit. Shared threads remain disabled.
     procedure tryAddPage
-      (proc : in out Process; mapTo : System.Address; storage : out System.Address;
+      (proc : in out Process; mapTo : System.Address;
+       frame : out Process_Frames.Process_Frame;
        result : out Page_Allocation_Result;
        flags : Unsigned_64 := Virtmem.PG_USERDATA);
 
@@ -1379,8 +1392,19 @@ package Process is
     -- switchAddressSpace
     -- Given a process ID, make the corresponding entry in the addrtab the
     -- currently active table, changing the virtual memory address space in use.
+    -- With address-space tags (TLB_Context) the load keeps the process's
+    -- cached translations when this CPU last loaded them for its current
+    -- life. Called with interrupts disabled.
     ---------------------------------------------------------------------------
     procedure switchAddressSpace (pid : in ProcessID);
+
+    ---------------------------------------------------------------------------
+    -- restoreAddressSpace
+    -- An interrupt handler returning: load again the page tables it found in
+    -- CR3 (saved, as read), through the same tag bookkeeping. A process's
+    -- tables must still be the PID's (its thread is resuming, so it lives).
+    ---------------------------------------------------------------------------
+    procedure restoreAddressSpace (saved : in Unsigned_64);
 
     ---------------------------------------------------------------------------
     -- getParent
@@ -1400,6 +1424,9 @@ package Process is
                           expectedGeneration : Capabilities.Generation := 0)
                           return Boolean;
     procedure startReaper;
+    -- Boot-only, like startReaper: a kernel thread pinned to CPU 0 (the
+    -- system call census's reporter, Syscall_Census).
+    procedure startWorker (procStart : System.Address; name : ProcessName);
     procedure publish (pid : ProcessID);
 
     -- Builder-only rollback: PID is exclusively owned by construction, has
@@ -1442,17 +1469,28 @@ package Process is
     -- Per-process thread quota, the main thread included. Thread creation
     -- needs no capability; this bound keeps one process from exhausting the
     -- system's thread IDs and kernel stacks.
-    MAX_THREADS_PER_PROCESS : constant := 128;
+    -- One thread-count line each (Readiness_Publication.Maximum_Threads).
+    MAX_THREADS_PER_PROCESS : constant := Readiness_Publication.Maximum_Threads;
+
+    -- The count a thread without a line (a kernel thread, or one whose
+    -- process has no thread-count pages) increments; nobody reads it.
+    uncountedCalls : aliased Unsigned_64 := 0;
+
+    -- The process's own frames, in bytes, onto its readiness page: after
+    -- every change of its frame list, under the lock that change holds.
+    procedure publishOwnedBytes (pid : ProcessID);
 
     -- Start a thread in the calling process at entryPoint, with userStack
-    -- as its stack pointer, argument in RDI and fsBase as its FS base. At
-    -- exit the kernel stores zero to the 32-bit word at clearTidAddress
-    -- (unless 0) and futex-wakes it, so a joiner can wait on that word.
-    -- Returns the new thread, or NO_THREAD (invalid arguments, quota, no
-    -- memory, or the process is exiting).
+    -- as its stack pointer, argument in RDI, its thread-count slot in RSI
+    -- and fsBase as its FS base. At exit the kernel stores zero to the
+    -- 32-bit word at clearTidAddress (unless 0) and futex-wakes it, so a
+    -- joiner can wait on that word. Returns the new thread and its slot,
+    -- or NO_THREAD (invalid arguments, quota, no memory, or the process is
+    -- exiting).
     procedure createThread (entryPoint, userStack : System.Address;
                             argument, fsBase, clearTidAddress : Unsigned_64;
-                            tid : out ThreadID);
+                            tid : out ThreadID;
+                            slot : out Thread_Slots.Slot);
 
     -- End the calling thread. The main thread ending ends the process.
     procedure exitThread;

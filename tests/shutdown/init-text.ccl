@@ -4,7 +4,7 @@
 # @system/Recovery/com.cubit.text/ (never over notes.txt) and exits within
 # its grace. shutdown-standin is the TEST STAND-IN for acpi.svc's S5.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "shutdown-standin.app" (priority 5) (stop-stage power-tail)
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (platform-power approve-declared)
     (arguments (Standin_Parameters s5_sleep_type => 0)))

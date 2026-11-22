@@ -4,4 +4,7 @@
 (Executable_Manifest
   identity => "com.cubit.control-producer"
   version => "0.1.0"
-  requests => [(notification "ipc-test-registration" Notify_Access.Manage "registration")])
+  requests => [(notification "ipc-test-registration" Notify_Access.Manage "registration")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

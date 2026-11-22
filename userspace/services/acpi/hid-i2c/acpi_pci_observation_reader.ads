@@ -54,10 +54,12 @@ package ACPI_PCI_Observation_Reader with SPARK_Mode is
       Pending_Element, Pending_Dereference : Core.Values.Value_Handle := Core.Values.No_Value;
       Recovery_Needed : Boolean := False;
    end record;
-   -- Recognize the direct _HID, then _CID when an observed scalar HID does not match.
+   -- Recognize direct _HID, then _CID if _HID is absent or does not match.
+   -- Both absent is Observed/Unknown; lookup/evaluation/cleanup failures remain
+   -- explicit failures rather than being treated as missing identity.
    -- Compatible IDs may be scalar or a package of integer/string IDs; scans
    -- and reference resolution share the total evaluation/inspection budget.
-   -- Unknown is unresolved identity, not proof that this is not a root.
+   -- Unknown means no recognized PCI root ID was observed; it grants no hardware authority.
    -- No ancestor search, PCI defaults or hardware authority. Caller validates
    -- topology. On recovery, all three Pending handles require cleanup before
    -- further AML. Evaluators preserve retained ownership and never reset/reenter.

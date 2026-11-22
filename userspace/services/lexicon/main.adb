@@ -7,6 +7,7 @@
 --  service) uses the same channel, so there is no app-private API.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Channel_Servers;
 with CuBit.Control_Events;
@@ -120,6 +121,8 @@ procedure Main is
    Woke : Servers.Wake := (Kind => Servers.Work_Waiting, others => <>);
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("lexicon: starting" & LF);
    Servers.Configure
      (S, [1 => (Element => LC.Element,

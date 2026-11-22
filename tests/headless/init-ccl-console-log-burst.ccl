@@ -4,7 +4,7 @@
 # at the console returns all of them or typed gaps with exact counts
 # (tests/log-burst/check_serial.py).
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "log-burst-probe.app" (priority 5))
   (start "clock.svc" (priority 5))
   (start "display.svc" (priority 5))

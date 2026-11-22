@@ -43,11 +43,13 @@ project SPARKTLS_CuBit is
    --    bytes. That broke HMAC and the HMAC-DRBG on CPUs without SHA-NI, and
    --    SPARKTLS's DRBG self-test caught it on CuBit (reproduced with GNAT
    --    15.3 and 16.1). Applying it to all crates is the conservative choice.
-   --  * SSE is allowed, as upstream's x86-64 baseline assumes (the kernel
-   --    sets CR4.OSFXSR and restores FXSAVE state eagerly), and accelerated
-   --    units get upstream's instruction switches. AVX units run only after
-   --    CPUID and XCR0 dispatch, and CuBit does not enable AVX state yet.
-   Base := ("-O2", "-gnat2022", "-gnatp", "-fno-tree-vrp", "-gnatQ",
+   --  * Generic code targets x86-64-v3, CuBit's minimum CPU (the kernel
+   --    refuses older ones at boot; upstream's default is x86-64-v2). The
+   --    kernel enables AVX in XCR0 and saves user state eagerly with XSAVE.
+   --    Accelerated units get upstream's instruction switches and still run
+   --    only after CPUID and XCR0 dispatch; AVX-512 stays off because CuBit
+   --    does not enable its XCR0 state.
+   Base := ("-O2", "-march=x86-64-v3", "-gnat2022", "-gnatp", "-fno-tree-vrp", "-gnatQ",
             "-gnatw.X", "-gnatws", "-fomit-frame-pointer", "-mno-red-zone",
             "-fno-pic");
    AES_NI := ("-maes", "-mpclmul", "-mssse3");
@@ -68,4 +70,11 @@ project SPARKTLS_CuBit is
       for Switches ("sparktlscrypto-poly1305_avx512.adb") use Base & AVX512;
       for Switches ("sparktlscrypto-poly1305_avx512_ifma.adb") use Base & AVX512;
    end Compiler;
+   --  SPARKTLS's FIPS 140-3 module boundary (sparktls_fips_cubit.ld): every
+   --  program that links these crates gets it, as upstream's
+   --  Linker_Options do. The program's link must then run fips_inject.
+   package Linker is
+      for Linker_Options use
+        ("-Wl,-T," & Project'Project_Dir & "sparktls_fips_cubit.ld");
+   end Linker;
 end SPARKTLS_CuBit;

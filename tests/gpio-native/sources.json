@@ -37,7 +37,7 @@
     },
     {
       "path": "userspace/services/gpio/lib/gpio_community_park.adb",
-      "sha256": "afe4efb4d9fcf945eca1d1ab428937cb723e8723f58f61e68b3020081c5a65ea"
+      "sha256": "8e6bd362887ab99a165f1a807dfd790fcfa2658124a4273f9570487088f7a221"
     },
     {
       "path": "userspace/services/gpio/lib/gpio_community_park.ads",
@@ -124,7 +124,7 @@
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_clock.adb",
-      "sha256": "5c755127195fdd810924e47e02eba43588d80239e8a6e03e434affa7f87fd731"
+      "sha256": "5f91d1c93dd4381128a1395855e175b907e60229472300e66ce8a32f78ef21d3"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_clock.ads",
@@ -156,19 +156,19 @@
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_log.adb",
-      "sha256": "26c24b964eb3c6f8cced11d160314b185ad26fd321a0d6d771d4d1c6d51688b8"
+      "sha256": "6c23ed0bfca33bb30fe34995ba08080c1a358bea6b208c935971b37ef12891ee"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_log.ads",
-      "sha256": "ba2cffc010e1377f2962ef26dd2a8869dae38d9a4520bef1684a55d04e2fe828"
+      "sha256": "70234a6df52ec4e47da7a15e0871129b5a9c67217dde7b2c0adf532f245e0872"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_pump.adb",
-      "sha256": "b093a38bc2bc8b9042a346ca64ed3e861edd162dde275d2cc388622f01623ba2"
+      "sha256": "174aecbbbfcc2a79764b6231de66230147245e09ab5ab086e8e095ce7679f72f"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_pump.ads",
-      "sha256": "698d76a80d715bb7c7e9464bc8519d16e18f54b965786be612da55797392f3a5"
+      "sha256": "c550874730ced5067fd8a4e2c6b20d3452446e9996f5de92b9fcc82907679132"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_request_io.adb",
@@ -196,7 +196,7 @@
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_wait.adb",
-      "sha256": "7780bf7b9812166e58d1dadfff51f3178f42f472573cb7b68050defa6e7a5441"
+      "sha256": "26fe235ec052be37475fca4ca3ab6c9c99e8b01ffec0f486c9bc573464127087"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_wait.ads",
@@ -209,14 +209,6 @@
     {
       "path": "userspace/services/gpio/lib/gpio_pin_leases.ads",
       "sha256": "ce2040ed62ac727418b0b2a4cfbcd92981df4a5072857faeea938dc89a448bb4"
-    },
-    {
-      "path": "userspace/services/gpio/lib/gpio_polling_loop.adb",
-      "sha256": "1b9fdb08703be6edcb2e3fd2eb80e4efec8c8e41d345e75ae14068ac1089f958"
-    },
-    {
-      "path": "userspace/services/gpio/lib/gpio_polling_loop.ads",
-      "sha256": "a3c8707e768a9179982384d3024febe89d67514a1947330603687a3de21a9b4d"
     },
     {
       "path": "userspace/services/gpio/lib/gpio_request_dispatch.adb",
@@ -252,11 +244,11 @@
     },
     {
       "path": "userspace/services/gpio/lib/intel_adln_gpio.adb",
-      "sha256": "3c9ce5a4f7e615c1574c661cfa037d7bedf4914383d081f6f334e8db063bd159"
+      "sha256": "74116b564512250c8ab0f5df99416aa737ec1f0b7eb3fcd542bd372e2036d788"
     },
     {
       "path": "userspace/services/gpio/lib/intel_adln_gpio.ads",
-      "sha256": "ae24574897c996d4116cad9d0d222ba5bffede7b29eef2c3a9a1e116cdca8cf1"
+      "sha256": "4dc2283bf20ace8a72db2bb307ed113234baa6998b6fb613ef74a2c8e2cf5622"
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_controller.adb",
@@ -276,15 +268,15 @@
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.adb",
-      "sha256": "26dc73d667b24a6626bb20860cd405b1b1468f239c5905881717290459a6245e"
+      "sha256": "857c484a6e32452fcb03eb3657252d7e2554b0f3052d0f84e4b0fad4b562288d"
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.ads",
-      "sha256": "c515aca26679c5be38b4951d48c7611278ce7639c5cace6567eda378f868d3f8"
+      "sha256": "d8dad407c9cf2949137a34f424477d762472dd2847211d50bcdca709f646c96d"
     },
     {
       "path": "userspace/services/gpio/main.adb",
-      "sha256": "9162e83132e8db7b5c5c8e311cfe54e32aa9cc44610936ee05e845ee8ce237ae"
+      "sha256": "0ed576f16cd4f6dbc7824b9ad01b103e36dc1abca313938e1498c46c0ae5fea7"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_policy.ads",
@@ -321,6 +313,14 @@
     {
       "path": "userspace/services/gpio/lib/gpio_irq_turn.ads",
       "sha256": "367445f9b275687157a3484537d25197ff7e29c6ca8e65136aa4dc4101897fc6"
+    },
+    {
+      "path": "userspace/services/gpio/native/gpio_main_entry.ads",
+      "sha256": "608a99765f62dae59db680bad738e489dfe118a2b155d0b3022cc4dfa65e65db"
+    },
+    {
+      "path": "userspace/services/gpio/native/gpio_main_entry.adb",
+      "sha256": "0bddc51fa98a3dcd584769b3d3a84576059f48562f6dc99441b217bc18d87720"
     }
   ],
   "suites": {
@@ -373,7 +373,7 @@
         },
         {
           "path": "tests/gpio-native/models/main/cubit-messages.adb",
-          "sha256": "a7ded1a0cfae202be7f27cfee35418f0e6f43492e03f56ad4d51134507e4962f",
+          "sha256": "b0386e1018b515a981584e232bb9330bb00fdf6a758cdf7f927bb6f0055d9d1a",
           "kind": "test-or-runtime-fixture"
         },
         {
@@ -408,7 +408,7 @@
         },
         {
           "path": "tests/gpio-native/models/main/gpio_native_communities.adb",
-          "sha256": "29c6e3806f4cef8ce7005c35c9d3cfeb4e466f5701b75a063786685522e4c569",
+          "sha256": "705ba5c7f1ea528f779708cd37a2997a9e85f505d7b7640eba8c3152aeac3f61",
           "kind": "modeled-boundary"
         },
         {
@@ -418,7 +418,7 @@
         },
         {
           "path": "tests/gpio-native/models/main/gpio_native_pump.adb",
-          "sha256": "87506703506fe3e93d7c37a582196199a2cd454312a013cc512f0531d3c15d87",
+          "sha256": "e8126e4ae2ba2674622ecb554ddce5887af5f036b002a17ffa7b77f0d187e6d2",
           "kind": "modeled-boundary"
         },
         {
@@ -433,12 +433,12 @@
         },
         {
           "path": "tests/gpio-native/models/main/main_model.ads",
-          "sha256": "dfdca20dd15fce6e4592e2769755e50a9e8e290ebd6bdd7f1390f04ba3910bdf",
+          "sha256": "ece356d3c584e66dcda61911dcb01f9805732fec63d67d5d0a09204fe8df48b6",
           "kind": "test-or-runtime-fixture"
         },
         {
           "path": "tests/gpio-native/models/main/main_tests.adb",
-          "sha256": "6927df7d3a202cdb3469b5655fb2c985f8ce9a2a18304d3d1163b6564f797de8",
+          "sha256": "ceda2380acdc214e4bcf244a1015d4a5df9430278b8752ef837c94f3db112b91",
           "kind": "test-or-runtime-fixture"
         },
         {
@@ -511,7 +511,7 @@
         },
         {
           "path": "userspace/services/gpio/lib/gpio_community_park.adb",
-          "sha256": "afe4efb4d9fcf945eca1d1ab428937cb723e8723f58f61e68b3020081c5a65ea",
+          "sha256": "8e6bd362887ab99a165f1a807dfd790fcfa2658124a4273f9570487088f7a221",
           "kind": "production"
         },
         {
@@ -581,16 +581,6 @@
           "kind": "production"
         },
         {
-          "path": "userspace/services/gpio/lib/gpio_polling_loop.adb",
-          "sha256": "1b9fdb08703be6edcb2e3fd2eb80e4efec8c8e41d345e75ae14068ac1089f958",
-          "kind": "production"
-        },
-        {
-          "path": "userspace/services/gpio/lib/gpio_polling_loop.ads",
-          "sha256": "a3c8707e768a9179982384d3024febe89d67514a1947330603687a3de21a9b4d",
-          "kind": "production"
-        },
-        {
           "path": "userspace/services/gpio/lib/gpio_request_dispatch.adb",
           "sha256": "6dab2d979a5275aec7d939f16ebe55a26fd2872693c1fe1fde8043013e7a61e5"
         },
@@ -630,12 +620,12 @@
         },
         {
           "path": "userspace/services/gpio/lib/intel_adln_gpio.adb",
-          "sha256": "3c9ce5a4f7e615c1574c661cfa037d7bedf4914383d081f6f334e8db063bd159",
+          "sha256": "74116b564512250c8ab0f5df99416aa737ec1f0b7eb3fcd542bd372e2036d788",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/lib/intel_adln_gpio.ads",
-          "sha256": "ae24574897c996d4116cad9d0d222ba5bffede7b29eef2c3a9a1e116cdca8cf1",
+          "sha256": "4dc2283bf20ace8a72db2bb307ed113234baa6998b6fb613ef74a2c8e2cf5622",
           "kind": "production"
         },
         {
@@ -660,17 +650,17 @@
         },
         {
           "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.adb",
-          "sha256": "26dc73d667b24a6626bb20860cd405b1b1468f239c5905881717290459a6245e",
+          "sha256": "857c484a6e32452fcb03eb3657252d7e2554b0f3052d0f84e4b0fad4b562288d",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.ads",
-          "sha256": "c515aca26679c5be38b4951d48c7611278ce7639c5cace6567eda378f868d3f8",
+          "sha256": "d8dad407c9cf2949137a34f424477d762472dd2847211d50bcdca709f646c96d",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/main.adb",
-          "sha256": "9162e83132e8db7b5c5c8e311cfe54e32aa9cc44610936ee05e845ee8ce237ae",
+          "sha256": "0ed576f16cd4f6dbc7824b9ad01b103e36dc1abca313938e1498c46c0ae5fea7",
           "kind": "production"
         },
         {
@@ -691,7 +681,7 @@
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_clock.adb",
-          "sha256": "5c755127195fdd810924e47e02eba43588d80239e8a6e03e434affa7f87fd731",
+          "sha256": "5f91d1c93dd4381128a1395855e175b907e60229472300e66ce8a32f78ef21d3",
           "kind": "production"
         },
         {
@@ -719,12 +709,12 @@
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_log.adb",
-          "sha256": "26c24b964eb3c6f8cced11d160314b185ad26fd321a0d6d771d4d1c6d51688b8",
+          "sha256": "6c23ed0bfca33bb30fe34995ba08080c1a358bea6b208c935971b37ef12891ee",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_log.ads",
-          "sha256": "ba2cffc010e1377f2962ef26dd2a8869dae38d9a4520bef1684a55d04e2fe828",
+          "sha256": "70234a6df52ec4e47da7a15e0871129b5a9c67217dde7b2c0adf532f245e0872",
           "kind": "production"
         },
         {
@@ -755,7 +745,7 @@
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_wait.adb",
-          "sha256": "7780bf7b9812166e58d1dadfff51f3178f42f472573cb7b68050defa6e7a5441",
+          "sha256": "26fe235ec052be37475fca4ca3ab6c9c99e8b01ffec0f486c9bc573464127087",
           "kind": "production"
         },
         {
@@ -777,11 +767,11 @@
         },
         {
           "path": "shared/launch/launch_configuration.ads",
-          "sha256": "c107c322fefaf11f6179134ebdb0f31d2ef1ddf11aeee07aef8f83e5aaf2f97b"
+          "sha256": "57c36ff7cbeb69c52d99d5aeb2752f99fb144ca94b1a8d9b29dbb44e1a02354f"
         },
         {
           "path": "shared/launch/launch_configuration.adb",
-          "sha256": "5c462efca43e088b75efec4ea8b7ac029c7471808f54693fee697bf9c32dddfc"
+          "sha256": "d5d384ceae92b169d651d2fb4ca66d7b71cd504a5c80de00ab074566760de7a0"
         },
         {
           "path": "tests/gpio-native/models/main/cubit-launch_configurations.ads",
@@ -834,10 +824,36 @@
         {
           "path": "shared/interrupts/interrupt_line_abi.adb",
           "sha256": "321aec5ca82166190674a8c0b7382587a1af62d954c17b85fbd010e92ccc8151"
+        },
+        {
+          "path": "tests/gpio-native/models/main/cubit-monotonic.adb",
+          "sha256": "5b8b8dcdc2f8451aee8c1969631a97306a4dec6d8c0c728e5f89a9c6df630021",
+          "kind": "test-or-runtime-fixture"
+        },
+        {
+          "path": "tests/gpio-native/models/main/cubit-monotonic.ads",
+          "sha256": "6ae7dd0efc1e45e4340d0e396100eee8e55a2cd025fd370b6f2412d246067542",
+          "kind": "test-or-runtime-fixture"
+        },
+        {
+          "path": "userspace/services/gpio/native/gpio_main_entry.ads",
+          "sha256": "608a99765f62dae59db680bad738e489dfe118a2b155d0b3022cc4dfa65e65db"
+        },
+        {
+          "path": "userspace/services/gpio/native/gpio_main_entry.adb",
+          "sha256": "0bddc51fa98a3dcd584769b3d3a84576059f48562f6dc99441b217bc18d87720"
+        },
+        {
+          "path": "tests/gpio-native/models/main/cubit-waits.ads",
+          "sha256": "6b1e561ab127259e5a5da2ff5fdf470aa1f704aba950e103b6f16bc4373078f9"
+        },
+        {
+          "path": "tests/gpio-native/models/main/cubit-waits.adb",
+          "sha256": "9d5013ccded4b59e562370cc88925cda035f6bc984ec7196a4f5ec5c92d53a93"
         }
       ],
       "engine": "tests/gpio-native/engines/main.mjs",
-      "engine_sha256": "aaba056298c0ab2296bbaed6b98604d9c1c7bbe363ce5d3c296b8381b8b0ccf3",
+      "engine_sha256": "843008b52691470f6e55fcfa6ef351ddca4a8a8f38c3fd245d6babc09311074e",
       "project": null
     },
     "registry": {
@@ -1087,7 +1103,7 @@
         },
         {
           "path": "userspace/services/gpio/lib/gpio_community_park.adb",
-          "sha256": "afe4efb4d9fcf945eca1d1ab428937cb723e8723f58f61e68b3020081c5a65ea",
+          "sha256": "8e6bd362887ab99a165f1a807dfd790fcfa2658124a4273f9570487088f7a221",
           "kind": "production"
         },
         {
@@ -1161,14 +1177,14 @@
           "kind": "production"
         },
         {
-          "path": "userspace/services/gpio/lib/gpio_polling_loop.adb",
+          "path": "tests/gpio-native/models/polling/gpio_polling_loop.adb",
           "sha256": "1b9fdb08703be6edcb2e3fd2eb80e4efec8c8e41d345e75ae14068ac1089f958",
-          "kind": "production"
+          "kind": "fixture"
         },
         {
-          "path": "userspace/services/gpio/lib/gpio_polling_loop.ads",
+          "path": "tests/gpio-native/models/polling/gpio_polling_loop.ads",
           "sha256": "a3c8707e768a9179982384d3024febe89d67514a1947330603687a3de21a9b4d",
-          "kind": "production"
+          "kind": "fixture"
         },
         {
           "path": "userspace/services/gpio/lib/gpio_request_dispatch.adb",
@@ -1210,12 +1226,12 @@
         },
         {
           "path": "userspace/services/gpio/lib/intel_adln_gpio.adb",
-          "sha256": "3c9ce5a4f7e615c1574c661cfa037d7bedf4914383d081f6f334e8db063bd159",
+          "sha256": "74116b564512250c8ab0f5df99416aa737ec1f0b7eb3fcd542bd372e2036d788",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/lib/intel_adln_gpio.ads",
-          "sha256": "ae24574897c996d4116cad9d0d222ba5bffede7b29eef2c3a9a1e116cdca8cf1",
+          "sha256": "4dc2283bf20ace8a72db2bb307ed113234baa6998b6fb613ef74a2c8e2cf5622",
           "kind": "production"
         },
         {
@@ -1240,12 +1256,12 @@
         },
         {
           "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.adb",
-          "sha256": "26dc73d667b24a6626bb20860cd405b1b1468f239c5905881717290459a6245e",
+          "sha256": "857c484a6e32452fcb03eb3657252d7e2554b0f3052d0f84e4b0fad4b562288d",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.ads",
-          "sha256": "c515aca26679c5be38b4951d48c7611278ce7639c5cace6567eda378f868d3f8",
+          "sha256": "d8dad407c9cf2949137a34f424477d762472dd2847211d50bcdca709f646c96d",
           "kind": "production"
         },
         {
@@ -1275,7 +1291,7 @@
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_clock.adb",
-          "sha256": "5c755127195fdd810924e47e02eba43588d80239e8a6e03e434affa7f87fd731",
+          "sha256": "5f91d1c93dd4381128a1395855e175b907e60229472300e66ce8a32f78ef21d3",
           "kind": "production"
         },
         {
@@ -1315,12 +1331,12 @@
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_pump.adb",
-          "sha256": "b093a38bc2bc8b9042a346ca64ed3e861edd162dde275d2cc388622f01623ba2",
+          "sha256": "174aecbbbfcc2a79764b6231de66230147245e09ab5ab086e8e095ce7679f72f",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_pump.ads",
-          "sha256": "698d76a80d715bb7c7e9464bc8519d16e18f54b965786be612da55797392f3a5",
+          "sha256": "c550874730ced5067fd8a4e2c6b20d3452446e9996f5de92b9fcc82907679132",
           "kind": "production"
         },
         {
@@ -1355,7 +1371,7 @@
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_wait.adb",
-          "sha256": "7780bf7b9812166e58d1dadfff51f3178f42f472573cb7b68050defa6e7a5441",
+          "sha256": "26fe235ec052be37475fca4ca3ab6c9c99e8b01ffec0f486c9bc573464127087",
           "kind": "production"
         },
         {
@@ -1378,6 +1394,16 @@
         {
           "path": "userspace/services/gpio/lib/gpio_irq_turn.ads",
           "sha256": "367445f9b275687157a3484537d25197ff7e29c6ca8e65136aa4dc4101897fc6"
+        },
+        {
+          "path": "tests/gpio-native/models/registry/cubit-monotonic.adb",
+          "sha256": "5b8b8dcdc2f8451aee8c1969631a97306a4dec6d8c0c728e5f89a9c6df630021",
+          "kind": "test-or-runtime-fixture"
+        },
+        {
+          "path": "tests/gpio-native/models/registry/cubit-monotonic.ads",
+          "sha256": "6ae7dd0efc1e45e4340d0e396100eee8e55a2cd025fd370b6f2412d246067542",
+          "kind": "test-or-runtime-fixture"
         }
       ],
       "engine": "tests/gpio-native/engines/registry.mjs",
@@ -1430,7 +1456,7 @@
         },
         {
           "path": "userspace/services/gpio/lib/gpio_community_park.adb",
-          "sha256": "afe4efb4d9fcf945eca1d1ab428937cb723e8723f58f61e68b3020081c5a65ea",
+          "sha256": "8e6bd362887ab99a165f1a807dfd790fcfa2658124a4273f9570487088f7a221",
           "kind": "production"
         },
         {
@@ -1492,12 +1518,14 @@
           "sha256": "ce2040ed62ac727418b0b2a4cfbcd92981df4a5072857faeea938dc89a448bb4"
         },
         {
-          "path": "userspace/services/gpio/lib/gpio_polling_loop.adb",
-          "sha256": "1b9fdb08703be6edcb2e3fd2eb80e4efec8c8e41d345e75ae14068ac1089f958"
+          "path": "tests/gpio-native/models/polling/gpio_polling_loop.adb",
+          "sha256": "1b9fdb08703be6edcb2e3fd2eb80e4efec8c8e41d345e75ae14068ac1089f958",
+          "kind": "fixture"
         },
         {
-          "path": "userspace/services/gpio/lib/gpio_polling_loop.ads",
-          "sha256": "a3c8707e768a9179982384d3024febe89d67514a1947330603687a3de21a9b4d"
+          "path": "tests/gpio-native/models/polling/gpio_polling_loop.ads",
+          "sha256": "a3c8707e768a9179982384d3024febe89d67514a1947330603687a3de21a9b4d",
+          "kind": "fixture"
         },
         {
           "path": "userspace/services/gpio/lib/gpio_request_dispatch.adb",
@@ -1533,12 +1561,12 @@
         },
         {
           "path": "userspace/services/gpio/lib/intel_adln_gpio.adb",
-          "sha256": "3c9ce5a4f7e615c1574c661cfa037d7bedf4914383d081f6f334e8db063bd159",
+          "sha256": "74116b564512250c8ab0f5df99416aa737ec1f0b7eb3fcd542bd372e2036d788",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/lib/intel_adln_gpio.ads",
-          "sha256": "ae24574897c996d4116cad9d0d222ba5bffede7b29eef2c3a9a1e116cdca8cf1",
+          "sha256": "4dc2283bf20ace8a72db2bb307ed113234baa6998b6fb613ef74a2c8e2cf5622",
           "kind": "production"
         },
         {
@@ -1563,17 +1591,22 @@
         },
         {
           "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.adb",
-          "sha256": "26dc73d667b24a6626bb20860cd405b1b1468f239c5905881717290459a6245e",
+          "sha256": "857c484a6e32452fcb03eb3657252d7e2554b0f3052d0f84e4b0fad4b562288d",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.ads",
-          "sha256": "c515aca26679c5be38b4951d48c7611278ce7639c5cace6567eda378f868d3f8",
+          "sha256": "d8dad407c9cf2949137a34f424477d762472dd2847211d50bcdca709f646c96d",
           "kind": "production"
+        },
+        {
+          "path": "tests/gpio-native/models/slots/locked_pad_tests.adb",
+          "sha256": "58e12f4805f969e1d1d765e1a8f3f5f2606ac9fc6592d3b6aae7a2157269ac12",
+          "kind": "fixture"
         }
       ],
       "engine": "tests/gpio-native/engines/slots.mjs",
-      "engine_sha256": "5d96e07370394d68c2ecb8e921ac3696179e40ac6438900490db6547fab8edd5",
+      "engine_sha256": "4ca6d95caa3346577ca7732e93baadbff5bd291d27cec9a8ce081ad6b16231b7",
       "project": null
     },
     "park": {
@@ -1585,7 +1618,7 @@
         },
         {
           "path": "tests/gpio-native/models/park/park_tests.adb",
-          "sha256": "02b54f8bfdcd7ded35374aecb866aaa1bd6448d116baf363f9a0d25af9f0188b",
+          "sha256": "670a68912f24d6b37cd4b7cb46e578a641bf0d83b53b4a586113de53dc7f7a95",
           "kind": "test-or-runtime-fixture"
         },
         {
@@ -1614,7 +1647,7 @@
         },
         {
           "path": "userspace/services/gpio/lib/gpio_community_park.adb",
-          "sha256": "afe4efb4d9fcf945eca1d1ab428937cb723e8723f58f61e68b3020081c5a65ea",
+          "sha256": "8e6bd362887ab99a165f1a807dfd790fcfa2658124a4273f9570487088f7a221",
           "kind": "production"
         },
         {
@@ -1678,12 +1711,14 @@
           "sha256": "ce2040ed62ac727418b0b2a4cfbcd92981df4a5072857faeea938dc89a448bb4"
         },
         {
-          "path": "userspace/services/gpio/lib/gpio_polling_loop.adb",
-          "sha256": "1b9fdb08703be6edcb2e3fd2eb80e4efec8c8e41d345e75ae14068ac1089f958"
+          "path": "tests/gpio-native/models/polling/gpio_polling_loop.adb",
+          "sha256": "1b9fdb08703be6edcb2e3fd2eb80e4efec8c8e41d345e75ae14068ac1089f958",
+          "kind": "fixture"
         },
         {
-          "path": "userspace/services/gpio/lib/gpio_polling_loop.ads",
-          "sha256": "a3c8707e768a9179982384d3024febe89d67514a1947330603687a3de21a9b4d"
+          "path": "tests/gpio-native/models/polling/gpio_polling_loop.ads",
+          "sha256": "a3c8707e768a9179982384d3024febe89d67514a1947330603687a3de21a9b4d",
+          "kind": "fixture"
         },
         {
           "path": "userspace/services/gpio/lib/gpio_request_dispatch.adb",
@@ -1719,12 +1754,12 @@
         },
         {
           "path": "userspace/services/gpio/lib/intel_adln_gpio.adb",
-          "sha256": "3c9ce5a4f7e615c1574c661cfa037d7bedf4914383d081f6f334e8db063bd159",
+          "sha256": "74116b564512250c8ab0f5df99416aa737ec1f0b7eb3fcd542bd372e2036d788",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/lib/intel_adln_gpio.ads",
-          "sha256": "ae24574897c996d4116cad9d0d222ba5bffede7b29eef2c3a9a1e116cdca8cf1",
+          "sha256": "4dc2283bf20ace8a72db2bb307ed113234baa6998b6fb613ef74a2c8e2cf5622",
           "kind": "production"
         },
         {
@@ -1747,12 +1782,12 @@
         },
         {
           "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.adb",
-          "sha256": "26dc73d667b24a6626bb20860cd405b1b1468f239c5905881717290459a6245e",
+          "sha256": "857c484a6e32452fcb03eb3657252d7e2554b0f3052d0f84e4b0fad4b562288d",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.ads",
-          "sha256": "c515aca26679c5be38b4951d48c7611278ce7639c5cace6567eda378f868d3f8",
+          "sha256": "d8dad407c9cf2949137a34f424477d762472dd2847211d50bcdca709f646c96d",
           "kind": "production"
         }
       ],
@@ -2005,7 +2040,7 @@
         },
         {
           "path": "userspace/services/gpio/lib/gpio_community_park.adb",
-          "sha256": "afe4efb4d9fcf945eca1d1ab428937cb723e8723f58f61e68b3020081c5a65ea",
+          "sha256": "8e6bd362887ab99a165f1a807dfd790fcfa2658124a4273f9570487088f7a221",
           "kind": "production"
         },
         {
@@ -2079,14 +2114,14 @@
           "kind": "production"
         },
         {
-          "path": "userspace/services/gpio/lib/gpio_polling_loop.adb",
+          "path": "tests/gpio-native/models/polling/gpio_polling_loop.adb",
           "sha256": "1b9fdb08703be6edcb2e3fd2eb80e4efec8c8e41d345e75ae14068ac1089f958",
-          "kind": "production"
+          "kind": "fixture"
         },
         {
-          "path": "userspace/services/gpio/lib/gpio_polling_loop.ads",
+          "path": "tests/gpio-native/models/polling/gpio_polling_loop.ads",
           "sha256": "a3c8707e768a9179982384d3024febe89d67514a1947330603687a3de21a9b4d",
-          "kind": "production"
+          "kind": "fixture"
         },
         {
           "path": "userspace/services/gpio/lib/gpio_request_dispatch.adb",
@@ -2128,12 +2163,12 @@
         },
         {
           "path": "userspace/services/gpio/lib/intel_adln_gpio.adb",
-          "sha256": "3c9ce5a4f7e615c1574c661cfa037d7bedf4914383d081f6f334e8db063bd159",
+          "sha256": "74116b564512250c8ab0f5df99416aa737ec1f0b7eb3fcd542bd372e2036d788",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/lib/intel_adln_gpio.ads",
-          "sha256": "ae24574897c996d4116cad9d0d222ba5bffede7b29eef2c3a9a1e116cdca8cf1",
+          "sha256": "4dc2283bf20ace8a72db2bb307ed113234baa6998b6fb613ef74a2c8e2cf5622",
           "kind": "production"
         },
         {
@@ -2158,12 +2193,12 @@
         },
         {
           "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.adb",
-          "sha256": "26dc73d667b24a6626bb20860cd405b1b1468f239c5905881717290459a6245e",
+          "sha256": "857c484a6e32452fcb03eb3657252d7e2554b0f3052d0f84e4b0fad4b562288d",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.ads",
-          "sha256": "c515aca26679c5be38b4951d48c7611278ce7639c5cace6567eda378f868d3f8",
+          "sha256": "d8dad407c9cf2949137a34f424477d762472dd2847211d50bcdca709f646c96d",
           "kind": "production"
         },
         {
@@ -2193,7 +2228,7 @@
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_clock.adb",
-          "sha256": "5c755127195fdd810924e47e02eba43588d80239e8a6e03e434affa7f87fd731",
+          "sha256": "5f91d1c93dd4381128a1395855e175b907e60229472300e66ce8a32f78ef21d3",
           "kind": "production"
         },
         {
@@ -2233,12 +2268,12 @@
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_pump.adb",
-          "sha256": "b093a38bc2bc8b9042a346ca64ed3e861edd162dde275d2cc388622f01623ba2",
+          "sha256": "174aecbbbfcc2a79764b6231de66230147245e09ab5ab086e8e095ce7679f72f",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_pump.ads",
-          "sha256": "698d76a80d715bb7c7e9464bc8519d16e18f54b965786be612da55797392f3a5",
+          "sha256": "c550874730ced5067fd8a4e2c6b20d3452446e9996f5de92b9fcc82907679132",
           "kind": "production"
         },
         {
@@ -2273,7 +2308,7 @@
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_wait.adb",
-          "sha256": "7780bf7b9812166e58d1dadfff51f3178f42f472573cb7b68050defa6e7a5441",
+          "sha256": "26fe235ec052be37475fca4ca3ab6c9c99e8b01ffec0f486c9bc573464127087",
           "kind": "production"
         },
         {
@@ -2316,6 +2351,16 @@
         {
           "path": "userspace/services/gpio/lib/gpio_irq_notices.ads",
           "sha256": "d5059315c4c916309913221adfc445aa7ee5cfa33ada9fe16731368b77a58f98"
+        },
+        {
+          "path": "tests/gpio-native/models/registry/cubit-monotonic.adb",
+          "sha256": "5b8b8dcdc2f8451aee8c1969631a97306a4dec6d8c0c728e5f89a9c6df630021",
+          "kind": "test-or-runtime-fixture"
+        },
+        {
+          "path": "tests/gpio-native/models/registry/cubit-monotonic.ads",
+          "sha256": "6ae7dd0efc1e45e4340d0e396100eee8e55a2cd025fd370b6f2412d246067542",
+          "kind": "test-or-runtime-fixture"
         }
       ],
       "engine": "tests/gpio-native/engines/irq.mjs",
@@ -2326,7 +2371,7 @@
   "proof": [
     {
       "path": "userspace/services/gpio/lib/gpio_community_park.adb",
-      "sha256": "afe4efb4d9fcf945eca1d1ab428937cb723e8723f58f61e68b3020081c5a65ea",
+      "sha256": "8e6bd362887ab99a165f1a807dfd790fcfa2658124a4273f9570487088f7a221",
       "kind": "production"
     },
     {
@@ -2356,12 +2401,12 @@
     },
     {
       "path": "userspace/services/gpio/lib/intel_adln_gpio.adb",
-      "sha256": "3c9ce5a4f7e615c1574c661cfa037d7bedf4914383d081f6f334e8db063bd159",
+      "sha256": "74116b564512250c8ab0f5df99416aa737ec1f0b7eb3fcd542bd372e2036d788",
       "kind": "production"
     },
     {
       "path": "userspace/services/gpio/lib/intel_adln_gpio.ads",
-      "sha256": "ae24574897c996d4116cad9d0d222ba5bffede7b29eef2c3a9a1e116cdca8cf1",
+      "sha256": "4dc2283bf20ace8a72db2bb307ed113234baa6998b6fb613ef74a2c8e2cf5622",
       "kind": "production"
     },
     {
@@ -2376,12 +2421,12 @@
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.adb",
-      "sha256": "26dc73d667b24a6626bb20860cd405b1b1468f239c5905881717290459a6245e",
+      "sha256": "857c484a6e32452fcb03eb3657252d7e2554b0f3052d0f84e4b0fad4b562288d",
       "kind": "production"
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.ads",
-      "sha256": "c515aca26679c5be38b4951d48c7611278ce7639c5cace6567eda378f868d3f8",
+      "sha256": "d8dad407c9cf2949137a34f424477d762472dd2847211d50bcdca709f646c96d",
       "kind": "production"
     },
     {

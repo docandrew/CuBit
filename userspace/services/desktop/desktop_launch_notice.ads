@@ -8,7 +8,7 @@
 --
 --  @description
 --  Two sources, neither a new call:
---  - procmgr's OP_SPAWN error reply names a typed reason
+--  - procmgr's OP_LAUNCH error reply names a typed reason
 --    (CuBit.Launch_Arguments.Launch_Failure): Show_Refusal.
 --  - A child procmgr started can still end before it is useful. The kernel
 --    tells its parent (Desktop) asynchronously (CuBit.Child_Exits); Desktop

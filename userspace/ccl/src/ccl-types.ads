@@ -15,8 +15,9 @@ package CCL.Types with SPARK_Mode is
    --  fs.read, programs.* (Program_State, Program_Entry and its list),
    --  logs.* retention and tallies (LOG-005) and machine.* (PWR-003); a
    --  session keeps 24. 192 (stopgap, MET-002): metrics.* adds 14; 9 to
-   --  spare. Drop with registries sized by their input.
-   Maximum_Declarations : constant := 192;
+   --  spare. 216 (stopgap, DBG-001): debug.* adds 20; 13 to spare. Drop
+   --  with registries sized by their input.
+   Maximum_Declarations : constant := 216;
    Maximum_Components : constant := 16;
    --  Cells one value image holds (CCL.Objects.Image): as many as fit its
    --  16 KiB beside the header and the text (48 + 504 * 16 + 8192 bytes),

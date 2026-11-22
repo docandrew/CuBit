@@ -19,6 +19,7 @@ with CuBit.Wake_Words;
 with CuBit.Readiness;
 with CuBit.Channel_Bells;
 with Wait_ABI;
+with Readiness_Publication;
 with CuBit.System_Facts;
 with CuBit.Handles.Control;
 with CuBit.Handles.Devices;
@@ -421,8 +422,14 @@ package body CuBit.Messages is
    function Registered_Driver (Driver : Unsigned_64) return Process_ID is
      (From_Word (CuBit.System_Facts.Registered (Driver)));
 
-   function Own_Process return Process_ID is
-     (From_Word (syscall (SYSCALL_GETPID)));
+   Own_Identity : Unsigned_64
+     with Import, Volatile, Atomic,
+          Address => System.Storage_Elements.To_Address
+            (Readiness_Publication.Identity_Address);
+
+   function Own_Process_Word return Unsigned_64 is (Own_Identity);
+
+   function Own_Process return Process_ID is (From_Word (Own_Identity));
 
    function killProcess
      (pid : Process_ID; authority : CuBit.Handles.Process) return Unsigned_64 is
@@ -432,12 +439,35 @@ package body CuBit.Messages is
      (driver : Unsigned_64; authority : CuBit.Handles.Notification) return Unsigned_64 is
      (CuBit.Handles.Devices.Register (driver, authority));
 
+   Sink : Console_Sink := null;
+
+   procedure Set_Console_Sink (Sink : not null Console_Sink) is
+   begin
+      Messages.Sink := Sink;
+   end Set_Console_Sink;
+
+   function Console_Routed return Boolean is (Sink /= null);
+
    procedure debugPrint (str : String) is
       ignore : Unsigned_64;
    begin
-      ignore :=
-         syscall (SYSCALL_WRITE, STDOUT, toNum (str'Address), str'Length);
+      if Sink /= null then
+         Sink (str);
+      else
+         ignore :=
+            syscall (SYSCALL_WRITE, STDOUT, toNum (str'Address), str'Length);
+      end if;
    end debugPrint;
+
+   procedure Console_Put (Text : System.Address; Length : Unsigned_64) is
+      Bounded : constant Natural :=
+        (if Length > Unsigned_64 (Natural'Last) then Natural'Last else Natural (Length));
+      Item : constant String (1 .. Bounded) with Import, Address => Text;
+   begin
+      if Bounded > 0 then
+         debugPrint (Item);
+      end if;
+   end Console_Put;
 
    --  saveReplyCap
    --  SAVE_REPLY_CAP: RDI=destSlot

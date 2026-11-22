@@ -3,5 +3,8 @@
 (Executable_Manifest
   identity => "com.cubit.test.supervision-check"
   version => "1"
-  requests => [(service "process-manager" "process-manager")]
+  requests => [(service "process-manager" "process-manager")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"]
   may_launch => [(Launch "supervision-child.app")])

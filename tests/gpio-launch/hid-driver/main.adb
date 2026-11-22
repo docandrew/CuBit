@@ -18,6 +18,7 @@ with CuBit.Process_IDs;
 with Fixture_Probe;
 with GPIO_Control_Wire;
 with Launch_Configuration;
+with CuBit.Monotonic;
 
 procedure Main is
    package P renames Parameters;
@@ -117,7 +118,7 @@ begin
          Seen : Boolean := False;
          Waited : Activity_Result;
       begin
-         while not Seen and then syscall (SYSCALL_GETTIME) < Deadline loop
+         while not Seen and then CuBit.Monotonic.Milliseconds < Deadline loop
             while not Seen and then Poll_Event (Event, Publisher) loop
                Seen := Event.tag.label = GPIO_Control_Wire.OP_GPIO_EVENT
                  and then Controller.Current and then Publisher = CuBit.Process_IDs.From_Word (Controller.Object);

@@ -2,24 +2,91 @@
 """Fixed copies of crates Servo depends on, for x86_64-unknown-cubit.
 
 Each fix is one of:
+- a fork (FORKED): the crate is Penny's fork at its pinned commit (mozjs_sys);
 - cubitize: the crate only describes the Linux/musl C ABI, which the CuBit
   libc implements; target_os = "cubit" takes its Linux arms.
 - edits: exact, asserted replacements, each with its reason.
-Crates are copied from the cargo registry into userspace/rust/build/
-servo-crates and patched in by servo-cargo.sh (cargo --config patch).
+servo-cargo.sh patches them in with cargo --config patch, so cargo never
+downloads these crates itself: each is fetched here from crates.io by its
+pinned SHA-256 (the checksum Servo's Cargo.lock records), unpacked into
+<download-dir>/src, and copied into <output-dir> with its fixes.
 
-    crate_fixes.py <registry-src-dir> <output-dir>   # prints name=path lines
+    crate_fixes.py <download-dir> <output-dir>   # prints name=path lines
+
+A fixed copy is rebuilt from the pristine crate whenever its fix changes
+(the stamp holds the fix's hash), and left untouched otherwise so cargo's
+build cache stays valid.
 """
-import os, re, sys
+import hashlib, io, json, os, re, shutil, subprocess, sys, tarfile, urllib.request
 
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(here, "..", "rust", "std", "unix"))
 from cubitize import cubitize_crate, writable  # noqa: E402
-import shutil
+
+CRATES_IO_DOWNLOAD = "https://static.crates.io/crates/{name}/{name}-{version}.crate"
+STAMP = ".cubit-fixed"
+
+# The .crate archive's SHA-256 (Cargo.lock's checksum) of every fixed crate.
+PINNED = {
+    "swgl-0.70.0": "572f955ee15b7e474bca393377eef1332f80e7605f13f3d12296bcbfbe1a9004",
+    "libc-0.2.189": "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2",
+    "socket2-0.6.5": "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4",
+    "rustix-1.1.5": "891efababe418670775f199f0d233d84843c227a0949a883ce15b37c78d6629d",
+    "mio-1.2.3": "4b18443e9c262bfe8fa82f51666e2642c53393f7e5c27b3e1aeab922cff5b9d8",
+    "tokio-1.53.1": "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed",
+    "inventory-0.3.24": "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b",
+    "getrandom-0.2.17": "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0",
+    "getrandom-0.3.4": "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd",
+    "getrandom-0.4.1": "139ef39800118c7683f2fd3c98c1b23c09ae076556b435f8e9064ae108aaeeec",
+    "libloading-0.8.9": "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55",
+    "ipc-channel-0.23.0": "25c2117f45662580ea93b6fb2bc665c52667ea0370c23fab9bb9485acec8bd24",
+}
+
+# Crates Penny forks (FORKS, fork-checkout.sh): the fork's pinned commit is
+# the crate with CuBit's changes as commits (mozjs_sys: SpiderMonkey built
+# for the Linux/musl C ABI, GC chunks without partial munmap, static
+# libstdc++, no mozglue interposers). Copied in like a fixed crate.
+FORKED = {"mozjs_sys-153.3.0-0": "mozjs"}
 
 FIXES = {
-    # Shader and pixel attribution only while explicit GL timer queries are active.
-    "swgl-0.70.0": {'edits': [('src/gl.cc', '#include <stdio.h>', '#include <stdio.h>\n#include <cubit/debug.h>', 'once'), ('src/gl.cc', '#ifdef PRINT_TIMINGS\n  uint64_t start = get_time_value();\n#endif\n\n  ctx->shaded_rows = 0;', '#ifdef PRINT_TIMINGS\n  uint64_t start = get_time_value();\n#endif\n\n  // CuBit diagnostics: only query-enabled draws pay for extra timestamps.\n  const bool penny_trace_draw = ctx->time_elapsed_query != 0;\n  const uint64_t penny_draw_start = penny_trace_draw ? get_time_value() : 0;\n\n  ctx->shaded_rows = 0;', 'once'), ('src/gl.cc', '  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];', '  if (penny_trace_draw) {\n    const uint64_t elapsed = get_time_value() - penny_draw_start;\n    if (elapsed >= 5000000) {\n      char message[512];\n      int length = snprintf(message, sizeof(message), "PENNY-SWGL: shader=%s instances=%d pixels=%d rows=%d target=%dx%d ms=%.3f\\n",\n             ctx->programs[ctx->current_program].impl->get_name(),\n             instancecount, ctx->shaded_pixels, ctx->shaded_rows,\n             colortex.width, colortex.height, double(elapsed) / 1000000.0);\n      if (length > 0) {\n        cubit_debug_write(message, size_t(length) < sizeof(message) ? size_t(length) : sizeof(message) - 1);\n      }\n    }\n  }\n\n  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];', 'once')], 'migrations': [('src/gl.cc', '  if (penny_trace_draw) {\n    const uint64_t elapsed = get_time_value() - penny_draw_start;\n    if (elapsed >= 5000000) {\n      printf("PENNY-SWGL: shader=%s instances=%d pixels=%d rows=%d target=%dx%d ms=%.3f\\n",\n             ctx->programs[ctx->current_program].impl->get_name(),\n             instancecount, ctx->shaded_pixels, ctx->shaded_rows,\n             colortex.width, colortex.height, double(elapsed) / 1000000.0);\n    }\n  }\n\n  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];', '  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];'), ('src/gl.cc', '  if (penny_trace_draw) {\n    const uint64_t elapsed = get_time_value() - penny_draw_start;\n    if (elapsed >= 5000000) {\n      char message[512];\n      int length = snprintf(message, sizeof(message), "PENNY-SWGL: shader=%s instances=%d pixels=%d rows=%d target=%dx%d ms=%.3f\\n",\n             ctx->programs[ctx->current_program].impl->get_name(),\n             instancecount, ctx->shaded_pixels, ctx->shaded_rows,\n             colortex.width, colortex.height, double(elapsed) / 1000000.0);\n      if (length > 0) {\n        cubit_debug_write(message, min(size_t(length), sizeof(message) - 1));\n      }\n    }\n  }\n\n  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];', '  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];')]},
+    # Shader and pixel attribution only while explicit GL timer queries are
+    # active: a draw slower than PENNY_SLOW_DRAW_NS is logged. Integral
+    # formatting: libc's floating-point snprintf stalled under native KVM.
+    "swgl-0.70.0": {"edits": [
+        ("src/gl.cc", "#include <stdio.h>", "#include <stdio.h>\n#include <cubit/debug.h>", "once"),
+        ("src/gl.cc",
+         "#ifdef PRINT_TIMINGS\n  uint64_t start = get_time_value();\n#endif\n\n  ctx->shaded_rows = 0;",
+         "#ifdef PRINT_TIMINGS\n  uint64_t start = get_time_value();\n#endif\n\n"
+         "  // CuBit diagnostics: only query-enabled draws pay for extra timestamps.\n"
+         "  const bool penny_trace_draw = ctx->time_elapsed_query != 0;\n"
+         "  const uint64_t penny_draw_start = penny_trace_draw ? get_time_value() : 0;\n\n"
+         "  ctx->shaded_rows = 0;", "once"),
+        ("src/gl.cc",
+         "  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];",
+         "  if (penny_trace_draw) {\n"
+         "    const uint64_t PENNY_SLOW_DRAW_NS = 5000000;  // 5 ms\n"
+         "    const uint64_t NS_PER_MS = 1000000, NS_PER_US = 1000, US_PER_MS = 1000;\n"
+         "    const uint64_t elapsed = get_time_value() - penny_draw_start;\n"
+         "    if (elapsed >= PENNY_SLOW_DRAW_NS) {\n"
+         "      char message[512];\n"
+         "      int length = snprintf(message, sizeof(message), \"PENNY-SWGL: shader=%s instances=%d pixels=%d rows=%d target=%dx%d ms=%llu.%03llu\\n\",\n"
+         "             ctx->programs[ctx->current_program].impl->get_name(),\n"
+         "             instancecount, ctx->shaded_pixels, ctx->shaded_rows,\n"
+         "             colortex.width, colortex.height, static_cast<unsigned long long>(elapsed / NS_PER_MS),\n"
+         "             static_cast<unsigned long long>((elapsed / NS_PER_US) % US_PER_MS));\n"
+         "      if (length > 0) {\n"
+         "        cubit_debug_write(message, size_t(length) < sizeof(message) ? size_t(length) : sizeof(message) - 1);\n"
+         "      }\n"
+         "    }\n"
+         "  }\n\n"
+         "  if (ctx->samples_passed_query) {\n    Query& q = ctx->queries[ctx->samples_passed_query];", "once"),
+        # x86-64-v3 is CuBit's minimum CPU: a fixed baseline, never -march=native
+        # (reproducible). No FMA contraction, so rasterized pixels do not change.
+        ("build.rs",
+         '    build\n        .file("src/gl.cc")\n',
+         '    build\n        .flag("-march=x86-64-v3")\n        .flag("-ffp-contract=off")\n'
+         '        .file("src/gl.cc")\n', "once"),
+    ]},
 
     # The C ABI: struct layouts, constants, symbols.
     "libc-0.2.189": {"cubitize": True},
@@ -48,48 +115,6 @@ FIXES = {
         ("src/sys/unix/pipe.rs",
          '        target_os = "hurd",\n        target_os = "linux",',
          '        target_os = "hurd",\n        target_os = "linux",\n        target_os = "cubit",', "once"),
-    ]},
-
-    # SpiderMonkey's own configure knows ABIs, not CuBit: build it for the
-    # Linux/musl C ABI the CuBit libc implements (as the Rust side does);
-    # its Linux-specific calls reach the CuBit syscall layer.
-    "mozjs_sys-153.3.0-0": {"edits": [
-        ("makefile.cargo",
-         "\tifeq (aarch64-unknown-linux-gnu,$(TARGET))",
-         "\tifeq (x86_64-unknown-cubit,$(TARGET))\n"
-         "\t\tTARGET = x86_64-unknown-linux-musl\n"
-         "\tendif\n\n"
-         "\tifeq (aarch64-unknown-linux-gnu,$(TARGET))", "once"),
-        # CuBit releases whole owned mappings. SpiderMonkey's generic Unix
-        # aligned allocator trims reservations with partial munmap, which is
-        # deliberately unsupported. Reuse its posix_memalign/free strategy
-        # (also used by WASI), keeping accounting and real mprotect unchanged.
-        ("mozjs/js/src/gc/Memory.cpp",
-         "#ifdef __wasi__\n  void* region = nullptr;\n  if (int err = posix_memalign(&region, alignment, length))",
-         "#if 1  // CuBit: aligned libc allocations, paired with free below.\n  void* region = nullptr;\n  if (int err = posix_memalign(&region, alignment, length))", "once"),
-        ("mozjs/js/src/gc/Memory.cpp",
-         "  memset(region, 0, length);\n  return region;\n#else\n\n#  ifdef JS_64BIT",
-         "  memset(region, 0, length);\n  RecordMemoryAlloc(length);\n  return region;\n#else\n\n#  ifdef JS_64BIT", "once"),
-        ("mozjs/js/src/gc/Memory.cpp",
-         "  UnmapInternal(region, length);\n\n#ifndef __wasi__\n  RecordMemoryFree(length);",
-         "  // CuBit: only MapAlignedPages allocations use libc ownership.\n  free(region);\n\n#ifndef __wasi__\n  RecordMemoryFree(length);", "once"),
-        ("mozjs/js/src/gc/Memory.cpp",
-         "  void* region = MapAlignedPagesLastDitch(length, alignment, StallAndRetry::No);\n  if (region) {\n    RecordMemoryAlloc(length);\n  }\n  return region;",
-         "  // CuBit has no partial-unmap alignment strategy to stress.\n  return MapAlignedPages(length, alignment, StallAndRetry::No);", "once"),
-        # Every CuBit program is statically linked, libstdc++ included
-        # (Firefox's shipping policy against that does not apply).
-        ("mozjs/build/moz.configure/flags.configure",
-         '    die("Firefox does not support linking statically with libstdc++")',
-         '    log.info("libstdc++ is linked statically (CuBit programs are static)")',
-         "once"),
-        # mozglue's interposers wrap libc (getenv, ...) in a dynamically
-        # linked process and find the real functions with
-        # dlsym(RTLD_NEXT); in a static CuBit program there is no next
-        # object and they crash at startup. libc's own functions stand.
-        ("mozjs/mozglue/moz.build",
-         'if CONFIG["OS_ARCH"] == "Linux" and not CONFIG["FUZZING_SNAPSHOT"]:\n    DIRS += ["interposers"]',
-         'if False:  # CuBit: static programs (crate_fixes.py)\n    DIRS += ["interposers"]',
-         "once"),
     ]},
 
     # Peer credentials of a socket (SO_PEERCRED) are C ABI; the CuBit libc
@@ -206,37 +231,64 @@ FIXES["swgl-0.70.0"]["edits"] += [
 ]
 
 
-
-# Native KVM exposed a stall in libc's floating-point snprintf while logging a
-# completed SWGL draw. Format the already-integral nanoseconds without x87/float
-# conversion. Keep the exact milliseconds and three fractional decimal places.
-for index, (path, old, new, how) in enumerate(FIXES["swgl-0.70.0"]["edits"]):
-    if "char message[512];" not in new:
-        continue
-    instrumented = new.replace("      char message[512];",
-        '      cubit_debug_write("PENNY-SWGL: format begin\\n", 25);\n      char message[512];')
-    instrumented = instrumented.replace("      if (length > 0) {",
-        '      cubit_debug_write("PENNY-SWGL: format end\\n", 23);\n      if (length > 0) {')
-    final = new.replace('ms=%.3f', 'ms=%llu.%03llu').replace(
-        'double(elapsed) / 1000000.0',
-        'static_cast<unsigned long long>(elapsed / 1000000),\n             static_cast<unsigned long long>((elapsed / 1000) % 1000)')
-    FIXES["swgl-0.70.0"]["migrations"] += [(path, instrumented, final), (path, new, final)]
-    # Repair a duplicated experimental prefix left by an interrupted preparation.
-    anchor = "  if (ctx->samples_passed_query) {"
-    FIXES["swgl-0.70.0"]["migrations"] += [
-        (path, instrumented.split(anchor)[0], ""),
-        (path, new.split(anchor)[0], ""),
-    ]
-    FIXES["swgl-0.70.0"]["edits"][index] = (path, old, final, how)
+def split_name(crate):
+    """name and version of name-version, where the version may itself
+    contain '-' (153.3.0-0)."""
+    match = re.match(r"^(.*?)-(\d+\.\d+\.\d+.*)$", crate)
+    return match.group(1), match.group(2)
 
 
-def apply(registry, out):
+def fetch(downloads):
+    """Unpack every pinned crate into <downloads>/src; download (and check)
+    only those not yet there."""
+    assert set(PINNED) == set(FIXES), set(PINNED) ^ set(FIXES)
+    sources = os.path.join(downloads, "src")
+    os.makedirs(sources, exist_ok=True)
+    for crate, digest in PINNED.items():
+        if os.path.exists(os.path.join(sources, crate, "Cargo.toml")):
+            continue
+        name, version = split_name(crate)
+        url = CRATES_IO_DOWNLOAD.format(name=name, version=version)
+        with urllib.request.urlopen(url) as response:
+            data = response.read()
+        actual = hashlib.sha256(data).hexdigest()
+        if actual != digest:
+            sys.exit(f"crate_fixes: {crate} from {url} has SHA-256 {actual}, pinned {digest}")
+        unpacked = os.path.join(sources, crate + ".partial")
+        if os.path.exists(unpacked):
+            shutil.rmtree(unpacked)
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+            archive.extractall(unpacked, filter="data")
+        os.rename(os.path.join(unpacked, crate), os.path.join(sources, crate))
+        os.rmdir(unpacked)
+    for crate, fork in FORKED.items():
+        subprocess.run(["bash", os.path.join(here, "fork-checkout.sh"), fork,
+                        os.path.join(sources, crate + ".fork")], check=True)
+    return sources
+
+
+def fork_commit(fork):
+    for line in open(os.path.join(here, "FORKS")):
+        fields = line.split()
+        if fields and fields[0] == fork:
+            return fields[1]
+    raise KeyError(fork)
+
+
+def fix_digest(fix):
+    return hashlib.sha256(json.dumps(fix, sort_keys=True).encode()).hexdigest()
+
+
+def apply(pristine, out):
+    """Make <out>/<crate> = <pristine>/<crate> with its fix."""
     lines = []
     for crate, fix in FIXES.items():
-        src = os.path.join(registry, crate)
+        src = os.path.join(pristine, crate)
         dst = os.path.join(out, crate)
-        stamp = os.path.join(dst, ".cubit-fixed")
-        if not os.path.exists(stamp):
+        stamp = os.path.join(dst, STAMP)
+        digest = fix_digest(fix)
+        current = open(stamp).read() if os.path.exists(stamp) else None
+        if current != digest:
             if fix.get("cubitize"):
                 cubitize_crate(src, dst)
             else:
@@ -249,39 +301,41 @@ def apply(registry, out):
                     j = os.path.join(dst, junk)
                     if os.path.exists(j):
                         os.remove(j)
-            open(stamp, "w").close()
-        # Repair the abandoned broad GC unmap edit in existing build caches.
-        # Ordinary mmap probes must retain their matching munmap operation.
-        if crate.startswith("mozjs_sys-"):
-            memory = os.path.join(dst, "mozjs/js/src/gc/Memory.cpp")
-            text = open(memory, encoding="utf-8").read()
-            corrected = text.replace(
-                "#elif 1  // CuBit: MapAlignedPages returns a libc-owned allocation.",
-                "#elif defined(__wasi__)")
-            if corrected != text:
-                open(memory, "w", encoding="utf-8").write(corrected)
-        # Explicitly migrate superseded edits before checking final replacements.
-        for path, old, new in fix.get("migrations", []):
-            p = os.path.join(dst, path)
-            s = open(p, encoding="utf-8").read()
-            if old in s:
-                open(p, "w", encoding="utf-8").write(s.replace(old, new, 1))
-        # Apply newly added exact edits to an existing patched checkout too.
-        # Identical replacements preserve timestamps and Cargo's build cache.
-        for path, old, new, how in fix.get("edits", []):
-            p = os.path.join(dst, path)
-            s = open(p, encoding="utf-8").read()
-            if new in s:
-                continue
-            assert old in s, (crate, path, old)
-            s = s.replace(old, new) if how == "all" else s.replace(old, new, 1)
-            open(p, "w", encoding="utf-8").write(s)
-        # name-version, where the version may itself contain '-' (153.3.0-0)
-        name = re.match(r"^(.*?)-\d+\.\d+\.\d+", crate).group(1)
-        lines.append(f"{name}={dst}")
+            for path, old, new, how in fix.get("edits", []):
+                p = os.path.join(dst, path)
+                s = open(p, encoding="utf-8").read()
+                assert old in s, (crate, path, old)
+                if how == "once":
+                    assert s.count(old) == 1, (crate, path, old, s.count(old))
+                    s = s.replace(old, new, 1)
+                else:
+                    s = s.replace(old, new)
+                open(p, "w", encoding="utf-8").write(s)
+            with open(stamp, "w") as output:
+                output.write(digest)
+        lines.append(f"{split_name(crate)[0]}={dst}")
+    for crate, fork in FORKED.items():
+        src = os.path.join(pristine, crate + ".fork")
+        dst = os.path.join(out, crate)
+        stamp = os.path.join(dst, STAMP)
+        digest = fork_commit(fork)
+        current = open(stamp).read() if os.path.exists(stamp) else None
+        if current != digest:
+            if os.path.exists(dst):
+                writable(dst)
+                shutil.rmtree(dst)
+            shutil.copytree(src, dst, ignore=lambda d, names: [".git"] if d == src else [])
+            writable(dst)
+            for junk in (".cargo-checksum.json", ".cargo_vcs_info.json"):
+                j = os.path.join(dst, junk)
+                if os.path.exists(j):
+                    os.remove(j)
+            with open(stamp, "w") as output:
+                output.write(digest)
+        lines.append(f"{split_name(crate)[0]}={dst}")
     return lines
 
 
 if __name__ == "__main__":
-    for line in apply(sys.argv[1], sys.argv[2]):
+    for line in apply(fetch(sys.argv[1]), sys.argv[2]):
         print(line)

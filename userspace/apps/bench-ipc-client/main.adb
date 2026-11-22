@@ -4,6 +4,7 @@
 --  Prints compact final summaries only. Serial output is intentionally kept
 --  out of measured loops so it does not dominate the numbers.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with CuBit.Waits;
 with CuBit.Readiness;
 with Interfaces; use Interfaces;
@@ -14,8 +15,10 @@ with CuBit.Timing_Histograms;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
 with CuBit.Handles.Power;
+with CuBit.Handles.Tracing;
 with Platform_Power_ABI;
 with Startup;
+with CuBit.Monotonic;
 
 procedure main is
    use ASCII;
@@ -68,7 +71,7 @@ procedure main is
 
    function nowMs return Unsigned_64 is
    begin
-      return syscall (SYSCALL_GETTIME);
+      return CuBit.Monotonic.Milliseconds;
    end nowMs;
 
    function echoMsg (value : Unsigned_64) return Message is
@@ -155,6 +158,12 @@ procedure main is
       Ignored : Unsigned_64;
       Started, Finished : Unsigned_64;
       Calls, Inspections, Nulls : Timing.Histogram;
+      --  The cheapest system call: a futex wait whose word already differs
+      --  from the expected value returns at once (GETPID, the old null
+      --  call, is a page load now).
+      Mismatch : aliased Unsigned_32 := 1;
+      function Null_Call return Unsigned_64 is
+        (CuBit.Waits.Futex_Wait (Mismatch'Address, 0, CuBit.Waits.Now));
    begin
       Entered := CuBit.Handles.Power.Enter_State (Power, PA.S3);
       if not Entered.Answered or else Entered.Why /= PA.Not_Yet then
@@ -164,7 +173,7 @@ procedure main is
       for i in 1 .. WARMUP_COUNT loop
          Entered := CuBit.Handles.Power.Enter_State (Power, PA.S3);
          Described := CuBit.Handles.IPC.Describe (Power);
-         Ignored := syscall (SYSCALL_GETPID);
+         Ignored := Null_Call;
       end loop;
       for i in 1 .. KERNEL_COUNT loop
          Started := Clock.Read_Counter;
@@ -180,7 +189,7 @@ procedure main is
       end loop;
       for i in 1 .. KERNEL_COUNT loop
          Started := Clock.Read_Counter;
-         Ignored := syscall (SYSCALL_GETPID);
+         Ignored := Null_Call;
          Finished := Clock.Read_Counter;
          if Finished >= Started then Timing.Add (Nulls, Finished - Started); end if;
       end loop;
@@ -190,7 +199,7 @@ procedure main is
       end if;
       Clock.Report ("kernel-object-call", Calls);
       Clock.Report ("handle-syscall-inspect", Inspections);
-      Clock.Report ("null-syscall-getpid", Nulls);
+      Clock.Report ("null-syscall-futex-mismatch", Nulls);
       debugPrint ("BENCH: PASS kernel-object call" & LF);
    end runKernelObject;
 
@@ -385,6 +394,8 @@ procedure main is
    end runRetirement;
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("bench-ipc-client: starting" & LF);
    Clock.Calibrate (Rate);
    if Rate = 0 then
@@ -409,11 +420,13 @@ begin
    if ok then runAsync; end if;
    if ok then runKernelObject; end if;
    debugPrint ("BENCH: phase=traced async_depth=16" & LF);
-   declare
-      ignored : Unsigned_64;
-   begin
-      ignored := syscall (SYSCALL_TRACE_RESET);
-   end;
+   --  The kernel trace object (Trace_ABI): reset before the traced phase.
+   if not CuBit.Handles.Tracing.Done
+            (CuBit.Handles.Tracing.Perform (Startup.Trace, CuBit.Handles.Tracing.ABI.Reset))
+   then
+      debugPrint ("BENCH: FAIL trace reset" & LF);
+      ok := False;
+   end if;
 
    runSync;
    if ok then
@@ -424,11 +437,12 @@ begin
       debugPrint ("BENCH: PASS ipc" & LF);
    end if;
 
-   declare
-      ignored : Unsigned_64;
-   begin
-      ignored := syscall (SYSCALL_TRACE_SUMMARY);
-   end;
+   if not CuBit.Handles.Tracing.Done
+            (CuBit.Handles.Tracing.Perform (Startup.Trace, CuBit.Handles.Tracing.ABI.Summary))
+   then
+      debugPrint ("BENCH: FAIL trace summary" & LF);
+      ok := False;
+   end if;
 
    if ok then runRetirement; end if;
 

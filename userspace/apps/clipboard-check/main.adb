@@ -10,6 +10,7 @@
 --  the secret field, Esc quits. Serial markers name outcomes and lengths
 --  only; a secret's content and length are never printed.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with Startup;
@@ -167,6 +168,8 @@ procedure Main is
      (UI, Map, Render => Render, Handle_Event => Handle, Activity_Wait => True);
    OK, Accepted : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Editor.Initialize (Fields (Name_Field), "", Accepted);
    Editor.Initialize (Fields (Secret_Field), "", Accepted, Kind => Editor.Sensitive);
    declare

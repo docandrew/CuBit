@@ -7,6 +7,7 @@
 --  (Activity_Wait), for input, the filesystem's wake (OP_FS_WAKE) or the
 --  view's next deadline. Nothing here blocks on the filesystem.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.UI_Metrics;
 with CuBit.Messages; use CuBit.Messages;
@@ -121,7 +122,7 @@ procedure Main is
       Reading : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
    begin
       return (if Reading.Available then Reading.Microseconds
-              else syscall (SYSCALL_GETTIME) * MICROSECONDS_PER_MILLISECOND);
+              else CuBit.Monotonic.Milliseconds * MICROSECONDS_PER_MILLISECOND);
    end Now_Us;
 
    function Decimal (Value : Unsigned_64) return String is
@@ -290,7 +291,7 @@ procedure Main is
       Shift : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_SHIFT) /= 0;
       Control : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_CTRL) /= 0;
       Alt : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_ALT) /= 0;
-      Time_Ms : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Time_Ms : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       procedure Send (Item : Files_View.Event) is
       begin
          Set_Clock (View, Now_Us);
@@ -456,7 +457,7 @@ procedure Main is
    --  the filesystem's wake only).
    function Deadline return Unsigned_64 is
       Due_Us : constant Unsigned_64 := Next_Deadline_Us (View);
-      Now_Ms : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now_Ms : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Current_Us : Unsigned_64;
    begin
       if Busy then
@@ -495,6 +496,8 @@ procedure Main is
      (UI, Controls, Render => Render, Handle_Event => Handle_Event, Next_Deadline => Deadline,
       On_Deadline => Tick, Activity_Wait => True, On_Completion => Completed);
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("files: starting" & ASCII.LF);
    CuBit.Logging.Announce ("files: started", Opened, Startup.Logstore);
    --  The timing records' publisher: unbound, it would drop every record.

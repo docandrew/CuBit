@@ -2,7 +2,7 @@ project Logging is
    for Source_Dirs use (".", "build/source");
    for Source_Files use
      ("main.adb", "demo.adb", "cubit.ads", "cubit-protocols.ads",
-      "cubit-log_records.ads", "cubit-log_records.adb",
+      "cubit-log_records.ads", "cubit-log_records.adb", "cubit-log_records-texts.ads", "cubit-log_records-texts.adb",
       "cubit-text_to_log.ads", "cubit-text_to_log.adb",
       "cubit-authority_policy.ads", "cubit-protocols-stream_policies.ads",
       "cubit-protocols-stream_connections.ads",

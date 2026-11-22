@@ -10,6 +10,9 @@ package GPIO_Native_Log is
    procedure Community (Ordinal : GPIO_Native_Resources.G.Memory_Resource_Ordinal;
       Item : GPIO_Native_Resources.Resource_Report);
    procedure Parent_Line (Ready : Boolean; Vector : Natural; Reason : String);
+   procedure Runtime_Detail (Details : String);
+   -- Detached, compiled diagnostic fields only. Main calls this bounded group
+   -- once after copying owner observations, before requesting shutdown.
    procedure Summary;
    procedure Disable (Reason : String);
    function Hex (Key : String; Value : Interfaces.Unsigned_64) return String;

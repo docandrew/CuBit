@@ -4,7 +4,7 @@ with Interfaces; use Interfaces;
 --  (BUG-001: the desktop died and nothing started it again). One Run per
 --  plan entry: the program is started again after a failure, after a delay
 --  that doubles while it keeps failing and starts over once a run lasted.
---  Times are SYSCALL_GETTIME milliseconds. No I/O; procmgr launches.
+--  Times are CuBit.Monotonic milliseconds. No I/O; procmgr launches.
 package Plan_Restarts with SPARK_Mode is
    --  The first delay after a failure.
    First_Delay_Ms : constant := 1_000;

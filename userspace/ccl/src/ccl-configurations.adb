@@ -3,6 +3,7 @@ with CCL.Language;
 with CCL.VM;
 with CCL.Typed_Settings;
 with CCL.Setting_Kinds;
+with CCL.Interfaces.System_Policy;
 
 package body CCL.Configurations with SPARK_Mode => On is
    use CCL.Declarations;
@@ -183,7 +184,8 @@ package body CCL.Configurations with SPARK_Mode => On is
            Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware, Have_Arguments,
            Have_Stop_Grace, Have_Stop_Stage : Boolean := False;
          Have_ACPI_Hardware, Have_ACPI_PCI_Config,
-           Have_ACPI_Firmware_Data, Have_Display_Capture, Have_Platform_Power : Boolean := False;
+           Have_ACPI_Firmware_Data, Have_Display_Capture, Have_Platform_Power,
+           Have_Trace, Have_Test_Console, Have_VM_Create : Boolean := False;
 
          --  (<name> deny) or (<name> approve-declared), once.
          procedure Declared_Approval (Seen : in out Boolean; Approved : out Boolean) is
@@ -288,6 +290,12 @@ package body CCL.Configurations with SPARK_Mode => On is
                Declared_Approval (Have_ACPI_Firmware_Data, Item.Approve_ACPI_Firmware_Data);
             elsif Matches (Name, "platform-power") then
                Declared_Approval (Have_Platform_Power, Item.Approve_Platform_Power);
+            elsif Matches (Name, "trace") then
+               Declared_Approval (Have_Trace, Item.Approve_Trace);
+            elsif Matches (Name, "test-console") then
+               Declared_Approval (Have_Test_Console, Item.Approve_Test_Console);
+            elsif Matches (Name, "vm-create") then
+               Declared_Approval (Have_VM_Create, Item.Approve_VM_Create);
             elsif Matches (Name, "role") then
                if Have_Role then Fail (Duplicate_Field); end if;
                Read_Symbol (Reader, Name);
@@ -440,6 +448,32 @@ package body CCL.Configurations with SPARK_Mode => On is
       --  The value is one Device_Class_Launch, kept as written like a start
       --  entry's (arguments ...): its type involves the driver's own record,
       --  known only with its file (CCL.Class_Launches checks it).
+      --  (policy (System_Policy debugging => Debugging.Development)): one
+      --  value of the image's system-policy type, checked by CCL's type
+      --  checker (CCL.Typed_Settings), never read here field by field.
+      procedure Policy is
+         First : Positive;
+         Last : Natural;
+         Checked : CCL.Typed_Settings.Check_Result;
+      begin
+         if Result.Plan.Has_Policy then Fail (Duplicate_Field); return; end if;
+         Take_Expression (Reader, First, Last);
+         if Stopped then return; end if;
+         CCL.Typed_Settings.Check
+           (CCL.Typed_Settings.Kind_Of (CCL.Interfaces.System_Policy.POLICY_KEY),
+            Source_Of (Reader, First, Last), Checked);
+         if not Checked.Success then
+            Fail (Invalid_Typed_Value);
+            Result.Position := First + (if Checked.Position > 0 then Checked.Position - 1 else 0);
+            Result.Typed_Message_Length := Checked.Message_Length;
+            Result.Typed_Message (1 .. Checked.Message_Length) := Checked.Message (1 .. Checked.Message_Length);
+            return;
+         end if;
+         Result.Plan.Policy.Length := Checked.Length;
+         Result.Plan.Policy.Data (1 .. Checked.Length) := Checked.Canonical (1 .. Checked.Length);
+         Result.Plan.Has_Policy := True;
+      end Policy;
+
       procedure Driver_Class is
          Block : Class_Block;
          First : Positive;
@@ -505,6 +539,7 @@ package body CCL.Configurations with SPARK_Mode => On is
          if Kind = System_Profile and then Matches (Name, "setting") then Setting;
          elsif Kind = Startup_Profile and then Matches (Name, "start") then Launch;
          elsif Kind = Startup_Profile and then Matches (Name, "driver-class") then Driver_Class;
+         elsif Kind = Startup_Profile and then Matches (Name, "policy") then Policy;
          else Fail (Unknown_Declaration);
          end if;
          Close_Form (Reader);

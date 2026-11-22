@@ -81,7 +81,7 @@ package Intel_GPU_Display_Executor is
    --  latch) and the per-second cursor and flip lines.
    procedure Service;
    procedure Report (Now_Ms : Unsigned_64);
-   --  Deadline (SYSCALL_GETTIME milliseconds) for the loop's idle wait so
+   --  Deadline (CuBit.Monotonic milliseconds) for the loop's idle wait so
    --  the owed flip is polled just after the predicted vblank;
    --  Unsigned_64'Last when nothing is owed.
    function Wake_Ms (Now_Ms : Unsigned_64) return Unsigned_64;

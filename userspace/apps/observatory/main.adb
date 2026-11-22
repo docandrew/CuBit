@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.UI;
@@ -16,6 +17,7 @@ with CCL.Catalog;
 with CCL.Host_Values;
 with CCL.Sessions;
 with CCL.Language;
+with CuBit.Monotonic;
 procedure Main is
    package UI renames CuBit.UI;
    package A renames CuBit.UI.App;
@@ -270,6 +272,8 @@ procedure Main is
         "Space pause | T table/graphs | Up/Down series | N page | Esc close", Theme.text, Theme.face);
    end Paint;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    declare Error : CCL.Catalog.Catalog_Error;
       Resolved : CCL.Catalog.Resolved_Operation;
       Grant : CCL.Catalog.Grant_Result;
@@ -297,7 +301,7 @@ begin
    if not OK then return; end if;
    debugPrint ("observatory: native window ready" & ASCII.LF);
    while Running and A.Is_Open (Win) loop
-      Now := syscall (SYSCALL_GETTIME);
+      Now := CuBit.Monotonic.Milliseconds;
       -- Drain at most 16 receipts, handling input before evaluation/painting.
       for Drain in 1 .. 16 loop
          exit when Poll_Completion (Receipt'Address) = 0;

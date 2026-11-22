@@ -10,6 +10,7 @@ with Intel_GPU_ADS_Materialize;
 with Intel_GPU_Native_Reset;
 with Intel_GPU_DMA_Cache;
 with Intel_GPU_GuC_Parameters;
+with CuBit.Monotonic;
 package body Intel_GPU_ADS_Buffer is
    Attempted : Boolean := False;
    View : Prepared_Backing;
@@ -50,7 +51,7 @@ package body Intel_GPU_ADS_Buffer is
       Token : constant Unsigned_64 := 16#4947_0006#;
       Msg : Message := NULL_MESSAGE;
       Receipt : aliased CompletionEntry;
-      Start : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Start : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Last_Time : Unsigned_64 := Start;
       Now : Unsigned_64;
       Received : Boolean := False;
@@ -63,12 +64,12 @@ package body Intel_GPU_ADS_Buffer is
       Msg.tag := (label => Request_Label, length => 0, protocol => 0, ipc => <>, reserved => 0);
       if not Intel_GPU_Supervisor.Submit (Msg, Token) then return "submit-failed"; end if;
       for Poll in 1 .. 30_000 loop
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Monotonic.Milliseconds;
          if Now = Unsigned_64'Last or else Now < Last_Time or else Now - Start >= 30_000 then
             return "timeout-or-invalid-clock";
          end if;
          Last_Time := Now;
-         if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
+         if CuBit.Messages.Poll_Completion (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
               Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]

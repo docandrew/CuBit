@@ -77,6 +77,8 @@ package body GPIO_Native_Log is
       Line ("parent line " & (if Ready then "armed vector=" else "unavailable vector=") &
          Text (Text'First + 1 .. Text'Last) & " reason=" & Reason, not Ready);
    end Parent_Line;
+   procedure Runtime_Detail (Details : String) is
+   begin Line ("runtime fault " & Details, True); end Runtime_Detail;
    procedure Summary is
       All_Good : constant Boolean := (for all Item in Bringup_Stage => Success (Item) and not Failure (Item));
    begin

@@ -7,6 +7,7 @@ with CuBit.Filesystem_Sessions;
 with CuBit.Filesystems;
 with CuBit.Messages;
 with Bible_Images;
+with CuBit.Monotonic;
 
 package body Bible_Asset_Files is
    use Interfaces;
@@ -90,7 +91,7 @@ package body Bible_Asset_Files is
    end Call;
 
    procedure Load (Which : Translation; Data : out Image_Access; Status : out Load_Status) is
-      Started : constant Unsigned_64 := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Deadline : constant Unsigned_64 := CuBit.Messages.Deadline_After (LOAD_BUDGET_MS);
       Root : String (1 .. MAXIMUM_ROOT);
       Root_Length : Natural;
@@ -102,7 +103,7 @@ package body Bible_Asset_Files is
       procedure Finish (Outcome : Load_Status) is
       begin
          Status := Outcome;
-         Elapsed := Natural (Unsigned_64'Min (CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME) - Started,
+         Elapsed := Natural (Unsigned_64'Min (CuBit.Monotonic.Milliseconds - Started,
                                              Unsigned_64 (Natural'Last)));
       end Finish;
 

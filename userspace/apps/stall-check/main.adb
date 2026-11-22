@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -5,6 +6,7 @@ with CuBit.Handles.IPC;
 with CuBit.Handles.Startup;
 with CuBit.Startup_Tables;
 with Startup;
+with CuBit.Monotonic;
 
 --  Kernel stuck-call panel check (headless test scanout-repair): one call
 --  to this process's own endpoint, which nobody receives, held until its
@@ -29,11 +31,13 @@ procedure Main is
    Now : Unsigned_64;
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    if not CuBit.Handles.Valid (Self) then
       debugPrint ("stall-check: FAIL startup capabilities" & LF);
       return;
    end if;
-   Now := syscall (SYSCALL_GETTIME);
+   Now := CuBit.Monotonic.Milliseconds;
    Msg.tag := (label => Probe_Label, length => 0, protocol => 0, ipc => <>, reserved => 0);
    debugPrint ("stall-check: holding a call for" & Unsigned_64'Image (Unsigned_64'(Stall_Ms)) & " ms" & LF);
    Tag := HIPC.Call (Self, Msg, Now + Stall_Ms);

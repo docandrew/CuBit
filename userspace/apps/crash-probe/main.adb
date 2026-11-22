@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Records;
 with CuBit.Logging;
@@ -18,6 +19,8 @@ procedure Main is
    Made : constant L.Decoded := L.Make ("crash-probe: raising an exception nobody handles");
    Accepted : Boolean := False;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    if Made.Success then
       CuBit.Logging.Emit (Writer, Made.Value, Accepted);
    end if;

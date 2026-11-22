@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Control_Events;
@@ -38,6 +39,8 @@ procedure Main is
    Found : Boolean;
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Say ("swap-probe: build " & Build & " running");
    loop
       CuBit.Process_Events.Next (Event, Found);

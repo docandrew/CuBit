@@ -67,8 +67,13 @@ package body CuBit.Process_Events is
       if Bell_Notice then
          return;
       end if;
-      if Event.tag.label = CE.Event_Label then
-         if CE.Valid (Event.tag.length, Event.words (0), Event.words (1), Event.words (2)) then
+      --  The kernel's exit event, or procmgr's notice for a child launched
+      --  into the session (its kernel parent is procmgr): only through
+      --  procmgr's badge (CE.Is_Exit); a forged notice is dropped.
+      if Event.tag.label = CE.Event_Label or else Event.tag.label = CE.Notice_Label then
+         if CE.Is_Exit (Event.tag.label, Event.tag.length, Event.authorityTag,
+                        Event.words (0), Event.words (1), Event.words (2))
+         then
             Keep_Exit (CE.Decode (Event.words (0), Event.words (1), Event.words (2)));
          end if;
       else

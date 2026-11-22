@@ -3,6 +3,8 @@
 (executable-manifest v1
   (identity "com.cubit.tls-probe")
   (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore)
   (request-service clock read-write clock)
   (request-network tcp-connect (ipv4 "10.0.2.2" 32)
     (ports 18460 18463) (dns deny)

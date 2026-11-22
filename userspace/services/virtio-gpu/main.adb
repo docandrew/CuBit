@@ -12,6 +12,7 @@
 --  and flushes the resources. The Desktop, not this driver, chooses a primary.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use System;
@@ -1522,7 +1523,7 @@ procedure main is
       ID : constant Natural := Head * 2;
       Resource : constant Unsigned_32 := Unsigned_32 (1 + Head * Scanout_Buffers + Item.Buffer);
       Length : Unsigned_32 := 48;
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
       if Fence_Sequence = Unsigned_64'Last or else
         Now > Unsigned_64'Last - Command_Timeout_Ms
@@ -1609,7 +1610,7 @@ procedure main is
    end finishCursorTransfer;
 
    procedure issueCursorTransfer is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Head : constant Head_Index := cursorTransfer.Head;
    begin
       if Fence_Sequence = Unsigned_64'Last or else
@@ -1704,7 +1705,7 @@ procedure main is
                        GPU_Test_Policy.Delay_First_Output_Ms /= 0
                      then
                         Pending (Head).Phase := Awaiting_Scanout;
-                        Pending (Head).Deadline := syscall (SYSCALL_GETTIME) +
+                        Pending (Head).Deadline := CuBit.Monotonic.Milliseconds +
                           GPU_Test_Policy.Delay_First_Output_Ms;
                      else
                         Pending (Head).Phase :=
@@ -1733,7 +1734,7 @@ procedure main is
          end if;
          <<Next_Completion>>
       end loop;
-      Now := syscall (SYSCALL_GETTIME);
+      Now := CuBit.Monotonic.Milliseconds;
       if cursorTransfer.Phase = Transfer and then Now >= cursorTransfer.Deadline then
          finishCursorTransfer (False);
          debugPrint ("virtio-gpu: cursor upload timeout" & LF);
@@ -2159,6 +2160,9 @@ procedure main is
    msg : Message;
    found : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;
@@ -2266,7 +2270,7 @@ begin
 
       eventFound := Poll_Event (eventMsg);
       declare
-         Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+         Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       begin
          if Now /= Unsigned_64'Last and then Now >= metricsAt and then
             Now - metricsAt >= 1000
@@ -2318,7 +2322,7 @@ begin
                   Deadline := Unsigned_64'Min (Deadline, Item.Deadline);
                elsif Item.Phase = Awaiting_Vblank then
                   --  The next millisecond: the latch is polled, as intel-gpu does.
-                  Deadline := Unsigned_64'Min (Deadline, syscall (SYSCALL_GETTIME) + 1);
+                  Deadline := Unsigned_64'Min (Deadline, CuBit.Monotonic.Milliseconds + 1);
                end if;
             end loop;
             if cursorTransfer.Phase = Transfer then
@@ -2328,7 +2332,7 @@ begin
             --  their completions wake this wait.
             --  A cursor queue that was full is retried by polling soon.
             if cursorsPending then
-               Deadline := Unsigned_64'Min (Deadline, syscall (SYSCALL_GETTIME) + 1);
+               Deadline := Unsigned_64'Min (Deadline, CuBit.Monotonic.Milliseconds + 1);
             end if;
             if Wait_For_Activity_Until (Deadline) = Unavailable then
                fail ("activity wait unavailable");

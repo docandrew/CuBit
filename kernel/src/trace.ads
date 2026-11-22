@@ -24,11 +24,9 @@ is
     EVENT_IPC_HANDOFF   : constant EventKind := 11;
     EVENT_SYSCALL_RETURN : constant EventKind := 12;
 
-    -- Extra control operations are available only in LATENCY_TRACE builds.
-    -- Local recording/freeze touches only the calling CPU, with IRQs masked.
-    type Control_Operation is (Summary, Start_Local, Freeze_Local, Dump_Local);
-    for Control_Operation use
-      (Summary => 0, Start_Local => 1, Freeze_Local => 2, Dump_Local => 3);
+    -- The calling CPU's event timeline (Trace_Object; LATENCY_TRACE builds
+    -- only). Local recording/freeze touches only the calling CPU, with IRQs
+    -- masked.
     procedure StartLocal;
     procedure FreezeLocal;
     procedure DumpLocal;

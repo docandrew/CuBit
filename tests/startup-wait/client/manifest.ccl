@@ -5,4 +5,7 @@
   identity => "com.cubit.startup-wait-client"
   version => "0.1.0"
   requests => [
-    (service "startup-wait-test" "provider")])
+    (service "startup-wait-test" "provider")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

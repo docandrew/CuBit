@@ -16,4 +16,7 @@
     # scratchpads: 3079 pages, a 16 MiB order); devmgr allocates what the
     # controller reports (HCSPARAMS1/2).
     (dma "rings" 16777216)
-    (service "device-manager" "ready")])
+    (service "device-manager" "ready")
+    # ABI-002: its lines, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 
@@ -31,6 +32,8 @@ procedure Main is
 
    Result : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("stack-probe: recursing until the stack runs out" & ASCII.LF);
    Result := Deeper (0);
    debugPrint ((if Result = 0 then "stack-probe: FAIL the recursion returned"

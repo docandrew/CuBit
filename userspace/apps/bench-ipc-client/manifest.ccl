@@ -5,4 +5,9 @@
 (Executable_Manifest
   identity => "com.cubit.bench.ipc.client"
   version => "1.0.0"
-  requests => [(service "ipc-test" "ipc-test") (Request.Platform_Power "power")])
+  requests => [(service "ipc-test" "ipc-test")
+               (Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Platform_Power "power"))
+               (Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Trace "trace"))
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

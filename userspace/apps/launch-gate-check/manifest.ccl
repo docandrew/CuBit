@@ -1,0 +1,21 @@
+# The launch gate check (CAP-012, docs/authority-model.md 7.5; headless
+# --test launch-gate): a requester holding procmgr's endpoint and a Launch
+# badge into the user session (optional, so this check also runs where no
+# badge exists and says what fails). Its table names two children and
+# capability-test.app, which asks for nothing. A small handle limit lets it count its
+# free handle places before and after launching.
+(Executable_Manifest
+  identity => "com.cubit.test.launch-gate"
+  version => "1.0.0"
+  requests => [
+    (service "logstore" "logstore")
+    (service "process-manager" "process-manager")
+    (service "launch" "launch")
+    # Section 6: the session's debug authority (DBG-001) and a system
+    # service to observe through it.
+    (service "debug-session" "debug-session")
+    (service "clock" "clock")]
+  optional => ["launch" "debug-session"]
+  handles => (Handle_Limit.At_Most 16)
+  may_launch => [(Launch "launch-gate-child.app") (Launch "launch-gate-greedy.app")
+    (Launch "capability-test.app")])

@@ -38,6 +38,10 @@ package CuBit.Handles.Boot_Roots is
       Scheduling_Root   : Scheduling;
       Firmware_Snapshot_Root : Firmware_Snapshot;  --  READ and GRANT
       Platform_Power_Root    : Platform_Power;     --  WRITE and GRANT
+      Trace_Root             : Trace;              --  WRITE and GRANT
+      Process_List_Root      : Process_Listing;    --  READ and GRANT
+      Test_Console_Root      : Test_Console;       --  WRITE and GRANT
+      VM_Create_Root         : VM_Create;          --  WRITE and GRANT
       Count             : Root_Count := 0;
       Firmware_Count    : Root_Count := 0;
    end record;
@@ -72,6 +76,10 @@ package CuBit.Handles.Boot_Roots is
       Device_Inspection : Endpoint;    --  devmgr, untagged, Grant (inventory)
       Firmware_Snapshot_Reader : Firmware_Snapshot;  --  READ and GRANT
       Platform_Power_Object    : Platform_Power;     --  WRITE and GRANT
+      Trace_Object             : Trace;              --  WRITE and GRANT
+      Process_List_Object      : Process_Listing;    --  READ and GRANT
+      Test_Console_Object      : Test_Console;       --  WRITE and GRANT
+      VM_Create_Authority      : VM_Create;          --  WRITE and GRANT
    end record;
 
    function Process_Manager return Launcher_Handles;

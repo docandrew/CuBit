@@ -11,6 +11,7 @@
 --  (tests/headless --test font-masks).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Messages;
@@ -49,6 +50,8 @@ procedure Main is
       return S (S'First + 1 .. S'Last);
    end Image;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    for F of Faces loop
       for D of Densities loop
          declare

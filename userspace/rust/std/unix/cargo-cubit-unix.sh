@@ -14,12 +14,18 @@ if [ ! -f "$prepared/ready" ]; then
     python3 "$unix_dir/prepare-std-unix.py" "$prepared" >/dev/null
     touch "$prepared/ready"
 fi
-export __CARGO_TESTS_ONLY_SRC_ROOT="$prepared/library"
+# -Zbuild-std hashes the std sources' absolute path into every crate's
+# metadata (symbols, code layout): build from the prepared std's
+# content-addressed copy in the Nix store, the same path in every checkout.
+std_source=$(nix store add-path --name "std-unix-$key" "$prepared")
+export __CARGO_TESTS_ONLY_SRC_ROOT="$std_source/library"
 export RUSTC_BOOTSTRAP=1
 export CUBIT_RUST_TARGET="$unix_dir/x86_64-unknown-cubit.json"
-linkflags="-C linker=$repo/userspace/libc/cubit-cc"
+# The linker through cargo's target config, not RUSTFLAGS: cargo hashes
+# RUSTFLAGS into every crate's metadata, so a checkout path there changes
+# every symbol and the output differs between checkouts.
+export CARGO_TARGET_X86_64_UNKNOWN_CUBIT_LINKER="$repo/userspace/libc/cubit-cc"
 if [ -n "${CUBIT_MANIFEST_O:-}" ]; then
-    linkflags="$linkflags -C link-arg=--manifest -C link-arg=$CUBIT_MANIFEST_O"
+    export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=--manifest -C link-arg=$CUBIT_MANIFEST_O"
 fi
-export RUSTFLAGS="${RUSTFLAGS:-} $linkflags"
 exec "$@"

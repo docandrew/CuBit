@@ -1,4 +1,5 @@
 """Cross-language layout and native publication checks. Run inside Nix."""
+import os
 from pathlib import Path
 import hashlib
 import json
@@ -7,7 +8,8 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 native = root / "userspace/servo/native"
-rust = root / "userspace/servo/overlay/ports/cubitshell/src"
+# Penny's Servo fork checkout (userspace/servo/FORKS).
+rust = Path(os.environ.get("SERVO_DIR", root / "userspace/rust/build/servo-work/servo")) / "ports/cubitshell/src"
 out = Path(tempfile.mkdtemp(prefix="tab-projection-", dir=root / "tests/servo/build"))
 inputs = [native / "servo_tab_projection.ads", native / "servo_tab_projection.adb",
           rust / "tab_model.rs", rust / "tab_projection.rs"]

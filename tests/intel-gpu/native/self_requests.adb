@@ -2,6 +2,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Process_IDs;
 with CuBit.Handles.IPC;
 with Startup;
+with CuBit.Monotonic;
 
 package body Self_Requests is
    package IPC renames CuBit.Handles.IPC;
@@ -18,16 +19,16 @@ package body Self_Requests is
       if not capSubmit (Startup.Device_Manager, Msg, Unsigned_64 (Label)) then
          return CuBit.Handles.No_Reply;
       end if;
-      Until_Time := syscall (SYSCALL_GETTIME) + Deadline_Ms;
+      Until_Time := CuBit.Monotonic.Milliseconds + Deadline_Ms;
       loop
          Poll_Service_Request (From, Msg, Found);
          exit when Found;
-         if syscall (SYSCALL_GETTIME) >= Until_Time then
+         if CuBit.Monotonic.Milliseconds >= Until_Time then
             return CuBit.Handles.No_Reply;
          end if;
       end loop;
       if Msg.tag.label /= Label or else
-        CuBit.Process_IDs.To_Word (From) /= syscall (SYSCALL_GETPID)
+        CuBit.Process_IDs.To_Word (From) /= Own_Process_Word
       then
          return CuBit.Handles.No_Reply;
       end if;
@@ -49,13 +50,13 @@ package body Self_Requests is
       if not IPC.Answer (Item, Msg) then
          return False;
       end if;
-      Until_Time := syscall (SYSCALL_GETTIME) + Deadline_Ms;
+      Until_Time := CuBit.Monotonic.Milliseconds + Deadline_Ms;
       loop
          if Poll_Completion (Receipt'Address) /= 0 then
             return Receipt.token = Unsigned_64 (Label)
               and then Receipt.status = COMPLETION_OK;
          end if;
-         if syscall (SYSCALL_GETTIME) >= Until_Time then
+         if CuBit.Monotonic.Milliseconds >= Until_Time then
             return False;
          end if;
       end loop;

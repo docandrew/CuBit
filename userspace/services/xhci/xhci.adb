@@ -388,7 +388,7 @@ package body XHCI is
    end Stage;
    procedure Trace (Text : String) is
    begin
-      Boot_Log.Serial ("xhci: " & locationText & " " & Text);
+      Boot_Log.Debug ("xhci: " & locationText & " " & Text);
    end Trace;
 
    function Speed_Name (S : Port_Speed) return String is

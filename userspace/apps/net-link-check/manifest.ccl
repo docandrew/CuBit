@@ -1,11 +1,14 @@
 # The net-link headless test's guest (tests/net-link): one TCP stream from
 # the host fixture, and connected UDP to the fixture's echo port, while the
-# fixture pulls the virtual cable. Needs network=declared launch approval.
+# fixture pulls the virtual cable; then a second stream that goes idle
+# (18462). Needs network=declared launch approval.
 (executable-manifest v1
   (identity "com.cubit.net-link-check")
   (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore)
   (request-network tcp-connect (ipv4 "10.0.2.2" 32)
-    (ports 18460 18460) (dns deny)
+    (ports 18460 18462) (dns deny)
     (connections 1) stream)
   (request-network udp-connect (ipv4 "10.0.2.2" 32)
     (ports 18461 18461) (dns deny)

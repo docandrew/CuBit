@@ -1,0 +1,10 @@
+# DBG-001, CAP-012: the debugger engine through the kernel. The check
+# launches debug-plain (no stub) into the user session and debugs it through
+# its launch handle, then observes clock.svc through the session's debug
+# authority.
+(startup v1
+  # ABI-002: services' debug text reaches serial only through logstore's mirror.
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "clock.svc" (priority 5))
+  (start "debug-kernel-check.app" (priority 5))
+)

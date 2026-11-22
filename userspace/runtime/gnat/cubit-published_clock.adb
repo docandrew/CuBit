@@ -7,16 +7,17 @@ with System.Machine_Code; use System.Machine_Code;
 with System.Storage_Elements;
 with Clock_Publication; use Clock_Publication;
 with Clock_Publication.Sample;
-with CuBit.Kernel_ABI;
-with CuBit.Kernel_Calls;
 
 package body CuBit.Published_Clock is
-
-   package K renames CuBit.Kernel_ABI;
 
    Published_Page : Page
    with Import, Volatile,
         Address => System.Storage_Elements.To_Address (Page_Address);
+
+   --  The kernel's msTicks, beside the seqlocked conversion.
+   Kernel_Milliseconds : Unsigned_64
+   with Import, Volatile, Atomic,
+        Address => System.Storage_Elements.To_Address (Milliseconds_Address);
 
    function Load_Sequence return Unsigned_64 with Inline;
    function Load_Sequence return Unsigned_64 is (Published_Page.Sequence);
@@ -51,7 +52,7 @@ package body CuBit.Published_Clock is
       if Published then
          return Clock_Publication.Milliseconds (Nanoseconds);
       end if;
-      return CuBit.Kernel_Calls.Call (K.Get_Time);
+      return Kernel_Milliseconds;
    end Milliseconds;
 
    procedure Microseconds (Value : out Unsigned_64; Available : out Boolean)
@@ -63,12 +64,18 @@ package body CuBit.Published_Clock is
          Value := Clock_Publication.Microseconds (Nanoseconds);
          return;
       end if;
-      Value := CuBit.Kernel_Calls.Call (K.Read_Monotonic_Microseconds);
-      Available := Value /= K.Failed;
-      if not Available then
-         Value := 0;
-      end if;
+      Value := Kernel_Milliseconds * Nanoseconds_Per_Millisecond
+                 / Nanoseconds_Per_Microsecond;
+      Available := True;
    end Microseconds;
+
+   function Microseconds_Now return Unsigned_64 is
+      Value     : Unsigned_64;
+      Available : Boolean;
+   begin
+      Microseconds (Value, Available);
+      return Value;
+   end Microseconds_Now;
 
    function Counter_Frequency return Unsigned_64 is
       Fields : constant Parameters := Load_Fields;

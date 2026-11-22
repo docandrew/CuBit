@@ -159,9 +159,9 @@ package body Intel_GPU_Display_Executor is
       end;
    end Write_Register;
 
-   function Clock_Ms return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Clock_Ms return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
    procedure Pause_One_Ms is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Activity : Activity_Result;
       pragma Unreferenced (Activity);
    begin

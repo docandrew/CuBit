@@ -12,6 +12,7 @@ then compares the UTC timesync-check reports against host time + OFFSET.
 Unprivileged processes cannot bind port 123, which is why the test runs the
 timesync-test.svc variant whose only difference is this fixture scope.
 """
+import re
 import socket
 import struct
 import sys
@@ -20,6 +21,8 @@ import time
 from pathlib import Path
 
 OFFSET = 300  # within clock.svc's 15-minute unauthenticated step bound
+# timesync-check's report of the time it was given, wherever it is in a line.
+UTC_REPORT = re.compile(r"timesync-check: utc=\s*(-?\d+)")
 FALSETICKER = OFFSET + 3600
 NTP_UNIX = 2_208_988_800
 TOLERANCE = 5
@@ -88,9 +91,11 @@ def main():
     reported = None
     while time.monotonic() < deadline:
         text = serial_log.read_text(errors="replace") if serial_log.exists() else ""
-        for line in text.splitlines():
-            if line.startswith("timesync-check: utc="):
-                reported = int(line.split("=", 1)[1].strip())
+        # Anywhere in the line: since ABI-002 the program's text reaches
+        # serial through logstore's mirror, after its name
+        # ("timesync-check.app: timesync-check: utc=...").
+        for found in UTC_REPORT.finditer(text):
+            reported = int(found.group(1))
         if reported is not None:
             break
         time.sleep(0.05)

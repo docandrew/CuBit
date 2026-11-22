@@ -11,13 +11,16 @@ package Buddy_Metadata with SPARK_Mode, Pure is
    use type Buddy_Geometry.Count;
    use type Interfaces.Unsigned_64;
    type Byte_Count is range 0 .. 2 ** 44;
-   subtype Table_Size is Byte_Count range 1 .. 2 ** 42;
+   subtype Table_Size is Byte_Count range 1 .. 2 ** 43;
    subtype Page_Size is Byte_Count range 1 .. 2 ** 30;
-   subtype Entry_Size is Byte_Count range 1 .. 4;
-   type Table_Kind is (Pin_State, Frame_Owners, Block_State);
+   subtype Entry_Size is Byte_Count range 1 .. 8;
+   type Table_Kind is (Pin_State, Frame_Owners, Block_State, Free_Links);
    Descriptor_Bytes : constant := Buddy_Blocks.Descriptor_Bits / System.Storage_Unit;
    -- A frame's owner: any process slot (KERN-003 step 4 allows 2^24).
    Owner_Bytes : constant := 4;
+   -- A free block's next and previous links (Free_Link_Codes.Links,
+   -- KERN-014): out of the block itself.
+   Link_Bytes : constant := 8;
    pragma Compile_Time_Error
      (Buddy_Blocks.Descriptor'Size mod System.Storage_Unit /= 0
       or else Buddy_Blocks.Descriptor'Object_Size /= Buddy_Blocks.Descriptor'Size,
@@ -27,7 +30,8 @@ package Buddy_Metadata with SPARK_Mode, Pure is
      (case Kind is
         when Pin_State    => 1,
         when Frame_Owners => Owner_Bytes,
-        when Block_State  => Descriptor_Bytes) with Inline_Always;
+        when Block_State  => Descriptor_Bytes,
+        when Free_Links   => Link_Bytes) with Inline_Always;
    function Bytes (Highest : Frame; Kind : Table_Kind) return Table_Size is
      ((Byte_Count (Highest) + 1) * Entry_Bytes (Kind)) with Inline_Always;
    function Offset (Item : Frame; Kind : Table_Kind) return Byte_Count is

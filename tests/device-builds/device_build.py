@@ -178,6 +178,10 @@ class Monitor:
         self.hmp("mouse_button 0")
 
     def close(self):
+        # The stream holds the socket open too, and QEMU serves one QMP
+        # client at a time: a live Monitor whose socket alone was closed
+        # stalls the next connection.
+        self.stream.close()
         self.connection.close()
 
 

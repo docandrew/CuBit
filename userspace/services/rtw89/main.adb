@@ -26,6 +26,7 @@
 --  the driver exits; devmgr logs the exit and boot continues.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages;
 with CuBit.Process_Events;
@@ -522,6 +523,8 @@ procedure Main is
       & " refused=" & Dec (Unsigned_64 (Counts.Refused)));
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;

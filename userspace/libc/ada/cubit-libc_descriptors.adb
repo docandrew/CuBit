@@ -27,7 +27,9 @@ with CuBit.Stream_Rings;
 with CuBit.Filesystem_Queues;
 with CuBit.Published_Clock;
 
+with CuBit.Libc_Log;
 package body CuBit.Libc_Descriptors is
+   Stderr_Outlet : constant String := "unix.stderr";
 
    package K renames CuBit.Kernel_ABI;
    package FQ renames CuBit.Filesystem_Queues;
@@ -161,6 +163,9 @@ package body CuBit.Libc_Descriptors is
       Ring : Unsigned_16 := 0;
       Pages : Interfaces.C.unsigned := 0;
       Type_Tag : Unsigned_16 := 0;
+      --  A unix.stderr outlet no launcher lent a ring for: its text goes
+      --  into the program's log channel (CuBit.Libc_Log), when it has one.
+      Logged : Boolean := False;
    end record;
    Ports : array (CuBit.Program_Descriptions.Descriptor_Number) of Port_Entry;
    pragma Suppress_Initialization (Ports);
@@ -213,6 +218,19 @@ package body CuBit.Libc_Descriptors is
       end loop;
       return 1;
    end Pages_Of;
+
+   --  Whether Ring is a unix.stderr outlet whose text goes to the log
+   --  channel (no launcher's ring, and the program has a logstore entry).
+   function Logged_Stream (Ring : Unsigned_16) return Boolean;
+   function Logged_Stream (Ring : Unsigned_16) return Boolean is
+   begin
+      for P of Ports loop
+         if P.Ring = Ring and then Ring /= 0 then
+            return P.Logged and then CuBit.Libc_Log.Takes_Stderr;
+         end if;
+      end loop;
+      return False;
+   end Logged_Stream;
 
    function Type_Of (Ring : Unsigned_16) return Unsigned_16;
    function Type_Of (Ring : Unsigned_16) return Unsigned_16 is
@@ -281,7 +299,9 @@ package body CuBit.Libc_Descriptors is
               (Ring => PD.Ring_Id (D.Target),
                Pages => Interfaces.C.unsigned (S.Connectors (D.Target).Pages),
                Type_Tag => (if S.Connectors (D.Target).Element = PD.Text_Lines
-                            then Type_Text_Line else Type_Raw_Bytes));
+                            then Type_Text_Line else Type_Raw_Bytes),
+               Logged => S.Connectors (D.Target).Name_Length = Stderr_Outlet'Length
+                 and then S.Connectors (D.Target).Name (1 .. Stderr_Outlet'Length) = Stderr_Outlet);
          end if;
       end loop;
       --  Rings the launcher lent: produce into them (Stream_Create then
@@ -305,6 +325,12 @@ package body CuBit.Libc_Descriptors is
                   if Mapped /= K.Failed then
                      Stream_Adopt (PD.Ring_Id (E.Outlet), Interfaces.C.unsigned (Pages),
                                    To_Address (Integer_Address (Mapped)));
+                     --  The launcher reads it: not the log channel.
+                     for P of Ports loop
+                        if P.Ring = PD.Ring_Id (E.Outlet) then
+                           P.Logged := False;
+                        end if;
+                     end loop;
                   end if;
                end;
             end if;
@@ -453,7 +479,8 @@ package body CuBit.Libc_Descriptors is
          --  and a control message is taken there (CuBit.Libc_Process).
          --  Only the kernel's (no sender): a client's call with that label is
          --  not one.
-         if (M.Label = CuBit.Child_Exits.Event_Label or else M.Label = CuBit.Control_Events.Control_Label)
+         if (M.Label = CuBit.Child_Exits.Event_Label or else M.Label = CuBit.Child_Exits.Notice_Label
+             or else M.Label = CuBit.Control_Events.Control_Label)
            and then From = 0
          then
             Note_Event (M'Address);
@@ -1182,6 +1209,13 @@ package body CuBit.Libc_Descriptors is
       if Count not in 0 .. IOV_MAX then
          return Error (EINVAL);
       end if;
+      if Logged_Stream (E.Stream) then
+         for I in 1 .. Integer (Count) loop
+            CuBit.Libc_Log.Write_Stderr (To_Address (V (I).Base), size_t (V (I).Length));
+            Total := Total + To_Long (V (I).Length);
+         end loop;
+         return Total;
+      end if;
       Lock (Stream_Lock'Access);
       First_Write := not E.Created;
       if not E.Created then
@@ -1649,7 +1683,7 @@ package body CuBit.Libc_Descriptors is
          Ready := Scan (Polls, Count, Sockets);
          if Ready /= 0 or else Deadline = 0
            or else (Deadline /= unsigned_long (K.Forever)
-                    and then unsigned_long (CuBit.Kernel_Calls.Call (K.Get_Time)) >= Deadline)
+                    and then unsigned_long (CuBit.Published_Clock.Milliseconds) >= Deadline)
          then
             return Ready;
          end if;

@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with System.Machine_Code; use System.Machine_Code;
 with Wait_ABI;
+with CuBit.Process_Events;
 
 package body Futex_Share_Support is
 
@@ -75,6 +76,15 @@ package body Futex_Share_Support is
                              mod 2 ** 32);
       Thread_Exit;
    end Doomed_Waiter;
+
+   procedure Notice_Poller (Argument : Unsigned_64) is
+      pragma Unreferenced (Argument);
+   begin
+      while Notice_Poller_Stop = 0 loop
+         CuBit.Process_Events.Serve_Defaults;
+      end loop;
+      Thread_Exit;
+   end Notice_Poller;
 
    procedure Bystander (Argument : Unsigned_64) is
       Index : constant Bystander_Index := Bystander_Index (Argument);

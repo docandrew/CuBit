@@ -37,6 +37,7 @@ private
       Source : E.Press_Source; Delivered : out Boolean);
    package Policy is new ACPI_Power_Button_Watches
      (Reply_Token => CuBit.Handles.Reply, No_Reply => CuBit.Handles.No_Reply,
+      Initially_Discovering => True,
       Save_Current => Save_Current, Answer_Saved => Answer_Saved);
    type State is limited record Watches : Policy.State; end record;
 end ACPI_Native_Power_Watches;

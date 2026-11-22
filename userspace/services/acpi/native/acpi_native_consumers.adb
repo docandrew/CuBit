@@ -11,18 +11,47 @@ with ACPI_Battery_Information_Selection;with ACPI_Battery_Observation;with ACPI_
 with ACPI_Requests.Battery_Observations;with ACPI_Requests.Battery_Observations.With_Local_Events;
 with ACPI_HID_I2C_Candidate;with ACPI_HID_I2C_Discovery;with ACPI_HID_I2C_Resolved;with ACPI_HID_Inventory;
 with ACPI_Requests.HID_Devices;with ACPI_Requests.HID_Devices.With_Local_Events;
-with ACPI_Local_Sample_Status;with Interfaces;
+with ACPI_Local_Sample_Status;with Interfaces;with AML_Execute;
 package body ACPI_Native_Consumers is
    package C renames ACPI_Service;package Q renames ACPI_Requests;package One renames ACPI_One_Service;
    package Status renames ACPI_Local_Sample_Status;
-   package LD is new ACPI_Lid(C,One.Runtime.Evaluate_Named);
-   package PD is new ACPI_Power_Source(C,One.Runtime.Evaluate_Named);
+   use type C.Values.Access_Status, AML_Execute.Execution_Status;
+   Evaluation_Failed : Boolean := False;
+   Evaluation_Method : String (1 .. 4) := "NONE";
+   Evaluation_Access : C.Values.Access_Status := C.Values.Wrong_Phase;
+   Evaluation_Result : AML_Execute.Execution_Status := AML_Execute.Unsupported_Value;
+   Evaluation_Charge : Natural := 0;
+   procedure Note_Evaluation (Method : String; Result : C.Values.Result; Access_Result : C.Values.Access_Status) is
+   begin
+      if Evaluation_Failed then return; end if;
+      Evaluation_Method := Method; Evaluation_Access := Access_Result;
+      Evaluation_Result := Result.Status; Evaluation_Charge := Result.Charged;
+      Evaluation_Failed := Access_Result /= C.Values.Available or else Result.Status not in
+        AML_Execute.Returned | AML_Execute.Object_Returned | AML_Execute.Reference_Returned |
+        AML_Execute.Metadata_Returned | AML_Execute.No_Return;
+   end Note_Evaluation;
+   procedure Evaluate_Sample (Service : aliased in out C.State; Item : C.Node_Descriptor; Budget : Natural;
+      Result : out C.Values.Result; Access_Result : out C.Values.Access_Status) is
+      Method : constant String := C.Values.Node_Name (Item);
+   begin
+      One.Runtime.Evaluate_Sample (Service, Item, Budget, Result, Access_Result);
+      Note_Evaluation (Method, Result, Access_Result);
+   end Evaluate_Sample;
+   procedure Invoke_Sample (Service : aliased in out C.State; Node : C.Namespace.Node_ID;
+      Args : C.Values.Arguments; Argument_Count : C.Values.Argument_Count; Budget : Natural;
+      Result : out C.Values.Result; Access_Result : out C.Values.Access_Status) is
+   begin
+      One.Runtime.Invoke_Sample (Service, Node, Args, Argument_Count, Budget, Result, Access_Result);
+      Note_Evaluation ("ARGS", Result, Access_Result);
+   end Invoke_Sample;
+   package LD is new ACPI_Lid(C,Evaluate_Sample);
+   package PD is new ACPI_Power_Source(C,Evaluate_Sample);
    package Lids is new Q.Lids(LD);package Sources is new Q.Power_Sources(PD);
    package Format is new ACPI_Battery_Information;
-   package Dynamic is new ACPI_Battery(C,One.Runtime.Evaluate_Named);
-   package Extended_Info is new ACPI_Battery_Information_Reader(C,Format,One.Runtime.Evaluate_Named);
+   package Dynamic is new ACPI_Battery(C,Evaluate_Sample);
+   package Extended_Info is new ACPI_Battery_Information_Reader(C,Format,Evaluate_Sample);
    package Legacy_Format is new ACPI_Battery_Legacy_Information;
-   package Legacy_Info is new ACPI_Battery_Legacy_Information_Reader(C,Legacy_Format,One.Runtime.Evaluate_Named);
+   package Legacy_Info is new ACPI_Battery_Legacy_Information_Reader(C,Legacy_Format,Evaluate_Sample);
    package Static_Info is new ACPI_Battery_Information_Selection(C,Format,Legacy_Format,Extended_Info,Legacy_Info);
    package Collector is new ACPI_Battery_Observation(C,Format,Dynamic,Static_Info);
    package Batteries is new Q.Battery_Observations(Dynamic,Collector);
@@ -32,18 +61,20 @@ package body ACPI_Native_Consumers is
    Maximum_Source_Bytes : constant Positive := 256;
    Maximum_Resource_Bytes : constant Positive := 65_536;
    package Candidates is new ACPI_HID_I2C_Candidate(Maximum_Source_Bytes);
-   package Discovery is new ACPI_HID_I2C_Discovery(C,One.Runtime.Invoke_With_Arguments,One.Runtime.Evaluate_Named);
+   package Discovery is new ACPI_HID_I2C_Discovery(C,Invoke_Sample,Evaluate_Sample);
    package Resolver is new ACPI_HID_I2C_Resolved(C,Candidates);
    package Hids is new Q.HID_Devices(Discovery,Resolver);
    package HI is new ACPI_HID_Inventory(Resolver,Maximum_Devices);
    use type One.Runtime.Status.Phase,Status.Outcome,Status.Notice;
    use type Lids.Samples.Availability,Sources.Samples.Availability,BI.Samples.Availability,HI.Samples.Availability;
    use type BI.Availability;
+   use type Collector.Outcome, Static_Info.Source_Kind;
    Fuel : constant Positive := 100_000;
    Window : constant Status.Window_Allowance := 500_000;
    Last : Report;
    Attempted,Working : Boolean := False;
    Pending,Runnable : array(Family) of Boolean := [others=>False];
+   Suspended : array (Family) of Boolean := [others => False];
    Next_Family : Family := Lid;
    Lid_Value:Lids.Samples.View;Source_Value:Sources.Samples.View;
    Battery_Value:BI.Samples.View;HID_Value:HI.Samples.View;
@@ -96,6 +127,136 @@ package body ACPI_Native_Consumers is
       Read_Battery_Clock,Report_Battery,Healthy,Fuel,Window);
    package HE is new Hids.With_Local_Events(HI,One.Runtime.Current,One.Runtime_Access.Begin_Event,One.Runtime_Access.End_Event,
       Read_HID_Clock,Report_HID,Healthy,Maximum_Resource_Bytes,Fuel,Window);
+   procedure Capture_Refusal (F : Family; Isolated : Boolean) is
+      procedure Copy (Index : Positive; Text : String) is
+         N : constant Natural := Natural'Min (Text'Length, Last.Diagnostics (Index).Text'Length);
+      begin
+         Last.Diagnostics (Index).Last := N;
+         Last.Diagnostics (Index).Text (1 .. N) := Text (Text'First .. Text'First + N - 1);
+      end Copy;
+   begin
+      if Last.Refusal_Count < Natural'Last then Last.Refusal_Count := Last.Refusal_Count + 1; end if;
+      Last.Diagnostics := [others => <>];
+      Copy (1, "acpi: sample refusal family=" & F'Image & " isolated=" & Isolated'Image &
+         " runtime=" & One.Runtime.Current'Image & " owner-guard=" & One.Runtime.Observation'Image);
+      Copy (2, "acpi: sample evaluation method=" & Evaluation_Method & " failed=" & Evaluation_Failed'Image &
+         " access=" & Evaluation_Access'Image & " execution=" & Evaluation_Result'Image & " charged=" & Evaluation_Charge'Image);
+      if F = Battery then
+         declare D : constant BE.Collection_Diagnostic := BE.Collection_Report; begin
+            Copy (3, "acpi: battery guard=" & D.Outcome'Image & " count=" & D.Count'Image & " charged=" & D.Charged'Image &
+               " search=" & D.Search.Outcome'Image & " identity=" & D.Search.Last_Identity.Outcome'Image);
+            Copy (4, "acpi: battery probe=" & D.Probe.Status'Image & " bst=" & D.Probe.Dynamic_Data.Execution'Image &
+               " bix=" & D.Probe.Static_Data.Extended_Data.Execution'Image & " bif=" & D.Probe.Static_Data.Legacy_Data.Execution'Image);
+         end;
+      end if;
+   end Capture_Refusal;
+   procedure Read_Power (Server : Q.State; Maximum_Age : ACPI_Cached_Power_Values.Microseconds;
+      Value : out ACPI_Cached_Power_Values.Snapshot) is
+      package V renames ACPI_Cached_Power_Values;
+      Now : Interfaces.Unsigned_64; Clock_Available : Boolean;
+      LV : Lids.Samples.View; PV : Sources.Samples.View;
+      function Convert (Item : Lids.Samples.Availability) return V.Availability is
+        (case Item is
+           when Lids.Samples.Not_Ready => V.Not_Ready, when Lids.Samples.Available => V.Available,
+           when Lids.Samples.Missing => V.Missing, when Lids.Samples.Failure => V.Failure,
+           when Lids.Samples.Too_Old => V.Too_Old, when Lids.Samples.Clock_Unknown => V.Clock_Unknown,
+           when Lids.Samples.Clock_Regressed => V.Clock_Regressed,
+           when Lids.Samples.Counter_Exhausted => V.Counter_Exhausted);
+      function Convert (Item : Sources.Samples.Availability) return V.Availability is
+        (case Item is
+           when Sources.Samples.Not_Ready => V.Not_Ready, when Sources.Samples.Available => V.Available,
+           when Sources.Samples.Missing => V.Missing, when Sources.Samples.Failure => V.Failure,
+           when Sources.Samples.Too_Old => V.Too_Old, when Sources.Samples.Clock_Unknown => V.Clock_Unknown,
+           when Sources.Samples.Clock_Regressed => V.Clock_Regressed,
+           when Sources.Samples.Counter_Exhausted => V.Counter_Exhausted);
+   begin
+      Value := (others => <>);
+      if Working or else not Last.Started or else Last.Stopping or else Last.Closed
+        or else not Healthy or else not Owner_Quiet (Server)
+        or else One.Runtime.Current /= One.Runtime.Status.Idle then return; end if;
+      ACPI_Clock_Source.Read (Now, Clock_Available);
+      LV := LE.Read (Server, (Clock_Available, Lids.Samples.Tick (Now)), Lids.Samples.Tick (Maximum_Age));
+      PV := PE.Read (Server, (Clock_Available, Sources.Samples.Tick (Now)), Sources.Samples.Tick (Maximum_Age));
+      Value.Lid := (V.Generation (LV.Revision), Convert (LV.Status),
+        (LV.Time.Available, V.Microseconds (LV.Time.Value)), LV.Value);
+      Value.Source := (V.Generation (PV.Revision), Convert (PV.Status),
+        (PV.Time.Available, V.Microseconds (PV.Time.Value)), PV.Value);
+   end Read_Power;
+   procedure Read_Batteries (Server : Q.State; Maximum_Age : ACPI_Cached_Power_Values.Microseconds;
+      Value : out ACPI_Cached_Battery_Values.View) is
+      package V renames ACPI_Cached_Power_Values;
+      package B renames ACPI_Cached_Battery_Values;
+      Now : Interfaces.Unsigned_64;
+      Clock_Available : Boolean;
+      Cached : BI.Samples.View;
+      function Convert (Item : BI.Samples.Availability) return V.Availability is
+        (case Item is
+           when BI.Samples.Not_Ready => V.Not_Ready, when BI.Samples.Available => V.Available,
+           when BI.Samples.Missing => V.Missing, when BI.Samples.Failure => V.Failure,
+           when BI.Samples.Too_Old => V.Too_Old, when BI.Samples.Clock_Unknown => V.Clock_Unknown,
+           when BI.Samples.Clock_Regressed => V.Clock_Regressed,
+           when BI.Samples.Counter_Exhausted => V.Counter_Exhausted);
+      function Convert (Item : Collector.Outcome) return B.Acquisition_Reason is
+        (case Item is
+           when Collector.Sampled => B.No_Failure, when Collector.Not_Battery => B.Not_Battery,
+           when Collector.Absent => B.Absent, when Collector.Not_Ready => B.Not_Ready,
+           when Collector.Identification_Failed => B.Identification_Failed,
+           when Collector.Presence_Failed => B.Presence_Failed,
+           when Collector.Information_Failed => B.Information_Failed,
+           when Collector.Status_Failed => B.Status_Failed,
+           when Collector.Presence_Changed => B.Presence_Changed,
+           when Collector.Budget_Exhausted => B.Budget_Exhausted,
+           when Collector.Cleanup_Failed => B.Cleanup_Failed,
+           when Collector.Provider_Contract_Error => B.Provider_Contract_Error);
+   begin
+      Value := (others => <>);
+      if Working or else not Last.Started or else Last.Stopping or else Last.Closed
+        or else not Healthy or else not Owner_Quiet (Server)
+        or else One.Runtime.Current /= One.Runtime.Status.Idle then return; end if;
+      ACPI_Clock_Source.Read (Now, Clock_Available);
+      Cached := BE.Read (Server, (Clock_Available, BI.Samples.Tick (Now)), BI.Samples.Tick (Maximum_Age));
+      Value.Revision := V.Generation (Cached.Revision);
+      Value.Status := Convert (Cached.Status);
+      Value.Time := (Cached.Time.Available, V.Microseconds (Cached.Time.Value));
+      if Cached.Status /= BI.Samples.Available then return; end if;
+      Value.Count := B.Battery_Count (Cached.Value.Count);
+      for Index in 1 .. Cached.Value.Count loop
+         declare
+            Item : BI.Entry_Value renames Cached.Value.Items (Index);
+            Target : B.Entry_Value renames Value.Items (B.Slot (Index));
+            Common : constant Static_Info.Common_Information := Static_Info.Common (Item.Value.Information);
+         begin
+            Target.Reason := Convert (Item.Reason);
+            case Item.Status is
+               when BI.Known_Absent =>
+                  if Item.Reason = Collector.Absent then Target.Status := B.Known_Absent;
+                  else Target.Reason := B.Provider_Contract_Error; end if;
+               when BI.Acquisition_Failed => Target.Status := B.Acquisition_Failed;
+               when BI.Sampled =>
+                  if Item.Reason /= Collector.Sampled or else Common.Source = Static_Info.None_Reported then
+                     Target.Reason := B.Provider_Contract_Error;
+                  else
+                     Target.Status := B.Sampled;
+                     Target.Value.Source := (case Common.Source is
+                        when Static_Info.None_Reported => B.None_Reported,
+                        when Static_Info.Extended_Reported => B.Extended_Reported,
+                        when Static_Info.Legacy_Reported => B.Legacy_Reported);
+                     Target.Value.Units := (case Common.Units is
+                        when Static_Info.Unspecified_Unit => B.Unspecified_Unit,
+                        when Static_Info.Energy_And_Power => B.Energy_And_Power,
+                        when Static_Info.Charge_And_Current => B.Charge_And_Current);
+                     Target.Value.Design_Capacity :=
+                       (Common.Design.Known, (if Common.Design.Known then Common.Design.Value else 0));
+                     Target.Value.Last_Full_Capacity :=
+                       (Common.Last_Full.Known, (if Common.Last_Full.Known then Common.Last_Full.Value else 0));
+                     Target.Value.Design_Voltage :=
+                       (Common.Voltage.Known, (if Common.Voltage.Known then Common.Voltage.Value else 0));
+                     Target.Value.Dynamic := Item.Value.Status;
+                  end if;
+            end case;
+         end;
+      end loop;
+   end Read_Batteries;
    procedure Start(Server:Q.State;Accepted:out Boolean) is
       L,P,B,H:Boolean;
    begin
@@ -115,7 +276,9 @@ package body ACPI_Native_Consumers is
       -- authorized only by their conjunction in the caller's private broker.
       LE.Route(Server,L);PE.Route(Server,P);BE.Route(Server,B);HE.Route(Server,H);
       Routed:=L and P and B and H;
-      if Routed and not Last.Stopping then Runnable:=[others=>True];end if;
+      if Routed and not Last.Stopping then
+         for F in Family loop Runnable (F) := not Suspended (F); end loop;
+      end if;
    end Route;
    procedure Advance(Server:in out Q.State;Result:out ACPI_Native_Server.Owner_Outcome) is
       Outcome:Status.Outcome;F:Family:=Next_Family;Found:Boolean:=False;
@@ -131,7 +294,8 @@ package body ACPI_Native_Consumers is
          F:=(if F=Family'Last then Family'First else Family'Succ(F));
       end loop;
       if not Found then Result:=ACPI_Native_Server.Owner_Idle;return;end if;
-      Working:=True;Last.At_Family:=F;
+      Working:=True;Last.At_Family:=F;Evaluation_Failed:=False;Evaluation_Method:="NONE";
+      Evaluation_Access:=C.Values.Wrong_Phase;Evaluation_Result:=AML_Execute.Unsupported_Value;Evaluation_Charge:=0;
       case F is
          when Lid=>LE.Advance(Server,Outcome);
          when AC_Source=>PE.Advance(Server,Outcome);
@@ -140,7 +304,14 @@ package body ACPI_Native_Consumers is
       end case;
       Working:=False;Next_Family:=(if F=Family'Last then Family'First else Family'Succ(F));
       if Last.Why/=None then return;end if;
-      if Outcome=Status.Refused then Last.Why:=Family_Refused;return;end if;
+      if Outcome=Status.Isolated then
+         -- The family closed its unchanged owner window before suspending.
+         -- It still routes every receipt, but is never resampled implicitly.
+         if One.Runtime.Current/=One.Runtime.Status.Idle or else not Owner_Quiet(Server) or else not Sources_Healthy then
+            Capture_Refusal(F,False);Last.Why:=Family_Refused;return;
+         end if;
+         Suspended(F):=True;Capture_Refusal(F,True);
+      elsif Outcome=Status.Refused then Capture_Refusal(F,False);Last.Why:=Family_Refused;return;end if;
       Runnable(F):=Outcome=Status.Pending;
       Result:=(if Facts_Pending or else (for some Kind in Family=>Runnable(Kind))
          then ACPI_Native_Server.Owner_Pending else ACPI_Native_Server.Owner_Idle);

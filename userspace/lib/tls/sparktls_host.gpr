@@ -59,7 +59,7 @@ project SPARKTLS_Host is
    --    sets CR4.OSFXSR and restores FXSAVE state eagerly), and accelerated
    --    units get upstream's instruction switches. AVX units run only after
    --    CPUID and XCR0 dispatch, and CuBit does not enable AVX state yet.
-   Base := ("-O2", "-gnat2022", "-gnatp", "-fno-tree-vrp", "-gnatQ",
+   Base := ("-O2", "-march=x86-64-v3", "-gnat2022", "-gnatp", "-fno-tree-vrp", "-gnatQ",
             "-gnatw.X", "-gnatws") & Target;
    AES_NI := ("-maes", "-mpclmul", "-mssse3");
    ADX := ("-mbmi2", "-madx");

@@ -1,0 +1,17 @@
+--  gnatprove (level 2) over the driver-budget log issuances: the fixed
+--  table is injective and below every allocated issuance (Fixed_Unique,
+--  asserted by the test and proved), and the allocator never hands out an
+--  issuance twice or one of the fixed ones.
+project Prove is
+   for Source_Dirs use (".", "build/links", "../../userspace/ccl/runtime-shared");
+   for Source_Files use
+     ("cubit.ads", "cubit-log_protocol.ads", "cubit-log_records.ads", "cubit-log_records.adb", "cubit-protocols.ads", "driver_log_issuances.ads", "driver_log_issuances.adb",
+      "issuance_lemmas.ads");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Prove;

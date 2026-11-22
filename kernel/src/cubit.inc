@@ -27,6 +27,16 @@ GDT_OFFSET_KERNEL_DATA  equ 16
 GDT_OFFSET_USER_CODE    equ 24
 GDT_OFFSET_USER_DATA    equ 32
 
+; The user selectors SYSRET loads (STAR, PerCPUData) and an interrupt from
+; ring 3 pushes: segment.ads's GDT_OFFSET_USER_DATA (24) and
+; GDT_OFFSET_USER_CODE (32), with RPL 3 (Process.initializeUserEntry).
+USER_SS_SELECTOR        equ 24 | 3
+USER_CS_SELECTOR        equ 32 | 3
+
+; The error-code word of a frame SYSCALL entry builds (Stackframe.
+; System_Call_Frame_Tag): no CPU error code reaches 2 ** 31.
+SYSCALL_FRAME_TAG       equ 0x53595343
+
 ; Make sure this matches linker.ld
 KERNEL_BASE             equ 0xFFFF_FFFF_8000_0000
 LINEAR_BASE             equ 0xFFFF_8000_0000_0000
@@ -44,7 +54,6 @@ SEC_STACK_SIZE          equ 2048
 
 ; Syscall numbers (rax) - make sure this matches syscall.ads
 SYSCALL_EXIT            equ 0
-SYSCALL_GETPID          equ 6
 SYSCALL_KILL            equ 7
 SYSCALL_SBRK            equ 8
 SYSCALL_WRITE           equ 12

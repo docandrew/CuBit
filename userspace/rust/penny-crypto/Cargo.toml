@@ -1,0 +1,13 @@
+[package]
+name = "penny-crypto"
+version = "0.1.0"
+edition = "2024"
+description = "Penny's cryptography: a rustls CryptoProvider and digests over SPARKTLSCrypto, SPARKNaCl and SPARKMLKEM (userspace/servo/crypto)."
+license = "GPL-3.0-or-later"
+publish = false
+links = "penny_crypto"
+
+[dependencies]
+# rustls without a built-in provider: this crate is Penny's.
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "logging"] }
+getrandom = "0.3"

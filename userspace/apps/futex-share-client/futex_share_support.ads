@@ -83,6 +83,11 @@ package Futex_Share_Support is
      with Volatile_Components;
    Running : aliased Word := 0;
    Bystander_Done : array (Bystander_Index) of aliased Word := [others => 1];
+
+   --  Takes this process's kernel notices as they come until Stop is set.
+   Notice_Poller_Stop : aliased Word := 0;
+   Notice_Poller_Done : aliased Word := 1;
+   procedure Notice_Poller (Argument : Unsigned_64) with Convention => C;
    procedure Bystander (Argument : Unsigned_64) with Convention => C;
 
 end Futex_Share_Support;

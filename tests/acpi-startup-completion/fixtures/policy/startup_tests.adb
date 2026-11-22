@@ -7,6 +7,7 @@ procedure Startup_Tests is
    package C renames ACPI_Startup_Completion;
    package P renames CuBit.Consumer_Initialization_Exchange;
    use type P.Phase_Status, Interfaces.Unsigned_64;
+   use type C.Phase_Result;
    type Results is array (Positive range 1 .. 4) of C.Phase_Result;
    Count : Natural := 0;
    type Release_Values is array (Positive range 1 .. 5) of Interfaces.Unsigned_64;
@@ -65,6 +66,35 @@ begin
                   Count := Count + 1;
                end;
             end loop;
+         end loop;
+      end loop;
+   end loop;
+   for Live in Boolean loop
+      for Absent in Boolean loop
+         for Recovery in Boolean loop
+            declare
+               Actual : constant C.Phase_Result := C.Unavailable_Events (Live, Absent, Recovery);
+               Expected : C.Phase_Result;
+               Status : P.Phase_Status;
+            begin
+               if Recovery then Expected := C.Failed;
+               elsif not Live then Expected := C.Incomplete;
+               elsif Absent then Expected := C.Finished;
+               else Expected := C.Finished_With_Errors;
+               end if;
+               if Actual /= Expected then raise Program_Error with "optional event phase classification"; end if;
+               Count := Count + 1;
+               Status := C.Decide (C.Finished, C.Finished, C.Finished, True, Events => Actual);
+               if Status /= (case Expected is when C.Finished => P.Completed,
+                  when C.Finished_With_Errors => P.Completed_With_Errors,
+                  when C.Incomplete => P.Incomplete, when C.Failed => P.Failed)
+               then raise Program_Error with "optional event consumer declaration"; end if;
+               Count := Count + 1;
+               if P.Ran_To_End (Status) /= (Live and not Recovery) then
+                  raise Program_Error with "only safe completed optional event phase can release consumers";
+               end if;
+               Count := Count + 1;
+            end;
          end loop;
       end loop;
    end loop;

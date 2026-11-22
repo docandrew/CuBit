@@ -1,0 +1,30 @@
+--  SPDX-License-Identifier: GPL-3.0-or-later
+--  Hosted tests of the toolkit's instrument views (graphs, tree tables,
+--  hex views, code views, timelines): Linux-hosted, synthetic models.
+with "../../fonts_host.gpr";
+with "../../../../allocator/allocator_runtime_host.gpr";
+project Instrument_Tests is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../..", "../../../theme", "../../../compositor", "../../../display");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("graphs_tests.adb", "hex_views_tests.adb", "timelines_tests.adb", "code_views_tests.adb", "tree_tables_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022");
+      Mine := ("-O2", "-gnat2022", "-gnatwa", "-gnatwJ", "-gnata", "-gnato");
+      for Switches ("graphs_tests.adb") use Mine;
+      for Switches ("cubit-ui-graphs.adb") use Mine;
+      for Switches ("cubit-ui-graphs-views.adb") use Mine;
+      for Switches ("cubit-ui-instrument.adb") use Mine;
+      for Switches ("cubit-ui-hex_views.adb") use Mine;
+      for Switches ("cubit-ui-timelines.adb") use Mine;
+      for Switches ("hex_views_tests.adb") use Mine;
+      for Switches ("timelines_tests.adb") use Mine;
+      for Switches ("code_views_tests.adb") use Mine;
+      for Switches ("tree_tables_tests.adb") use Mine;
+      for Switches ("cubit-ui-tree_tables.adb") use Mine;
+      for Switches ("cubit-ui-tree_tables-rows.adb") use Mine;
+      for Switches ("cubit-ui-code_views.adb") use Mine;
+      for Switches ("cubit-ui-code_views-lines.adb") use Mine;
+   end Compiler;
+end Instrument_Tests;

@@ -15,6 +15,16 @@
 bits 64
 
 extern interruptHandler     ; in interrupt_pic.adb
+extern cubitEntryClearsAC   ; Interrupt_Entry.Clears_Alignment_Check
+
+; CLAC (0F 01 CA) when the CPU has SMAP (Interrupt_Entry). The flag is
+; read RIP-relative, so it is safe before any GS or stack switch.
+%macro clearACIfSMAP 0
+    cmp byte [rel cubitEntryClearsAC], 0
+    je %%keep
+    db 0x0F, 0x01, 0xCA                 ; clac
+%%keep:
+%endmacro
 
 global interruptReturn
 global enterUsermode
@@ -115,12 +125,40 @@ isr0:
 	push long 0				; number of interrupt
 	jmp isrCommon
 
-; debug exception
+; debug exception (IST 4)
+; A #DB from user mode (CS's RPL is 3: the CPU just left ring 3, so the user's
+; GS base is live) moves to this thread's kernel stack and takes the ordinary
+; path, so its handler may block or switch like any other user exception.
+; A #DB in kernel mode is a data breakpoint whose condition MOV SS or POP SS
+; deferred onto the kernel's first instruction (CVE-2018-8897): after SYSCALL
+; that instruction still runs on the user's stack pointer, and after INT n
+; before its SWAPGS, so neither the stack nor the pushed CS can be trusted.
+; It runs on IST 4 through the GS-exact entry and returns without blocking.
 isr1:
-    swapGSIfFromProcess
+    test qword [rsp+8], 3               ; CS of the interrupted code
+    jz .fromKernel
+    swapgs
+    lfence
+    ; Interrupts are off (interrupt gate) and the CPU came from ring 3, so
+    ; SAVED_PROCESS_RSP is free scratch (SYSCALL entry uses it only with
+    ; interrupts off, before it pushes) and SAVED_KERNEL_RSP is this
+    ; thread's kernel stack top (TSS.rsp0).
+    mov [gs:SAVED_PROCESS_RSP], rax
+    mov rax, rsp                        ; the hardware frame on IST 4
+    mov rsp, [gs:SAVED_KERNEL_RSP]
+    push qword [rax + 32]               ; SS
+    push qword [rax + 24]               ; RSP
+    push qword [rax + 16]               ; RFLAGS
+    push qword [rax + 8]                ; CS
+    push qword [rax]                    ; RIP
+    mov rax, [gs:SAVED_PROCESS_RSP]
 	push long 0
 	push long 1
 	jmp isrCommon
+.fromKernel:
+	push long 0
+	push long 1
+	jmp istCommon
 
 ; NMI (IST 1, GS-exact entry)
 isr2:
@@ -262,11 +300,180 @@ msrSafeReadFault:
     ret
 
 ; page fault (CPU pushes error code)
+; A #PF raised by one of the recovering accesses below (kernel mode only:
+; user code cannot run at their addresses) resumes at its fault label, as
+; isr13 does for the MSR accesses: the error code is dropped and IRETQ
+; returns there, with the interrupted RFLAGS.
+%macro resumeIfFaultAt 2                ; instruction label, fault label
+    lea rax, [rel %1]
+    cmp [rsp + 16], rax                ; rax, error code, then RIP
+    jne %%other
+    lea rax, [rel %2]
+    jmp .pfResume
+%%other:
+%endmacro
+
 isr14:
+    push rax
+    resumeIfFaultAt userReadProbeInsn, userReadProbeFault
+    resumeIfFaultAt kernelReadProbeInsn, kernelReadProbeFault
+    resumeIfFaultAt copyFromUserInsn, copyFromUserFault
+    resumeIfFaultAt copyToUserInsn, copyToUserFault
+    resumeIfFaultAt userLoad32Insn, userLoad32Fault
+    resumeIfFaultAt userStore32Insn, userStore32Fault
+    pop rax
     swapGSIfFromProcessErr
 	; returns error code
 	push long 14
 	jmp isrCommon
+.pfResume:
+    mov [rsp + 16], rax
+    pop rax
+    add rsp, 8                         ; the error code
+    iretq
+
+;------------------------------------------------------------------------------
+; A kernel read of a user address that survives a refusal, for the
+; interrupt-entry SMAP probe (Build.Smap_Entry_Probe, Interrupts): returns 0
+; when the read succeeded and 1 when it raised #PF (isr14 above).
+;   cubitUserReadProbe (rdi = user address)
+;------------------------------------------------------------------------------
+global cubitUserReadProbe
+cubitUserReadProbe:
+userReadProbeInsn:
+    mov al, [rdi]
+    xor eax, eax
+    ret
+userReadProbeFault:
+    mov eax, 1
+    ret
+
+;------------------------------------------------------------------------------
+; A kernel read of one 64-bit word at a kernel address that survives a page
+; fault, for the kernel-map probe (KERN-014, Build.Kernel_Map_Probe,
+; Process.Map_Probe): returns 0 and stores the word when the read went
+; through, 1 (storing 0) when it raised #PF (isr14 above).
+;   cubitKernelReadProbe (rdi = kernel address, rsi = address of the result)
+;------------------------------------------------------------------------------
+global cubitKernelReadProbe
+cubitKernelReadProbe:
+kernelReadProbeInsn:
+    mov rax, [rdi]
+    mov [rsi], rax
+    xor eax, eax
+    ret
+kernelReadProbeFault:
+    mov qword [rsi], 0
+    mov eax, 1
+    ret
+
+;------------------------------------------------------------------------------
+; The kernel's access to the current process's own memory, through that
+; process's own mapping (KERN-014 slice 2, Process.User_Memory): no page
+; walk, no frame pin, no linear-map address. SMAP is opened (STAC) for the
+; one access instruction and closed (CLAC) after it, on both paths. A page
+; fault on that instruction (an unmapped page, a read-only page under a
+; store, a page a sibling thread just unmapped) resumes at its fault label
+; (isr14 above), which counts it in cubitUserAccessFaults.
+;
+; The caller (Ada) admits the range below User_Limit. Each routine clamps
+; the user address again without a branch, so a mispredicted admission
+; cannot steer a speculative access into the kernel half (SEC-026): an
+; address past USER_LIMIT - length becomes 0, the unmapped null page.
+; Each returns 0 on success and 1 on a fault.
+;   cubitCopyFromUser (rdi = kernel destination, rsi = user source, rdx = bytes)
+;   cubitCopyToUser   (rdi = user destination, rsi = kernel source, rdx = bytes)
+;   cubitUserLoad32   (rdi = user address, rsi = address of the 32-bit result)
+;   cubitUserStore32  (rdi = user address, esi = value)
+;------------------------------------------------------------------------------
+USER_LIMIT equ 0x0000800000000000        ; User_Page_Walk.User_Limit
+
+extern cubitUserAccessFaults
+
+%macro openUserAccess 0                  ; STAC when the CPU has SMAP
+    cmp byte [rel cubitEntryClearsAC], 0
+    je %%open
+    db 0x0F, 0x01, 0xCB                 ; stac
+%%open:
+%endmacro
+
+; reg: the user address, len: its byte count (a register or a constant)
+%macro clampUserAddress 2
+    mov rax, USER_LIMIT
+    sub rax, %2
+    xor r8d, r8d
+    cmp %1, rax
+    cmova %1, r8
+%endmacro
+
+%macro countUserFault 0
+    lock inc qword [rel cubitUserAccessFaults]
+%endmacro
+
+global cubitCopyFromUser
+global cubitCopyToUser
+global cubitUserLoad32
+global cubitUserStore32
+
+cubitCopyFromUser:
+    clampUserAddress rsi, rdx
+    mov rcx, rdx
+    openUserAccess
+copyFromUserInsn:
+    rep movsb
+    clearACIfSMAP
+    xor eax, eax
+    ret
+copyFromUserFault:
+    clearACIfSMAP
+    countUserFault
+    mov eax, 1
+    ret
+
+cubitCopyToUser:
+    clampUserAddress rdi, rdx
+    mov rcx, rdx
+    openUserAccess
+copyToUserInsn:
+    rep movsb
+    clearACIfSMAP
+    xor eax, eax
+    ret
+copyToUserFault:
+    clearACIfSMAP
+    countUserFault
+    mov eax, 1
+    ret
+
+cubitUserLoad32:
+    clampUserAddress rdi, 4
+    openUserAccess
+userLoad32Insn:
+    mov eax, [rdi]
+    clearACIfSMAP
+    mov [rsi], eax
+    xor eax, eax
+    ret
+userLoad32Fault:
+    clearACIfSMAP
+    countUserFault
+    mov dword [rsi], 0
+    mov eax, 1
+    ret
+
+cubitUserStore32:
+    clampUserAddress rdi, 4
+    openUserAccess
+userStore32Insn:
+    mov [rdi], esi
+    clearACIfSMAP
+    xor eax, eax
+    ret
+userStore32Fault:
+    clearACIfSMAP
+    countUserFault
+    mov eax, 1
+    ret
 
 ; unknown interrupt
 ;isr15:
@@ -475,6 +682,19 @@ isrCommon:
     push rbx
     push rax
 
+    ; RFLAGS.DF is the interrupted code's: user code may hold it set (a
+    ; backward memmove is STD; REP MOVS; CLD), and an interrupt does not
+    ; clear it. The kernel's compiled code assumes DF clear (the ABI), so
+    ; every REP MOVS/STOS it runs would copy backwards and write below its
+    ; buffers. IRETQ restores the interrupted DF. (SYSCALL clears DF itself:
+    ; x86.SYSCALL_ENTRY_FLAGS_MASK.)
+    cld
+    ; RFLAGS.AC likewise (SEC-026): user code may hold it set, and under SMAP
+    ; a set AC lets supervisor code touch user pages, so the handler would
+    ; run with SMAP off. CLAC raises #UD without SMAP, so only where kmain
+    ; found it (Interrupt_Entry); without SMAP AC means nothing at CPL 0.
+    clearACIfSMAP
+
     ; single argument to interruptHandler, containing this frame
     mov rdi, rsp
     call interruptHandler
@@ -506,7 +726,8 @@ interruptReturn:
     swapGSOnReturnToProcess
     iretq
 
-; Entry for the IST exceptions (NMI, double fault, machine check). They can
+; Entry for the IST exceptions (NMI, double fault, machine check, and a #DB
+; in kernel mode). They can
 ; arrive between SYSCALL and SWAPGS or between SWAPGS and SYSRET, where the
 ; saved CS does not tell which GS base is live, and user code chooses its own
 ; GS base with WRGSBASE. So never SWAPGS here: save the live GS base, load this
@@ -544,6 +765,8 @@ istCommon:
     shr rdx, 32
     wrmsr                               ; GS base := this CPU's PerCPUData
 
+    cld                                 ; DF as in isrCommon
+    clearACIfSMAP                       ; AC as in isrCommon
     mov rdi, rsp
     call interruptHandler
 

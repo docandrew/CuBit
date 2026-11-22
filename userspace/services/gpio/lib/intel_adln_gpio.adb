@@ -91,12 +91,15 @@ package body Intel_ADLN_GPIO with SPARK_Mode is
          PADCFG2 => (if Stride = Four_Words then Base + 2 * Register_Bytes else 0),
          Has_PADCFG2 => Stride = Four_Words, End_Exclusive => Last);
    end Plan;
-   function Interrupt_Eligible
-     (Selected : Location; Owner_Value, Host_Value, Lock_Value : Word) return Boolean is
+   function Host_Owned (Selected : Location; Owner_Value : Word) return Boolean is
    begin
       return Selected.Found and then
-        (Interfaces.Shift_Right (Owner_Value, Natural (Selected.Owner_Field_Shift)) and Owner_Field_Mask) = 0
-        and then (Host_Value and Selected.Interrupt_Mask) /= 0
-        and then (Lock_Value and Selected.Interrupt_Mask) = 0;
+        (Interfaces.Shift_Right (Owner_Value, Natural (Selected.Owner_Field_Shift)) and Owner_Field_Mask) = 0;
+   end Host_Owned;
+   function Interrupt_Eligible
+     (Selected : Location; Owner_Value, Host_Value : Word) return Boolean is
+   begin
+      return Host_Owned (Selected, Owner_Value) and then
+        (Host_Value and Selected.Interrupt_Mask) /= 0;
    end Interrupt_Eligible;
 end Intel_ADLN_GPIO;

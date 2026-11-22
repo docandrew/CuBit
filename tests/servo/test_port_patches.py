@@ -1,40 +1,41 @@
 #!/usr/bin/env python3
-"""Check a fresh and an already-patched Servo dependency cache in private files.
+"""Check crate_fixes.py's copy of the mozjs_sys fork, in a private directory.
 
-Only reads the upstream registry; never mutates the active native build tree.
+SpiderMonkey's GC chunk allocation is the fork's CuBit change (aligned libc
+allocations, no partial munmap); protection and decommit stay upstream's,
+compared with the fork's root (the crates.io package). A second run leaves
+the copy untouched (bytes and mtimes: cargo's cache stays valid), and a copy
+made from another pin is rebuilt from the checkout.
 """
 import importlib.util
+import os
 import pathlib
-import shutil
+import subprocess
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("servo_fixes", ROOT / "userspace/servo/crate_fixes.py")
 fixes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixes)
-swgl_fix = fixes.FIXES["swgl-0.70.0"]
+sources = pathlib.Path(fixes.fetch(ROOT / "userspace/rust/build/servo-crate-downloads"))
 crate = "mozjs_sys-153.3.0-0"
-full = fixes.FIXES[crate]
-upstream = next((ROOT / "userspace/rust/build/servo-work/cargo-home/registry/src").glob(f"*/{crate}"))
+fork = sources / (crate + ".fork")
+# The fork's base (the crates.io package): fetch the whole (short) history.
+if subprocess.check_output(["git", "-C", str(fork), "rev-parse", "--is-shallow-repository"], text=True).strip() == "true":
+    fork_line = next(line.split() for line in (ROOT / "userspace/servo/FORKS").read_text().splitlines()
+                     if line.startswith("mozjs "))
+    subprocess.run(["git", "-C", str(fork), "fetch", "-q", "--unshallow",
+                    os.environ.get("PENNY_MOZJS_URL", fork_line[2]), fork_line[1]], check=True)
+root = subprocess.check_output(["git", "-C", str(fork), "rev-list", "--max-parents=0", "HEAD"], text=True).strip()
+original = subprocess.check_output(["git", "-C", str(fork), "show", f"{root}:mozjs/js/src/gc/Memory.cpp"], text=True)
 
 with tempfile.TemporaryDirectory(prefix="cubit-servo-patch-") as directory:
-    directory = pathlib.Path(directory)
-    registry = directory / "registry"
-    for name, *_ in full["edits"]:
-        destination = registry / crate / name
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(upstream / name, destination)
-    output = directory / "patched"
-    # Emulate a pre-existing cache with the old static-link/platform edits.
-    fixes.FIXES = {crate: {"edits": [entry for entry in full["edits"] if entry[0] != "mozjs/js/src/gc/Memory.cpp"]}}
-    fixes.apply(str(registry), str(output))
-    fixes.FIXES = {crate: full}
-    fixes.apply(str(registry), str(output))
+    output = pathlib.Path(directory) / "patched"
+    fixes.FIXES, fixes.PINNED = {}, {}
+    fixes.apply(str(sources), str(output))
     memory = output / crate / "mozjs/js/src/gc/Memory.cpp"
-    original = (upstream / "mozjs/js/src/gc/Memory.cpp").read_text()
     patched = memory.read_text()
     assert "#if 1  // CuBit: aligned libc allocations" in patched
-    assert "#elif 1  // CuBit: MapAlignedPages" not in patched
     assert "// CuBit: only MapAlignedPages allocations use libc ownership." in patched
     start = original.index("static inline void UnmapInternal")
     end = original.index("template <Commit", start)
@@ -43,37 +44,16 @@ with tempfile.TemporaryDirectory(prefix="cubit-servo-patch-") as directory:
     assert "  RecordMemoryAlloc(length);\n  return region;\n#else\n\n#  ifdef JS_64BIT" in patched
     assert "return MapAlignedPages(length, alignment, StallAndRetry::No);" in patched
     # The adaptation must not silently weaken protection or decommit behavior.
-    assert patched[patched.index("static inline void ProtectMemory"): ] == original[original.index("static inline void ProtectMemory"): ]
+    assert patched[patched.index("static inline void ProtectMemory"):] == original[original.index("static inline void ProtectMemory"):]
     for function in ["bool MarkPagesUnusedSoft", "bool MarkPagesUnusedHard"]:
         assert patched[patched.index(function):patched.index("size_t GetPageFaultCount")] == original[original.index(function):original.index("size_t GetPageFaultCount")]
+    assert not (output / crate / ".cargo_vcs_info.json").exists() and not (output / crate / ".git").exists()
     snapshot = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in output.rglob("*") if p.is_file()}
-    fixes.apply(str(registry), str(output))
+    fixes.apply(str(sources), str(output))
     assert all((p.read_bytes(), p.stat().st_mtime_ns) == before for p, before in snapshot.items())
-    # Previously built v2 cache used free too broadly: migrate it safely.
-    memory.write_text(patched.replace("#elif defined(__wasi__)\n  free(region);",
-        "#elif 1  // CuBit: MapAlignedPages returns a libc-owned allocation.\n  free(region);"))
-    fixes.apply(str(registry), str(output))
+    # A copy from another pin (its stamp) is rebuilt from the checkout.
+    (output / crate / fixes.STAMP).write_text("another-commit")
+    memory.write_text("stale")
+    fixes.apply(str(sources), str(output))
     assert memory.read_text() == patched
-    fresh = directory / "fresh"
-    fixes.apply(str(registry), str(fresh))
-    assert (fresh / crate / "mozjs/js/src/gc/Memory.cpp").read_bytes() == memory.read_bytes()
-print("SERVO-PORT-PATCHES: PASS fresh existing-cache idempotent protection-unchanged")
-
-# SWGL diagnostics must apply cleanly and preserve repeat-build timestamps.
-crate = "swgl-0.70.0"
-upstream = next((ROOT / "userspace/rust/build/servo-work/cargo-home/registry/src").glob(f"*/{crate}"))
-with tempfile.TemporaryDirectory(prefix="cubit-swgl-patch-") as directory:
-    directory = pathlib.Path(directory)
-    source = directory / "registry" / crate / "src"
-    source.mkdir(parents=True)
-    for name, *_ in swgl_fix["edits"]:
-        destination = directory / "registry" / crate / name
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(upstream / name, destination)
-    fixes.FIXES = {crate: swgl_fix}
-    fixes.apply(str(directory / "registry"), str(directory / "out"))
-    patched = directory / "out" / crate / "src/gl.cc"
-    snapshot = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (directory / "out").rglob("*") if p.is_file()}
-    fixes.apply(str(directory / "registry"), str(directory / "out"))
-    assert all((p.read_bytes(), p.stat().st_mtime_ns) == before for p, before in snapshot.items())
-print("SERVO-SWGL-PATCH: PASS fresh and idempotent")
+print("SERVO-PORT-PATCHES: PASS fork copy, second run untouched, other pin rebuilt, protection unchanged")

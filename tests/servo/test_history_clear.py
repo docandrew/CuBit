@@ -1,13 +1,24 @@
-"""Compile the exact history-cleanup patch with a controlled lifecycle model.
+"""Compile the exact history-cleanup method (the Servo fork's constellation)
+with a controlled lifecycle model.
 
 Native script/paint retirement and memory convergence require separate tests.
 """
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 
 root=Path(__file__).resolve().parents[2]
-method=(root/'userspace/servo/history_clear.rs').read_text()
+# Penny's Servo fork checkout (userspace/servo/FORKS): the method as built.
+servo=Path(os.environ.get('SERVO_DIR',root/'userspace/rust/build/servo-work/servo'))
+source=(servo/'components/constellation/constellation.rs').read_text()
+start=source.index('    fn handle_clear_session_history(&mut self, webview_id: WebViewId) {')
+depth=0
+for end in range(source.index('{',start),len(source)):
+    depth+=source[end]=='{'
+    depth-=source[end]=='}'
+    if depth==0: break
+method=source[start:end+1]
 preamble=r'''
 use std::collections::{HashMap, HashSet};
 type WebViewId=u32;

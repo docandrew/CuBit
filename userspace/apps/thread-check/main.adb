@@ -15,6 +15,7 @@
 --  found through it, CuBit.Thread_Areas): it is restored before anything
 --  uses that again.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
@@ -66,7 +67,7 @@ procedure Main is
       end if;
    end Check;
 
-   PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   PID : constant Unsigned_64 := Own_Process_Word;
    --  Canonical, distinct per instance; FS is never dereferenced while it
    --  holds this value (nothing in the loop uses the secondary stack).
    Thread_Pointer : constant Unsigned_64 := Read_FS;
@@ -74,6 +75,8 @@ procedure Main is
    GS_Value : constant Unsigned_64 := 16#0000_3C3C_0000_0000# + PID * 16#1000#;
    FS_Kept, GS_Cleared : Boolean := True;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("thread-check: starting" & LF);
 
    Write_FS (FS_Value);

@@ -290,7 +290,7 @@ def self_test():
         ('userspace/apps/x/main.adb', '--  Old CapabilitySlot comments are fine.', '.adb'),
         ('userspace/runtime/gnat/cubit-handles-kernel.ads',
          'function To_Endpoint (W : Unsigned_64) return Endpoint is ((Word => W));', '.ads'),
-        ('userspace/apps/x/main.adb', 'Now := syscall (SYSCALL_GETTIME);', '.adb'),
+        ('userspace/apps/x/main.adb', 'Now := CuBit.Monotonic.Milliseconds;', '.adb'),
         ('userspace/apps/x/main.adb',
          'R := syscall (128, 16#DEAD#, 0);  -- capability-check: forged on purpose', '.adb'),
         ('tests/x/hosted_test.c', 'cubit_endpoint e = (cubit_endpoint){15};', '.c'),

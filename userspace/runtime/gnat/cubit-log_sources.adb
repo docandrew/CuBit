@@ -53,23 +53,29 @@ package body CuBit.Log_Sources with SPARK_Mode is
       return Result;
    end Make;
 
-   function Label (Item : Source_Identity) return String is
+   function Label_Last (Item : Source_Identity) return Name_Length is
    begin
-      if Item.Name_Used > 0 then
-         for I in 2 .. Item.Name_Used loop
-            if Item.Name (I) = '.' then
-               return Item.Name (1 .. I - 1);
-            end if;
-         end loop;
-         return Item.Name (1 .. Item.Name_Used);
-      end if;
-      for I in reverse 1 .. Item.Identity_Used - 1 loop
-         if Item.Identity (I) = '.' then
-            return Item.Identity (I + 1 .. Item.Identity_Used);
+      for I in 2 .. Item.Name_Used loop
+         if Item.Name (I) = '.' then
+            return I - 1;
          end if;
       end loop;
-      return Item.Identity (1 .. Item.Identity_Used);
-   end Label;
+      return Item.Name_Used;
+   end Label_Last;
+
+   function Label_First (Item : Source_Identity) return Positive is
+   begin
+      for I in reverse 1 .. Item.Identity_Used - 1 loop
+         if Item.Identity (I) = '.' then
+            return I + 1;
+         end if;
+      end loop;
+      return 1;
+   end Label_First;
+
+   function Is_Label (Item : Source_Identity; Wanted : String) return Boolean is
+     (if From_Name (Item) then Item.Name (1 .. Label_Last (Item)) = Wanted
+      else Item.Identity (Label_First (Item) .. Item.Identity_Used) = Wanted);
 
    --  Text ends with '.' and then Part.
    function Ends_With_Part (Text, Part : String) return Boolean is
@@ -80,9 +86,9 @@ package body CuBit.Log_Sources with SPARK_Mode is
 
    function Answers_To (Item : Source_Identity; Wanted : String) return Boolean is
      (Wanted'Length > 0
-      and then (Name_Of (Item) = Wanted or else Label (Item) = Wanted
-                or else Identity_Of (Item) = Wanted
-                or else Ends_With_Part (Identity_Of (Item), Wanted)));
+      and then (Item.Name (1 .. Item.Name_Used) = Wanted or else Is_Label (Item, Wanted)
+                or else Item.Identity (1 .. Item.Identity_Used) = Wanted
+                or else Ends_With_Part (Item.Identity (1 .. Item.Identity_Used), Wanted)));
 
    procedure Put_Word (Into : in out Entry_Buffer; At_Byte : Entry_Position; Value : Unsigned_64)
    with Pre => At_Byte <= Entry_Bytes - WORD_BYTES;

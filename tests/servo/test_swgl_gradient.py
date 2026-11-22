@@ -34,7 +34,7 @@ fixes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixes)
 edits = [e for e in fixes.FIXES["swgl-0.70.0"]["edits"] if e[0] == "src/swgl_ext.h"]
 assert edits, "missing gradient patch"
-source = next((ROOT / "userspace/rust/build/servo-work/cargo-home/registry/src").glob("*/swgl-0.70.0/src"))
+source = Path(fixes.fetch(ROOT / "userspace/rust/build/servo-crate-downloads")) / "swgl-0.70.0" / "src"
 shutil.copyfile(ROOT / "tests/servo/swgl_gradient_driver.cpp", directory / "driver.cpp")
 shutil.copyfile(__file__, directory / "runner.py")
 for variant in ("baseline", "candidate"):

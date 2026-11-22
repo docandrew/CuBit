@@ -6,8 +6,10 @@ package body CuBit.Log_Records with SPARK_Mode is
       High : Unsigned_8 := 16#BF#;
       B : Unsigned_8;
    begin
-      for C of Text loop
-         B := Unsigned_8 (Character'Pos (C));
+      for I in Text'Range loop
+         pragma Loop_Invariant
+           (if (for all J in Text'First .. I - 1 => Printable (Text (J))) then Remaining = 0);
+         B := Unsigned_8 (Character'Pos (Text (I)));
          if Remaining /= 0 then
             if B < Low or B > High then
                return False;
@@ -59,8 +61,17 @@ package body CuBit.Log_Records with SPARK_Mode is
       return (Success => True, Value => Item);
    end Make;
 
-   function Text (Item : Log_Record) return String is
-     (Item.Content (1 .. Item.Length));
+   procedure Text_Into (Item : Log_Record; Into : out Text_Buffer; Length : out Text_Count) is
+   begin
+      Into := Item.Content;
+      Length := Item.Length;
+   end Text_Into;
+
+   procedure Name_Into (Item : Field; Into : out Field_Name_Buffer; Length : out Field_Name_Length) is
+   begin
+      Into := Item.Label;
+      Length := Item.Label_Length;
+   end Name_Into;
    function Level (Item : Log_Record) return Severity is (Item.Importance);
    function Reported_Time (Item : Log_Record) return Timestamp is (Item.Time);
 
@@ -222,7 +233,7 @@ package body CuBit.Log_Records with SPARK_Mode is
             return;
          end if;
       end loop;
-      if not Valid_Field_Name (Name (Item)) then
+      if not Valid_Field_Name (Item.Label (1 .. Item.Label_Length)) then
          return;
       end if;
       for K in Field_Kind loop
@@ -306,20 +317,10 @@ package body CuBit.Log_Records with SPARK_Mode is
       for I in 1 .. Item.Length loop
          Item.Content (I) := Character'Val (Bytes (Text_Start + I));
       end loop;
-      if not Valid_Text (Text (Item)) then
+      if not Valid_Text (Item.Content (1 .. Item.Length)) then
          return (Success => False, Reason => Invalid_Text);
       end if;
       return (Success => True, Value => Item);
    end Decode;
 
-   function Severity_Of (Text : String) return Severity is
-   begin
-      for Level in Severity loop
-         if Text = Severity_Literal (Level) then
-            return Level;
-         end if;
-         pragma Loop_Invariant (for all Earlier in Severity'First .. Level => Text /= Severity_Literal (Earlier));
-      end loop;
-      raise Program_Error;
-   end Severity_Of;
 end CuBit.Log_Records;

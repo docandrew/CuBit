@@ -11,7 +11,8 @@ with Config;
 with BuddyAllocator;
 with MemoryAreas; use MemoryAreas;
 with TextIO; use TextIO;
-with x86;
+with TLB_Context;
+with TLB_Shootdown;
 
 -- Only explicitly annotated pure helpers are SPARK; mappings use overlays.
 package body Mem_mgr is
@@ -316,6 +317,23 @@ package body Mem_mgr is
 
 
     ---------------------------------------------------------------------------
+    -- forgetKernelTranslations
+    -- A kernel mapping was removed or split. Every process's page tables share
+    -- the kernel half, so any CPU may hold the old translation under any
+    -- address-space tag, and a tagged load keeps it: drop every tag's on every
+    -- online CPU. A CPU not yet online (boot, or an AP creating its own pinned
+    -- idle thread) drops its own; no other CPU runs that code's threads yet.
+    ---------------------------------------------------------------------------
+    procedure forgetKernelTranslations is
+    begin
+        if TLB_Shootdown.This_CPU_Online then
+            TLB_Shootdown.Invalidate_All;
+        else
+            TLB_Context.Flush_All;
+        end if;
+    end forgetKernelTranslations;
+
+    ---------------------------------------------------------------------------
     -- createGuardPage
     -- Unmap a single 4KB page from the kernel linear map. If the page is
     -- part of a 2MB big page, split the big page into 512 small pages first,
@@ -436,7 +454,7 @@ package body Mem_mgr is
             end walkP2;
         end walkP3;
 
-        flushTLB;
+        forgetKernelTranslations;
         success := True;
     end tryCreateGuardPage;
 
@@ -505,8 +523,8 @@ package body Mem_mgr is
                 end restoreEntry;
             end walkP2;
         end walkP3;
-
-        flushTLB;
+        -- No flush: the TLB caches no translation of a not-present entry
+        -- (Intel SDM Vol. 3A, 4.10.2.3), so none of the guard is stale.
     end removeGuardPage;
 
     procedure retireKernelImagePage (physAddr : in Virtmem.PhysAddress)
@@ -527,19 +545,80 @@ package body Mem_mgr is
         if not aliasMapped then
             raise RemapException with "retireKernelImagePage: no kernel-image alias";
         end if;
-        flushTLB;
+        forgetKernelTranslations;
     end retireKernelImagePage;
+
+    -- The kernel P2 entry mapping the linear-map address of Base.
+    function linearRegionEntry (Base : Virtmem.PhysAddress) return System.Address
+    is
+        use Virtmem;
+        function getP3 is new getNextTable (P4);
+        function getP2 is new getNextTable (P3);
+        virt : constant VirtAddress := P2V (Base);
+        p3Addr, p2Addr : PhysAddress;
+    begin
+        if Base mod BIG_FRAME_SIZE /= 0 then
+            raise RemapException with "linear region: not 2 MiB aligned";
+        end if;
+        p3Addr := getP3 (kernelP4, getP4Index (virt));
+        if p3Addr = 0 then
+            raise RemapException with "linear region: P3 not present";
+        end if;
+        declare
+            myP3 : P3 with Import, Address => To_Address (P2V (p3Addr));
+        begin
+            p2Addr := getP2 (myP3, getP3Index (virt));
+        end;
+        if p2Addr = 0 then
+            raise RemapException with "linear region: P2 not present";
+        end if;
+        return To_Address (P2V (p2Addr) + Integer_Address (getP2Index (virt)) * 8);
+    end linearRegionEntry;
+
+    procedure detachLinearRegion
+      (Base : Virtmem.PhysAddress; Saved : out Virtmem.PageTableEntry)
+    is
+        item : Virtmem.PageTableEntry with Import, Volatile, Address => linearRegionEntry (Base);
+    begin
+        Saved := item;
+        if not Saved.present then
+            raise RemapException with "detachLinearRegion: region not mapped";
+        end if;
+        item := Virtmem.EMPTY_PTE;
+    end detachLinearRegion;
+
+    procedure attachLinearRegion
+      (Base : Virtmem.PhysAddress; Saved : Virtmem.PageTableEntry)
+    is
+        item : Virtmem.PageTableEntry with Import, Volatile, Address => linearRegionEntry (Base);
+    begin
+        if item.present then
+            raise RemapException with "attachLinearRegion: region already mapped";
+        end if;
+        item := Saved;
+    end attachLinearRegion;
+
+    procedure installKernelTable
+      (Index : Virtmem.PageTableIndex; Table : Virtmem.PhysAddress)
+    is
+    begin
+        if kernelP4 (Index).present then
+            raise RemapException with "installKernelTable: P4 entry in use";
+        end if;
+        kernelP4 (Index) := Virtmem.makePTE
+          (Virtmem.addrToPFN (Table), Virtmem.PG_PRESENT + Virtmem.PG_WRITABLE);
+    end installKernelTable;
 
     ---------------------------------------------------------------------------
     -- switchAddressSpace - make the kernel's page table the active one.
     ---------------------------------------------------------------------------
+    function kernelRoot return Virtmem.PhysAddress is
+        (Virtmem.K2P (kernelP4'Address));
+
     procedure switchAddressSpace
     is
     begin
-        -- only switch if its necessary to avoid the TLB flush
-        if x86.getCR3 /= Virtmem.K2P(kernelP4'Address) then
-            Virtmem.setActiveP4(Virtmem.K2P(kernelP4'Address));
-        end if;
+        TLB_Context.Load_Kernel (Unsigned_64 (kernelRoot));
     end switchAddressSpace;
 
     ---------------------------------------------------------------------------
@@ -553,8 +632,8 @@ package body Mem_mgr is
         for i in PageTableIndex(256) .. PageTableIndex(511) loop
             procP4(i) := kernelP4(i);
         end loop;
-
-        Virtmem.flushTLB;
+        -- No flush: no CPU has loaded these new tables, and the slot's
+        -- address-space tag begins a new life (TLB_Context.Begin_Life).
     end mapKernelMemIntoProcess;
 
     ---------------------------------------------------------------------------
@@ -567,8 +646,9 @@ package body Mem_mgr is
         for i in PageTableIndex(256) .. PageTableIndex(511) loop
             procP4(i) := EMPTY_PTE;
         end loop;
-
-        Virtmem.flushTLB;
+        -- No flush: no CPU has these tables loaded any more (the process's
+        -- contexts have stopped), and translations cached under its tag are
+        -- dropped before the tag's next life loads (TLB_Context.Load_Process).
     end unmapKernelMemFromProcess;
 
     ---------------------------------------------------------------------------
@@ -585,7 +665,8 @@ package body Mem_mgr is
         mapPage (addr, virtmem.P2V (addr), flags, kernelP4, ok);
         
         if ok then
-            Virtmem.flushTLB;
+            -- The entry may replace an earlier kernel mapping of the frame.
+            forgetKernelTranslations;
             return True;
         else
             return False;

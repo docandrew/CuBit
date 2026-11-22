@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with CCL.Evaluation;
 with Interfaces; use Interfaces;
@@ -83,7 +84,7 @@ procedure Main is
       Msg.tag := (label => Config_Worker_Startup.Operation'Enum_Rep
         (Config_Worker_Startup.Attach_Worker), length => 1,
                   protocol => 0, ipc => <>, reserved => 0);
-      Msg.words (0) := syscall (SYSCALL_GETPID);
+      Msg.words (0) := Own_Process_Word;
       Msg.tag := capCall (Service, Msg, CuBit.Messages.Wait_Forever);
       Check (Msg.tag.label = 16#F007#, "client cannot nominate storage backend");
       debugPrint ("TEST: PASS config-backend-nomination-denied" & ASCII.LF);
@@ -194,6 +195,8 @@ procedure Main is
              "read-only fixture retired without outstanding acquisitions");
    end Check_Data_Protocol;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Check_Data_Protocol;
    Query (Probe, "", Value, Result);
    Check (Result = OK, "explicit wildcard read grant");

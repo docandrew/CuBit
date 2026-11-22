@@ -4,7 +4,7 @@ with IPI;
 with PerCPUData;
 with Spinlocks;
 with Time;
-with Virtmem;
+with TLB_Context;
 with x86;
 
 package body TLB_Shootdown is
@@ -21,21 +21,21 @@ package body TLB_Shootdown is
     procedure Register_CPU (CPU : CPU_Index) is
     begin
         -- Registration occurs once during boot, before this CPU runs tasks.
-        -- CR3 reload is a full non-global invalidation only with PCID disabled.
-        if (x86.getCR4 and 16#2_0000#) /= 0 then
-            raise Shootdown_Failure with "TLB shootdown requires PCID disabled";
-        end if;
-        Virtmem.flushTLB;
+        TLB_Context.Flush_All;
         Online (CPU) := True;
     end Register_CPU;
+
+    function This_CPU_Online return Boolean is
+      (Online (PerCPUData.getCPUNumber));
 
     procedure Service (CPU : CPU_Index) is
         Required : constant Epoch := Requested (CPU);
     begin
         if Completed (CPU) /= Required then
-            -- Memory clobber on flushTLB keeps the acknowledgement after the
-            -- flush. User/grant mappings are non-global; PCID is disabled.
-            Virtmem.flushTLB;
+            -- Memory clobber on the flush keeps the acknowledgement after
+            -- it. Every tag: the unmapped address space need not be the one
+            -- this CPU runs, yet its cached translations may survive here.
+            TLB_Context.Flush_All;
             Completed (CPU) := Required;
         end if;
     end Service;

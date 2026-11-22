@@ -2,6 +2,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Authority_Policy;
 with CuBit.Log_Records; use CuBit.Log_Records;
+with CuBit.Log_Records.Texts; use CuBit.Log_Records.Texts;
 with CuBit.Text_To_Log;
 with CuBit.Protocols; use CuBit.Protocols;
 with CuBit.Protocols.Stream_Policies;

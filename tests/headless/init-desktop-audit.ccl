@@ -3,7 +3,7 @@
 # the test image. Run with CUBIT_TEST_INIT_PROFILE=<this file> and
 # CUBIT_TEST_EXTRA_APPS="logs.app boot-logs.app teapots.app".
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "display.svc" (priority 5))
   (start "desktop.svc" (priority 4))
   (start "shell.app" (priority 3))

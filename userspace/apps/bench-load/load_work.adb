@@ -2,6 +2,9 @@ with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Benchmark_Clock;
+with CuBit.Monotonic;
+with CuBit.Handles.Tracing;
+with Startup;
 procedure Load_Work (Duration_Ms : Unsigned_64; CPU_Control : Boolean := False) is
    Started, Ignored, Now, Last : Unsigned_64;
    Batches, Maximum_Gap : Unsigned_64 := 0;
@@ -9,11 +12,11 @@ procedure Load_Work (Duration_Ms : Unsigned_64; CPU_Control : Boolean := False) 
    PID, Rate : Unsigned_64 := 0;
 begin
    Ignored := CuBit.Waits.Sleep_For (250);
-   PID := syscall (SYSCALL_GETPID);
+   PID := Own_Process_Word;
    if CPU_Control then
       CuBit.Benchmark_Clock.Calibrate (Rate);
    end if;
-   Started := syscall (SYSCALL_GETTIME);
+   Started := CuBit.Monotonic.Milliseconds;
    Last := Started;
    debugPrint ("BENCH-LOAD: START busy_peer=1 duration_ms=" &
      Duration_Ms'Image & " pid=" & PID'Image & ASCII.LF);
@@ -26,7 +29,7 @@ begin
          State := State * 6364136223846793005 + 1;
       end loop;
       Batches := Batches + 1;
-      Now := syscall (SYSCALL_GETTIME);
+      Now := CuBit.Monotonic.Milliseconds;
       Maximum_Gap := Unsigned_64'Max (Maximum_Gap, Now - Last);
       Last := Now;
       exit when Now - Started >= Duration_Ms;
@@ -37,6 +40,12 @@ begin
    if CPU_Control then
       debugPrint ("CPU-CONTROL: COMPLETE pid=" & PID'Image &
         " finish_ms=" & Now'Image & " batches=" & Batches'Image & ASCII.LF);
-      Ignored := syscall (SYSCALL_TRACE_SUMMARY);
+      --  The kernel trace object (Trace_ABI): the summary and this
+      --  process's CPU accounting (ACCOUNTING lines).
+      if not CuBit.Handles.Tracing.Done
+               (CuBit.Handles.Tracing.Perform (Startup.Trace, CuBit.Handles.Tracing.ABI.Summary))
+      then
+         debugPrint ("CPU-CONTROL: trace summary refused" & ASCII.LF);
+      end if;
    end if;
 end Load_Work;

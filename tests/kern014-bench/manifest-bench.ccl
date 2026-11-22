@@ -1,0 +1,7 @@
+# KERN-014 A/B benchmark (tests/kern014-bench): starts its child through
+# procmgr (OP_LAUNCH), through its Launch badge (CAP-012).
+(executable-manifest v1
+  (identity "com.cubit.kern014-bench")
+  (version "0.1.0")
+  (request-service process-manager read-write process-manager)
+  (request-service launch read-write launch))

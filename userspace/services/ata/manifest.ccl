@@ -8,4 +8,6 @@
   (io-ports control (resource 1) (count 1))
   (interrupt channel (resource 2))
   (request-notification ata manage registration)
-  (request-service device-manager read-write ready))
+  (request-service device-manager read-write ready)
+  # ABI-002: its debug text, once devmgr introduces logstore.
+  (request-service-optional logstore read-write logstore))

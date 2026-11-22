@@ -14,13 +14,31 @@ procedure Main_Tests is
      (Ada.Strings.Fixed.Index (B.U.To_String (B.Logs), Text) /= 0);
 begin
    B.Initialize;
-   begin Main; exception when B.Test_Complete => Quarantined := True; end;
+   begin
+      Main;
+   exception when B.Test_Complete => Quarantined := True; end;
    B.Check (B.Ready_Reports + B.Decline_Reports = 1, "exactly one actual Main readiness attempt");
    B.Check (Has ("bring-up "), "actual bring-up logger emitted summary");
-   if B.Current = B.No_Parent then
-      B.Check (not Quarantined and B.Ready_Reports = 1 and B.Parent_ACKs = 0 and B.Event_Unavailable = 1 and
-         B.Control_Answers = 0 and B.Sink_Closes = 1, "absent parent keeps service ready but never arms or polls event pin");
-      B.Check (Has ("parent line unavailable") and Has ("acknowledged-events-unavailable"), "absent parent is copied into logs");
+   if B.Current = B.Runtime_Write_Unknown then
+      B.Check (Quarantined and B.Ready_Reports = 1 and B.Decline_Reports = 0,
+         "runtime unknown write retains resources after initial readiness");
+      B.Check (B.Runtime_Snapshots = 1 and B.Runtime_Lines = 7 and B.Post_Fault_Waits = 3,
+         "one detached snapshot across repeated supervised waits");
+      B.Check (Has ("controller fault=TRUE") and Has ("unresolved= 1") and
+         Has ("admin phase=QUARANTINED status=UNCERTAIN"),
+         "snapshot identifies controller, registry and admin uncertainty");
+      B.Check (Has ("reason=REGISTER_INDETERMINATE") and Has ("write-id=WRITE_CONFIGURATION status=UNKNOWN_EFFECT") and
+         Has ("effects possible=TRUE"), "snapshot retains exact engine operation and effect uncertainty");
+      B.Check (B.Register_Reads = B.Reads_At_Fault and B.Register_Writes = B.Writes_At_Fault and
+         B.Sink_Closes = 0 and B.Saved_Answers = 1 and B.Last_Admin = W.Uncertain,
+         "logging and retained waits perform no further MMIO, cleanup or reply replay");
+   elsif B.Current = B.No_Parent then
+      B.Check (Quarantined and B.Decline_Reports = 1 and B.Ready_Reports = 0 and
+         B.Role_Attempts = 0 and B.Control_Answers = 0 and not B.Offered,
+         "production Main without a route declines before registration or sink admission");
+      B.Check (Has ("parent line unavailable vector=0 reason=parent-line-required") and
+         B.Parent_ACKs = 0 and B.Event_Deliveries = 0,
+         "missing optional route reports once and never invents IRQ or polling events");
    elsif B.Current in B.Wrong_Parent_Vector | B.Initial_ACK_Refused then
       B.Check (Quarantined and B.Decline_Reports = 1 and B.Ready_Reports = 0 and B.Control_Answers = 0,
          "inconsistent/refused parent retains resources for supervision without serving events");

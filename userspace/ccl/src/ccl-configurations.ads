@@ -124,6 +124,20 @@ package CCL.Configurations with SPARK_Mode => On is
       --  declared platform power object (Request.Platform_Power, KERN-004):
       --  entering S5 or reset through the kernel. Off unless written.
       Approve_Platform_Power : Boolean := False;
+      --  (trace approve-declared): the plan approves the manifest's
+      --  declared kernel trace object (Request.Trace, Trace_ABI): reset and
+      --  summarize the kernel trace (the benchmarks). Off unless written.
+      Approve_Trace : Boolean := False;
+      --  (test-console approve-declared): the plan approves the manifest's
+      --  declared test console object (Kernel_Object.Test_Console,
+      --  Test_Console_ABI): test builds' logstore mirrors debug text onto
+      --  the serial console. Test plans only. Off unless written.
+      Approve_Test_Console : Boolean := False;
+      --  (vm-create approve-declared): the plan approves the manifest's
+      --  declared VM creation authority (Kernel_Object.VM_Create, VMM-001,
+      --  docs/hypervisor.md): procmgr installs a copy, the program creates
+      --  virtual machines. Off unless written.
+      Approve_VM_Create : Boolean := False;
       Scheduling_Budget, Scheduling_Period : CCL.Scheduling_Limits.Microseconds :=
         CCL.Scheduling_Limits.Microseconds'First;
       Has_Ready_Deadline : Boolean := False;
@@ -185,6 +199,12 @@ package CCL.Configurations with SPARK_Mode => On is
       Launches : Launch_Array;
       Class_Total : Class_Count := 0;
       Classes : Class_Array;
+      --  A startup profile's (policy ...): the image's system policy, a
+      --  typed CCL System_Policy (CCL.Interfaces.System_Policy, key
+      --  system.policy), stored as its canonical source. procmgr reads it
+      --  once at boot. Absent: Has_Policy False (a development plan).
+      Has_Policy : Boolean := False;
+      Policy : Value_Text;
    end record;
    type Diagnostic_Code is
      (No_Error, Invalid_Syntax, Unsupported_Version, Unknown_Declaration,

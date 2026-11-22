@@ -1,0 +1,22 @@
+The VMM-001 test guest (tests/vm-linux/guest-image.sh), embedded in vmm.app,
+is built from unmodified binaries of the nixpkgs revision this repository's
+flake.lock pins (NixOS/nixpkgs 2c423e03bbafcff28bfadc6781a4a8257f205cb5):
+
+- Linux 6.12.104 (nixpkgs linuxPackages_6_12.kernel, bzImage):
+  GPL-2.0-only, https://www.kernel.org/
+  Source: https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.104.tar.xz
+  plus that nixpkgs revision's kernel configuration and patches
+  (pkgs/os-specific/linux/kernel/ in https://github.com/NixOS/nixpkgs).
+- BusyBox 1.37.0 (nixpkgs pkgsStatic.busybox): GPL-2.0-only,
+  https://busybox.net/
+  Source: https://busybox.net/downloads/busybox-1.37.0.tar.bz2
+  plus that nixpkgs revision's configuration and patches
+  (pkgs/os-specific/linux/busybox/).
+
+The same revision rebuilds the complete corresponding source of each:
+  nix build --inputs-from <this repository> nixpkgs#linuxPackages_6_12.kernel.src
+  nix build --inputs-from <this repository> nixpkgs#pkgsStatic.busybox.src
+
+They run only inside a CuBit virtual machine; neither is linked with CuBit.
+The initramfs layout and /init script are tests/vm-linux/make-initramfs.py
+(GPL-3.0-or-later).

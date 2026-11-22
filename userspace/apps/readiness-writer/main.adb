@@ -4,6 +4,7 @@
 --  must fault: the kernel ends the program, so "wrote" is never printed.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with System.Storage_Elements;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -16,6 +17,8 @@ procedure Main is
           Address => System.Storage_Elements.To_Address (RP.Page_Address);
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    if Page.Version = RP.Layout_Version then
       debugPrint ("readiness-writer: page readable PASS" & ASCII.LF);
    else

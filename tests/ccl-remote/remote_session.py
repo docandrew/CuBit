@@ -3,8 +3,8 @@
 
 Usage: remote_session.py SERIAL_LOG QMP_SOCKET TIMEOUT_SECONDS PORT
 
-Waits for the guest's ccl-remote to show its pairing code on the kernel
-console (display => Kernel_Console: the console is this machine's screen),
+Waits for the guest's ccl-remote to show its pairing code on the test
+console (display => Test_Console: the console is this machine's screen),
 pairs through QEMU's user-net forward like a LAN host would, and drives the
 real endpoint with tools/cubit-remote: evaluation, logs, processes, a
 chunked upload and download checked by SHA-256, a refused damaged commit,
@@ -99,6 +99,13 @@ def main():
     check(code is not None, "the guest showed a pairing code and listens")
     if code is None:
         return
+    # ABI-002: the code is a secret. It is written to the test console
+    # alone, never as debug text: logstore's mirror would show it as
+    # "ccl-remote.app: ccl-remote: pairing code ...", and logstore keeps it.
+    shown = serial_bytes()
+    check(shown.count(code.encode()) == 1, "the pairing code was shown once")
+    check(b"ccl-remote.app: ccl-remote: pairing code" not in shown,
+          "the pairing code did not go through logstore")
 
     token = cr.decode_token_text(code)
     host = cr.Host("guest", "127.0.0.1", port, token)
@@ -133,13 +140,17 @@ def main():
     ok, text = cr.evaluate(host, '(logs.set-minimum Severity.Debug)')
     check(not ok, "logs.set-minimum is refused to a remote session: %r" % text[:100])
 
-    # A list too large for one response: the device says so (with its
-    # length), and cubit-remote takes it whole in slices.
+    # A list that once was "too large to show whole" (4 KiB literals): CCL
+    # values are as large as their content since 00ec69712 (the ceiling is
+    # CCL.VM.LITERAL_CEILING, 128 MiB, out of a test's reach), so the device
+    # returns it whole (evaluate reads past the first chunk with
+    # read_result); evaluate_whole takes it in slices.
     ok, _ = cr.evaluate(host, "(type Row (record (n Integer) (s String)))")
     rows = '(each (fn ((n Integer)) (Row n "a text long enough to fill the result")) (range 1 150))'
     ok, text = cr.evaluate(host, rows)
-    check(not ok and text.startswith(cr.TOO_LARGE_TEXT) and "150 elements" in text,
-          "a too large list is named so, with its length: %r" % text[:120])
+    shown = cr.parse_list(text) if ok else None
+    check(shown is not None and len(shown[1]) == 150 and shown[1][-1].startswith("(Row 150 "),
+          "a 150-row list comes whole in one evaluation: %r" % text[:120])
     ok, text = cr.evaluate_whole(host, rows)
     shown = cr.parse_list(text) if ok else None
     check(shown is not None and len(shown[1]) == 150 and shown[1][0].startswith("(Row 1 ")

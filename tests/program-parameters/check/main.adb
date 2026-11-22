@@ -2,6 +2,7 @@
 --  program-parameters): reads its typed parameters and logs exactly what
 --  it decoded. A launch without a valid value never gets here: procmgr
 --  refuses it, and the generated Startup body stops the program first.
+with CuBit.Console_Route;
 with CuBit.Messages;
 with Parameters;
 with Startup;
@@ -16,6 +17,8 @@ procedure Main is
       return Text (Text'First + 1 .. Text'Last);
    end Image;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Messages.debugPrint
      ("parameters-check: decoded count=" & Image (Long_Long_Integer (P.count)) & " deadline=" &
       (case P.deadline.Choice is

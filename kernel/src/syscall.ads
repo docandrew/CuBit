@@ -10,7 +10,6 @@ with System;
 
 with Boot_Timeline_Layout;
 with Descriptors;
-with Firmware_Snapshot_ABI;
 with Wait_ABI;
 
 package Syscall with
@@ -22,13 +21,11 @@ is
     ---------------------------------------------------------------------------
     type SyscallNumber is (
         SYSCALL_EXIT,
-        SYSCALL_GETPID,
         SYSCALL_KILL,
         SYSCALL_SBRK,
         SYSCALL_WRITE,
         SYSCALL_REPLY,
         SYSCALL_SEND_EVENT,
-        SYSCALL_GETTIME,
         SYSCALL_MAPFB,
         SYSCALL_INP8,
         SYSCALL_OUTP8,
@@ -42,15 +39,12 @@ is
         SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY,
         SYSCALL_SPAWN,
         SYSCALL_MAP_DEVICE,
-        SYSCALL_PROCLIST,
         SYSCALL_RESUME,
         SYSCALL_ALLOC_DMA,
         SYSCALL_ENABLE_IRQ,
         SYSCALL_MAP_INTO,
         SYSCALL_SET_CPU,
         SYSCALL_SET_LATENCY_CONTRACT,
-        SYSCALL_TRACE_RESET,
-        SYSCALL_TRACE_SUMMARY,
         SYSCALL_INSPECT_CAPABILITY,
         SYSCALL_THREAD_CREATE,
         SYSCALL_THREAD_EXIT,
@@ -63,7 +57,6 @@ is
         SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE,
         SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION,
         SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
-        SYSCALL_READ_MONOTONIC_MICROSECONDS,
         SYSCALL_YIELD,
         SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY,
         SYSCALL_INSTALL_LAUNCH_ARGUMENTS,
@@ -73,8 +66,6 @@ is
         SYSCALL_ALLOCATE_DEVICE_VECTORS,
         SYSCALL_RELEASE_DEVICE_VECTORS,
         SYSCALL_READ_DEVICE_VECTOR,
-        SYSCALL_BOOT_TIMELINE,
-        SYSCALL_READ_STATISTICS,
         SYSCALL_PUBLISH,
         SYSCALL_CLOSE_HANDLE,
         SYSCALL_INSTALL_CAPABILITY,
@@ -82,7 +73,6 @@ is
         SYSCALL_CALL_OFFERING_CAPABILITY,
         SYSCALL_REPLY_SAVED_WITH_CAPABILITY,
         SYSCALL_DERIVE_CAPABILITY,
-        SYSCALL_FIRMWARE_SNAPSHOT,
         SYSCALL_RESERVE_OWNED_REGION,
         SYSCALL_CHANGE_OWNED_RANGE,
         SYSCALL_RELEASE_OWNED_REGION,
@@ -92,7 +82,6 @@ is
 
     for SyscallNumber use (
         SYSCALL_EXIT                 => 0,
-        SYSCALL_GETPID               => 6,
         SYSCALL_KILL                 => 7,
         SYSCALL_SBRK                 => 8,
         -- docs/process-arguments.md
@@ -104,7 +93,6 @@ is
         SYSCALL_WRITE                => 12,
         SYSCALL_REPLY                => 18,
         SYSCALL_SEND_EVENT           => 19,
-        SYSCALL_GETTIME              => 27,
         SYSCALL_MAPFB                => 29,
         SYSCALL_INP8                 => 30,
         SYSCALL_OUTP8                => 31,
@@ -122,12 +110,10 @@ is
         SYSCALL_RELEASE_DEVICE_VECTORS  => 131,
         SYSCALL_READ_DEVICE_VECTOR      => 132,
         -- docs/boot-timeline.md
-        SYSCALL_BOOT_TIMELINE => Boot_Timeline_Layout.System_Call_Number,
         -- docs/syscall-retirement.md: a typed self query and the KERN-002
         -- publication writer. Retired numbers stay unused: 15 (INFO), 20
         -- (RECEIVE_EVENT), 50 (VIRT_TO_PHYS), 77 (SET_SYSINFO), 107
         -- (SET_WELL_KNOWN).
-        SYSCALL_READ_STATISTICS => 134,
         SYSCALL_PUBLISH         => 135,
         -- CAP-002 (docs/capability-handles.md): give up a handle; place a
         -- narrowed copy in a child through its CSPACE; answer a request
@@ -143,9 +129,6 @@ is
         SYSCALL_REPLY_SAVED_WITH_CAPABILITY => 142,
         -- A derivation of one of the caller's capabilities in its own table.
         SYSCALL_DERIVE_CAPABILITY => 143,
-        -- The sealed boot firmware-table snapshot, read only
-        -- (Firmware_Snapshot_ABI): one call, a typed operation selector.
-        SYSCALL_FIRMWARE_SNAPSHOT => Firmware_Snapshot_ABI.System_Call_Number,
         -- The one wait (ABI-002 slice 2, Wait_ABI): RECEIVE (17),
         -- RECEIVE_UNTIL_MONOTONIC_MILLISECOND (21), POLL_ANY_IPC (22),
         -- WAIT_COMPLETION (24), POLL_COMPLETION (25), RECEIVE_EVENT_NB (26),
@@ -168,15 +151,12 @@ is
         SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY => 52,
         SYSCALL_SPAWN                => 60,
         SYSCALL_MAP_DEVICE           => 70,
-        SYSCALL_PROCLIST             => 71,
         SYSCALL_RESUME               => 73,
         SYSCALL_ALLOC_DMA            => 74,
         SYSCALL_ENABLE_IRQ           => 75,
         SYSCALL_MAP_INTO             => 76,
         SYSCALL_SET_CPU              => 78,
         SYSCALL_SET_LATENCY_CONTRACT => 81,
-        SYSCALL_TRACE_RESET          => 82,
-        SYSCALL_TRACE_SUMMARY        => 83,
         SYSCALL_INSPECT_CAPABILITY => 84,
         -- Threads and futexes (docs/threads.md)
         SYSCALL_THREAD_CREATE        => 90,
@@ -190,7 +170,6 @@ is
         SYSCALL_REVOKE_SHARED_MEMORY_GRANT_REFERENCE => 110,
         SYSCALL_RETURN_SHARED_MEMORY_GRANT_ACQUISITION => 111,
         SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY => 112,
-        SYSCALL_READ_MONOTONIC_MICROSECONDS => 114,
         SYSCALL_REGISTER_DRIVER      => 2000);
 
     ---------------------------------------------------------------------------

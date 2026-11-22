@@ -6,6 +6,7 @@ with CuBit.Desktop_Messages;
 with CuBit.UI.App;
 with Client_Input_Channel;
 with Client_Input_Batch_Cache;
+with CuBit.Monotonic;
 procedure Desktop_Input_Batch (Passed : out Boolean) is
    --  How long a window waits for its ring's first answer in this check.
    RING_WAIT_MS : constant := 1_000;
@@ -80,7 +81,7 @@ begin
         ((DP.Live_Surface_Name (App.Surface_ID (Win)), DP.Pixel_Extent (160 + I), 120)))).Status = DP.Success,
         "queue UI configure");
    end loop;
-   App.Wait_Input_Until (Win, syscall (SYSCALL_GETTIME) + RING_WAIT_MS, Event, Found);
+   App.Wait_Input_Until (Win, CuBit.Monotonic.Milliseconds + RING_WAIT_MS, Event, Found);
    Check (Found and App.Input_May_Remain (Win), "UI wait receives the ring's batch");
    Stats := App.Input_Statistics (Win);
    Check (Stats.Batch_Enabled and not Stats.Channel_Disabled and
@@ -103,7 +104,7 @@ begin
    end;
    Check (OK, "second window");
    if not OK then return; end if;
-   App.Wait_Input_Until (Win, syscall (SYSCALL_GETTIME) + RING_WAIT_MS, Event, Found);
+   App.Wait_Input_Until (Win, CuBit.Monotonic.Milliseconds + RING_WAIT_MS, Event, Found);
    Check (Found, "second window's ring delivers");
    Stats := App.Input_Statistics (Win);
    Check (not Stats.Channel_Disabled and Stats.Successful_Fetches = 1 and

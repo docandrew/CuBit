@@ -1,5 +1,5 @@
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "grant-forward-owner.app" (priority 5))
   (start "grant-forward-reader.app" (priority 5))
   (start "grant-forward-owner_exit.app" (priority 5))

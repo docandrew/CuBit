@@ -4,25 +4,39 @@ Penny is CuBit's native browser, powered by Servo. Commit the sources in this
 directory, `assets/penny`, browser tests, and the matching native UI changes.
 Do not vendor Servo, Cargo's registry, generated libraries, or disk images.
 
-`UPSTREAM_REVISION` records the Servo revision used for the native validation.
-Our `patch_servo.py`, `crate_fixes.py`, and `overlay/` contain the port changes;
-`native/` contains the CuBit UI and protected-frame bridge. Patches are applied
-to the disposable checkout, not maintained by editing that checkout manually.
+Penny builds from forks of Servo and of SpiderMonkey's crate (`mozjs_sys`),
+WEB-004: `FORKS` pins each by commit (the content address: git checks every
+object against it). The Servo fork is upstream `UPSTREAM_REVISION` plus
+CuBit's changes as commits, one per change with its reason: the cubitshell
+embedder (`ports/cubitshell`), the CuBit target's arms, the network, media
+and timing fixes. The mozjs_sys fork is the crates.io package Penny pinned
+plus SpiderMonkey's CuBit build fixes. `crate_fixes.py` still fixes the
+other crates (libc, rustix, tokio, ...), and `native/` holds the CuBit UI and
+protected-frame bridge. A change to Servo or Penny's embedder is a commit on
+the fork and a new pin here; the fork repositories are private bare
+repositories on Chungus until the user decides where they live
+(`PENNY_SERVO_URL`, `PENNY_MOZJS_URL` name another copy).
 
-## Preparing an upstream checkout
+## The fork checkouts and their crates
 
-From the CuBit repository root, inside `nix develop`:
+`servo-cargo.sh` (run by `build-cubitshell.sh` and `make -C kernel servo`)
+prepares everything itself, reproducibly:
 
-```sh
-mkdir -p userspace/rust/build/servo-work
-git clone https://github.com/servo/servo.git userspace/rust/build/servo-work/servo
-git -C userspace/rust/build/servo-work/servo checkout --detach "$(cat userspace/servo/UPSTREAM_REVISION)"
-export CARGO_HOME="$PWD/userspace/rust/build/servo-work/cargo-home"
-cargo fetch --manifest-path userspace/rust/build/servo-work/servo/Cargo.toml
-```
+- `fork-checkout.sh` makes `userspace/rust/build/servo-work/servo` the
+  pinned Servo commit (a missing checkout is fetched; one with local edits
+  is refused) and crate_fixes.py does the same for mozjs_sys;
+- `Cargo.lock` here is the lock file: `servo-cargo.sh fetch` fills
+  `CARGO_HOME` with exactly its crates (`cargo fetch --locked`) and every
+  build runs `--frozen`. After changing a dependency (or the fork),
+  `SERVO_DIR=... servo-cargo.sh update-lock` resolves from this lock, adding
+  only what is new, and writes it back;
+- the crates `crate_fixes.py` fixes are fetched by SHA-256;
+- every path package (fixed crates, `cubit-fonts`, staged by
+  `stage_crates.py` into `cubit-build/`) is kept inside the checkout and std
+  is built from a Nix store copy, so the output does not depend on the
+  checkout's path.
 
-These commands are for a new checkout. Do not overwrite an existing development
-checkout. All downloaded source and build output stays under the ignored
+All downloaded source and build output stays under the ignored
 `userspace/rust/build/` directory. The upstream checkout retains Servo's licenses
 and third-party notices; Penny credits Servo in Help → About Penny.
 
@@ -42,8 +56,7 @@ internal executable and Config identity remain unchanged by the Penny rename.
 See `docs/servo-port.md` and `tests/servo/README.md` for the broader port and
 native regression procedures; native tests require the matching CuBit boot
 services already built/staged. Initial builds require network access and many
-gigabytes of build space. A pristine, empty-cache rebuild has not been repeated
-for this staging pass.
+gigabytes of build space.
 
 Penny currently depends on the in-development protected Desktop publication
 API (`Client_Frame_Pair`, `Client_Input_Budget`, `CuBit.Desktop_Protocol.Publication`)
@@ -68,7 +81,7 @@ flock --exclusive --nonblock coordination/build.lock nix develop -c make -C kern
 `media/` defines the dependencies using the repository-pinned nixpkgs input.
 The build wrapper realizes a Nix JSON artifact containing the exact static
 archives and pkg-config paths; no machine-specific paths or temporary metadata
-files need to be committed. Keep these definitions, the overlay and patcher;
+files need to be committed. Keep these definitions;
 do not vendor the upstream libraries or generated archives.
 
 Native CuBit validation covered VP8/VP9 playback, decoded canvas pixels,
@@ -81,7 +94,7 @@ The page checks unsupported AudioContext creation, handles all three errors,
 then immediately plays valid VP9 on the same element and checks decoded pixels.
 
 Media initialization disables plugin scanning and registry-cache writes.
-The patcher disables temporary download buffering on CuBit. This adds no
+The Servo fork disables temporary download buffering on CuBit. This adds no
 capability grants. Audio output, Media Source Extensions and end-to-end YouTube
 playback remain unfinished; native tests do not establish leak freedom or
 performance parity. Set `CUBIT_SERVO_MEDIA=0` only to build the previous backend for diagnosis.

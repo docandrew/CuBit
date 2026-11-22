@@ -1,0 +1,23 @@
+# TEST VARIANT of logstore.svc's manifest (userspace/services/logstore/
+# manifest.ccl), never part of a shipped image: the same authority, plus
+# the test console object (Test_Console_ABI), on which logstore mirrors the
+# console text programs publish (debugPrint, ABI-002) onto the serial
+# console as "<source>: <text>", so the headless tests keep their markers.
+# make logstore-test installs isodir/boot/logstore-test.svc: logstore.svc
+# with only .cubit.caps and .cubit.startup replaced by this manifest's (the
+# other sections must equal the shipped ones). tests/headless/run.sh puts
+# it on a test disk as logstore.svc only for a plan whose logstore entry
+# says (test-console approve-declared). tests/test-console checks that no
+# shipped manifest, plan or image declares, approves or contains it.
+(Executable_Manifest
+  identity => "com.cubit.logstore"
+  version => "1.0.0"
+  requests => [
+    (service "config" "config")
+    (service "filesystem" "filesystem")
+    (notification "logstore" Notify_Access.Manage "registration")
+    (Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Test_Console "test-console"))]
+  scopes => [
+    (config [File_Right.Read] "logs.")
+    (config [File_Right.Read] "storage.")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@ufs:0/logstore.log")])

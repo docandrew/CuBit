@@ -24,6 +24,9 @@ const ECHO: u32 = 0x0c10;
 const REPORT: u32 = 0x0c11;
 const ALLOCATION_REPORT: u32 = 0x0c12;
 const HEAP_REPORT: u32 = 0x0c13;
+/// The thread probe passed (the test host says so: no_std Rust has no
+/// console of its own, ABI-002).
+const THREADS_REPORT: u32 = 0x0c14;
 const CLOCK_MONOTONIC_MS: u32 = 0x0b00;
 const HELLO: [u64; 4] = [
     u64::from_le_bytes(*b"Hello fr"),
@@ -104,7 +107,7 @@ fn allocation_probe() {
 
 /// Threads and futex locks (docs/threads.md): contended mutex, condvar
 /// handoff and join, on however many CPUs the kernel spreads them over.
-fn thread_probe() {
+fn thread_probe(host: &Endpoint) {
     use alloc::sync::Arc;
     use cubit::sync::{Condvar, Mutex};
 
@@ -142,7 +145,13 @@ fn thread_probe() {
         c.notify_all();
     }
     assert_eq!(waiter.join(), 7);
-    cubit::debug_write("RUST-THREADS: PASS\n");
+    match host.call(Message::new(THREADS_REPORT, 1, [1, 0, 0, 0])) {
+        Ok(reply) if reply.tag.label == REPLY_OK && reply.tag.length == 0 => {}
+        _ => {
+            report(0, 8);
+            cubit::exit(8);
+        }
+    }
 }
 
 fn heap_failure_probe(host: &Endpoint) {
@@ -179,12 +188,12 @@ extern "C" fn __cubit_language_start(_initial_stack: u64, _payload_length: u64) 
         report(0, 1);
         cubit::exit(1);
     }
+    // Without a table or the test host there is no one to tell: exit 7
+    // (procmgr reports the code).
     let Some(table) = startup_table() else {
-        cubit::debug_write("rust-probe: no startup table\n");
         cubit::exit(7);
     };
     let Some(host) = startup::test_host(&table) else {
-        cubit::debug_write("rust-probe: no test-host endpoint\n");
         cubit::exit(7);
     };
     let response = host.call(Message::new(ECHO, 4, HELLO));
@@ -197,7 +206,7 @@ extern "C" fn __cubit_language_start(_initial_stack: u64, _payload_length: u64) 
         }
     }
     allocation_probe();
-    thread_probe();
+    thread_probe(&host);
     match host.call(Message::new(ALLOCATION_REPORT, 1, [1, 0, 0, 0])) {
         Ok(reply) if reply.tag.label == REPLY_OK && reply.tag.length == 0 => {}
         _ => {

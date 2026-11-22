@@ -44,6 +44,20 @@ package CuBit.Libc_Startup is
      (Name : System.Address) return CuBit.Handles.C_ABI.C_Endpoint
    with Export, Convention => C, External_Name => "cubit_startup_endpoint";
 
+   --  The Trace-kind entry named Name (the kernel trace object, Trace_ABI),
+   --  or the null handle; Name as for Startup_Endpoint.
+   function Startup_Trace
+     (Name : System.Address) return CuBit.Handles.C_ABI.C_Trace
+   with Export, Convention => C, External_Name => "cubit_startup_trace_named";
+
+   --  One Trace_ABI operation (Operation'Enum_Rep) on Object: the
+   --  kernel's outcome code (Trace_ABI.Outcome'Enum_Rep), or 0 when the
+   --  handle names no trace object or the reply is not one.
+   function Trace_Perform
+     (Object : CuBit.Handles.C_ABI.C_Trace; Operation : Interfaces.C.unsigned)
+      return Interfaces.C.unsigned
+   with Export, Convention => C, External_Name => "cubit_trace_perform";
+
    --  The startup check of a C program (CAP-003): its generated startup.h
    --  defines __cubit_startup_check, which the shared start code
    --  (userspace/runtime/start/cubit_start.S) calls before the libc's start

@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
@@ -13,11 +14,13 @@ with CuBit.Messages; use CuBit.Messages;
 --  test trap-flag looks for that kill and for no double fault.
 procedure Main is
    use ASCII;
-   --  syscall.ads: SYSCALL_GETPID; harmless, takes no arguments.
-   Syscall_Get_PID : constant Unsigned_64 := 6;
+   --  syscall.ads: SYSCALL_YIELD; harmless, takes no arguments.
+   Syscall_Yield : constant Unsigned_64 := 118;
    --  RFLAGS.TF (x86.FLAGS_TRAP in the kernel).
    Trap_Flag       : constant Unsigned_64 := 16#100#;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("trap-flag-check: setting TF, then SYSCALL" & LF);
    --  POPFQ sets TF; the instruction after POPFQ must be SYSCALL itself.
    Asm ("movq %0, %%rax"             & LF & HT &
@@ -25,7 +28,7 @@ begin
         "orq %1, (%%rsp)"            & LF & HT &
         "popfq"                      & LF & HT &
         "syscall",
-        Inputs   => (Unsigned_64'Asm_Input ("r", Syscall_Get_PID),
+        Inputs   => (Unsigned_64'Asm_Input ("r", Syscall_Yield),
                      Unsigned_64'Asm_Input ("r", Trap_Flag)),
         Clobber  => "rax,rcx,r11,memory,cc",
         Volatile => True);

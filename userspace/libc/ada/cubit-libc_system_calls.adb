@@ -20,7 +20,9 @@ with CuBit.Libc_Select;
 with CuBit.Libc_Reports;
 with CuBit.Libc_Imports;
 with CuBit.Linux_System_Calls; use CuBit.Linux_System_Calls;
+with Readiness_Publication;
 
+with CuBit.Libc_Log;
 package body CuBit.Libc_System_Calls is
 
    package K renames CuBit.Kernel_ABI;
@@ -175,12 +177,14 @@ package body CuBit.Libc_System_Calls is
       Bytes := [others => 0];
    end Zero;
 
+   --  ABI-002: the libc's own diagnostics are records in the program's
+   --  log channel (CuBit.Libc_Log), never kernel console text.
    procedure Console (Text : String);
    procedure Console (Text : String) is
-      Ignore : constant Unsigned_64 := Kernel
-        (K.Write, K.Console, Unsigned_64 (To_Integer (Text'Address)), Text'Length);
+      Last : constant Natural :=
+        (if Text'Length > 0 and then Text (Text'Last) = ASCII.LF then Text'Last - 1 else Text'Last);
    begin
-      null;
+      CuBit.Libc_Log.Report (Text (Text'First .. Last), CuBit.Libc_Log.Logs.Warning, "", 0);
    end Console;
 
    --  The kernel's millisecond clock, read from the clock publication
@@ -256,6 +260,8 @@ package body CuBit.Libc_System_Calls is
    procedure Exit_Process (Code : int) is
       Ignore : Unsigned_64;
    begin
+      --  The last lines reach logstore before the ring goes with the process.
+      CuBit.Libc_Log.Flush;
       loop
          Ignore := Kernel (K.Exit_Process, Unsigned_64'Mod (Code));
       end loop;
@@ -276,7 +282,10 @@ package body CuBit.Libc_System_Calls is
       Length : CuBit.Libc_Reports.Line_Length;
    begin
       CuBit.Libc_Reports.Format (Prefix, What, Value, Text, Length);
-      Console (Text (1 .. Length));
+      --  The line names what and its value; the value is also its field.
+      CuBit.Libc_Log.Report
+        (Text (1 .. Length - 1), CuBit.Libc_Log.Logs.Warning, "value", Unsigned_64'Mod (Value),
+         CuBit.Libc_Log.Logs.Signed_Integer);
    end Report;
 
    procedure Unsupported (What : String; Value : long);
@@ -313,7 +322,7 @@ package body CuBit.Libc_System_Calls is
          end if;
          Reported (Integer (Number)) := True;
       end if;
-      Report ("unimplemented", "system call", Integer_64 (Number));
+      CuBit.Libc_Log.Unimplemented_System_Call (Unsigned_64'Mod (Number));
    end Unimplemented;
 
    ---------------------------------------------------------------------------
@@ -1077,8 +1086,12 @@ package body CuBit.Libc_System_Calls is
             --  The identity (KERN-003) folded to a pid_t, as posix_spawn
             --  reports children.
             declare
+               Own_Identity : Unsigned_64
+                 with Import, Volatile, Atomic,
+                      Address => System.Storage_Elements.To_Address
+                        (Readiness_Publication.Identity_Address);
                Self : constant CuBit.Process_IDs.Process_ID :=
-                 CuBit.Process_IDs.From_Word (Kernel (K.Get_Process_Id));
+                 CuBit.Process_IDs.From_Word (Own_Identity);
             begin
                return (if CuBit.Process_IDs.Is_Process (Self)
                        then long (CuBit.Process_IDs.POSIX_Of (Self))

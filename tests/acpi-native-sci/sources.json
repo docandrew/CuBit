@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "scope": "Actual pending SCI_Events, FADT decoder, SCI_Registers and SCI_Quiesce. Explicit firmware table, port I/O, kernel interrupt acknowledgement, clock, log and event models. Fixed PM1 power event only; no GPE block, native startup, hardware execution or new proof.",
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/lib/acpi_fadt.adb",
+      "sha256": "7058da752f0644899a6c97fd3ea2722cba927bf08e4f0e7c5736f16ee2e2c10d"
+    },
+    {
+      "path": "userspace/services/acpi/lib/acpi_fadt.ads",
+      "sha256": "00993f2a74b7740317a12200e8cbf29db30a52a839cacec7485b04a411e3f752"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_sci_events.adb",
+      "sha256": "58026e45d1d17f6205571c02deedd9ccc1dd7218f1eea743f34056e229ff7c56"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_sci_events.ads",
+      "sha256": "904da9cf8a612b559ae792623cfa89c1051d9ebb53195ca75fef8d564df224ca"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_sci_quiesce.adb",
+      "sha256": "7c413dcb40d614f5d60fdc30bdd38596f9e8d16b26bcbdded21314b3b68fdb7e"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_sci_quiesce.ads",
+      "sha256": "e6e4eaa8c76ee622c9f58c52286bdf996b6cfa6e1c40d0cafa918e499e33a5cf"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_sci_registers.adb",
+      "sha256": "5d695652b0f08047e1eab093b6b2badffba33b53493dd7818d903da6d43983cd"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_sci_registers.ads",
+      "sha256": "8cb8d1a3f9b83c6eb210150ceb060e5e4bfb1979527c1ee5fac091140bba4871"
+    },
+    {
+      "path": "shared/capabilities/capability_abi.ads",
+      "sha256": "cc6952ff5cee8bceae069dab989cf5934b392433e3d47a4194e400bf3aaac0be"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-acpi_memory_classes.ads",
+      "sha256": "ba8052bb821ffe0b9e334e69aef658deae4b206838af2ec9bd2c59ceacfaea13"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-acpi_windows.ads",
+      "sha256": "d10a2381a50fee02daceaa28950bce334fbc0ab599c1a3195bb36da90461dd54"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_ids.adb",
+      "sha256": "0670a89f145f4ae0006e7f4014d9c9c6e28e6e7cc4cae29c54edf205d5ff2478"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_ids.ads",
+      "sha256": "d012ffd2942827ef674e11921492508bfc46f0787553c94fb1c745cdcbe5d48a"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit.ads",
+      "sha256": "ad85bc92372bca950674268c2b1b5507b5edc382b13176f73304a2db5725f52c"
+    },
+    {
+      "path": "shared/firmware/firmware_tables.adb",
+      "sha256": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316"
+    },
+    {
+      "path": "shared/firmware/firmware_tables.ads",
+      "sha256": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4"
+    },
+    {
+      "path": "shared/interrupts/interrupt_line_abi.adb",
+      "sha256": "321aec5ca82166190674a8c0b7382587a1af62d954c17b85fbd010e92ccc8151"
+    },
+    {
+      "path": "shared/interrupts/interrupt_line_abi.ads",
+      "sha256": "22eec501f76fc61c11b47b0548d592cfc4c5a650035c9f445e0259474cbf56b7"
+    }
+  ],
+  "helpers": [
+    {
+      "path": "helpers/acpi_native_events.adb",
+      "sha256": "4d30e8265d9135bfabe3e38c613d2b45bcce135876e0cca341ca79dbc280dc87"
+    },
+    {
+      "path": "helpers/acpi_native_events.ads",
+      "sha256": "3916b160abf83ee2dd93f77046c6e91656a53002a981b5981e418ab159b631e2"
+    },
+    {
+      "path": "helpers/acpi_native_log.adb",
+      "sha256": "055c6506fff7ca7f850c97a57a36807fa068ddc0dbf4f8f57a57b57354138456"
+    },
+    {
+      "path": "helpers/acpi_native_log.ads",
+      "sha256": "83130902e84d8b326bd7063122da438551cd916a9e11f0160c61b4ca720b5168"
+    },
+    {
+      "path": "helpers/capability_abi.adb",
+      "sha256": "f280df7b0e8291913387a6bd4607a7e18b3025d5cb512c07f102ad90b682af20"
+    },
+    {
+      "path": "helpers/cubit-device_interrupts.adb",
+      "sha256": "f655775258f9ff5e19762a6eb10f53b9fa872dfd61be8afc45825c79fa9a088f"
+    },
+    {
+      "path": "helpers/cubit-device_interrupts.ads",
+      "sha256": "bed31f7998bd77b7c4aa715b46208501ff407cbd985c8cf79e23bd21919db05c"
+    },
+    {
+      "path": "helpers/cubit-firmware_snapshot-whole_tables.adb",
+      "sha256": "8ff603ed488331bbfe38848a2ca56090c12406065f229c4be42bfaf404d7e018"
+    },
+    {
+      "path": "helpers/cubit-firmware_snapshot-whole_tables.ads",
+      "sha256": "5798a36bb6a974d8f7e97d937bd4ee4d595e7c85e486626d22ead75bc442bcf3"
+    },
+    {
+      "path": "helpers/cubit-firmware_snapshot.ads",
+      "sha256": "ff2a1ec6c7da9b76755d4dc26aa971ae18b461610fa997dab6fef01508dd00c5"
+    },
+    {
+      "path": "helpers/cubit-handles-devices.adb",
+      "sha256": "dafbac57d17bec266d58109c2dffb2949afc73ad48fff0477f427f1aa44e8882"
+    },
+    {
+      "path": "helpers/cubit-handles-devices.ads",
+      "sha256": "0fd4ee7d9b60214baed04af6faa2c32107d9eec7783722993007df0498692780"
+    },
+    {
+      "path": "helpers/cubit-handles-lines.adb",
+      "sha256": "16eca4871bb9263964ef48a439a1f95766b15d11b36943d51ba0fd6c96a5cdbb"
+    },
+    {
+      "path": "helpers/cubit-handles-lines.ads",
+      "sha256": "3f61467e93866b024cef8dd6dcef70c930bfd44181d4ab3bcb4a35af2ec6c416"
+    },
+    {
+      "path": "helpers/cubit-handles.ads",
+      "sha256": "0d7919b840d26fdfa7106bf0f8cf7b584be252f0043fe04589a1348e2ea45df1"
+    },
+    {
+      "path": "helpers/cubit-messages.adb",
+      "sha256": "58d64078b073e0c3fc993289e4d98ad8d7f4fe3a468186e1433eb27c94b931d5"
+    },
+    {
+      "path": "helpers/cubit-messages.ads",
+      "sha256": "076b05a70b36be7c4c63951c34073daf4f3907ae74e83460cb6a1ced744b883c"
+    },
+    {
+      "path": "helpers/cubit-monotonic.adb",
+      "sha256": "fee75cb3dc561092cb9b91b439292b1f8e5156eee31671458a82f66c641aa421"
+    },
+    {
+      "path": "helpers/cubit-monotonic.ads",
+      "sha256": "4ce3a23b3321951a7ffb8a5b7825fb713f7d73308bbb86f08d4b849019585919"
+    },
+    {
+      "path": "helpers/sci_probe.ads",
+      "sha256": "54c93ea73603a66f08fa4c088fbdfc670dcf0d3abbdd615110e6786d26be822d"
+    },
+    {
+      "path": "helpers/sci_tests.adb",
+      "sha256": "0484a54a7791c5ca17df5a5d882f1ad46093060384e3930c067b63f5d2eba95d"
+    }
+  ],
+  "selected": [
+    "sci_tests.adb",
+    "acpi_sci_events.adb",
+    "acpi_fadt.adb",
+    "acpi_sci_registers.adb",
+    "acpi_sci_quiesce.adb"
+  ],
+  "expected": 74
+}

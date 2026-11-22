@@ -8,7 +8,6 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Wait_ABI;
-with Firmware_Snapshot_ABI;
 
 private package CuBit.Handles.Kernel is
 
@@ -29,7 +28,6 @@ private package CuBit.Handles.Kernel is
    Reply_And_Consume           : constant Unsigned_64 := 52;
    Spawn                       : constant Unsigned_64 := 60;
    Map_Device                  : constant Unsigned_64 := 70;
-   Process_List                : constant Unsigned_64 := 71;
    Resume                      : constant Unsigned_64 := 73;
    Allocate_DMA                : constant Unsigned_64 := 74;
    Enable_IRQ                  : constant Unsigned_64 := 75;
@@ -47,7 +45,6 @@ private package CuBit.Handles.Kernel is
    Allocate_Device_Vectors     : constant Unsigned_64 := 130;
    Release_Device_Vectors      : constant Unsigned_64 := 131;
    Read_Device_Vector          : constant Unsigned_64 := 132;
-   Boot_Timeline               : constant Unsigned_64 := 133;
    Close_Handle                : constant Unsigned_64 := 137;
    Install_Capability          : constant Unsigned_64 := 138;
    Reply_With_Capability       : constant Unsigned_64 := 139;
@@ -56,7 +53,6 @@ private package CuBit.Handles.Kernel is
    Wait                        : constant Unsigned_64 := Wait_ABI.System_Call_Number;
    Reply_Saved_With_Capability : constant Unsigned_64 := 142;
    Derive_Capability           : constant Unsigned_64 := 143;
-   Firmware_Snapshot_Call      : constant Unsigned_64 := Firmware_Snapshot_ABI.System_Call_Number;
    Register_Driver             : constant Unsigned_64 := 2000;
 
    --  One system call with up to seven arguments (the seventh in R12, as
@@ -77,6 +73,10 @@ private package CuBit.Handles.Kernel is
    function Word (Item : Scheduling) return Unsigned_64 is (Item.Word);
    function Word (Item : Firmware_Snapshot) return Unsigned_64 is (Item.Word);
    function Word (Item : Platform_Power) return Unsigned_64 is (Item.Word);
+   function Word (Item : Trace) return Unsigned_64 is (Item.Word);
+   function Word (Item : Process_Listing) return Unsigned_64 is (Item.Word);
+   function Word (Item : Test_Console) return Unsigned_64 is (Item.Word);
+   function Word (Item : VM_Create) return Unsigned_64 is (Item.Word);
    function Word (Item : Foreign_Handle) return Unsigned_64 is (Item.Word);
 
    --  Handles from words the kernel gave this process (never from a
@@ -92,6 +92,10 @@ private package CuBit.Handles.Kernel is
    function To_Scheduling (W : Unsigned_64) return Scheduling is ((Word => W));
    function To_Firmware_Snapshot (W : Unsigned_64) return Firmware_Snapshot is ((Word => W));
    function To_Platform_Power (W : Unsigned_64) return Platform_Power is ((Word => W));
+   function To_Trace (W : Unsigned_64) return Trace is ((Word => W));
+   function To_Process_Listing (W : Unsigned_64) return Process_Listing is ((Word => W));
+   function To_Test_Console (W : Unsigned_64) return Test_Console is ((Word => W));
+   function To_VM_Create (W : Unsigned_64) return VM_Create is ((Word => W));
    function To_Foreign (W : Unsigned_64) return Foreign_Handle is ((Word => W));
 
    function Derivation_Words (Item : Derivation) return ABI.Derivation is

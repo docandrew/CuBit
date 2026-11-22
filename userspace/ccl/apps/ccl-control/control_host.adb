@@ -10,6 +10,7 @@ with CCL_Config_Bindings;
 with CCL_Image_Bindings;
 with CCL_Stream_Table;
 with CCL_Native_Bindings;
+with CuBit.Monotonic;
 
 package body Control_Host is
    use Interfaces;
@@ -47,7 +48,7 @@ package body Control_Host is
       Slot : Slot_Index := 0;
    end record;
 
-   function Now_Ms return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Now_Ms return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
 
    procedure Read_Clock (Available : out Boolean; Value : out Unsigned_64) is
       Request : Message := NULL_MESSAGE;

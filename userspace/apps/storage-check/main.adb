@@ -4,6 +4,7 @@
 --  Exercises create, write, close, stale-handle rejection, reopen, and read
 --  against the live system's writable NVMe filesystem.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -25,6 +26,7 @@ with CuBit.Handles;
 with CuBit.Handles.Startup;
 with CuBit.Startup_Tables;
 with Startup;
+with CuBit.Monotonic;
 
 procedure main is
    FS_Service : constant CuBit.Handles.Endpoint := Startup.Filesystem;
@@ -100,19 +102,13 @@ procedure main is
       Region_Bytes : constant Unsigned_64 := Pages * PAGE_SIZE;
       R : Unsigned_64;
       Failures : Natural := 0;
-      PID : constant Process_ID := From_Word (syscall (SYSCALL_GETPID));
+      PID : constant Process_ID := From_Word (Own_Process_Word);
       Reference : Grant_Reference;
       Alias_Address : System.Address;
       OK : Boolean;
       function P (Index : Unsigned_64) return Unsigned_64 is (R + Index * PAGE_SIZE);
       function N (Count : Unsigned_64) return Unsigned_64 is (Count * PAGE_SIZE);
-      function Owned_Bytes return Unsigned_64 is
-         Value : CuBit.System_Facts.SP.Statistics;
-         Read : Boolean;
-      begin
-         CuBit.System_Facts.Read_Statistics (Value, Read);
-         return (if Read then Value.Owned_Bytes else 0);
-      end Owned_Bytes;
+      function Owned_Bytes return Unsigned_64 is (CuBit.System_Facts.Owned_Bytes);
       Start : Unsigned_64;
       procedure Expect (Good : Boolean; What : String) is
       begin
@@ -229,7 +225,7 @@ procedure main is
 
    function exerciseOwnedGrantRetention return Boolean is
       use CuBit.Memory_Grants;
-      PID : constant Process_ID := From_Word (syscall (SYSCALL_GETPID));
+      PID : constant Process_ID := From_Word (Own_Process_Word);
       Base, Replacement : Unsigned_64;
       Reference : Grant_Reference;
       Alias_Address : System.Address;
@@ -457,7 +453,7 @@ procedure main is
    function exerciseGrantReferences return Boolean is
       use CuBit.Memory_Grants;
       use type CuBit.Memory_Grants.Grant_Reference;
-      pid         : constant Process_ID := From_Word (syscall (SYSCALL_GETPID));
+      pid         : constant Process_ID := From_Word (Own_Process_Word);
       --  Another process: the neighbouring identity.
       wrongOwner  : constant Process_ID := From_Word (To_Word (pid) xor 1);
       firstRef    : Grant_Reference;
@@ -1552,7 +1548,7 @@ procedure main is
       msg.tag := (label => OP_SET_ACL, length => 4,
                   protocol => 0, ipc => <>, reserved => 0);
       msg.words :=
-        (0 => syscall (SYSCALL_GETPID), 1 => 0, 2 => 0, 3 => 0);
+        (0 => Own_Process_Word, 1 => 0, 2 => 0, 3 => 0);
       staleTag := capCall (FS_Service, msg, CuBit.Messages.Wait_Forever);
       if staleTag.label /= REPLY_ACCESS_DENIED then
          debugPrint ("STORAGE-CHECK: ordinary endpoint changed FS policy" & LF);
@@ -1902,7 +1898,7 @@ procedure main is
             --  Other activity (a kernel notice) also wakes the wait: the
             --  deadline is checked here too.
             exit when Wait_For_Activity_Until (Deadline) /= Work_Available or else
-              syscall (SYSCALL_GETTIME) >= Deadline;
+              CuBit.Monotonic.Milliseconds >= Deadline;
          end loop;
          return False;
       end Wake_Completes;
@@ -2862,7 +2858,7 @@ procedure main is
                return False;
             end if;
          end;
-         if Call (Copy_Request (Big, Work, 0, 0, FQ.Copy_To_End, Deadline => syscall (SYSCALL_GETTIME)), Value)
+         if Call (Copy_Request (Big, Work, 0, 0, FQ.Copy_To_End, Deadline => CuBit.Monotonic.Milliseconds), Value)
            /= REPLY_DEADLINE or else Value >= Big_Bytes or else not Holds (Work, 0, 0, Value)
          then
             debugPrint ("QUEUE-COPY-CHECK: deadline" & Value'Image & LF);
@@ -2939,7 +2935,7 @@ procedure main is
          Yielded : Unsigned_64 with Unreferenced;
       begin
          while CuBit.Channels.Retiring_Regions > 0 loop
-            if syscall (SYSCALL_GETTIME) >= Deadline then
+            if CuBit.Monotonic.Milliseconds >= Deadline then
                debugPrint ("QUEUE-CHECK: session memory not released" & LF);
                return False;
             end if;
@@ -2954,6 +2950,8 @@ procedure main is
    end exerciseQueue;
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    raw := syscall (SYSCALL_SBRK, 2 * PAGE_SIZE);
    if raw = Unsigned_64'Last then
       debugPrint ("STORAGE-CHECK: buffer allocation failed" & LF);

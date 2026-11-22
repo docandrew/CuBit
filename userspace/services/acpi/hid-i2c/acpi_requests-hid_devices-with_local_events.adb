@@ -6,6 +6,8 @@ package body ACPI_Requests.HID_Devices.With_Local_Events is
    use type Discovery.Outcome,Discovery.Queries.Identification_Outcome,Resolver.Outcome;
    use type AML_Execute.Execution_Status,Samples.Publication_Result,Samples.Availability,Samples.Cache_Status,R.Phase;
    function Collection_Report return Collection_Diagnostic is (Snapshot);
+   function Collection_Isolatable return Boolean is
+     (Snapshot.Outcome in Search_Failed|Budget_Exhausted|Inventory_Limit|Capacity_Refused|Discovery_Failed);
    procedure Invalidate(Data:in out Storage) is Ignored:Samples.Invalidation_Result;
    begin Samples.Invalidate(Data.Values,Ignored);end Invalidate;
    procedure Observe_Claimed(Data:in out Storage;Server:State;Observed:out Boolean) is

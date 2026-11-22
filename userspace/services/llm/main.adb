@@ -30,6 +30,7 @@
 --  and answers clients, and never calls a client.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Ada.Unchecked_Deallocation;
 with Interfaces; use Interfaces;
 with System; use System;
@@ -49,6 +50,7 @@ with Llm_Responses;
 with Llm_Reports;
 with Parameters;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    package P renames CuBit.Llm_Protocol;
@@ -193,7 +195,7 @@ procedure Main is
    Next_Id : Unsigned_64 := 1;
    Client_Now : Process_ID := No_Process;
 
-   function Now return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Now return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
 
    ---------------------------------------------------------------------------
    --  Replies.
@@ -927,6 +929,8 @@ procedure Main is
    Completion : CompletionEntry;
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Log.Info ("llm: starting");
    if Endpoint_Text'Length = 0 or else Colon = 0 or else not Llm_Requests.Valid_Host (Host_Header)
      or else Endpoint_Text'Length > Scheme_Area_Bytes or else Endpoint_Text'Length > Natural (Unsigned_8'Last)

@@ -155,7 +155,14 @@ def main():
         made, width, height = False, 0, 0
         print("  screenshot: %s" % error)
     check(made, "cubit-remote screenshot saved %s" % whole)
-    shown = CAPTURED.search(serial_bytes())
+    # Desktop's line reaches serial through logstore's mirror (ABI-002):
+    # a moment after the capture, so look for a few seconds.
+    shown = None
+    for _ in range(50):
+        shown = CAPTURED.search(serial_bytes())
+        if shown or not made:
+            break
+        time.sleep(0.1)
     if made:
         w, h, rgb = check_png.decode(whole.read_bytes())
         check((w, h) == (width, height) and shown is not None and (w, h) == (int(shown.group(1)), int(shown.group(2))),

@@ -11,6 +11,7 @@ with CuBit.Messages;
 with CuBit.Program_Descriptions;
 with Remote_Files;
 with Startup;
+with CuBit.Monotonic;
 
 package body Remote_Apps is
    use Interfaces;
@@ -53,7 +54,7 @@ package body Remote_Apps is
    Apps : array (App_Index) of App_Record;
 
    function Now return Unsigned_64 is
-     (CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME));
+     (CuBit.Monotonic.Milliseconds);
    procedure Pause is
       Ignore : Unsigned_64;
    begin
@@ -321,7 +322,7 @@ package body Remote_Apps is
                end if;
             when Ending =>
                Kind := W.Ended;
-               CuBit.Launching.End_Child (Launcher, A.Started, Ended_Child);
+               CuBit.Launching.End_Child (A.Started, Ended_Child);
                End_Deadline := Now + End_Deadline_Ms;
                Phase := (if Ended_Child = CuBit.Launching.Launched then Waiting_End else Stuck);
                if Phase = Stuck then

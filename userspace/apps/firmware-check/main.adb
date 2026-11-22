@@ -9,6 +9,7 @@
 --  the catalog's totals, end-of-table and the typed refusals.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Firmware_Snapshot; use CuBit.Firmware_Snapshot;
@@ -59,6 +60,8 @@ procedure Main is
    Empty : Byte_Array (1 .. 0);
    Copied : Byte_Count;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("firmware-check: starting" & LF);
    Info (Tables, Catalog, Status);
    Check (Status = Ok, "catalog info");

@@ -8,13 +8,15 @@ Use the pinned project shell. Behavioral runner accepts --source-root DIR;
 semantic runner accepts --source-root DIR and --unit-root DIR. No native
 component,launcher,capability,kernel or runtime change is made.
 
-CuBit.Monotonic.Read may use a published microsecond clock sharing the IPC
-millisecond epoch,or fall back to HPET's different epoch. Dividing that adaptive
-value by1000 is not an established conversion to an IPC deadline. The new
-ACPI_EC_Native_Clock therefore consistently uses existing kernel raw-microsecond
-read and absolute sleep calls,whose source uses the same Time.Read_Monotonic
-clock. It never converts to IPC milliseconds or changes the existing AML clock.
-This is source-reviewed epoch pairing,not hardware or cross-suspend validation.
+ACPI_EC_Native_Clock reads CuBit.Published_Clock.Microseconds (no system call;
+READ_MONOTONIC_MICROSECONDS was deleted in ABI-002 slice 7) and pauses with the
+kernel's absolute Timer wait. Where the kernel publishes the invariant-TSC
+conversion, the read and the wait's Time.Read_Monotonic share one epoch. Without
+it, the read is the page's millisecond word times 1000 and the wait uses the
+HPET's own epoch, so a pause is only as accurate as their offset at a tick's
+resolution. It never converts to IPC milliseconds or changes the existing AML
+clock. This is source-reviewed epoch pairing,not hardware or cross-suspend
+validation.
 
 ACPI_EC_Clock_Policy validates unsigned raw readings before conversion to the
 EC63-bit nonnegative time type. Unavailable and representation-limit observations

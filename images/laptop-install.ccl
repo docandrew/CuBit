@@ -7,6 +7,10 @@
   (catalog "cubit-native-v1")
   (layout optical)
   (provider "usb-optical")
+  # The image's trust list (SIGN-001): every executable placed must verify
+  # against it. The host development CA comes from ccl-image's --import
+  # (make: $(CUBIT_SIGNING)/builder-ca.der), never from a path in the tree.
+  (builder host-development (import "cubit-signing-ca") (identities "*") (ceiling hardware-and-system))
   (kernel "kernel")
   (boot-menu "grub-usb-live")
   (settings "system-live")
@@ -72,6 +76,8 @@
   (file optical "devices" "apps/devices.app")
   (file optical "config-inspector" "apps/config-inspector.app")
   (file optical "boot-logs" "apps/boot-logs.app")
+  # The Debugger (DBG-001), an Apps menu entry.
+  (file optical "debugger" "apps/debugger.app")
   (file optical "logs" "apps/logs.app")
   (file optical "metricsview" "apps/metricsview.app")
   (file optical "files" "apps/files.app")

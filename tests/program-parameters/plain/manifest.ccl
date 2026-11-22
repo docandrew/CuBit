@@ -1,3 +1,6 @@
 # parameters-plain (tests/program-parameters): declares no parameters, so
 # a launch that supplies any is refused (Parameters_Unexpected).
-(Executable_Manifest identity => "com.cubit.parameters-plain" version => "1")
+(Executable_Manifest identity => "com.cubit.parameters-plain" version => "1"
+  # ABI-002: its debug text (CuBit.Console_Route).
+  requests => [(service "logstore" "logstore")]
+  optional => ["logstore"])

@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Messages; use CuBit.Messages;
@@ -21,6 +22,8 @@ procedure Main is
    Acquired : Boolean;
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Ignore := registerDriver (DRIVER_IPCTEST, Startup.Registration);
    if Ignore = Unsigned_64'Last then
       debugPrint ("TEST: FAIL log-retire registration" & ASCII.LF);

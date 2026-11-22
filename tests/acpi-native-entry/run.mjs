@@ -1,15 +1,21 @@
 import fs from 'node:fs';import path from 'node:path';import crypto from 'node:crypto';import{spawnSync}from'node:child_process';
 const suite=import.meta.dirname,root=path.resolve(suite,'../..'),sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
-const args=process.argv.slice(2),validate=args.length===1&&args[0]==='--validate-only';let profile='release';
-if(!validate&&args.length){if(args.length!==2||args[0]!=='--mode'||!['checked','release','native-object'].includes(args[1]))throw Error('Usage: run.sh [--validate-only | --mode checked|release|native-object]');profile=args[1];}
+const args=process.argv.slice(2),validate=args.length===1&&args[0]==='--validate-only';let profile='release',selectionName=null;
+if(!validate&&args.length){
+ if(![2,4].includes(args.length)||args[0]!=='--mode'||!['checked','release','native-object'].includes(args[1]))throw Error('Usage: run.sh [--validate-only | --mode checked|release|native-object [--selection NAME]]');
+ profile=args[1];
+ if(args.length===4){if(args[2]!=='--selection'||profile==='native-object')throw Error('Named selections are semantic-only');selectionName=args[3];}
+}
 const catalog=JSON.parse(fs.readFileSync(suite+'/sources.json')),pins={[suite+'/sources.json']:sha(suite+'/sources.json')};if(catalog.version!==1)throw Error('catalog');
 function input(rel){if(path.isAbsolute(rel)||rel.split('/').includes('..'))throw Error('relative input');const p=root+'/'+rel;for(let q=p;q!==root;q=path.dirname(q))if(fs.lstatSync(q).isSymbolicLink())throw Error('linked source');if(!fs.statSync(p).isFile())throw Error('regular source required');return p;}
 for(const row of catalog.inputs){const p=input(row.path);if(sha(p)!==row.sha256)throw Error('source mismatch '+row.path);pins[p]=row.sha256;}
 const inventory=new Set(catalog.inputs.map(r=>r.path));for(const dir of catalog.ada_directories)for(const n of fs.readdirSync(root+'/'+dir).filter(n=>/\.ad[bs]$/.test(n)))if(!inventory.has(dir+'/'+n))throw Error('unlisted Ada source '+dir+'/'+n);
 const component=fs.readFileSync(root+'/'+catalog.component,'utf8'),match=/sources\s*=>\s*\[([^\]]+)\]/s.exec(component),actual=['userspace/services/acpi/native',...[...match[1].matchAll(/"([^"]+)"/g)].map(m=>m[1])];
 if(JSON.stringify(actual)!==JSON.stringify(catalog.component_directories))throw Error('component directories changed');
-const selections=fs.readFileSync(suite+'/selections.txt','utf8').trim().split('\n');if(new Set(selections).size!==selections.length||selections.length!==catalog.selection_count)throw Error('selection inventory');
-const runtimeSelections=catalog.runtime_selections??[];if(!Array.isArray(runtimeSelections)||new Set(runtimeSelections).size!==runtimeSelections.length||runtimeSelections.some(n=>typeof n!=='string'||!/^cubit-[a-z0-9_]+\.ad[bs]$/.test(n)||!selections.includes(n)||!inventory.has('userspace/runtime/gnat/'+n)))throw Error('runtime selection inventory');
+const allSelections=fs.readFileSync(suite+'/selections.txt','utf8').trim().split('\n');if(new Set(allSelections).size!==allSelections.length||allSelections.length!==catalog.selection_count)throw Error('selection inventory');
+const selections=selectionName===null?allSelections:catalog.named_selections?.[selectionName];
+if(!Array.isArray(selections)||!selections.length||new Set(selections).size!==selections.length||selections.some(n=>!allSelections.includes(n)))throw Error('unknown or invalid named selection');
+const runtimeSelections=catalog.runtime_selections??[];if(!Array.isArray(runtimeSelections)||new Set(runtimeSelections).size!==runtimeSelections.length||runtimeSelections.some(n=>typeof n!=='string'||!/^cubit-[a-z0-9_]+\.ad[bs]$/.test(n)||!allSelections.includes(n)||!inventory.has('userspace/runtime/gnat/'+n)))throw Error('runtime selection inventory');
 function tool(name,env){const t=catalog.tools[name],p=env&&process.env[env]?process.env[env]:(t.repository_path?root+'/'+t.repository_path:t.path);if(sha(p)!==t.sha256)throw Error('tool mismatch '+name);pins[p]=t.sha256;return p;}
 const compiler=tool('compiler'),manifest=tool('manifest','CCL_MANIFEST_TOOL'),build=tool('build','CCL_BUILD_TOOL');
 function verify(){for(const[p,h]of Object.entries(pins))if(sha(p)!==h)throw Error('input drift '+p);}

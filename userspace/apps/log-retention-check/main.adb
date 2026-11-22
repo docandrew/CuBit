@@ -1,11 +1,14 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with CuBit.Logging;
 with Startup;
+with CuBit.Monotonic;
 
 --  Native regression for LOG-002 and LOG-005: one chatty source must not
 --  erase a quiet source's boot history, and what logstore retains is
@@ -49,10 +52,10 @@ procedure Main is
    Result : P.Status;
    Value : P.Event;
    Lost : Unsigned_64;
-   Own_Pid : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   Own_Pid : constant Unsigned_64 := Own_Process_Word;
    --  log-flood's process, from its done record.
    Flood_Source : Unsigned_64 := 0;
-   Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+   Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    Submitted, Drained, Done : Boolean := False;
 
    procedure Fail (Name : String) is
@@ -91,6 +94,8 @@ procedure Main is
       Check (Drained, "logstore took the record");
    end Publish;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    for Stage in 1 .. Quiet_Records loop
       Publish (Stage_Prefix & Image (Stage) & " ok", L.Information);
    end loop;
@@ -102,11 +107,11 @@ begin
    Check (Result = P.OK, "subscribe for the flood's end");
    while not Done loop
       CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
-      if Result = P.OK and then L.Text (Value.Data) = Flood_Done_Text then
+      if Result = P.OK and then L.Texts.Text (Value.Data) = Flood_Done_Text then
          Done := True;
          Flood_Source := Value.Source;
       elsif Result = P.Empty then
-         Check (syscall (SYSCALL_GETTIME) - Started <= Wait_Limit_Ms, "the flood never ended");
+         Check (CuBit.Monotonic.Milliseconds - Started <= Wait_Limit_Ms, "the flood never ended");
          Ignore := CuBit.Waits.Sleep_For (Poll_Ms);
       else
          Check (Result in P.OK | P.Gap, "read while waiting");
@@ -127,7 +132,7 @@ begin
          Check (Result = P.OK, "quiet source replay reports no loss");
          Check (Value.Source = Own_Pid, "only the quiet source replayed");
          if Next_Stage <= Quiet_Records then
-            Check (L.Text (Value.Data) = Stage_Prefix & Image (Next_Stage) & " ok",
+            Check (L.Texts.Text (Value.Data) = Stage_Prefix & Image (Next_Stage) & " ok",
                    "quiet boot record" & Natural'Image (Next_Stage) & " replayed in order");
             Next_Stage := Next_Stage + 1;
          end if;
@@ -190,7 +195,7 @@ begin
                   Previous_Ms := Value.Monotonic_Ms;
                end if;
                declare
-                  Text : constant String := L.Text (Value.Data);
+                  Text : constant String := L.Texts.Text (Value.Data);
                begin
                   if Value.Source = Own_Pid and then Starts (Text, Stage_Prefix) then
                      Quiet_Seen := Quiet_Seen + 1;

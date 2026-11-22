@@ -1,4 +1,5 @@
 with Wait_ABI;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Intel_GPU_ADLN_L3;
 with Intel_GPU_Map_Report;
@@ -971,7 +972,7 @@ procedure Main is
       Outgoing : Message := NULL_MESSAGE;
    begin
       Intel_GPU_Budget_Query.Start
-        (Budget_Query, syscall (SYSCALL_GETTIME),
+        (Budget_Query, CuBit.Monotonic.Milliseconds,
          Publication_Owner_Ready and then not Runtime_Fault, Token);
       if Token /= 0 then
          Outgoing.tag := (label => Intel_GPU_Buffer_Backing.Budget_Request_Label, length => 4,
@@ -1919,7 +1920,7 @@ procedure Main is
       Msg : Message := NULL_MESSAGE;
       Receipt : aliased CompletionEntry;
       Token : constant Unsigned_64 := 16#4947_1000# + Unsigned_64 (Label);
-      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Now : Unsigned_64;
       Previous : Unsigned_64 := Started;
       Activity : Activity_Result;
@@ -1942,12 +1943,12 @@ procedure Main is
       Msg.words (0) := Word;
       if not Supervisor.Submit (Msg, Token) then return False; end if;
       for Poll in 1 .. 30_000 loop
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Monotonic.Milliseconds;
          if Now = Unsigned_64'Last or else Now < Previous or else
            Now - Started >= 30_000
          then return False; end if;
          Previous := Now;
-         if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
+         if CuBit.Messages.Poll_Completion (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
               Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]
@@ -1968,7 +1969,7 @@ procedure Main is
    function Map_Reset_Pages return String is
       Msg : Message := NULL_MESSAGE;
       Receipt : aliased CompletionEntry;
-      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Now : Unsigned_64;
       Granted : Boolean;
       Region : CuBit.Handles.Device_Memory := CuBit.Handles.No_Device_Memory;
@@ -1989,9 +1990,9 @@ procedure Main is
             if not Supervisor.Submit_Accepting (Msg, Token) then return "submit-failed"; end if;
             Granted := False;
             loop
-               Now := syscall (SYSCALL_GETTIME);
+               Now := CuBit.Monotonic.Milliseconds;
                if Now < Started or else Now - Started >= 30_000 then return "grant-timeout"; end if;
-               if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
+               if CuBit.Messages.Poll_Completion (Receipt'Address) /= 0 and then Receipt.token = Token then
                   if Receipt.status = COMPLETION_OK and then
                     Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
                     Receipt.msg.words = [0, 0, 0, 0]
@@ -2031,7 +2032,7 @@ procedure Main is
       Now : Unsigned_64;
    begin
       if Startup_Timing then
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Monotonic.Milliseconds;
          if Startup_Start_Ms = 0 or else Now < Startup_Start_Ms then Startup_Start_Ms := Now; end if;
          Intel_GPU_Diagnostics.Capture
            (Text & " t=" & Unsigned_64'Image (Now - Startup_Start_Ms) & "ms",
@@ -2361,7 +2362,7 @@ procedure Main is
    -- find a resident context with an unfinished job (GPU-001 step 2).
    Submitted_Jobs, Completed_Jobs, Failed_Jobs, Parked_Contexts :
      Submission_Policy.Event_Count := 0;
-   -- Service-loop request gate observation (milliseconds, SYSCALL_GETTIME).
+   -- Service-loop request gate observation (milliseconds, CuBit.Monotonic).
    Request_Gate_Report_Ms : constant Unsigned_64 := 2_000;
    Request_Gate_Since : Unsigned_64 := 0;
    Request_Gate_Reported : Boolean := False;
@@ -4903,7 +4904,7 @@ procedure Main is
       In_Place_Updates := In_Place_Updates + 1;
    end Report_In_Place_Profile;
    procedure Report_In_Place_Summary is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       function Img (V : Unsigned_64) return String is (Unsigned_64'Image (V));
    begin
       if In_Place_Updates = 0 or else Now < In_Place_Reported_At + In_Place_Report_Ms then return; end if;
@@ -5258,7 +5259,7 @@ procedure Main is
    Refusal_Reported_At : Unsigned_64 := 0;
    Refusal_Reported : Boolean := False;
    function Report_Refusal return Boolean is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
       if Refusal_Reported and then Now >= Refusal_Reported_At and then
         Now - Refusal_Reported_At < Refusal_Report_Ms
@@ -6607,7 +6608,7 @@ procedure Main is
       Offline_Bind_State = No_Offline_Bind);
    procedure Report_Recycle_Wait
      (S : Session_Slot; Session : Unsigned_64; Facts : Intel_GPU_Render_Sessions.Release_Facts) is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Watch : Recycle_Watch renames Recycle_Watches.Items (S);
       Usage : constant Intel_GPU_Client_Budgets.Usage :=
         Application_Buffers.Client_Usage (Application_Buffer_State, Session);
@@ -7561,7 +7562,7 @@ procedure Main is
    --  (GPU-001 step 6).
    procedure Handle_Device_Interrupt is
    begin
-      Display_Executor.Hotplug_Interrupt (syscall (SYSCALL_GETTIME));
+      Display_Executor.Hotplug_Interrupt (CuBit.Monotonic.Milliseconds);
    end Handle_Device_Interrupt;
 
    --  Boot, after the display executor took its output: every GT and
@@ -7625,7 +7626,7 @@ procedure Main is
                            Unsigned_64'Image (Intel_GPU_Stop_Policy.Drain_Ms) &
                            " ms), display left as it is" & ASCII.LF);
             end if;
-            Intel_GPU_Stop_Policy.Note_Stop (Stopping, syscall (SYSCALL_GETTIME));
+            Intel_GPU_Stop_Policy.Note_Stop (Stopping, CuBit.Monotonic.Milliseconds);
          else
             Notice := CuBit.Control_Events.Decode
               (Event.tag.label, Event.tag.length, Event.words (0), Event.words (1),
@@ -7640,7 +7641,7 @@ procedure Main is
    end Service_Kernel_Events;
 
    procedure Report_G2H_Events is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
       if G2H_Notifications + G2H_Others = 0 or else Now < G2H_Reported_At + G2H_Report_Ms
       then return; end if;
@@ -7669,13 +7670,13 @@ procedure Main is
       Token : constant Unsigned_64 := 16#4947_0003#;
       Msg : Message := NULL_MESSAGE;
       Receipt : aliased CompletionEntry;
-      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Now : Unsigned_64;
       Activity : Activity_Result;
       Granted : Boolean := False;
       Region : CuBit.Handles.Device_Memory := CuBit.Handles.No_Device_Memory;
       pragma Unreferenced (Activity);
-      function Clock return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+      function Clock return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
       function Read_Ack (Offset : Unsigned_32) return Unsigned_32 is
          Allowed : Boolean := False;
       begin
@@ -7744,7 +7745,7 @@ procedure Main is
          if Now < Started or else Now - Started >= 30_000 then
             return "grant-timeout";
          end if;
-         if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
+         if CuBit.Messages.Poll_Completion (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
               Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]
@@ -7832,7 +7833,7 @@ procedure Main is
       Virtual : constant Unsigned_64 := 16#6040_0000#;
       Msg : Message := NULL_MESSAGE;
       Receipt : aliased CompletionEntry;
-      Start : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Start : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Now, Physical : Unsigned_64;
       Region : CuBit.Handles.Device_Memory := CuBit.Handles.No_Device_Memory;
       Activity : Activity_Result;
@@ -7844,9 +7845,9 @@ procedure Main is
       Msg.tag := (label => 16#022B#, length => 0, protocol => 0, ipc => <>, reserved => 0);
       if not Supervisor.Submit_Accepting (Msg, Token) then return "submit-failed"; end if;
       loop
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Monotonic.Milliseconds;
          if Now < Start or else Now - Start >= 30_000 then return "timeout"; end if;
-         if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
+         if CuBit.Messages.Poll_Completion (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
               Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]
@@ -7936,7 +7937,7 @@ procedure Main is
       end if;
    end Note_Request_Time;
    procedure Report_Slow_Requests is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
       if Slow_Count = 0 or else Now < Slow_Reported_At + Slow_Report_Ms then return; end if;
       Publish_Snapshot ("intel-gpu: slow requests=" & Unsigned_64'Image (Slow_Count) &
@@ -8068,7 +8069,7 @@ procedure Main is
       Queue_Service.Reset_Kinds (Queue_State);
    end Report_Job_Kinds;
    procedure Report_Submit_Latency is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Stats : constant Queue_Service.Statistics := Queue_Service.Stats (Queue_State);
    begin
       if Stats.Latency_Count = 0 or else Now < Latency_Reported_At + Latency_Report_Ms then
@@ -8523,7 +8524,7 @@ procedure Main is
       In_Place_Since := 0;
    end Fail_Stalled_In_Place;
    procedure Watch_Stalls is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Stats : constant Queue_Service.Statistics := Queue_Service.Stats (Queue_State);
       Line : String (1 .. 480) := [others => ' '];
       Last : Natural := 0;
@@ -8625,39 +8626,26 @@ procedure Main is
    -- How long a stopping driver waits for logstore to take its last records
    -- (it may stop before logstore runs).
    Early_Stop_Flush_Ms : constant := 10_000;
-   Early_Stop_Poll_Ms : constant := 10;
 
-   -- Report Text as a warning, give the diagnostics publisher a bounded
-   -- chance to deliver it, and set the exit code. The caller returns.
+   -- Report Text as a warning, give logstore a bounded chance to take it,
+   -- and set the exit code. The caller returns.
    procedure Stop_Early (Why : Early_Stop; Text : String) is
-      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
-      Now : Unsigned_64 := Started;
-      Receipt : aliased CompletionEntry;
-      Ignore : Unsigned_64;
-      Activity : Activity_Result;
-      pragma Unreferenced (Ignore, Activity);
+      Delivered : Boolean;
+      pragma Unreferenced (Delivered);
    begin
       Bring_Up_Stage (Intel_GPU_Bring_Up.Next, False, Name (Why) & ": " & Text);
       Bring_Up_Summary;
       Publish_Snapshot ("intel-gpu: stopped, exit code" & Integer'Image (Early_Stop'Enum_Rep (Why)) &
                         " (" & Name (Why) & "): " & Text,
                         CuBit.Log_Records.Warning);
-      while Intel_GPU_Diagnostics.Pending
-        and then Now >= Started and then Now - Started < Early_Stop_Flush_Ms
-      loop
-         Intel_GPU_Diagnostics.Tick;
-         Ignore := Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address);
-         Activity := Wait_For_Activity_Until
-           (if Now <= Unsigned_64'Last - Early_Stop_Poll_Ms then Now + Early_Stop_Poll_Ms else Now);
-         Now := syscall (SYSCALL_GETTIME);
-      end loop;
-      if Intel_GPU_Diagnostics.Pending then
-         debugPrint ("intel-gpu: stopping with lines not yet in logstore after" &
-           Unsigned_64'Image (Early_Stop_Flush_Ms) & " ms (serial has them)" & ASCII.LF);
-      end if;
+      --  Lines that never reach logstore are lost: nothing else holds them.
+      Delivered := Intel_GPU_Diagnostics.Flush (Early_Stop_Flush_Ms);
       Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Exit_Status (Early_Stop'Enum_Rep (Why)));
    end Stop_Early;
 begin
+   --  ABI-002: its lines into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
    if not Prepare_Session_Storage then
       Stop_Early (Resource_Rejected, "session table storage unavailable");
       return;
@@ -9949,7 +9937,7 @@ begin
          use type Intel_GPU_Stop_Policy.Verdict;
          Idle : constant Boolean := Queue_Service.Idle (Queue_State);
       begin
-         if Intel_GPU_Stop_Policy.Decide (Stopping, Idle, syscall (SYSCALL_GETTIME)) =
+         if Intel_GPU_Stop_Policy.Decide (Stopping, Idle, CuBit.Monotonic.Milliseconds) =
            Intel_GPU_Stop_Policy.End_Now
          then
             debugPrint ("intel-gpu: Stop: ending" &
@@ -9964,7 +9952,7 @@ begin
       Report_In_Place_Summary;
       Report_Submit_Latency;
       Display_Executor.Service;
-      Display_Executor.Report (syscall (SYSCALL_GETTIME));
+      Display_Executor.Report (CuBit.Monotonic.Milliseconds);
       Report_G2H_Events;
       -- Every session's GPU work, one bounded, non-blocking pass.
       Queue_Service.Turn (Queue_State);
@@ -9978,7 +9966,7 @@ begin
          -- only requests that cannot conflict are dispatched; any other is
          -- deferred, with admission paused, until the GPU drains.
          declare
-            Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
             Found, Defer : Boolean := False;
          begin
             Note_Request_Gate (not Deferred_Pending, Now);
@@ -10035,10 +10023,10 @@ begin
             Found : Boolean;
             Activity : Activity_Result;
             Consumed : Boolean;
-            Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
             pragma Unreferenced (Activity);
          begin
-            Unused := Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address);
+            Unused := CuBit.Messages.Poll_Completion (Receipt'Address);
             Consumed := False;
             if Unused /= 0 then
                Intel_GPU_Budget_Query.Complete
@@ -10119,7 +10107,6 @@ begin
             Burst_In_Place;
             Grow_Table_Ledger;
             Complete_Render_Activation;
-            Intel_GPU_Diagnostics.Tick;
             Advance_Application_Cleanup;
             Application_Maps.Poll (Application_Buffer_State, Application_Map_State);
             -- One candidate from each bounded queue before admission: sustained

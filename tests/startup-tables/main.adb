@@ -43,6 +43,9 @@ procedure Main is
    --  Independent reference: the layout read straight from the bytes with
    --  plain integer arithmetic, written from the format comment.
    ---------------------------------------------------------------------------
+   --  The last capability kind code the format defines (VM_Create, VMM-001),
+   --  written down here, not read from CuBit.Startup_Tables.
+   Last_Kind_Code : constant := 19;
    function Reference_Valid (Raw : Bytes) return Boolean is
       function U (Offset, Width : Natural) return Long_Long_Integer is
          Value : Long_Long_Integer := 0;
@@ -72,7 +75,7 @@ procedure Main is
             Need_Code : constant Long_Long_Integer := U (B + 1, 1);
             Handle_Zero : constant Boolean := U (B + 8, 4) = 0 and then U (B + 12, 4) = 0;
          begin
-            if U (B, 1) not in 1 .. 12 or else Need_Code not in 1 .. 2
+            if U (B, 1) not in 1 .. Last_Kind_Code or else Need_Code not in 1 .. 2
               or else State not in 1 .. 3 or else U (B + 4, 4) /= 0
             then
                return False;
@@ -243,7 +246,8 @@ procedure Main is
          Expect (Zero_Count, Bad_Limit, "at most above maximum");
       end;
       Expect (Mutated (First + Kind_Offset, 0), Bad_Kind, "kind 0");
-      Expect (Mutated (First + Kind_Offset, 13), Bad_Kind, "kind 13");
+      Expect (Mutated (First + Kind_Offset, Last_Kind_Code), Decoded, "the last kind (VM_Create)");
+      Expect (Mutated (First + Kind_Offset, Last_Kind_Code + 1), Bad_Kind, "kind past the last");
       Expect (Mutated (First + Need_Offset, 3), Bad_Need, "need 3");
       Expect (Mutated (First + State_Offset, 4), Bad_State, "state 4");
       Expect (Mutated (First + Entry_Reserved_First + 3, 9), Bad_Reserved, "entry reserved");

@@ -9,6 +9,7 @@
 --  15 implements them.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Messages;
 with Check_Results; use Check_Results;
 with Exception_Checks;
@@ -19,6 +20,8 @@ with Tagged_Checks;
 
 procedure Main is
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Tagged_Checks.Run;
    Finalization_Checks.Run;
    Pool_Checks.Run;

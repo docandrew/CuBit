@@ -36,6 +36,7 @@ with NVMe_Queue_Cursors; use NVMe_Queue_Cursors;
 with NVMe_Command_Ids; use NVMe_Command_Ids;
 with NVMe_Recovery; use NVMe_Recovery;
 with NVMe_Layout; use NVMe_Layout;
+with CuBit.Monotonic;
 
 package body NVMe is
 
@@ -637,7 +638,7 @@ package body NVMe is
                   null;   --  a shared vector's other device: look again
                else
                   activity := Wait_For_Activity_Until
-                    (syscall (SYSCALL_GETTIME) + IO_WAIT_SLICE_MILLISECONDS);
+                    (CuBit.Monotonic.Milliseconds + IO_WAIT_SLICE_MILLISECONDS);
                   if activity = Deadline_Reached then
                      sliceTimeouts := sliceTimeouts + 1;
                   end if;

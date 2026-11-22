@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 
 with CuBit.Messages; use CuBit.Messages;
@@ -23,6 +24,9 @@ procedure Main is
    RUST_REPORT : constant Unsigned_32 := 16#0C11#;
    RUST_ALLOCATION_REPORT : constant Unsigned_32 := 16#0C12#;
    RUST_HEAP_REPORT : constant Unsigned_32 := 16#0C13#;
+   --  A Rust peer's thread probe passed (no_std Rust has no console of its
+   --  own since the kernel console is gone, ABI-002: it reports here).
+   RUST_THREADS_REPORT : constant Unsigned_32 := 16#0C14#;
    Rust_Peers : array (1 .. 2) of Process_ID := [others => No_Process];
    Rust_Allocation_Passed : array (1 .. 2) of Boolean := [others => False];
    Rust_Allowed, Rust_Denied : Process_ID := No_Process;
@@ -33,6 +37,8 @@ procedure Main is
      [16#7266_206F_6C6C_6548#, 16#2174_7375_5220_6D6F#,
       16#8000_0000_FFFF_FFFF#, 16#1234_5678_9ABC_DEF0#];
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("ccl-test-host: starting" & LF);
    Ignore := registerDriver (DRIVER_CCL_TEST, Startup.Registration);
    if Ignore = Unsigned_64'Last then
@@ -84,6 +90,12 @@ begin
       then
          Response.tag := (label => REPLY_OK, length => 0, protocol => 0, ipc => <>, reserved => 0);
          debugPrint ("TEST: PASS rust-heap-rollback" & LF);
+      elsif Request.tag = (label => RUST_THREADS_REPORT, length => 1, protocol => 0, ipc => <>, reserved => 0) and then
+        Request.words (0) = 1 and then From /= No_Process and then
+        (From = Rust_Peers (1) or else From = Rust_Peers (2))
+      then
+         Response.tag := (label => REPLY_OK, length => 0, protocol => 0, ipc => <>, reserved => 0);
+         debugPrint ("RUST-THREADS: PASS" & LF);
       elsif Request.tag = (label => RUST_REPORT, length => 2, protocol => 0, ipc => <>, reserved => 0) and then
         Request.words (2) = 0 and then Request.words (3) = 0 and then
         From /= No_Process and then

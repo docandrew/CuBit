@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import random
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,7 +26,10 @@ CATALOG = '''(image-artifacts v1 (catalog "test-v1")
   (bootstrap-requires "resident" "a" "a.app"))'''
 PROFILE = '''(system-image v1 (catalog "test-v1")
   (layout bootstrap-only) (provider "resident") (settings "settings")
+  (builder host-development (import "test-ca") (identities "*") (ceiling hardware-and-system))
   (file bootstrap "a" "a.app"))'''
+BUILDER = '(builder host-development (import "test-ca") (identities "*") (ceiling hardware-and-system))'
+SIGN_TOOL = ROOT / "userspace/ccl/build/sign/ccl-sign"
 
 SAMPLES = {path.name for path in (ROOT / "userspace/ccl/samples").glob("*.ccl")}
 
@@ -52,6 +56,8 @@ class Images(unittest.TestCase):
         self.profile.write_text(PROFILE)
         (self.root / "a.app").write_bytes(b"fixture executable")
         (self.root / "settings.ccl").write_text('(system-config v1 (setting "answer" (* 6 7)))')
+        (self.root / "test-ca.der").write_bytes(b"not used: the fixture holds no executable")
+        self.imports = {"test-ca": self.root / "test-ca.der"}
 
     def compile(self, profile=PROFILE, catalog=CATALOG):
         self.catalog.write_text(catalog)
@@ -69,6 +75,7 @@ class Images(unittest.TestCase):
             self.assertIn(diagnostic, result.stderr)
 
     def prepare(self, inputs=None, **kwargs):
+        kwargs.setdefault("imports", self.imports)
         return realizer.prepare(self.catalog, self.profile, inputs or {}, root=self.root, **kwargs)
 
     def test_existing_membership_preserved(self):
@@ -331,7 +338,7 @@ class Images(unittest.TestCase):
                 ' (bootstrap-requires "resident" "a0" "a0.app"))')
         profile = ('(system-image v1 (catalog "test-v1") '
                    '(layout bootstrap-only) (provider "resident") (settings "a127") '
-                   '(file bootstrap "a0" "a0.app"))')
+                   + BUILDER + ' (file bootstrap "a0" "a0.app"))')
         result = self.compile(profile, catalog)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("\ta0.app\n", result.stdout)
@@ -341,6 +348,102 @@ class Images(unittest.TestCase):
             with self.subTest(token=token):
                 self.reject(PROFILE.replace("system-image v1", "system-image " + token))
                 self.reject(catalog=CATALOG.replace("image-artifacts v1", "image-artifacts " + token))
+
+    def test_trust_list_is_typed_and_required(self):
+        """SIGN-001: an image names its builders; no test anchor; identities
+        are reverse-DNS prefixes or "*"; each builder's CA comes from an
+        explicit import."""
+        self.reject(PROFILE.replace(BUILDER, ""), diagnostic="MISSING_BUILDER")
+        self.reject(PROFILE.replace("host-development", "test"), diagnostic="TEST_BUILDER")
+        self.reject(PROFILE.replace("host-development", "potato"), diagnostic="INVALID_VALUE")
+        self.reject(PROFILE.replace("hardware-and-system", "everything"), diagnostic="INVALID_VALUE")
+        for identity in ("", "Com.Example", "com..example", ".com", "com.", "com/example", "**", "a" * 65):
+            with self.subTest(identity=identity):
+                self.reject(PROFILE.replace('(identities "*")', f'(identities {json.dumps(identity)})'))
+        self.reject(PROFILE.replace('(identities "*")', "(identities)"), diagnostic="MISSING_FIELD")
+        self.reject(PROFILE.replace(BUILDER, BUILDER + " " + BUILDER), diagnostic="DUPLICATE_NAME")
+        result = self.compile(PROFILE.replace('(identities "*")', '(identities "com.example" "org.other-app")')
+                              .replace("hardware-and-system", "applications-only"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("BUILDER\tHOST_DEVELOPMENT\ttest-ca\tAPPLICATIONS_ONLY\tcom.example,org.other-app\n",
+                      result.stdout)
+        self.profile.write_text(PROFILE)
+        with self.assertRaisesRegex(ValueError, "needs --import test-ca="):
+            self.prepare(imports={})
+        with self.assertRaisesRegex(ValueError, "unused imports"):
+            self.prepare(imports={**self.imports, "other": self.root / "test-ca.der"})
+        _, report = self.prepare()
+        self.assertEqual(report["builders"][0]["import"], "test-ca")
+        self.assertEqual(report["builders"][0]["identities"], ["*"])
+        for image in sorted((ROOT / "images").glob("*.ccl")):
+            if image.name == "artifacts.ccl":
+                continue
+            with self.subTest(image=image.name):
+                _, _, builders, _ = realizer.compile_plan_with_builders(ROOT / "images/artifacts.ccl", image)
+                self.assertEqual(builders, [["HOST_DEVELOPMENT", "cubit-signing-ca", "HARDWARE_AND_SYSTEM", "*"]])
+
+    @unittest.skipUnless(SIGN_TOOL.exists(), "ccl-sign is not built (make -C kernel ccl-sign)")
+    def test_gate_refuses_unsigned_and_untrusted_executables(self):
+        """SIGN-001: ccl-image stages no executable that does not verify
+        against the image's own trust list."""
+        def init(name):
+            subprocess.run([SIGN_TOOL, "init", "--signing", self.root / name, "--name", name],
+                           check=True, capture_output=True)
+        init("keys")
+        init("rogue")
+        imports = {"test-ca": self.root / "keys/builder-ca.der"}
+        elf = bytearray(b"\x7fELF\x02\x01\x01" + bytes(9) + (2).to_bytes(2, "little") + bytes(46))
+        (self.root / "a.app").write_bytes(bytes(elf))
+        with self.assertRaisesRegex(ValueError, "do not verify.*bootstrap/a.app.*NOT_SIGNED"):
+            self.prepare(imports=imports)
+        unsigned = self.root / "unsigned.app"
+        unsigned.write_bytes(bytes(elf))
+        subprocess.run([SIGN_TOOL, "sign", "--signing", self.root / "rogue", unsigned, self.root / "a.app"],
+                       check=True, capture_output=True)
+        with self.assertRaisesRegex(ValueError, "UNTRUSTED_BUILDER"):
+            self.prepare(imports=imports)
+        subprocess.run([SIGN_TOOL, "sign", "--signing", self.root / "keys", unsigned, self.root / "a.app"],
+                       check=True, capture_output=True)
+        files, _ = self.prepare(imports=imports)
+        self.assertTrue(any(f.destination == "a.app" for f in files))
+        signed = (self.root / "a.app").read_bytes()
+        flipped = bytearray(signed)
+        flipped[20] ^= 1
+        (self.root / "a.app").write_bytes(bytes(flipped))
+        with self.assertRaisesRegex(ValueError, "DIGEST_MISMATCH"):
+            self.prepare(imports=imports)
+        # Staging keeps a signed executable's bytes: stripping would drop the envelope.
+        sys.path.insert(0, str(ROOT / "tools"))
+        import image_debug
+        splitter = image_debug.Splitter(self.root / "debug", "test")
+        self.assertIs(splitter.split("a.app", signed), signed)
+
+    @unittest.skipUnless(shutil.which("cc") and shutil.which("objcopy"), "needs cc and objcopy (nix develop)")
+    def test_split_twice_keeps_the_debug_file(self):
+        """A program with an allocated .debug_* section (rustc's
+        .debug_gdb_scripts) splits once: its stripped copy has nothing to
+        separate, so a second split (the sign step after an image recipe,
+        or two builds) keeps the debug file the first one wrote."""
+        sys.path.insert(0, str(ROOT / "tools"))
+        import image_debug
+        source = self.root / "gdb-scripts.c"
+        source.write_text('__attribute__((used, section(".debug_gdb_scripts"))) '
+                          'static const char scripts[] = "\\1gdb";\n'
+                          'void _start(void) { for (;;) { } }\n')
+        program = self.root / "gdb-scripts.app"
+        subprocess.run(["cc", "-g", "-O0", "-static", "-nostdlib", "-no-pie", "-Wl,--build-id",
+                        source, "-o", program], check=True, capture_output=True)
+        data = program.read_bytes()
+        self.assertGreater(image_debug.debug_bytes(data), 0)
+        splitter = image_debug.Splitter(self.root / "debug", "test")
+        stripped = splitter.split("gdb-scripts.app", data)
+        debug_file = splitter.debug_path(image_debug.build_id(data))
+        separated = debug_file.read_bytes()
+        self.assertIn(b".debug_info", separated)
+        self.assertIn(b".debug_gdb_scripts", stripped)
+        self.assertEqual(image_debug.debug_bytes(stripped), 0)
+        self.assertIs(splitter.split("gdb-scripts.app", stripped), stripped)
+        self.assertEqual(debug_file.read_bytes(), separated)
 
     def test_snapshots_and_hashes(self):
         files, report = self.prepare()

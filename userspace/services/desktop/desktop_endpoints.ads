@@ -22,6 +22,10 @@ package Desktop_Endpoints with SPARK_Mode => Off is
    Config_Service  : constant CuBit.Handles.Endpoint := CuBit.Handles.Services.Config.Handle (Startup.Config);
    Process_Manager : constant CuBit.Handles.Endpoint :=
      CuBit.Handles.Services.Process_Manager.Handle (Startup.Process_Manager);
+   --  The Launch badge into the user session (CAP-012): the Apps menu's
+   --  OP_LAUNCH goes through it.
+   Launch : constant CuBit.Handles.Endpoint :=
+     CuBit.Handles.Services.Process_Manager.Handle (Startup.Launch);
    --  logstore's observer role (the bootstrap screen's recent records).
    Log_Observer    : constant CuBit.Handles.Services.Log_Observer.Endpoint := Startup.Log_Observer;
    Files           : constant CuBit.Handles.Endpoint := Startup.Filesystem;

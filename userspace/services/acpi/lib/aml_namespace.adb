@@ -12388,6 +12388,24 @@ package body Owned with SPARK_Mode is
             A.In_Progress := False;
          end Run_With_Scratch;
       begin
+         -- Stored values need no collector workspace. Preserve the same
+         -- admission, incarnation and fuel checks before observing a result;
+         -- methods and Field/table resolution retain the collecting path.
+         Outcome := (Status => AML_Execute.No_Return, Charged => 0);
+         Status := Admission (A); if Status /= Available then return; end if;
+         if not Current_Binding (A, Item) or else Item.Node = Root then
+            Status := Invalid_Value; return;
+         end if;
+         if Owned.Kind (A.Inner.all, Item.Node) in Integer_Object | String_Object | Buffer_Object |
+           Package_Object | Reference_Object | Metadata_Value_Object
+         then
+            if Budget < Named_Evaluation_Charge then
+               Outcome := (Status => AML_Execute.Budget_Exceeded, Charged => 0); return;
+            end if;
+            Observe_Named_Value (A, Item.Node, Outcome, Status);
+            Outcome.Charged := Named_Evaluation_Charge;
+            return;
+         end if;
          Workspace := Allocate_Collection_Workspace
            (A.Object_Capacity, A.Byte_Capacity, A.Element_Capacity);
          if Workspace = null then

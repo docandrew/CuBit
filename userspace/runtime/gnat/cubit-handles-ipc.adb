@@ -115,6 +115,10 @@ package body CuBit.Handles.IPC is
    function Describe (Item : IO_Ports) return Description is (Describing (K.Word (Item)));
    function Describe (Item : Platform_Power) return Description is
      (Describing (K.Word (Item)));
+   function Describe (Item : Trace) return Description is (Describing (K.Word (Item)));
+   function Describe (Item : Process_Listing) return Description is (Describing (K.Word (Item)));
+   function Describe (Item : Test_Console) return Description is (Describing (K.Word (Item)));
+   function Describe (Item : VM_Create) return Description is (Describing (K.Word (Item)));
    function Describe (Item : Interrupt) return Description is (Describing (K.Word (Item)));
    function Describe (Item : Notification) return Description is
      (Describing (K.Word (Item)));
@@ -159,6 +163,8 @@ package body CuBit.Handles.IPC is
      return Boolean is (Submit (Target, Accepting (Msg), Token));
 
    --  The kind of a carried word, checked with the kernel.
+   function Describe_Word (Word : Unsigned_64) return Description is (Describing (Word));
+
    function Kind_Of (Item : Carried) return Description is
      (if Item.Kind = Present then Describing (Item.Word)
       else (Current => False,

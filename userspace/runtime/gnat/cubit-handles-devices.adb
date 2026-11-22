@@ -6,6 +6,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Ada.Unchecked_Conversion;
+with System.Storage_Elements;
 with Boot_Timeline_Layout;
 with CuBit.Handles.Kernel;
 
@@ -67,14 +68,24 @@ package body CuBit.Handles.Devices is
      (K.Call (K.Set_Latency_Contract, Latency_Realtime, Period_Us, Budget_Us, Flags,
               K.Word (Authority)));
 
-   function Read_Timeline
-     (Authority : Process; Buffer, Offset, Bytes : Unsigned_64) return Unsigned_64 is
-     (K.Call (K.Boot_Timeline, BT.Operation'Enum_Rep (BT.Read), Buffer, Bytes, Offset,
-              K.Word (Authority)));
-
    function Mark_Milestone (Milestone : Unsigned_64; Authority : Notification)
-     return Boolean is
-     (K.Call (K.Boot_Timeline, BT.Operation'Enum_Rep (BT.Mark), Milestone, 0, 0,
-              K.Word (Authority)) = 0);
+     return Boolean
+   is
+      Msg : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
+      Result : Unsigned_64;
+   begin
+      Msg.tag.label := BT.Mark_Label;
+      Msg.tag.length := BT.Mark_Request_Words;
+      Msg.words (BT.Milestone_Word) := Milestone;
+      --  The one Call: the kernel resolves the notification handle and
+      --  answers in Msg.
+      Result := K.Call (K.Call_Via_Endpoint, K.Word (Authority),
+                        Unsigned_64 (System.Storage_Elements.To_Integer (Msg'Address)),
+                        CuBit.Messages.Wait_Forever);
+      return Result /= 0 and then Result /= Unsigned_64'Last
+        and then Msg.tag.label = BT.Mark_Label
+        and then Msg.tag.length = BT.Mark_Reply_Words
+        and then Msg.words (BT.Outcome_Word) = BT.Mark_Outcome'Enum_Rep (BT.Marked);
+   end Mark_Milestone;
 
 end CuBit.Handles.Devices;

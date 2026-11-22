@@ -1,7 +1,9 @@
+with Servo_Page_Fonts;
 with Servo_Session;
 with CuBit.System_Facts;
 with CuBit.Settings.Codecs;
 with CuBit.Settings.Writable;
+with Servo_Agent_Settings;
 with Startup;
 package body Servo_Shell is
    --  The sandbox probe: Penny's own setting reads, writes and deletes;
@@ -46,14 +48,36 @@ package body Servo_Shell is
       return 0;
    end Config_Scope_Check;
 
-   --  This process's own frames in bytes (kernel READ_STATISTICS).
-   function Memory_Owned return Unsigned_64 is
-      Statistics : CuBit.System_Facts.SP.Statistics;
-      Read : Boolean;
+   function User_Agent return Unsigned_32 is
+      package Setting renames Startup.Settings.Browser_Servo_User_Agent;
+      Stored : constant Setting.Reading := Setting.Read;
    begin
-      CuBit.System_Facts.Read_Statistics (Statistics, Read);
-      return (if Read then Statistics.Owned_Bytes else Unsigned_64'Last);
-   end Memory_Owned;
+      return (case Stored.Kind is
+                when CuBit.Settings.Present => Servo_Agent_Settings.Presentation'Pos (Stored.Item),
+                when CuBit.Settings.Absent => Agent_Absent,
+                when others => Agent_Unreadable);
+   end User_Agent;
+
+   function Site_Agents (Visit : Site_Visit; Context : System.Address) return Unsigned_32 is
+      use type CuBit.Settings.Outcome;
+      package Family renames Startup.Settings.Browser_Servo_Site_Agent;
+      procedure Each (Member : String) is
+         Stored : constant Family.Reading := Family.Read (Member);
+      begin
+         Visit (Context, Member'Address, Member'Length,
+                (if Stored.Kind = CuBit.Settings.Present
+                 then Servo_Agent_Settings.Presentation'Pos (Stored.Item) else Agent_Unreadable));
+      end Each;
+      procedure List is new Family.Members.For_Each (Each);
+      Result : CuBit.Settings.Outcome;
+   begin
+      if Visit = null then return 1; end if;
+      List (Result);
+      return (if Result = CuBit.Settings.Present then 0 else 1);
+   end Site_Agents;
+
+   --  This process's own frames in bytes (its readiness page).
+   function Memory_Owned return Unsigned_64 is (CuBit.System_Facts.Owned_Bytes);
    package S1 is new Servo_Session;
    package S2 is new Servo_Session;
    package S3 is new Servo_Session;
@@ -238,6 +262,11 @@ package body Servo_Shell is
          when 4 => return S4.Pending;
       end case;
    end Pending;
+   procedure Fonts_Missing is
+   begin
+      Servo_Page_Fonts.State := Servo_Page_Fonts.Missing;
+   end Fonts_Missing;
+
    procedure Window_Error is
    begin
       case Selected is

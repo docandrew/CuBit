@@ -1,13 +1,18 @@
 --  The log-authority guest test (tests/headless, log-authority): typed
 --  logging's authority and its publisher rings (docs/logstore-architecture.md,
 --  step 1; backlog LOG-001). Started trusted, it is an observer as well as a
---  publisher; it then launches itself as an ordinary child, which is only a
---  publisher.
+--  publisher; it then launches itself (OP_LAUNCH, with the one argument
+--  "launched", through its Launch badge). The child holds what the user
+--  session approves for it, observation included (CAP-012, docs/authority-
+--  model.md 7.5), and runs the publisher's checks: a forged observer tag on its
+--  publisher endpoint, a burst, a disconnect and its collector's death.
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with CuBit.Logging;
 with CuBit.Memory_Grants;
 with CuBit.Channel_Contracts;
@@ -17,7 +22,11 @@ with CuBit.Kernel_ABI;
 with CuBit.Log_Publish_Rings;
 with CuBit.Handles;
 with CuBit.Handles.Services;
+with CuBit.Launch_Arguments;
+with CuBit.Launching;
+with Ada.Command_Line;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    package P renames CuBit.Log_Protocol;
@@ -35,8 +44,6 @@ procedure Main is
    --  child: only trusted startup is granted it).
    Logstore : constant CuBit.Handles.Endpoint :=
      CuBit.Handles.Services.Logstore.Handle (Startup.Logstore);
-   Process_Manager : constant CuBit.Handles.Endpoint :=
-     CuBit.Handles.Services.Process_Manager.Handle (Startup.Process_Manager);
    Observer : constant CuBit.Handles.Endpoint :=
      (if Startup.Log_Observer.Present
       then CuBit.Handles.Services.Log_Observer.Handle (Startup.Log_Observer.Value)
@@ -52,6 +59,8 @@ procedure Main is
    Buffer : Page := [others => 0];
    Grant : G.Grant_Reference;
    Never_Issued_Handle : constant Unsigned_64 := 16#DEAD_0000#;
+   --  The one argument the trusted instance launches its child with.
+   Launched_Argument : constant String := "launched";
    Saw_Clock : Boolean := False;
 
    procedure Check (Condition : Boolean; Name : String) is
@@ -103,7 +112,7 @@ procedure Main is
    --  counted, never refused back.
    procedure Check_Burst is
       Record_Value : constant L.Decoded := L.Make ("burst check");
-      Start : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Start : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Written : Natural := 0;
    begin
       for I in 1 .. Burst_Records loop
@@ -113,7 +122,7 @@ procedure Main is
          end if;
       end loop;
       debugPrint ("log-check: burst of" & Natural'Image (Burst_Records) & " records in" &
-                  Unsigned_64'Image (syscall (SYSCALL_GETTIME) - Start) & " ms, ring shed" &
+                  Unsigned_64'Image (CuBit.Monotonic.Milliseconds - Start) & " ms, ring shed" &
                   Unsigned_64'Image (CuBit.Logging.Dropped (Writer)) & ASCII.LF);
       Check (Written + Natural (CuBit.Logging.Dropped (Writer)) = Burst_Records,
              "every burst record written or counted");
@@ -127,7 +136,7 @@ procedure Main is
       Fresh : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Startup.Logstore);
       Record_Value : constant L.Decoded := L.Make ("disconnect check");
       Done : Boolean;
-      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 2000;
+      Deadline : constant Unsigned_64 := CuBit.Monotonic.Milliseconds + 2000;
    begin
       CuBit.Logging.Disconnect (Fresh, Done);
       Check (Done, "unused publisher disconnects immediately");
@@ -140,7 +149,7 @@ procedure Main is
          --  retires.
          CuBit.Logging.Disconnect (Logger, Done);
          exit when Done;
-         Check (syscall (SYSCALL_GETTIME) < Deadline, "disconnect timeout");
+         Check (CuBit.Monotonic.Milliseconds < Deadline, "disconnect timeout");
          Ignore := CuBit.Waits.Sleep_For (1);
       end loop;
       CuBit.Logging.Emit (Logger, Record_Value.Value, Submitted);
@@ -160,7 +169,7 @@ procedure Main is
       Stale : CuBit.Logging.Publisher := CuBit.Logging.Bound_To (Retiring);
       Record_Value : constant L.Decoded := L.Make ("collector death check");
       Done : Boolean;
-      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 2000;
+      Deadline : constant Unsigned_64 := CuBit.Monotonic.Milliseconds + 2000;
    begin
       CuBit.Logging.Emit (Logger, Record_Value.Value, Submitted);
       Check (not Submitted and then CuBit.Logging.Dropped (Logger) = 1,
@@ -169,7 +178,7 @@ procedure Main is
       loop
          CuBit.Logging.Disconnect (Logger, Done);
          exit when Done;
-         Check (syscall (SYSCALL_GETTIME) < Deadline, "retirement timeout");
+         Check (CuBit.Monotonic.Milliseconds < Deadline, "retirement timeout");
          Ignore := CuBit.Waits.Sleep_For (1);
       end loop;
       CuBit.Logging.Emit (Stale, Record_Value.Value, Submitted);
@@ -179,11 +188,14 @@ procedure Main is
       debugPrint ("TEST: PASS log-collector-death" & ASCII.LF);
    end Check_Collector_Death;
 begin
-   --  The ordinary child requests exactly the same ELF manifest, but cannot
-   --  opt into trusted-startup approval. Its observer endpoint stays absent.
-   CuBit.Logging.Subscribe (Reader, Result);
-   if Result /= P.OK then
-      Check (Result = P.Unavailable, "ordinary launch has no observer");
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
+   --  The launched child (its argument says so): the publisher's checks.
+   if Ada.Command_Line.Argument_Count = 1
+     and then Ada.Command_Line.Argument (1) = Launched_Argument
+   then
+      Check (CuBit.Handles.Valid (Observer),
+             "a launched child holds the observation its session approves");
       Msg := Request (P.Subscribe);
       Msg.authorityTag := P.Observer_Authority_Tag;
       Tag := capCall (Logstore, Msg, CuBit.Messages.Wait_Forever);
@@ -193,15 +205,17 @@ begin
       Check_Burst;
       Check_Disconnect;
       Check_Collector_Death;
-      debugPrint ("TEST: PASS log-unapproved" & ASCII.LF);
+      debugPrint ("TEST: PASS log-launched" & ASCII.LF);
       return;
    end if;
+   CuBit.Logging.Subscribe (Reader, Result);
+   Check (Result = P.OK, "trusted startup observes");
 
    loop
       CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
       exit when Result = P.Empty;
       Check (Result = P.OK, "initial retained records");
-      if L.Text (Value.Data) = "clock: service ready" then
+      if L.Texts.Text (Value.Data) = "clock: service ready" then
          Saw_Clock := Value.Source =
            To_Word (Registered_Driver (DRIVER_CLOCK)) and then
            P.Is_Publisher (Value.Publication_Tag);
@@ -258,9 +272,9 @@ begin
    for I in 1 .. Delivered loop
       CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
       Check (Result = P.OK and then
-             Value.Source = syscall (SYSCALL_GETPID) and then
+             Value.Source = Own_Process_Word and then
              P.Is_Publisher (Value.Publication_Tag) and then
-             L.Text (Value.Data) = "native log check",
+             L.Texts.Text (Value.Data) = "native log check",
              "source identity and typed payload");
    end loop;
    CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
@@ -273,23 +287,26 @@ begin
    Tag := capCall (Observer, Msg, CuBit.Messages.Wait_Forever);
    Check (Tag.label = P.Status'Enum_Rep (P.Denied), "stale handle rejected");
 
-   --  Launch the same executable through ordinary OP_SPAWN, not startup.
+   --  Launch the same executable, as a program launches another
+   --  (OP_LAUNCH), not through startup.
    declare
-      Filename : constant String := "log-check.app";
+      package LA renames CuBit.Launch_Arguments;
+      Arguments : LA.Builder;
+      Length : LA.Present_Length;
+      Added, Finished : Boolean;
+      Started : CuBit.Launching.Child;
+      Outcome : CuBit.Launching.Launch_Result;
+      Failure : LA.Launch_Failure;
+      use type CuBit.Launching.Launch_Result;
    begin
-      Buffer := [others => 0];
-      for I in Filename'Range loop
-         Buffer (I) := Character'Pos (Filename (I));
-      end loop;
-      G.Create_Via_Capability
-        (Process_Manager, Buffer'Address, 1, False, Grant, Created);
-      Check (Created, "spawn name grant created");
-      Msg := NULL_MESSAGE;
-      Msg.tag := (label => 16#0100#, length => Filename'Length,
-                  protocol => 0, ipc => <>, reserved => 0);
-      Msg.words := [CuBit.Grant_References.Encode (Grant), 5, 0, 0];
-      Tag := capCall (Process_Manager, Msg, CuBit.Messages.Wait_Forever);
-      Check (Tag.label = 16#F000#, "ordinary child launched");
+      LA.Start (Arguments);
+      LA.Add_Argument (Arguments, Launched_Argument, Added);
+      LA.Finish (Arguments, Length, Finished);
+      Check (Added and then Finished, "child launch block built");
+      CuBit.Launching.Launch
+        (CuBit.Launching.Using (Startup.Process_Manager), "log-check.app",
+         Arguments.Data (1 .. Length), [], Started, Outcome, Failure);
+      Check (Outcome = CuBit.Launching.Launched, "launched child started");
    end;
    debugPrint ("TEST: PASS log-authority" & ASCII.LF);
 end Main;

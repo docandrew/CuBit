@@ -3,6 +3,12 @@ with Interfaces; use Interfaces;
 with CuBit.Protocols;
 
 --  Versioned diagnostic records, not trusted audit records or authority.
+--
+--  No function here returns an unconstrained value, so the package needs no
+--  secondary stack (programs built with No_Secondary_Stack, netstack and
+--  libc, publish through it): text comes out into caller buffers
+--  (Text_Into, Name_Into). The string-returning conveniences (Text, Name,
+--  Severity_Literal, Severity_Of) are CuBit.Log_Records.Texts.
 package CuBit.Log_Records with Pure, SPARK_Mode is
    Maximum_Text_Bytes : constant := 512;
    Header_Bytes : constant := 32;
@@ -16,18 +22,8 @@ package CuBit.Log_Records with Pure, SPARK_Mode is
    type Wire_Buffer is array (Positive range 1 .. Wire_Count'Last)
      of Unsigned_8;
    type Severity is (Trace, Debug, Information, Warning, Error, Critical);
-   --  A severity as the CCL value it is (CCL.Interfaces.Logs's Severity):
-   --  "Severity.Information". Settings hold this spelling.
-   function Severity_Literal (Level : Severity) return String is
-     (case Level is
-         when Trace => "Severity.Trace", when Debug => "Severity.Debug",
-         when Information => "Severity.Information", when Warning => "Severity.Warning",
-         when Error => "Severity.Error", when Critical => "Severity.Critical");
-   function Is_Severity_Literal (Text : String) return Boolean is
-     (for some Level in Severity => Text = Severity_Literal (Level));
-   function Severity_Of (Text : String) return Severity
-     with Pre => Is_Severity_Literal (Text),
-          Post => Severity_Literal (Severity_Of'Result) = Text;
+   --  A record's text, copied out (Text_Into).
+   subtype Text_Buffer is String (1 .. Maximum_Text_Bytes);
    type Timebase is (Unspecified, Monotonic_Milliseconds, Unix_Milliseconds);
    subtype Clock_Domain is Unsigned_64 range 1 .. Unsigned_64'Last;
    type Timestamp (Clock : Timebase := Unspecified) is record
@@ -59,7 +55,13 @@ package CuBit.Log_Records with Pure, SPARK_Mode is
      (Name'Length in 1 .. Maximum_Field_Name_Bytes and then
       (for all C of Name => Field_Name_Character (C)));
    type Field is private;
-   function Name (Item : Field) return String;
+   subtype Field_Name_Buffer is String (Field_Name_Index);
+   function Name_Length (Item : Field) return Field_Name_Length;
+   --  The field's name, copied out: Into (1 .. Length).
+   procedure Name_Into (Item : Field; Into : out Field_Name_Buffer; Length : out Field_Name_Length)
+   with Post => Length = Name_Length (Item);
+   --  Whether the field is called Name.
+   function Has_Name (Item : Field; Name : String) return Boolean;
    function Kind (Item : Field) return Field_Kind;
    --  Raw 64-bit value; Signed_Integer uses two's complement and Truth is
    --  zero or one.
@@ -67,7 +69,9 @@ package CuBit.Log_Records with Pure, SPARK_Mode is
    function Signed_Value (Item : Field) return Integer_64;
 
    type Log_Record is private;
-   Empty_Record : constant Log_Record;
+   --  A function, not a constant: no elaboration code (the libc links this
+   --  unit, libc-ada.adc).
+   function Empty_Record return Log_Record;
    type Decoding_Error is
      (Too_Long, Invalid_Text, Truncated, Invalid_Header, Length_Mismatch,
       Invalid_Timestamp, Invalid_Field, Too_Many_Fields);
@@ -79,11 +83,16 @@ package CuBit.Log_Records with Pure, SPARK_Mode is
    end record;
    --  UTF-8 scalars; reject ASCII controls other than TAB, and reject DEL.
    --  Renderers must still escape text for HTML/terminal/markup contexts.
-   function Valid_Text (Text : String) return Boolean;
+   function Printable (C : Character) return Boolean is (C in ' ' .. '~' | ASCII.HT);
+   function Valid_Text (Text : String) return Boolean
+   with Post => (if (for all C of Text => Printable (C)) then Valid_Text'Result);
    function Make
      (Text : String; Level : Severity := Information;
       Reported_Time : Timestamp := (Clock => Unspecified)) return Decoded;
-   function Text (Item : Log_Record) return String;
+   function Text_Length (Item : Log_Record) return Text_Count;
+   --  The record's text, copied out: Into (1 .. Length).
+   procedure Text_Into (Item : Log_Record; Into : out Text_Buffer; Length : out Text_Count)
+   with Post => Length = Text_Length (Item);
    function Level (Item : Log_Record) return Severity;
    function Reported_Time (Item : Log_Record) return Timestamp;
    function Field_Total (Item : Log_Record) return Field_Count;
@@ -113,8 +122,10 @@ private
       Category : Field_Kind := Unsigned_Integer;
       Raw : Unsigned_64 := 0;
    end record;
-   function Name (Item : Field) return String is
-     (Item.Label (1 .. Item.Label_Length));
+   function Name_Length (Item : Field) return Field_Name_Length is (Item.Label_Length);
+   function Has_Name (Item : Field; Name : String) return Boolean is
+     (Name'Length = Item.Label_Length
+      and then (for all I in 1 .. Item.Label_Length => Item.Label (I) = Name (Name'First + (I - 1))));
    function Kind (Item : Field) return Field_Kind is (Item.Category);
    function Value (Item : Field) return Unsigned_64 is (Item.Raw);
    type Field_Array is array (Field_Index) of Field;
@@ -129,5 +140,6 @@ private
    end record;
    function Field_Total (Item : Log_Record) return Field_Count is
      (Item.Field_Used);
-   Empty_Record : constant Log_Record := (others => <>);
+   function Text_Length (Item : Log_Record) return Text_Count is (Item.Length);
+   function Empty_Record return Log_Record is (others => <>);
 end CuBit.Log_Records;

@@ -1,22 +1,38 @@
 # Generated ELF metadata is tied to this executable; requests are not grants.
-(executable-manifest v1
-  (identity "com.cubit.shell")
-  (version "1.0.0")
-  (request-framebuffer read-write framebuffer)
-  (request-service filesystem read-write filesystem)
-  (request-service process-manager read-write process-manager)
-  (request-service config read-write config)
-  # Broad outbound request, not independent approval.
-  (request-network tcp-connect (ipv4 "0.0.0.0" 0)
-    (ports 1 65535) (dns allow)
-    (connections 8) network)
-  # Network commands need policy approval; without it the shell still runs
-  # and those commands report the refusal.
-  (optional network)
-  (request-service display read-write display)
-  (request-notification keyboard manage keyboard)
-  (request-notification mouse manage mouse)
-  (request-service log-observer read-write log-observer)
-  # Preserve the old shell's broad, explicitly declared access requests.
-  (filesystem-scope (rights read) all)
-  (config-scope (rights read write) all))
+(Executable_Manifest
+  identity => "com.cubit.shell"
+  version => "1.0.0"
+  requests => [
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")
+    (framebuffer "framebuffer")
+    (service "filesystem" "filesystem")
+    (service "process-manager" "process-manager")
+    # spawn and bg (CAP-012, docs/authority-model.md 7.5): a Launch badge
+    # into the user session; a program gets its approval within the
+    # session's envelope, none of the shell's authority.
+    (service "launch" "launch")
+    (service "config" "config")
+    # Broad outbound request, not independent approval. Network commands
+    # need policy approval; without it the shell still runs and those
+    # commands report the refusal.
+    (network Network_Action.TCP_Connect "0.0.0.0" 0 1 65535 true 8 "network")
+    (service "display" "display")
+    (notification "keyboard" Notify_Access.Manage "keyboard")
+    (notification "mouse" Notify_Access.Manage "mouse")
+    (service "log-observer" "log-observer")
+    # ps: procmgr's process-observer role (only procmgr holds the kernel's
+    # process-list object).
+    (service "process-observer" "process-observer")]
+  optional => ["logstore" "network"]
+  scopes => [
+    # Preserve the old shell's broad, explicitly declared access requests.
+    (filesystem-all [File_Right.Read])
+    (config-all [File_Right.Read File_Right.Write])]
+  # What spawn and bg may start: the image's apps (the Desktop's Apps menu).
+  may_launch => [(Launch "ccl-workbench.app") (Launch "ccl-console.app") (Launch "logs.app")
+    (Launch "boot-logs.app") (Launch "metricsview.app") (Launch "agent.app") (Launch "doom.elf")
+    (Launch "devices.app") (Launch "cubitshell.app") (Launch "files.app") (Launch "text.app")
+    (Launch "calculator.app") (Launch "dictionary.app") (Launch "bible.app")
+    (Launch "sameboy.app") (Launch "config-inspector.app") (Launch "teapots.app")
+    (Launch "debugger.app")])

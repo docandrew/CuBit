@@ -26,7 +26,7 @@ procedure View_Retention_Check is
    package G renames CuBit.Memory_Grants;
    package D renames Intel_GPU_Deferred_Retirement;
    use type V.View_State;
-   PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   PID : constant Unsigned_64 := Own_Process_Word;
    function Owner return Boolean is (True);
    -- Runs in devmgr's place. Views grant via one self request's reply
    -- (Client), so grants come back to this process, which acquires and

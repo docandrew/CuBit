@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -70,7 +71,7 @@ procedure Main is
       Slots := 0;
       if Archive_Test_Control.Exit_After_First_Write then
          debugPrint ("TEST: INJECT desktop-trace archive writer exit pid=" &
-           syscall (SYSCALL_GETPID)'Image & " bytes=" & Offset'Image & ASCII.LF);
+           Own_Process_Word'Image & " bytes=" & Offset'Image & ASCII.LF);
          Ignore := syscall (SYSCALL_EXIT, 17);
          loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
       end if;
@@ -150,6 +151,8 @@ procedure Main is
         " events=" & F.Events (Archive)'Image & " flush=confirmed retirement=confirmed" & ASCII.LF);
    end Finish_Archive;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    O.Bind (Raw, Startup.Metrics_Observer);
    -- Bounded collector workload. It may lag and lose history; identity and
    -- completeness checks never turn an incomplete fragment group into an event.

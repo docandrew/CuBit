@@ -2,6 +2,8 @@
 (executable-manifest v1
   (identity "com.cubit.network-check")
   (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore)
   # Test scopes still require independent network=declared launch approval.
   (request-service network-stack read-write network)
   (request-network tcp-connect (ipv4 "10.0.2.0" 24)

@@ -10,6 +10,8 @@
     (notification "netmgr" Notify_Access.Manage "registration")
     (service "network-stack" "netstack")
     (service "config" "config")
-    (service "device-manager" "ready")]
-  optional => ["netstack"]
+    (service "device-manager" "ready")
+    # ABI-002: its lines, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["netstack" "logstore"]
   scopes => [(config [File_Right.Read] "net.")])

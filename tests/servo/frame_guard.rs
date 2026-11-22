@@ -4,9 +4,10 @@ extern crate self as cubit_fonts;
 pub fn cubit_font_glyph() {}
 pub fn cubit_font_raster_mask() {}
 pub fn cubit_font_layout() {}
-#[path = "../../userspace/servo/overlay/ports/cubitshell/src/cubit_desktop.rs"]
+// Penny's Servo fork checkout (userspace/servo/FORKS).
+#[path = "../../userspace/rust/build/servo-work/servo/ports/cubitshell/src/cubit_desktop.rs"]
 mod desktop;
-#[path = "../../userspace/servo/overlay/ports/cubitshell/src/tab_model.rs"]
+#[path = "../../userspace/rust/build/servo-work/servo/ports/cubitshell/src/tab_model.rs"]
 mod tab_model;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
 static OPEN_ALLOWED: AtomicBool = AtomicBool::new(true);

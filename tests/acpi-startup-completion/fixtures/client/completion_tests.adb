@@ -17,7 +17,7 @@ procedure Completion_Tests is
  Expected_Initial_Retention : constant Boolean := Expected_Dispatch and then Mode not in 1|25|35|41..43|46;
  Expected_Final_Retention : constant Boolean := Expected_Dispatch and then Mode not in 1|22|25|35|40..44|46|56..57;
  Expected_Released : constant Interfaces.Unsigned_64 :=
-   (if Mode in 47|55|58 then 1 elsif Mode=48 then Interfaces.Unsigned_64'Last
+   (if Mode in 47|52|55|58 then 1 elsif Mode=48 then Interfaces.Unsigned_64'Last
     elsif Mode=49 then 16#1_0000_0000# else 0);
  procedure Check(OK:Boolean) is begin Checks:=Checks+1;if not OK then raise Program_Error with "completion test "&Checks'Image;end if;end;
 begin
@@ -38,10 +38,10 @@ begin
  Check(Result.Attempted and not Result.Working);
  Check(Result.Dispatched=Expected_Dispatch);
  Check(ACPI_Startup_Completion.Requires_Retention(Result.Dispatched,Result.Receipt_Known,Result.Answer,Result.Released)=Expected_Initial_Retention);
- if Mode in 1..5|25|35|41..43|46..49|58 then
+ if Mode in 1..5|25|35|41..43|46..49|52|58 then
   Check(Result.State=T.Receipt_Confirmed and Result.Receipt_Known and S.Calls=1 and T.Quiet);
-  Check(T.Completed_Received=(Mode in 1|25|35|46..49|58));
- elsif Mode in 6..15|38..39|50..54 then
+  Check(T.Completed_Received=(Mode in 1|25|35|41|46..49|52|58));
+ elsif Mode in 6..15|38..39|50..51|53..54 then
   Check(Result.State=T.Invalid_Reply and not Result.Receipt_Known and not T.Quiet);
   T.Confirm(Result);Check(S.Calls=2 and not Result.Receipt_Known and not T.Quiet);
  elsif Mode in 22..23|26..27|36..37|40|44|55..56 then

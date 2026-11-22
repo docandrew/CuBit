@@ -12,6 +12,11 @@
 --    (0 .. 255).
 --
 --  Only the kernel can send this label (IPC_Labels.Is_Kernel_Event).
+--
+--  A program launched into a session (Launch-into-S, CAP-012) has procmgr,
+--  its session supervisor's process, as kernel parent; procmgr tells the
+--  requester with Notice_Label, the same words, through its own badge
+--  (Notice_Tag, CuBit.Launch_Handles). Is_Exit accepts either.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -43,6 +48,18 @@ package CuBit.Child_Exits with Pure, SPARK_Mode is
                 or else Kind = Termination_Kind'Enum_Rep (Stopped))
       and then Code < Exit_Code_Modulus
       and then (if Kind = Termination_Kind'Enum_Rep (Stopped) then Code = 0));
+
+   --  procmgr's notice (CuBit.Launch_Handles.Exit_Notice_Label, Notice_Tag).
+   Notice_Label : constant := 16#011F#;
+   Notice_Tag   : constant Unsigned_64 := 16#4C4E_4F54_4943_4501#;
+
+   --  An exit report: the kernel's event, or procmgr's notice through its
+   --  badge (Tag: the message's kernel-stamped authority tag).
+   function Is_Exit
+     (Label : Unsigned_32; Length : Unsigned_8; Tag : Unsigned_64;
+      Process, Kind, Code : Unsigned_64) return Boolean is
+     ((Label = Event_Label or else (Label = Notice_Label and then Tag = Notice_Tag))
+      and then Valid (Length, Process, Kind, Code));
 
    function Decode (Process, Kind, Code : Unsigned_64)
      return Report is

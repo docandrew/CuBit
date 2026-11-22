@@ -10,6 +10,7 @@
 --  only the PCM data page to the mixer, retains descriptors and controller
 --  authority, and reports completed periods through one-way capability IPC.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Benchmark_Clock;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -63,6 +64,9 @@ procedure main is
    end sendReply;
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;

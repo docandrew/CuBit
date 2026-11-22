@@ -7,6 +7,7 @@
 --  publishes its own latency through its com.cubit-os.stdmetric outlet.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Protocol;
@@ -171,7 +172,7 @@ procedure Main is
    First_Frame : Boolean := True;
 
    function Now_Us return Unsigned_64 is (CuBit.Monotonic.Microseconds);
-   function Now_Ms return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Now_Ms return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
    function Decimal (V : Unsigned_64) return String renames Charts_Format.Decimal;
 
    --  Visibility (tests/headless): each new status-bar notice (opened,
@@ -538,6 +539,8 @@ procedure Main is
      (UI, Controls, Render => Render, Handle_Event => Handle_Event, Next_Deadline => Deadline,
       On_Deadline => Tick, Activity_Wait => True);
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("metricsview: starting" & ASCII.LF);
    CuBit.Logging.Announce ("metricsview: started", Opened, Startup.Logstore);
    Dash_Model.Load (Dash_Model.DEFAULT_SOURCE, Board, Loaded);

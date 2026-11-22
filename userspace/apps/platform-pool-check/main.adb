@@ -44,6 +44,7 @@
 --      which must fault (the harness checks the kill).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Wait_ABI;
 with System;
 with Interfaces; use Interfaces;
@@ -68,6 +69,7 @@ with CuBit.Process_IDs;
 with Platform_Pool_ABI;
 with ACPI_PCI_Window_Client;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    use ASCII;
@@ -184,7 +186,7 @@ procedure Main is
 
    procedure Pause is
       Now_Us : constant Unsigned_64 :=
-        CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds);
+        CuBit.Monotonic.Microseconds;
       Ignore : Unsigned_64;
    begin
       Ignore := CuBit.Kernel_Calls.Call
@@ -204,6 +206,8 @@ procedure Main is
    Bus_Zero : Unsigned_64 := 0;   --  PCI segment 0 bus 0's ECAM base
    First_Mapped : Boolean := False;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("platform-pool-check: starting" & LF);
    if not Data_Endpoint.Present then
       debugPrint ("platform-pool-check: no firmware-data endpoint" & LF);

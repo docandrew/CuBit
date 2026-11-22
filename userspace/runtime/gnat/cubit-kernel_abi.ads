@@ -20,13 +20,11 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    subtype System_Call is Unsigned_64;
 
    Exit_Process                 : constant System_Call := 0;
-   Get_Process_Id               : constant System_Call := 6;
    Grow_Heap                    : constant System_Call := 8;
    Write                        : constant System_Call := 12;
    Reply                        : constant System_Call := 18;
    --  SEND_EVENT: also the channel wake (Channel_Wake_ABI).
    Send_Event                   : constant System_Call := 19;
-   Get_Time                     : constant System_Call := 27;
    --  With a deadline (arg 2; Forever, spelled out, for none).
    Call_Via_Endpoint_Capability : constant System_Call := 128;
    Submit_Via_Endpoint_Capability : constant System_Call := 42;
@@ -43,7 +41,6 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Thread_Create                : constant System_Call := 90;
    Thread_Exit                  : constant System_Call := 91;
    Futex_Wake                   : constant System_Call := 93;
-   Read_Monotonic_Microseconds  : constant System_Call := 114;
    --  The one wait (ABI-002 slice 2): its sources, deadline and results
    --  are Wait_ABI's. It replaced RECEIVE, the polls, WAIT_COMPLETION,
    --  the activity wait, SLEEP, SLEEP_UNTIL, FUTEX_WAIT and
@@ -65,7 +62,6 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    --  process capability for (CuBit.Control_Events).
    Send_Control                 : constant System_Call := 127;
    --  This process's statistics and free memory (System_Publications).
-   Read_Statistics              : constant System_Call := 134;
    --  A value published through the kernel (System_Publications).
    Publish                      : constant System_Call := 135;
    --  The most one commit may back (kernel Owned_Reservation_Policy).

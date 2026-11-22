@@ -5,6 +5,7 @@ with CuBit.Owned_Reservations;
 with Desktop_Logs;
 with Desktop_Path_Timing;
 with Desktop_Wallpaper;
+with CuBit.Monotonic;
 
 package body Desktop_Wallpaper_Layers is
    use type System.Address;
@@ -72,7 +73,7 @@ package body Desktop_Wallpaper_Layers is
          L.Base := To_Address (Integer_Address (Raw));
          L.Bytes := Needed;
       end if;
-      Started := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME);
+      Started := CuBit.Monotonic.Milliseconds;
       Desktop_Path_Timing.Enter (Desktop_Path_Timing.Backdrop_Build);
       Desktop_Wallpaper.Paint (L.Base, Width, Height, Width * Pixel_Bytes, 0, 0, Width, Height, Style);
       Desktop_Path_Timing.Leave (Unsigned_64 (Width) * Unsigned_64 (Height));
@@ -82,7 +83,7 @@ package body Desktop_Wallpaper_Layers is
       L.Built := True;
       Desktop_Logs.Write ("desktop: wallpaper layer built output=" & Layer'Image & " size=" &
         Width'Image & " x" & Height'Image & " ms=" &
-        Unsigned_64'Image (CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME) - Started) & LF);
+        Unsigned_64'Image (CuBit.Monotonic.Milliseconds - Started) & LF);
       return True;
    end Ensure;
 

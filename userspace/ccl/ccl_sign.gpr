@@ -1,0 +1,19 @@
+--  SPDX-License-Identifier: GPL-3.0-or-later
+--
+--  ccl-sign, the host signer and verifier (SIGN-001, docs/signed-binaries.md
+--  section 7): build/sign/ccl-sign. make -C kernel signing-key runs its init.
+with "cubit_shared.gpr";
+with "../lib/signing/signing_host.gpr";
+project CCL_Sign is
+   for Languages use ("Ada");
+   for Source_Dirs use ("tools/ccl-sign");
+   for Object_Dir use "build/sign";
+   for Exec_Dir use "build/sign";
+   for Main use ("main.adb");
+   package Builder is
+      for Executable ("main.adb") use "ccl-sign";
+   end Builder;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+   end Compiler;
+end CCL_Sign;

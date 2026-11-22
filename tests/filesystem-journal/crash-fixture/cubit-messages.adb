@@ -174,9 +174,6 @@ package body CuBit.Messages is
       type Region is array (Natural range <>) of Unsigned_8;
       type Region_Access is access Region;
    begin
-      if call = SYSCALL_GETTIME then
-         return 0;
-      end if;
       if call /= SYSCALL_ALLOCATE_OWNED_MEMORY or else arg0 = 0 or else
         arg0 > 16 * 1024 * 1024
       then

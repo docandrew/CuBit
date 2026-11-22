@@ -1,0 +1,6 @@
+# MOV SS / POP SS debug-exception check (DBG-001, CVE-2018-8897 class): asks
+# a probe kernel to arm a data breakpoint on one of its own words, then
+# loads SS from that word right before SYSCALL and INT3. No authority.
+(executable-manifest v1
+  (identity "com.cubit.mov-ss-check")
+  (version "0.1.0"))

@@ -23,6 +23,10 @@
   (setting "desktop.launch.15-metrics"
     (Launch_Entry label => "Metrics" action => (Launch_Action.Program "metricsview.app") icon => (Launch_Icon "Trace") category => App_Category.System
       color => (App_Color.RGB (RGB_Color red => 57 green => 135 blue => 229))))
+  # Debugger (DBG-001 preview): cooperative attach to a debug-target.
+  (setting "desktop.launch.16-debugger"
+    (Launch_Entry label => "Debugger" action => (Launch_Action.Program "debugger.app") icon => (Launch_Icon "Inspector") category => App_Category.Development
+      color => (App_Color.RGB (RGB_Color red => 38 green => 166 blue => 214))))
   # The in-CuBit agent (AGENT-002): Diagnose missions through llm.svc; the
   # API key goes into secrets.svc from its masked entry.
   (setting "desktop.launch.13-agent"

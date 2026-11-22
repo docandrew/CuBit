@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -18,6 +19,7 @@ with CuBit.Handles.IPC;
 with CuBit.Handles.Startup;
 with CuBit.Startup_Tables;
 with Startup;
+with CuBit.Monotonic;
 
 --  Dedicated fixture: never starts alongside a desktop session. Only authority
 --  is an endpoint to display.svc (including grants addressed to that service).
@@ -139,7 +141,7 @@ procedure Main is
       Msg : constant Message := From_Wire
         (With_Output (Encode_Frame ((Session, ID, Area)), Output));
       Completion : CompletionEntry := NULL_COMPLETION;
-      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 5000;
+      Deadline : constant Unsigned_64 := CuBit.Monotonic.Milliseconds + 5000;
       Event : Message;
       Found : Boolean;
       Activity : Activity_Result;
@@ -156,7 +158,7 @@ procedure Main is
             exit when not Found;
          end loop;
          Activity := Wait_For_Activity_Until (Deadline);
-         if Activity /= Work_Available or else syscall (SYSCALL_GETTIME) >= Deadline then
+         if Activity /= Work_Available or else CuBit.Monotonic.Milliseconds >= Deadline then
             Check (False, "frame completion deadline"); return;
          end if;
       end loop;
@@ -377,7 +379,7 @@ procedure Main is
          Tokens : array (Head) of Unsigned_64;
          Finished : array (Head) of Boolean := [others => False];
          Completion : aliased CompletionEntry;
-         Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+         Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
          Deadline : constant Unsigned_64 := Started + 5000;
          Event : Message;
          Output : Head;
@@ -397,7 +399,7 @@ procedure Main is
          Check (Wire.Length = 4 and then Wire.Words (0) = 1024,
                 "broker query while frames outstanding");
          if GPU_Test_Policy.Delay_First_Output_Ms /= 0 then
-            Check (syscall (SYSCALL_GETTIME) < Started + GPU_Test_Policy.Delay_First_Output_Ms,
+            Check (CuBit.Monotonic.Milliseconds < Started + GPU_Test_Policy.Delay_First_Output_Ms,
                    "query returned before delayed output");
             Expect (Encode_Lease_Request (Release_Display), DP.Bad_State,
                     "pending output cannot release lease");
@@ -428,7 +430,7 @@ procedure Main is
             else
                if Poll_Event (Event) then null; end if;
                Activity := Wait_For_Activity_Until (Deadline);
-               if Activity /= Work_Available or else syscall (SYSCALL_GETTIME) >= Deadline then
+               if Activity /= Work_Available or else CuBit.Monotonic.Milliseconds >= Deadline then
                   Check (False, "concurrent completion deadline");
                   return;
                end if;
@@ -515,7 +517,7 @@ procedure Main is
          Msg : constant Message := From_Wire
            (P.Encode (P.Frame'(Slot, (Session, ID, Area))));
          C : CompletionEntry := NULL_COMPLETION;
-         Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 5000;
+         Deadline : constant Unsigned_64 := CuBit.Monotonic.Milliseconds + 5000;
          Activity : Activity_Result;
          --  The frame's damage record after its one page of rows (LAT-002).
          Record_Words : CuBit.Display_Frame_Damage.Word_Array
@@ -550,7 +552,7 @@ procedure Main is
             Ignored := Poll_Completion (C'Address);
             exit when Ignored = 1;
             Activity := Wait_For_Activity_Until (Deadline);
-            if Activity /= Work_Available or else syscall (SYSCALL_GETTIME) >= Deadline then
+            if Activity /= Work_Available or else CuBit.Monotonic.Milliseconds >= Deadline then
                Check (False, "pool completion deadline"); return;
             end if;
          end loop;
@@ -745,7 +747,7 @@ procedure Main is
             Next := (if Front = 3 then 1 else Front + 1);
             declare
                C : CompletionEntry := NULL_COMPLETION;
-               Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + 5000;
+               Deadline : constant Unsigned_64 := CuBit.Monotonic.Milliseconds + 5000;
                Activity : Activity_Result;
                R : P.Completion_Decoding;
             begin
@@ -757,7 +759,7 @@ procedure Main is
                loop
                   exit when Poll_Completion (C'Address) = 1;
                   Activity := Wait_For_Activity_Until (Deadline);
-                  if Activity /= Work_Available or else syscall (SYSCALL_GETTIME) >= Deadline then
+                  if Activity /= Work_Available or else CuBit.Monotonic.Milliseconds >= Deadline then
                      Check (False, "lent completion deadline"); return;
                   end if;
                end loop;
@@ -898,13 +900,13 @@ procedure Main is
       if not Passed then return; end if;
       debugPrint ("DISPLAY-PLANES: shown primary=300,200 agent=600,400" & ASCII.LF);
       Ignored := CuBit.Waits.Sleep_For (Pause_Ms);
-      Start := syscall (SYSCALL_GETTIME);
+      Start := CuBit.Monotonic.Milliseconds;
       for Step in 1 .. Move_Count loop
          Plane (PP.Encode (PP.Move'(1, DPL.Space_Coordinate (300 + Step * 400 / Move_Count),
                                        DPL.Space_Coordinate (200 + Step * 300 / Move_Count))),
                 PP.Move_Request, DP.Success, "pointer motion");
       end loop;
-      Finish := syscall (SYSCALL_GETTIME);
+      Finish := CuBit.Monotonic.Milliseconds;
       debugPrint ("DISPLAY-PLANES: moved primary=700,500 moves=" & Move_Count'Image &
                   " ms=" & Unsigned_64'Image (Finish - Start) & ASCII.LF);
       Ignored := CuBit.Waits.Sleep_For (Pause_Ms);
@@ -947,12 +949,12 @@ procedure Main is
             Check (capSubmit (Display_Service, From_Wire (PP.Encode (PP.Plan_Frame'
                      ((1, (Session, 1, (0, 0, 32, 32))), Epoch))), Frame_Token),
                    "plan frame submit");
-            Deadline := syscall (SYSCALL_GETTIME) + 5000;
+            Deadline := CuBit.Monotonic.Milliseconds + 5000;
             loop
                Ignored := Poll_Completion (C'Address);
                exit when Ignored = 1;
                Activity := Wait_For_Activity_Until (Deadline);
-               if Activity /= Work_Available or else syscall (SYSCALL_GETTIME) >= Deadline then
+               if Activity /= Work_Available or else CuBit.Monotonic.Milliseconds >= Deadline then
                   Check (False, "plan frame completion deadline"); return;
                end if;
             end loop;
@@ -1012,6 +1014,8 @@ procedure Main is
       if Passed then debugPrint ("DISPLAY-BACKEND-FAILURE-CHECK: PASS" & ASCII.LF); end if;
    end Exercise_Backend_Failure;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    if GPU_Test_Policy.Reject_Client_Clear then
       Exercise_Backend_Failure;
    else

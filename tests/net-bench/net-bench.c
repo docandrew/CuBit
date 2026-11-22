@@ -26,21 +26,20 @@
 #include <unistd.h>
 #ifdef CUBIT
 #include <cubit/debug.h>
+#include "startup.h"
 /* The kernel's scheduling trace around one round-trip run (CuBit only):
- * reset before, summary (ready-to-run latency histogram) after. */
-static inline void trace_op(unsigned long n, unsigned long a)
+ * reset before, summary (ready-to-run latency histogram) after, through
+ * the kernel trace object the manifest declares (Trace_ABI). */
+static inline void trace_op(unsigned operation)
 {
-	unsigned long ret;
-	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a)
-		: "rcx", "r11", "memory");
-	(void)ret;
+	(void)cubit_trace_perform(cubit_startup_trace(), operation);
 }
-#define TRACE_RESET() trace_op(82, 0)
-#define TRACE_SUMMARY() trace_op(83, 0)
+#define TRACE_RESET() trace_op(CUBIT_TRACE_RESET)
+#define TRACE_SUMMARY() trace_op(CUBIT_TRACE_SUMMARY)
 /* Event timeline of a few round trips (kernels built with LATENCY_TRACE=1). */
-#define TRACE_TIMELINE_START() trace_op(83, 1)
-#define TRACE_TIMELINE_FREEZE() trace_op(83, 2)
-#define TRACE_TIMELINE_DUMP() trace_op(83, 3)
+#define TRACE_TIMELINE_START() trace_op(CUBIT_TRACE_START_LOCAL)
+#define TRACE_TIMELINE_FREEZE() trace_op(CUBIT_TRACE_FREEZE_LOCAL)
+#define TRACE_TIMELINE_DUMP() trace_op(CUBIT_TRACE_DUMP_LOCAL)
 #else
 #define TRACE_TIMELINE_START() ((void)0)
 #define TRACE_TIMELINE_FREEZE() ((void)0)

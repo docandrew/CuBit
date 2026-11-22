@@ -36,6 +36,28 @@ package CCL.Images with SPARK_Mode => On is
       Role : Role_Kind := Content;
       Destination : Text;
    end record;
+   --  The image's trust list (SIGN-001, docs/signed-binaries.md section 4):
+   --  each "built by" CA by the name of the import that supplies its DER
+   --  (ccl-image --import NAME=PATH; no path enters the repository), the
+   --  identities it may sign (reverse-DNS prefixes, or "*") and its
+   --  authority ceiling. Named ceilings: an image names few builders.
+   MAX_BUILDERS : constant := 8;
+   MAX_IDENTITIES : constant := 16;
+   MAX_IDENTITY : constant := 64;   --  CuBit identities are at most 64 bytes
+   type Builder_Kind is (Release, Organisation, Device_Local, Host_Development, Test);
+   type Ceiling_Kind is (Applications_Only, Services, Hardware_And_System);
+   type Identity_Array is array (Positive range 1 .. MAX_IDENTITIES) of Text;
+   type Builder is record
+      Kind : Builder_Kind := Host_Development;
+      Import_Name : Text;
+      Identity_Count : Natural range 0 .. MAX_IDENTITIES := 0;
+      Identities : Identity_Array;
+      Ceiling : Ceiling_Kind := Applications_Only;
+   end record;
+   type Builder_Array is array (Positive range 1 .. MAX_BUILDERS) of Builder;
+   --  "*", or labels of lowercase letters, digits and '-' joined by '.'.
+   function Valid_Identity (Identity : String) return Boolean;
+
    type Artifact_Array is array (Positive range 1 .. MAX_ITEMS) of Artifact;
    type Requirement_Array is array (Positive range 1 .. MAX_ITEMS) of Requirement;
    type Placement_Array is array (Positive range 1 .. MAX_ITEMS) of Placement;
@@ -48,6 +70,8 @@ package CCL.Images with SPARK_Mode => On is
       Artifact_Count : Natural range 0 .. MAX_ITEMS := 0;
       Requirement_Count : Natural range 0 .. MAX_ITEMS := 0;
       Placement_Count : Natural range 0 .. MAX_ITEMS := 0;
+      Builder_Count : Natural range 0 .. MAX_BUILDERS := 0;
+      Builders : Builder_Array;
       Artifacts : Artifact_Array;
       Requirements : Requirement_Array;
       Placements : Placement_Array;
@@ -56,7 +80,8 @@ package CCL.Images with SPARK_Mode => On is
      (No_Error, Invalid_Syntax, Unsupported_Version, Unknown_Declaration, Invalid_Value,
       Invalid_Path, Duplicate_Name, Duplicate_Destination, Duplicate_Field,
       Too_Many_Items, Missing_Field, Catalog_Mismatch, Unknown_Artifact,
-      Unknown_Provider, Missing_Bootstrap_Dependency, Invalid_Placement);
+      Unknown_Provider, Missing_Bootstrap_Dependency, Invalid_Placement,
+      Missing_Builder, Test_Builder);
    type Compilation_Result is record
       Success : Boolean := False;
       Diagnostic : Diagnostic_Code := No_Error;

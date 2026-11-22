@@ -11,11 +11,14 @@
 --
 --  @description
 --  Where the code is shown is a launch parameter (Pairing_Display):
---    Window          a small window on the desktop, until the host pairs;
---    Kernel_Console  the kernel console (serial), for headless machines and
---                    the QEMU test, where the console is the screen.
---  With Window and no desktop, the code cannot be shown, and the endpoint
---  does not listen.
+--    Window        a small window on the desktop, until the host pairs;
+--    Test_Console  the test console object (Test_Console_ABI, serial), for
+--                  the QEMU tests: only the test variant of this program's
+--                  manifest declares it and only test plans approve it
+--                  (tests/test-console keeps it out of shipped images).
+--  The code is a secret (ABI-002): never debug text, so never in logstore
+--  or anything persistent. Where it cannot be shown (Window without a
+--  desktop, Test_Console without the object), the endpoint does not listen.
 --
 --  The window stays while the endpoint runs: once a host pairs, "Paired
 --  with <address>" takes the code's place (the token is never shown again)
@@ -24,14 +27,14 @@
 --  new entries unless scrolled back (wheel, Up/Down/Page Up/Page Down/
 --  Home/End, its scroll bar), selects by dragging or Shift+keys, and Ctrl+C
 --  copies the selection. The window is laid out by CuBit.UI.Boxes and
---  resizes down to its layout's minimum (UI-033). On Kernel_Console the
---  same lines go to the console and logstore.
+--  resizes down to its layout's minimum (UI-033). On Test_Console the
+--  same lines go to logstore only (the code is never among them).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Remote_Wire;
 
 package Remote_Pairing is
-   type Display is (Window, Kernel_Console);
+   type Display is (Window, Test_Console);
 
    procedure Generate (Success : out Boolean);
    function Matches (Credential : Remote_Wire.Token) return Boolean;

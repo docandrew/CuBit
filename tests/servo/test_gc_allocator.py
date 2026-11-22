@@ -14,7 +14,7 @@ fixes = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixes)
 crate = "mozjs_sys-153.3.0-0"
 path = "mozjs/js/src/gc/Memory.cpp"
-upstream = next((ROOT / "userspace/rust/build/servo-work/cargo-home/registry/src").glob(f"*/{crate}/{path}"))
+upstream = pathlib.Path(fixes.fetch(ROOT / "userspace/rust/build/servo-crate-downloads")) / crate / path
 source = upstream.read_text()
 for name, old, new, how in fixes.FIXES[crate]["edits"]:
     if name != path:

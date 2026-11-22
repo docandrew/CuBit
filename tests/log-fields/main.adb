@@ -2,6 +2,7 @@ pragma Ada_2022;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Log_Records; use CuBit.Log_Records;
+with CuBit.Log_Records.Texts; use CuBit.Log_Records.Texts;
 
 --  Linux-hosted regression tests for LogRecord v2 structured fields.
 procedure Main is

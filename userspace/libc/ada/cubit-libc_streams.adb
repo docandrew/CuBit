@@ -261,6 +261,7 @@ package body CuBit.Libc_Streams is
       if From = K.Failed or else (From = 0 and then M.Label = 0) then
          return;
       elsif From = 0 and then (M.Label = CuBit.Child_Exits.Event_Label
+                               or else M.Label = CuBit.Child_Exits.Notice_Label
                                or else M.Label = CuBit.Control_Events.Control_Label)
       then
          --  A child's exit belongs to waitpid's bookkeeping, and a control

@@ -1,4 +1,5 @@
 with Main_Model;
+with Ada.Strings.Fixed;
 with CuBit.Driver_Readiness;
 package body CuBit.Messages is
    package B renames Main_Model;
@@ -8,6 +9,10 @@ package body CuBit.Messages is
    procedure Waited is
    begin
       B.Waits := B.Waits + 1; B.Check (B.Waits <= 2048, "bounded model waits before shutdown");
+      if B.Runtime_Snapshots > 0 then
+         B.Post_Fault_Waits := B.Post_Fault_Waits + 1;
+         if B.Post_Fault_Waits = 3 then raise B.Test_Complete; end if;
+      end if;
       if B.Decline_Reports > 0 then
          B.Post_Decline_Waits := B.Post_Decline_Waits + 1;
          if B.Post_Decline_Waits = 3 then raise B.Test_Complete; end if;
@@ -55,5 +60,15 @@ package body CuBit.Messages is
       return (if B.Current = B.Role_Refused then Interfaces.Unsigned_64'Last else B.P.To_Word (B.Driver_ID));
    end registerDriver;
    procedure debugPrint (Text : String) is
-   begin B.U.Append (B.Logs, Text); end debugPrint;
+   begin
+      if Ada.Strings.Fixed.Index (Text, "gpio: runtime fault controller ") /= 0 then
+         B.Runtime_Snapshots := B.Runtime_Snapshots + 1;
+
+      end if;
+      if Ada.Strings.Fixed.Index (Text, "gpio: runtime fault ") /= 0 then
+         B.Runtime_Lines := B.Runtime_Lines + 1;
+         B.Check (Text'Length <= 512, "fault diagnostic fits one complete log record");
+      end if;
+      B.U.Append (B.Logs, Text);
+   end debugPrint;
 end CuBit.Messages;

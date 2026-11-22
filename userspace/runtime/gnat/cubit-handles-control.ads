@@ -124,10 +124,11 @@ package CuBit.Handles.Control is
      (Target : Process_ID; Authority : Process; Region : Device_Memory;
       Source, Virtual, Pages, Kind : Unsigned_64) return Boolean;
 
-   --  Read the process list into Buffer (Bytes long): the entry count, or
-   --  Unsigned_64'Last. Authority: any process handle with Read.
+   --  Read the process list into Buffer (Bytes long, CuBit.Process_List
+   --  entries): the entry count, or Unsigned_64'Last. A Call on the
+   --  process-list object (Process_List_ABI), which only procmgr holds.
    function Process_List
-     (Authority : Process; Buffer : System.Address; Bytes : Unsigned_64)
+     (Authority : Process_Listing; Buffer : System.Address; Bytes : Unsigned_64)
       return Unsigned_64;
 
    ---------------------------------------------------------------------------

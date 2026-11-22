@@ -16,6 +16,7 @@
 --  (the ipc-test endpoint, which this launcher holds and passes on).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Wait_ABI;
 with Interfaces; use Interfaces;
 with Startup;
@@ -33,6 +34,7 @@ with CuBit.Process_Events;
 with CuBit.Program_Descriptions;
 with CuBit.Stream_Regions;
 with CuBit.Streams;
+with CuBit.Monotonic;
 
 procedure Main is
    --  Launches go through procmgr, the manifest\'s process-manager entry.
@@ -82,7 +84,7 @@ procedure Main is
       Top_Up_Flood;
       Ignore := CuBit.Kernel_Calls.Call
         (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
-         CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds)
+         CuBit.Monotonic.Microseconds
            + Poll_Milliseconds * Microseconds_Per_Millisecond);
    end Pause;
 
@@ -150,6 +152,8 @@ procedure Main is
    Item : CV.Event;
    Returned : Boolean := False;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Say ("the child starts with a lent ring", Start);
    Say ("the child writes into it", Ready);
 

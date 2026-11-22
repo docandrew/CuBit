@@ -26,6 +26,9 @@ from qmp import QMP  # noqa: E402
 
 STREAM_PORT = 18460
 ECHO_PORT = 18461
+# A stream that sends IDLE_BYTES and then goes quiet, held open.
+IDLE_PORT = 18462
+IDLE_BYTES = 1460
 PATTERN_PERIOD = 251
 FLAP_SECONDS = 2.0
 NETDEV = "net0"
@@ -84,7 +87,24 @@ def echo_server():
                 peer.sendto(b"PONG", guest)
 
 
+def idle_server():
+    with socket.socket() as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", IDLE_PORT))
+        listener.listen(1)
+        listener.settimeout(240)
+        try:
+            connection, _ = listener.accept()
+        except OSError:
+            return
+        with connection:
+            connection.sendall(bytes(i % PATTERN_PERIOD for i in range(IDLE_BYTES)))
+            while time.monotonic() < deadline:
+                time.sleep(0.5)
+
+
 threading.Thread(target=stream_server, daemon=True).start()
+threading.Thread(target=idle_server, daemon=True).start()
 threading.Thread(target=echo_server, daemon=True).start()
 
 qmp = None
@@ -110,7 +130,10 @@ try:
         failures.append("the guest's UDP send did not end Unreachable after the link went down")
     if count(rf"netstack: {re.escape(name)} link Down") != 1:
         failures.append("netstack did not log Down exactly once")
-    if count(rf"netstack: {re.escape(name)} link Up", start) != 1:
+    # After its Down line: netstack's lines are routed (ABI-002), so its
+    # boot-time Up may reach serial after the guest's "transferring" (lines
+    # of different programs keep their order only within each program).
+    if count(rf"netstack: {re.escape(name)} link Up", down) != 1:
         failures.append("netstack did not log Up exactly once after the flap")
     if count(rf"netmgr: {re.escape(name)} link Down", start) != 1:
         failures.append("netmgr did not log Down exactly once")

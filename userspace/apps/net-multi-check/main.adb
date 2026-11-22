@@ -15,6 +15,7 @@
 --  usable). Ends when the fixture closes the stream.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -22,6 +23,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
 with CuBit.Net_Channels;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    package Channels renames CuBit.Net_Channels;
@@ -62,7 +64,7 @@ procedure Main is
       Say (Name & (if Condition then " PASS" else " FAIL"));
    end Check;
 
-   function Now return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Now return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
 
    function Open (S : in out Channels.Stream; Slot : CuBit.Handles.Endpoint;
                   Target : String) return Boolean
@@ -108,6 +110,8 @@ procedure Main is
    Unreachable : Boolean := False;
    Opened      : Boolean := False;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    declare
       Raw : constant Unsigned_64 :=
         syscall (SYSCALL_SBRK, Unsigned_64 (Buffers * Channels.Buffer_Bytes (Ring_Size, Ring_Size)) + Page_Bytes);

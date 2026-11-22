@@ -165,14 +165,16 @@ try:
     pre0, pre1 = counts()
     qmp.set_link("net0", False)
     pulled = time.time()
-    wait_for(rf"netstack: {re.escape(name0)} link Down", running, "net0's link Down")
+    went_down = wait_for(rf"netstack: {re.escape(name0)} link Down", running, "net0's link Down").start()
     time.sleep(SETTLE)
     down0, down1 = counts()
     time.sleep(FIRST_FLAP)
     plugged = time.time()
     late0, late1 = counts()
     qmp.set_link("net0", True)
-    wait_for(rf"netstack: {re.escape(name0)} link Up", running, "net0's link Up")
+    # After its Down line: netstack's lines are routed (ABI-002), so its
+    # boot-time Up may reach serial after the guest's "running".
+    wait_for(rf"netstack: {re.escape(name0)} link Up", went_down, "net0's link Up")
     time.sleep(SETTLE)
     up0, up1 = counts()
     time.sleep(2.0)

@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Config_Inspection;
@@ -19,6 +20,8 @@ procedure Main is
    Ignore : Unsigned_64;
    Good : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Query (Probe, "", Value, Result);
    Good := Result = Denied;
    Query (List_Keys, "", Value, Result);

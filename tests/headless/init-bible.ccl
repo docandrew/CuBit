@@ -1,6 +1,6 @@
 # The Bible (APP-005): the app over the cubit-bible asset package.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "clock.svc" (priority 5))
   (start "display.svc" (priority 5))
   (start "desktop.svc" (priority 4))

@@ -4,6 +4,9 @@
 # three entries are refused at launch on purpose (and by the image build's
 # check, which tests/headless/run.sh expects to fail on exactly them).
 (startup v1
+  # The programs' lines reach serial through logstore's test console
+  # (ABI-002: they route their debug text).
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "parameters-check.app" (priority 3)
     (arguments (Check_Parameters count => 64 deadline => (Check_Deadline.Within 2500))))
   (start "parameters-check.app" (priority 3)
@@ -17,4 +20,7 @@
   # Arguments for a program that declares no parameters.
   (start "parameters-plain.app" (priority 3)
     (arguments (Check_Parameters count => 1 deadline => Check_Deadline.Forever)))
+  # ABI-002: services' debug text reaches serial only through logstore's
+  # mirror (last, so the lines and columns of the mistakes above hold).
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
 )

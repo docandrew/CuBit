@@ -3,7 +3,6 @@ with System;
 with Interfaces; use Interfaces;
 with Device_Memory_Publication;
 
-with CuBit.Messages;
 
 package body Kernel_Device_Memory is
    package Pub renames Device_Memory_Publication;
@@ -11,7 +10,6 @@ package body Kernel_Device_Memory is
 
    procedure Record_Line (Text : String; Level : Logs.Severity) is
    begin
-      CuBit.Messages.debugPrint (Text & ASCII.LF);
       Note (Text, Level);
    end Record_Line;
 

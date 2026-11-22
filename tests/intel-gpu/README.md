@@ -1669,21 +1669,16 @@ with its forcewake reference retained. Captured values feed the future ADS
 initialization path; this is not ADS publication or evidence of working GuC.
 Tests verify callback behavior, not hardware power, MMIO ordering or atomicity.
 
-Diagnostics reach logstore during bring-up (2026-10-24, IdeaPad 46D4: no
-intel-gpu line reached logstore): build `log_grant.gpr` and run
-`build-log-grant/log_grant_tests`. It drives the real
-`Intel_GPU_Diagnostics` over `diagnostic-fixture/` (scripted completions,
-clock, logstore registration): no request before logstore registers; busy,
-refused and malformed grant answers are retried; completions polled while the
-grant is outstanding are kept, in order, for the bring-up wait that owns
-them; the serial-only notice comes once at the deadline; a late grant still
-publishes every captured line; attached, each line goes out as captured. It
-also checks the wait-heartbeat bound (`Intel_GPU_Wait_Heartbeat`: one entry
-line after 20 ms, progress at most every 500 ms, at most 16 lines per wait).
-`Intel_GPU_Log_Grant` and `Intel_GPU_Wait_Heartbeat` prove at level 2. It
-replaces the stale `diagnostics.gpr`, whose fixture no longer matched the
-unit. `wait-fixture/` holds no-op bodies for unit tests of adapters that now
-pulse the heartbeat (`ggtt_mapping`, `native_dc`, `native_pipe`).
+Bring-up waits say they are waiting, boundedly: build `wait_heartbeat.gpr`
+and run `build-wait-heartbeat/wait_heartbeat_tests` (`Intel_GPU_Wait_Heartbeat`:
+one entry line after 20 ms, progress at most every 500 ms, at most 16 lines per
+wait; proved at level 2). intel-gpu's lines reach logstore through the
+program's log route (CuBit.Console_Route, ABI-002): devmgr gives it logstore at
+launch, introduced once procmgr offers it, and lines wait in the program's
+queue until then. The run-time publisher grant (16#0229#) and its state machine
+(`Intel_GPU_Log_Grant`, the IdeaPad 46D4 regression of 2026-10-24) are gone.
+`wait-fixture/` holds no-op bodies for unit tests of adapters that pulse the
+heartbeat (`ggtt_mapping`, `native_dc`, `native_pipe`).
 
 ## Concurrent allocations wait for the allocator (regression, laptop image 11)
 

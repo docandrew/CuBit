@@ -5,7 +5,7 @@
 # (hangs: forced after 500 ms), shutdown-cooperative (obeys Stop), logstore
 # (undeclared: power.svc's grace). Every grace is written here.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "shutdown-standin.app" (priority 5) (stop-stage power-tail)
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (platform-power approve-declared)
     (arguments (Standin_Parameters s5_sleep_type => 0)))

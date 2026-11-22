@@ -1,0 +1,11 @@
+--  Only the model, for gnatprove (run.sh --prove).
+project Prove is
+   for Source_Files use ("authority_model.ads", "authority_model.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--counterexamples=off");
+   end Prove;
+end Prove;

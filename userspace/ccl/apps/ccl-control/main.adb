@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CCL_Native_Bindings;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -10,6 +11,7 @@ with Control_HTTP;
 with Control_Wire;
 with Control_Presentation;
 with Control_Host;
+with CuBit.Monotonic;
 
 procedure Main is
    Host : CCL.Control.Observation;
@@ -28,7 +30,7 @@ procedure Main is
       Result : CCL.Control.Response;
       Session : CCL.Sessions.Session;
       Valid : Boolean;
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Deadline : constant Unsigned_64 :=
         (if Now > Unsigned_64'Last - 5000 then Unsigned_64'Last else Now + 5000);
    begin
@@ -102,12 +104,14 @@ procedure Main is
       if Success then debugPrint ("ccl-control: request completed" & ASCII.LF); end if;
    end Serve;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("ccl-control: DEVELOPMENT PLAINTEXT; own bindings only" & ASCII.LF);
    if CCL_Native_Bindings.Logstore.Present then
       CuBit.Logging.Announce ("ccl-control: started (development plaintext listener)", Success,
                               CCL_Native_Bindings.Logstore.Value);
    end if;
-   Host.Process_Id := syscall (SYSCALL_GETPID);
+   Host.Process_Id := Own_Process_Word;
    Host.Clock_Process := To_Word (Registered_Driver (DRIVER_CLOCK));
    Control_Host.Initialize (Success);
    if not Success then

@@ -40,6 +40,8 @@ package Source_Identities is
    function Knows (Item : Table; Source : Unsigned_64) return Boolean;
    --  Source's identity (com.cubit.hello), else its name, else "".
    function Identity_Of (Item : Table; Source : Unsigned_64) return String;
+   --  Source's name (its program, "desktop.svc"), else "".
+   function Name_Of (Item : Table; Source : Unsigned_64) return String;
 
    --  Notices given up for want of memory.
    function Lost (Item : Table) return Unsigned_64;

@@ -9,6 +9,7 @@ with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Owned_Reservations;
 with CuBit.Thread_Areas;
+with Thread_ABI;
 
 package body Stack_Threads is
 
@@ -24,10 +25,22 @@ package body Stack_Threads is
    Stack_Alignment : constant := 16;
    Return_Address_Bytes : constant := 8;
 
-   procedure Worker (Argument : Unsigned_64) with Convention => C, No_Return;
-   procedure Worker (Argument : Unsigned_64) is
+   --  The kernel starts a thread with its argument in RDI and its
+   --  thread-count slot in RSI.
+   procedure Worker (Argument : Unsigned_64; Slot : SP.Thread_Slot)
+   with Convention => C, No_Return;
+   procedure Worker (Argument : Unsigned_64; Slot : SP.Thread_Slot) is
       Index : constant Worker_Index := Worker_Index (Argument);
+      First : constant Unsigned_64 := CuBit.System_Facts.Thread_System_Calls (Slot);
+      Before : Unsigned_64;
+      Ignore : Unsigned_64;
    begin
+      CuBit.System_Facts.Enter_Thread (Slot);
+      Before := CuBit.System_Facts.Thread_System_Calls;
+      Ignore := CuBit.Kernel_Calls.Call (ABI.Yield);
+      Counts (Index) := (Entry_Slot  => Slot,
+                         First_Count => First,
+                         Yield_Added => CuBit.System_Facts.Thread_System_Calls - Before);
       Results (Index) := Stack_Work.Full_Run (First_Seed + Argument);
       CuBit.Thread_Areas.Exit_Thread;
    end Worker;
@@ -35,8 +48,10 @@ package body Stack_Threads is
    function Start (Index : Worker_Index) return Started is
       Thread : Started;
       Area : Unsigned_64;
+      Result : Unsigned_64;
    begin
       --  Armed again for each batch: the kernel clears it when the thread ends.
+      Counts (Index) := (others => <>);
       Exit_Words (Index) := 1;
       Thread.Stack := CuBit.Owned_Reservations.Reserve (Stack_Bytes);
       if Thread.Stack = 0 then
@@ -53,15 +68,16 @@ package body Stack_Threads is
       if Area = CuBit.Thread_Areas.No_Area then
          return Thread;
       end if;
-      if CuBit.Kernel_Calls.Call
-           (ABI.Thread_Create, Unsigned_64 (To_Integer (Worker'Address)),
-            ((Thread.Stack + Stack_Bytes) and not (Stack_Alignment - 1)) - Return_Address_Bytes,
-            Unsigned_64 (Index), Area,
-            Unsigned_64 (To_Integer (Exit_Words (Index)'Address))) = ABI.Failed
-      then
+      Result := CuBit.Kernel_Calls.Call
+        (ABI.Thread_Create, Unsigned_64 (To_Integer (Worker'Address)),
+         ((Thread.Stack + Stack_Bytes) and not (Stack_Alignment - 1)) - Return_Address_Bytes,
+         Unsigned_64 (Index), Area,
+         Unsigned_64 (To_Integer (Exit_Words (Index)'Address)));
+      if Result = Thread_ABI.Refused or else not Thread_ABI.Is_Created (Result) then
          CuBit.Thread_Areas.Discard (Area);
          return Thread;
       end if;
+      Thread.Slot := SP.Thread_Slot (Thread_ABI.Slot_Of (Result));
       Thread.Created := True;
       return Thread;
    end Start;

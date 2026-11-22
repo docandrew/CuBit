@@ -20,6 +20,7 @@ with CuBit.Libc_Net_Targets;
 
 with CuBit.Libc_Startup;
 with CuBit.Startup_Tables;
+with CuBit.Published_Clock;
 package body CuBit.Libc_Net is
 
    --  No endpoint (a handle word is never zero).
@@ -412,7 +413,7 @@ package body CuBit.Libc_Net is
                            CuBit.Kernel_Calls.No_Completion_Token);
          Ignore := CuBit.Kernel_Calls.Call
            (K.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
-            CuBit.Kernel_Calls.Call (K.Read_Monotonic_Microseconds) + Retry_Microseconds);
+            CuBit.Published_Clock.Microseconds_Now + Retry_Microseconds);
       end loop;
    end End_Wait;
 

@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.UI; use CuBit.UI;
@@ -94,6 +95,8 @@ procedure Main is
    procedure Run is new App.Run (UI,Map,Render=>Render,Handle_Event=>Handle);
    OK : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Definition.Menu_Count:=1;Definition.Item_Count:=2;
    Definition.Menus(1):=(File_Text'Unchecked_Access,'F');
    Definition.Items(1):=(Caption=>First_Text'Unchecked_Access,Command=>101,others=><>);

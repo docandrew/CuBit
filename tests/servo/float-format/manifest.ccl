@@ -1,1 +1,4 @@
-(executable-manifest v1 (identity "com.cubit.float-format-check") (version "0.1.0"))
+(executable-manifest v1 (identity "com.cubit.float-format-check") (version "0.1.0")
+  # Its diagnostics (cubit_debug_write, the libc's records: CuBit.Libc_Log).
+  (request-service logstore read-write logstore)
+  (optional logstore))

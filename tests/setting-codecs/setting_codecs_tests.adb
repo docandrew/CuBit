@@ -17,6 +17,8 @@ with CuBit.Canonical_Readers;
 with CCL.Setting_Kinds;
 with CCL.Typed_Settings;
 with CCL.Setting_Codecs.Calc_Options;
+with CCL.Setting_Codecs.Browser_User_Agent;
+with CCL.Setting_Codecs.Site_User_Agent;
 with CCL.Setting_Codecs.Display_Mode;
 with CCL.Setting_Codecs.Display_Modeset;
 with CCL.Setting_Codecs.Display_Scale;
@@ -27,6 +29,7 @@ with CCL.Setting_Codecs.Key_Repeat;
 with CCL.Setting_Codecs.Launch_Entry;
 with CCL.Setting_Codecs.Net_Interface;
 with CCL.Setting_Codecs.Log_Retention;
+with CCL.Setting_Codecs.System_Policy;
 with CCL.Setting_Codecs.Appearance;
 with CCL.Interfaces.Desktop_Launch.Icons;
 
@@ -57,6 +60,18 @@ procedure Setting_Codecs_Tests is
                Item : CCL.Setting_Codecs.Calc_Options.Calc_Options_Value;
             begin
                CCL.Setting_Codecs.Calc_Options.Decode (Source, Item, OK);
+            end;
+         when Browser_User_Agent_Setting =>
+            declare
+               Item : CCL.Setting_Codecs.Browser_User_Agent.Browser_User_Agent_Value;
+            begin
+               CCL.Setting_Codecs.Browser_User_Agent.Decode (Source, Item, OK);
+            end;
+         when Site_User_Agent_Setting =>
+            declare
+               Item : CCL.Setting_Codecs.Site_User_Agent.Site_User_Agent_Value;
+            begin
+               CCL.Setting_Codecs.Site_User_Agent.Decode (Source, Item, OK);
             end;
          when Launch_Entry_Setting =>
             declare
@@ -126,6 +141,12 @@ procedure Setting_Codecs_Tests is
                Item : CCL.Setting_Codecs.Appearance.Appearance_Value;
             begin
                CCL.Setting_Codecs.Appearance.Decode (Source, Item, OK);
+            end;
+         when System_Policy_Setting =>
+            declare
+               Item : CCL.Setting_Codecs.System_Policy.System_Policy_Value;
+            begin
+               CCL.Setting_Codecs.System_Policy.Decode (Source, Item, OK);
             end;
          when Untyped =>
             null;
@@ -330,6 +351,36 @@ begin
       Decode ("(Desktop_Composition path => Composition_Path.CPU_Dir)", Item, OK);
       Check (not OK, "a misspelt path is refused");
    end;
+   --  Penny's User-Agent presentation, every site's and per host.
+   Differential (Browser_User_Agent_Setting, "(Browser_User_Agent)");
+   Differential (Browser_User_Agent_Setting, "(Browser_User_Agent presentation => Agent_Presentation.Penny)");
+   Differential (Browser_User_Agent_Setting, "(Browser_User_Agent presentation => Agent_Presentation.Linux)");
+   Differential (Browser_User_Agent_Setting, "(Browser_User_Agent presentation => Agent_Presentation.Windows)");
+   Differential (Browser_User_Agent_Setting, "(Browser_User_Agent presentation => Agent_Presentation.Mac)");
+   Differential (Site_User_Agent_Setting, "(Site_User_Agent presentation => Agent_Presentation.Windows)");
+   Differential (Site_User_Agent_Setting, "(Site_User_Agent)");
+   declare
+      Global : CCL.Setting_Codecs.Browser_User_Agent.Browser_User_Agent_Value;
+      Site : CCL.Setting_Codecs.Site_User_Agent.Site_User_Agent_Value;
+      OK : Boolean;
+      use type CCL.Setting_Codecs.Browser_User_Agent.Agent_Presentation_Value;
+      use type CCL.Setting_Codecs.Site_User_Agent.Agent_Presentation_Value;
+   begin
+      CCL.Setting_Codecs.Browser_User_Agent.Decode
+        ("(Browser_User_Agent presentation => Agent_Presentation.Mac)", Global, OK);
+      Check (OK and then Global.presentation = CCL.Setting_Codecs.Browser_User_Agent.Mac,
+             "a Mac presentation reads back as Mac");
+      CCL.Setting_Codecs.Browser_User_Agent.Decode
+        ("(Browser_User_Agent presentation => ""Mozilla/5.0"")", Global, OK);
+      Check (not OK, "a free-text User-Agent is refused");
+      CCL.Setting_Codecs.Site_User_Agent.Decode
+        ("(Site_User_Agent presentation => Agent_Presentation.Windows)", Site, OK);
+      Check (OK and then Site.presentation = CCL.Setting_Codecs.Site_User_Agent.Windows,
+             "a host's Windows presentation reads back as Windows");
+      CCL.Setting_Codecs.Site_User_Agent.Decode
+        ("(Browser_User_Agent presentation => Agent_Presentation.Windows)", Site, OK);
+      Check (not OK, "a host's setting is a Site_User_Agent, not the global type");
+   end;
    Differential (Net_Interface_Setting, "Net_Interface.Automatic");
    Differential (Net_Interface_Setting, "Net_Interface.Disabled");
    Differential (Net_Interface_Setting,
@@ -340,6 +391,23 @@ begin
    --  LOG-005: logstore's ceilings, every field written (no defaults).
    Differential (Log_Retention_Setting, "(Log_Retention per_source => 4096 boot => 256 total => 16384)");
    Differential (Log_Retention_Setting, "(Log_Retention per_source => 1024 boot => 64 total => 8192)");
+   --  DBG-001: the image's debugging gate (system.policy).
+   Differential (System_Policy_Setting, "(System_Policy)");
+   Differential (System_Policy_Setting, "(System_Policy debugging => Debugging.Disabled)");
+   Differential (System_Policy_Setting, "(System_Policy debugging => Debugging.Production)");
+   Differential (System_Policy_Setting, "(System_Policy debugging => Debugging.Development)");
+   declare
+      use CCL.Setting_Codecs.System_Policy;
+      Item : System_Policy_Value;
+      OK : Boolean;
+   begin
+      Decode (Canonical (System_Policy_Setting, "(System_Policy)"), Item, OK);
+      Check (OK and then Item.debugging = Development, "a policy that names no gate is Development");
+      Decode (Canonical (System_Policy_Setting, "(System_Policy debugging => Debugging.Disabled)"), Item, OK);
+      Check (OK and then Item.debugging = Disabled, "a Disabled gate reads back as Disabled");
+      Decode ("(System_Policy debugging => Debugging.Off)", Item, OK);
+      Check (not OK, "a misspelt gate is refused");
+   end;
    Check (not Referenced (Log_Retention_Setting, "(Log_Retention per_source => 4096)"),
           "a Log_Retention needs all three ceilings");
    Check (not Referenced (Log_Retention_Setting, "(Log_Retention per_source => 10 boot => 64 total => 8192)"),

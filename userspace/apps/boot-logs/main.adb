@@ -5,7 +5,9 @@ with CuBit.Logging;
 with Startup;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with CuBit.Log_Sources;
+with CuBit.Log_Sources.Texts;
 with CuBit.Desktop_Protocol;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
@@ -17,6 +19,8 @@ with CuBit.UI.Controls;
 with CuBit.UI.Input;
 with CuBit.UI.Text_Views;
 with Ada.Unchecked_Deallocation;
+with CuBit.Monotonic;
+with CuBit.Console_Route;
 procedure Main is
    package P renames CuBit.Log_Protocol;
    use type P.Status;
@@ -101,7 +105,7 @@ procedure Main is
    function Label_Of (Source : Unsigned_64) return String is
       I : constant Natural := Known_Index (Source);
    begin
-      return (if I = 0 then "" else LS.Label (Known (I).Who));
+      return (if I = 0 then "" else LS.Texts.Label (Known (I).Who));
    end Label_Of;
 
    function Exited (Source : Unsigned_64) return Boolean is
@@ -136,8 +140,8 @@ procedure Main is
                   Known (Index).Who := Listed.Who;
                   if Listed.Kind = LS.Exited and then not Known (Index).Exited then
                      Known (Index).Exited := True;
-                     debugPrint ("boot-logs: " & LS.Label (Listed.Who) & " exited (" &
-                                 LS.Identity_Of (Listed.Who) & ", " & LS.Name_Of (Listed.Who) & ")" &
+                     debugPrint ("boot-logs: " & LS.Texts.Label (Listed.Who) & " exited (" &
+                                 LS.Texts.Identity_Of (Listed.Who) & ", " & LS.Texts.Name_Of (Listed.Who) & ")" &
                                  ASCII.LF);
                   end if;
                end if;
@@ -149,7 +153,7 @@ procedure Main is
    end Refresh_Sources;
 
    function Source_Of (Item : CuBit.Log_Records.Log_Record) return String is
-      Text : constant String := CuBit.Log_Records.Text (Item);
+      Text : constant String := CuBit.Log_Records.Texts.Text (Item);
    begin
       for I in Text'First .. Text'Last - 1 loop
          exit when I - Text'First >= SOURCE_TEXT or else Text (I) = ' ';
@@ -173,7 +177,7 @@ procedure Main is
    --  A record as shown: its source's label first when its text does not
    --  name it, and marked when the source has exited.
    function Shown_Text (Index : Positive) return String is
-      Text : constant String := CuBit.Log_Records.Text (Records (Index));
+      Text : constant String := CuBit.Log_Records.Texts.Text (Records (Index));
       Label : constant String := Label_Of (Record_Sources (Index));
       Named : constant String :=
         (if Source_Of (Records (Index))'Length = 0 and then Label'Length > 0
@@ -217,7 +221,7 @@ procedure Main is
         when One_Source => Sources (Filter_Source).Text (1 .. Sources (Filter_Source).Length),
         when Bring_Up => "bring-up (devmgr, intel-gpu, procmgr, xhci)");
    function Pinned (Item : CuBit.Log_Records.Log_Record) return Boolean is
-      Text : constant String := CuBit.Log_Records.Text (Item);
+      Text : constant String := CuBit.Log_Records.Texts.Text (Item);
    begin
       if CuBit.Log_Records.Level (Item) >= CuBit.Log_Records.Warning then
          return True;
@@ -386,7 +390,7 @@ procedure Main is
          Line (SUMMARY_Y, Status_Text, Status = P.Denied or else Status not in P.OK | P.Empty | P.Gap);
       elsif Filter = All_Sources then
          for I in 1 .. Summary_Count loop
-            Line (SUMMARY_Y + (I - 1) * Line_Height, CuBit.Log_Records.Text (Summary (I)),
+            Line (SUMMARY_Y + (I - 1) * Line_Height, CuBit.Log_Records.Texts.Text (Summary (I)),
                   CuBit.Log_Records.Level (Summary (I)) >= CuBit.Log_Records.Warning);
          end loop;
       end if;
@@ -528,7 +532,7 @@ procedure Main is
    procedure Tick (Win : in out CuBit.UI.App.Window; Dirty : in out Rect; Running : in out Boolean) is
       Event : P.Event;
       Lost : Unsigned_64;
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       --  Sources were asked for this time already.
       Asked : Boolean := False;
       --  Something shown may have changed: rebuild and compare.
@@ -546,6 +550,9 @@ procedure Main is
                Changed := True;
             end if;
             exit when Status /= P.OK;
+            --  Its own lines are its echo of others' records (ABI-002:
+            --  routed into its own ring): never shown, never echoed again.
+            if Event.Source /= CuBit.Messages.Own_Process_Word then
             if Pinned (Event.Data) then
                Pin (Event.Data);
             end if;
@@ -583,7 +590,7 @@ procedure Main is
             --  As shown, but without the exit mark: the exit is its own line.
             declare
                Label : constant String := Label_Of (Event.Source);
-               Text : constant String := CuBit.Log_Records.Text (Event.Data);
+               Text : constant String := CuBit.Log_Records.Texts.Text (Event.Data);
             begin
                debugPrint ("boot-logs: " &
                            (if Source_Of (Event.Data)'Length = 0 and then Label'Length > 0
@@ -591,6 +598,7 @@ procedure Main is
             end;
             Remember_Source (Count);
             Changed := True;
+            end if;
          end loop;
       end if;
       --  Exits since the last look (and names logstore learned late).
@@ -630,6 +638,9 @@ procedure Main is
      (UI, Controls, Render => Render, Handle_Event => Handle_Event,
       Next_Deadline => Deadline, On_Deadline => Tick, Activity_Wait => True);
 begin
+   --  ABI-002: its debug text (the records it echoes, its own notes) goes
+   --  into its logstore ring, not the kernel console.
+   CuBit.Console_Route.Route_To (Startup.Logstore);
    declare
       Open_Outcome : CuBit.UI.App.Open_Result;
    begin
@@ -647,7 +658,7 @@ begin
       end if;
    end;
    if Opened then
-      Due := syscall (SYSCALL_GETTIME) + 1;
+      Due := CuBit.Monotonic.Milliseconds + 1;
       debugPrint ("boot-logs: window ready" & ASCII.LF);
       Run (Win);
       CuBit.UI.App.Close (Win);

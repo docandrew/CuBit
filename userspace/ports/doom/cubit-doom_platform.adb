@@ -7,6 +7,7 @@ with CuBit.Memory_Grants;
 with CuBit.Handles;
 with CuBit.Libc_Startup;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Monotonic;
 
 package body CuBit.Doom_Platform is
 
@@ -114,7 +115,7 @@ package body CuBit.Doom_Platform is
       Log (Text (First .. Text'Last));
    end Log_Number;
 
-   function Now_Ms return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Now_Ms return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
 
    function Send (Request : D.Wire_Message) return D.Wire_Message is
       Msg : Message := CuBit.Desktop_Messages.From_Wire (Request);

@@ -10,5 +10,8 @@
   requests => [
     (notification "wifi" Notify_Access.Manage "registration")
     (service "config" "config")
-    (service "device-manager" "ready")]
+    (service "device-manager" "ready")
+    # ABI-002: its lines, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["logstore"]
   scopes => [(config [File_Right.Read File_Right.Write] "wifi.secret.")])

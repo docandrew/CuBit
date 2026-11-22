@@ -4,7 +4,7 @@
 # offers the "acpi" service as acpi.svc does; firmware-check, a declared
 # client, must get the observer-badged endpoint.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "acpi-standin.app" (priority 4))
   (start "firmware-check.app" (priority 3) (firmware-snapshot approve-declared))
   (start "firmware-denied.app" (priority 3))

@@ -108,7 +108,12 @@ package body ACPI_Delay_Domains with SPARK_Mode is
    begin
       Accepted := False;
       if S.Stage /= Event_Active or else S.In_Call then return; end if;
-      if not Current_Sample (S, Now, Clock_Available) then Stop (S); return; end if;
+      -- Closing an idle event is cleanup, not admission to another effect.
+      -- Expiry never extends the original window. Unknown/reversed clocks
+      -- and an outstanding wait still refuse cleanup.
+      if not Clock_Available or else Now < S.Last or else Now = Tick'Last then
+         Stop (S); return;
+      end if;
       S.Stage := Runtime_Idle; S.Last := Now; S.Until_Time := 0;
       Accepted := True;
    end End_Event;

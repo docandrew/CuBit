@@ -1,0 +1,6 @@
+# The VM mechanism check (VMM-001 slice 1, headless --test vm-hello). Requests
+# nothing: it runs in procmgr's place, from a test initrd only, and uses the
+# handles devmgr gives procmgr (the VM creation authority and the test console).
+(Executable_Manifest
+  identity => "com.cubit.test.vm-hello"
+  version => "1.0.0")

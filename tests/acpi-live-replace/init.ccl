@@ -9,7 +9,7 @@
 # - clock.svc (ccl-remote requires it), ccl-remote with builds granted and a desktop, so the person's "Allow
 #   app replacement" switch can be turned on by a click (as service-switch).
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "clock.svc" (priority 5))
   (start "display.svc" (priority 5))
   (start "desktop.svc" (priority 4))

@@ -19,5 +19,7 @@
     (service "device-manager" "ready")
     # The GPU service registration (DRIVER_GPU); absent when another GPU
     # driver is the GPU service.
-    (notification "gpu" Notify_Access.Manage "registration")]
-  optional => ["registration"])
+    (notification "gpu" Notify_Access.Manage "registration")
+    # ABI-002: its debug text, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["registration" "logstore"])

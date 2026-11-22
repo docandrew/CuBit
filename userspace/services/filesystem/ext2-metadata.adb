@@ -12,6 +12,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Block_Cache_Index;
 with Ext2.Block_Cache; use Ext2.Block_Cache;
 with Ext2.Journal; use Ext2.Journal;
+with CuBit.Monotonic;
 
 package body Ext2.Metadata is
 
@@ -93,7 +94,7 @@ package body Ext2.Metadata is
       if Offset = 0 or else Offset = Unsigned_64'Last then
          return 0;
       end if;
-      Monotonic := syscall (SYSCALL_GETTIME);
+      Monotonic := CuBit.Monotonic.Milliseconds;
       if Monotonic = Unsigned_64'Last or else Offset > Unsigned_64'Last - Monotonic then
          return 0;
       end if;

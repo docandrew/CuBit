@@ -51,7 +51,6 @@ typedef long                ssize_t;
  * Syscall Numbers
  *---------------------------------------------------------------------------*/
 #define SYSCALL_EXIT            0
-#define SYSCALL_GETPID          6
 #define SYSCALL_KILL            7
 #define SYSCALL_SBRK            8
 #define SYSCALL_WRITE           12
@@ -75,7 +74,6 @@ typedef long                ssize_t;
 #define CUBIT_WAIT_NOTHING      UINT64_MAX
 
 /* Time */
-#define SYSCALL_GETTIME         27
 #define SYSCALL_YIELD           118
 
 /* Framebuffer */
@@ -124,10 +122,6 @@ typedef long                ssize_t;
 #define LATENCY_NORMAL          1
 #define LATENCY_INTERACTIVE     2
 #define LATENCY_REALTIME        3
-
-/* Kernel trace controls */
-#define SYSCALL_TRACE_RESET     82
-#define SYSCALL_TRACE_SUMMARY   83
 
 /* Asynchronous capability IPC. Message layout matches CuBit.Messages. */
 #define CUBIT_NO_COMPLETION_TOKEN (~(uint64_t)0)

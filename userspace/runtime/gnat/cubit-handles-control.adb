@@ -8,6 +8,8 @@ pragma Ada_2022;
 with System.Storage_Elements;
 with CuBit.Handles.Kernel;
 with DMA_Allocation_ABI;
+with Process_List_ABI;
+with CuBit.Messages;
 
 package body CuBit.Handles.Control is
 
@@ -155,9 +157,30 @@ package body CuBit.Handles.Control is
               Kind, K.Word (Authority), K.Word (Region)) = 0);
 
    function Process_List
-     (Authority : Process; Buffer : System.Address; Bytes : Unsigned_64)
-      return Unsigned_64 is
-     (K.Call (K.Process_List, Address_Word (Buffer), Bytes, K.Word (Authority)));
+     (Authority : Process_Listing; Buffer : System.Address; Bytes : Unsigned_64)
+      return Unsigned_64
+   is
+      package PL renames Process_List_ABI;
+      Msg : CuBit.Messages.Message := CuBit.Messages.NULL_MESSAGE;
+      Result : Unsigned_64;
+   begin
+      Msg.tag.label := PL.Operation'Enum_Rep (PL.List);
+      Msg.tag.length := PL.Request_Words;
+      Msg.words (PL.Destination_Word) := Address_Word (Buffer);
+      Msg.words (PL.Capacity_Word) := Bytes;
+      --  The one Call: the kernel resolves the handle, writes the entries
+      --  into Buffer and answers in Msg.
+      Result := K.Call (K.Call_Via_Endpoint, K.Word (Authority), Address_Word (Msg'Address),
+                        CuBit.Messages.Wait_Forever);
+      if Result = 0 or else Result = Unsigned_64'Last
+        or else Msg.tag.label /= PL.Operation'Enum_Rep (PL.List)
+        or else Msg.tag.length /= PL.Reply_Words
+        or else Msg.words (PL.Outcome_Word) /= PL.Outcome_Word_Of (PL.Listed)
+      then
+         return Unsigned_64'Last;
+      end if;
+      return Msg.words (PL.Count_Word);
+   end Process_List;
 
    function Allocate_Vectors
      (Owner : Process_ID; Space : Cspace; Count, CPU : Unsigned_64;

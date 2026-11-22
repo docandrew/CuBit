@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System;
@@ -25,6 +26,8 @@ procedure Main is
       Ignore := syscall (SYSCALL_EXIT, 1);
    end Fail;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Ignore := registerDriver (P.Publisher_Service_Role, Startup.Registration);
    if Ignore = Unsigned_64'Last then Fail ("registration"); return; end if;
    loop

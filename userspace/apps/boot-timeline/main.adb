@@ -4,8 +4,9 @@
 --
 --  @summary
 --  boot-timeline (BOOT-001, docs/boot-timeline.md): reads the kernel's boot
---  timeline through procmgr's process-observer role once the Desktop has
---  presented its first frame, and prints it: one line per stage with its
+--  timeline, the granted publication its manifest declares
+--  ("boot-timeline", mapped read-only), once the Desktop has presented its
+--  first frame, and prints it: one line per stage with its
 --  offset from power-on and the delta, every long startup wait ranked, the
 --  per-process spans, the critical path, the first-frame budget (reported,
 --  not enforced) and whether the record is complete.
@@ -14,24 +15,23 @@
 --  filtered; the verdict is "BOOT-TIMELINE: COMPLETE" or "...: INCOMPLETE".
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
-with System;
 with System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Memory_Grants;
-with CuBit.Grant_References;
-with CuBit.Process_Observer;
-with CuBit.Boot_Milestone_Codes;
-with Startup;
+with CuBit.Launch_Block;
+pragma Elaborate_All (CuBit.Launch_Block);
+with CuBit.Publication_Grants;
+with CuBit.Startup_State;
+with CuBit.Startup_Tables;
+with System_Publications;
 with Boot_Timeline_Layout; use Boot_Timeline_Layout;
 with Boot_Timeline_Report; use Boot_Timeline_Report;
 
 procedure Main is
    use ASCII;
-   use type CuBit.Messages.MessageTag;
-   package PO renames CuBit.Process_Observer;
-   package BMC renames CuBit.Boot_Milestone_Codes;
+   package SP renames System_Publications;
 
    --  How long to wait for the first frame, how often to look, and how long
    --  to let late services reach their request loops before reading.
@@ -43,12 +43,14 @@ procedure Main is
    --  Ranked lines printed per table.
    Ranked_Lines    : constant := 25;
 
-   Page_Count : constant := (Image_Bytes + BMC.Page_Bytes - 1) / BMC.Page_Bytes;
-   Buffer : array (0 .. Page_Count * BMC.Page_Bytes - 1) of Unsigned_8 :=
-     [others => 0] with Alignment => BMC.Page_Bytes;
+   --  The published Image, and the snapshot the report reads (the kernel
+   --  rewrites the publication while its window is open).
+   type Image_Bytes_Array is array (1 .. Image_Bytes) of Unsigned_8;
+   Published : Image_Bytes_Array
+     with Import, Volatile,
+          Address => System.Storage_Elements.To_Address (SP.Boot_Timeline_Address);
+   Buffer : Image_Bytes_Array := [others => 0] with Alignment => 8;
    Img : Image with Import, Address => Buffer'Address;
-   Page : array (0 .. BMC.Page_Bytes - 1) of Unsigned_8 := [others => 0]
-     with Alignment => BMC.Page_Bytes;
 
    Frequency : Counter_Frequency := Minimum_Frequency;
 
@@ -153,46 +155,26 @@ procedure Main is
    end Wait_Text;
 
    ---------------------------------------------------------------------------
-   --  Reading through procmgr
+   --  Reading the publication
    ---------------------------------------------------------------------------
-   type Read_Result is (Read_OK, Not_Granted, Unavailable);
+   type Read_Result is (Read_OK, Not_Granted);
 
-   --  Read pages 0 .. Last_Page of the image into Buffer.
-   function Read_Pages (Last_Page : Natural) return Read_Result is
-      Loan : CuBit.Memory_Grants.Grant_Reference;
-      Lent, Revoked : Boolean;
-      Result : Read_Result := Read_OK;
+   --  Whether the startup table holds the publication at its address: the
+   --  kernel mapped it only then (any other read of the address faults).
+   function Granted return Boolean is
+     (CuBit.Launch_Block.Table_Present and then CuBit.Startup_State.Granted
+        (CuBit.Publication_Grants.Boot_Timeline_Name, CuBit.Startup_Tables.Publication)
+      = SP.Boot_Timeline_Address);
+
+   --  Snapshot the Image into Buffer.
+   function Read_Image return Read_Result is
    begin
-      CuBit.Memory_Grants.Create_Via_Capability
-        (Startup.Process_Observer, Page'Address, 1, True, Loan, Lent);
-      if not Lent then
+      if not Granted then
          return Not_Granted;
       end if;
-      for Index in 0 .. Last_Page loop
-         declare
-            Request : Message := NULL_MESSAGE;
-            Reply : MessageTag;
-         begin
-            Request.tag := (label => BMC.Timeline_Label, length => 2, protocol => 0, ipc => <>, reserved => 0);
-            Request.words (0) := CuBit.Grant_References.Encode (Loan);
-            Request.words (1) := Unsigned_64 (Index);
-            Reply := capCall (Startup.Process_Observer, Request,
-                              CuBit.Messages.Wait_Forever);
-            if Reply.label = Unsigned_32 (PO.Status'Enum_Rep (PO.Denied)) then
-               Result := Not_Granted;
-               exit;
-            elsif Reply.label /= Unsigned_32 (PO.Status'Enum_Rep (PO.OK)) then
-               Result := Unavailable;
-               exit;
-            end if;
-            for I in Page'Range loop
-               Buffer (Index * BMC.Page_Bytes + I) := Page (I);
-            end loop;
-         end;
-      end loop;
-      CuBit.Memory_Grants.Revoke (Loan, Revoked);
-      return Result;
-   end Read_Pages;
+      Buffer := Published;
+      return Read_OK;
+   end Read_Image;
 
    --  Scalars arrive as bytes: check each before the report reads them.
    function Valid_Image return Boolean is
@@ -369,24 +351,23 @@ procedure Main is
    Result : Read_Result;
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Put ("BOOT-TIMELINE: waiting for the first desktop frame" & LF);
    loop
-      Result := Read_Pages (0);
-      exit when Result = Not_Granted or else (Result = Read_OK and then Goal_Reached);
+      Result := Read_Image;
+      exit when Result = Not_Granted or else Goal_Reached;
       exit when Waited >= Goal_Wait_Ms;
       Ignore := CuBit.Waits.Sleep_For (Poll_Ms);
       Waited := Waited + Poll_Ms;
    end loop;
    if Result = Not_Granted then
-      Put ("BOOT-TIMELINE: FAIL process-observer role not granted" & LF);
+      Put ("BOOT-TIMELINE: FAIL boot-timeline publication not granted" & LF);
       return;
    end if;
    Ignore := CuBit.Waits.Sleep_For (Settle_Ms);
-   Result := Read_Pages (Page_Count - 1);
-   if Result /= Read_OK then
-      Put ("BOOT-TIMELINE: FAIL timeline unreadable: " & Result'Image & LF);
-      return;
-   elsif not Valid_Image then
+   Result := Read_Image;
+   if not Valid_Image then
       Put ("BOOT-TIMELINE: FAIL timeline malformed (version" & Img.Head.Version'Image & ")" & LF);
       return;
    end if;

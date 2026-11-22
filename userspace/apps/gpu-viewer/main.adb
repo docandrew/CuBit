@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Ada.Command_Line;
 with Interfaces; use Interfaces;
@@ -204,6 +205,8 @@ procedure Main is
       end loop;
    end Run;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Run;
    Cleanup;
    if Outcome /= Q.Closed then

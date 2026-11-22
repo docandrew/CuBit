@@ -1,0 +1,15 @@
+# The debugger engine's native check (DBG-001, headless --test debug-engine-rs):
+# attaches to debug-demo-rs (Rust) through its debug-target service (cooperative,
+# read-only), and checks real threads, frames, lines, locals, values and the
+# data-structure graph against what the demo is doing.
+(Executable_Manifest
+  identity => "com.cubit.debug-engine-rs-check"
+  version => "0.1.0"
+  requests => [
+    (service "debug-target" "target")
+    # The demo's build-id debug file and its sources, read only.
+    (service "filesystem" "filesystem")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"]
+  scopes => [(filesystem [File_Right.Read] "@system/Debug/")])

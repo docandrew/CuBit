@@ -25,7 +25,7 @@ procedure Image_Provider_Check is
    package C renames Intel_GPU_Image_Consumers;
    Consumers : C.Ledger;
    CPU_Read : C.Obligation;
-   PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   PID : constant Unsigned_64 := Own_Process_Word;
    Identity, Ignore : Unsigned_64 := 0;
    function Owner return Boolean is (True);
    function Session_Of (Sender, Stamp : Unsigned_64) return Unsigned_64 is

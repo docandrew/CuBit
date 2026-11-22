@@ -124,4 +124,16 @@ package body CuBit.Handles.Startup with SPARK_Mode => Off is
      return Platform_Power is
      (K.To_Platform_Power (CuBit.Startup_State.Granted (Label, Kind)));
 
+   function Test_Console_Named
+     (Label : String; Kind : ST.Capability_Kind := ST.Test_Console) return Test_Console is
+     (K.To_Test_Console (CuBit.Startup_State.Granted (Label, Kind)));
+
+   function Trace_Named
+     (Label : String; Kind : ST.Capability_Kind := ST.Trace) return Trace is
+     (K.To_Trace (CuBit.Startup_State.Granted (Label, Kind)));
+
+   function VM_Create_Named
+     (Label : String; Kind : ST.Capability_Kind := ST.VM_Create) return VM_Create is
+     (K.To_VM_Create (CuBit.Startup_State.Granted (Label, Kind)));
+
 end CuBit.Handles.Startup;

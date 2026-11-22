@@ -193,7 +193,7 @@ package body ACPI_PCI_Observation_Reader with SPARK_Mode is
       if not Core.Current_Node (Service, Device) or else V.Node_Kind (Device) /= N.Device_Object then return; end if;
       Observe_Member ("_HID", False);
       Drop (Root, Root_Tried);
-      if Result.Status = Observed and then Match = Unknown and then not Cleanup_Error and then not Result.Recovery_Needed then
+      if Result.Status in Observed | Absent and then Match = Unknown and then not Cleanup_Error and then not Result.Recovery_Needed then
          Observe_Member ("_CID", True);
          if Result.Status = Absent then Result.Status := Observed; end if;
       end if;

@@ -1,0 +1,24 @@
+--  Host build of SPARKTLS's FIPS 140-3 post-link step: the pinned crate's
+--  tools/fips_inject, unmodified. It writes the software integrity test's
+--  HMACs into a linked program's .fips_hmac section
+--  (userspace/lib/tls/sparktls_fips_cubit.ld). kernel/Makefile runs it on
+--  every program that links SPARKTLS.
+--
+--  External:
+--    CUBIT_SPARK_CRATES  as for userspace/lib/tls/sparktls_host.gpr.
+with "../../userspace/lib/tls/sparktls_host.gpr";
+
+project FIPS_Inject is
+   Crates := external ("CUBIT_SPARK_CRATES");
+   for Source_Dirs use (Crates & "sparktls/tools/fips_inject/src");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("fips_inject.adb");
+   for Create_Missing_Dirs use "True";
+   --  Upstream's switches for the tool (its fips_inject.gpr), plus the
+   --  GCC workaround every crate build here carries.
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-fno-tree-vrp");
+   end Compiler;
+end FIPS_Inject;

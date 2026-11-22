@@ -38,7 +38,7 @@ with CuBit.Service_Replacement;
 --  Every waiting phase has a deadline, and a step at or past it always
 --  leaves the phase for a later one (Rank grows): a switch ends within
 --  CuBit.Service_Replacement.Answer_Bound_Ms of Begin_Switch, whatever the
---  instances do. Times are SYSCALL_GETTIME milliseconds.
+--  instances do. Times are CuBit.Monotonic milliseconds.
 package Service_Switches with SPARK_Mode is
    package SR renames CuBit.Service_Replacement;
    use type SR.Outcome, SR.Health_Failure;

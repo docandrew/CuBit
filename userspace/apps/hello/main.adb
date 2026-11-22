@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Log_Records;
 with CuBit.Logging;
@@ -36,6 +37,8 @@ procedure Main is
    Outlet : constant CuBit.Streams.StreamId := CuBit.Streams.Open_Outlet ("com.cubit.hello.greeting");
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    if Outlet /= CuBit.Streams.NO_STREAM then
       CuBit.Streams.streamPrint (Outlet, Greeting & ASCII.LF);
    end if;

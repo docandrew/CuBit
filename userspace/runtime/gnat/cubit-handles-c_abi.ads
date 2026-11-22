@@ -26,6 +26,14 @@ package CuBit.Handles.C_ABI with Pure, SPARK_Mode is
    function To_C (Item : Endpoint) return C_Endpoint;
    function To_Endpoint (Item : C_Endpoint) return Endpoint;
 
+   --  struct cubit_trace { uint64_t opaque; } (the kernel trace object)
+   type C_Trace is record
+      Opaque : Unsigned_64 := ABI.No_Handle;
+   end record
+   with Convention => C_Pass_By_Copy;
+
+   No_C_Trace : constant C_Trace := (Opaque => ABI.No_Handle);
+
 private
    function To_C (Item : Endpoint) return C_Endpoint is
      ((Opaque => Item.Word));

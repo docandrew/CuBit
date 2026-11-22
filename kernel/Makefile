@@ -17,6 +17,21 @@ WORK_STEALING ?= 1
 # The futex pause (IPC-010, UMWAIT): off by default until proved on the
 # laptop; USER_WAIT_PAUSE=1 make -C kernel world turns it on.
 USER_WAIT_PAUSE ?= 0
+# Address-space tags (PCIDs, src/tlb_context.ads): off by default until proved
+# on the laptop. No test host here has PCID (AMD KVM guests, TCG), so the
+# tagged path has not run yet; TAGGED_TLB=1 make -C kernel world turns it on.
+TAGGED_TLB ?= 0
+# System call census (ABI-002, src/syscall_census.ads); diagnostic builds only.
+SYSCALL_CENSUS ?= 0
+# Interrupt-entry SMAP probe (SEC-026, Interrupts.Probe_User_Access): test
+# kernels only, for headless --test alignment-flag.
+SMAP_ENTRY_PROBE ?= 0
+# Kernel-map probe (KERN-014, Process.Map_Probe): test kernels only, for
+# headless --test kernel-map-probe. Off by default.
+KERN014_PROBE ?= 0
+# Debug-register probe (DBG-001, src/debug_register_probe.ads): test kernels
+# only, for headless --test mov-ss-debug. Off by default.
+DEBUG_REGISTER_PROBE ?= 0
 # Records in the kernel log ring (LOG-004, src/kernel_log.ads): at most
 # Kernel_Log_Publication.Maximum_Records (4096). Tests shrink it to overflow
 # the ring before logstore starts (tests/kernel-log-ring/run.sh); src/build.ads
@@ -86,6 +101,20 @@ endef
 # tests select their accelerator independently in tests/headless/run.sh.
 QEMU_ACCEL ?= kvm
 QEMU_ACCEL_ARGS := $(if $(strip $(QEMU_ACCEL)),-accel $(QEMU_ACCEL),)
+# The guest CPU of the interactive run targets (run, run-desktop and its
+# variants). tests/headless/run.sh --test desktop-session boots with this
+# same model (print-run-cpu). +invtsc exposes the host's invariant TSC, as
+# real hardware and every KVM headless test do (QEMU masks it otherwise):
+# only then does the kernel publish the clock conversion user space reads.
+# Without it user space falls back to the kernel's millisecond word while
+# the kernel's timer waits keep the HPET's epoch; sleeps then return at
+# once, and virtio-gpu.drv's boot commands time out (run-desktop never
+# reached the desktop). TCG drops the flag with a warning.
+QEMU_RUN_CPU ?= Broadwell,vendor=GenuineIntel,+invtsc
+
+.PHONY : print-run-cpu
+print-run-cpu:
+	@echo $(QEMU_RUN_CPU)
 
 all: cubit_kernel iso
 
@@ -113,6 +142,11 @@ build/libcubit.a:
 		-e 's/SED_ONESHOT_SCHEDULING/$(if $(filter 1,$(ONESHOT_SCHEDULING)),True,False)/' \
 		-e 's/SED_WORK_STEALING/$(if $(filter 1,$(WORK_STEALING)),True,False)/' \
 		-e 's/SED_USER_WAIT_PAUSE/$(if $(filter 1,$(USER_WAIT_PAUSE)),True,False)/' \
+		-e 's/SED_TAGGED_TLB/$(if $(filter 1,$(TAGGED_TLB)),True,False)/' \
+		-e 's/SED_SYSCALL_CENSUS/$(if $(filter 1,$(SYSCALL_CENSUS)),True,False)/' \
+		-e 's/SED_SMAP_ENTRY_PROBE/$(if $(filter 1,$(SMAP_ENTRY_PROBE)),True,False)/' \
+		-e 's/SED_KERN014_PROBE/$(if $(filter 1,$(KERN014_PROBE)),True,False)/' \
+		-e 's/SED_DEBUG_REGISTER_PROBE/$(if $(filter 1,$(DEBUG_REGISTER_PROBE)),True,False)/' \
 		-e 's/SED_KERNEL_LOG_RECORDS/$(KERNEL_LOG_RECORDS)/' \
 		-e 's/SED_SRC_HASH/$(SRC_HASH)/' src/build.pre > src/build.ads
 
@@ -130,7 +164,7 @@ build/init.bin: src/init.asm
 # always records its absolute working directory as DW_AT_comp_dir and has no
 # prefix map. The include files are prerequisites (boot.asm's entry gate macro
 # is shared with the hosted tests/multiboot-entry).
-KERNEL_ASM_OBJECTS := build/boot.o build/boot_ap.o build/context_switch.o \
+KERNEL_ASM_OBJECTS := build/boot.o build/boot_ap.o build/context_switch.o build/svm_run.o build/vmx_entry.o \
 	build/interrupt_handlers.o build/syscall_entry.o
 $(KERNEL_ASM_OBJECTS): build/%.o: src/%.asm src/cubit.inc src/multiboot_entry.inc
 	mkdir -p build
@@ -235,6 +269,13 @@ prove-process-lifetime:
 .PHONY : test-fs033
 test-fs033:
 	python3 -I ../tests/fs033/check_device_locators.py ..
+
+# Programs that compile CCL sources from an explicit list must list every
+# unit the shared settings catalogue (ccl-setting_kinds.ads) withs
+# (tests/ccl-source-lists/check.py).
+.PHONY : test-ccl-source-lists
+test-ccl-source-lists:
+	python3 ../tests/ccl-source-lists/check.py
 
 .PHONY : test-sec025
 test-sec025:
@@ -386,6 +427,59 @@ prove-work-stealing:
 	$(ALR) gnatprove -P../tests/work-stealing/stealing.gpr -u work_stealing.adb \
 		--level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/work-stealing/build/gnatprove/gnatprove.out
+
+.PHONY : test-address-space-tags prove-address-space-tags
+test-address-space-tags:
+	$(ALR) gprbuild -p -P../tests/address-space-tags/address_space_tags_tests.gpr
+	../tests/address-space-tags/build/main
+
+prove-address-space-tags:
+	$(ALR) gnatprove -P../tests/address-space-tags/address_space_tags_tests.gpr \
+		-u address_space_tags.adb tag_protocol.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/address-space-tags/build/gnatprove/gnatprove.out
+
+.PHONY : test-thread-slots prove-thread-slots
+test-thread-slots:
+	$(ALR) gprbuild -p -P../tests/thread-slots/thread_slots_tests.gpr
+	../tests/thread-slots/build/main
+
+prove-thread-slots:
+	$(ALR) gnatprove -P../tests/thread-slots/thread_slots_tests.gpr \
+		-u thread_slots.adb slot_protocol.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/thread-slots/build/gnatprove/gnatprove.out
+
+.PHONY : test-trace-object prove-trace-object
+test-trace-object:
+	$(ALR) gprbuild -p -P../tests/trace-object/trace_object_tests.gpr
+	../tests/trace-object/build/main
+
+prove-trace-object:
+	$(ALR) gnatprove -P../tests/trace-object/trace_object_tests.gpr \
+		-u trace_abi.ads --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/trace-object/build/gnatprove/gnatprove.out
+
+.PHONY : test-test-console prove-test-console
+# The test console object's decision and the debug-text framing (ABI-002).
+test-test-console:
+	$(ALR) gprbuild -p -P../tests/test-console/test_console_tests.gpr
+	../tests/test-console/build/main
+
+prove-test-console:
+	$(ALR) gnatprove -P../tests/test-console/test_console_tests.gpr \
+		-u test_console_abi.ads cubit-console_lines.adb --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/test-console/build/gnatprove/gnatprove.out
+
+.PHONY : test-process-list-object prove-process-list-object
+test-process-list-object:
+	$(ALR) gprbuild -p -P../tests/process-list-object/process_list_object_tests.gpr
+	../tests/process-list-object/build/main
+
+prove-process-list-object:
+	$(ALR) gnatprove -P../tests/process-list-object/process_list_object_tests.gpr \
+		-u process_list_abi.ads --level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/process-list-object/build/gnatprove/gnatprove.out
 
 .PHONY : test-futex-queues prove-futex-queues
 test-futex-queues:
@@ -691,6 +785,50 @@ capability-test: ccl-build user_runtime ccl-manifest
 	cp ../userspace/apps/capability-test/build/capability-test.app isodir/boot/capability-test.app
 	$(ALR) python3 ../tests/process-construction/make-fixtures.py \
 		isodir/boot/capability-test.app ../tests/process-construction/build
+
+# The launch gate check (CAP-012) and its two children
+# (tests/headless/run.sh --test launch-gate).
+LAUNCH_GATE_APPS := launch-gate-check launch-gate-child launch-gate-greedy
+.PHONY : launch-gate
+launch-gate: ccl-build user_runtime ccl-manifest capability-test
+	for app in $(LAUNCH_GATE_APPS); do \
+		mkdir -p ../userspace/apps/$$app/build && \
+		$(CCL_BUILD) ../userspace/apps/$$app/component.ccl && \
+		cp ../userspace/apps/$$app/build/$$app.app isodir/boot/$$app.app || exit 1; \
+	done
+
+# The SPAWN rules check (CAP-012): runs in procmgr's place from a test
+# initrd only (tests/headless/run.sh --test spawn-rules).
+.PHONY : debug-observe-check
+# The Debug_Observe check (DBG-001): headless --test debug-observe puts it in
+# procmgr's place.
+debug-observe-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/debug-observe-check/build
+	$(CCL_BUILD) ../userspace/apps/debug-observe-check/component.ccl
+	cp ../userspace/apps/debug-observe-check/build/debug-observe-check.app isodir/boot/debug-observe-check.app
+
+.PHONY : vm-hello-check
+# The VM mechanism check (VMM-001 slice 1): headless --test vm-hello puts it
+# in procmgr's place.
+vm-hello-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/vm-hello-check/build
+	$(CCL_BUILD) ../userspace/apps/vm-hello-check/component.ccl
+	cp ../userspace/apps/vm-hello-check/build/vm-hello-check.app isodir/boot/vm-hello-check.app
+
+.PHONY : vm-linux-check
+# The Linux guest check (VMM-001 slice 1): headless --test vm-linux puts it
+# in procmgr's place. The guest image is pinned (tests/vm-linux).
+vm-linux-check: ccl-build user_runtime ccl-manifest
+	bash ../tests/vm-linux/guest-image.sh >/dev/null
+	mkdir -p ../userspace/apps/vm-linux-check/build
+	$(CCL_BUILD) ../userspace/apps/vm-linux-check/component.ccl
+	cp ../userspace/apps/vm-linux-check/build/vm-linux-check.app isodir/boot/vm-linux-check.app
+
+.PHONY : spawn-rules-check
+spawn-rules-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/spawn-rules-check/build
+	$(CCL_BUILD) ../userspace/apps/spawn-rules-check/component.ccl
+	cp ../userspace/apps/spawn-rules-check/build/spawn-rules-check.app isodir/boot/spawn-rules-check.app
 
 # Portable protocol checks and an unprivileged native desktop adversary.
 .PHONY: prepare-stream-policies test-stream-policies prove-stream-policies
@@ -1285,11 +1423,37 @@ CCL_BUILD_TOOL := ../userspace/ccl/build/ccl-build/ccl-build
 CCL_BUILD_STORE ?= $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/cubit/storehouse
 CCL_BUILD = $(CCL_BUILD_TOOL) build --store $(CCL_BUILD_STORE) --source-root $(abspath ..) \
 	--import gnat-15.3.0-x86_64-linux-musl=$(CUBIT_GNAT) --import binutils-2.46=$(CUBIT_BINUTILS) \
-	--out $(abspath ..)
+	--signing $(CUBIT_SIGNING) --out $(abspath ..)
 
 .PHONY: ccl-build
 ccl-build:
 	$(ALR) gprbuild -p -q -P ../userspace/ccl/ccl_build.gpr
+
+# Signed binaries (SIGN-001, docs/signed-binaries.md section 7): every native
+# program is signed as the last step of its build, after strip. The host key
+# lives outside the repository, in CUBIT_SIGNING, made once by
+# `make signing-key` (ccl-sign init; SIGNING_NAME names the CA); a build
+# without a key stops and names that command. Images name the CA through
+# their `builder` field and ccl-image's --import, never by a path here, and
+# ccl-image refuses any executable that does not verify (IMAGE_SIGNING).
+# Signing changes no program's behaviour: loaders read the ELF prefix, and
+# nothing verifies on CuBit until procmgr does.
+CUBIT_SIGNING ?= $(or $(XDG_CONFIG_HOME),$(HOME)/.config)/cubit/signing
+SIGNING_NAME ?= $(shell hostname -s)
+CCL_SIGN_TOOL := ../userspace/ccl/build/sign/ccl-sign
+.PHONY: ccl-sign signing-key sign-programs
+ccl-sign:
+	$(ALR) gprbuild -p -q -P ../userspace/ccl/ccl_sign.gpr
+signing-key: ccl-sign
+	$(CCL_SIGN_TOOL) init --signing $(CUBIT_SIGNING) --name "$(SIGNING_NAME)"
+# Strip, then sign, every program staged in isodir/boot (tools/sign_programs.py);
+# the kernel is the boot trusted base and stays as GRUB loads it. Image
+# recipes run it first, so whatever rule placed a program, it is signed.
+SIGN_PROGRAMS = $(ALR) python3 ../tools/sign_programs.py isodir/boot --signing $(CUBIT_SIGNING) \
+	--sign-tool $(CCL_SIGN_TOOL) --debug-dir debug --exclude cubit_kernel
+IMAGE_SIGNING = --import cubit-signing-ca=$(CUBIT_SIGNING)/builder-ca.der --sign-tool $(CCL_SIGN_TOOL)
+sign-programs: ccl-sign
+	$(SIGN_PROGRAMS)
 
 # The same compiler driver for native assembly (manifest objects).
 NATIVE_CC = $(CUBIT_GNAT)/bin/x86_64-unknown-linux-musl-gcc -B$(CUBIT_BINUTILS)/bin/
@@ -1450,6 +1614,81 @@ timesync-test: timesync
 	$(ALR) objcopy --dump-section .cubit.caps=$(TIMESYNC_VARIANT)/caps-installed.bin \
 		isodir/boot/timesync-test.svc
 	cmp $(TIMESYNC_VARIANT)/caps-test.bin $(TIMESYNC_VARIANT)/caps-installed.bin
+
+# Headless-test variant of logstore (ABI-002, Test_Console_ABI): logstore.svc
+# with only .cubit.caps and .cubit.startup replaced by
+# tests/headless/logstore-test/manifest.ccl, which adds the test console
+# object (logstore mirrors programs' console text onto the serial console).
+# Every other manifest section must equal the shipped logstore's. Only
+# tests/headless/run.sh installs it (as logstore.svc, for a plan approving
+# (test-console approve-declared)); no shipped image has it, and
+# tests/test-console checks that.
+LOGSTORE_VARIANT := ../tests/headless/logstore-test/build/variant
+LOGSTORE_SECTIONS_SAME := id access resources devices launch description channels parameters
+.PHONY : logstore-test
+logstore-test: logstore
+	mkdir -p $(LOGSTORE_VARIANT)/build/generated
+	cp ../tests/headless/logstore-test/manifest.ccl $(LOGSTORE_VARIANT)/manifest.ccl
+	$(call compile_ccl_manifest,$(LOGSTORE_VARIANT))
+	set -e; for section in $(LOGSTORE_SECTIONS_SAME); do \
+		rm -f $(LOGSTORE_VARIANT)/$$section-test.bin $(LOGSTORE_VARIANT)/$$section-production.bin; \
+		$(ALR) objcopy --dump-section .cubit.$$section=$(LOGSTORE_VARIANT)/$$section-test.bin \
+			$(LOGSTORE_VARIANT)/build/manifest.o $(LOGSTORE_VARIANT)/scratch.o 2>/dev/null || true; \
+		$(ALR) objcopy --dump-section .cubit.$$section=$(LOGSTORE_VARIANT)/$$section-production.bin \
+			../userspace/services/logstore/build/logstore.svc $(LOGSTORE_VARIANT)/scratch.svc 2>/dev/null || true; \
+		if [ -e $(LOGSTORE_VARIANT)/$$section-test.bin ] || [ -e $(LOGSTORE_VARIANT)/$$section-production.bin ]; then \
+			cmp $(LOGSTORE_VARIANT)/$$section-test.bin $(LOGSTORE_VARIANT)/$$section-production.bin; \
+		fi; \
+	done
+	set -e; for section in caps startup; do \
+		rm -f $(LOGSTORE_VARIANT)/$$section-test.bin $(LOGSTORE_VARIANT)/$$section-production.bin; \
+		$(ALR) objcopy --dump-section .cubit.$$section=$(LOGSTORE_VARIANT)/$$section-test.bin \
+			$(LOGSTORE_VARIANT)/build/manifest.o $(LOGSTORE_VARIANT)/scratch.o; \
+		$(ALR) objcopy --dump-section .cubit.$$section=$(LOGSTORE_VARIANT)/$$section-production.bin \
+			../userspace/services/logstore/build/logstore.svc $(LOGSTORE_VARIANT)/scratch.svc; \
+		! cmp -s $(LOGSTORE_VARIANT)/$$section-test.bin $(LOGSTORE_VARIANT)/$$section-production.bin; \
+	done
+	$(ALR) objcopy --update-section .cubit.caps=$(LOGSTORE_VARIANT)/caps-test.bin \
+		--update-section .cubit.startup=$(LOGSTORE_VARIANT)/startup-test.bin \
+		../userspace/services/logstore/build/logstore.svc isodir/boot/logstore-test.svc
+	$(ALR) objcopy --dump-section .cubit.startup=$(LOGSTORE_VARIANT)/startup-installed.bin \
+		isodir/boot/logstore-test.svc $(LOGSTORE_VARIANT)/scratch.svc
+	cmp $(LOGSTORE_VARIANT)/startup-test.bin $(LOGSTORE_VARIANT)/startup-installed.bin
+
+# Headless-test variant of ccl-remote (ABI-002): ccl-remote.app with only
+# .cubit.caps and .cubit.startup replaced by its manifest plus the test
+# console object request, generated here from the shipped manifest (no
+# second copy to drift). With display => Pairing_Display.Test_Console it
+# shows the pairing code there, never in logstore (the code is a secret).
+# Only tests/headless/run.sh (for a plan whose ccl-remote entry approves
+# (test-console approve-declared)) and the device-build test images use
+# it; tests/test-console checks no shipped image has it.
+CCL_REMOTE_VARIANT := ../tests/headless/ccl-remote-test/build/variant
+CCL_REMOTE_SECTIONS_SAME := id access resources devices launch description channels parameters
+.PHONY : ccl-remote-test
+ccl-remote-test: ccl-remote
+	mkdir -p $(CCL_REMOTE_VARIANT)/build/generated
+	sed 's|^requests => \[$$|requests => [\n(Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Test_Console "test-console"))|' \
+		../userspace/ccl/apps/ccl-remote/manifest.ccl > $(CCL_REMOTE_VARIANT)/manifest.ccl
+	grep -q 'Kernel_Object.Test_Console' $(CCL_REMOTE_VARIANT)/manifest.ccl
+	$(call compile_ccl_manifest,$(CCL_REMOTE_VARIANT))
+	set -e; for section in $(CCL_REMOTE_SECTIONS_SAME); do \
+		rm -f $(CCL_REMOTE_VARIANT)/$$section-test.bin $(CCL_REMOTE_VARIANT)/$$section-production.bin; \
+		$(ALR) objcopy --dump-section .cubit.$$section=$(CCL_REMOTE_VARIANT)/$$section-test.bin \
+			$(CCL_REMOTE_VARIANT)/build/manifest.o $(CCL_REMOTE_VARIANT)/scratch.o 2>/dev/null || true; \
+		$(ALR) objcopy --dump-section .cubit.$$section=$(CCL_REMOTE_VARIANT)/$$section-production.bin \
+			isodir/boot/ccl-remote.app $(CCL_REMOTE_VARIANT)/scratch.app 2>/dev/null || true; \
+		if [ -e $(CCL_REMOTE_VARIANT)/$$section-test.bin ] || [ -e $(CCL_REMOTE_VARIANT)/$$section-production.bin ]; then \
+			cmp $(CCL_REMOTE_VARIANT)/$$section-test.bin $(CCL_REMOTE_VARIANT)/$$section-production.bin; \
+		fi; \
+	done
+	set -e; for section in caps startup; do \
+		$(ALR) objcopy --dump-section .cubit.$$section=$(CCL_REMOTE_VARIANT)/$$section-test.bin \
+			$(CCL_REMOTE_VARIANT)/build/manifest.o $(CCL_REMOTE_VARIANT)/scratch.o; \
+	done
+	$(ALR) objcopy --update-section .cubit.caps=$(CCL_REMOTE_VARIANT)/caps-test.bin \
+		--update-section .cubit.startup=$(CCL_REMOTE_VARIANT)/startup-test.bin \
+		isodir/boot/ccl-remote.app isodir/boot/ccl-remote-test.app
 
 # The Messages API client (AGENT-001 slice 1) and the secret store v0
 # (SEC-022) that holds its API key.
@@ -1632,6 +1871,38 @@ nmi-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/nmi-check/component.ccl
 	cp ../userspace/apps/nmi-check/build/nmi-check.app isodir/boot/nmi-check.app
 
+# Interrupt-entry direction flag regression (WEB-001 guest resets): headless
+# --test direction-flag.
+.PHONY : direction-flag-check
+direction-flag-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/direction-flag-check/build
+	$(CCL_BUILD) ../userspace/apps/direction-flag-check/component.ccl
+	cp ../userspace/apps/direction-flag-check/build/direction-flag-check.app isodir/boot/direction-flag-check.app
+
+# Interrupt-entry alignment-check flag regression (SEC-026): headless
+# --test alignment-flag, with a kernel built SMAP_ENTRY_PROBE=1.
+.PHONY : alignment-flag-check
+alignment-flag-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/alignment-flag-check/build
+	$(CCL_BUILD) ../userspace/apps/alignment-flag-check/component.ccl
+	cp ../userspace/apps/alignment-flag-check/build/alignment-flag-check.app isodir/boot/alignment-flag-check.app
+
+# Kernel-map probe (KERN-014): headless --test kernel-map-probe, with a
+# kernel built KERN014_PROBE=1.
+.PHONY : kernel-map-probe
+kernel-map-probe: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/kernel-map-probe/build
+	$(CCL_BUILD) ../userspace/apps/kernel-map-probe/component.ccl
+	cp ../userspace/apps/kernel-map-probe/build/kernel-map-probe.app isodir/boot/kernel-map-probe.app
+
+# MOV SS / POP SS debug-exception check (DBG-001, CVE-2018-8897 class):
+# headless --test mov-ss-debug, with a kernel built DEBUG_REGISTER_PROBE=1.
+.PHONY : mov-ss-check
+mov-ss-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/mov-ss-check/build
+	$(CCL_BUILD) ../userspace/apps/mov-ss-check/component.ccl
+	cp ../userspace/apps/mov-ss-check/build/mov-ss-check.app isodir/boot/mov-ss-check.app
+
 # Out-of-memory reclaim check (headless oom-reclaim): teardown allocates nothing.
 .PHONY : oom-check
 oom-check: ccl-build user_runtime ccl-manifest
@@ -1648,6 +1919,51 @@ wait-check: ccl-build user_runtime ccl-manifest
 .PHONY : futex-share
 futex-share: ccl-build user_runtime ccl-manifest
 	for app in futex-share-server futex-share-client futex-share-outsider; do \
+	  mkdir -p ../userspace/apps/$$app/build && \
+	  $(CCL_BUILD) ../userspace/apps/$$app/component.ccl && \
+	  cp ../userspace/apps/$$app/build/$$app.app isodir/boot/$$app.app || exit 1; \
+	done
+# The debugger preview (DBG-001): its demo target and the engine's native
+# check, headless --test debug-engine.
+.PHONY : debug-demo debug-engine-check
+debug-demo: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/debug-demo/build
+	$(CCL_BUILD) ../userspace/apps/debug-demo/component.ccl
+	cp ../userspace/apps/debug-demo/build/debug-demo.app isodir/boot/debug-demo.app
+debug-engine-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/debug-engine-check/build
+	$(CCL_BUILD) ../userspace/apps/debug-engine-check/component.ccl
+	cp ../userspace/apps/debug-engine-check/build/debug-engine-check.app isodir/boot/debug-engine-check.app
+# The debugger engine through the kernel (DBG-001, CAP-012): a target with
+# no stub and the engine's kernel-path check, headless --test debug-kernel.
+DEBUG_KERNEL_APPS := debug-plain debug-kernel-check debug-gate-check
+.PHONY : debug-kernel
+debug-kernel: ccl-build user_runtime ccl-manifest
+	for app in $(DEBUG_KERNEL_APPS); do \
+		mkdir -p ../userspace/apps/$$app/build && \
+		$(CCL_BUILD) ../userspace/apps/$$app/component.ccl && \
+		cp ../userspace/apps/$$app/build/$$app.app isodir/boot/$$app.app || exit 1; \
+	done
+# The debugger preview's Rust target and the engine's native Rust check,
+# headless --test debug-engine-rs.
+.PHONY : debug-demo-rs debug-engine-rs-check
+debug-demo-rs: ccl-manifest
+	bash ../userspace/apps/debug-demo-rs/build.sh
+	cp ../userspace/rust/build/debug-demo-rs.app isodir/boot/debug-demo-rs.app
+debug-engine-rs-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/debug-engine-rs-check/build
+	$(CCL_BUILD) ../userspace/apps/debug-engine-rs-check/component.ccl
+	cp ../userspace/apps/debug-engine-rs-check/build/debug-engine-rs-check.app isodir/boot/debug-engine-rs-check.app
+# The Debugger app (DBG-001 preview): headless --test debugger-gui.
+.PHONY : debugger
+debugger: ccl-build user_runtime ccl-manifest ui-fonts-native
+	mkdir -p ../userspace/apps/debugger/build
+	$(CCL_BUILD) ../userspace/apps/debugger/component.ccl
+	cp ../userspace/apps/debugger/build/debugger.app isodir/boot/debugger.app
+# Address-space tags (PCIDs): headless --test tlb-tags.
+.PHONY : tlb-tags
+tlb-tags: ccl-build user_runtime ccl-manifest
+	for app in tlb-check tlb-probe; do \
 	  mkdir -p ../userspace/apps/$$app/build && \
 	  $(CCL_BUILD) ../userspace/apps/$$app/component.ccl && \
 	  cp ../userspace/apps/$$app/build/$$app.app isodir/boot/$$app.app || exit 1; \
@@ -1794,24 +2110,36 @@ tls-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/tls-check/component.ccl
 	cp ../userspace/apps/tls-check/build/tls-check.app isodir/boot/tls-check.app
 
+# SPARKTLS's FIPS 140-3 post-link step (the pinned crate's tools/fips_inject,
+# built for the host): writes the software integrity test's HMACs into a
+# program that links SPARKTLS (userspace/lib/tls/sparktls_fips_cubit.ld).
+# Without it SPARKTLS.RBG.Init fails its FIPS self-test and no session starts.
+FIPS_INJECT := ../tools/fips-inject/build/fips_inject
+.PHONY : fips-inject
+fips-inject: tls-crates
+	$(ALR) gprbuild -p -j8 -P ../tools/fips-inject/fips_inject.gpr \
+		-XCUBIT_SPARK_CRATES=$(CUBIT_SPARK_CRATES)
+
 # TLS client service.
 .PHONY : tls
-tls: user_runtime ccl-manifest tls-crates
+tls: user_runtime ccl-manifest tls-crates fips-inject
 	mkdir -p ../userspace/services/tls/build
 	$(call compile_ccl_manifest,../userspace/services/tls)
 	$(NATIVE_GPRBUILD) -j8 -P ../userspace/services/tls/tls.gpr \
 		-XCUBIT_SPARK_CRATES=$(CUBIT_SPARK_CRATES)
+	$(FIPS_INJECT) ../userspace/services/tls/build/tls.svc
 	cp ../userspace/services/tls/build/tls.svc isodir/boot/tls.svc
 
 # Native SPARKTLS probe for the headless tls-probe regression; embeds the
 # generated test root.
-tls-probe: user_runtime ccl-manifest tls-crates tls-test-pki
+tls-probe: user_runtime ccl-manifest tls-crates tls-test-pki fips-inject
 	mkdir -p ../userspace/apps/tls-probe/build/generated
 	$(call compile_ccl_manifest,../userspace/apps/tls-probe)
 	python3 ../tools/der_to_ada.py TLS_Probe_Roots DER ../tests/tls/build/pki/ca.der \
 		../userspace/apps/tls-probe/build/generated/tls_probe_roots.ads
 	$(NATIVE_GPRBUILD) -j8 -P ../userspace/apps/tls-probe/tls_probe.gpr \
 		-XCUBIT_SPARK_CRATES=$(CUBIT_SPARK_CRATES)
+	$(FIPS_INJECT) ../userspace/apps/tls-probe/build/tls-probe.app
 	cp ../userspace/apps/tls-probe/build/tls-probe.app isodir/boot/tls-probe.app
 
 # Capability-addressed monotonic clock service.
@@ -2049,6 +2377,16 @@ calculator: ccl-build user_runtime ccl-manifest ui-fonts-native
 	$(CCL_BUILD) ../userspace/apps/calculator/component.ccl
 	cp ../userspace/apps/calculator/build/calculator.app isodir/boot/calculator.app
 
+.PHONY : vmm
+# vmm (VMM-001): the per-VM monitor as a desktop app, with the pinned guest.
+vmm: ccl-build user_runtime ccl-manifest ui-fonts-native
+	bash ../tests/vm-linux/guest-image.sh >/dev/null || { \
+	  echo 'vmm: tests/vm-linux/guest-image.sh could not build the pinned guest (firmware/vm-guest/bzImage, initramfs.cpio); vmm.app embeds both' >&2; \
+	  exit 1; }
+	mkdir -p ../userspace/apps/vmm/build
+	$(CCL_BUILD) ../userspace/apps/vmm/component.ccl
+	cp ../userspace/apps/vmm/build/vmm.app isodir/boot/vmm.app
+
 .PHONY : metricsview
 # Metrics (MET-002's app): dashboards over metrics.svc's series; the charts
 # core in userspace/lib/charts.
@@ -2114,8 +2452,9 @@ install-efi: ../tests/hardware/grub-installed.cfg
 	grub-mkstandalone -O x86_64-efi --directory="$(CUBIT_GRUB_EFI_DIR)" \
 		--modules="$(INSTALL_EFI_MODULES)" -o isodir/boot/install-bootx64.efi \
 		"boot/grub/grub.cfg=../tests/hardware/grub-installed.cfg"
-installed-initrd: $(INITRD_SERVICES) ccl-image ../images/installed-initrd.ccl $(CCL_IMAGE_CATALOG)
-	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/installed-initrd.ccl \
+installed-initrd: $(INITRD_SERVICES) ccl-image ccl-sign ../images/installed-initrd.ccl $(CCL_IMAGE_CATALOG)
+	$(SIGN_PROGRAMS)
+	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/installed-initrd.ccl $(IMAGE_SIGNING) \
 		--debug-dir debug --output isodir/boot/installed-initrd.img
 
 # SYS-001: installer.svc, system.disks and system.install (holds disk-install).
@@ -2317,6 +2656,20 @@ log-retire: ccl-build user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/log-retire/build
 	$(CCL_BUILD) ../userspace/apps/log-retire/component.ccl
 	cp ../userspace/apps/log-retire/build/log-retire.app isodir/boot/log-retire.app
+
+# ABI-002: a program whose debug text reaches the serial console only
+# through test builds' logstore mirror (tests/headless console-route).
+.PHONY : console-route-check
+console-route-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/console-route-check/build
+	$(CCL_BUILD) ../userspace/apps/console-route-check/component.ccl
+	cp ../userspace/apps/console-route-check/build/console-route-check.app isodir/boot/console-route-check.app
+
+.PHONY : late-intro-check
+late-intro-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/late-intro-check/build
+	$(CCL_BUILD) ../userspace/apps/late-intro-check/component.ccl
+	cp ../userspace/apps/late-intro-check/build/late-intro-check.app isodir/boot/late-intro-check.app
 
 log-check: ccl-build user_runtime ccl-manifest log-retire
 	mkdir -p ../userspace/apps/log-check/build
@@ -2538,9 +2891,9 @@ config-storage: user_runtime ccl-manifest
 # Disk images rebuild automatically when any of these change.
 DOOM_WAD ?= ../doom1.wad
 
-# Servo (docs/servo-port.md) joins the disk once built (`make servo`; it needs
-# the Servo checkout in userspace/rust/build/servo-work): cubitshell.app, the
-# fonts its font list scans (@nvme:0/fonts) and its start page (servo/pages).
+# Servo (docs/servo-port.md) joins the disk once built (`make servo`; it
+# fetches its pinned Servo checkout into userspace/rust/build/servo-work):
+# cubitshell.app and its start page (servo/pages). Its fonts are linked in.
 SERVO_DISK_CONTENTS := $(wildcard isodir/boot/cubitshell.app)
 DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.app \
 	isodir/boot/sameboy.app ../userspace/ports/sameboy/build/test.gb \
@@ -2559,12 +2912,8 @@ DISK_CONTENTS := isodir/boot/shell.app isodir/boot/doom.elf isodir/boot/sleep.ap
 	../init.ccl ../userspace/motd.txt $(DOOM_WAD) \
 	$(SERVO_DISK_CONTENTS) $(DESKTOP_ASSETS)
 
-SERVO_FONT_DIR = $(dir $(IBM_PLEX_SANS_FONT))
 SERVO_DISK_FILES = $(if $(SERVO_DISK_CONTENTS), \
-	--file "servo/pages=../userspace/servo/start-pages" \
-	$(foreach f,IBMPlexSans-Regular.ttf IBMPlexSans-Bold.ttf IBMPlexSans-Italic.ttf \
-	  IBMPlexSerif-Regular.ttf IBMPlexSerif-Bold.ttf IBMPlexMono-Regular.ttf, \
-	  --file "fonts/$(f)=$(SERVO_FONT_DIR)$(f)"))
+	--file "servo/pages=../userspace/servo/start-pages")
 
 # Guest memory for the interactive desktop targets (Servo needs well over
 # the 128 MB the headless tests use).
@@ -2618,7 +2967,8 @@ desktop-session-content: $(INITRD_SERVICES) desktop metricsvc display logstore \
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
 # Both generated development disks use the same verified payload builder.
-ata_disk.img nvme_disk.img: $(DISK_CONTENTS) $(DESKTOP_CONFIG_SAMPLES) ../tools/build_development_disk.py
+ata_disk.img nvme_disk.img: $(DISK_CONTENTS) $(DESKTOP_CONFIG_SAMPLES) ../tools/build_development_disk.py ccl-sign
+	$(SIGN_PROGRAMS)
 	$(ALR) python3 ../tools/build_development_disk.py $@ \
 		--boot $(filter isodir/boot/%,$(DISK_CONTENTS)) \
 		--file "motd.txt=../userspace/motd.txt" \
@@ -2641,11 +2991,14 @@ nvme_disk: nvme_disk.img
 # and game payloads that the security test never launches.
 CAPABILITY_SECURITY_DISK := capability_security_disk.img
 
-$(CAPABILITY_SECURITY_DISK): capability-test ../tests/headless/init-capability-security.ccl
+$(CAPABILITY_SECURITY_DISK): capability-test logstore-test ../tests/headless/init-capability-security.ccl ccl-sign
+	$(SIGN_PROGRAMS)
 	dd if=/dev/zero of=$(CAPABILITY_SECURITY_DISK) bs=1K count=16384
 	mke2fs -t ext2 -F $(CAPABILITY_SECURITY_DISK)
 	debugfs -w -R "write ../tests/headless/init-capability-security.ccl init.ccl" $(CAPABILITY_SECURITY_DISK)
 	debugfs -w -R "write isodir/boot/capability-test.app capability-test.app" $(CAPABILITY_SECURITY_DISK)
+	# Services' debug text reaches serial only through logstore's mirror (ABI-002).
+	debugfs -w -R "write isodir/boot/logstore-test.svc logstore.svc" $(CAPABILITY_SECURITY_DISK)
 
 # Build the real kernel, normal stage-1 service graph, and only the stage-2
 # payload needed by the capability test.  The recipe creates the initrd after
@@ -2664,8 +3017,9 @@ capability-security-image: cubit_kernel $(CAPABILITY_SECURITY_STAGE1) $(CAPABILI
 # The kernel parses this at boot and loads services from it.
 # Stage-2 content (shell.app, doom.elf, motd.txt, etc.) lives on disk.
 .PHONY : initrd
-initrd: $(INITRD_SERVICES) ccl-image ../images/development-initrd.ccl $(CCL_IMAGE_CATALOG) ../system.ccl
-	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/development-initrd.ccl \
+initrd: $(INITRD_SERVICES) ccl-image ccl-sign ../images/development-initrd.ccl $(CCL_IMAGE_CATALOG) ../system.ccl
+	$(SIGN_PROGRAMS)
+	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/development-initrd.ccl $(IMAGE_SIGNING) \
 		--debug-dir debug --output isodir/boot/initrd.img
 
 # Self-contained, read-only userspace image for real-hardware bring-up.  Keep
@@ -2684,9 +3038,10 @@ CCL_WORKSPACE_SAMPLES := $(sort $(wildcard ../userspace/ccl/samples/*.ccl))
 # Native USB optical edition. Keep the original initrd-only laptop image as
 # an independent fallback.
 .PHONY: usb-live-iso run-usb-live run-usb-live-fast
-usb-live-iso: ccl-image ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu config-storage teapots calculator lexicon dictionary bible $(LAPTOP_LIVE_RW_DISK) $(DESKTOP_ASSETS)
+usb-live-iso: ccl-image ccl-sign ../images/laptop-usb.ccl $(CCL_IMAGE_CATALOG) cubit_kernel $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) intel-gpu config-storage teapots calculator lexicon dictionary bible debugger $(LAPTOP_LIVE_RW_DISK) $(DESKTOP_ASSETS)
 	@test -s isodir/boot/cubitshell.app || (echo "missing Servo payload; run make -C kernel servo first" && false)
-	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
+	$(SIGN_PROGRAMS)
+	CUBIT_SIGNING=$(CUBIT_SIGNING) bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)"
 
 run-usb-live: usb-live-iso
 	$(MAKE) run-usb-live-fast
@@ -2699,6 +3054,12 @@ run-usb-live: usb-live-iso
 .PHONY: usb-live-uefi-iso
 usb-live-uefi-iso: usb-live-iso
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi
+
+# RELEASE-001: the public preview image (images/preview.ccl), UEFI. It
+# ships vmm.app (VMM-001, experimental) with its pinned Linux guest.
+.PHONY: preview-uefi-iso
+preview-uefi-iso: check-image-apps usb-live-iso debug-demo debug-demo-rs vmm
+	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi --preview
 
 # SYS-001: the UEFI live medium that installs CuBit (installer.svc, the
 # console, and the install payload at @cd:0/install).
@@ -2727,6 +3088,11 @@ check-image-apps:
 	python3 -I ../tests/image-apps/check_launch_programs.py ..
 
 .PHONY: usb-live-build-uefi-iso usb-live-build-test-uefi-iso
+# VMM-001 slice 1, the N150 run: the UEFI live medium plus vmm.app, started
+# with (vm-create approve-declared) (tests/hardware/vmm-laptop-build.sh).
+.PHONY: usb-live-vmm-uefi-iso
+usb-live-vmm-uefi-iso: usb-live-iso vmm
+	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi --vmm
 usb-live-build-uefi-iso: check-image-apps usb-live-iso installer install-efi installed-initrd device-build-root
 	bash ../tests/usb-optical/build-live.sh "$(DOOM_WAD)" --uefi --device-build
 usb-live-build-test-uefi-iso: check-image-apps usb-live-iso installer install-efi installed-initrd device-build-root
@@ -2760,8 +3126,9 @@ $(LAPTOP_LIVE_RW_DISK): $(CCL_WORKSPACE_SAMPLES) ../userspace/ccl/samples Makefi
 test-ccl-images: $(LAPTOP_LIVE_RW_DISK)
 
 .PHONY : laptop-live-initrd
-laptop-live-initrd: ccl-image ../images/laptop-initrd.ccl $(CCL_IMAGE_CATALOG) $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)
-	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/laptop-initrd.ccl \
+laptop-live-initrd: ccl-image ccl-sign ../images/laptop-initrd.ccl $(CCL_IMAGE_CATALOG) $(LAPTOP_LIVE_STAGE1) $(LAPTOP_LIVE_STAGE2) $(LAPTOP_LIVE_RW_DISK)
+	$(SIGN_PROGRAMS)
+	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/laptop-initrd.ccl $(IMAGE_SIGNING) \
 		--input "doom-wad=$(DOOM_WAD)" --debug-dir debug --output isodir/boot/laptop-live-initrd.img
 
 # A blank SATA disk is attached to QEMU through Q35's ICH9 AHCI controller.
@@ -2862,7 +3229,7 @@ iso: cubit_kernel initrd
 # Test programs the headless images pack. world builds them too, so no test
 # runs a binary left over from an older ABI (a stale one passes or fails for
 # the wrong reason).
-TEST_PROGRAMS := logs boot-logs timesync-test llm-test ccl-console log-check \
+TEST_PROGRAMS := logs boot-logs timesync-test llm-test logstore-test ccl-remote-test console-route-check late-intro-check ccl-console log-check \
 	log-fields-check log-retention-check log-exit-probe crash-probe stack-probe libc-check cxx-check network-check net-link-check \
 	net-multi-check timesync-check \
 	tls-probe tls-check config-check desktop-check display-check clipboard-check \
@@ -2884,8 +3251,17 @@ IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer teapots gpio i2c-dw hid-i2c 
 check-declarations:
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
+	python3 ../tests/test-console/check-shipped.py
 
-world: check-declarations test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check readiness-writer futex-share secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check font-masks trap-flag-check nmi-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview
+# No shipped manifest, plan or image declares, approves or contains the test
+# console object (Test_Console_ABI); after world, every image's executables
+# that is built is checked too (logstore.svc among them).
+.PHONY : test-console-shipped
+test-console-shipped: world
+	python3 ../tests/test-console/check-shipped.py
+
+world: check-declarations test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check readiness-writer futex-share secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check font-masks trap-flag-check nmi-check direction-flag-check alignment-flag-check kernel-map-probe mov-ss-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview tlb-tags ccl-sign
+	$(SIGN_PROGRAMS)
 
 .PHONY : headless-test
 headless-test: world
@@ -2912,7 +3288,7 @@ run: nvme_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
-		-cpu Broadwell,vendor=GenuineIntel \
+		-cpu $(QEMU_RUN_CPU) \
 		-smp 4 \
 		-m 128M \
 		-cdrom cubit_kernel.iso \
@@ -2964,7 +3340,7 @@ run-desktop: cubit_kernel desktop-session-content
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
-		-cpu Broadwell,vendor=GenuineIntel \
+		-cpu $(QEMU_RUN_CPU) \
 		-smp 4 \
 		-m $(DESKTOP_MEMORY) \
 		-cdrom cubit_kernel.iso \
@@ -2999,7 +3375,7 @@ run-desktop-fast:
 		--hash cubit_kernel.iso -- qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
-		-cpu Broadwell,vendor=GenuineIntel \
+		-cpu $(QEMU_RUN_CPU) \
 		-smp 4 \
 		-m $(DESKTOP_MEMORY) \
 		-cdrom cubit_kernel.iso \
@@ -3034,7 +3410,7 @@ run-desktop-inspect:
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
-		-cpu Broadwell,vendor=GenuineIntel \
+		-cpu $(QEMU_RUN_CPU) \
 		-smp 4 \
 		-m $(DESKTOP_MEMORY) \
 		-cdrom cubit_kernel.iso \
@@ -3074,7 +3450,7 @@ run-virtio-vga: nvme_disk.img
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
-		-cpu Broadwell,vendor=GenuineIntel \
+		-cpu $(QEMU_RUN_CPU) \
 		-smp 4 \
 		-m 128M \
 		-cdrom cubit_kernel.iso \

@@ -11,6 +11,9 @@ MANIFEST := ../ccl/build/manifest/ccl-manifest
 CATALOG := ../ccl/catalogs/native-runtime-services.ccl
 LIB := build/cargo/$(TARGET)/release/libcubit_rust_probe.a
 DENIED_LIB := build/cargo-denied/$(TARGET)/release/libcubit_rust_probe.a
+# CuAlloc and the call census its system calls count into (the probes link
+# neither libc.a nor libgnat-user.a, which carry the census themselves).
+ALLOCATOR_LIBS := ../allocator/build/native-lib/libcubit_allocator.a ../allocator/build/calls-native-lib/libcubit_allocator_calls.a
 # The emphasis face, from the same pinned ibm-plex package as Regular (also
 # exported by flake.nix; derived here for shells entered before it was).
 IBM_PLEX_SANS_SEMIBOLD_FONT ?= $(dir $(IBM_PLEX_SANS_FONT))IBMPlexSans-SemiBold.ttf
@@ -29,6 +32,7 @@ NATIVE_GPRBUILD_CONFIG := $(or $(CUBIT_NATIVE_GPRBUILD_CONFIG),$(shell $(MAKE) -
 all:
 	mkdir -p build
 	cd ../../kernel && alr exec -- gprbuild $(NATIVE_GPRBUILD_CONFIG) -p -P ../userspace/allocator/allocator_native.gpr
+	cd ../../kernel && alr exec -- gprbuild $(NATIVE_GPRBUILD_CONFIG) -p -P ../userspace/allocator/allocator_calls_native.gpr
 	mkdir -p build/denied
 	$(MANIFEST) $(CATALOG) probe/manifest.ccl --rust-output build/bindings.rs > build/manifest.S
 	$(MANIFEST) $(CATALOG) probe/denied.ccl --rust-output build/denied/bindings.rs > build/denied.S
@@ -40,11 +44,11 @@ all:
 	CUBIT_BINDINGS_DIR=$(CURDIR)/build/denied $(CARGO) build --locked --offline --release -p cubit-rust-probe --target-dir build/cargo-denied
 	# -u: the generated startup check is only weakly referenced by the start
 	# code, which would not pull its archive member in.
-	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -u __cubit_startup_check -T ../c/link.ld --start-group $(LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/manifest.o -o build/rust-probe.app
-	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -u __cubit_startup_check -T ../c/link.ld --start-group $(DENIED_LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/denied.o -o build/rust-probe-denied.app
+	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -u __cubit_startup_check -T ../c/link.ld --start-group $(LIB) $(ALLOCATOR_LIBS) --end-group build/manifest.o -o build/rust-probe.app
+	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -u __cubit_startup_check -T ../c/link.ld --start-group $(DENIED_LIB) $(ALLOCATOR_LIBS) --end-group build/denied.o -o build/rust-probe-denied.app
 	# A deliberate mismatch: code built for manifest.ccl, linked with
 	# denied.ccl's sections. Its startup check must stop it (CAP-003).
-	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -u __cubit_startup_check -T ../c/link.ld --start-group $(LIB) ../allocator/build/native-lib/libcubit_allocator.a --end-group build/denied.o -o build/rust-probe-mismatch.app
+	ld -nostdlib -static --build-id=sha1 -z noexecstack -z stack-size=1048576 -u __cubit_startup_check -T ../c/link.ld --start-group $(LIB) $(ALLOCATOR_LIBS) --end-group build/denied.o -o build/rust-probe-mismatch.app
 
 .PHONY: fonts-host fonts-native fonts-test
 .PHONY: fonts-bench

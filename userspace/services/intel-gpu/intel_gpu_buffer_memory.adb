@@ -4,6 +4,7 @@ with CuBit.Messages; use CuBit.Messages;
 with Intel_GPU_Supervisor;
 with Intel_GPU_Diagnostics;
 with Intel_GPU_DMA_Cache;
+with CuBit.Monotonic;
 package body Intel_GPU_Buffer_Memory is
    package Layout renames Intel_GPU_Buffer_Backing;
    package Replies renames Intel_GPU_Buffer_Reply;
@@ -161,7 +162,7 @@ package body Intel_GPU_Buffer_Memory is
       Object.Index := Index; Object.Pages := Pages;
       Object.Generation := Records.Get (Object.Items, Index).Generation;
       Object.Retiring := False;
-      Object.Started_At := syscall (SYSCALL_GETTIME);
+      Object.Started_At := CuBit.Monotonic.Milliseconds;
       Object.Previous := Object.Started_At;
       if Object.Started_At > Unsigned_64'Last - 30_000 then return; end if;
       Object.Stage := Submit_Request;
@@ -186,7 +187,7 @@ package body Intel_GPU_Buffer_Memory is
       Object.Broken := True;
       Object.Index := Index; Object.Generation := Generation;
       Object.Retiring := True;
-      Object.Started_At := syscall (SYSCALL_GETTIME);
+      Object.Started_At := CuBit.Monotonic.Milliseconds;
       Object.Previous := Object.Started_At;
       if Object.Started_At > Unsigned_64'Last - 30_000 then return; end if;
       Request.tag := (label => Layout.Retire_Request_Label, length => 4,
@@ -202,7 +203,7 @@ package body Intel_GPU_Buffer_Memory is
       OK : Boolean;
    begin
       if not Object.Active then return; end if;
-      Now := syscall (SYSCALL_GETTIME);
+      Now := CuBit.Monotonic.Milliseconds;
       if Now = Unsigned_64'Last or else Now < Object.Previous or else
         Now - Object.Started_At >= 30_000 or else not Owner_Ready
       then Cancel (Object); return; end if;
@@ -385,7 +386,7 @@ package body Intel_GPU_Buffer_Memory is
          Tick (Object);
          exit when not Pending (Object);
          if not Object.Waiting_Metadata and then not Local_Work_Pending (Object) and then
-           Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 then
+           CuBit.Messages.Poll_Completion (Receipt'Address) /= 0 then
             Complete (Object, Receipt, Consumed);
             if not Consumed then Cancel (Object); end if;
          end if;

@@ -51,6 +51,12 @@ CHECKS = [
      {'DIGEST': None, 'SERIES_KEY': 'List-Metric_Series', 'ITEMS_KEY': 'List-Metric_Item',
       'SELECTOR_KEY': 'Metric_Selector', 'RANGE_KEY': 'Metric_Range', 'WINDOW_KEY': 'Metric_Window',
       'STATS_KEY': 'Metric_Stats'}),
+    (SRC / 'ccl-interfaces-debug.ads',
+     {'DIGEST': None, 'SESSION_KEY': 'Debug_Session', 'ATTACH_QUERY_KEY': 'Attach_Query',
+      'THREADS_KEY': 'List-Debug_Thread', 'FRAME_QUERY_KEY': 'Frame_Query', 'FRAMES_KEY': 'List-Debug_Frame',
+      'LOCALS_QUERY_KEY': 'Locals_Query', 'BINDING_KEY': 'Debug_Binding', 'BINDINGS_KEY': 'List-Debug_Binding',
+      'VALUE_QUERY_KEY': 'Value_Query', 'CHILDREN_QUERY_KEY': 'Children_Query', 'GRAPH_QUERY_KEY': 'Graph_Query',
+      'GRAPH_KEY': 'Debug_Graph', 'MEMORY_QUERY_KEY': 'Memory_Query', 'MEMORY_KEY': 'Debug_Memory'}),
     (SRC / 'ccl-interfaces-agent.ads',
      {'DIGEST': None, 'REQUEST_KEY': 'Agent_Request', 'SESSION_KEY': 'Agent_Session',
       'REPLY_KEY': 'Agent_Reply'})]

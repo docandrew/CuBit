@@ -27,6 +27,7 @@
 --  Every limit is a typed startup parameter or a named constant.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Log;
 with CuBit.Messages; use CuBit.Messages;
@@ -39,6 +40,7 @@ with CuBit.System_Stops;
 with Power_Decisions;
 with Parameters;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    package PR renames CuBit.Power_Requests;
@@ -193,6 +195,10 @@ procedure Main is
       end if;
       State := PD.Final;
       CuBit.Log.Info ("power: asking acpi.svc to enter S5");
+      --  Routed lines reach serial through logstore (ABI-002): hand them
+      --  over before the machine goes off (the kernel drains only its own
+      --  console before S5, LOG-009).
+      CuBit.Log.Flush;
       Request.tag := (label => PE.Enter_Sleep_State, length => PE.Sleep_Request_Words,
                       protocol => 0, ipc => <>, reserved => 0);
       Request.words (PE.Request_Word) := Enter_Id;
@@ -234,7 +240,7 @@ procedure Main is
       Status := PE.To_Watch_Status (Completion.msg.words (PE.Watch_Status_Word));
       if PD.Retry_Later (Status) then
          Watch_Retries := Watch_Retries + 1;
-         Watch_Retry_At := syscall (SYSCALL_GETTIME) + PE.Watch_Retry_Milliseconds;
+         Watch_Retry_At := CuBit.Monotonic.Milliseconds + PE.Watch_Retry_Milliseconds;
          CuBit.Log.Warning ("power: acpi.svc could not keep the power-button watch (WATCH_UNAVAILABLE," &
                             Unsigned_64'Image (Watch_Retries) & " in a row); watching again in" &
                             Unsigned_64'Image (PE.Watch_Retry_Milliseconds) & " ms");
@@ -331,6 +337,8 @@ procedure Main is
    Found : Boolean;
    Activity : Activity_Result;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Log.Info ("power: starting (button " &
                    (case Policy is when PD.Power_Off => "POWER_OFF", when PD.Halt => "HALT",
                                    when PD.Ignore => "IGNORE") &
@@ -345,7 +353,7 @@ begin
    loop
       Activity := Wait_For_Activity_Until (if Watch_Retry_At = 0 then Wait_Forever else Watch_Retry_At);
       exit when Activity = Unavailable;
-      if Watch_Retry_At /= 0 and then syscall (SYSCALL_GETTIME) >= Watch_Retry_At then
+      if Watch_Retry_At /= 0 and then CuBit.Monotonic.Milliseconds >= Watch_Retry_At then
          Watch_Retry_At := 0;
          Watch;
       end if;

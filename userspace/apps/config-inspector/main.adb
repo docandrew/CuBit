@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Desktop_Protocol;
 with CuBit.UI.Input;
 with CuBit.Logging;
@@ -329,6 +330,8 @@ procedure Main is
    Opened : Boolean;
    Announced : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Logging.Announce ("config-inspector: started (read-only)", Announced, Startup.Logstore);
    Refresh;
    declare

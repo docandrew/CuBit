@@ -18,6 +18,7 @@ with Intel_GPU_Buffer_Requests;
 with Intel_GPU_Buffer_Backing;
 with Intel_GPU_Buffer_Reply;
 with Intel_GPU_Extent_Allocator;
+with CuBit.Monotonic;
 procedure Accounting_Check is
    --  The boot image's size: the kernel's launch configuration for the
    --  process it starts in devmgr's place.
@@ -29,7 +30,7 @@ procedure Accounting_Check is
       return (if Configured then Configuration.Boot_Image else 0);
    end Boot_Image_Bytes;
    package IPC renames CuBit.Handles.IPC;
-   PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   PID : constant Unsigned_64 := Own_Process_Word;
    --  The supervisor runs in devmgr's place (boot roots); the child it
    --  spawns from the same ELF has none.
    Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
@@ -156,11 +157,11 @@ begin
          Check (Msg.tag.label = Offer_Label, "endpoint offered");
       end loop;
    end;
-   Deadline := syscall (SYSCALL_GETTIME) + 60_000;
+   Deadline := CuBit.Monotonic.Milliseconds + 60_000;
    loop
       Poll_Service_Request (From, Msg, Found);
       if not Found then
-         Check (syscall (SYSCALL_GETTIME) < Deadline, "deadline");
+         Check (CuBit.Monotonic.Milliseconds < Deadline, "deadline");
       else
          Check (CuBit.Process_IDs.To_Word (From) = Child, "kernel sender");
          if Msg.tag.label = 16#F030# then

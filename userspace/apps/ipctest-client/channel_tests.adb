@@ -16,6 +16,7 @@ with CuBit.System_Facts;
 with System.Machine_Code;
 with IPCtest_Channel;
 with IPCtest_Channel_Clients;
+with CuBit.Monotonic;
 
 procedure Channel_Tests (Server : CuBit.Handles.Endpoint; Ok : in out Boolean) is
    use ASCII;
@@ -75,12 +76,7 @@ procedure Channel_Tests (Server : CuBit.Handles.Endpoint; Ok : in out Boolean) i
    end TSC;
 
    function Thread_Calls return Unsigned_64 is
-      Value : CuBit.System_Facts.SP.Statistics;
-      Read : Boolean;
-   begin
-      CuBit.System_Facts.Read_Statistics (Value, Read);
-      return (if Read then Value.Thread_System_Calls else 0);
-   end Thread_Calls;
+     (CuBit.System_Facts.Thread_System_Calls);
 
    --  One request through Call (the ring and the wait in one system call).
    --  Phase_Deadline: computed once per phase (this test profile publishes
@@ -149,14 +145,14 @@ begin
    --  wait belongs on a synchronous call).
    Server_Before := Server_Count;
    Calls_Before := Thread_Calls;
-   Started := syscall (SYSCALL_GETTIME);
+   Started := CuBit.Monotonic.Milliseconds;
    for K in 1 .. Ping_Count loop
       if not Round_Trip (A, Unsigned_64 (K)) then
          Fail ("ping-pong");
          return;
       end if;
    end loop;
-   Elapsed := syscall (SYSCALL_GETTIME) - Started;
+   Elapsed := CuBit.Monotonic.Milliseconds - Started;
    Client_Calls := Thread_Calls - Calls_Before;
    Server_Calls := Server_Count - Server_Before;
    debugPrint ("ipctest-client: channel ping-pong" & Natural'Image (Ping_Count)
@@ -164,7 +160,7 @@ begin
                & " server calls " & Image (Server_Calls) & " PASS" & LF);
    --  The same run's synchronous reference: capCall to the same server.
    Calls_Before := Thread_Calls;
-   Started := syscall (SYSCALL_GETTIME);
+   Started := CuBit.Monotonic.Milliseconds;
    for K in 1 .. Ping_Count loop
       Msg := NULL_MESSAGE;
       Msg.tag := (label => IC.OP_CHANNEL_PING, length => 1, protocol => 0, ipc => <>, reserved => 0);
@@ -175,7 +171,7 @@ begin
          return;
       end if;
    end loop;
-   Elapsed := syscall (SYSCALL_GETTIME) - Started;
+   Elapsed := CuBit.Monotonic.Milliseconds - Started;
    Client_Calls := Thread_Calls - Calls_Before;
    debugPrint ("ipctest-client: sync reference" & Natural'Image (Ping_Count)
                & " calls in " & Image (Elapsed) & " ms, client calls " & Image (Client_Calls) & LF);
@@ -225,10 +221,10 @@ begin
 
       Calls_Before, Server_Before, Wait_Calls, Sample : Unsigned_64;
    begin
-      M0 := syscall (SYSCALL_GETTIME);
+      M0 := CuBit.Monotonic.Milliseconds;
       T0 := TSC;
       Ignore := CuBit.Waits.Sleep_For (Calibration_Ms);
-      Ticks_Per_Ms := (TSC - T0) / Unsigned_64'Max (1, syscall (SYSCALL_GETTIME) - M0);
+      Ticks_Per_Ms := (TSC - T0) / Unsigned_64'Max (1, CuBit.Monotonic.Milliseconds - M0);
 
       --  Doorbell waiter (the client's thread): its wait is the one call.
       --  The waiting thread's calls are counted around each Wait alone
@@ -300,7 +296,7 @@ begin
       begin
          Server_Before := Server_Count;
          Calls_Before := Thread_Calls;
-         Started_Ms := syscall (SYSCALL_GETTIME);
+         Started_Ms := CuBit.Monotonic.Milliseconds;
          for R in 1 .. Bench_Batches loop
             for K in Numbers'Range loop
                Clients.Submit (A, (Value => Unsigned_64 (K), Kind => IC.Echo), Numbers (K), Submitted);
@@ -311,7 +307,7 @@ begin
                if Waited /= Clients.Answered then Fail ("bench-batch-wait"); return; end if;
             end loop;
          end loop;
-         Elapsed_Ms := syscall (SYSCALL_GETTIME) - Started_Ms;
+         Elapsed_Ms := CuBit.Monotonic.Milliseconds - Started_Ms;
          Client_Calls := Thread_Calls - Calls_Before - 2;
          Server_Calls := Server_Count - Server_Before - 1;
          debugPrint ("BENCH: channel batch size=" & Image (Bench_Batch) & " messages="
@@ -380,9 +376,9 @@ begin
    begin
       Clients.Submit (A, (Value => 77, Kind => IC.Silent), Held, Submitted);
       if Submitted /= Clients.Queued then Fail ("silent-submit"); return; end if;
-      T0 := syscall (SYSCALL_GETTIME);
+      T0 := CuBit.Monotonic.Milliseconds;
       Clients.Wait (A, Held, CuBit.Deadlines.Clock.After (Silent_Ms), Answer, Waited);
-      Took := syscall (SYSCALL_GETTIME) - T0;
+      Took := CuBit.Monotonic.Milliseconds - T0;
       if Waited /= Clients.Timed_Out then Fail ("deadline-not-timed-out"); return; end if;
       if Took + 1 < Silent_Ms or else Took > Silent_Latest_Ms then
          Fail ("deadline-time " & Image (Took));

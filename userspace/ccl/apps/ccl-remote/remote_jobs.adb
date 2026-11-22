@@ -11,6 +11,7 @@ with CuBit.Stream_Regions;
 with CuBit.Streams;
 with Remote_Output_Lines;
 with Startup;
+with CuBit.Monotonic;
 
 package body Remote_Jobs is
    use Interfaces;
@@ -72,7 +73,7 @@ package body Remote_Jobs is
    Rings : CuBit.Outlet_Rings.Table;
 
    function Now return Unsigned_64 is
-     (CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME));
+     (CuBit.Monotonic.Milliseconds);
 
    procedure Initialize (Work : String) is
    begin

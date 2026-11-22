@@ -6,6 +6,15 @@ with Interfaces;
 package ACPI_Startup_Completion with Pure, SPARK_Mode is
    use type Interfaces.Unsigned_64, CuBit.Consumer_Initialization_Exchange.Receipt;
    type Phase_Result is (Finished, Finished_With_Errors, Incomplete, Failed);
+   -- Called only for unavailable EC startup. A live event domain has already
+   -- established a safe boundary for independent consumers. Missing optional
+   -- EC support is a completed degraded phase, not an unfinished _INI phase.
+   -- This classification grants no I/O/launch authority or physical quiescence.
+   function Unavailable_Events (Domain_Live, Controller_Absent, Recovery_Required : Boolean)
+      return Phase_Result with Global => null,
+      Post => Unavailable_Events'Result =
+        (if Recovery_Required then Failed elsif not Domain_Live then Incomplete
+         elsif Controller_Absent then Finished else Finished_With_Errors);
    function Decide (Devices, HID, Power : Phase_Result; Setup_Closed : Boolean;
       Events : Phase_Result := Finished; Module_Errors : Boolean := False)
       return CuBit.Consumer_Initialization_Exchange.Phase_Status

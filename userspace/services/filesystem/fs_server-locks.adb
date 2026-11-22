@@ -2,6 +2,7 @@ with CuBit.Filesystems; use CuBit.Filesystems;
 with File_Locks;
 with Fs_Server.Handles; use Fs_Server.Handles;
 with Fs_Server.Replies; use Fs_Server.Replies;
+with CuBit.Monotonic;
 
 package body Fs_Server.Locks is
 
@@ -143,7 +144,7 @@ package body Fs_Server.Locks is
       if table.Waiting_Count = 0 then
          return;
       end if;
-      now := syscall (SYSCALL_GETTIME);
+      now := CuBit.Monotonic.Milliseconds;
       for round in Handle_Slot loop
          Table_Locks.Expire (table, now, expired, found);
          exit when not found;

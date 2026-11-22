@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Messages; use CuBit.Messages;
@@ -36,6 +37,7 @@ with Metric_Subscriptions;
 --  kernel-stamped peer and tag, gated by May_Invoke, and every grant
 --  acquisition is returned before the reply.
 with Startup;
+with CuBit.Monotonic;
 procedure Main is
    package Grants renames CuBit.Memory_Grants;
    package Records renames CuBit.Metric_Records;
@@ -244,6 +246,8 @@ procedure Main is
       end if;
    end Serve_Store_Read;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Ignore := registerDriver (Publisher_Service_Role, Startup.Registration);
    if Ignore = Unsigned_64'Last then
       debugPrint ("metricsvc: registration failed" & ASCII.LF);
@@ -251,7 +255,7 @@ begin
    end if;
    CuBit.Log.Info ("metricsvc: typed metrics ready; series store in RAM, outlets drained every" &
                    Metric_Outlets.Drain_Interval_Ms'Image & " ms");
-   Now_Ms := syscall (SYSCALL_GETTIME);
+   Now_Ms := CuBit.Monotonic.Milliseconds;
    loop
       receiveUntil
         ((if Backlog then Now_Ms
@@ -261,7 +265,7 @@ begin
                    else Idle_Wake_Ms),
                   Unsigned_64'Last - Now_Ms)),
          From, Request, Received);
-      Now_Ms := syscall (SYSCALL_GETTIME);
+      Now_Ms := CuBit.Monotonic.Milliseconds;
       Metric_Store.Advance_Time (Store, Now_Ms);
       --  Launchers' notices first, so new series get their labels.
       Metric_Sources.Drain (Sources, Pending);

@@ -31,25 +31,29 @@ is
    Layout_Version : constant := 1;
 
    ---------------------------------------------------------------------------
-   --  The BOOT_TIMELINE system call
+   --  Reading and marking (ABI-002; the BOOT_TIMELINE system call is gone)
    ---------------------------------------------------------------------------
-   System_Call_Number : constant := 133;
-
-   --  arg0 selects the operation.
-   --  Read: arg1 user buffer, arg2 its length, arg3 byte offset into the
-   --        Image. Copies at most Read_Chunk_Bytes; returns the bytes
-   --        copied (0 at or past the end), Unsigned_64'Last if denied.
-   --        Needs CAP_PROCESS with READ (procmgr, devmgr).
-   --  Mark: arg1 a Milestone code. Needs the CAP_NOTIFICATION (WRITE) that
-   --        registers the milestone's owning driver role (the kernel's
-   --        table in boot_timeline.adb). The first mark wins; returns 0,
-   --        or Unsigned_64'Last if denied or not a milestone.
-   --  arg4: the handle of the capability the operation relies on (CAP-002).
-   type Operation is (Read, Mark);
-   for Operation use (Read => 0, Mark => 1);
-
-   --  Bytes one Read copies at most (the kernel bounces them on its stack).
-   Read_Chunk_Bytes : constant := 256;
+   --  Read: the Image is a granted publication (System_Publications.
+   --  Boot_Timeline): a program whose manifest declares
+   --  (Request.Publication "boot-timeline") has it mapped read-only at
+   --  System_Publications.Boot_Timeline_Address; no other program has it.
+   --  The kernel rewrites the whole Image after each record while the boot
+   --  window is open, then never again (Head.Recording = Closed).
+   --
+   --  Mark: a Call on the notification handle that registers the
+   --  milestone's owning driver role (Write right; the kernel's table in
+   --  boot_timeline_marks.adb). Request label Mark_Label, words
+   --  (Milestone_Word) the Milestone code; reply label echoed, words
+   --  (Outcome_Word) a Mark_Outcome. The first mark of a milestone wins
+   --  (a later one is still Marked).
+   Mark_Label         : constant := 16#0B01#;
+   Mark_Request_Words : constant := 1;
+   Mark_Reply_Words   : constant := 1;
+   Milestone_Word     : constant := 0;
+   Outcome_Word       : constant := 0;
+   type Mark_Outcome is (Marked, Malformed, Unknown_Milestone, Not_Owner);
+   for Mark_Outcome use
+     (Marked => 1, Malformed => 2, Unknown_Milestone => 3, Not_Owner => 4);
 
    ---------------------------------------------------------------------------
    --  Kernel stages, in boot order (kernel/src/kmain.adb, modules.adb)

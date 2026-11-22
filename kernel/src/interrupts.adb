@@ -6,6 +6,7 @@
 -------------------------------------------------------------------------------
 with CPU_Parking;
 with Interfaces; use Interfaces;
+with System.Machine_Code; use System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with Build;
@@ -22,6 +23,7 @@ with IPC_Labels;
 with InterruptNumbers; use InterruptNumbers;
 with Lapic;
 with Mem_mgr;
+with Debug_Exceptions;
 with Pic;
 with PerCpuData;
 with Process;
@@ -175,6 +177,50 @@ is
         return Result (First .. Result'Last);
     end decimal;
 
+    ---------------------------------------------------------------------------
+    -- Probe_User_Access (test kernels, Build.Smap_Entry_Probe; headless
+    -- alignment-flag, SEC-026). Called by interruptHandler before it leaves
+    -- the interrupted address space. When the interrupt came from user code
+    -- that holds RFLAGS.AC set, read one byte of that code's own instruction
+    -- through its user address, as a kernel bug would. With SMAP on and the
+    -- entry stubs clearing AC the read must fault (recovered, isr14); a read
+    -- that succeeds means interrupt handlers run with SMAP off. Each outcome
+    -- is reported once: from user mode this CPU holds no TextIO lock.
+    ---------------------------------------------------------------------------
+    Probe_Read_Reported  : Boolean := False with Atomic;
+    Probe_Fault_Reported : Boolean := False with Atomic;
+
+    procedure Probe_User_Access
+        (frame : not null access constant Stackframe.InterruptStackFrame)
+        with SPARK_Mode => Off  -- reads a user address with fault recovery
+    is
+        function User_Read_Probe (Address : System.Address) return Unsigned_32
+            with Import, Convention => C, External_Name => "cubitUserReadProbe";
+        Kernel_Flags : Unsigned_64;
+    begin
+        if (frame.cs and 3) /= 3
+          or else (frame.rflags and x86.FLAGS_ALIGNMENT) = 0
+        then
+            return;
+        end if;
+        Asm ("pushfq" & ASCII.LF & ASCII.HT & "popq %0",
+             Outputs  => Unsigned_64'Asm_Output ("=r", Kernel_Flags),
+             Volatile => True);
+        if User_Read_Probe (frame.rip) = 0 then
+            if not Probe_Read_Reported then
+                Probe_Read_Reported := True;
+                println ("SMAP probe: an interrupt handler read user memory (kernel AC="
+                         & (if (Kernel_Flags and x86.FLAGS_ALIGNMENT) /= 0 then "1" else "0")
+                         & ")");
+            end if;
+        elsif not Probe_Fault_Reported then
+            Probe_Fault_Reported := True;
+            println ("SMAP probe: user memory faulted in an interrupt handler (kernel AC="
+                     & (if (Kernel_Flags and x86.FLAGS_ALIGNMENT) /= 0 then "1" else "0")
+                     & ")");
+        end if;
+    end Probe_User_Access;
+
     procedure interruptHandler (frame : not null access constant Stackframe.InterruptStackFrame)
         with SPARK_Mode => Off -- live CPU/process overlays and hardware dispatch
     is
@@ -220,6 +266,19 @@ is
             -- Runs on IST 1 and returns via iretq; no EOI needed.
             handleNMI;
             return;
+        end if;
+
+        -- A #DB in kernel mode (IST 4, GS-exact entry): a user data
+        -- breakpoint deferred onto a kernel instruction. Counted and
+        -- dismissed before anything else, like an NMI: no lock, no CR3
+        -- change, no reschedule from the IST stack.
+        if interruptNumber = DEBUG and then (frame.cs and 3) = 0 then
+            Debug_Exceptions.Handle_Kernel;
+            return;
+        end if;
+
+        if Build.Smap_Entry_Probe then
+            Probe_User_Access (frame);
         end if;
 
         if Measure_Boot_IRQ then
@@ -411,9 +470,9 @@ is
             Process.checkTermination;
         end if;
 
-        -- if we return from this interrupt, put page tables back the way they were.
-        -- TODO: check cs to see if we were in user code?
-        Virtmem.setActiveP4 (oldCR3);
+        -- If we return from this interrupt, put page tables back the way they
+        -- were, through the address-space tag bookkeeping (TLB_Context).
+        Process.restoreAddressSpace (Unsigned_64 (oldCR3));
         if Measure_Boot_IRQ then
             Boot_Timer_Probe.Leave_IRQ (Boot_IRQ_Stamp);
         end if;
@@ -702,10 +761,14 @@ is
         --textmode.print("createIDT ISR0 Address: ");
         --textmode.println(isr0'Address);
         idt(0)  := createIDTEntry(addrToNum(isr0'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
-        idt(1)  := createIDTEntry(addrToNum(isr1'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        -- #DB uses IST 4: a data breakpoint deferred past MOV SS / POP SS can
+        -- fire on the first instruction of SYSCALL entry, still on the
+        -- user's stack pointer (CVE-2018-8897; isr1).
+        idt(1)  := createIDTEntry(addrToNum(isr1'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL, ist => 4);
         -- NMI uses IST 1: dedicated stack so NMI during lock-hold doesn't corrupt kernel stack
         idt(2)  := createIDTEntry(addrToNum(isr2'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL, ist => 1);
-        idt(3)  := createIDTEntry(addrToNum(isr3'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
+        -- #BP at DPL 3: a user INT3 is a breakpoint (#BP), not a #GP.
+        idt(3)  := createIDTEntry(addrToNum(isr3'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_USER);
         idt(4)  := createIDTEntry(addrToNum(isr4'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(5)  := createIDTEntry(addrToNum(isr5'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);
         idt(6)  := createIDTEntry(addrToNum(isr6'Address),  False, GDT_OFFSET_KERNEL_CODE, DPL_KERNEL);

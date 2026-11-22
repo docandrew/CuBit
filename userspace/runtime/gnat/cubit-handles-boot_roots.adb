@@ -39,6 +39,10 @@ package body CuBit.Handles.Boot_Roots is
             Scheduling_Root   => K.To_Scheduling (H.Scheduling),
             Firmware_Snapshot_Root => K.To_Firmware_Snapshot (H.Firmware_Snapshot),
             Platform_Power_Root    => K.To_Platform_Power (H.Platform_Power),
+            Trace_Root             => K.To_Trace (H.Trace),
+            Process_List_Root      => K.To_Process_Listing (H.Process_List),
+            Test_Console_Root      => K.To_Test_Console (H.Test_Console),
+            VM_Create_Root         => K.To_VM_Create (H.VM_Create),
             Count             => Root_Count (Configuration.Device_Roots),
             Firmware_Count    => Root_Count (Configuration.Firmware_Roots));
       end;
@@ -84,7 +88,11 @@ package body CuBit.Handles.Boot_Roots is
             Framebuffer    => K.To_Device_Memory (H.Framebuffer),
             Device_Inspection => K.To_Endpoint (H.Device_Inspection),
             Firmware_Snapshot_Reader => K.To_Firmware_Snapshot (H.Firmware_Snapshot),
-            Platform_Power_Object    => K.To_Platform_Power (H.Platform_Power));
+            Platform_Power_Object    => K.To_Platform_Power (H.Platform_Power),
+            Trace_Object             => K.To_Trace (H.Trace),
+            Process_List_Object      => K.To_Process_Listing (H.Process_List),
+            Test_Console_Object      => K.To_Test_Console (H.Test_Console),
+            VM_Create_Authority      => K.To_VM_Create (H.VM_Create));
       end;
    end Process_Manager;
 

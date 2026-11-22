@@ -91,6 +91,60 @@ class Configurations(unittest.TestCase):
         for clause in ('(acpi-registers approve-declared)', '(acpi-registers deny)'):
             self.reject(base % clause)
 
+    def test_trace_approval_is_explicit(self):
+        """(trace approve-declared) (Trace_ABI): off unless written, once;
+        the manifest's Request.Trace alone never installs the object."""
+        base = '(startup v1 (start "bench-ipc-client.app" (priority 5) %s))'
+        for clause in ('', '(trace deny)'):
+            result = self.compile(base % clause)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'bench-ipc-client.app pri=5\n')
+        result = self.compile(base % '(platform-power approve-declared) (trace approve-declared)')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout,
+                         'bench-ipc-client.app pri=5 platform-power=approved trace=approved\n')
+        for clause in ('(trace)', '(trace all)', '(trace approve-declared extra)', '(trace "trace")'):
+            self.reject(base % clause)
+        self.reject(base % '(trace deny) (trace approve-declared)', 'DUPLICATE_FIELD')
+
+    def test_test_console_approval_is_explicit(self):
+        """(test-console approve-declared) (Test_Console_ABI, ABI-002): off
+        unless written, once; the manifest's request alone never installs
+        the object (test plans approve it for logstore's test variant)."""
+        base = '(startup v1 (start "logstore.svc" (priority 5) %s))'
+        for clause in ('', '(test-console deny)'):
+            result = self.compile(base % clause)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'logstore.svc pri=5\n')
+        result = self.compile(base % '(test-console approve-declared)')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'logstore.svc pri=5 test-console=approved\n')
+        for clause in ('(test-console)', '(test-console all)', '(test-console approve-declared extra)',
+                       '(test-console "test-console")'):
+            self.reject(base % clause)
+        self.reject(base % '(test-console deny) (test-console approve-declared)', 'DUPLICATE_FIELD')
+
+    def test_vm_create_approval_is_explicit(self):
+        """(vm-create approve-declared) (VMM-001, docs/hypervisor.md): off
+        unless written, once, beside the entry's other approvals; the
+        manifest's Kernel_Object.VM_Create request alone never installs the
+        authority, and the approval alone installs nothing undeclared."""
+        base = '(startup v1 (start "vmm.app" (priority 5) %s))'
+        for clause in ('', '(vm-create deny)'):
+            result = self.compile(base % clause)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, 'vmm.app pri=5\n')
+        result = self.compile(base % '(vm-create approve-declared)')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'vmm.app pri=5 vm-create=approved\n')
+        result = self.compile(base % '(test-console approve-declared) (vm-create approve-declared)')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'vmm.app pri=5 test-console=approved vm-create=approved\n')
+        for clause in ('(vm-create)', '(vm-create all)', '(vm-create approve-declared extra)',
+                       '(vm-create "vm-create")', '(vm approve-declared)'):
+            self.reject(base % clause)
+        self.reject(base % '(vm-create deny) (vm-create approve-declared)', 'DUPLICATE_FIELD')
+
     def test_platform_power_approval_is_explicit(self):
         """(platform-power approve-declared) (KERN-004): off unless written,
         once, beside the entry's other approvals; the manifest's

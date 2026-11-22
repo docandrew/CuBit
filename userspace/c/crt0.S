@@ -19,6 +19,7 @@
 .section .text
 .global __cubit_language_start
 .weak __cubit_thread_start
+.weak __cubit_program_end
 .global _exit
 
 __cubit_language_start:
@@ -67,9 +68,18 @@ __cubit_language_start:
     xorq    %rsi, %rsi      /* argv = NULL */
     call    main
 
-    /* Exit with main's return value (an int in %eax; the kernel keeps
-     * the low 8 bits). */
-    movl    %eax, %edi
+    /* main returned: a program that routes its console text lets
+     * logstore take the last lines before the process (and its log ring)
+     * goes (CuBit.Console_Route.Program_End; weak: absent means none). */
+    movl    %eax, %r12d
+    leaq    __cubit_program_end(%rip), %rax
+    testq   %rax, %rax
+    jz      .end_done
+    call    *%rax
+.end_done:
+    /* Exit with main's return value (an int; the kernel keeps the low
+     * 8 bits). */
+    movl    %r12d, %edi
     call    _exit
 
 _exit:

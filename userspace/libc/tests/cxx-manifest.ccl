@@ -3,5 +3,8 @@
 (Executable_Manifest
   identity => "com.cubit.cxx-check"
   version => "0.1.0"
+  # Its diagnostics (cubit_debug_write, the libc's records: CuBit.Libc_Log).
+  optional => ["logstore"]
+  requests => [(service "logstore" "logstore")]
   outlets => [(Outlet "unix.stdout" Element.Text pages => 4)]
   descriptors => [(Descriptor 1 "unix.stdout")])

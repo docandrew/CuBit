@@ -5,6 +5,7 @@
 --  @summary
 --  First desktop shell client
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -319,6 +320,8 @@ procedure main is
    end closeSession;
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("desktop-shell: starting" & LF);
 
    declare

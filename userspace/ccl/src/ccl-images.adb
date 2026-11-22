@@ -24,6 +24,15 @@ package body CCL.Images with SPARK_Mode => On is
       return First <= Path'Last and then Path (First .. Path'Last) not in "." | "..";
    end Safe_Path;
 
+   function Valid_Identity (Identity : String) return Boolean is
+     (Identity = "*"
+      or else (Identity'Length in 1 .. MAX_IDENTITY
+               and then Identity (Identity'First) /= '.' and then Identity (Identity'Last) /= '.'
+               and then (for all I in Identity'Range =>
+                           Identity (I) in 'a' .. 'z' | '0' .. '9' | '-' | '.'
+                           and then (I = Identity'First or else Identity (I) /= '.'
+                                     or else Identity (I - 1) /= '.'))));
+
    function Overlaps (Left, Right : Text) return Boolean is
       function Prefix (A, B : Text) return Boolean is
         (A.Length < B.Length and then A.Data (1 .. A.Length) = B.Data (1 .. A.Length)
@@ -110,6 +119,68 @@ package body CCL.Images with SPARK_Mode => On is
          Result.Plan.Requirement_Count := Result.Plan.Requirement_Count + 1;
          Result.Plan.Requirements (Result.Plan.Requirement_Count) := Item;
       end Add_Requirement;
+      --  (builder KIND (import "NAME") (identities "PREFIX"...) (ceiling CEILING))
+      procedure Add_Builder is
+         Item : Builder;
+         Identity : Text;
+      begin
+         Read_Symbol (Reader, Name);
+         if Matches (Name, "release") then Item.Kind := Release;
+         elsif Matches (Name, "organisation") then Item.Kind := Organisation;
+         elsif Matches (Name, "device-local") then Item.Kind := Device_Local;
+         elsif Matches (Name, "host-development") then Item.Kind := Host_Development;
+         elsif Matches (Name, "test") then Item.Kind := Test;
+         else Fail (Invalid_Value);
+         end if;
+         if Stopped then return; end if;
+         Open_Form (Reader);
+         Read_Symbol (Reader, Name);
+         if not Matches (Name, "import") then Fail (Missing_Field); end if;
+         Read_Text (Item.Import_Name, True);
+         Close_Form (Reader);
+         if Stopped then return; end if;
+         Open_Form (Reader);
+         Read_Symbol (Reader, Name);
+         if not Matches (Name, "identities") then Fail (Missing_Field); end if;
+         while not Stopped and then not At_End (Reader) and then not At_Close (Reader) loop
+            pragma Loop_Invariant (Item.Identity_Count <= MAX_IDENTITIES);
+            Identity := (others => <>);
+            Evaluate (Reader, Evaluated);
+            if Stopped then return; end if;
+            if not Evaluated.Has_Text or else Evaluated.Result_Text.Length > MAX_IDENTITY
+              or else not Valid_Identity (Evaluated.Result_Text.Data (1 .. Evaluated.Result_Text.Length))
+            then
+               Fail (Invalid_Value);
+               return;
+            end if;
+            Identity.Length := Evaluated.Result_Text.Length;
+            Identity.Data (1 .. Identity.Length) := Evaluated.Result_Text.Data (1 .. Identity.Length);
+            if Item.Identity_Count = MAX_IDENTITIES then Fail (Too_Many_Items); return; end if;
+            Item.Identity_Count := Item.Identity_Count + 1;
+            Item.Identities (Item.Identity_Count) := Identity;
+         end loop;
+         Close_Form (Reader);
+         if not Stopped and then Item.Identity_Count = 0 then Fail (Missing_Field); end if;
+         if Stopped then return; end if;
+         Open_Form (Reader);
+         Read_Symbol (Reader, Name);
+         if not Matches (Name, "ceiling") then Fail (Missing_Field); end if;
+         Read_Symbol (Reader, Name);
+         if Matches (Name, "applications-only") then Item.Ceiling := Applications_Only;
+         elsif Matches (Name, "services") then Item.Ceiling := Services;
+         elsif Matches (Name, "hardware-and-system") then Item.Ceiling := Hardware_And_System;
+         else Fail (Invalid_Value);
+         end if;
+         Close_Form (Reader);
+         for Old of Result.Plan.Builders (1 .. Result.Plan.Builder_Count) loop
+            if Old.Import_Name = Item.Import_Name then Fail (Duplicate_Name); end if;
+         end loop;
+         if Result.Plan.Builder_Count = MAX_BUILDERS then Fail (Too_Many_Items); end if;
+         if Stopped then return; end if;
+         Result.Plan.Builder_Count := Result.Plan.Builder_Count + 1;
+         Result.Plan.Builders (Result.Plan.Builder_Count) := Item;
+      end Add_Builder;
+
       procedure Add_Placement (Role : Role_Kind) is
          Item : Placement;
          procedure Destination (Path : String) is
@@ -196,6 +267,7 @@ package body CCL.Images with SPARK_Mode => On is
          elsif Matches (Name, "settings") then Add_Placement (Settings);
          elsif Matches (Name, "kernel") then Add_Placement (Kernel);
          elsif Matches (Name, "boot-menu") then Add_Placement (Boot_Menu);
+         elsif Matches (Name, "builder") then Add_Builder;
          else Fail (Unknown_Declaration);
          end if;
          Close_Form (Reader);
@@ -251,6 +323,13 @@ package body CCL.Images with SPARK_Mode => On is
          end if;
       end loop;
       if not Provider_Found then Diagnostic := Unknown_Provider; return; end if;
+      --  Every executable in an image must verify against the image's own
+      --  trust list, so an image names at least one builder; no image type
+      --  carries a Test anchor (none is a test image yet).
+      if Profile.Builder_Count = 0 then Diagnostic := Missing_Builder; return; end if;
+      for B of Profile.Builders (1 .. Profile.Builder_Count) loop
+         if B.Kind = Test then Diagnostic := Test_Builder; return; end if;
+      end loop;
       for Item of Profile.Placements (1 .. Profile.Placement_Count) loop
          Found := False;
          for Input of Catalog.Artifacts (1 .. Catalog.Artifact_Count) loop

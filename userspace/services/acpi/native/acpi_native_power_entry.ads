@@ -3,7 +3,8 @@ with Interfaces; with ACPI_Requests; with CuBit.Messages;
 package ACPI_Native_Power_Entry is
    type Step_Outcome is (Idle, Progress, Replied, Caller_Gone);
    procedure Dispatch (Server : ACPI_Requests.State; Request : CuBit.Messages.Message;
-      Runtime_Selected : Boolean; Reply : out CuBit.Messages.Message; Handled, Reply_Now : out Boolean)
+      Runtime_Selected : Boolean; Reply : out CuBit.Messages.Message; Handled, Reply_Now : out Boolean;
+      Cached_Shutdown_Selected : Boolean := False)
      with Pre => ACPI_Requests.Valid (Server);
    procedure Advance (Server : ACPI_Requests.State; Result : out Step_Outcome)
      with Pre => ACPI_Requests.Valid (Server);

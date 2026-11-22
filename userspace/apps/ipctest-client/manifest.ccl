@@ -2,4 +2,6 @@
 (executable-manifest v1
   (identity "com.cubit.ipctest.client")
   (version "1.0.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore)
   (request-service ipc-test read-write ipc-test))

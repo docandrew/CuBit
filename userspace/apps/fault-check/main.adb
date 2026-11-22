@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -14,6 +15,8 @@ procedure Main is
    Target : Unsigned_64 with Import, Volatile,
      Address => To_Address (Unmapped);
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("fault-check: writing an unmapped address" & LF);
    Target := 16#DEAD#;
    debugPrint ("fault-check: FAIL the write did not fault" & LF);

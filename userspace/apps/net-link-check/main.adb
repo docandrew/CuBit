@@ -13,12 +13,15 @@
 --  Prints one PASS line per check and TEST: PASS net-link when all pass.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
 with CuBit.Net_Channels;
+with CuBit.System_Facts;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    package Channels renames CuBit.Net_Channels;
@@ -26,11 +29,21 @@ procedure Main is
 
    Page_Bytes : constant := 4_096;
    Ring_Size  : constant := 16_384;
-   Buffers    : constant := 2;
+   Buffers    : constant := 3;
    Stream_Buffer : constant := 0;
    Echo_Buffer   : constant := 1;
+   Idle_Buffer   : constant := 2;
    Stream_Bit    : constant := 0;
    Echo_Bit      : constant := 1;
+   Idle_Bit      : constant := 2;
+   --  The idle stream (tests/net-link/fixture.py, IDLE_PORT): Idle_Bytes,
+   --  then nothing. Once read, a wait of Idle_Wait_MS for more may make at
+   --  most Idle_Call_Limit system calls.
+   Idle_Target     : constant String := "@net:tcp:10.0.2.2:18462";
+   Idle_Bytes      : constant := 1_460;
+   Idle_Read_MS    : constant := 10_000;
+   Idle_Wait_MS    : constant := 300;
+   Idle_Call_Limit : constant := 50;
 
    --  The fixture's stream: byte K of it is K mod Pattern_Period.
    Pattern_Period : constant := 251;
@@ -70,7 +83,7 @@ procedure Main is
       Say (Name & (if Condition then " PASS" else " FAIL"));
    end Check;
 
-   function Now return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Now return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
 
    --  Open S on Target through Slot; True when open.
    function Open (S : in out Channels.Stream; Slot : CuBit.Handles.Endpoint;
@@ -120,6 +133,8 @@ procedure Main is
    Last_Ping : Unsigned_64 := 0;
    Echo_Open : Boolean := False;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    declare
       Raw : constant Unsigned_64 :=
         syscall (SYSCALL_SBRK, Unsigned_64 (Buffers * Channels.Buffer_Bytes (Ring_Size, Ring_Size)) + Page_Bytes);
@@ -197,6 +212,45 @@ begin
    Check (Current = Done and then In_Order and then not Channels.Final (Stream),
           "tcp stream survived the flap and kept transferring in order");
    Channels.Close (Stream, Startup.Stream);
+
+   --  A stream its reader has read empty must let the reader sleep: netstack
+   --  answered every wait on it at once while it still counted the bytes
+   --  as unread (the reader reads without telling it), and ccl-remote sent
+   --  about 3.5 million waits a second during a remote session.
+   declare
+      Idle : Channels.Stream;
+      Chunk : array (1 .. 4_096) of Unsigned_8;
+      Got, Total : Natural := 0;
+      Ready : Boolean;
+      Until_MS : constant Unsigned_64 := Now + Idle_Read_MS;
+      Calls_Before, Calls_After : Unsigned_64;
+      function Thread_Calls return Unsigned_64 is
+        (CuBit.System_Facts.Thread_System_Calls);
+   begin
+      Channels.Prepare (Idle, Arena, Idle_Buffer, Idle_Bit, Startup.Stream);
+      if Open (Idle, Startup.Stream, Idle_Target) then
+         while Total < Idle_Bytes and then Now < Until_MS loop
+            Channels.Await (Idle, Startup.Stream, Layout.Want_Readable,
+                            Until_MS, Next_Token, Ready);
+            loop
+               Channels.Read (Idle, Chunk'Address, Chunk'Length, Got);
+               exit when Got = 0;
+               Total := Total + Got;
+            end loop;
+         end loop;
+         Check (Total = Idle_Bytes, "the idle stream's bytes arrive");
+         Calls_Before := Thread_Calls;
+         Channels.Await (Idle, Startup.Stream, Layout.Want_Readable,
+                         Now + Idle_Wait_MS, Next_Token, Ready);
+         Calls_After := Thread_Calls;
+         Say ("idle wait system calls=" & Unsigned_64'Image (Calls_After - Calls_Before));
+         Check (not Ready and then Calls_After - Calls_Before <= Idle_Call_Limit,
+                "a stream read empty lets its reader sleep");
+         Channels.Close (Idle, Startup.Stream);
+      else
+         Check (False, "the idle stream opens");
+      end if;
+   end;
    if Echo_Open then
       Channels.Close (Echo, Startup.Echo);
    end if;

@@ -4,6 +4,8 @@
 --  One decoder per CCL-typed setting, generated from its type at build
 --  time (tools/ccl-manifest/setting_codecs.ads):
 --    CCL.Setting_Codecs.Calc_Options: calculator.options
+--    CCL.Setting_Codecs.Browser_User_Agent: browser.servo.user-agent
+--    CCL.Setting_Codecs.Site_User_Agent: browser.servo.site-agent.
 --    CCL.Setting_Codecs.Appearance: desktop.appearance.v2
 --    CCL.Setting_Codecs.Launch_Entry: desktop.launch.
 --    CCL.Setting_Codecs.Key_Repeat: desktop.input.key-repeat
@@ -15,6 +17,7 @@
 --    CCL.Setting_Codecs.Net_Interface: net.interface.
 --    CCL.Setting_Codecs.Log_Retention: logs.retention
 --    CCL.Setting_Codecs.GPU_Rendering: desktop.render.gpu
+--    CCL.Setting_Codecs.System_Policy: system.policy
 package CCL.Setting_Codecs with SPARK_Mode, Pure is
 end CCL.Setting_Codecs;
 

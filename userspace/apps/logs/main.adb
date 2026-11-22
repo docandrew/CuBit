@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
@@ -5,6 +6,7 @@ with CuBit.Handles.Services;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Log_Sources;
+with CuBit.Log_Sources.Texts;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Process_Observer;
@@ -21,6 +23,7 @@ with Clipboard_Chords;
 with Clipboard_Text;
 with Log_View;
 with Startup;
+with CuBit.Monotonic;
 
 --  Logs (docs/logs-app.md): every service's records, live, through the
 --  log-observer role; sources named through procmgr's process-observer
@@ -160,7 +163,7 @@ procedure Main is
                use type LS.Entry_Kind;
                Who : LS.Source_Identity renames Listed (Position).Who;
                Name : constant String :=
-                 (if Who.Identity_Used > 0 then LS.Identity_Of (Who) else LS.Name_Of (Who));
+                 (if Who.Identity_Used > 0 then LS.Texts.Identity_Of (Who) else LS.Texts.Name_Of (Who));
             begin
                --  Running ones are named from the process list.
                if Listed (Position).Kind = LS.Exited then
@@ -318,7 +321,7 @@ procedure Main is
       Event : P.Event;
       Missing : P.Omission;
       Tally : P.Source_Tally;
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
       Due := Now + POLL_MS;
       Log_View.Set_Time (View, Now);
@@ -378,6 +381,8 @@ procedure Main is
      (UI, Controls, Render => Render, Handle_Event => Handle_Event,
       Next_Deadline => Deadline, On_Deadline => Tick, Activity_Wait => True);
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Logging.Announce ("logs: started", Opened, Startup.Logstore);
    Log_View.Initialize (View);
    declare
@@ -396,7 +401,7 @@ begin
       Log_View.Handle
         (View, (Kind => Log_View.Resize, X => CuBit.UI.App.Width (Win), Y => CuBit.UI.App.Height (Win),
                     others => <>), Controls, Opened);
-      Due := syscall (SYSCALL_GETTIME) + 1;
+      Due := CuBit.Monotonic.Milliseconds + 1;
       debugPrint ("logs: window ready" & ASCII.LF);
       Run (Win);
       CuBit.UI.App.Close (Win);

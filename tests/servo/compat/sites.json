@@ -1,0 +1,3511 @@
+{
+ "generated": "2026-11-19",
+ "tranco": {
+  "list": "L5KW4",
+  "created": "2026-11-18",
+  "window": "2026-10-20..2026-11-18",
+  "configuration": "Dowdall over CrUX, Farsight, Majestic, Radar, Umbrella; pay-level domains",
+  "source": "https://tranco-list.eu/list/L5KW4/1000000"
+ },
+ "rules": {
+  "minimum_site_text": 50,
+  "reference": "Playwright Firefox"
+ },
+ "sites": [
+  {
+   "id": "github-repo",
+   "group": "priority",
+   "url": "https://github.com/servo/servo",
+   "interactions": [
+    "scroll",
+    {
+     "kind": "menu",
+     "target": "header button[aria-expanded]",
+     "check": "document.querySelector(\"[aria-expanded=\\\"true\\\"]\")"
+    }
+   ]
+  },
+  {
+   "id": "github-file",
+   "group": "priority",
+   "url": "https://github.com/servo/servo/blob/8319b662d03f884a3e874c54deea0f09bae669f3/components/servo/lib.rs",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "github-issue",
+   "group": "priority",
+   "url": "https://github.com/servo/servo/issues/12125",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "github-pr-diff",
+   "group": "priority",
+   "url": "https://github.com/servo/servo/pull/40526/files",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "github-search",
+   "group": "priority",
+   "url": "https://github.com/search?q=web+browser+engine&type=repositories",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "github-login",
+   "group": "priority",
+   "url": "https://github.com/login",
+   "interactions": [
+    {
+     "kind": "type",
+     "target": "#login_field"
+    }
+   ]
+  },
+  {
+   "id": "x-profile",
+   "group": "priority",
+   "url": "https://x.com/github",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "x-post",
+   "group": "priority",
+   "url": "https://x.com/github/status/2122756587073028306",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "x-login",
+   "group": "priority",
+   "url": "https://x.com/i/flow/login",
+   "interactions": [
+    {
+     "kind": "type",
+     "target": "input[autocomplete~=\"username\"]"
+    }
+   ]
+  },
+  {
+   "id": "reddit-front",
+   "group": "priority",
+   "url": "https://www.reddit.com/",
+   "interactions": [
+    "scroll",
+    {
+     "kind": "menu",
+     "target": "#expand-user-drawer-button",
+     "check": "document.querySelector(\"[aria-expanded=\\\"true\\\"]\")"
+    }
+   ]
+  },
+  {
+   "id": "reddit-thread",
+   "group": "priority",
+   "url": "https://www.reddit.com/r/rust/comments/1xxmm12/whats_everyone_working_on_this_week_472026/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "reddit-login",
+   "group": "priority",
+   "url": "https://www.reddit.com/login/",
+   "interactions": [
+    {
+     "kind": "type",
+     "target": "#login-username"
+    }
+   ]
+  },
+  {
+   "id": "facebook-login",
+   "group": "priority",
+   "url": "https://www.facebook.com/",
+   "interactions": [
+    {
+     "kind": "type",
+     "target": "input[name=\"email\"]"
+    }
+   ]
+  },
+  {
+   "id": "facebook-page",
+   "group": "priority",
+   "url": "https://www.facebook.com/NASA",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "wikipedia",
+   "group": "priority",
+   "url": "https://en.wikipedia.org/wiki/Web_browser",
+   "interactions": [
+    "scroll",
+    {
+     "kind": "type",
+     "target": "input[name=\"search\"]"
+    }
+   ]
+  },
+  {
+   "id": "youtube-home",
+   "group": "priority",
+   "url": "https://www.youtube.com/",
+   "interactions": [
+    "scroll",
+    {
+     "kind": "type",
+     "target": "input[name=\"search_query\"]"
+    }
+   ]
+  },
+  {
+   "id": "youtube-watch",
+   "group": "priority",
+   "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "mdn",
+   "group": "priority",
+   "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "stackoverflow",
+   "group": "priority",
+   "url": "https://stackoverflow.com/questions/11227809/why-is-processing-a-sorted-array-faster-than-processing-an-unsorted-array",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "digitalocean",
+   "group": "priority",
+   "url": "https://www.digitalocean.com/community/tutorials/how-to-install-nginx-on-ubuntu-22-04",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "amazon",
+   "group": "priority",
+   "url": "https://www.amazon.com/",
+   "interactions": [
+    "scroll",
+    {
+     "kind": "type",
+     "target": "#twotabsearchtextbox"
+    }
+   ]
+  },
+  {
+   "id": "bbc",
+   "group": "priority",
+   "url": "https://www.bbc.com/news",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "nytimes",
+   "group": "priority",
+   "url": "https://www.nytimes.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "hackernews",
+   "group": "priority",
+   "url": "https://news.ycombinator.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "rust-std",
+   "group": "priority",
+   "url": "https://doc.rust-lang.org/std/vec/struct.Vec.html",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "rust-book",
+   "group": "priority",
+   "url": "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "ada-learn",
+   "group": "priority",
+   "url": "https://learn.adacore.com/courses/intro-to-ada/chapters/introduction.html",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "ada-rm",
+   "group": "priority",
+   "url": "https://ada-lang.io/docs/arm/AA-TOC",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "google.com",
+   "group": "tranco",
+   "rank": 1,
+   "url": "https://google.com/",
+   "landing": "https://www.google.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "cloudflare.com",
+   "group": "tranco",
+   "rank": 2,
+   "url": "https://cloudflare.com/",
+   "landing": "https://www.cloudflare.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "amazonaws.com",
+   "group": "tranco",
+   "rank": 3,
+   "url": "https://amazonaws.com/",
+   "landing": "https://aws.amazon.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "facebook.com",
+   "group": "tranco",
+   "rank": 5,
+   "url": "https://facebook.com/",
+   "landing": "https://www.facebook.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "microsoft.com",
+   "group": "tranco",
+   "rank": 8,
+   "url": "https://microsoft.com/",
+   "landing": "https://www.microsoft.com/en-us",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "youtube.com",
+   "group": "tranco",
+   "rank": 10,
+   "url": "https://youtube.com/",
+   "landing": "https://www.youtube.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "apple.com",
+   "group": "tranco",
+   "rank": 11,
+   "url": "https://apple.com/",
+   "landing": "https://www.apple.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "instagram.com",
+   "group": "tranco",
+   "rank": 14,
+   "url": "https://instagram.com/",
+   "landing": "https://www.instagram.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "twitter.com",
+   "group": "tranco",
+   "rank": 16,
+   "url": "https://twitter.com/",
+   "landing": "https://x.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "linkedin.com",
+   "group": "tranco",
+   "rank": 17,
+   "url": "https://linkedin.com/",
+   "landing": "https://www.linkedin.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "triplinkintl.com",
+   "group": "tranco",
+   "rank": 23,
+   "url": "https://triplinkintl.com/",
+   "landing": "https://www.triplinkintl.com/en/home/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "office.com",
+   "group": "tranco",
+   "rank": 28,
+   "url": "https://office.com/",
+   "landing": "https://m365.cloud.microsoft/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "github.com",
+   "group": "tranco",
+   "rank": 34,
+   "url": "https://github.com/",
+   "landing": "https://github.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "wikipedia.org",
+   "group": "tranco",
+   "rank": 39,
+   "url": "https://wikipedia.org/",
+   "landing": "https://www.wikipedia.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "netflix.com",
+   "group": "tranco",
+   "rank": 40,
+   "url": "https://netflix.com/",
+   "landing": "https://www.netflix.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "fastly.net",
+   "group": "tranco",
+   "rank": 42,
+   "url": "https://fastly.net/",
+   "landing": "https://www.fastly.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "whatsapp.net",
+   "group": "tranco",
+   "rank": 44,
+   "url": "https://whatsapp.net/",
+   "landing": "https://www.whatsapp.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "bing.com",
+   "group": "tranco",
+   "rank": 46,
+   "url": "https://bing.com/",
+   "landing": "https://www.bing.com/?toWww=1&redig=A81D71E5F65242709CEC4456127CF70A",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "pinterest.com",
+   "group": "tranco",
+   "rank": 54,
+   "url": "https://pinterest.com/",
+   "landing": "https://www.pinterest.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "icloud.com",
+   "group": "tranco",
+   "rank": 55,
+   "url": "https://icloud.com/",
+   "landing": "https://www.icloud.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "zoom.us",
+   "group": "tranco",
+   "rank": 58,
+   "url": "https://zoom.us/",
+   "landing": "https://www.zoom.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "adobe.com",
+   "group": "tranco",
+   "rank": 59,
+   "url": "https://adobe.com/",
+   "landing": "https://www.adobe.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "tiktok.com",
+   "group": "tranco",
+   "rank": 61,
+   "url": "https://tiktok.com/",
+   "landing": "https://www.tiktok.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "skype.com",
+   "group": "tranco",
+   "rank": 64,
+   "url": "https://skype.com/",
+   "landing": "https://teams.live.com/free",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "gandi.net",
+   "group": "tranco",
+   "rank": 65,
+   "url": "https://gandi.net/",
+   "landing": "https://www.gandi.net/en-US",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "googledomains.com",
+   "group": "tranco",
+   "rank": 66,
+   "url": "https://googledomains.com/",
+   "landing": "https://domains.google/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "myfritz.net",
+   "group": "tranco",
+   "rank": 68,
+   "url": "https://myfritz.net/",
+   "landing": "https://sso.myfritz.net/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "wordpress.org",
+   "group": "tranco",
+   "rank": 69,
+   "url": "https://wordpress.org/",
+   "landing": "https://wordpress.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "digicert.com",
+   "group": "tranco",
+   "rank": 71,
+   "url": "https://digicert.com/",
+   "landing": "https://www.digicert.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "yahoo.com",
+   "group": "tranco",
+   "rank": 72,
+   "url": "https://yahoo.com/",
+   "landing": "https://www.yahoo.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "spotify.com",
+   "group": "tranco",
+   "rank": 77,
+   "url": "https://spotify.com/",
+   "landing": "https://open.spotify.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "epicgames.com",
+   "group": "tranco",
+   "rank": 78,
+   "url": "https://epicgames.com/",
+   "landing": "https://store.epicgames.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "opera.com",
+   "group": "tranco",
+   "rank": 79,
+   "url": "https://opera.com/",
+   "landing": "https://www.opera.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "amazonvideo.com",
+   "group": "tranco",
+   "rank": 80,
+   "url": "https://amazonvideo.com/",
+   "landing": "https://www.primevideo.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "roblox.com",
+   "group": "tranco",
+   "rank": 82,
+   "url": "https://roblox.com/",
+   "landing": "https://www.roblox.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "b-cdn.net",
+   "group": "tranco",
+   "rank": 83,
+   "url": "https://b-cdn.net/",
+   "landing": "https://bunny.net/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "vimeo.com",
+   "group": "tranco",
+   "rank": 84,
+   "url": "https://vimeo.com/",
+   "landing": "https://vimeo.com/watch?lohp=1",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "ntp.org",
+   "group": "tranco",
+   "rank": 85,
+   "url": "https://ntp.org/",
+   "landing": "https://www.ntp.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "qq.com",
+   "group": "tranco",
+   "rank": 90,
+   "url": "https://qq.com/",
+   "landing": "https://www.qq.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "baidu.com",
+   "group": "tranco",
+   "rank": 91,
+   "url": "https://baidu.com/",
+   "landing": "https://www.baidu.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "blogspot.com",
+   "group": "tranco",
+   "rank": 92,
+   "url": "https://blogspot.com/",
+   "landing": "https://www.blogger.com/about/?bpli=1",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "mozilla.org",
+   "group": "tranco",
+   "rank": 93,
+   "url": "https://mozilla.org/",
+   "landing": "https://www.mozilla.org/en-US/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "intuit.com",
+   "group": "tranco",
+   "rank": 94,
+   "url": "https://intuit.com/",
+   "landing": "https://www.intuit.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "nginx.org",
+   "group": "tranco",
+   "rank": 96,
+   "url": "https://nginx.org/",
+   "landing": "https://nginx.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "f5.com",
+   "group": "tranco",
+   "rank": 99,
+   "url": "https://f5.com/",
+   "landing": "https://www.f5.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "t-online.de",
+   "group": "tranco",
+   "rank": 100,
+   "url": "https://t-online.de/",
+   "landing": "https://www.t-online.de/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "t.me",
+   "group": "tranco",
+   "rank": 102,
+   "url": "https://t.me/",
+   "landing": "https://telegram.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "sentry.io",
+   "group": "tranco",
+   "rank": 103,
+   "url": "https://sentry.io/",
+   "landing": "https://sentry.io/welcome/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "ui.com",
+   "group": "tranco",
+   "rank": 108,
+   "url": "https://ui.com/",
+   "landing": "https://ui.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "reddit.com",
+   "group": "tranco",
+   "rank": 109,
+   "url": "https://reddit.com/",
+   "landing": "https://www.reddit.com/?solution=559b92fd9240dca6559b92fd9240dca6&js_challenge=1&jsc_token=2824be10929bdc604753c70a67a1c33176839cea8e3cb62858cdcd8402168790&jsc_orig_r=",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "chatgpt.com",
+   "group": "tranco",
+   "rank": 110,
+   "url": "https://chatgpt.com/",
+   "landing": "https://chatgpt.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "europa.eu",
+   "group": "tranco",
+   "rank": 111,
+   "url": "https://europa.eu/",
+   "landing": "https://european-union.europa.eu/index_en",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "lencr.org",
+   "group": "tranco",
+   "rank": 112,
+   "url": "https://lencr.org/",
+   "landing": "https://letsencrypt.org/docs/lencr.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "bit.ly",
+   "group": "tranco",
+   "rank": 116,
+   "url": "https://bit.ly/",
+   "landing": "https://bitly.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "samsung.com",
+   "group": "tranco",
+   "rank": 123,
+   "url": "https://samsung.com/",
+   "landing": "https://www.samsung.com/us/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "webex.com",
+   "group": "tranco",
+   "rank": 125,
+   "url": "https://webex.com/",
+   "landing": "https://www.webex.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "openai.com",
+   "group": "tranco",
+   "rank": 127,
+   "url": "https://openai.com/",
+   "landing": "https://openai.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "nih.gov",
+   "group": "tranco",
+   "rank": 131,
+   "url": "https://nih.gov/",
+   "landing": "https://www.nih.gov/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "dropbox.com",
+   "group": "tranco",
+   "rank": 132,
+   "url": "https://dropbox.com/",
+   "landing": "https://www.dropbox.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "android.com",
+   "group": "tranco",
+   "rank": 137,
+   "url": "https://android.com/",
+   "landing": "https://www.android.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "cloudflare-dns.com",
+   "group": "tranco",
+   "rank": 139,
+   "url": "https://cloudflare-dns.com/",
+   "landing": "https://one.one.one.one/dns/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "apache.org",
+   "group": "tranco",
+   "rank": 140,
+   "url": "https://apache.org/",
+   "landing": "https://apache.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "duckdns.org",
+   "group": "tranco",
+   "rank": 142,
+   "url": "https://duckdns.org/",
+   "landing": "https://www.duckdns.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "ipify.org",
+   "group": "tranco",
+   "rank": 144,
+   "url": "https://ipify.org/",
+   "landing": "https://www.ipify.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "tumblr.com",
+   "group": "tranco",
+   "rank": 151,
+   "url": "https://tumblr.com/",
+   "landing": "https://www.tumblr.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "discord.gg",
+   "group": "tranco",
+   "rank": 152,
+   "url": "https://discord.gg/",
+   "landing": "https://discord.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "samsungcloud.com",
+   "group": "tranco",
+   "rank": 156,
+   "url": "https://samsungcloud.com/",
+   "landing": "https://www.samsungcloud.com/en/login",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "meraki.com",
+   "group": "tranco",
+   "rank": 157,
+   "url": "https://meraki.com/",
+   "landing": "https://www.cisco.com/site/us/en/about/corporate-strategy-office/acquisitions/meraki/index.html",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "ubuntu.com",
+   "group": "tranco",
+   "rank": 158,
+   "url": "https://ubuntu.com/",
+   "landing": "https://ubuntu.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "snapchat.com",
+   "group": "tranco",
+   "rank": 159,
+   "url": "https://snapchat.com/",
+   "landing": "https://www.snapchat.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "shopify.com",
+   "group": "tranco",
+   "rank": 163,
+   "url": "https://shopify.com/",
+   "landing": "https://www.shopify.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "gravatar.com",
+   "group": "tranco",
+   "rank": 165,
+   "url": "https://gravatar.com/",
+   "landing": "https://gravatar.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "telekom.net",
+   "group": "tranco",
+   "rank": 170,
+   "url": "https://telekom.net/",
+   "landing": "https://www.telekom.com/en",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "creativecommons.org",
+   "group": "tranco",
+   "rank": 173,
+   "url": "https://creativecommons.org/",
+   "landing": "https://creativecommons.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "paypal.com",
+   "group": "tranco",
+   "rank": 175,
+   "url": "https://paypal.com/",
+   "landing": "https://www.paypal.com/us/home",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "godaddy.com",
+   "group": "tranco",
+   "rank": 176,
+   "url": "https://godaddy.com/",
+   "landing": "https://www.godaddy.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "cnn.com",
+   "group": "tranco",
+   "rank": 178,
+   "url": "https://cnn.com/",
+   "landing": "https://www.cnn.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "flickr.com",
+   "group": "tranco",
+   "rank": 182,
+   "url": "https://flickr.com/",
+   "landing": "https://flickr.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "w3.org",
+   "group": "tranco",
+   "rank": 183,
+   "url": "https://w3.org/",
+   "landing": "https://www.w3.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "forter.com",
+   "group": "tranco",
+   "rank": 184,
+   "url": "https://forter.com/",
+   "landing": "https://www.forter.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "example.com",
+   "group": "tranco",
+   "rank": 185,
+   "url": "https://example.com/",
+   "landing": "https://example.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "scorecardresearch.com",
+   "group": "tranco",
+   "rank": 187,
+   "url": "https://scorecardresearch.com/",
+   "landing": "https://www.scorecardresearch.com/Home.aspx",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "comcast.net",
+   "group": "tranco",
+   "rank": 190,
+   "url": "https://comcast.net/",
+   "landing": "https://www.xfinity.com/national/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "pki.goog",
+   "group": "tranco",
+   "rank": 191,
+   "url": "https://pki.goog/",
+   "landing": "https://pki.goog/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "brave.com",
+   "group": "tranco",
+   "rank": 197,
+   "url": "https://brave.com/",
+   "landing": "https://brave.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "soundcloud.com",
+   "group": "tranco",
+   "rank": 198,
+   "url": "https://soundcloud.com/",
+   "landing": "https://soundcloud.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "theguardian.com",
+   "group": "tranco",
+   "rank": 199,
+   "url": "https://theguardian.com/",
+   "landing": "https://www.theguardian.com/us",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "doi.org",
+   "group": "tranco",
+   "rank": 201,
+   "url": "https://doi.org/",
+   "landing": "https://www.doi.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "unity3d.com",
+   "group": "tranco",
+   "rank": 203,
+   "url": "https://unity3d.com/",
+   "landing": "https://unity.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "medium.com",
+   "group": "tranco",
+   "rank": 204,
+   "url": "https://medium.com/",
+   "landing": "https://medium.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "hcaptcha.com",
+   "group": "tranco",
+   "rank": 206,
+   "url": "https://hcaptcha.com/",
+   "landing": "https://www.hcaptcha.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "roku.com",
+   "group": "tranco",
+   "rank": 208,
+   "url": "https://roku.com/",
+   "landing": "https://www.roku.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "charter.net",
+   "group": "tranco",
+   "rank": 210,
+   "url": "https://charter.net/",
+   "landing": "https://www.spectrum.net/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "wikimedia.org",
+   "group": "tranco",
+   "rank": 211,
+   "url": "https://wikimedia.org/",
+   "landing": "https://www.wikimedia.org//",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "publicnode.com",
+   "group": "tranco",
+   "rank": 212,
+   "url": "https://publicnode.com/",
+   "landing": "https://publicnode.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "stripe.com",
+   "group": "tranco",
+   "rank": 213,
+   "url": "https://stripe.com/",
+   "landing": "https://stripe.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "oracle.com",
+   "group": "tranco",
+   "rank": 215,
+   "url": "https://oracle.com/",
+   "landing": "https://www.oracle.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "bbc.com",
+   "group": "tranco",
+   "rank": 216,
+   "url": "https://bbc.com/",
+   "landing": "https://www.bbc.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "skyhigh.cloud",
+   "group": "tranco",
+   "rank": 218,
+   "url": "https://skyhigh.cloud/",
+   "landing": "https://www.skyhighsecurity.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "quickconnect.to",
+   "group": "tranco",
+   "rank": 219,
+   "url": "https://quickconnect.to/",
+   "landing": "https://quickconnect.to/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "criteo.com",
+   "group": "tranco",
+   "rank": 222,
+   "url": "https://criteo.com/",
+   "landing": "https://www.criteo.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "amplitude.com",
+   "group": "tranco",
+   "rank": 223,
+   "url": "https://amplitude.com/",
+   "landing": "https://amplitude.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "afternic.com",
+   "group": "tranco",
+   "rank": 224,
+   "url": "https://afternic.com/",
+   "landing": "https://www.afternic.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "centinel-analytica.com",
+   "group": "tranco",
+   "rank": 225,
+   "url": "https://centinel-analytica.com/",
+   "landing": "https://www.centinelanalytica.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "weather.com",
+   "group": "tranco",
+   "rank": 228,
+   "url": "https://weather.com/",
+   "landing": "https://weather.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "namecheap.com",
+   "group": "tranco",
+   "rank": 229,
+   "url": "https://namecheap.com/",
+   "landing": "https://www.namecheap.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "sciencedirect.com",
+   "group": "tranco",
+   "rank": 231,
+   "url": "https://sciencedirect.com/",
+   "landing": "https://www.sciencedirect.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "twitch.tv",
+   "group": "tranco",
+   "rank": 234,
+   "url": "https://twitch.tv/",
+   "landing": "https://www.twitch.tv/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "xiaomi.com",
+   "group": "tranco",
+   "rank": 235,
+   "url": "https://xiaomi.com/",
+   "landing": "https://www.mi.com/us/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "mit.edu",
+   "group": "tranco",
+   "rank": 236,
+   "url": "https://mit.edu/",
+   "landing": "https://web.mit.edu/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "nist.gov",
+   "group": "tranco",
+   "rank": 237,
+   "url": "https://nist.gov/",
+   "landing": "https://www.nist.gov/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "dnsmadeeasy.com",
+   "group": "tranco",
+   "rank": 246,
+   "url": "https://dnsmadeeasy.com/",
+   "landing": "https://dnsmadeeasy.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "t.co",
+   "group": "tranco",
+   "rank": 251,
+   "url": "https://t.co/",
+   "landing": "https://t.co/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "salesforce.com",
+   "group": "tranco",
+   "rank": 255,
+   "url": "https://salesforce.com/",
+   "landing": "https://www.salesforce.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "cpanel.net",
+   "group": "tranco",
+   "rank": 261,
+   "url": "https://cpanel.net/",
+   "landing": "https://www.cpanel.net/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "hubspot.com",
+   "group": "tranco",
+   "rank": 262,
+   "url": "https://hubspot.com/",
+   "landing": "https://www.hubspot.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "alidns.com",
+   "group": "tranco",
+   "rank": 264,
+   "url": "https://alidns.com/",
+   "landing": "https://www.aliyun.com/product/dns",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "googleblog.com",
+   "group": "tranco",
+   "rank": 265,
+   "url": "https://googleblog.com/",
+   "landing": "https://blog.google/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "imdb.com",
+   "group": "tranco",
+   "rank": 266,
+   "url": "https://imdb.com/",
+   "landing": "https://www.imdb.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "who.int",
+   "group": "tranco",
+   "rank": 267,
+   "url": "https://who.int/",
+   "landing": "https://www.who.int/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "linktr.ee",
+   "group": "tranco",
+   "rank": 269,
+   "url": "https://linktr.ee/",
+   "landing": "https://linktr.ee/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "launchdarkly.com",
+   "group": "tranco",
+   "rank": 276,
+   "url": "https://launchdarkly.com/",
+   "landing": "https://launchdarkly.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "datadoghq.com",
+   "group": "tranco",
+   "rank": 278,
+   "url": "https://datadoghq.com/",
+   "landing": "https://www.datadoghq.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "slack.com",
+   "group": "tranco",
+   "rank": 280,
+   "url": "https://slack.com/",
+   "landing": "https://slack.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "ibm.com",
+   "group": "tranco",
+   "rank": 283,
+   "url": "https://ibm.com/",
+   "landing": "https://www.ibm.com/us-en",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "hp.com",
+   "group": "tranco",
+   "rank": 284,
+   "url": "https://hp.com/",
+   "landing": "https://www.hp.com/us-en/home.html",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "reuters.com",
+   "group": "tranco",
+   "rank": 286,
+   "url": "https://reuters.com/",
+   "landing": "https://www.reuters.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "canva.com",
+   "group": "tranco",
+   "rank": 288,
+   "url": "https://canva.com/",
+   "landing": "https://www.canva.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "nature.com",
+   "group": "tranco",
+   "rank": 293,
+   "url": "https://nature.com/",
+   "landing": "https://www.nature.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "www.gov.uk",
+   "group": "tranco",
+   "rank": 294,
+   "url": "https://www.gov.uk/",
+   "landing": "https://www.gov.uk/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "booking.com",
+   "group": "tranco",
+   "rank": 296,
+   "url": "https://booking.com/",
+   "landing": "https://www.booking.com/?chal_t=1795065159148&force_referer=",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "steampowered.com",
+   "group": "tranco",
+   "rank": 297,
+   "url": "https://steampowered.com/",
+   "landing": "https://store.steampowered.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "launchpad.net",
+   "group": "tranco",
+   "rank": 299,
+   "url": "https://launchpad.net/",
+   "landing": "https://launchpad.net/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "onelink.me",
+   "group": "tranco",
+   "rank": 303,
+   "url": "https://onelink.me/",
+   "landing": "https://www.appsflyer.com/products/deep-linking/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "tinyurl.com",
+   "group": "tranco",
+   "rank": 306,
+   "url": "https://tinyurl.com/",
+   "landing": "https://tinyurl.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "grammarly.com",
+   "group": "tranco",
+   "rank": 307,
+   "url": "https://grammarly.com/",
+   "landing": "https://www.grammarly.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "zendesk.com",
+   "group": "tranco",
+   "rank": 309,
+   "url": "https://zendesk.com/",
+   "landing": "https://www.zendesk.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "springer.com",
+   "group": "tranco",
+   "rank": 312,
+   "url": "https://springer.com/",
+   "landing": "https://link.springer.com/brands/springer",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "miui.com",
+   "group": "tranco",
+   "rank": 319,
+   "url": "https://miui.com/",
+   "landing": "https://home.miui.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "anthropic.com",
+   "group": "tranco",
+   "rank": 321,
+   "url": "https://anthropic.com/",
+   "landing": "https://www.anthropic.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "avast.com",
+   "group": "tranco",
+   "rank": 322,
+   "url": "https://avast.com/",
+   "landing": "https://www.avast.com/en-us/index#pc",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "debian.org",
+   "group": "tranco",
+   "rank": 326,
+   "url": "https://debian.org/",
+   "landing": "https://www.debian.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "espn.com",
+   "group": "tranco",
+   "rank": 331,
+   "url": "https://espn.com/",
+   "landing": "https://www.espn.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "harvard.edu",
+   "group": "tranco",
+   "rank": 334,
+   "url": "https://harvard.edu/",
+   "landing": "https://www.harvard.edu/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "php.net",
+   "group": "tranco",
+   "rank": 335,
+   "url": "https://php.net/",
+   "landing": "https://www.php.net/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "alibaba.com",
+   "group": "tranco",
+   "rank": 337,
+   "url": "https://alibaba.com/",
+   "landing": "https://www.alibaba.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "autodesk.com",
+   "group": "tranco",
+   "rank": 339,
+   "url": "https://autodesk.com/",
+   "landing": "https://www.autodesk.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "etsy.com",
+   "group": "tranco",
+   "rank": 341,
+   "url": "https://etsy.com/",
+   "landing": "https://www.etsy.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "paloaltonetworks.com",
+   "group": "tranco",
+   "rank": 342,
+   "url": "https://paloaltonetworks.com/",
+   "landing": "https://www.paloaltonetworks.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "unisys.com",
+   "group": "tranco",
+   "rank": 343,
+   "url": "https://unisys.com/",
+   "landing": "https://www.unisys.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "okta.com",
+   "group": "tranco",
+   "rank": 344,
+   "url": "https://okta.com/",
+   "landing": "https://www.okta.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "smartadserver.com",
+   "group": "tranco",
+   "rank": 345,
+   "url": "https://smartadserver.com/",
+   "landing": "https://www.equativ.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "naver.com",
+   "group": "tranco",
+   "rank": 348,
+   "url": "https://naver.com/",
+   "landing": "https://www.naver.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "ea.com",
+   "group": "tranco",
+   "rank": 349,
+   "url": "https://ea.com/",
+   "landing": "https://www.ea.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "dynatrace.com",
+   "group": "tranco",
+   "rank": 350,
+   "url": "https://dynatrace.com/",
+   "landing": "https://www.dynatrace.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "bilibili.com",
+   "group": "tranco",
+   "rank": 351,
+   "url": "https://bilibili.com/",
+   "landing": "https://www.bilibili.com/en",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "nvidia.com",
+   "group": "tranco",
+   "rank": 353,
+   "url": "https://nvidia.com/",
+   "landing": "https://www.nvidia.com/en-us/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "tradingview.com",
+   "group": "tranco",
+   "rank": 354,
+   "url": "https://tradingview.com/",
+   "landing": "https://www.tradingview.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "branch.io",
+   "group": "tranco",
+   "rank": 355,
+   "url": "https://branch.io/",
+   "landing": "https://www.branch.io/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "tp-link.com",
+   "group": "tranco",
+   "rank": 356,
+   "url": "https://tp-link.com/",
+   "landing": "https://www.tp-link.com/us/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "gnu.org",
+   "group": "tranco",
+   "rank": 358,
+   "url": "https://gnu.org/",
+   "landing": "https://www.gnu.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "dell.com",
+   "group": "tranco",
+   "rank": 359,
+   "url": "https://dell.com/",
+   "landing": "https://www.dell.com/en-us",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "dotomi.com",
+   "group": "tranco",
+   "rank": 363,
+   "url": "https://dotomi.com/",
+   "landing": "https://www.epsilon.com/us?redirect=dotomi",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "cdc.gov",
+   "group": "tranco",
+   "rank": 365,
+   "url": "https://cdc.gov/",
+   "landing": "https://www.cdc.gov/index.html",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "bsky.app",
+   "group": "tranco",
+   "rank": 366,
+   "url": "https://bsky.app/",
+   "landing": "https://bsky.app/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "checkpoint.com",
+   "group": "tranco",
+   "rank": 368,
+   "url": "https://checkpoint.com/",
+   "landing": "https://www.checkpoint.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "weebly.com",
+   "group": "tranco",
+   "rank": 369,
+   "url": "https://weebly.com/",
+   "landing": "https://www.weebly.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "un.org",
+   "group": "tranco",
+   "rank": 370,
+   "url": "https://un.org/",
+   "landing": "https://www.un.org/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "aliyun.com",
+   "group": "tranco",
+   "rank": 376,
+   "url": "https://aliyun.com/",
+   "landing": "https://www.alibabacloud.com/en/?_p_lc=5",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "live-video.net",
+   "group": "tranco",
+   "rank": 382,
+   "url": "https://live-video.net/",
+   "landing": "https://live-video.net/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "stanford.edu",
+   "group": "tranco",
+   "rank": 384,
+   "url": "https://stanford.edu/",
+   "landing": "https://www.stanford.edu/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "name.com",
+   "group": "tranco",
+   "rank": 386,
+   "url": "https://name.com/",
+   "landing": "https://www.name.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "dns.google",
+   "group": "tranco",
+   "rank": 387,
+   "url": "https://dns.google/",
+   "landing": "https://dns.google/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "amazontrust.com",
+   "group": "tranco",
+   "rank": 388,
+   "url": "https://amazontrust.com/",
+   "landing": "https://www.amazontrust.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "atlassian.net",
+   "group": "tranco",
+   "rank": 389,
+   "url": "https://atlassian.net/",
+   "landing": "https://www.atlassian.com/software",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "wps.com",
+   "group": "tranco",
+   "rank": 391,
+   "url": "https://wps.com/",
+   "landing": "https://www.wps.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "go.com",
+   "group": "tranco",
+   "rank": 394,
+   "url": "https://go.com/",
+   "landing": "https://www.go.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "issuu.com",
+   "group": "tranco",
+   "rank": 396,
+   "url": "https://issuu.com/",
+   "landing": "https://issuu.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "bloomberg.com",
+   "group": "tranco",
+   "rank": 400,
+   "url": "https://bloomberg.com/",
+   "landing": "https://www.bloomberg.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "gitlab.com",
+   "group": "tranco",
+   "rank": 401,
+   "url": "https://gitlab.com/",
+   "landing": "https://about.gitlab.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "taobao.com",
+   "group": "tranco",
+   "rank": 402,
+   "url": "https://taobao.com/",
+   "landing": "https://www.taobao.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "nasa.gov",
+   "group": "tranco",
+   "rank": 403,
+   "url": "https://nasa.gov/",
+   "landing": "https://www.nasa.gov/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "claude.ai",
+   "group": "tranco",
+   "rank": 404,
+   "url": "https://claude.ai/",
+   "landing": "https://claude.ai/login",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "washingtonpost.com",
+   "group": "tranco",
+   "rank": 405,
+   "url": "https://washingtonpost.com/",
+   "landing": "https://www.washingtonpost.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "opendns.com",
+   "group": "tranco",
+   "rank": 407,
+   "url": "https://opendns.com/",
+   "landing": "https://www.opendns.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "plesk.com",
+   "group": "tranco",
+   "rank": 412,
+   "url": "https://plesk.com/",
+   "landing": "https://www.plesk.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "aliexpress.com",
+   "group": "tranco",
+   "rank": 417,
+   "url": "https://aliexpress.com/",
+   "landing": "https://www.aliexpress.us/?gatewayAdapt=glo2usa",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "calendly.com",
+   "group": "tranco",
+   "rank": 418,
+   "url": "https://calendly.com/",
+   "landing": "https://calendly.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "duckduckgo.com",
+   "group": "tranco",
+   "rank": 419,
+   "url": "https://duckduckgo.com/",
+   "landing": "https://duckduckgo.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "substack.com",
+   "group": "tranco",
+   "rank": 420,
+   "url": "https://substack.com/",
+   "landing": "https://substack.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "temu.com",
+   "group": "tranco",
+   "rank": 423,
+   "url": "https://temu.com/",
+   "landing": "https://www.temu.com/bgn_verification.html?verifyCode=yfrVM68C2kjGJ12tKQAS_Aeaeef2bb78515f074&from=https%3A%2F%2Fwww.temu.com%2F&refer_page_name=home&refer_page_id=10005_1795065318704_gvx12pbo7p&refer_page_sn=10005&_x_sessn_id=l5vsdt38sq",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "aol.com",
+   "group": "tranco",
+   "rank": 424,
+   "url": "https://aol.com/",
+   "landing": "https://www.aol.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "line.me",
+   "group": "tranco",
+   "rank": 425,
+   "url": "https://line.me/",
+   "landing": "https://www.line.me/en/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "unsplash.com",
+   "group": "tranco",
+   "rank": 427,
+   "url": "https://unsplash.com/",
+   "landing": "https://unsplash.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "steamcommunity.com",
+   "group": "tranco",
+   "rank": 428,
+   "url": "https://steamcommunity.com/",
+   "landing": "https://steamcommunity.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "pubmatic.com",
+   "group": "tranco",
+   "rank": 433,
+   "url": "https://pubmatic.com/",
+   "landing": "https://pubmatic.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "indeed.com",
+   "group": "tranco",
+   "rank": 435,
+   "url": "https://indeed.com/",
+   "landing": "https://www.indeed.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "expireddomains.com",
+   "group": "tranco",
+   "rank": 441,
+   "url": "https://expireddomains.com/",
+   "landing": "https://expireddomains.com/",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "dailymotion.com",
+   "group": "tranco",
+   "rank": 446,
+   "url": "https://dailymotion.com/",
+   "landing": "https://www.dailymotion.com/us",
+   "interactions": [
+    "scroll"
+   ]
+  },
+  {
+   "id": "arxiv.org",
+   "group": "tranco",
+   "rank": 447,
+   "url": "https://arxiv.org/",
+   "landing": "https://arxiv.org/",
+   "interactions": [
+    "scroll"
+   ]
+  }
+ ],
+ "skipped": [
+  {
+   "rank": 4,
+   "domain": "ezviz7.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 6,
+   "domain": "fbcdn.net",
+   "reason": "same site as facebook.com"
+  },
+  {
+   "rank": 7,
+   "domain": "gstatic.com",
+   "reason": "no page: HTTP 404"
+  },
+  {
+   "rank": 9,
+   "domain": "googleapis.com",
+   "reason": "no page: HTTP 404"
+  },
+  {
+   "rank": 12,
+   "domain": "akamai.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 13,
+   "domain": "hicloudcam.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 15,
+   "domain": "akamaiedge.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 18,
+   "domain": "azure.com",
+   "reason": "same site as microsoft.com"
+  },
+  {
+   "rank": 19,
+   "domain": "domaincontrol.com",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 20,
+   "domain": "akadns.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 21,
+   "domain": "googlevideo.com",
+   "reason": "no page: Page.goto: SSL_ERROR_BAD_CERT_DOMAIN"
+  },
+  {
+   "rank": 22,
+   "domain": "appsflyersdk.com",
+   "reason": "no page: HTTP 403"
+  },
+  {
+   "rank": 24,
+   "domain": "googletagmanager.com",
+   "reason": "no page: HTTP 404"
+  },
+  {
+   "rank": 25,
+   "domain": "mail.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 26,
+   "domain": "gwfb.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 27,
+   "domain": "cloudfront.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 29,
+   "domain": "amazon.com",
+   "reason": "same site as amazonaws.com"
+  },
+  {
+   "rank": 30,
+   "domain": "gtld-servers.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 31,
+   "domain": "live.com",
+   "reason": "same site as microsoft.com"
+  },
+  {
+   "rank": 32,
+   "domain": "sharepoint.com",
+   "reason": "same site as microsoft.com"
+  },
+  {
+   "rank": 33,
+   "domain": "aaplimg.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 35,
+   "domain": "cloud.microsoft",
+   "reason": "same site as office.com"
+  },
+  {
+   "rank": 36,
+   "domain": "trafficmanager.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 37,
+   "domain": "w2rt6byl5nf1opmc-a.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 38,
+   "domain": "dzen.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 41,
+   "domain": "apple-dns.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 43,
+   "domain": "office.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 45,
+   "domain": "lsrelayaccess.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 47,
+   "domain": "googleusercontent.com",
+   "reason": "no page: HTTP 404"
+  },
+  {
+   "rank": 48,
+   "domain": "x.com",
+   "reason": "same site as twitter.com"
+  },
+  {
+   "rank": 49,
+   "domain": "pv-cdn.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 50,
+   "domain": "doubleclick.net",
+   "reason": "same site as google.com"
+  },
+  {
+   "rank": 51,
+   "domain": "googlesyndication.com",
+   "reason": "same site as google.com"
+  },
+  {
+   "rank": 52,
+   "domain": "youtu.be",
+   "reason": "same site as youtube.com"
+  },
+  {
+   "rank": 53,
+   "domain": "windows.net",
+   "reason": "no page: Page.goto: SSL_ERROR_BAD_CERT_DOMAIN"
+  },
+  {
+   "rank": 56,
+   "domain": "microsoftonline.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 57,
+   "domain": "cloudflare.net",
+   "reason": "same site as cloudflare.com"
+  },
+  {
+   "rank": 60,
+   "domain": "goo.gl",
+   "reason": "no page: HTTP 400"
+  },
+  {
+   "rank": 62,
+   "domain": "windowsupdate.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 63,
+   "domain": "whatsapp.com",
+   "reason": "same site as whatsapp.net"
+  },
+  {
+   "rank": 67,
+   "domain": "gvt1.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 70,
+   "domain": "wa.me",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 73,
+   "domain": "h264.io",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 74,
+   "domain": "edgekey.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 75,
+   "domain": "tiktokcdn.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 76,
+   "domain": "a2z.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 81,
+   "domain": "shiabank.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 86,
+   "domain": "3gppnetwork.org",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 87,
+   "domain": "tiktokv.com",
+   "reason": "no page: HTTP 404"
+  },
+  {
+   "rank": 88,
+   "domain": "aws.dev",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 89,
+   "domain": "workers.dev",
+   "reason": "same site as cloudflare.com"
+  },
+  {
+   "rank": 95,
+   "domain": "msn.com",
+   "reason": "no page: 0 characters"
+  },
+  {
+   "rank": 97,
+   "domain": "cdn77.org",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 98,
+   "domain": "wordpress.com",
+   "reason": "same site as wordpress.org"
+  },
+  {
+   "rank": 101,
+   "domain": "akam.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 104,
+   "domain": "cdninstagram.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 105,
+   "domain": "nginx.com",
+   "reason": "same site as f5.com"
+  },
+  {
+   "rank": 106,
+   "domain": "edgesuite.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 107,
+   "domain": "2mdn.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 113,
+   "domain": "yandex.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 114,
+   "domain": "gvt2.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 115,
+   "domain": "yandex.net",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 117,
+   "domain": "aliyuncs.com",
+   "reason": "no page: HTTP 404"
+  },
+  {
+   "rank": 118,
+   "domain": "azurefd.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 119,
+   "domain": "fastly-edge.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 120,
+   "domain": "root-servers.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 121,
+   "domain": "amazon.dev",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 122,
+   "domain": "virginm.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 124,
+   "domain": "dotaplabs.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 126,
+   "domain": "registrar-servers.com",
+   "reason": "no page: 43 characters"
+  },
+  {
+   "rank": 128,
+   "domain": "adobe.io",
+   "reason": "same site as adobe.com"
+  },
+  {
+   "rank": 129,
+   "domain": "office365.com",
+   "reason": "no page: HTTP 403"
+  },
+  {
+   "rank": 130,
+   "domain": "github.io",
+   "reason": "same site as github.com"
+  },
+  {
+   "rank": 133,
+   "domain": "windows.com",
+   "reason": "same site as microsoft.com"
+  },
+  {
+   "rank": 134,
+   "domain": "ytimg.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 135,
+   "domain": "outlook.com",
+   "reason": "no page: 0 characters"
+  },
+  {
+   "rank": 136,
+   "domain": "static.microsoft",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 138,
+   "domain": "nflxso.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 141,
+   "domain": "akamaized.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 143,
+   "domain": "dns-parking.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 145,
+   "domain": "tm-azurefd.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 146,
+   "domain": "nic.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 147,
+   "domain": "archive.org",
+   "reason": "no page: 0 characters"
+  },
+  {
+   "rank": 148,
+   "domain": "okcdn.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 149,
+   "domain": "azurewebsites.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 150,
+   "domain": "forms.gle",
+   "reason": "no page: HTTP 400"
+  },
+  {
+   "rank": 153,
+   "domain": "crashlytics.com",
+   "reason": "same site as google.com"
+  },
+  {
+   "rank": 154,
+   "domain": "nytimes.com",
+   "reason": "no page: HTTP 403"
+  },
+  {
+   "rank": 155,
+   "domain": "jomodns.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 160,
+   "domain": "dnsowl.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 161,
+   "domain": "telegram.org",
+   "reason": "same site as t.me"
+  },
+  {
+   "rank": 162,
+   "domain": "vk.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 164,
+   "domain": "yccdn.ru",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 166,
+   "domain": "pages.dev",
+   "reason": "same site as cloudflare.com"
+  },
+  {
+   "rank": 167,
+   "domain": "ksyuncdn.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 168,
+   "domain": "supertms.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 169,
+   "domain": "google-analytics.com",
+   "reason": "same site as google.com"
+  },
+  {
+   "rank": 171,
+   "domain": "trbcdn.net",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 172,
+   "domain": "reg.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 174,
+   "domain": "amazon-adsystem.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 177,
+   "domain": "firefox-portal-detection.com",
+   "reason": "no page: 7 characters"
+  },
+  {
+   "rank": 179,
+   "domain": "ax-msedge.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 180,
+   "domain": "discord.com",
+   "reason": "same site as discord.gg"
+  },
+  {
+   "rank": 181,
+   "domain": "spo-msedge.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 186,
+   "domain": "vk.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 188,
+   "domain": "nflximg.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 189,
+   "domain": "awswaf.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 192,
+   "domain": "omtrdc.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 193,
+   "domain": "hichina.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 194,
+   "domain": "kaspersky.com",
+   "reason": "no page: 0 characters"
+  },
+  {
+   "rank": 195,
+   "domain": "macromedia.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 196,
+   "domain": "ebay.com",
+   "reason": "no page: HTTP 403"
+  },
+  {
+   "rank": 200,
+   "domain": "youtube-nocookie.com",
+   "reason": "no page: Page.goto: SSL_ERROR_BAD_CERT_DOMAIN"
+  },
+  {
+   "rank": 202,
+   "domain": "msedge.net",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 205,
+   "domain": "tbcache.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 207,
+   "domain": "azureedge.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 209,
+   "domain": "mts.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 214,
+   "domain": "ttdns2.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 217,
+   "domain": "avcdn.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 220,
+   "domain": "iiko.it",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 221,
+   "domain": "mtgglobals.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 226,
+   "domain": "astrumu.io",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 227,
+   "domain": "forbes.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 230,
+   "domain": "cdngslb.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 232,
+   "domain": "app-measurement.com",
+   "reason": "no page: HTTP 404"
+  },
+  {
+   "rank": 233,
+   "domain": "googletagservices.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 238,
+   "domain": "wsdvs.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 239,
+   "domain": "xcal.tv",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 240,
+   "domain": "researchgate.net",
+   "reason": "no page: HTTP 403"
+  },
+  {
+   "rank": 241,
+   "domain": "cisco.com",
+   "reason": "same site as meraki.com"
+  },
+  {
+   "rank": 242,
+   "domain": "playstation.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 243,
+   "domain": "bbc.co.uk",
+   "reason": "same site as bbc.com"
+  },
+  {
+   "rank": 244,
+   "domain": "rbxcdn.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 245,
+   "domain": "shifen.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 247,
+   "domain": "adtrafficquality.google",
+   "reason": "same site as google.com"
+  },
+  {
+   "rank": 248,
+   "domain": "applovin.com",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 249,
+   "domain": "ailawandorder.com",
+   "reason": "no page: Page.goto: SSL_ERROR_BAD_CERT_DOMAIN"
+  },
+  {
+   "rank": 250,
+   "domain": "msftconnecttest.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 252,
+   "domain": "sourceforge.net",
+   "reason": "no page: HTTP 403"
+  },
+  {
+   "rank": 253,
+   "domain": "sfx.ms",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 254,
+   "domain": "akamaihd.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 256,
+   "domain": "alibabadns.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 257,
+   "domain": "bytefcdn-oversea.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 258,
+   "domain": "vkuserphoto.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 259,
+   "domain": "crcdn.pro",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 260,
+   "domain": "aliyuncsslbintl.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 263,
+   "domain": "cdn-apple.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 268,
+   "domain": "licdn.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 270,
+   "domain": "yandexcloud.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 271,
+   "domain": "ttvnw.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 272,
+   "domain": "withgoogle.com",
+   "reason": "same site as google.com"
+  },
+  {
+   "rank": 273,
+   "domain": "arubanetworks.com",
+   "reason": "no page: Page.goto: SSL_ERROR_BAD_CERT_DOMAIN"
+  },
+  {
+   "rank": 274,
+   "domain": "googleadservices.com",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 275,
+   "domain": "name-services.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 277,
+   "domain": "wixsite.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 279,
+   "domain": "demdex.net",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 281,
+   "domain": "icanhazip.com",
+   "reason": "no page: 13 characters"
+  },
+  {
+   "rank": 282,
+   "domain": "app-analytics-services.com",
+   "reason": "no page: HTTP 404"
+  },
+  {
+   "rank": 285,
+   "domain": "namebrightdns.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 287,
+   "domain": "online-metrix.net",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 289,
+   "domain": "telecid.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 290,
+   "domain": "ip-api.com",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 291,
+   "domain": "ozon.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 292,
+   "domain": "telegram.me",
+   "reason": "same site as t.me"
+  },
+  {
+   "rank": 295,
+   "domain": "myshopify.com",
+   "reason": "no page: HTTP 404"
+  },
+  {
+   "rank": 298,
+   "domain": "ggpht.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 300,
+   "domain": "tiktokcdn-us.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 301,
+   "domain": "media-amazon.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 302,
+   "domain": "jsdelivr.net",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 304,
+   "domain": "wac-msedge.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 305,
+   "domain": "vedcdnlb.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 308,
+   "domain": "skybridge.click",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 310,
+   "domain": "casalemedia.com",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 311,
+   "domain": "gamepass.com",
+   "reason": "no page: Page.goto: SSL_ERROR_BAD_CERT_DOMAIN"
+  },
+  {
+   "rank": 313,
+   "domain": "msftncsi.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 314,
+   "domain": "shopifysvc.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 315,
+   "domain": "chatgpt.site",
+   "reason": "same site as chatgpt.com"
+  },
+  {
+   "rank": 316,
+   "domain": "vercel-dns-016.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 317,
+   "domain": "byteoversea.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 318,
+   "domain": "cloudflareinsights.com",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 320,
+   "domain": "wiley.com",
+   "reason": "no page: 0 characters"
+  },
+  {
+   "rank": 323,
+   "domain": "nflxvideo.net",
+   "reason": "no page: Page.goto: SSL_ERROR_UNKNOWN"
+  },
+  {
+   "rank": 324,
+   "domain": "vungle.com",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 325,
+   "domain": "douyincdn.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 327,
+   "domain": "rubiconproject.com",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 328,
+   "domain": "volcfcdndvs.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 329,
+   "domain": "weibo.com",
+   "reason": "no page: 0 characters"
+  },
+  {
+   "rank": 330,
+   "domain": "imcmdb.net",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 332,
+   "domain": "amazon.co.uk",
+   "reason": "same site as amazonaws.com"
+  },
+  {
+   "rank": 333,
+   "domain": "heytapmobile.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 336,
+   "domain": "trustpilot.com",
+   "reason": "no page: HTTP 403"
+  },
+  {
+   "rank": 338,
+   "domain": "mybluehost.me",
+   "reason": "no page: Page.goto: SSL_ERROR_UNKNOWN"
+  },
+  {
+   "rank": 340,
+   "domain": "clarity.ms",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 346,
+   "domain": "steamserver.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 347,
+   "domain": "plex.direct",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 352,
+   "domain": "ok.ru",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 357,
+   "domain": "wsj.com",
+   "reason": "no page: HTTP 401"
+  },
+  {
+   "rank": 360,
+   "domain": "on.aws",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 361,
+   "domain": "grammarly.io",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 362,
+   "domain": "twimg.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 364,
+   "domain": "alicdn.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 367,
+   "domain": "elasticbeanstalk.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 371,
+   "domain": "worldnic.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 372,
+   "domain": "nexthink.cloud",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 373,
+   "domain": "userapi.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 374,
+   "domain": "browser-intake-datadoghq.com",
+   "reason": "no page: HTTP 403"
+  },
+  {
+   "rank": 375,
+   "domain": "cdnbuild.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 377,
+   "domain": "netease.com",
+   "reason": "no page: Page.goto: SSL_ERROR_BAD_CERT_DOMAIN"
+  },
+  {
+   "rank": 378,
+   "domain": "mi.com",
+   "reason": "same site as xiaomi.com"
+  },
+  {
+   "rank": 379,
+   "domain": "xboxlive.com",
+   "reason": "no page: Page.goto: SSL_ERROR_BAD_CERT_DOMAIN"
+  },
+  {
+   "rank": 380,
+   "domain": "awsglobalaccelerator.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 381,
+   "domain": "google.cn",
+   "reason": "no page: 39 characters"
+  },
+  {
+   "rank": 383,
+   "domain": "archive.ph",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 385,
+   "domain": "amazon.de",
+   "reason": "same site as amazonaws.com"
+  },
+  {
+   "rank": 390,
+   "domain": "globo.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 392,
+   "domain": "allawnos.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 393,
+   "domain": "cookiedatabase.org",
+   "reason": "no page: HTTP 403"
+  },
+  {
+   "rank": 395,
+   "domain": "adnxs.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 397,
+   "domain": "impervadns.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 398,
+   "domain": "tiktokv.us",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 399,
+   "domain": "samsungcloudsolution.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 406,
+   "domain": "appsflyer.com",
+   "reason": "same site as onelink.me"
+  },
+  {
+   "rank": 408,
+   "domain": "spotifycdn.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 409,
+   "domain": "gmail.com",
+   "reason": "same site as google.com"
+  },
+  {
+   "rank": 410,
+   "domain": "ibyteimg.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 411,
+   "domain": "adobe.net",
+   "reason": "no page: Page.goto: SSL_ERROR_BAD_CERT_DOMAIN"
+  },
+  {
+   "rank": 413,
+   "domain": "visualstudio.com",
+   "reason": "same site as microsoft.com"
+  },
+  {
+   "rank": 414,
+   "domain": "scdn.co",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 415,
+   "domain": "yandex.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 416,
+   "domain": "capcutapi.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 421,
+   "domain": "tencent-cloud.net",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 422,
+   "domain": "163.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 426,
+   "domain": "adobedc.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 429,
+   "domain": "firetvcaptiveportal.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 430,
+   "domain": "vercel-dns-017.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 431,
+   "domain": "gcdn.co",
+   "reason": "no page: Page.goto: SSL_ERROR_UNKNOWN"
+  },
+  {
+   "rank": 432,
+   "domain": "bunnyinfra.net",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 434,
+   "domain": "archive.is",
+   "reason": "no page: Page.goto: NS_ERROR_CONNECTION_REFUSED"
+  },
+  {
+   "rank": 436,
+   "domain": "tiktokcdn-eu.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 437,
+   "domain": "myqcloud.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 438,
+   "domain": "kwai-pro.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 439,
+   "domain": "telekom.de",
+   "reason": "same site as telekom.net"
+  },
+  {
+   "rank": 440,
+   "domain": "beian.gov.cn",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 442,
+   "domain": "manulife-sinochem.com",
+   "reason": "no page: Page.goto: Timeout 25000ms exceeded."
+  },
+  {
+   "rank": 443,
+   "domain": "tiktokv.eu",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 444,
+   "domain": "myhuaweicloud.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  },
+  {
+   "rank": 445,
+   "domain": "heytapdl.com",
+   "reason": "no page: Page.goto: NS_ERROR_UNKNOWN_HOST"
+  }
+ ]
+}

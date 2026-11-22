@@ -10,6 +10,7 @@ with CuBit.Memory_Grants;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with Startup;
 
 package body Log_Persistence is
@@ -178,7 +179,7 @@ package body Log_Persistence is
          end if;
          exit when not Found or else Failed;
          declare
-            Text : constant String := Logs.Text (Value.Data);
+            Text : constant String := Logs.Texts.Text (Value.Data);
             Line : constant String :=
               Decimal (Value.Monotonic_Ms) & " " & Decimal (Value.Source) & " " &
               Severity_Text (Logs.Level (Value.Data)) & " " &
@@ -205,5 +206,24 @@ package body Log_Persistence is
          Flush (Now_Ms);
       end if;
    end Pump;
+
+   procedure Detach (Store : in out Log_Fanout.Broker; Now_Ms : Unsigned_64; Was_Open : out Boolean) is
+      Request : Message;
+   begin
+      Was_Open := Opened;
+      if Opened then
+         Pump (Store, Now_Ms);
+         if not Failed and then Unflushed then
+            Flush (Now_Ms);
+         end if;
+         Request := Close_Request (Handle);
+         if not Call (Request) then
+            debugPrint ("logstore: the persistent log did not close" & Line_Feed);
+         end if;
+         Opened := False;
+      end if;
+      --  Never again: the volume is going away.
+      Volume_Length := 0;
+   end Detach;
 
 end Log_Persistence;

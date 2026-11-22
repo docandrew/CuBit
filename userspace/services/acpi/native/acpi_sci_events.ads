@@ -77,6 +77,9 @@ package ACPI_SCI_Events is
    -- call Disarm again; Quiesced is final. No SCI line: Quiesced at once.
    ---------------------------------------------------------------------------
    procedure Disarm (Result : out ACPI_SCI_Quiesce.Result);
+   -- Same physical barrier, with explicit local diagnostic admission. False
+   -- uses only copied facts on an established log ring/serial; no channel open.
+   procedure Disarm_At_Boundary (Result : out ACPI_SCI_Quiesce.Result; Peer_Quiet : Boolean);
 
    -- Acknowledge-only, for loops that drain events without dispatching
    -- them (retirement, Park: One.Refuse_Pending): when Item is this
@@ -114,6 +117,14 @@ package ACPI_SCI_Events is
       -- Status and enable untouched: the consumer owns them (see above).
       with procedure GPE_Event (GPE : R.GPE_Number; Result : out Disposition);
    package With_Consumer is
+      -- A retained Core/Field owner may acknowledge an authenticated SCI
+      -- without register reads, consumer work or logging. Status stays latched
+      -- in hardware. Service_Deferred runs once at a later quiet boundary.
+      procedure Defer_Event
+        (Publisher : CuBit.Process_IDs.Process_ID; Item : CuBit.Messages.Message;
+         Result : out ACPI_SCI_Quiesce.Acknowledgement);
+      function Deferred return Boolean;
+      procedure Service_Deferred;
       -- The IRQ doorbell is the SCI; every other event goes on to
       -- ACPI_Native_Events.Handle.
       procedure Handle_Event

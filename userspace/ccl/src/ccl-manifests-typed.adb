@@ -438,19 +438,40 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                Item.Kind := Offerable_Self_Request;
                Item.Rights := Read_Only;
                Binding (Body_Cursor, Item);
-         elsif Kind = "Platform_Power" then
-               --  The platform power object, Write only (KERN-004,
-               --  CuBit.Platform_Power_Authority).
-               for Existing of Decl.Requests (1 .. Decl.Count) loop
-                  if Existing.Kind = Platform_Power_Request then
-                     Fail (Duplicate_Field, "a second platform power request",
-                           "declare (Request.Platform_Power ...) once");
-                     return;
-                  end if;
-               end loop;
-               Item.Kind := Platform_Power_Request;
+         elsif Kind = "Kernel_Object" then
+               --  A kernel object reached through Call, Write only, at most
+               --  one of each: the platform power object (KERN-004,
+               --  CuBit.Platform_Power_Authority), the trace object
+               --  (Trace_ABI, CuBit.Trace_Authority), the test console
+               --  object (Test_Console_ABI, CuBit.Test_Console_Authority) or
+               --  the VM creation authority (VMM-001,
+               --  CuBit.VM_Create_Authority).
+               declare
+                  Object : constant String := Alt (Named (Body_Cursor, "object"));
+                  Wanted : constant Request_Kind :=
+                    (if Object = "Trace" then Trace_Request
+                     elsif Object = "Test_Console" then Test_Console_Request
+                     elsif Object = "VM_Create" then VM_Create_Request
+                     else Platform_Power_Request);
+                  Noun : constant String :=
+                    (case Wanted is
+                        when Trace_Request => "trace",
+                        when Test_Console_Request => "test console",
+                        when VM_Create_Request => "VM creation",
+                        when others => "platform power");
+               begin
+                  for Existing of Decl.Requests (1 .. Decl.Count) loop
+                     if Existing.Kind = Wanted then
+                        Fail (Duplicate_Field, "a second " & Noun & " request",
+                              "declare (Request.Kernel_Object (Kernel_Object_Request Kernel_Object." &
+                                Object & " ...)) once");
+                        return;
+                     end if;
+                  end loop;
+                  Item.Kind := Wanted;
+               end;
                Item.Rights := Write_Only;
-               Binding (Body_Cursor, Item);
+               Binding (Named (Body_Cursor, "binding"), Item);
          elsif Kind = "Network" then
                Item.Kind := Network_Request;
                Item.Rights := Read_Write;
@@ -614,6 +635,21 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
                end if;
                if Decl.Requests (Found).Kind = Platform_Power_Request then
                   Fail (Not_Yet_Supported, """" & Name & """ is the platform power object, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = Trace_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is the kernel trace object, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = Test_Console_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is the test console object, never optional",
+                        "remove it from optional; the startup entry approves the launch or refuses it");
+                  return;
+               end if;
+               if Decl.Requests (Found).Kind = VM_Create_Request then
+                  Fail (Not_Yet_Supported, """" & Name & """ is the VM creation authority, never optional",
                         "remove it from optional; the startup entry approves the launch or refuses it");
                   return;
                end if;

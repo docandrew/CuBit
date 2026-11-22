@@ -7,6 +7,7 @@ with CuBit.Filesystem_Queues;
 with CuBit.Filesystem_Sessions;
 with CuBit.Filesystems;
 with CuBit.Messages;
+with CuBit.Monotonic;
 
 package body Desktop_Asset_Files is
    use Interfaces;
@@ -117,7 +118,7 @@ package body Desktop_Asset_Files is
       Path        : out String;
       Path_Length : out Natural)
    is
-      Started : constant Unsigned_64 := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Deadline : constant Unsigned_64 := CuBit.Messages.Deadline_After (Unsigned_64 (Budget_Ms));
       Root : String (1 .. Maximum_Root);
       Length : Root_Length;
@@ -126,7 +127,7 @@ package body Desktop_Asset_Files is
       begin
          Result.Status := Status;
          Result.Elapsed_Ms :=
-           CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME) - Started;
+           CuBit.Monotonic.Milliseconds - Started;
       end Finish;
 
       --  Read the open file Handle to its end, into the sink.

@@ -33,7 +33,9 @@ with CuBit.Memory_Grants;
 with CuBit.Messages;
 
 with CuBit.Handles;
+with CuBit.Handles.Debug;
 with CuBit.Handles.Services;
+with CuBit.Launch_Handles;
 package CuBit.Launching is
 
    --  What a program starts programs through: made only from its
@@ -51,10 +53,20 @@ package CuBit.Launching is
       Refused);             --  procmgr refused: see Failure
 
    --  The child's identity (KERN-003): one life, matched exactly by its
-   --  exit event.
+   --  exit event; and its launch handle (CAP-012, CuBit.Launch_Handles):
+   --  procmgr's endpoint badged for this child, with the rights the launch
+   --  gave (Observe, Stop, Attach, Introduce, Debug). The child's kernel
+   --  parent is procmgr, its session supervisor's process: the handle is
+   --  this program's way to it, never its authority.
    type Child is record
       Process : CuBit.Process_IDs.Process_ID := CuBit.Process_IDs.No_Process;
+      Handle  : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+      Rights  : CuBit.Launch_Handles.Rights := CuBit.Launch_Handles.No_Rights;
    end record;
+
+   --  How long a call through a launch handle waits for procmgr's answer
+   --  (it answers at once; this bounds a procmgr that is gone).
+   Handle_Answer_Ms : constant := 2_000;
 
    --  Start Program with the given launch block (Arguments: a finished
    --  Launch_Arguments builder's block, or empty) and delegated places
@@ -75,6 +87,15 @@ package CuBit.Launching is
                and then Arguments'Length <= CuBit.Launch_Arguments.Maximum_Block_Bytes
                and then Grants'Length <= CuBit.Launch_Grants.Maximum_Bytes;
 
+   --  Launch goes through the program's Launch badge (startup binding
+   --  "launch", CAP-012, docs/authority-model.md 7.5) when it has one: the
+   --  child is started into the badge's session, with its install approval
+   --  within the session's envelope, never this program's authority.
+   --  Without a badge procmgr refuses (Not_Granted).
+   --  After a Request_Withheld refusal: the startup label of the request
+   --  the session withheld.
+   function Withheld_Request return String;
+
    --  A ring for a child's outlet (docs/ccl-launch-parameters.md,
    --  "Launcher-owned outlet rings"): a Stream_Rings region for Pages
    --  declared pages (Stream_Rings.Region_Pages of them) of this process's
@@ -91,8 +112,10 @@ package CuBit.Launching is
       Base : in out Unsigned_64; Grant : out Unsigned_64;
       Reference : out CuBit.Memory_Grants.Grant_Reference; Success : out Boolean);
 
-   --  Block until Started ends; Ended is its exit report. Other events
-   --  that arrive meanwhile are kept (CuBit.Process_Events).
+   --  Block until Started ends; Ended is its exit report (procmgr's exit
+   --  notice: CuBit.Child_Exits.Is_Exit). Other events that arrive
+   --  meanwhile are kept (CuBit.Process_Events). Once it is taken, the
+   --  launch handle is let go (Release), here and in Poll_Exit.
    procedure Wait (Started : Child; Ended : out CuBit.Child_Exits.Report);
 
    --  Whether Started has ended, without blocking (Ended its report). A
@@ -102,20 +125,44 @@ package CuBit.Launching is
      (Started : Child; Has_Ended : out Boolean; Ended : out CuBit.Child_Exits.Report);
 
    --  Send Started a control message (docs/ipc-delivery.md, "Control is
-   --  per capability"): the kernel accepts it from the process that
-   --  launched it and keeps it until Started reads it. Busy: Started has
-   --  not read other senders' messages yet; try again later. Refused:
-   --  Started has ended, or this process may not send it one.
+   --  per capability") through its launch handle's Stop right: procmgr
+   --  sends it with the Control it holds, and the kernel keeps it until
+   --  Started reads it. Busy: Started has not read other senders' messages
+   --  yet; try again later. Refused: Started has ended, or its handle does
+   --  not carry Stop.
    type Control_Result is (Sent, Busy, Refused);
    procedure Send_Control
      (Started : Child; Kind : CuBit.Control_Events.Control_Kind;
       Result : out Control_Result);
 
-   --  End Started, which this process launched, after a Stop it did not
-   --  obey within the launcher's own deadline (procmgr kills it with the
-   --  process authority it holds; CuBit.Launch_Authority.End_Child_Operation).
-   --  Its exit then arrives as usual (Wait, Poll_Exit).
-   procedure End_Child (Through : Launcher; Started : Child; Result : out Launch_Result);
+   --  End Started after a Stop it did not obey within the launcher's own
+   --  deadline (the handle's Stop right; procmgr kills it with the process
+   --  authority it holds). Its exit then arrives as usual (Wait, Poll_Exit).
+   procedure End_Child (Started : Child; Result : out Launch_Result);
+
+   --  Started's state through its handle (Observe): Running, or how it
+   --  ended and its code. Outcome says why not when it is not Done.
+   procedure Observe
+     (Started : Child; State : out CuBit.Launch_Handles.Child_State;
+      Code : out Unsigned_64; Outcome : out CuBit.Launch_Handles.Outcome);
+
+   --  A Debug_Observe session on Started (DBG-001; the handle's Debug
+   --  right): procmgr mints it from Started's Control, within the session's
+   --  debug envelope, and hands it over. Until_Time: an absolute monotonic
+   --  millisecond (CuBit.Messages.Deadline_After).
+   procedure Debug
+     (Started : Child; Until_Time : Unsigned_64; Session : out CuBit.Handles.Debug.Session;
+      Outcome : out CuBit.Launch_Handles.Outcome);
+
+   --  A narrower handle on Started (at most its rights, only those asked),
+   --  to give someone else; revoking Started's handle revokes it too.
+   procedure Narrow
+     (Started : Child; Rights : CuBit.Launch_Handles.Rights; Narrowed : out Child;
+      Outcome : out CuBit.Launch_Handles.Outcome);
+
+   --  Let Started's handle go: procmgr revokes it (and every handle
+   --  narrowed from it), and this process's copy is closed.
+   procedure Release (Started : Child);
 
    --  The Desktop's "Allow app replacement" switch, told to procmgr
    --  (CuBit.Launch_Authority.Staged_Switch_Operation): the request, which

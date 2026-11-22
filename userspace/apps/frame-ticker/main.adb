@@ -13,6 +13,7 @@
 --  opened on top).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Protocol;
@@ -25,6 +26,7 @@ with CuBit.Handles;
 with CuBit.Handles.IPC;
 with CuBit.Handles.Startup;
 with CuBit.Startup_Tables;
+with CuBit.Monotonic;
 procedure Main is
    Win : CuBit.UI.App.Window;
    UI : CuBit.UI.State.UI_State;
@@ -81,7 +83,7 @@ procedure Main is
    procedure Tick (Win : in out CuBit.UI.App.Window; Dirty : in out Rect; Running : in out Boolean) is
       pragma Unreferenced (Win, Running);
    begin
-      Due := syscall (SYSCALL_GETTIME) + FRAME_MS;
+      Due := CuBit.Monotonic.Milliseconds + FRAME_MS;
       Step := Step + 1;
       Dirty := Union_Rect (Dirty, Bar_Area);
       if not Announced then
@@ -107,7 +109,7 @@ procedure Main is
       Desktop_D : constant IPC.Description := IPC.Describe (Desktop);
       Probe : Message := NULL_MESSAGE;
       Tag : MessageTag;
-      Me : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+      Me : constant Unsigned_64 := Own_Process_Word;
       Ok : Boolean := True;
    begin
       if not Self_D.Current or else Self_D.Held.Grant then
@@ -135,6 +137,8 @@ procedure Main is
       end if;
    end Check_No_Offerable_Self;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Check_No_Offerable_Self;
    declare
       Open_Outcome : CuBit.UI.App.Open_Result;
@@ -146,7 +150,7 @@ begin
       Opened := Open_Outcome in CuBit.UI.App.Opened;
    end;
    if Opened then
-      Due := syscall (SYSCALL_GETTIME) + 1;
+      Due := CuBit.Monotonic.Milliseconds + 1;
       Run (Win);
       CuBit.UI.App.Close (Win);
    end if;

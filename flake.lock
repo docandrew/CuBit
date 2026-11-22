@@ -124,34 +124,34 @@
     "sparkentropy": {
       "flake": false,
       "locked": {
-        "lastModified": 1790205017,
-        "narHash": "sha256-i6PPbeXfuv4IdCdbrEVSrcnEY8mLmM4uWdwcUAUMVdg=",
+        "lastModified": 1790301928,
+        "narHash": "sha256-s32vidjFqGop9QVaJxWD+6lvsWsMYrxQbhx3Izy5pKM=",
         "owner": "docandrew",
         "repo": "sparkentropy",
-        "rev": "f707e61678576b4748c040d645b8ed427a28f8c8",
+        "rev": "d92938ebf6cde3074dacc89a1da50a208f57af20",
         "type": "github"
       },
       "original": {
         "owner": "docandrew",
         "repo": "sparkentropy",
-        "rev": "f707e61678576b4748c040d645b8ed427a28f8c8",
+        "rev": "d92938ebf6cde3074dacc89a1da50a208f57af20",
         "type": "github"
       }
     },
     "sparkmlkem": {
       "flake": false,
       "locked": {
-        "lastModified": 1790033795,
-        "narHash": "sha256-h0qwajlPbXE2KcWCc8IWlMMCQ4G/XV/cQL52U90Qwsg=",
+        "lastModified": 1790301992,
+        "narHash": "sha256-qTefZJUa6Ht3u5b4ik2ksOtlqvOZwUIN4y1DRiLKqJY=",
         "owner": "docandrew",
         "repo": "sparkmlkem",
-        "rev": "5fbd0c9ae7a498f4bd5350547ebaffba381156fa",
+        "rev": "d9a8f03f16ac24921fbb22d975d7ba891c39aac0",
         "type": "github"
       },
       "original": {
         "owner": "docandrew",
         "repo": "sparkmlkem",
-        "rev": "5fbd0c9ae7a498f4bd5350547ebaffba381156fa",
+        "rev": "d9a8f03f16ac24921fbb22d975d7ba891c39aac0",
         "type": "github"
       }
     },
@@ -175,51 +175,51 @@
     "sparktls": {
       "flake": false,
       "locked": {
-        "lastModified": 1790257215,
-        "narHash": "sha256-3fi07g1lmgJy1zs7LqD5MJq1Xs66kwZHzNUGpyBysK8=",
+        "lastModified": 1795236604,
+        "narHash": "sha256-JgzLUmXiKTwUSwqxp2lCPkBJuOoVVjnmOprlFLUP8pM=",
         "owner": "docandrew",
         "repo": "sparktls",
-        "rev": "f7ea3a5eba7538e88f485f5ed252a5bd98364206",
+        "rev": "1e8b4c64d6f520009667ccf0f968e7726cada0ac",
         "type": "github"
       },
       "original": {
         "owner": "docandrew",
         "repo": "sparktls",
-        "rev": "f7ea3a5eba7538e88f485f5ed252a5bd98364206",
+        "rev": "1e8b4c64d6f520009667ccf0f968e7726cada0ac",
         "type": "github"
       }
     },
     "sparktlscrypto": {
       "flake": false,
       "locked": {
-        "lastModified": 1790205029,
-        "narHash": "sha256-/FUaVKuKYNRJb6mLetBuDcqtJ2mIN0J/9voXtbupif8=",
+        "lastModified": 1795227918,
+        "narHash": "sha256-ZmoqHvlqwogvxX0hkq7tepLw2pNk7FRx315Ff0em3hM=",
         "owner": "docandrew",
         "repo": "sparktlscrypto",
-        "rev": "b89c8bee8013498ac9008f92f4fd5480740e60df",
+        "rev": "e0ca4e9ed98fe953f0c65ba10a8e10a24a828f2f",
         "type": "github"
       },
       "original": {
         "owner": "docandrew",
         "repo": "sparktlscrypto",
-        "rev": "b89c8bee8013498ac9008f92f4fd5480740e60df",
+        "rev": "e0ca4e9ed98fe953f0c65ba10a8e10a24a828f2f",
         "type": "github"
       }
     },
     "sparkx509": {
       "flake": false,
       "locked": {
-        "lastModified": 1789440868,
-        "narHash": "sha256-rpv4khQzJ5qSgP32V7phGEvvT/V0Q7cEl1Dzmjvb37I=",
+        "lastModified": 1795233720,
+        "narHash": "sha256-17WwweNrw/1Fq/nToaKJ9+DFvFHJMdyS8syqxP5FXDQ=",
         "owner": "docandrew",
         "repo": "sparkx509",
-        "rev": "ba9c37170911a3ef564472187f83a6b38dac8fb2",
+        "rev": "24013bc33c88f9028e806216c7a397a7e60f1e6b",
         "type": "github"
       },
       "original": {
         "owner": "docandrew",
         "repo": "sparkx509",
-        "rev": "ba9c37170911a3ef564472187f83a6b38dac8fb2",
+        "rev": "24013bc33c88f9028e806216c7a397a7e60f1e6b",
         "type": "github"
       }
     },

@@ -4,7 +4,7 @@
 This catches unsupported WebRender options and overlarge fixed atlases, not
 all possible engine allocations or page-dependent render targets.
 """
-import ast
+import os
 import pathlib
 import re
 
@@ -13,14 +13,10 @@ registry = ROOT / "userspace/rust/build/servo-work/cargo-home/registry/src"
 upstream = next(registry.glob("*/webrender-0.70.0/src"))
 init = (upstream / "renderer/init.rs").read_text()
 minimum = int(re.search(r"const MIN_TEXTURE_SIZE: i32 = (\d+);", init)[1])
-source = (ROOT / "userspace/servo/patch_servo.py").read_text()
-# Inspect the exact replacement text passed to the production patcher.
-replacements = [node.args[2].value for node in ast.walk(ast.parse(source))
-                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                and node.func.id == "edit" and len(node.args) >= 3
-                and isinstance(node.args[2], ast.Constant)
-                and isinstance(node.args[2].value, str)]
-options = next(text for text in replacements if "texture_cache_config:" in text)
+# The options as Penny's Servo fork builds them (userspace/servo/FORKS).
+servo = pathlib.Path(os.environ.get("SERVO_DIR", ROOT / "userspace/rust/build/servo-work/servo"))
+options = (servo / "components/paint/painter.rs").read_text()
+assert "texture_cache_config:" in options
 limit = int(re.search(r"max_internal_texture_size: if software_gl \{ Some\((\d+)\)", options)[1])
 assert limit >= minimum, (limit, minimum)
 libc = (ROOT / "userspace/libc/overlay/src/cubit/syscall.c").read_text()

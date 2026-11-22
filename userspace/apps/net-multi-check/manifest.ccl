@@ -6,6 +6,8 @@
 (executable-manifest v1
   (identity "com.cubit.net-multi-check")
   (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore)
   (request-network tcp-connect (ipv4 "10.0.3.2" 32)
     (ports 18471 18471) (dns deny)
     (connections 1) stream)

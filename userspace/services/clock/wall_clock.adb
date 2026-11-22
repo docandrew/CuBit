@@ -9,6 +9,7 @@ with Time_Zones;
 with Time_Zone_Rules;
 with Clock_Discipline;
 with Clock_Floor;
+with CuBit.Monotonic;
 package body Wall_Clock is
    --  Build-time floor: UTC never falls below the source commit time.
    Floor_MS : constant Clock_Discipline.UTC_Milliseconds :=
@@ -119,13 +120,13 @@ package body Wall_Clock is
       Quality : out CuBit.Clocks.Time_Quality) is
    begin
       Clock_Discipline.Apply
-        (Discipline, Candidate, syscall (SYSCALL_GETTIME), Floor_MS, Result);
+        (Discipline, Candidate, CuBit.Monotonic.Milliseconds, Floor_MS, Result);
       Quality := Clock_Discipline.Quality (Discipline);
    end Adjust;
    Last_Published : Unsigned_64 := 0;
 
    procedure Publish is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       UTC_MS : Clock_Discipline.UTC_Milliseconds;
       Current : Boolean;
       Offset : Unsigned_64;
@@ -148,7 +149,7 @@ package body Wall_Clock is
       Date : Civil_Time.Date_Time;
       Quality : CuBit.Clocks.Time_Quality := CuBit.Clocks.Unknown_Time;
       Offset : Integer_32 := 0;
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       UTC : Unsigned_64 := 0;
       UTC_MS : Clock_Discipline.UTC_Milliseconds;
       Current : Boolean;

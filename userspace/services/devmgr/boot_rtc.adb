@@ -3,6 +3,7 @@ with CuBit.Messages; use CuBit.Messages;
 with Interfaces; use Interfaces;
 with RTC_Decode;
 with RTC_Sampling;
+with CuBit.Monotonic;
 package body Boot_RTC is
    CMOS_Index : constant Unsigned_16 := 16#70#;
    CMOS_Data  : constant Unsigned_16 := 16#71#;
@@ -39,7 +40,7 @@ package body Boot_RTC is
       procedure Pause is
          Ignore : constant Unsigned_64 := CuBit.Waits.Sleep_For (Update_Pause_Ms);
       begin null; end Pause;
-      function Monotonic return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+      function Monotonic return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
       package Sampling is new RTC_Sampling
         (Index_Port => CMOS_Index, Data_Port => CMOS_Data, Read_Register => Read_Register,
          Pause => Pause, Monotonic_Milliseconds => Monotonic);

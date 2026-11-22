@@ -1,0 +1,12 @@
+# vmm: one virtual machine's monitor (VMM-001). It holds the VM creation
+# authority only when its startup entry approves it, (vm-create
+# approve-declared); its window and its guest.console outlet show the
+# guest's serial console. No files, no network: the guest image is built in.
+(Executable_Manifest
+  identity => "com.cubit.vmm"
+  version => "0.1.0"
+  requests => [
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    (Request.Kernel_Object (Kernel_Object_Request Kernel_Object.VM_Create "vm-create"))]
+  outlets => [(Outlet "guest.console" Element.Text pages => 4)])

@@ -29,23 +29,23 @@
   # against local checkouts, use e.g.
   #   nix develop --override-input sparktls path:../sparktls
   inputs.sparktls = {
-    url = "github:docandrew/sparktls/f7ea3a5eba7538e88f485f5ed252a5bd98364206";
+    url = "github:docandrew/sparktls/1e8b4c64d6f520009667ccf0f968e7726cada0ac";
     flake = false;
   };
   inputs.sparktlscrypto = {
-    url = "github:docandrew/sparktlscrypto/b89c8bee8013498ac9008f92f4fd5480740e60df";
+    url = "github:docandrew/sparktlscrypto/e0ca4e9ed98fe953f0c65ba10a8e10a24a828f2f";
     flake = false;
   };
   inputs.sparkx509 = {
-    url = "github:docandrew/sparkx509/ba9c37170911a3ef564472187f83a6b38dac8fb2";
+    url = "github:docandrew/sparkx509/24013bc33c88f9028e806216c7a397a7e60f1e6b";
     flake = false;
   };
   inputs.sparkentropy = {
-    url = "github:docandrew/sparkentropy/f707e61678576b4748c040d645b8ed427a28f8c8";
+    url = "github:docandrew/sparkentropy/d92938ebf6cde3074dacc89a1da50a208f57af20";
     flake = false;
   };
   inputs.sparkmlkem = {
-    url = "github:docandrew/sparkmlkem/5fbd0c9ae7a498f4bd5350547ebaffba381156fa";
+    url = "github:docandrew/sparkmlkem/d9a8f03f16ac24921fbb22d975d7ba891c39aac0";
     flake = false;
   };
   inputs.sparknacl = {

@@ -5,6 +5,7 @@ with CuBit.Messages;
 with CuBit.Process_IDs;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with CuBit.Logging;
 with CuBit.Service_Names;
 with CCL_Processes;
@@ -13,6 +14,7 @@ with CCL_Log_Selection;
 with CCL_Native_Bindings;
 with CuBit.Handles;
 with CuBit.Handles.Services;
+with CuBit.Monotonic;
 
 --  logs.recent and logs.between on CuBit: for each process the name has
 --  named during this boot (LOG-003: exited ones too, as logstore's
@@ -173,7 +175,7 @@ package body CCL_Log_IO is
    Replay_Poll_Ms : constant := 10;
 
    function Record_Level (Item : L.Log_Record) return Logs.Severity is (Level_Of (L.Level (Item)));
-   package Selections is new CCL_Log_Selection (L.Log_Record, Record_Level, L.Text);
+   package Selections is new CCL_Log_Selection (L.Log_Record, Record_Level, L.Texts.Text);
 
    --  The records of Service in Within: every instance's retained history
    --  replayed through to its tally, and what one result shows of it
@@ -202,7 +204,7 @@ package body CCL_Log_IO is
       Chosen : Selections.Selection;
 
       function Now return Unsigned_64 is
-        (CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME));
+        (CuBit.Monotonic.Milliseconds);
 
       procedure Add_Source (Source : Unsigned_64) is
       begin

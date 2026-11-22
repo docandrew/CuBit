@@ -8,7 +8,7 @@
 --
 --  @description
 --  Busy phase: Busy_Frames frames back to back (the timed hook is always
---  due), counting this thread's system calls (kernel READ_STATISTICS).
+--  due), counting this thread's system calls (its thread-count line).
 --  Key phase: every key press repaints a small box; Esc ends it and prints
 --  the calls the phase made, the keys and the frames. Desktop reports
 --  each key's way from the driver to the submitted frame (LAT-002,
@@ -16,6 +16,7 @@
 --  loop phase (DESKTOP-CALLS, DESKTOP-CALL-PHASES). Also: main's start ->
 --  first frame done.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Call_Census;
@@ -55,12 +56,7 @@ procedure Main is
    Box_X : Natural := 0;
 
    function Thread_Calls return Unsigned_64 is
-      Value : CuBit.System_Facts.SP.Statistics;
-      Read : Boolean;
-   begin
-      CuBit.System_Facts.Read_Statistics (Value, Read);
-      return (if Read then Value.Thread_System_Calls else 0);
-   end Thread_Calls;
+     (CuBit.System_Facts.Thread_System_Calls);
 
    function Decimal (Value : Unsigned_64) return String is
       Image : constant String := Value'Image;
@@ -68,11 +64,11 @@ procedure Main is
       return Image (Image'First + 1 .. Image'Last);
    end Decimal;
 
-   --  Calls since the phase began, less the READ_STATISTICS that asks.
-   function Calls_So_Far return Unsigned_64 is (Thread_Calls - Phase_Calls - 1);
+   --  Calls since the phase began (reading the count is not a call).
+   function Calls_So_Far return Unsigned_64 is (Thread_Calls - Phase_Calls);
 
-   --  The phase's calls by call number (CuBit.Call_Census), without the
-   --  READ_STATISTICS that bracket it: "UI-PROBE: calls ...".
+   --  The phase's calls by call number (CuBit.Call_Census): "UI-PROBE:
+   --  calls ..."
    Census_At : CuBit.Call_Census.Counts := [others => 0];
    procedure Print_Census (Name : String) is
       Taken : constant CuBit.Call_Census.Counts := CuBit.Call_Census.Census;
@@ -81,12 +77,8 @@ procedure Main is
    begin
       for N in CuBit.Call_Census.Number loop
          declare
-            Count : Unsigned_64 := Taken (N) - Census_At (N);
+            Count : constant Unsigned_64 := Taken (N) - Census_At (N);
          begin
-            --  The phase's opening and closing READ_STATISTICS.
-            if N = Natural (CuBit.Kernel_ABI.Read_Statistics) then
-               Count := (if Count >= 2 then Count - 2 else 0);
-            end if;
             if Count /= 0 then
                declare
                   Item : constant String := " " & Decimal (Unsigned_64 (N)) & ":" & Decimal (Count);
@@ -245,6 +237,8 @@ procedure Main is
      (UI, Map, Render => Render, Handle_Event => Handle_Event,
       Next_Deadline => Next_Deadline, On_Deadline => On_Deadline, Activity_Wait => True);
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Call_Census.Enabled := True;
    App.Trace_Wakes := True;
    declare

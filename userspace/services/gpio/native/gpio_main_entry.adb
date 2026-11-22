@@ -22,7 +22,6 @@ with GPIO_Controller_Resources;
 with GPIO_Mapping_Policy;
 with GPIO_Loop_Time;
 with GPIO_IRQ_Turn;
-with GPIO_Polling_Loop;
 with GPIO_IRQ_Sweep;
 with CuBit.Handles.Lines;
 with Interrupt_Line_ABI;
@@ -80,11 +79,6 @@ procedure GPIO_Main_Entry is
    Clock_OK, Accepted, Resources_OK, Ready_OK, Found : Boolean;
    Wait_Result : M.Activity_Result;
    Parent_Present : Boolean := False;
-   Polling_Active : Boolean := False;
-   package Polling is new GPIO_Polling_Loop
-     (Native.Pump, GPIO_Native_Clock.Read, Time.Duration (Raw.timing.poll),
-      Time.Duration (Raw.timing.poll_window), Time.Duration (Raw.timing.progress));
-   Polling_Result : Polling.Turn_Report;
    Parent_Vector : LA.Line_Vector := LA.First_Vector;
    package Sweep is new GPIO_IRQ_Sweep (Driver.Registry, Native.Hold_Requests, Native.Requests_Held);
    Sweep_State : Sweep.State;
@@ -113,6 +107,44 @@ procedure GPIO_Main_Entry is
    use type IRQ.Phase;
    Caps : constant Resources.Authorities :=
      [Startup.Community0, Startup.Community1, Startup.Community4, Startup.Community5];
+   procedure Report_Runtime_Fault is
+      -- Copy every observation before logging or stop handling. None of these
+      -- accessors samples a clock, touches MMIO, retries an operation or drops
+      -- retained authority. A pin ID is an internal slot, never client authority.
+      C : constant Driver.Controller.Summary := Driver.Controller.Observe;
+      R : constant Driver.Registry.Summary := Driver.Registry.Observe;
+      A : constant Driver.Admin.Report := Driver.Admin.Observe (State);
+      Q : constant IRQ.Report := IRQ.Observe (IRQ_State);
+      Clock : constant GPIO_Native_Clock.Outcome := GPIO_Native_Clock.Last_Outcome;
+      use type Driver.Controller.Pin_ID;
+      Pin : constant Driver.Controller.Pin_ID :=
+        (if C.Last_Fault /= Driver.Controller.No_Pin then C.Last_Fault
+         elsif A.Binding_ID /= Driver.Registry.No_Channel then Driver.Controller.Pin_ID (A.Binding_ID)
+         else C.Active);
+      P : constant Driver.Controller.Pin_Observation := Driver.Controller.Observe_Pin (Pin);
+   begin
+      Log.Runtime_Detail ("controller fault=" & C.Faulted'Image & " active=" & C.Active'Image &
+         " last-fault=" & C.Last_Fault'Image & " clock=" & Clock'Image);
+      Log.Runtime_Detail ("registry registered=" & R.Registered'Image & " bound=" & R.Bound'Image &
+         " unresolved=" & R.Unresolved'Image & " layout=" & R.Layout_Changed'Image);
+      Log.Runtime_Detail ("admin phase=" & A.At_Phase'Image & " status=" & A.Last_Status'Image &
+         " binding=" & A.Binding_ID'Image & " receipt=" & A.Receipt_Owned'Image & " reply=" & A.Reply_Owned'Image);
+      Log.Runtime_Detail ("loop irq=" & Q.At_Phase'Image &
+         " reason=" & Q.Reason'Image & " wait-failed=" & Wait_Failure_Noted'Image);
+      if P.Present then
+         Log.Runtime_Detail ("pin slot=" & Pin'Image & " pad=" & P.Plan.Selected.Pad'Image &
+            " resource=" & P.Plan.Selected.Resource'Image & " phase=" & P.Report.At_Phase'Image &
+            " failed-at=" & P.Report.Failed_At'Image & " reason=" & P.Report.Reason'Image);
+         Log.Runtime_Detail ("access attempted=" & P.Report.Access_Attempted'Image & " write=" & P.Report.Was_Write'Image &
+            " read-id=" & P.Report.Last_Read'Image & " write-id=" & P.Report.Last_Write'Image &
+            " status=" & P.Report.Last_Status'Image);
+         Log.Runtime_Detail ("effects possible=" & P.Report.Effects_Possible'Image &
+            " may-be-enabled=" & P.Report.Pin_May_Be_Enabled'Image &
+            Log.Hex ("last-value", Interfaces.Unsigned_64 (P.Report.Last_Value)));
+      else
+         Log.Runtime_Detail ("pin slot=" & Pin'Image & " observation=absent");
+      end if;
+   end Report_Runtime_Fault;
    procedure Wait (Plan : Time.Wait_Plan) is
       Ignored : Interfaces.Unsigned_64;
    begin
@@ -166,7 +198,7 @@ procedure GPIO_Main_Entry is
          Interfaces.Unsigned_64 (Time.After (Sample, I.Tick (Raw.timing.readiness))));
       Acknowledged := Selected = Readiness.Report_Ready and then Reply = M.NULL_TAG;
       Log.Stage (Log.Readiness, Acknowledged,
-         (if Reply = M.NULL_TAG then (if Selected = Readiness.Report_Ready then (if Parent_Present then "acknowledged-parent-irq" elsif Polling_Active then "acknowledged-polled-events" else "acknowledged-events-unavailable") else "declined") else "report-refused"));
+         (if Reply = M.NULL_TAG then (if Selected = Readiness.Report_Ready then "acknowledged-parent-irq" else "declined") else "report-refused"));
    end Report_Once;
    procedure Configure_Parent (Ready : out Boolean) is
       Configured : Boolean;
@@ -180,7 +212,7 @@ procedure GPIO_Main_Entry is
          Ready := False; Why ("invalid-description");
       elsif not Launch_Report.Parent.Present then
          if Parent_Authority.Present then Ready := False; Why ("unexpected-authority");
-         else Why ("not-routed"); end if;
+         else Ready := False; Why ("parent-line-required"); end if;
       elsif not Parent_Authority.Present then Ready := False; Why ("missing-authority");
       else
          declare D : constant CuBit.Handles.IPC.Description := CuBit.Handles.IPC.Describe (Parent_Authority.Value); begin
@@ -194,11 +226,6 @@ procedure GPIO_Main_Entry is
       end if;
       Native.Configure_Parent (Parent_Present, Configured);
       if not Configured then Ready := False; Why ("configuration-repeated"); end if;
-      if Configured and then Ready and then not Parent_Present then
-         Native.Enable_Polling (Polling_Active);
-         Ready := Polling_Active;
-         Why ((if Polling_Active then "polling-only" else "polling-configuration-refused"));
-      end if;
       if Parent_Present and Configured then
          -- Release any parent delivery that preceded registration. Startup
          -- parking and the sealed registry establish the initial quiet source.
@@ -293,7 +320,8 @@ begin
          if not Accepted then Log.Stage (Log.Registration, False, "geometry-seal-refused"); Decline (True);
          else
             Configure_Parent (Accepted);
-            if not Accepted then Hold_Resources := True; Request_Stop; end if;
+            if not Accepted then Decline (True);
+            else
             declare Registered : constant Interfaces.Unsigned_64 := M.registerDriver (GPIO_Role, Startup.Registration); begin
                Ready_OK := not Stop_Latched and then PID.Is_Process (M.Own_Process) and then Registered /= Registration_Refused and then
                   Registered = PID.To_Word (M.Own_Process);
@@ -301,16 +329,11 @@ begin
             Log.Stage (Log.Registration, Ready_OK, (if Ready_OK then "primary" else "role-refused"));
             Report_Once (Ready_OK, Accepted); Log.Summary;
             if not Ready_OK or else not Accepted then Request_Stop; end if;
+            end if;
          end if;
       end if;
    end if;
    loop
-      if Polling_Active then
-         Polling.Turn (State, Polling_Result);
-         if Polling_Result.Supervision_Required then
-            Hold_Resources := True; Request_Stop;
-         end if;
-      else
       for N in 1 .. Positive (Raw.work.steps) loop
          declare Notice : Boolean; begin
             Native.Take_Parent_Notice (Notice); IRQ.Note (IRQ_State, Notice);
@@ -320,18 +343,16 @@ begin
          end;
          exit when not IRQ.Observe (IRQ_State).Needs_Progress and then not Driver.Needs_Step (State);
       end loop;
-      end if;
-      if (Polling_Active and then Polling_Result.Supervision_Required) or else
-         IRQ.Observe (IRQ_State).At_Phase = IRQ.Faulted or else
+      if IRQ.Observe (IRQ_State).At_Phase = IRQ.Faulted or else
          Driver.Controller.Observe.Faulted or else Driver.Registry.Observe.Layout_Changed or else
          Driver.Registry.Observe.Unresolved /= 0 or else Driver.Admin.Observe (State).At_Phase = Driver.Admin.Quarantined or else
          Wait_Failure_Noted
       then
          if not IRQ_Failure_Noted then
             IRQ_Failure_Noted := True;
+            Report_Runtime_Fault;
             Log.Stage (Log.Readiness, False, "runtime-supervision-required",
-               (if Polling_Active then " polling-clock=" & Polling_Result.Clock_Status'Image
-                else " irq=" & IRQ.Observe (IRQ_State).Reason'Image));
+               " irq=" & IRQ.Observe (IRQ_State).Reason'Image);
          end if;
          Hold_Resources := True; Request_Stop;
       end if;
@@ -339,7 +360,6 @@ begin
       exit when Driver.Registry.Terminal and then Driver.Registry.Quiescent and then Driver.Admin.Quiescent (State)
          and then not IRQ.Observe (IRQ_State).Parent_Held and then not Native.Requests_Held and then not Hold_Resources;
       if Hold_Resources then Wait ((Time.Relative_Delay, Time.Duration (Raw.timing.progress)));
-      elsif Polling_Active then Wait (Polling_Result.Wait_For);
       elsif IRQ.Observe (IRQ_State).Needs_Progress or else Driver.Needs_Step (State) or else Native.Requests_Held then
          GPIO_Native_Clock.Read (Now, Clock_OK);
          if not Clock_OK or else Now >= Time.Finite_Time'Last then Hold_Resources := True; Request_Stop;

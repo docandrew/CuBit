@@ -17,6 +17,7 @@
 --  succeeded.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Wait_ABI;
 with Interfaces; use Interfaces;
 with CuBit.Handles;
@@ -34,6 +35,7 @@ with CuBit.Kernel_Calls;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Process_Events;
 with CuBit.Streams;
+with CuBit.Monotonic;
 
 procedure Main is
    package CV renames CuBit.Control_Events;
@@ -62,7 +64,7 @@ procedure Main is
    begin
       Ignore := CuBit.Kernel_Calls.Call
         (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
-         CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds)
+         CuBit.Monotonic.Microseconds
            + Poll_Milliseconds * Microseconds_Per_Millisecond);
       Waited := Waited + Poll_Milliseconds;
    end Pause;
@@ -268,6 +270,8 @@ procedure Main is
       return Flooded >= Own_Credit and then Flooded < Flood_Limit;
    end Flood_Survived;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    if not Flood_Survived then
       Finish (Attacked);
       return;

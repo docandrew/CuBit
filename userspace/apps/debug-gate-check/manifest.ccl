@@ -1,0 +1,15 @@
+# The image's debugging gate check (DBG-001; headless --test
+# debug-gate-disabled, -production, -development): under the startup plan's
+# (policy ...), what the session's debug authority and a launch handle's
+# Debug right get from procmgr.
+(Executable_Manifest
+  identity => "com.cubit.debug-gate-check"
+  version => "0.1.0"
+  requests => [
+    (service "process-manager" "process-manager")
+    (service "launch" "launch")
+    (service "debug-session" "debug-session")
+    (service "clock" "clock")
+    (service "logstore" "logstore")]
+  optional => ["logstore" "debug-session"]
+  may_launch => [(Launch "debug-plain.app")])

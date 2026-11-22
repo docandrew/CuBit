@@ -110,7 +110,7 @@ package body Intel_GPU_Native_Reset is
    begin
       return (if Value.Available then Value.Microseconds else Unsigned_64'Last);
    end Now;
-   function Milliseconds return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Milliseconds return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
    package Fallback is new Intel_GPU_Forcewake_Fallback (Read, Write, Now, Pause);
    Fallback_Attempted : Boolean := False;
    Fallback_Failure_Saved : Boolean := False;

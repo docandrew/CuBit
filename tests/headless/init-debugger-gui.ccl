@@ -1,0 +1,11 @@
+# Headless Debugger test (DBG-001 preview, --test debugger-gui): the desktop,
+# the debug-demo target and the Debugger, which attaches to it through the
+# engine (cooperative attach, Observe only) and shows its real state.
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "debug-demo.app" (priority 3))
+  (start "debugger.app" (priority 3))
+)

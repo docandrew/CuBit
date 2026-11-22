@@ -90,6 +90,8 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     "$here/ada/cubit-libc_child_outlets.adb" \
     "$here/../runtime/gnat/cubit-startup_tables.adb" "$here/../runtime/gnat/cubit-launch_envelopes.adb" \
     "$here/../../shared/capabilities/capability_abi.adb" \
+    "$here/../runtime/gnat/cubit-log_records.adb" "$here/../runtime/gnat/cubit-console_lines.adb" \
+    "$here/../runtime/gnat/cubit-log_publish_rings.ads" "$here/ada/cubit-libc_log.adb" \
     "$here/ada/cubit-libc_startup.adb"; do
     (cd "$ada_obj" && "$gnat_gcc" -c -O2 -g "$prefix_map" -gnatp -gnatn -fno-pic -ffunction-sections \
         -gnat2022 -gnatwa -gnatys -gnatec=../../libc-ada.adc \

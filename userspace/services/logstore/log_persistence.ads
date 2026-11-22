@@ -30,4 +30,9 @@ package Log_Persistence is
 
    --  The file is open and records are being written.
    function Active return Boolean;
+
+   --  Storage is stopping (CuBit.Log_Sources.Detach_Storage): append what
+   --  is kept, flush, close the file, and never open it again. Was_Open:
+   --  a file was open.
+   procedure Detach (Store : in out Log_Fanout.Broker; Now_Ms : Unsigned_64; Was_Open : out Boolean);
 end Log_Persistence;

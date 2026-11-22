@@ -104,6 +104,9 @@ begin
                   if Item.Approve_Display_Capture then Put (" display-capture=approved"); end if;
                   if Item.Approve_ACPI_PCI_Config then Put (" acpi-pci-config=approved"); end if;
                   if Item.Approve_Platform_Power then Put (" platform-power=approved"); end if;
+                  if Item.Approve_Trace then Put (" trace=approved"); end if;
+                  if Item.Approve_Test_Console then Put (" test-console=approved"); end if;
+                  if Item.Approve_VM_Create then Put (" vm-create=approved"); end if;
                   if Item.Approve_ACPI_Firmware_Data then
                      Put (" acpi-firmware-data=approved");
                   end if;

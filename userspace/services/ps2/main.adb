@@ -14,6 +14,7 @@
 --    Keyboard: label=1, words(0) = scancode
 --    Mouse:    label=2, words(0) = packed(buttons|dx|dy|dz|flags)
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use System;
@@ -297,6 +298,9 @@ procedure main is
    MAX_INPUT_BYTES_PER_BATCH : constant Positive := 64;
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;

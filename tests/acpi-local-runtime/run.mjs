@@ -18,7 +18,7 @@ function run(label,args,seconds){verify();const r=spawnSync('timeout',['--kill-a
  if(r.status!==0||r.error||r.signal)throw Error(label+' failed '+out);verify();return output;}
 const project=out+'/test.gpr';fs.writeFileSync(project,'project Test is for Source_Dirs use("source");for Object_Dir use"obj";for Exec_Dir use"bin";for Main use("runtime_tests.adb");for Excluded_Source_Files use("acpi_target_heap.adb");package Naming is for Body("ACPI_Target_Heap") use"acpi_target_heap_host.adb";end Naming;package Compiler is for Default_Switches("Ada") use("-O0","-gnat2022","-gnatwa","-gnatwe","-gnatp");end Compiler;end Test;\n');pins[project]=hash(project);
 run('build',['gprbuild','-q','-p','-j1','-P',project],180);
-const cases=['normal','fresh-stop','claim-refused','stop-during-claim','enter-refused','begin-refused','end-refused','opaque-args','retained-end','stop-during-eval','budget-stop','io-pending','reentry'];
+const cases=['sample-retained-error','sample-error','sample-invoke','sample-unknown','sample-module','sample-charge','sample-access','sample-owner-busy','normal','fresh-stop','claim-refused','stop-during-claim','enter-refused','begin-refused','end-refused','opaque-args','retained-end','stop-during-eval','budget-stop','io-pending','reentry'];
 for(const width of [1,2]){const source=out+'/fixture'+width+'.asl',prefix=out+'/fixture'+width;fs.writeFileSync(source,fs.readFileSync(d+'/runtime.asl','utf8').replace('"DSDT", 2','"DSDT", '+width));pins[source]=hash(source);
  run('compile-'+width,['iasl','-p',prefix,source],5);pins[prefix+'.aml']=hash(prefix+'.aml');
  for(const mode of cases){const output=run('run-'+width+'-'+mode,[out+'/bin/runtime_tests',mode,prefix+'.aml'],30);

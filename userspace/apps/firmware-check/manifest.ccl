@@ -9,4 +9,7 @@
   version => "0.1.0"
   requests => [
     (Request.Firmware_Snapshot "tables")
-    (service "acpi" "acpi")])
+    (service "acpi" "acpi")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

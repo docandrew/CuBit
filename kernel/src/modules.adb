@@ -22,6 +22,8 @@ with Device_Vector_ABI;
 with Cpio;
 with ELF;
 with Process.Loader;
+with Process_Frames;
+with Kernel_Window;
 with Multiboot;
 with Boot_Modules;
 with Boot_Timeline;
@@ -263,35 +265,6 @@ package body Modules with SPARK_Mode => Off is
         held (Holder) := held (Holder) + Pages;
         Spinlocks.exitCriticalSection (imageLock);
     end Note_Mapped;
-
-    procedure Copy_Resident (Physical    : Integer_Address;
-                             Length      : Storage_Count;
-                             Destination : System.Address;
-                             Copied      : out Boolean)
-    is
-        First, Last : BML.Page_Offset;
-        Inside_First, Inside_Last : Boolean;
-    begin
-        Copied := False;
-        if Length = 0 then
-            return;
-        end if;
-        Spinlocks.enterCriticalSection (imageLock);
-        imagePage (Unsigned_64 (Physical), First, Inside_First);
-        imagePage (Unsigned_64 (Physical) + Unsigned_64 (Length) - 1, Last, Inside_Last);
-        if Inside_First and then Inside_Last then
-            declare
-                refs : BML.Reference_Table (0 .. initrdPages - 1)
-                  with Import, Address => tableAddr;
-            begin
-                if BML.Live (refs, First, Last - First + 1) then
-                    Util.memCopy (Destination, Virtmem.P2Va (Physical), Length);
-                    Copied := True;
-                end if;
-            end;
-        end if;
-        Spinlocks.exitCriticalSection (imageLock);
-    end Copy_Resident;
 
     -- The leaf entry mapping Virtual in Holder's tables (address-space lock
     -- held): its address, or Null_Address when a table is missing or a
@@ -652,16 +625,19 @@ package body Modules with SPARK_Mode => Off is
       (Launch_Configuration.Maximum_Block_Bytes + Config_Page_Bytes - 1) / Config_Page_Bytes;
     subtype Config_Page_Count is Natural range 0 .. Maximum_Config_Pages;
     subtype Config_Page_Index is Positive range 1 .. Maximum_Config_Pages;
-    configPages : array (Config_Page_Index) of System.Address := (others => System.Null_Address);
+    configPages : array (Config_Page_Index) of Process_Frames.Process_Frame :=
+      (others => Process_Frames.No_Frame);
     configLength : Launch_Configuration.Word_Count := 0;
 
     procedure Put_Word (index : Launch_Configuration.Word_Index; value : Unsigned_64) is
         page : constant Config_Page_Index := (index - 1) / Config_Words_Per_Page + 1;
         offset : constant Storage_Offset :=
           Storage_Offset (((index - 1) mod Config_Words_Per_Page) * Launch_Configuration.Word_Bytes);
-        target : Unsigned_64 with Import, Address => configPages (page) + offset;
+        word : aliased constant Unsigned_64 := value;
     begin
-        target := value;
+        -- devmgr's page, through this CPU's window (KERN-014).
+        Kernel_Window.Write (configPages (page), offset, word'Address,
+                             Launch_Configuration.Word_Bytes);
     end Put_Word;
 
     procedure Open_Configuration
@@ -675,6 +651,7 @@ package body Modules with SPARK_Mode => Off is
         Pages : constant Config_Page_Count :=
           (Length * LC.Word_Bytes + Config_Page_Bytes - 1) / Config_Page_Bytes;
         result : Process.Page_Allocation_Result;
+        configFrame : Process_Frames.Process_Frame;
     begin
         Process.lockAddressSpace (pid);
         Process.proctab (pid).frames.capacity :=
@@ -684,13 +661,14 @@ package body Modules with SPARK_Mode => Off is
               (proc    => Process.proctab (pid),
                mapTo   => To_Address (Integer_Address (Process_Launch.Arguments_Base) +
                                       Integer_Address (page - 1) * Config_Page_Bytes),
-               storage => configPages (page),
+               frame   => configFrame,
                result  => result,
                flags   => Virtmem.PG_USERDATARO);
             if result /= Process.Page_Added then
                 Process.unlockAddressSpace (pid);
                 raise ModuleException with "No page for the device manager's configuration";
             end if;
+            configPages (page) := configFrame;
         end loop;
         Process.unlockAddressSpace (pid);
         -- Fresh frames are zeroed.
@@ -969,6 +947,34 @@ package body Modules with SPARK_Mode => Off is
             -- declares it and the startup plan approves it.
             place (root (Capabilities.CAP_PLATFORM_POWER, WRITE_GRANT, 0, 0),
                    handles.Platform_Power);
+            -- The only kernel trace object (Trace_ABI): reset and
+            -- summarize the scheduling and system-call trace. devmgr passes
+            -- it to procmgr, which installs a Write-only copy only where a
+            -- manifest declares it and the startup plan approves it (the
+            -- benchmark programs).
+            place (root (Capabilities.CAP_TRACE, WRITE_GRANT, 0, 0),
+                   handles.Trace);
+            -- The only process-list object (Process_List_ABI): the kernel's
+            -- process table. devmgr passes it to procmgr, its only holder;
+            -- other programs ask procmgr's process-observer role. (PROCLIST,
+            -- which it replaces, answered any process handle with Read.)
+            place (root (Capabilities.CAP_PROCESS_LIST, READ_GRANT, 0, 0),
+                   handles.Process_List);
+            -- The only test console object (Test_Console_ABI): one line of
+            -- a process's text on the serial console. devmgr passes it to
+            -- procmgr, which installs a Write-only copy only where a
+            -- manifest declares it and the startup plan approves it: only
+            -- test builds' logstore, which mirrors programs' debug text
+            -- (tests/test-console checks that nothing shipped does).
+            place (root (Capabilities.CAP_TEST_CONSOLE, WRITE_GRANT, 0, 0),
+                   handles.Test_Console);
+            -- The only VM creation authority (VMM-001, docs/hypervisor.md):
+            -- create a virtual machine, whose VM and vCPU objects the kernel
+            -- mints from it. devmgr passes it to procmgr, the root issuer of
+            -- VM creation, which installs a Write-only copy only where a
+            -- manifest declares it and the startup plan approves it.
+            place (root (Capabilities.CAP_VM_CREATE, WRITE_GRANT, 0, 0),
+                   handles.VM_Create);
 
             -- Device-memory roots (CAP-001): one CAP_DEVICE_MEM per maximal
             -- run of device-mappable pages in the boot classification (PCI

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with CuBit.Log;
 with Interfaces; use Interfaces;
@@ -16,6 +17,7 @@ with CuBit.Control_Events;
 with SNTP;
 with Server_List;
 with Nonces;
+with CuBit.Monotonic;
 
 --  SNTP time synchronization. Queries the servers named by the time.servers
 --  setting over peer-bound UDP channels, requires agreement among a
@@ -123,7 +125,7 @@ procedure Main is
       end if;
       Stream.Handle := Reply.words (0);
       Buffer (1 .. SNTP.Packet_Length) := SNTP.Request (Nonce);
-      Sent := syscall (SYSCALL_GETTIME);
+      Sent := CuBit.Monotonic.Milliseconds;
       Channels.Send_Datagram (Stream, Buffer_Address, SNTP.Packet_Length, Delivered);
       if Delivered then
          --  Read more than a bare packet so extension fields are detected
@@ -132,7 +134,7 @@ procedure Main is
          Channels.Await (Stream, Network, Channels.Layout.Want_Readable,
                          Sent + Reply_Timeout_MS, Wait_Token, Ready);
          Channels.Receive_Datagram (Stream, Buffer_Address, 512, Got, Truncated, Found);
-         Received := syscall (SYSCALL_GETTIME);
+         Received := CuBit.Monotonic.Milliseconds;
          if Ready and then Found and then not Truncated then
             Reached := True;
             SNTP.Evaluate (Buffer (1 .. Got), Nonce, Sent, Received, Result, Status);
@@ -251,7 +253,7 @@ procedure Main is
    end Is_Stop;
 
    function Stop_Requested_Within (Wait_Seconds : Unsigned_64) return Boolean is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Until_Ms : constant Unsigned_64 :=
         (if Now = Unsigned_64'Last or else Now > Unsigned_64'Last - 1 - Wait_Seconds * 1_000
          then Unsigned_64'Last - 1 else Now + Wait_Seconds * 1_000);
@@ -277,7 +279,7 @@ procedure Main is
             end if;
          end loop;
          declare
-            Clock_Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            Clock_Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
          begin
             exit when Clock_Now = Unsigned_64'Last or else Clock_Now >= Until_Ms;
          end;
@@ -296,6 +298,8 @@ procedure Main is
    Ignore : Unsigned_64;
    Wait_Seconds : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Log.Info ("timesync: started");
    if Allocation = Unsigned_64'Last then
       CuBit.Log.Warning ("timesync: buffer allocation failed");

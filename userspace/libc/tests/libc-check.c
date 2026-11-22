@@ -82,6 +82,10 @@ int main(void)
 {
 	/* sched_yield returns to the caller (it no longer waits on a futex). */
 	check(sched_yield() == 0 && sched_yield() == 0, "sched_yield returns");
+	/* ABI-002: an unimplemented system call is ENOSYS, and the libc's
+	 * record for it (CuBit.Libc_Log) names its number; run.sh expects
+	 * "cubit-libc: unimplemented system call 999" (logstore's mirror). */
+	check(syscall(999) == -1 && errno == ENOSYS, "an unimplemented system call is ENOSYS");
 	check(mmap(0, 4096, PROT_READ | PROT_EXEC,
 	      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0) == MAP_FAILED && errno == ENOTSUP,
 	      "executable mmap is unsupported, not false success");

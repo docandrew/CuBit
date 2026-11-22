@@ -13,6 +13,7 @@
 --  system calls it replaces. Finally a write to the page must fault: the
 --  kernel maps it read-only.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Wait_ABI;
 with Interfaces; use Interfaces;
 with System.Storage_Elements;
@@ -28,7 +29,7 @@ procedure Main is
    package K renames CuBit.Kernel_ABI;
 
    Reads               : constant := 1_000_000;
-   System_Call_Reads   : constant := 100_000;
+   Microseconds_Per_Millisecond : constant := 1_000;
    Agreement_Rounds    : constant := 10_000;
    --  GETTIME is the page's time at CPU 0's last tick (250 us apart).
    Maximum_Lag_Ms      : constant := 10;
@@ -61,8 +62,7 @@ procedure Main is
    Frequency : constant Unsigned_64 := CuBit.Published_Clock.Counter_Frequency;
    Published : constant Boolean := Frequency /= 0;
 
-   Page_Cost, Milliseconds_Cost, Microsecond_Call_Cost,
-     Get_Time_Cost : Unsigned_64 := 0;
+   Page_Cost, Milliseconds_Cost : Unsigned_64 := 0;
 
    --  Costs are timed with the TSC, so they are comparable whether or not
    --  the page is published (without it, a page read is a system call).
@@ -76,6 +76,8 @@ procedure Main is
      (if Ticks_Per_Millisecond = 0 then 0
       else Elapsed * (Picoseconds_Per_Millisecond / Count) / Ticks_Per_Millisecond / 1_000);
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Print ("clock-check: starting" & LF);
    Check (Published, "clock publication present");
    Print ("clock-check: TSC " & Image (Frequency) & " Hz" & LF);
@@ -118,50 +120,35 @@ begin
       Check (Monotonic, "1000000 page millisecond reads are monotonic");
    end;
 
-   --  The system calls the page replaces.
-   declare
-      Ignore : Unsigned_64;
-      Start : Unsigned_64 := Ticks;
-   begin
-      for I in 1 .. System_Call_Reads loop
-         Ignore := Kernel (K.Read_Monotonic_Microseconds);
-      end loop;
-      Microsecond_Call_Cost := Per_Operation (Ticks - Start, System_Call_Reads);
-      Start := Ticks;
-      for I in 1 .. System_Call_Reads loop
-         Ignore := Kernel (K.Get_Time);
-      end loop;
-      Get_Time_Cost := Per_Operation (Ticks - Start, System_Call_Reads);
-   end;
    Print ("clock-check: cost ns/read page=" & Image (Page_Cost) &
-          " page_ms=" & Image (Milliseconds_Cost) &
-          " syscall_us=" & Image (Microsecond_Call_Cost) &
-          " syscall_ms=" & Image (Get_Time_Cost) & LF);
-   Check (Page_Cost < Microsecond_Call_Cost and then Page_Cost < Get_Time_Cost,
-          "a page read is cheaper than either system call");
+          " page_ms=" & Image (Milliseconds_Cost) & LF);
 
-   --  One epoch with the kernel's clocks.
+   --  One epoch with the kernel's millisecond clock (msTicks, the page's
+   --  millisecond word): the converted time is never behind it, and the
+   --  microsecond and millisecond reads agree.
    declare
-      Before, Kernel_Us, After, Get_Time, Lag, Max_Lag : Unsigned_64 := 0;
+      Kernel_Ms : Unsigned_64
+        with Import, Volatile, Atomic,
+             Address => System.Storage_Elements.To_Address
+               (Clock_Publication.Milliseconds_Address);
+      Before, After, Ticks_Ms, Lag, Max_Lag : Unsigned_64 := 0;
       Ok : Boolean;
       Agree, Not_Behind : Boolean := True;
    begin
       for I in 1 .. Agreement_Rounds loop
          CuBit.Published_Clock.Microseconds (Before, Ok);
-         Kernel_Us := Kernel (K.Read_Monotonic_Microseconds);
-         CuBit.Published_Clock.Microseconds (After, Ok);
-         Agree := Agree and then Before <= Kernel_Us and then Kernel_Us <= After;
-         Get_Time := Kernel (K.Get_Time);
+         Ticks_Ms := Kernel_Ms;
          After := CuBit.Published_Clock.Milliseconds;
-         Not_Behind := Not_Behind and then Get_Time <= After;
-         Lag := (if After >= Get_Time then After - Get_Time else 0);
+         Agree := Agree and then Ok and then Before / Microseconds_Per_Millisecond <= After;
+         Not_Behind := Not_Behind and then Ticks_Ms <= After;
+         Lag := (if After >= Ticks_Ms then After - Ticks_Ms else 0);
          Max_Lag := Unsigned_64'Max (Max_Lag, Lag);
       end loop;
-      Print ("clock-check: GETTIME at most " & Image (Max_Lag) &
+      Print ("clock-check: the kernel's msTicks at most " & Image (Max_Lag) &
              " ms behind the page" & LF);
-      Check (Agree, "READ_MONOTONIC_MICROSECONDS lies between two page reads");
-      Check (Not_Behind and then Max_Lag <= Maximum_Lag_Ms,
-             "the page is never behind GETTIME, and at most 10 ms ahead");
+      Check (Agree, "page microseconds and milliseconds agree");
+      Check (Kernel_Ms /= 0 and then Not_Behind and then Max_Lag <= Maximum_Lag_Ms,
+             "the page is never behind the kernel's msTicks, and at most 10 ms ahead");
    end;
 
    --  Kernel deadlines (msTicks) computed from the page.

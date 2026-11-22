@@ -41,6 +41,8 @@ with Interrupt_Line_ABI;
 with PerCpuData;
 with PerCPUData;
 with Process;
+with Process_Frames;
+with Kernel_Window;
 with Memory_Accounting;
 with Process.IPC;
 with Process.User_Memory;
@@ -77,8 +79,6 @@ package body Syscall.Admin is
         (Process.MessageTag, Unsigned_64);
     function u64ToTag is new Ada.Unchecked_Conversion
         (Unsigned_64, Process.MessageTag);
-    function priToU16 is new Ada.Unchecked_Conversion
-        (Integer_16, Unsigned_16);
 
     ---------------------------------------------------------------------------
     -- findOwn
@@ -217,79 +217,6 @@ package body Syscall.Admin is
         retval := Process_Identities.To_Word (Process.identityOf (callerPID));
         Boot_Timeline.Note_Event (Natural (callerPID), Boot_Timeline.Registered);
     end handleRegisterDriver;
-
-    ---------------------------------------------------------------------------
-    -- handleBootTimeline (docs/boot-timeline.md)
-    ---------------------------------------------------------------------------
-    procedure handleBootTimeline (callerPID : Process.ProcessID;
-                                  arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
-                                  retval    : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        use type Capabilities.CapabilityType;
-        package BT renames Boot_Timeline_Layout;
-
-        --  The driver role whose registration authority may mark each
-        --  milestone: the service that owns the event.
-        Owner : constant array (BT.Milestone) of Service_Registry.DriverID :=
-          [BT.Startup_Profile_Started  => Service_Registry.DRIVER_PROCMGR,
-           BT.Startup_Profile_Launched => Service_Registry.DRIVER_PROCMGR,
-           BT.Display_Leased           => Service_Registry.DRIVER_DISPLAY,
-           BT.First_Frame_Presented    => Service_Registry.DRIVER_DESKTOP,
-           BT.First_Input_Accepted     => Service_Registry.DRIVER_DESKTOP];
-
-        -- arg4 names the authority: a process capability with RIGHT_READ to
-        -- read, the milestone owner's notification (RIGHT_WRITE) to mark.
-        function Holds (Kind : Capabilities.CapabilityType;
-                        Right : Capabilities.CapabilityRight;
-                        Object : Unsigned_64;
-                        Any_Object : Boolean) return Boolean is
-            found : constant Process_Capabilities.Found :=
-              findOwn (callerPID, arg4, Kind, onlyRight (Right));
-        begin
-            return found.OK and then
-              (Any_Object or else coversRole (found.Cap, Object));
-        end Holds;
-    begin
-        retval := reterr;
-        if arg0 = BT.Operation'Enum_Rep (BT.Read) then
-            if not Holds (Capabilities.CAP_PROCESS, Capabilities.RIGHT_READ, 0, True) then
-                Process.IPC.notifySupervisor
-                  (callerPID, IPC_Labels.EVENT_CAP_FAULT,
-                   Unsigned_64 (SyscallNumber'Enum_Rep (SYSCALL_BOOT_TIMELINE)), arg0, arg1);
-                return;
-            end if;
-            declare
-                Chunk  : aliased Storage_Array (1 .. BT.Read_Chunk_Bytes);
-                Copied : Unsigned_64;
-                ok     : Boolean;
-            begin
-                Boot_Timeline.Read (Chunk'Address, arg3, arg2, Copied);
-                if Copied = 0 then
-                    retval := 0;
-                    return;
-                end if;
-                Process.User_Memory.Copy_To_User
-                  (callerPID, arg1, Chunk'Address, Storage_Count (Copied), ok);
-                if ok then
-                    retval := Copied;
-                end if;
-            end;
-        elsif arg0 = BT.Operation'Enum_Rep (BT.Mark) then
-            for Item in BT.Milestone loop
-                if arg1 = BT.Milestone'Enum_Rep (Item) then
-                    if Holds (Capabilities.CAP_NOTIFICATION, Capabilities.RIGHT_WRITE,
-                              Unsigned_64 (Owner (Item)), False)
-                    then
-                        Boot_Timeline.Mark_Milestone
-                          (Item, Process_Identities.To_Word (Process.identityOf (callerPID)));
-                        retval := 0;
-                    end if;
-                    return;
-                end if;
-            end loop;
-        end if;
-    end handleBootTimeline;
 
     ---------------------------------------------------------------------------
     -- handlePortIO
@@ -669,93 +596,6 @@ package body Syscall.Admin is
         Process.User_Memory.Write_Message (caller, arg1, recvMsg, ok);
         retval := (if ok then Process_Identities.To_Word (Process.identityOf (from)) else reterr);
     end handleReplyWait;
-
-    ---------------------------------------------------------------------------
-    -- handleProclist
-    ---------------------------------------------------------------------------
-    procedure handleProclist (callerPID  : Process.ProcessID;
-                              arg0, arg1, arg2 : Unsigned_64;
-                              retval     : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        use type Capabilities.CapabilityType;
-        use type Process.ProcessState;
-
-
-        hasCap     : Boolean := False;
-        bufSize    : constant Unsigned_64 := arg1;
-        ENTRY_SIZE : constant := 32;
-        maxEntries : Unsigned_64;
-        count      : Unsigned_64 := 0;
-    begin
-        -- arg2 names a CAP_PROCESS with RIGHT_READ (any target).
-        hasCap := findOwn (callerPID, arg2, Capabilities.CAP_PROCESS,
-                           onlyRight (Capabilities.RIGHT_READ)).OK;
-
-        if not hasCap then
-            Process.IPC.notifySupervisor (
-                callerPID,
-                IPC_Labels.EVENT_CAP_FAULT,
-                Unsigned_64 (SyscallNumber'Enum_Rep (SYSCALL_PROCLIST)),
-                arg0, arg1);
-            retval := reterr;
-            return;
-        end if;
-
-        if bufSize < ENTRY_SIZE then
-            retval := 0;
-            return;
-        end if;
-
-        maxEntries := bufSize / ENTRY_SIZE;
-
-        -- Each entry is built here and copied to the caller's buffer
-        -- (arg0, a user pointer) through Process.User_Memory.
-        for i in Process.ProctabRange loop
-            exit when count >= maxEntries;
-
-            if Process.threadOf (i).state /= Process.INVALID then
-                declare
-                    -- The process by identity (KERN-003), then its state.
-                    type Proc_Entry is record
-                        identity : Unsigned_64;
-                        state    : Unsigned_8;
-                        cpu      : Unsigned_8;
-                        priority : Unsigned_16;
-                        frames   : Unsigned_32;
-                        name     : String (1 .. 16);
-                    end record;
-                    for Proc_Entry use record
-                        identity at 0 range 0 .. 63;
-                        state    at 8 range 0 .. 7;
-                        cpu      at 9 range 0 .. 7;
-                        priority at 10 range 0 .. 15;
-                        frames   at 12 range 0 .. 31;
-                        name     at 16 range 0 .. 127;
-                    end record;
-                    for Proc_Entry'Size use ENTRY_SIZE * 8;
-                    item : aliased constant Proc_Entry :=
-                      (identity => Process_Identities.To_Word (Process.identityOf (i)),
-                       state    => Process.ProcessState'Pos (Process.threadOf (i).state),
-                       cpu      => Unsigned_8 (Process.threadOf (i).cpu),
-                       priority => priToU16 (Integer_16 (Process.threadOf (i).priority)),
-                       frames   => Unsigned_32 (Process.proctab(i).frames.length),
-                       name     => Process.proctab(i).name);
-                    copied : Boolean;
-                begin
-                    Process.User_Memory.Copy_To_User
-                      (callerPID, arg0 + count * ENTRY_SIZE, item'Address, ENTRY_SIZE, copied);
-                    if not copied then
-                        retval := reterr;
-                        return;
-                    end if;
-                    count := count + 1;
-                end;
-            end if;
-        end loop;
-
-        retval := count;
-    end handleProclist;
 
     ---------------------------------------------------------------------------
     -- handleInspectCap
@@ -1169,7 +1009,7 @@ package body Syscall.Admin is
                     Process_Launch.Page_Count (arg2);
                 frames : Process.FrameLists.List renames
                     Process.proctab(targetPID).frames;
-                storage : System.Address;
+                storage : Process_Frames.Process_Frame;
                 result : Process.Page_Allocation_Result;
                 copied : Boolean;
                 offset, count : Unsigned_64;
@@ -1205,7 +1045,7 @@ package body Syscall.Admin is
                                     (Integer_Address (Process_Launch.Arguments_Base) +
                                      Integer_Address (page) *
                                        Process_Launch.Page_Bytes),
-                       storage => storage,
+                       frame   => storage,
                        result  => result,
                        flags   => Virtmem.PG_USERDATARO);
                     if result /= Process.Page_Added then
@@ -1217,9 +1057,16 @@ package body Syscall.Admin is
                     offset := Unsigned_64 (page) * Process_Launch.Page_Bytes;
                     count := Unsigned_64'Min (arg2 - offset,
                                               Process_Launch.Page_Bytes);
-                    Process.User_Memory.Copy
-                      (callerPID, arg1 + offset, storage,
-                       Storage_Count (count), copied);
+                    -- Into the target's frame through this CPU's window.
+                    declare
+                        target : System.Address;
+                    begin
+                        Kernel_Window.Open (storage, target);
+                        Process.User_Memory.Copy
+                          (callerPID, arg1 + offset, target,
+                           Storage_Count (count), copied);
+                        Kernel_Window.Close;
+                    end;
                     if not copied then
                         Process.unlockAddressSpace (targetPID);
                         println ("LAUNCH-ARGS: source unreadable");
@@ -1234,6 +1081,16 @@ package body Syscall.Admin is
                     if not copied then
                         Process.unlockAddressSpace (targetPID);
                         println ("LAUNCH-ARGS: CPU times publication unmapped");
+                        return;
+                    end if;
+                end if;
+                if (arg4 and System_Publications.Bit
+                      (System_Publications.Boot_Timeline)) /= 0
+                then
+                    Boot_Timeline.Map_Into (Process.addrtab (targetPID), copied);
+                    if not copied then
+                        Process.unlockAddressSpace (targetPID);
+                        println ("LAUNCH-ARGS: boot timeline publication unmapped");
                         return;
                     end if;
                 end if;

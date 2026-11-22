@@ -22,12 +22,21 @@ with CuBit.Outlet_Rings;
 
 with CuBit.Libc_Startup;
 with CuBit.Startup_Tables;
+with CuBit.Published_Clock;
+with CuBit.Libc_Log;
 package body CuBit.Libc_Process is
 
    --  The process manager endpoint its launcher granted (startup name
    --  "process-manager"), or 0: then spawning fails.
    function Process_Manager_Handle return Unsigned_64 is
      (CuBit.Libc_Startup.Granted ("process-manager", CuBit.Startup_Tables.Endpoint));
+   --  The Launch badge (startup name "launch", CAP-012): OP_LAUNCH goes
+   --  through it, else through the process manager endpoint, which procmgr
+   --  refuses (no badge).
+   function Launch_Handle return Unsigned_64 is
+     (if CuBit.Libc_Startup.Granted ("launch", CuBit.Startup_Tables.Endpoint) /= 0
+      then CuBit.Libc_Startup.Granted ("launch", CuBit.Startup_Tables.Endpoint)
+      else Process_Manager_Handle);
    package PIDs renames CuBit.Process_IDs;
 
    use type Interfaces.C.int;
@@ -64,7 +73,7 @@ package body CuBit.Libc_Process is
    --  of the program): pause this long before looking again.
    Idle_Pause_Microseconds : constant := 1_000;
    --  While a child's diagnostics are watched, copy them at least this often.
-   --  (Get_Time's milliseconds: the deadline's clock.)
+   --  (The kernel's milliseconds, CuBit.Published_Clock: the deadline's clock.)
    Forward_Pause_Milliseconds : constant := 10;
 
    --  Children started and not yet waited for, the encoder, and the
@@ -269,7 +278,8 @@ package body CuBit.Libc_Process is
                 when LA.Parameters_Missing |
                      LA.Parameters_Rejected |
                      LA.Parameters_Unexpected  => EINVAL,
-                when LA.Parameter_Signature_Invalid => ENOEXEC);
+                when LA.Parameter_Signature_Invalid => ENOEXEC,
+                when LA.Request_Withheld      => EACCES);
    end Launch_Error;
 
    --  Start the program named at Path with the vectors; 0 or an errno
@@ -360,7 +370,7 @@ package body CuBit.Libc_Process is
          --  Registered under the lock waiting drains exit events under, so
          --  an early exit event cannot be missed.
          Label := Unsigned_32 (CuBit.Kernel_Calls.Call
-           (Call_Via_Endpoint_Capability, Process_Manager_Handle,
+           (Call_Via_Endpoint_Capability, Launch_Handle,
             Unsigned_64 (To_Integer (M'Address)), CuBit.Kernel_ABI.Forever) and 16#FFFF_FFFF#);
          --  The reply names the child by identity (KERN-003); POSIX sees
          --  it folded to a pid_t.
@@ -626,8 +636,10 @@ package body CuBit.Libc_Process is
       M : constant CuBit.Kernel_ABI.Message with Import, Address => Item;
    begin
       Take_Control (M);
-      if M.Label = CuBit.Child_Exits.Event_Label
-        and then CuBit.Child_Exits.Valid (M.Length, M.Words (0), M.Words (1), M.Words (2))
+      --  The kernel's exit event, or procmgr's notice for a child launched
+      --  into the session (procmgr is its kernel parent; CAP-012).
+      if CuBit.Child_Exits.Is_Exit
+           (M.Label, M.Length, M.Authority, M.Words (0), M.Words (1), M.Words (2))
       then
          Lock (Exit_Lock'Access);
          if Pending_Count < Pending_Capacity then
@@ -666,9 +678,8 @@ package body CuBit.Libc_Process is
         = Event_Received
       loop
          Take_Control (M);
-         if M.Label = CuBit.Child_Exits.Event_Label
-           and then CuBit.Child_Exits.Valid
-             (M.Length, M.Words (0), M.Words (1), M.Words (2))
+         if CuBit.Child_Exits.Is_Exit
+              (M.Label, M.Length, M.Authority, M.Words (0), M.Words (1), M.Words (2))
          then
             CuBit.Child_Table.Exited
               (Children, CuBit.Child_Exits.Decode
@@ -737,7 +748,7 @@ package body CuBit.Libc_Process is
          Ignore := CuBit.Kernel_Calls.Call
            (CuBit.Kernel_ABI.Wait, Wait_ABI.Ready_Sources,
             (if Forwarding or else Dispatcher_Running /= 0
-             then CuBit.Kernel_Calls.Call (Get_Time) + Forward_Pause_Milliseconds
+             then CuBit.Published_Clock.Milliseconds + Forward_Pause_Milliseconds
              else Forever));
          Lock (Child_Lock'Access);
          Drain_Events;
@@ -746,7 +757,7 @@ package body CuBit.Libc_Process is
          if not Ready then
             Ignore := CuBit.Kernel_Calls.Call
               (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
-               CuBit.Kernel_Calls.Call (Read_Monotonic_Microseconds)
+               CuBit.Published_Clock.Microseconds_Now
                + Idle_Pause_Microseconds);
          end if;
       end loop;
@@ -772,13 +783,13 @@ package body CuBit.Libc_Process is
       return System.Null_Address;
    end Open_Command_Pipe;
 
+   --  ABI-002: the program's log channel (CuBit.Libc_Log), never the
+   --  kernel console.
    procedure Debug_Write
      (Text : System.Address; Length : Interfaces.C.size_t)
    is
-      Ignore : constant Unsigned_64 := CuBit.Kernel_Calls.Call
-        (Write, Console, Unsigned_64 (To_Integer (Text)), Unsigned_64 (Length));
    begin
-      null;
+      CuBit.Libc_Log.Write_Console (Text, Length);
    end Debug_Write;
 
 end CuBit.Libc_Process;

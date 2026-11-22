@@ -61,6 +61,21 @@
   (service power 42 read-write)
   (service power-desktop 43 read-write)
   (service power-console 44 read-write)
+  # Launch badges (CAP-012, docs/authority-model.md 7.5): procmgr's endpoint
+  # badged for launching into the user session. A launched program gets its
+  # install approval within the session's envelope, never its requester's
+  # authority. launch-remote is the same for ccl-remote, typed apart so its
+  # launches can require confirmation on the device later.
+  (service launch 45 read-write (client Process_Manager))
+  (service launch-remote 46 read-write (client Process_Manager))
+  # The debugger preview (DBG-001, CuBit.Debug_Protocol): a target that links
+  # CuBit.Debug_Stub registers it; a debugger requests it to attach.
+  (service debug-target 47 read-write)
+  # Debug-observe for the user session (DBG-001, CuBit.Launch_Handles):
+  # procmgr's endpoint badged for one operation, a Debug_Observe session on
+  # a process by identity, decided by the session's debug envelope (never
+  # secrets.svc, the trusted path, procmgr or devmgr).
+  (service debug-session 48 read-write (client Process_Manager))
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)
@@ -79,4 +94,5 @@
   (notification startup-wait-test 36 publish-and-manage)
   (notification llm 37 publish-and-manage)
   (notification secrets 38 publish-and-manage)
-  (notification power 42 publish-and-manage))
+  (notification power 42 publish-and-manage)
+  (notification debug-target 47 publish-and-manage))

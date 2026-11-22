@@ -1,5 +1,6 @@
 pragma Ada_2022;
-with ACPI_Requests;
+with ACPI_Requests;with ACPI_Cached_Power_Values;
+with ACPI_Cached_Battery_Values;
 with ACPI_Native_Server;
 -- Trusted serialized native owner: fixed families, SAME runtime/Core. The
 -- required health actual attests the actual admitted event sources, not a
@@ -12,12 +13,26 @@ package ACPI_Native_Consumers is
    type Family is (Lid, AC_Source, Battery, HID_I2C);
    type Failure is (None, Not_Ready, Start_Refused, Family_Refused,
       Publication_Overlap, Fact_Too_Long, Source_Unhealthy);
+   type Diagnostic_Line is record
+      Text : String (1 .. 192) := [others => ' '];
+      Last : Natural range 0 .. 192 := 0;
+   end record;
+   type Diagnostic_Lines is array (Positive range 1 .. 4) of Diagnostic_Line;
    type Report is record
       Started, Stopping, Closed : Boolean := False;
       Why : Failure := None;
       At_Family : Family := Lid;
+      Refusal_Count : Natural := 0;
+      Diagnostics : Diagnostic_Lines;
    end record;
    function Observe return Report;
+   -- Copy existing lid/AC caches only, using one trusted native clock read.
+   -- No AML, refresh, receipt claim/ACK, logging, IPC or hardware operation.
+   -- Unavailable views have empty values; ages use the native clock epoch.
+   procedure Read_Power (Server : ACPI_Requests.State;
+      Maximum_Age : ACPI_Cached_Power_Values.Microseconds;
+      Value : out ACPI_Cached_Power_Values.Snapshot)
+     with Pre => ACPI_Requests.Valid (Server);
    procedure Start (Server : ACPI_Requests.State; Accepted : out Boolean)
      with Pre=>ACPI_Requests.Valid(Server);
    -- All four consumers see the SAME retained receipt before caller ACK.
@@ -29,7 +44,13 @@ package ACPI_Native_Consumers is
    procedure Advance (Server : in out ACPI_Requests.State;
       Result : out ACPI_Native_Server.Owner_Outcome)
      with Pre=>ACPI_Requests.Valid(Server);
-   Maximum_Battery_Facts:constant Positive:=16;
+   -- Complete copied inventory; never refreshes or returns Core identities.
+   -- Unavailable inventories and unsampled entries carry empty payloads.
+   procedure Read_Batteries (Server : ACPI_Requests.State;
+      Maximum_Age : ACPI_Cached_Power_Values.Microseconds;
+      Value : out ACPI_Cached_Battery_Values.View)
+     with Pre => ACPI_Requests.Valid (Server);
+   Maximum_Battery_Facts:constant Positive:=ACPI_Cached_Battery_Values.Maximum_Batteries;
    Maximum_HID_Facts:constant Positive:=16;
    Single_Family_Facts:constant Positive:=2;
    Maximum_Facts:constant Positive:=Maximum_Battery_Facts+Maximum_HID_Facts+Single_Family_Facts;

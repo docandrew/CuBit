@@ -10,5 +10,5 @@
   (start "platform-pool-check.app" (priority 3)
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
     (acpi-pci-config approve-declared) (acpi-firmware-data approve-declared))
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
 )

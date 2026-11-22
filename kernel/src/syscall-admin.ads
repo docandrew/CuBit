@@ -50,18 +50,6 @@ is
     procedure handleReplyWait (arg0, arg1 : Unsigned_64;
                                retval     : out Unsigned_64);
 
-    -- BOOT_TIMELINE: arg4 = the authority handle (Read: a process
-    -- capability with RIGHT_READ; Mark: the owner role's notification).
-    procedure handleBootTimeline (callerPID : Process.ProcessID;
-                                  arg0, arg1, arg2, arg3, arg4 : Unsigned_64;
-                                  retval    : out Unsigned_64);
-
-    -- PROCLIST: arg0 = buffer, arg1 = its size, arg2 = a process handle
-    -- with RIGHT_READ.
-    procedure handleProclist (callerPID  : Process.ProcessID;
-                              arg0, arg1, arg2 : Unsigned_64;
-                              retval     : out Unsigned_64);
-
     -- INSPECT_CAPABILITY: arg0 = a handle in the caller's table, arg1 =
     -- address of a Capability_ABI.Inspection. 0, or a refusal code.
     procedure handleInspectCap (callerPID  : Process.ProcessID;

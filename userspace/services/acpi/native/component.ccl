@@ -4,6 +4,7 @@
     sources => ["shared/platform" "userspace/ccl/src"
                 "userspace/services/acpi"
                 "userspace/services/acpi/lib"
+                "userspace/lib/acpi-windows"
                 "userspace/services/acpi/backend"
                 "userspace/services/acpi/backend/native"
                 "userspace/services/acpi/native-clock"

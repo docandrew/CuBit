@@ -1,4 +1,5 @@
 with CuBit.Messages;
+with CuBit.Monotonic;
 package body Desktop_Startup_Clock with SPARK_Mode => Off, Refined_State => (Clock => (First, Started)) is
    use type Interfaces.Unsigned_64;
    First   : Interfaces.Unsigned_64 := 0;
@@ -6,7 +7,7 @@ package body Desktop_Startup_Clock with SPARK_Mode => Off, Refined_State => (Clo
 
    function Elapsed_Ms return Interfaces.Unsigned_64 is
       Now : constant Interfaces.Unsigned_64 :=
-        CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME);
+        CuBit.Monotonic.Milliseconds;
    begin
       if not Started then
          First := Now;

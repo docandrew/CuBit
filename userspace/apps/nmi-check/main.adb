@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
 with CuBit.Messages; use CuBit.Messages;
@@ -27,6 +28,8 @@ procedure Main is
 
    Sum : Unsigned_64 := 0 with Volatile;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("nmi-check: spinning" & LF);
    for Round in 1 .. Rounds loop
       declare

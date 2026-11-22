@@ -1,6 +1,6 @@
 # Applications' settings: the Calculator's mode and options, the Bible's
-# reading face and translation, Penny's tab
-# rail and the CCL Workbench's demonstration value.
+# reading face and translation, Penny's tab rail and User-Agent
+# presentation, and the CCL Workbench's demonstration value.
 (Setting_Catalog settings => [
   (Setting "calculator.options" Shape.Key
     (Value.Typed (CCL_Type "CCL.Interfaces.Calc_Types.TYPE_SOURCE" "Calc_Options"))
@@ -11,4 +11,12 @@
   (Setting "bible.red-letters" Shape.Key Value.Text Class.Application_State "")
   (Setting "browser.servo.vertical-tabs" Shape.Key Value.Text Class.Application_State "")
   (Setting "browser.servo.vertical-tab-width" Shape.Key Value.Count Class.Application_State "")
+  # Penny's User-Agent presentation (CCL.Interfaces.Browser_Agent): every
+  # site's, and per host (the family member is the host name).
+  (Setting "browser.servo.user-agent" Shape.Key
+    (Value.Typed (CCL_Type "CCL.Interfaces.Browser_Agent.TYPE_SOURCE" "Browser_User_Agent"))
+    Class.Application_State "Servo_Agent_Settings")
+  (Setting "browser.servo.site-agent." Shape.Family
+    (Value.Typed (CCL_Type "CCL.Interfaces.Browser_Agent.SITE_TYPE_SOURCE" "Site_User_Agent"))
+    Class.Application_State "Servo_Site_Agent_Settings")
   (Setting "com.cubit.ccl-workbench.demo." Shape.Family Value.Collection Class.Application_State "")])

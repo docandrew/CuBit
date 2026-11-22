@@ -5,10 +5,11 @@
 --  @summary
 --  The kernel's system publications (KERN-002, docs/syscall-retirement.md):
 --  system facts, the service registry and the wall clock, read from pages
---  the kernel maps read-only into every process; and the two system calls
---  around them (READ_STATISTICS, PUBLISH). Shared by the Ada runtime and the
---  libc's Ada, so it needs no run-time library and calls the kernel through
---  CuBit.Kernel_Calls.
+--  the kernel maps read-only into every process; the process's own
+--  statistics and its threads' system-call counts, read from its readiness
+--  and thread-count pages (Readiness_Publication); and PUBLISH. Shared by
+--  the Ada runtime and the libc's Ada, so it needs no run-time library and
+--  calls the kernel through CuBit.Kernel_Calls.
 --
 --  @description
 --  The page layouts are shared/publications/system_publications.ads; this
@@ -38,21 +39,12 @@ package CuBit.System_Facts is
          Timer_Offset, Timer_Before, Timer_After : Unsigned_64 := 0;
       end record;
 
-      --  READ_STATISTICS: this process's frames in bytes, its mailbox
-      --  drops, the system's free memory in bytes, and the system calls
-      --  the calling thread has made.
-      type Statistics is record
-         Owned_Bytes         : Unsigned_64 := 0;
-         Event_Drops         : Unsigned_64 := 0;
-         Free_Memory_Bytes   : Unsigned_64 := 0;
-         Thread_System_Calls : Unsigned_64 := 0;
-      end record;
-      for Statistics use record
-         Owned_Bytes         at 0 range 0 .. 63;
-         Event_Drops         at 8 range 0 .. 63;
-         Free_Memory_Bytes   at 16 range 0 .. 63;
-         Thread_System_Calls at 24 range 0 .. 63;
-      end record;
+      --  A thread's line in the process's thread-count pages: the main
+      --  thread's is Main_Thread_Slot; a THREAD_CREATE thread's is in the
+      --  call's result and in the thread's second entry argument (RSI).
+      Maximum_Threads : constant := 128;
+      type Thread_Slot is range 0 .. Maximum_Threads - 1;
+      Main_Thread_Slot : constant Thread_Slot := 0;
 
       --  What a service publishes through the kernel (PUBLISH).
       type Published_Value is (Wall_Clock_Offset, Boot_Display_Native);
@@ -100,10 +92,29 @@ package CuBit.System_Facts is
    --  while unknown (no clock service, or its time not current).
    function Wall_Clock_Offset return Unsigned_64;
 
-   --  This process's statistics and the system's free memory; Success
-   --  False if the kernel refused (never for a correct caller).
-   procedure Read_Statistics
-     (Value : out SP.Statistics; Success : out Boolean);
+   --  Free physical memory in the whole system, in bytes (a snapshot at
+   --  most about 10 ms old); 0 before the page is written.
+   function Free_Memory_Bytes return Unsigned_64;
+
+   --  This process's own physical frames, in bytes: excludes borrowed
+   --  mappings, page-table frames and other services' allocations.
+   function Owned_Bytes return Unsigned_64;
+
+   --  Events this process's mailbox refused because a publisher's ring
+   --  was full.
+   function Event_Drops return Unsigned_64;
+
+   --  The system calls the thread in Slot has made so far (its current one
+   --  included); a slot's count restarts from 0 for each thread that takes
+   --  it. Reading one is a load, not a system call.
+   function Thread_System_Calls (Slot : SP.Thread_Slot) return Unsigned_64;
+
+   --  The calling thread's own count: Thread_System_Calls (its slot). A
+   --  thread other than the main one first records the slot its entry
+   --  received (Enter_Thread); until it does it reads the main thread's.
+   --  Uses the thread pointer (thread-local storage).
+   function Thread_System_Calls return Unsigned_64;
+   procedure Enter_Thread (Slot : SP.Thread_Slot);
 
    --  Publish Word as Value through the kernel. Only the value's publisher
    --  may (the registered clock service, or the registered device manager).

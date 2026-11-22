@@ -3,6 +3,7 @@
 --  pointer source age
 --  (cumulative histograms: count, p50/p99 bucket upper bounds, maximum).
 --  A periodic stall shows as p99/maximum growth (docs/compositor-backends.md).
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -29,6 +30,8 @@ procedure Main is
       elsif Key = Unsigned_64 (SM.Key (SM.Input_To_Present)) then "input_to_present"
       else "input_source_age");
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Metric_Pages.Bind (Watcher, Startup.Metrics_Observer);
    loop
       Next := 0;

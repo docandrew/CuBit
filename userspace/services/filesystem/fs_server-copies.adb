@@ -5,6 +5,7 @@ with Fs_Reply_Labels;
 with Fs_Server.Delegations; use Fs_Server.Delegations;
 with Fs_Server.Handles; use Fs_Server.Handles;
 with Fs_Server.Replies; use Fs_Server.Replies;
+with CuBit.Monotonic;
 
 package body Fs_Server.Copies is
 
@@ -231,7 +232,7 @@ package body Fs_Server.Copies is
         (Slice_Failed => label /= REPLY_OK, Cancel_Asked => copy.cancel,
          Finished => slice = 0 and then not copy.cancel,
          Deadline_Passed => copy.deadline /= Wait_Forever and then
-                            syscall (SYSCALL_GETTIME) >= copy.deadline);
+                            CuBit.Monotonic.Milliseconds >= copy.deadline);
       case ending is
          when Copy_Slices.Going => null;
          when Copy_Slices.Complete => finishCopy (q, c, REPLY_OK);

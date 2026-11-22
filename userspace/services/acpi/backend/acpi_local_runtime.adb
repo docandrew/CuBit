@@ -132,6 +132,32 @@ package body ACPI_Local_Runtime is
       Status : Core.Values.Access_Status; Budget : Natural) return Boolean is
      (Status = Core.Values.Available and then Value.Charged <= Budget
       and then Value.Status not in AML_Execute.Field_Indeterminate | AML_Execute.Fatal_Requested | AML_Execute.Module_Completed);
+   function Sample_Result_Safe (Service : Core.State; Value : Core.Values.Result;
+      Status : Core.Values.Access_Status; Budget, Before_Roots : Natural) return Boolean is
+     (Preparation_Result_Safe (Value, Status, Budget) and then
+       (Value.Status in AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
+        or else Core.Retained_Results (Service) = Before_Roots));
+   procedure Evaluate_Sample
+     (Service : aliased in out Core.State; Item : Core.Node_Descriptor; Budget : Natural;
+      Result : out Core.Values.Result; Status : out Core.Values.Access_Status) is
+      Before_Roots : constant Natural := Core.Retained_Results (Service);
+   begin
+      Result := (AML_Execute.Unsupported_Value, 0); Status := Core.Values.Wrong_Phase;
+      if not Admits (Service) then return; end if;
+      Busy := True; Evaluate (Service, Item, Budget, Result, Status);
+      Finish_Evaluation (Service, Sample_Result_Safe (Service, Result, Status, Budget, Before_Roots));
+   end Evaluate_Sample;
+   procedure Invoke_Sample
+     (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
+      Args : Core.Values.Arguments; Argument_Count : Core.Values.Argument_Count; Budget : Natural;
+      Result : out Core.Values.Result; Status : out Core.Values.Access_Status) is
+      Before_Roots : constant Natural := Core.Retained_Results (Service);
+   begin
+      Result := (AML_Execute.Unsupported_Value, 0); Status := Core.Values.Wrong_Phase;
+      if not Admits (Service) then return; end if;
+      Busy := True; Invoke_Values (Service, Node, Args, Argument_Count, Budget, Result, Status);
+      Finish_Evaluation (Service, Sample_Result_Safe (Service, Result, Status, Budget, Before_Roots));
+   end Invoke_Sample;
    procedure Evaluate_Preparation
      (Service : aliased in out Core.State; Item : Core.Node_Descriptor; Budget : Natural;
       Result : out Core.Values.Result; Status : out Core.Values.Access_Status) is

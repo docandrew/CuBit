@@ -5,6 +5,7 @@
 --  The tools hold no file scopes of their own: each touches exactly the
 --  files a call names. Results go to the kernel console.
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Child_Exits;
 with CuBit.Launch_Arguments;
@@ -125,6 +126,8 @@ procedure Main is
    Launched : CuBit.Launching.Launch_Result;
    Failure : LA.Launch_Failure;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Describe ("as.app", As_Signature, Ok);
    Say ("procmgr describes as.app", Ok and then As_Signature.Parameter_Total = 2);
    Describe ("ld.app", Ld_Signature, Ok);

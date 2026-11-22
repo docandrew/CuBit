@@ -13,6 +13,8 @@
 --  the launcher's "self" and "self-process" entries.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Handles.Services;
+with CuBit.Console_Route;
 with CuBit.Monotonic;
 with Wait_ABI;
 with CuBit.Waits;
@@ -32,6 +34,7 @@ with CuBit.Kernel_ABI;
 with CuBit.Metric_Outlet;
 with CuBit.Startup_State;
 with CuBit.Startup_Tables;
+with System_Publications;
 with Startup;
 
 procedure Main is
@@ -63,6 +66,10 @@ procedure Main is
    Handle_Limit   : constant := 8;
    --  The launcher's two self entries count against it.
    Self_Entries   : constant := 2;
+   --  Its logstore entry (ABI-002), when the launch granted it, counts too.
+   Logstore : constant CuBit.Handles.Startup.Optional_Endpoint :=
+     CuBit.Handles.Startup.Optional_Endpoint_Named ("logstore");
+   Logstore_Entries : constant Natural := (if Logstore.Present then 1 else 0);
    ERROR_RESULT : constant Unsigned_64 := Unsigned_64'Last;
    --  INSPECT's answer for a live entry.
    Inspected    : constant Unsigned_64 := 0;
@@ -187,9 +194,12 @@ procedure Main is
       Check (Correct, "stack demand pages writable and retained");
    end Check_Stack_Growth;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console;
+   --  queued until the handle-table checks are done (Attach below).
+   CuBit.Console_Route.Route_Awaiting;
    Check_Stack_Growth;
    Check_Heap_Admission;
-   Check (Syscall_Registers_Preserved (SYSCALL_GETPID, 0) = 1,
+   Check (Syscall_Registers_Preserved (CuBit.Kernel_ABI.Yield, 0) = 1,
           "syscall registers normal return");
    Check (Syscall_Registers_Preserved (Unsigned_64'Last, 0) = 1,
           "syscall registers unknown call");
@@ -201,15 +211,15 @@ begin
              CuBit.Monotonic.Microseconds + Blocking_Wait_Us) = 1,
           "syscall registers blocking return");
 
-   PID := syscall (SYSCALL_GETPID);
+   PID := Own_Process_Word;
    Check (PID > 0 and then PID /= ERROR_RESULT, "getpid");
 
    --  The startup table holds exactly what the launcher gives every
    --  process (its manifest requests nothing).
-   Check (CuBit.Startup_State.Current.Count = Self_Entries
+   Check (CuBit.Startup_State.Current.Count = Self_Entries + Logstore_Entries
           and then CuBit.Startup_State.Current.Limit =
                    (Kind => ST.At_Most, Count => Handle_Limit),
-          "startup table holds only the self entries, with the declared limit");
+          "startup table holds only the self entries and logstore, with the declared limit");
    --  MET-002: no metric outlet entry for a program that does not declare
    --  the com.cubit-os.stdmetric outlet, as this manifest does not (the
    --  metrics-latency test checks the same with metrics.svc running).
@@ -336,19 +346,55 @@ begin
    Check (syscall (50, Address_Number (Main'Address)) = 0, "retired VIRT_TO_PHYS rejected");  -- capability-check: forged on purpose
    Check (syscall (77, 1403, 1) = 0, "retired SET_SYSINFO rejected");  -- capability-check: forged on purpose
    Check (syscall (107, 1, PID) = 0, "retired SET_WELL_KNOWN rejected");  -- capability-check: forged on purpose
+   --  TRACE_RESET (82) and TRACE_SUMMARY (83) are retired: the kernel trace
+   --  object (Trace_ABI) replaces them, held only by approved benchmarks.
+   --  TRACE_SUMMARY answered an unknown operation with Last; an unknown
+   --  call answers 0.
+   Check (syscall (83, 99) = 0 and then syscall (82) = 0,  -- capability-check: forged on purpose
+          "retired TRACE_RESET and TRACE_SUMMARY rejected");
+   --  BOOT_TIMELINE (133) is retired: its Read copied the kernel's boot
+   --  timeline to any holder of a process handle with Read, which every
+   --  process has for itself. The timeline is now a publication only a
+   --  declaring program has mapped (checked at the end), so a buffer handed
+   --  to 133 with this process's own handle stays untouched.
+   declare
+      Timeline_Probe : array (1 .. 32) of Unsigned_64 := [others => 0];
+      Read_Operation : constant := 0;   --  the former Boot_Timeline_Layout.Read
+      Probe_Bytes : constant := 256;
+      Ignore : Unsigned_64;
+   begin
+      Ignore := syscall (133, Read_Operation, Address_Number (Timeline_Probe'Address),  -- capability-check: forged on purpose
+                         Probe_Bytes, 0, CuBit.Startup_State.Granted (ST.Self_Process_Text, ST.Process));
+      Check ((for all W of Timeline_Probe => W = 0), "retired BOOT_TIMELINE rejected");
+   end;
+   --  PROCLIST (71) is retired: it listed every process for any holder of
+   --  a process handle with Read, and every process holds one for itself.
+   --  Only procmgr holds the process-list object now (Process_List_ABI);
+   --  this plain process's own handle lists nothing.
+   declare
+      List_Probe : array (1 .. 64) of Unsigned_64 := [others => 0];
+      Ignore : Unsigned_64;
+   begin
+      Ignore := syscall (71, Address_Number (List_Probe'Address), List_Probe'Size / 8,  -- capability-check: forged on purpose
+                         CuBit.Startup_State.Granted (ST.Self_Process_Text, ST.Process));
+      Check ((for all W of List_Probe => W = 0), "a plain process cannot list processes");
+   end;
    --  Their replacements: the publications, and the typed self query.
    declare
-      Statistics : CuBit.System_Facts.SP.Statistics;
-      Read : Boolean;
+      --  READ_STATISTICS (134) is retired: its replacement is the pages
+      --  below, so a statistics buffer handed to it stays untouched.
+      Retired_Statistics : array (1 .. 4) of Unsigned_64 := [others => 0];
+      Ignore : Unsigned_64;
    begin
       Check (CuBit.System_Facts.Processor_Count >= 1 and then
              CuBit.System_Facts.Memory_Bytes > 0, "system facts published");
       Check (Registered_Driver (DRIVER_PROCMGR) /= CuBit.Messages.No_Process,
              "the service registry names procmgr");
-      CuBit.System_Facts.Read_Statistics (Statistics, Read);
-      Check (Read and then Statistics.Owned_Bytes > 0 and then
-             Statistics.Free_Memory_Bytes > 0 and then
-             Statistics.Free_Memory_Bytes < CuBit.System_Facts.Memory_Bytes,
+      Ignore := syscall (134, Address_Number (Retired_Statistics'Address), 32);  -- capability-check: forged on purpose
+      Check ((for all W of Retired_Statistics => W = 0), "retired READ_STATISTICS rejected");
+      Check (CuBit.System_Facts.Owned_Bytes > 0 and then
+             CuBit.System_Facts.Free_Memory_Bytes > 0 and then
+             CuBit.System_Facts.Free_Memory_Bytes < CuBit.System_Facts.Memory_Bytes,
              "own statistics read");
       Check (not CuBit.System_Facts.Publish
                (CuBit.System_Facts.SP.Wall_Clock_Offset, 1),
@@ -577,7 +623,7 @@ begin
             exit;
          end if;
       end loop;
-      Check (Count = Handle_Limit - Self_Entries and then Refused_At_Limit,
+      Check (Count = Handle_Limit - Self_Entries - Logstore_Entries and then Refused_At_Limit,
              "handle limit reached (Limit_Reached)" &
              (if Refused_At_Limit then "" else " got " & ABI.Refusal'Image (Last_Refusal)));
       Check (IPC.Describe (Self).Current, "the self entries survive the limit");
@@ -624,11 +670,35 @@ begin
       end;
    end;
 
+   --  The handle-table checks are done: the route's channel (handles of its
+   --  own) may open now; what it queued until here goes out.
+   if Logstore.Present then
+      CuBit.Console_Route.Attach (CuBit.Handles.Services.Logstore.Granted (Logstore.Value));
+   end if;
+
+   --  This program's manifest declares no boot-timeline publication: the
+   --  startup table holds none, and (last, below) the page is not mapped.
+   Check (CuBit.Startup_State.Granted ("boot-timeline", ST.Publication) = ST.No_Handle,
+          "no boot-timeline publication without declaring it");
+
    if Passed then
       debugPrint ("capability-test: all tests passed" & LF);
    else
       debugPrint ("capability-test: test failure" & LF);
    end if;
+
+   --  Last: reading the undeclared publication faults (run.sh checks the
+   --  fault and the retirement that follow this line).
+   debugPrint ("capability-test: read of the undeclared boot timeline armed" & LF);
+   --  The read below ends the process: hand logstore every line first.
+   CuBit.Console_Route.Flush;
+   declare
+      Timeline_Word : constant Unsigned_64
+      with Import, Volatile,
+           Address => System.Storage_Elements.To_Address (System_Publications.Boot_Timeline_Address);
+   begin
+      Result := Timeline_Word;
+   end;
 
    loop
       Result := CuBit.Waits.Sleep_For (1_000);

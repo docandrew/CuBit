@@ -19,6 +19,7 @@ with Startup;
 with CuBit.Launch_Configurations;
 with Launch_Configuration;
 with Boot_Log;
+with CuBit.Console_Route;
 with XHCI;
 with XHCI_Capabilities;
 with XHCI_DMA_Layout;
@@ -172,7 +173,7 @@ procedure main is
          return;
       end if;
       lastPublished := Pointers.Published (Mouse_Source) + Keyboards.Published (Keyboard_Source);
-      Boot_Log.Serial
+      Boot_Log.Debug
         ("xhci: " & Location & " stats events=" & Image (diagnostics.transferEvents) &
          " reports=" & Image (diagnostics.decodedReports) &
          " motion=" & Image (diagnostics.motionReports) &
@@ -229,6 +230,9 @@ procedure main is
    function Earliest (A, B : Unsigned_64) return Unsigned_64 is (Unsigned_64'Min (A, B));
 
 begin
+   --  ABI-002: its lines into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;
@@ -296,11 +300,8 @@ begin
                      "result=" & Image (Unsigned_64 (XHCI.Init_Result'Pos (initResult))) &
                      " (XHCI.Init_Result position)", True);
       Reply_With (REPLY_ERR, Unsigned_64 (XHCI.Init_Result'Pos (initResult)));
-      --  Give the log grant a chance to carry the failure out.
-      for Attempt in 1 .. 50 loop
-         Boot_Log.Poll;
-         ignore := CuBit.Waits.Sleep_For (20);
-      end loop;
+      --  Let logstore take the failure before the process ends.
+      Boot_Log.Flush;
       ignore := syscall (SYSCALL_EXIT);
       return;
    end if;
@@ -338,7 +339,6 @@ begin
          --  A source ring's end, or Desktop waking a source for room.
          Note_Source_Event (msg);
       end if;
-      Boot_Log.Poll;
       XHCI.Service (serviceProgress);
       Optical_Service.Poll (storageProgress);
 
@@ -398,7 +398,6 @@ begin
             Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
             D : Unsigned_64 := Earliest (XHCI.Next_Deadline, XHCI.Optical_Deadline);
          begin
-            D := Earliest (D, Boot_Log.Deadline);
             D := Earliest (D, diagnosticsDue);
             --  A source still looking for Desktop looks again by then.
             if keyboardPresent then

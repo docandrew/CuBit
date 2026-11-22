@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../kernel"
 mkdir -p ../tests/typed-logging/build/source
 for unit in cubit.ads cubit-protocols.ads \
-    cubit-log_records.ads cubit-log_records.adb \
+    cubit-log_records.ads cubit-log_records.adb cubit-log_records-texts.ads cubit-log_records-texts.adb \
     cubit-text_to_log.ads cubit-text_to_log.adb \
     cubit-authority_policy.ads cubit-protocols-stream_policies.ads \
     cubit-protocols-stream_connections.ads \

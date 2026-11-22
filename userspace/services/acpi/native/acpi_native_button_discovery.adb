@@ -8,7 +8,7 @@ package body ACPI_Native_Button_Discovery is
    package Q renames ACPI_Requests;package C renames ACPI_Service;package One renames ACPI_One_Service;
    package W renames ACPI_Native_Power_Buttons;package B renames ACPI_Backend_Binding_Types;
    use type Interfaces.Unsigned_64,System.Address,Q.Phase,One.Runtime.Status.Phase;
-   package Identity is new ACPI_Control_Method_Button (C, One.Runtime.Evaluate_Named);
+   package Identity is new ACPI_Control_Method_Button (C, One.Runtime.Evaluate_Discovery);
    package Buttons is new Q.Power_Buttons
      (Identity, One.Runtime.Begin_Event, One.Runtime.End_Event, W.Control_Method_Press);
    use type Buttons.Bridge.Outcome;
@@ -48,6 +48,9 @@ package body ACPI_Native_Button_Discovery is
       procedure Finish (Status : Outcome) is
       begin
          Result := Status;Working := False;
+         if Status not in Fixed_Selected | Control_Method_Selected then
+            W.Configure_Control_Method (False);
+         end if;
          ACPI_Native_Diagnostic_Output.Write
            ("acpi: stage power-button " &
              (if Status in Fixed_Selected | Control_Method_Selected then "ok " else "fail ") & Status'Image &
@@ -56,6 +59,14 @@ package body ACPI_Native_Button_Discovery is
               and then One.Runtime.Current = One.Runtime.Status.Idle and then One.Root.Fields.Control_Idle
               and then One.Root.Fields.EC_Commands.Quiescent,
             Status in Fixed_Selected | Control_Method_Selected);
+         if Status = Discovery_Failed then
+            ACPI_Native_Diagnostic_Output.Write
+              ("acpi: stage power-button-detail fail " & Report.Status'Image &
+               " scan=" & Report.Scanned'Image &
+               " id=" & Report.Last_Binding.Identity.Outcome'Image &
+               " exec=" & Report.Last_Binding.Identity.Execution'Image &
+               " close=" & Report.Close_Result'Image, False);
+         end if;
       end Finish;
    begin
       Result := Not_Ready;

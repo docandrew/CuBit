@@ -1,0 +1,1 @@
+with Interfaces;package body CuBit.Device_Interrupts is use type Interfaces.Unsigned_32;function Is_Doorbell(Event:CuBit.Messages.Message) return Boolean is (Event.tag.label=EVENT_IRQ);end CuBit.Device_Interrupts;

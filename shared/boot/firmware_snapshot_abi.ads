@@ -3,33 +3,34 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  The FIRMWARE_SNAPSHOT system call: read-only export of the kernel's
---  sealed boot snapshot of the firmware (ACPI) tables. Shared by the kernel
+--  Reading the firmware snapshot: the operations of a CAP_FIRMWARE_SNAPSHOT
+--  kernel object, reached by Call on its handle (ABI-002 slice 7; it was
+--  the FIRMWARE_SNAPSHOT system call). Shared by the kernel
 --  (kernel/src/firmware_snapshot_export.ad?) and the runtime
---  (CuBit.Firmware_Snapshot, the only caller).
+--  (CuBit.Handles.Firmware_Snapshots and CuBit.Firmware_Snapshot).
 --
 --  @description
 --  The kernel copies every admitted firmware table once at boot into an
---  immutable snapshot (Firmware_Tables.Snapshots) and seals it. This call
---  reads that snapshot and nothing else: no physical address, no mapping,
---  no live firmware memory. FACS, NVS and the ACPI registers are not in it.
+--  immutable snapshot (Firmware_Tables.Snapshots) and seals it. These
+--  operations read that snapshot and nothing else: no physical address, no
+--  mapping, no live firmware memory. FACS, NVS and the ACPI registers are
+--  not in it.
 --
---  Authority: a CAP_FIRMWARE_SNAPSHOT capability with RIGHT_READ, named by
---  handle. The kernel mints the only root at boot (devmgr's launch roots);
---  devmgr passes it to procmgr, which installs a read-only copy only in a
---  program whose manifest declares (Request.Firmware_Snapshot "<binding>")
---  and whose startup entry approves it, (firmware-snapshot approve-declared).
+--  Authority: the handle itself, a CAP_FIRMWARE_SNAPSHOT with RIGHT_READ.
+--  The kernel mints the only root at boot (devmgr's launch roots); devmgr
+--  passes it to procmgr, which installs a read-only copy only in a program
+--  whose manifest declares (Request.Firmware_Snapshot "<binding>") and
+--  whose startup entry approves it, (firmware-snapshot approve-declared).
+--  A Call on a handle that is not one is not answered as one.
 --
---  Arguments (one word each):
---     arg0  the authority handle
---     arg1  Operation
---     arg2  Table: a logical table number, 1 .. table count (Describe, Copy)
---     arg3  Offset: a byte offset into that table (Copy)
---     arg4  Destination: the caller's buffer (Copy)
---     arg5  Capacity: the buffer's length, 0 .. Chunk_Max (Copy)
---     arg6  the caller's Reply record (Reply_Words words)
---  Unused arguments must be zero. The result word is an Outcome code
---  (never zero: an unknown call returns zero, which is no Outcome).
+--  The request message: label the Operation; Message_Words words
+--     0  Table: a logical table number, 1 .. table count (Describe, Copy)
+--     1  Offset: a byte offset into that table (Copy)
+--     2  Destination: the caller's buffer (Copy)
+--     3  Capacity: the buffer's length, 0 .. Chunk_Max (Copy)
+--  Unused words must be zero. The reply: label the Outcome word, and for
+--  Ok the reply words that vary (Payload_Of); Interface_Version and
+--  Chunk_Max are constants here and are not sent (Reply_Of restores them).
 --
 --  Order of checks: the authority against the calling process first, then
 --  the request words at full width (Well_Formed), then the snapshot (ready,
@@ -49,7 +50,6 @@ with Interfaces; use Interfaces;
 
 package Firmware_Snapshot_ABI with Pure, SPARK_Mode is
 
-   System_Call_Number : constant := 144;
    Interface_Version  : constant := 1;
 
    --  Bytes one Copy_Table_Part copies at most: a bound on the work of one
@@ -338,5 +338,29 @@ package Firmware_Snapshot_ABI with Pure, SPARK_Mode is
    with Ghost, Global => null,
         Pre  => Copied <= Capacity,
         Post => Copy_Well_Formed (Encode_Copy (Copied), Capacity);
+
+   ---------------------------------------------------------------------------
+   --  The Call's messages (see the header)
+   ---------------------------------------------------------------------------
+   Message_Words : constant := 4;
+   type Message_Index is range 0 .. Message_Words - 1;
+   type Message_Payload is array (Message_Index) of Unsigned_64;
+
+   --  The first reply word an operation sends; it sends Message_Words of
+   --  them (a copy's words after Copy_Used are zero).
+   First_Sent : constant array (Operation) of Reply_Index :=
+     [Catalog_Info => Info_Ready, Describe_Table => Describe_Table_Word,
+      Copy_Table_Part => Copy_Copied];
+
+   function Payload_Of (Op : Operation; Item : Reply) return Message_Payload is
+     ([for I in Message_Index => Item (First_Sent (Op) + Reply_Index'Base (I))]);
+
+   function Reply_Of (Op : Operation; Words : Message_Payload) return Reply is
+     ([for I in Reply_Index =>
+         (if I >= First_Sent (Op) and then I - First_Sent (Op) <= Reply_Index'Base (Message_Index'Last)
+          then Words (Message_Index (I - First_Sent (Op)))
+          elsif Op = Catalog_Info and then I = Info_Version then Interface_Version
+          elsif Op = Catalog_Info and then I = Info_Chunk then Chunk_Max
+          else 0)]);
 
 end Firmware_Snapshot_ABI;

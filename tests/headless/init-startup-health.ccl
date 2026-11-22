@@ -4,7 +4,7 @@
 # boot-logs prints the records logstore keeps; tests/headless/
 # check-startup-health.py fails on any refusal.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "clock.svc" (priority 5))
   (start "timesync.svc" (priority 5) (network approve-declared))
   (start "tls.svc" (priority 5) (network approve-declared))

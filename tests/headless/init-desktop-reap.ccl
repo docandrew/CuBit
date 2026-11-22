@@ -2,7 +2,7 @@
 # ring and no buffer and ends without goodbye; Desktop must remove the
 # window though nothing is redrawn after it ("ended: its process ended").
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "clock.svc" (priority 5))
   (start "display.svc" (priority 5))
   (start "desktop.svc" (priority 4))

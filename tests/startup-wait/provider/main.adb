@@ -10,6 +10,7 @@
 --  ready deadline. It answers the client's probe once registered.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -36,6 +37,8 @@ procedure Main is
    Request, Answer : Message;
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    case P.behaviour is
       when Never_Register =>
          debugPrint ("startup-wait-provider: ends in " & Image (Unsigned_64 (P.after)) &

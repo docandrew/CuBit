@@ -1,0 +1,13 @@
+# launch-gate (CAP-012, docs/authority-model.md 7.5): a child launched into
+# the user session. The clock is an ordinary service, in the session's
+# envelope; clock control and the framebuffer are not, and are optional, so
+# they are withheld.
+(Executable_Manifest
+  identity => "com.cubit.test.launch-gate-child"
+  version => "1.0.0"
+  requests => [
+    (service "logstore" "logstore")
+    (service "clock" "clock")
+    (service "clock-control" "clock-control")
+    (framebuffer "framebuffer")]
+  optional => ["clock-control" "framebuffer"])

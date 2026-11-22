@@ -1,0 +1,23 @@
+--  The run-time pieces CuAlloc_Native's inlined system calls refer to
+--  (CuBit.Kernel_Calls notes each call in CuBit.Call_Census, whose counts
+--  are this unit's data): for programs that link libcubit_allocator.a with
+--  neither libc.a nor libgnat-user.a (both carry their own copy), today
+--  the no_std Rust probes (userspace/rust/Makefile). Same switches as
+--  allocator_native.gpr.
+library project Allocator_Calls_Native is
+   for Source_Dirs use ("../runtime/gnat");
+   for Source_Files use ("cubit-call_census.ads", "cubit-call_census.adb");
+   for Object_Dir use "build/calls-native-objects";
+   for Library_Dir use "build/calls-native-lib";
+   for Library_Name use "cubit_allocator_calls";
+   for Library_Kind use "static";
+   for Runtime ("Ada") use "../runtime";
+   package Builder is
+      for Global_Configuration_Pragmas use "../libc/libc-ada.adc";
+   end Builder;
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnatp", "-gnatn2", "-O2", "-g", "-gno-record-gcc-switches", "-mno-red-zone",
+         "-fno-pic", "-ffunction-sections", "-I-");
+   end Compiler;
+end Allocator_Calls_Native;

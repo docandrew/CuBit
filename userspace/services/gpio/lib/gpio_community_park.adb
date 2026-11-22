@@ -78,7 +78,7 @@ package body GPIO_Community_Park with SPARK_Mode is
       case S.Info.At_Phase is
          when Read_Owner => S.Owner_Value := Value; S.Info.At_Phase := Read_Host;
          when Read_Host =>
-            if not G.Interrupt_Eligible (S.Plan.Selected, S.Owner_Value, Value, 0) then
+            if not G.Interrupt_Eligible (S.Plan.Selected, S.Owner_Value, Value) then
                S.Info.Firmware_Owned := S.Info.Firmware_Owned + 1; Next_Pin (S);
             else S.Info.At_Phase := Read_Enable; end if;
          when Read_Enable => S.Desired := Value and not S.Plan.Selected.Interrupt_Mask; S.Info.At_Phase := Mask_Write;

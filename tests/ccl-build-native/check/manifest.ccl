@@ -7,7 +7,10 @@
 (Executable_Manifest
   identity => "com.cubit.ccl-build-check"
   version => "0.1.0"
-  requests => [(service "process-manager" "process-manager") (service "filesystem" "filesystem")]
+  requests => [(service "process-manager" "process-manager") (service "launch" "launch") (service "filesystem" "filesystem")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"]
   scopes => [
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/storehouse")
     (filesystem [File_Right.Read] "@system/toolchain")

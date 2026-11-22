@@ -14,6 +14,7 @@
 --  stand-in writes no PM1 control register itself.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
@@ -184,6 +185,9 @@ procedure Main is
                   " (STAND-IN: no \_TTS/\_PTS evaluated; SLP_TYPa " &
                   Image (Unsigned_64 (P.s5_sleep_type)) & " from its plan)" & LF);
       Answer.words (PE.Prepare_Status_Word) := PE.Prepare_Status'Enum_Rep (Status);
+      --  Its line reaches serial through logstore (ABI-002): hand it over
+      --  before the answer lets power.svc go on to procmgr's stops.
+      CuBit.Console_Route.Flush;
       Ignore64 := reply (From, Answer);
    end Serve_Prepare;
 
@@ -208,7 +212,9 @@ procedure Main is
       else
          debugPrint ("shutdown-standin: entering S5 (SLP_TYP " & Image (Unsigned_64 (P.s5_sleep_type)) &
                      ") through the platform power object; STAND-IN, no \_PTS" & LF);
-         --  No pause for the console: the kernel drains it first (LOG-009).
+         --  The line reaches serial through logstore (ABI-002): hand it over
+         --  before S5 (the kernel drains only its own console, LOG-009).
+         CuBit.Console_Route.Flush;
          Entered := CuBit.Handles.Power.Enter_State
            (Power, Platform_Power_ABI.S5, Type_A => Unsigned_64 (P.s5_sleep_type));
          --  Only a refusal returns.
@@ -235,6 +241,8 @@ procedure Main is
    Status_Now : Unsigned_64;
    Event_Length : Unsigned_32;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Read_FADT;
    Event_Port := U32 (AF.PM1a_Event_Offset);
    Control_Port := U32 (AF.PM1a_Control_Offset);

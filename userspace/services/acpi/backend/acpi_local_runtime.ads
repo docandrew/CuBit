@@ -56,6 +56,19 @@ package ACPI_Local_Runtime is
      (Service : aliased in out Core.State; Item : Core.Node_Descriptor; Budget : Natural;
       Result : out Core.Values.Result; Status : out Core.Values.Access_Status)
      with Pre => Core.Valid (Service) and then not Result'Constrained;
+   -- Fixed consumer samples: an ordinary bounded AML error may be isolated
+   -- only at the same idle provider, with no newly retained error result.
+   -- Fatal/module completion, indeterminate Field IO, access/budget violations
+   -- and owner/stop failures still permanently close the shared runtime.
+   procedure Evaluate_Sample
+     (Service : aliased in out Core.State; Item : Core.Node_Descriptor; Budget : Natural;
+      Result : out Core.Values.Result; Status : out Core.Values.Access_Status)
+     with Pre => Core.Valid (Service) and then not Result'Constrained;
+   procedure Invoke_Sample
+     (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
+      Args : Core.Values.Arguments; Argument_Count : Core.Values.Argument_Count; Budget : Natural;
+      Result : out Core.Values.Result; Status : out Core.Values.Access_Status)
+     with Pre => Core.Valid (Service) and then not Result'Constrained;
    procedure Invoke_Retained
      (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
       Args : AML_Execute.Arguments; Argument_Count : Core.Values.Argument_Count; Budget : Natural;

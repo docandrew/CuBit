@@ -9,6 +9,7 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with Build;
+with Debug_Register_Probe;
 with Mem_mgr;
 with Process.Queues;
 with Virtual_Deadlines;
@@ -58,6 +59,11 @@ package body Scheduler is
                Process.threadtab (tid).mode = Process.USER
             then
                 Process.saveUserCPUState (tid);
+            end if;
+            -- The debug-register probe's breakpoint belongs to the process
+            -- that armed it: never carried across a switch.
+            if Build.Debug_Register_Probe then
+                Debug_Register_Probe.Disarm_Local;
             end if;
         end saveFPU;
 
@@ -266,7 +272,7 @@ package body Scheduler is
 
                 when WAITING | RECEIVING | SENDING | WAITINGFOREVENT |
                      WAITINGFORREPLY | WAITINGFORCOMPLETION | SUSPENDED |
-                     SLEEPING | FUTEXWAITING =>
+                     SLEEPING | FUTEXWAITING | VMHALTED =>
                     -- print ("Scheduler: process "); print (i);
                     -- print (" is blocked (waiting), saving context: ");
                     -- println (cpuData.oldContext);

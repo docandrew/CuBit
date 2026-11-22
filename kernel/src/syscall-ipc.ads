@@ -13,9 +13,12 @@ package Syscall.IPC with
 is
 
     -- SPAWN (CAP-002): arg0 = spawn authority (a CAP_PROCESS handle with
-    -- RIGHT_EXECUTE), arg1 = address of a Capability_ABI.Spawn_Request,
-    -- arg2 = address of a Capability_ABI.Spawn_Result. Creates the process
-    -- suspended. Returns 0, or a refusal code.
+    -- RIGHT_EXECUTE naming every process), arg1 = address of a
+    -- Capability_ABI.Spawn_Request, arg2 = address of a
+    -- Capability_ABI.Spawn_Result. Creates the process suspended. The
+    -- parent is the caller or a process the authority holds Grant over; the
+    -- returned handles carry at most the authority's rights, the endpoint and
+    -- CSPACE only with Grant (Spawn_Admission). Returns 0, or a refusal code.
     procedure handleSpawn (callerPID : Process.ProcessID;
                            arg0, arg1, arg2 : Unsigned_64;
                            retval     : out Unsigned_64);
@@ -118,10 +121,6 @@ is
     procedure handleRevoke (callerPID : Process.ProcessID;
                             arg0      : Unsigned_64;
                             retval    : out Unsigned_64);
-
-    procedure handleReadStatistics (callerPID  : Process.ProcessID;
-                                    arg0, arg1 : Unsigned_64;
-                                    retval     : out Unsigned_64);
 
     procedure handleDeriveGrantViaCap
       (callerPID : Process.ProcessID;

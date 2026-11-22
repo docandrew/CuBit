@@ -148,6 +148,7 @@ package body Process.Owned_Memory is
          FrameLists.detachRange (proctab(PID).frames, Drop_First, Drop_Last,
                                  Cut.Dropped, Freed, OK);
          if not OK then return; end if;
+         publishOwnedBytes (PID);
          while Freed.length > 0 loop
             BuddyAllocator.freeFrame (FrameLists.front (Freed));
             FrameLists.popFront (Freed);
@@ -276,7 +277,7 @@ package body Process.Owned_Memory is
       Index : Records.Id := 0;
       Extending : Boolean := False;
       Before, Added : Natural := 0;
-      Storage : System.Address;
+      Storage : Process_Frames.Process_Frame;
       Result : Page_Allocation_Result;
       Capacity : Natural;
       Undone : Boolean;

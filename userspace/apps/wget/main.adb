@@ -11,6 +11,7 @@
 --  and SHUT relay plaintext. wget holds no network scope and no TLS code,
 --  only its tls-scope for example.com:443.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -103,6 +104,8 @@ procedure main is
       CR & LF;
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("wget: starting..." & LF);
 
    --  The progress connector its manifest declares (a 4-page ring of text).

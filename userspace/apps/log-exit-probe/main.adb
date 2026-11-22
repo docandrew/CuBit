@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Records;
@@ -30,6 +31,8 @@ procedure Main is
       return Raw (Raw'First + 1 .. Raw'Last);
    end Image;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    for Stage in 1 .. Stages loop
       declare
          Made : constant L.Decoded :=

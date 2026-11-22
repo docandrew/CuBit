@@ -94,9 +94,16 @@ package CuBit.Handles.IPC is
    function Describe (Item : Device_Memory) return Description;
    function Describe (Item : IO_Ports) return Description;
    function Describe (Item : Platform_Power) return Description;
+   function Describe (Item : Trace) return Description;
+   function Describe (Item : Process_Listing) return Description;
+   function Describe (Item : Test_Console) return Description;
+   function Describe (Item : VM_Create) return Description;
    function Describe (Item : Interrupt) return Description;
    function Describe (Item : Notification) return Description;
    function Describe (Item : Scheduling) return Description;
+   --  The same for a handle word of any kind (a carried word, a debug
+   --  session's): what CuBit.Handles.Debug checks a carried session with.
+   function Describe_Word (Word : Unsigned_64) return Description;
 
    ---------------------------------------------------------------------------
    --  Capabilities in replies.

@@ -6,7 +6,8 @@ const inventory=JSON.parse(fs.readFileSync(here+'/sources.json')),pins={};
 for(const [r,h]of Object.entries(inventory.production)){const p=root+'/'+r;if(fs.realpathSync(p)!==p||sha(p)!==h)throw Error('Production drift');pins[p]=h;}
 for(const n of [...inventory.mains.map(m=>m.name+'.adb'),'suite.gpr','proof.gpr','run.sh','run.mjs','sources.json','README.md'])pins[here+'/'+n]=sha(here+'/'+n);
 fs.mkdirSync(output,{recursive:true});const out=fs.mkdtempSync(output+'/i2c-admission-'+mode+'-');console.log(out);
-for(const [p,h]of Object.entries(pins)){fs.copyFileSync(p,out+'/'+path.basename(p),fs.constants.COPYFILE_EXCL);if(sha(out+'/'+path.basename(p))!==h)throw Error('Snapshot mismatch');}
+// Hosted tests use the host GNAT runtime; keep native SDK context pinned without shadowing System/Ada internals.
+for(const [p,h]of Object.entries(pins)){if(p.includes('/userspace/runtime/gnat/')&&!path.basename(p).startsWith('cubit'))continue;fs.copyFileSync(p,out+'/'+path.basename(p),fs.constants.COPYFILE_EXCL);if(sha(out+'/'+path.basename(p))!==h)throw Error('Snapshot mismatch');}
 const name=mode==='proof'?'gnatprove':'gprbuild',tool=fs.realpathSync(process.env.PATH.split(':').map(p=>p+'/'+name).find(fs.existsSync));if(!tool.startsWith('/nix/store/'))throw Error('Unpinned tool');
 fs.writeFileSync(out+'/tool.json',JSON.stringify({path:tool,sha256:sha(tool)},null,2)+'\n');
 const commands=[];

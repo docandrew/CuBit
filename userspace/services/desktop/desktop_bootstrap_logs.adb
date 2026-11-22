@@ -3,9 +3,11 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with CuBit.System_Facts;
 with Desktop_Startup_Clock;
 with Desktop_Endpoints;
+with CuBit.Monotonic;
 package body Desktop_Bootstrap_Logs is
    use Interfaces;
    package P renames CuBit.Log_Protocol;
@@ -20,7 +22,7 @@ package body Desktop_Bootstrap_Logs is
    Batch : constant := 16;
 
    procedure Gather (Budget_Ms : Unsigned_64) is
-      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Event   : P.Event;
       Lost    : Unsigned_64;
    begin
@@ -41,7 +43,7 @@ package body Desktop_Bootstrap_Logs is
             CuBit.Logging.Read_Next (Reader, Event, Lost, Status);
             exit when Status /= P.OK;
             declare
-               Text : constant String := CuBit.Log_Records.Text (Event.Data);
+               Text : constant String := CuBit.Log_Records.Texts.Text (Event.Data);
                Important : constant Boolean :=
                  CuBit.Log_Records.Level (Event.Data) >= CuBit.Log_Records.Warning;
             begin
@@ -55,7 +57,7 @@ package body Desktop_Bootstrap_Logs is
          end loop;
          exit when Status /= P.OK;
          declare
-            Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
          begin
             exit when Now < Started or else Now - Started >= Budget_Ms;
          end;
@@ -74,13 +76,13 @@ package body Desktop_Bootstrap_Logs is
    function Gathered_At_Ms return Unsigned_64 is (Gathered_Ms);
 
    procedure Gather_Before_Bootstrap is
-      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Now     : Unsigned_64;
       Ignore  : Unsigned_64;
    begin
       loop
          Gather (Call_Limit_Ms);
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Monotonic.Milliseconds;
          exit when Now < Started or else Now - Started >= Maximum_Wait_Ms;
          exit when Now - Started >= Minimum_Wait_Ms and then
            Unsigned_64 (Kept.Highest_Denial) >= Kernel_Denials and then

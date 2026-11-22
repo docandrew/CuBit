@@ -1,6 +1,7 @@
 --  supervision-child (tests/supervision, headless test supervision): logs
 --  exactly the typed parameters it decoded, then exits with the code its
 --  mode names, or lingers (sleeping) until procmgr reaps it.
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Ada.Command_Line;
 with Interfaces;
@@ -20,6 +21,8 @@ procedure Main is
       return Text (Text'First + 1 .. Text'Last);
    end Image;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Messages.debugPrint
      ("supervision-child: decoded label=" &
       (case P.label is when First => "First", when Lingering => "Lingering") &

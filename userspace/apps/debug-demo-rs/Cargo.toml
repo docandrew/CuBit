@@ -1,0 +1,28 @@
+[package]
+name = "debug-demo-rs"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "GPL-3.0-or-later"
+
+# Built with CuBit's std for x86_64-unknown-cubit (userspace/rust/std),
+# outside the no_std workspace: build.sh.
+[workspace]
+
+[dependencies]
+cubit-debug-stub = { path = "../../lib/debug/stub-rs" }
+
+# The debugger demo: full debug information for its own code at a light
+# optimization level; std keeps line tables only, so the debug
+# file stays small enough to read on the device.
+[profile.release]
+panic = "abort"
+opt-level = 1
+debug = 2
+
+[profile.release.package."*"]
+debug = "line-tables-only"
+
+# The stub's own frame is named in every stop (CuBit.Debug marks it).
+[profile.release.package.cubit-debug-stub]
+debug = 2

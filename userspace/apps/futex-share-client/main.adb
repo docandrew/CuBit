@@ -18,6 +18,7 @@
 --  them.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -25,6 +26,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
 with CuBit.Memory_Grants;
 with CuBit.Monotonic;
+with CuBit.Process_Events;
 with CuBit.System_Facts;
 with CuBit.Waits;
 with Wait_ABI;
@@ -40,6 +42,13 @@ procedure Main is
    OP_FIFO_WAKE : constant Unsigned_32 := 16#0A12#;
    OP_WAIT_END  : constant Unsigned_32 := 16#0A13#;
    OP_PEER_WAKE : constant Unsigned_32 := 16#0A15#;
+   OP_CHURN     : constant Unsigned_32 := 16#0A16#;
+   --  Notified grants the server takes and gives back, each leaving this
+   --  process a grant-return notice; then an idle activity loop of
+   --  Idle_Window_Ms may turn at most Idle_Turn_Limit times.
+   Churn_Rounds    : constant := 2_000;
+   Idle_Window_Ms  : constant := 300;
+   Idle_Turn_Limit : constant := 50;
    Peer_Wake_Bound_Ms : constant := 2_000;
    REPLY_OK     : constant Unsigned_32 := 16#F000#;
    Mode_Hand_Off : constant Unsigned_64 := 0;
@@ -97,12 +106,7 @@ procedure Main is
    end Call;
 
    function Thread_Calls return Unsigned_64 is
-      S : CuBit.System_Facts.SP.Statistics;
-      Read : Boolean;
-   begin
-      CuBit.System_Facts.Read_Statistics (S, Read);
-      return (if Read then S.Thread_System_Calls else 0);
-   end Thread_Calls;
+     (CuBit.System_Facts.Thread_System_Calls);
 
    --  Ping rounds against the server's pong. True when every round was
    --  answered (no wake lost, nothing timed out).
@@ -196,10 +200,12 @@ procedure Main is
    Ignore : Unsigned_64;
    Hand_Off_Us, Separate_Us : Unsigned_64 := 0;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("futex-share: starting" & LF);
 
    --  Two pages this process owns, granted to the server.
-   Heap := syscall (SYSCALL_SBRK, 4 * Page);
+   Heap := syscall (SYSCALL_SBRK, 5 * Page);
    Aligned := (Heap + Page - 1) and not (Page - 1);
    First_Base := To_Address (Integer_Address (Aligned));
    Second_Base := To_Address (Integer_Address (Aligned + Page));
@@ -363,6 +369,48 @@ begin
       Check (Woke = Work_Available and then
              CuBit.Monotonic.Microseconds - Started < Peer_Wake_Bound_Ms * 1_000,
              "a peer wake ends an activity wait");
+   end;
+
+   --  A grant-return notice is counted on the readiness page when it is
+   --  posted and its doorbell rings once grantLock is free; a thread that
+   --  takes it in between must not leave the doorbell answering every
+   --  activity wait with Work (devmgr spun 1.4 million turns a second).
+   --  A second thread takes notices as they come while the server returns
+   --  notified grants; then an idle activity loop must sleep.
+   declare
+      Churn_Base : constant System.Address := To_Address (Integer_Address (Aligned + 3 * Page));
+      Churned : GR.Reference;
+      M : Message;
+      Tag : MessageTag;
+      Made, All_Given_Back : Boolean := True;
+      Turns : Unsigned_64 := 0;
+      Idle_Until : Unsigned_64;
+   begin
+      Notice_Poller_Stop := 0;
+      Ignore := Spawn (Notice_Poller'Access, New_Stack, 0,
+                       Words.To_Pointer (Notice_Poller_Done'Address));
+      for I in 1 .. Churn_Rounds loop
+         CuBit.Memory_Grants.Create_Via_Capability
+           (Server, Churn_Base, 1, False, Churned, Made, notify => True);
+         M := NULL_MESSAGE;
+         M.tag := (label => OP_CHURN, length => 1, protocol => 0, ipc => <>, reserved => 0);
+         M.words (0) := GR.Encode (Churned);
+         Tag := capCall (Server, M, Deadline);
+         All_Given_Back := All_Given_Back and then Made and then Tag.label = REPLY_OK;
+      end loop;
+      Notice_Poller_Stop := 1;
+      Join (Words.To_Pointer (Notice_Poller_Done'Address));
+      Idle_Until := Deadline_After (Idle_Window_Ms);
+      loop
+         Turns := Turns + 1;
+         CuBit.Process_Events.Serve_Defaults;
+         exit when Wait_For_Activity_Until (Idle_Until) = Deadline_Reached
+           or else Turns > Idle_Turn_Limit;
+      end loop;
+      debugPrint ("futex-share: idle turns after notices=" & Image (Turns) & LF);
+      Check (All_Given_Back, "2000 notified grants taken and given back");
+      Check (Turns <= Idle_Turn_Limit,
+             "an idle activity loop sleeps after grant-return notices");
    end;
 
    if Failures = 0 then

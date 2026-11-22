@@ -3,7 +3,7 @@
 # snapshot reader and hardware windows approved on one entry). The same
 # image without the hardware approval is refused at launch.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "acpi-hardware-check.app" (priority 3)
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared))
   (start "acpi-hardware-denied.app" (priority 3)

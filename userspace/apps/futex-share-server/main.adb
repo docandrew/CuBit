@@ -15,6 +15,7 @@
 --  a shared word it holds no grant for.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -40,6 +41,7 @@ procedure Main is
    OP_WAIT_END  : constant Unsigned_32 := 16#0A13#;
    OP_WORD      : constant Unsigned_32 := 16#0A14#;
    OP_PEER_WAKE : constant Unsigned_32 := 16#0A15#;
+   OP_CHURN     : constant Unsigned_32 := 16#0A16#;
    Peer_Wake_Delay_Ms : constant := 20;
    REPLY_OK     : constant Unsigned_32 := 16#F000#;
    REPLY_NOT_YET : constant Unsigned_32 := 16#F001#;
@@ -136,6 +138,8 @@ procedure Main is
    end Pong;
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Ignore := registerDriver (DRIVER_IPCTEST, Startup.Registration);
    if Ignore = Unsigned_64'Last then
       debugPrint ("futex-share-server: register FAIL" & LF);
@@ -256,6 +260,24 @@ begin
             debugPrint ("futex-share-server: peer wake FAIL" & LF);
          end if;
          receive (from, msg);
+
+      elsif msg.tag.label = OP_CHURN then
+         --  words: a notified grant. Take it and give it back: the client
+         --  hears of it (a grant-return notice).
+         declare
+            Churned : constant GR.Reference := GR.Decode (msg.words (0));
+            Mapped : System.Address;
+            Taken, Given : Boolean := False;
+         begin
+            CuBit.Memory_Grants.Acquire
+              (Churned, from, 0, CuBit.Memory_Grants.PAGE_SIZE,
+               CuBit.Memory_Grants.Read_Access, Mapped, Taken);
+            if Taken then
+               CuBit.Memory_Grants.Return_Acquisition (Churned, Given);
+            end if;
+            replyWait (from, Reply (if Taken and then Given then REPLY_OK else REPLY_FAILED),
+                       from, msg);
+         end;
 
       else
          replyWait (from, Reply (REPLY_FAILED), from, msg);

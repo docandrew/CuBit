@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -31,6 +32,8 @@ procedure Main is
       loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
    end Fail;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    O.Bind (Raw, Startup.Metrics_Observer);
    -- Bounded collector workload. It may lag and lose history; identity and
    -- completeness checks never turn an incomplete fragment group into an event.

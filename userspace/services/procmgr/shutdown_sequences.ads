@@ -34,7 +34,7 @@ with CuBit.System_Stops;
 --  Power_Tail units still Pending. Then Answer.
 --
 --  Every waiting step has a deadline, and a step at or past it moves on,
---  so a stop always ends. Times are SYSCALL_GETTIME milliseconds.
+--  so a stop always ends. Times are CuBit.Monotonic milliseconds.
 package Shutdown_Sequences with SPARK_Mode is
 
    subtype Process_Word is Unsigned_64;

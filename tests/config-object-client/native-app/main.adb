@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Startup;
 with CuBit.Handles;
@@ -95,6 +96,8 @@ procedure Main is
       Client.Retire (Object, Good); Check (Good, "grant retirement");
    end Close;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("CONFIG-OBJECTS: starting" & ASCII.LF);
    VM_Fixture.Run ("(+ 20 21)", Types, First_Value, Good); Check (Good, "compile and execute 41");
    VM_Fixture.Run ("(+ 20 22)", Types, Second_Value, Good); Check (Good, "compile and execute 42");

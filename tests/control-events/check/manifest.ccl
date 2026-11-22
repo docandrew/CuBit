@@ -5,6 +5,9 @@
 (Executable_Manifest
   identity => "com.cubit.control-check"
   version => "0.1.0"
-  requests => [(service "process-manager" "process-manager")
-               (service "ipc-test" "ipc-test")]
+  requests => [(service "process-manager" "process-manager") (service "launch" "launch")
+               (service "ipc-test" "ipc-test")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"]
   may_launch => [(Launch "control-child.app")])

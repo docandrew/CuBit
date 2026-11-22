@@ -12,6 +12,7 @@ with CCL.Interfaces.Processes;
 with CCL.Interfaces.Wifi;
 with CCL.Interfaces.Lexicon;
 with CCL.Interfaces.Bible;
+with CCL.Interfaces.Debug;
 with CCL.Interfaces.Calc;
 with CCL.Interfaces.Install;
 with CCL.Interfaces.Clock;
@@ -45,6 +46,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Wifi.PUBLISHED_INTERFACES +
      CCL.Interfaces.Lexicon.PUBLISHED_INTERFACES + CCL.Interfaces.Calc.PUBLISHED_INTERFACES +
      CCL.Interfaces.Bible.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Debug.PUBLISHED_INTERFACES +
      CCL.Interfaces.Install.PUBLISHED_INTERFACES + CCL.Interfaces.Clock.PUBLISHED_INTERFACES +
      CCL.Interfaces.Timer.PUBLISHED_INTERFACES +
      CCL.Interfaces.Programs.MAXIMUM_PROGRAMS * CCL.Interfaces.Programs.PER_PROGRAM_INTERFACES +
@@ -61,6 +63,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Wifi.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Lexicon.PUBLISHED_SCHEMAS + CCL.Interfaces.Calc.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Bible.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Debug.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Install.PUBLISHED_SCHEMAS + CCL.Interfaces.Clock.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Timer.PUBLISHED_SCHEMAS + CCL.Interfaces.Programs.SHARED_SCHEMAS +
      CCL.Interfaces.Programs.MAXIMUM_PROGRAMS * CCL.Interfaces.Programs.PER_PROGRAM_SCHEMAS +
@@ -77,6 +80,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Wifi.PUBLISHED_TYPES +
      CCL.Interfaces.Lexicon.PUBLISHED_TYPES + CCL.Interfaces.Calc.PUBLISHED_TYPES +
      CCL.Interfaces.Bible.PUBLISHED_TYPES +
+     CCL.Interfaces.Debug.PUBLISHED_TYPES +
      CCL.Interfaces.Install.PUBLISHED_TYPES + CCL.Interfaces.Clock.PUBLISHED_TYPES +
      CCL.Interfaces.Timer.PUBLISHED_TYPES + CCL.Interfaces.Programs.SHARED_TYPES +
      CCL.Interfaces.Programs.MAXIMUM_PROGRAMS * CCL.Interfaces.Programs.PER_PROGRAM_TYPES +

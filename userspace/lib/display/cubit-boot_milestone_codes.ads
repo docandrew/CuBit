@@ -4,8 +4,9 @@
 --
 --  @summary
 --  The boot timeline's user-space vocabulary (BOOT-001,
---  docs/boot-timeline.md): milestone codes, the kernel call and procmgr's
---  process-observer request that reads the timeline.
+--  docs/boot-timeline.md): milestone codes. Marking one is a Call on the
+--  owner's notification handle (CuBit.Handles.Devices.Mark_Milestone);
+--  reading the timeline is the granted publication "boot-timeline".
 --
 --  @description
 --  The kernel's definitions are shared/boot/boot_timeline_layout.ads. This
@@ -17,9 +18,6 @@ pragma Ada_2022;
 package CuBit.Boot_Milestone_Codes with
    Pure, SPARK_Mode
 is
-   --  Boot_Timeline_Layout.System_Call_Number and Operation.
-   Read_Chunk_Bytes : constant := 256;
-
    type Milestone is
      (Startup_Profile_Started,   --  procmgr begins init.ccl
       Startup_Profile_Launched,  --  procmgr launched every init.ccl entry
@@ -32,13 +30,4 @@ is
       Display_Leased           => 2,
       First_Frame_Presented    => 3,
       First_Input_Accepted     => 4);
-
-   --  procmgr's process-observer role (CuBit.Process_Observer) also reads
-   --  the timeline. Request: words (0) a grant reference of one writable
-   --  page the caller owns, words (1) a page index into the timeline image.
-   --  Reply label and words (0) a CuBit.Process_Observer.Status, words (1)
-   --  bytes written, words (2) the image's size once a page reaches its
-   --  end (0 while more follows).
-   Timeline_Label : constant := 16#0108#;
-   Page_Bytes     : constant := 4_096;
 end CuBit.Boot_Milestone_Codes;

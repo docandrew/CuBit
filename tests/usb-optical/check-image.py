@@ -13,18 +13,42 @@ data = image.read_bytes()
 # the built binary is matched through its record: the unstripped input had
 # that hash and was staged as exactly these bytes (docs/image-debug-info.md).
 split = {}
+built_from = {}
 if len(sys.argv) > 2:
-    split = {r['destination']: r for r in json.loads(pathlib.Path(sys.argv[2]).read_text())
-             if r.get('build_id')}
+    loaded = [r for r in json.loads(pathlib.Path(sys.argv[2]).read_text()) if r.get('build_id')]
+    # The realizer's own records and sign_programs.py's: a signed program's
+    # destination is its staged path in one and its file name in the other.
+    split = {r['destination']: r for r in loaded if '/' in r['destination']}
+    built_from = {r['staged_sha256']: r['input_sha256'] for r in loaded if not r.get('signed')}
+
+
+# SIGN-001: a signed program ends with its envelope and a 16-byte footer,
+# "CUBITSIG" | envelope length u32 | version u32 (docs/signed-binaries.md
+# section 1; tools/image_debug.py's signed_payload). The records describe
+# the program before it was signed.
+SIGNATURE_FOOTER_MAGIC = b"CUBITSIG"
+SIGNATURE_FOOTER_LENGTH = 16
+ENVELOPE_LENGTH_FROM_END = 8
+
+
+def unsigned(data):
+    """The program as staged, before the signature was appended."""
+    if len(data) < SIGNATURE_FOOTER_LENGTH or data[-SIGNATURE_FOOTER_LENGTH:-ENVELOPE_LENGTH_FROM_END] != SIGNATURE_FOOTER_MAGIC:
+        return data
+    envelope, = struct.unpack_from('<I', data, len(data) - ENVELOPE_LENGTH_FROM_END)
+    end = len(data) - SIGNATURE_FOOTER_LENGTH - envelope
+    assert end >= 0, 'signature envelope longer than the file'
+    return data[:end]
 
 
 def built_hash(destination, staged):
-    """The hash of the binary as built (before staging stripped it)."""
-    digest = hashlib.sha256(staged).hexdigest()
+    """The hash of the binary as built (before staging stripped and signed it)."""
+    digest = hashlib.sha256(unsigned(staged)).hexdigest()
     record = split.get(destination)
     if record is not None and record['staged_sha256'] == digest:
         return record['input_sha256']
-    return digest
+    # Stripped by sign_programs.py before signing: its record, by payload.
+    return built_from.get(digest, digest)
 
 def dual32(blob, offset):
     little = struct.unpack_from('<I', blob, offset)[0]

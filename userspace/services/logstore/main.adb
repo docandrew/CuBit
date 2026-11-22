@@ -4,6 +4,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Process_IDs.Text;
 with CuBit.Log_Protocol; use CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with CuBit.Settings;
 with Log_Fanout;
 with Log_Persistence;
@@ -25,6 +26,12 @@ with CuBit.Memory_Grants;
 with System;
 with Source_Identities;
 with Source_Registrars;
+with CuBit.Monotonic;
+with CuBit.Console_Lines;
+with CuBit.Handles.Startup;
+with CuBit.Handles.Test_Consoles;
+with CuBit.Test_Console_Authority;
+with Test_Console_ABI;
 
 procedure Main is
    function Image (Process : Process_ID) return String
@@ -85,6 +92,85 @@ procedure Main is
    use type CuBit.Control_Events.Event_Kind, CuBit.Control_Events.Control_Kind;
    Decoded : Logs.Decoded;
 
+   --  Test builds only (Test_Console_ABI): the serial console logstore
+   --  mirrors console text onto, as "<source>: <text>", so the headless
+   --  tests keep their markers. Granted by name only when logstore's test
+   --  manifest declares it and a test plan approves it; the shipped
+   --  manifest never does, and then there is no mirror.
+   Console : constant CuBit.Handles.Test_Console :=
+     CuBit.Handles.Startup.Test_Console_Named (CuBit.Test_Console_Authority.Binding);
+   Mirroring : constant Boolean := CuBit.Handles.Valid (Console);
+
+   procedure Mirror_Text (Name, Text : String) is
+      Line : constant String := Name & ": " & Text & ASCII.LF;
+      Answer : CuBit.Handles.Test_Consoles.Outcome;
+      pragma Unreferenced (Answer);
+   begin
+      if Line'Length <= Test_Console_ABI.Maximum_Bytes then
+         Answer := CuBit.Handles.Test_Consoles.Write (Console, Line);
+      else
+         Answer := CuBit.Handles.Test_Consoles.Write
+           (Console, Line (Line'First .. Line'First + Test_Console_ABI.Maximum_Bytes - 2) & ASCII.LF);
+      end if;
+   end Mirror_Text;
+
+   --  A publisher's console text (Publisher_Rings), under its name.
+   procedure Mirror_Record (Owner : Process_ID; Value : Logs.Log_Record) is
+      Name : constant String := Source_Identities.Name_Of (Identities, CuBit.Process_IDs.To_Word (Owner));
+   begin
+      Mirror_Text ((if Name'Length > 0 then Name else Image (Owner)), Logs.Texts.Text (Value));
+   end Mirror_Record;
+
+   --  logstore's own debugPrint text (ABI-002): never through a ring (it
+   --  would be its own publisher). Each line is mirrored at once, and kept
+   --  as a Debug console record, published into the store at the start of
+   --  the next pass (never in the middle of a store operation); at most
+   --  Own_Lines_Pending wait, the rest are counted and reported.
+   Own_Lines_Pending : constant := 16;
+   Own_Framer : CuBit.Console_Lines.Framer;
+   Own_Lines : array (1 .. Own_Lines_Pending) of Logs.Log_Record;
+   Own_Count : Natural range 0 .. Own_Lines_Pending := 0;
+   Own_Lost : Unsigned_64 := 0;
+
+   procedure Own_Text (Text : String) is
+      Complete : Boolean;
+      Made : Logs.Decoded;
+   begin
+      for C of Text loop
+         CuBit.Console_Lines.Feed (Own_Framer, C, Complete);
+         if Complete then
+            declare
+               Framed : CuBit.Console_Lines.Line_Buffer;
+               Used : CuBit.Console_Lines.Line_Length;
+            begin
+               CuBit.Console_Lines.Line (Own_Framer, Framed, Used);
+               CuBit.Console_Lines.Plain (Framed (1 .. Used));
+               CuBit.Console_Lines.Clear (Own_Framer);
+               declare
+                  Line : String renames Framed (1 .. Used);
+               begin
+               if Line'Length > 0 then
+                  if Mirroring then
+                     Mirror_Text ("logstore", Line);
+                  end if;
+                  Made := Logs.Make (Line, Logs.Debug);
+                  if Made.Success then
+                     Made := Logs.With_Field
+                       (Made.Value, CuBit.Console_Lines.Console_Field, Logs.Truth, 1);
+                  end if;
+                  if Made.Success and then Own_Count < Own_Lines_Pending then
+                     Own_Count := Own_Count + 1;
+                     Own_Lines (Own_Count) := Made.Value;
+                  elsif Own_Lost < Unsigned_64'Last then
+                     Own_Lost := Own_Lost + 1;
+                  end if;
+               end if;
+               end;
+            end;
+         end if;
+      end loop;
+   end Own_Text;
+
 
    --  List_Sources (LOG-003): who the sources logstore knows are, newest
    --  first after Skip, written as CuBit.Log_Sources entries into the page
@@ -137,13 +223,23 @@ procedure Main is
    begin
       if Made.Success then
          Log_Fanout.Publish
-           (Store, (Source => syscall (SYSCALL_GETPID), Node => This_Node, Publication_Tag => 0,
+           (Store, (Source => Own_Process_Word, Node => This_Node, Publication_Tag => 0,
                     Monotonic_Ms => Now_Ms, Data => Made.Value));
       end if;
    end Note;
 
-   --  The kernel's device-memory refusals and physical map (CAP-001).
-   package Kernel_Records is new Kernel_Device_Memory (Note);
+   --  The kernel's device-memory refusals and physical map (CAP-001): kept
+   --  as logstore's records, and (test builds) mirrored once, as console
+   --  text (they used to be echoed with debugPrint; now that debugPrint
+   --  stores too, that would keep each twice).
+   procedure Note_Console (Text : String; Level : Logs.Severity) is
+   begin
+      if Mirroring then
+         Mirror_Text ("logstore", Text);
+      end if;
+      Note (Text, Level);
+   end Note_Console;
+   package Kernel_Records is new Kernel_Device_Memory (Note_Console);
 
    --  The kernel log ring (LOG-004): the kernel's lines, and the last words
    --  of processes that ended abnormally, at the kernel's own times. They
@@ -293,9 +389,9 @@ procedure Main is
    begin
       if Stored.Kind = Present then
          Minimum_Settled := True;
-         if Logs.Is_Severity_Literal (Value) then
-            Minimum := Logs.Severity_Of (Value);
-            Note ("logstore: keeping " & Logs.Severity_Literal (Minimum) & " and above (" & MINIMUM_SETTING & ")");
+         if Logs.Texts.Is_Severity_Literal (Value) then
+            Minimum := Logs.Texts.Severity_Of (Value);
+            Note ("logstore: keeping " & Logs.Texts.Severity_Literal (Minimum) & " and above (" & MINIMUM_SETTING & ")");
          else
             Note ("logstore: " & MINIMUM_SETTING & " is not a Severity (for example Severity.Information); " &
                   "keeping everything", Logs.Warning);
@@ -305,13 +401,35 @@ procedure Main is
          Minimum_Settled := True;
       end if;
    end Read_Minimum_Setting;
+   --  logstore's own lines into its store (Own_Text), those at the minimum
+   --  and above, and what could not wait.
+   procedure Publish_Own_Lines is
+   begin
+      for Index in 1 .. Own_Count loop
+         if Logs.Level (Own_Lines (Index)) >= Minimum then
+            Log_Fanout.Publish
+              (Store, (Source => Own_Process_Word, Node => This_Node, Publication_Tag => 0,
+                       Monotonic_Ms => Now_Ms, Data => Own_Lines (Index)));
+         end if;
+      end loop;
+      Own_Count := 0;
+      if Own_Lost > 0 then
+         Note ("logstore: " & Unsigned_64'Image (Own_Lost) & " of its own debug lines lost (more than" &
+               Natural'Image (Own_Lines_Pending) & " in one pass)", Logs.Warning);
+         Own_Lost := 0;
+      end if;
+   end Publish_Own_Lines;
 begin
-   Now_Ms := syscall (SYSCALL_GETTIME);
+   CuBit.Messages.Set_Console_Sink (Own_Text'Unrestricted_Access);
+   if Mirroring then
+      Publisher_Rings.Set_Mirror (Mirror_Record'Unrestricted_Access);
+   end if;
+   Now_Ms := CuBit.Monotonic.Milliseconds;
    Started_Ms := Now_Ms;
    Decoded := Logs.Make ("logstore: typed diagnostics ready");
    if Decoded.Success then
       Log_Fanout.Publish
-        (Store, (Source => syscall (SYSCALL_GETPID), Node => This_Node, Publication_Tag => 0,
+        (Store, (Source => Own_Process_Word, Node => This_Node, Publication_Tag => 0,
                  Monotonic_Ms => Now_Ms, Data => Decoded.Value));
    end if;
    Ignore := registerDriver (DRIVER_LOGSTORE, Startup.Registration);
@@ -352,7 +470,7 @@ begin
       if Received and then Is_Kernel_Stop (Request.tag.label, Request.tag.length, From, Request.words (0)) then
          Stop_Requested := True;
       end if;
-      Now_Ms := syscall (SYSCALL_GETTIME);
+      Now_Ms := CuBit.Monotonic.Milliseconds;
       if not Minimum_Settled then
          Read_Minimum_Setting;
       end if;
@@ -364,6 +482,7 @@ begin
       end if;
       Log_Fanout.Advance_Time (Store, Now_Ms);
       Log_Budgets.Advance_Time (Budgets, Now_Ms);
+      Publish_Own_Lines;
       Kernel_Records.Poll;
       Kernel_Log.Poll (Now_Ms, Kernel_More);
       --  Publishers that closed or died: their last records first.
@@ -410,6 +529,32 @@ begin
          else
             Publisher_Rings.Close (Publishers, Store, Budgets, From, Request, Minimum, Now_Ms);
          end if;
+      elsif Received and then Request.tag.label = CuBit.Log_Sources.Detach_Storage then
+         --  Shutdown, before storage stops (procmgr only, under its
+         --  registrar tag): what the publishers wrote, then the file.
+         Response := NULL_MESSAGE;
+         Response.tag := (label => Status'Enum_Rep (Denied), length => 1,
+                          protocol => 0, ipc => <>, reserved => 0);
+         if From /= No_Process and then Request.tag.length = 0
+           and then Request.authorityTag =
+                    CuBit.Log_Sources.Registrar_Tag (CuBit.Log_Sources.Process_Manager_Issuance)
+         then
+            declare
+               Was_Open : Boolean;
+            begin
+               Publish_Own_Lines;
+               Publisher_Rings.Drain (Publishers, Store, Budgets, Minimum, Now_Ms, Waiting_Records);
+               Log_Persistence.Detach (Store, Now_Ms, Was_Open);
+               Response.tag.label := Status'Enum_Rep (OK);
+               Response.words (0) := (if Was_Open then 1 else 0);
+               Note_Console ("logstore: storage stopping: " &
+                             (if Was_Open then "persisted and closed the log file" else "no log file open") &
+                             "; keeping the final lines in memory", Logs.Information);
+            end;
+         else
+            Report_Refusal (From, "detaching storage");
+         end if;
+         Ignore := reply (From, Response);
       elsif Received and then Request.tag.label = CuBit.Channel_Protocol.OP_KICK then
          --  Records are waiting: drained below, every pass.
          null;
@@ -475,7 +620,7 @@ begin
                         Minimum_Settled := True;
                         Result := OK;
                         --  Who changed it, kept whatever the new minimum.
-                        Note ("logstore: keeping " & Logs.Severity_Literal (Minimum) &
+                        Note ("logstore: keeping " & Logs.Texts.Severity_Literal (Minimum) &
                               " and above (set by pid" & Image (From) & ")",
                               Logs.Warning);
                      end if;
@@ -506,15 +651,15 @@ begin
             Ignore := reply (From, Response);
          end if;
       end if;
+      --  Who started and exited: before readers ask, and kept while their
+      --  records are; before the records, so a process's first records
+      --  (mirrored at once in test builds) already carry its name.
+      Source_Registrars.Drain (Registrars, Identities, Now_Ms, Waiting_Notices);
       --  Published records, new events, freed ring space, ended
       --  subscriptions: every pass.
       Publisher_Rings.Drain (Publishers, Store, Budgets, Minimum, Now_Ms, Waiting_Records);
       --  The kernel log still held records after this pass's share.
-      Waiting_Records := Waiting_Records or else Kernel_More;
-      --  Who started and exited: before readers ask, and kept while their
-      --  records are.
-      Source_Registrars.Drain (Registrars, Identities, Now_Ms, Waiting_Notices);
-      Waiting_Records := Waiting_Records or else Waiting_Notices;
+      Waiting_Records := Waiting_Records or else Kernel_More or else Waiting_Notices;
       Report_Reclaimed;
       Source_Identities.Prune (Identities, Store, Now_Ms);
       Stream_Writers.Drain (Writers, Store, Backlog);
@@ -522,5 +667,6 @@ begin
       Publisher_Rings.Release (Publishers);
       exit when Stop_Requested;
    end loop;
+   Publish_Own_Lines;
    Note ("logstore: Stop: drained and persisted; exiting");
 end Main;

@@ -1,0 +1,15 @@
+# The debugger preview's Rust demo target (DBG-001): live data for
+# CuBit.Debug to read, from Rust. It links the Rust cooperative stub
+# (userspace/lib/debug/stub-rs) and registers the debug-target service, so a
+# debugger that requests that service may attach; the stub shares its pages
+# read-only with that debugger, and its threads park at their checkpoints
+# when asked. No secrets live here.
+(executable-manifest v1
+  (identity "com.cubit.debug-demo-rs")
+  (version "0.1.0")
+  # The declared debug port: registering debug-target (procmgr lets only
+  # the demo targets hold the role in the preview).
+  (request-notification debug-target manage registration)
+  # Its diagnostics (std's stdout: the debug output).
+  (request-service logstore read-write logstore)
+  (optional logstore))

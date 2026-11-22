@@ -40,7 +40,11 @@ begin
    ---------------------------------------------------------------------------
    Expect (Image'Size = Image_Bytes * 8, "image size");
    Expect (Image_Bytes = 10_304, "image bytes");
-   Expect (Codes.Read_Chunk_Bytes = Read_Chunk_Bytes, "chunk size agrees");
+   --  The publication holds the whole Image (System_Publications'
+   --  Boot_Timeline_Pages), and the mark's codes are fixed.
+   Expect (Image_Bytes <= 3 * 4_096, "image fits its three publication pages");
+   Expect (Mark_Outcome'Enum_Rep (Marked) = 1 and then Mark_Outcome'Enum_Rep (Not_Owner) = 4
+           and then Mark_Request_Words = 1 and then Mark_Reply_Words = 1, "mark codes");
    Expect (Codes.Milestone'Pos (Codes.Milestone'Last) = Milestone'Pos (Milestone'Last),
            "milestone count agrees");
    for M in Milestone loop
@@ -177,8 +181,11 @@ begin
       end Add;
    begin
       Img.Head.Frequency := Hz;
+      --  A good boot: every stage but the devmgr-roots refusal.
       for Stage in Kernel_Stage loop
-         Img.Stages (Slot_Of (Stage)) := Ms (100 + Unsigned_64 (Kernel_Stage'Pos (Stage)));
+         if Stage /= Device_Manager_Roots_Refused then
+            Img.Stages (Slot_Of (Stage)) := Ms (100 + Unsigned_64 (Kernel_Stage'Pos (Stage)));
+         end if;
       end loop;
       Add (1, "devmgr.svc", 11, No_Identity, 200);
       Add (2, "procmgr.svc", 12, 11, 300);
@@ -196,7 +203,7 @@ begin
       end loop;
 
       Collect (Img, Events, Count);
-      Expect (Count = Kernel_Stage'Pos (Kernel_Stage'Last) + 1 + 4 * Events_Per_Process
+      Expect (Count = Kernel_Stage'Pos (Kernel_Stage'Last) + 4 * Events_Per_Process
                 + Milestone'Pos (Milestone'Last) + 1, "every recorded time collected");
       Expect (Sorted (Events, Count), "events sorted");
 
@@ -227,6 +234,12 @@ begin
 
       Check (Img, Gaps, Complete);
       Expect (Complete, "synthetic boot complete (input optional)");
+      --  The refusal stage recorded: devmgr's roots were refused, not a
+      --  complete boot (a reader that required every stage never saw one).
+      Img.Stages (Slot_Of (Device_Manager_Roots_Refused)) := Ms (150);
+      Check (Img, Gaps, Complete);
+      Expect (not Complete and then Gaps (Stage_Missing), "a refused devmgr boot is incomplete");
+      Img.Stages (Slot_Of (Device_Manager_Roots_Refused)) := Not_Recorded;
       Img.Processes (3).First_Run := Not_Recorded;
       Img.Head.Waits_Dropped := 1;
       Check (Img, Gaps, Complete);

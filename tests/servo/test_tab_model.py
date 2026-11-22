@@ -5,12 +5,14 @@ Artifacts and source hashes are retained for the eventual bridge migration.
 """
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
-source = root / "userspace/servo/overlay/ports/cubitshell/src/tab_model.rs"
+# Penny's Servo fork checkout (userspace/servo/FORKS).
+source = Path(os.environ.get("SERVO_DIR", root / "userspace/rust/build/servo-work/servo")) / "ports/cubitshell/src/tab_model.rs"
 output = Path(tempfile.mkdtemp(prefix="tab-model-", dir=root / "tests/servo/build"))
 digest = hashlib.sha256(source.read_bytes()).hexdigest()
 projection = source.with_name("tab_projection.rs")

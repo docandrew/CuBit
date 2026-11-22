@@ -1331,7 +1331,10 @@ class Manifests(unittest.TestCase):
         for name, requests in [('logged', '(service "logstore" "logstore")'),
                                ('firmware', '(Request.Firmware_Snapshot "tables")'),
                                ('acpi', '(Request.Firmware_Snapshot "tables") (Request.ACPI_Hardware "hardware")'),
-                               ('power', '(Request.Platform_Power "power")')]:
+                               ('power', '(Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Platform_Power "power"))'),
+                               ('trace', '(Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Trace "trace"))'),
+                               ('console', '(Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Test_Console "test-console"))'),
+                               ('vm', '(Request.Kernel_Object (Kernel_Object_Request Kernel_Object.VM_Create "vm-create"))')]:
             with self.subTest(name=name):
                 source = ('(Executable_Manifest identity => "com.cubit.test.' + name +
                           '" version => "1" requests => [' + requests + '])')
@@ -1364,13 +1367,103 @@ class Manifests(unittest.TestCase):
         self.reject(typed.replace('"tables")]', '"tables") (Request.Firmware_Snapshot "more")]'),
                     self.NATIVE, 'a second firmware snapshot request')
 
+    def test_trace_request(self):
+        """Trace_ABI: the Kernel_Object.Trace request is a required,
+        write-only .cubit.caps request (kind 22) and startup entry (kind 17)
+        whose Startup function returns the typed CuBit.Handles.Trace and
+        whose C accessor is cubit_startup_<binding>; never optional, never
+        twice."""
+        typed = ('(Executable_Manifest identity => "com.cubit.bench" version => "1" '
+                 'requests => [(Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Trace "trace"))])')
+        result = self.compile(typed, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sections = self.sections(result.stdout)
+        caps = sections['.cubit.caps']
+        self.assertEqual(struct.unpack_from('<IHH', caps, 0), (0x43424954, 1, 1))
+        self.assertEqual(struct.unpack_from('<BBHIQ', caps, 8), (22, 2, 0, 0, 0))
+        self.assertEqual(self.startup(sections['.cubit.startup'])[1], [('trace', 17, 1, 1, 0)])
+        generated = (self.directory / 'startup.ads').read_text()
+        self.assertIn('   function Trace return Standard.CuBit.Handles.Trace is\n'
+                      '     (Standard.CuBit.Handles.Startup.Trace_Named ("trace", '
+                      'Standard.CuBit.Startup_Tables.Trace));', generated)
+        header = self.directory / 'startup.h'
+        result = subprocess.run([TOOL, self.directory / 'catalog.ccl', self.directory / 'manifest.ccl',
+                                 '--c-output', header, '--schema', SCHEMA],
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('static inline cubit_trace cubit_startup_trace(void)\n{\n'
+                      '    return cubit_startup_trace_named("trace");\n}', header.read_text())
+        self.reject(typed.replace('])', '] optional => ["trace"])'), self.NATIVE,
+                    'never optional')
+        self.reject(typed.replace('"trace"))]', '"trace")) (Request.Kernel_Object '
+                                  '(Kernel_Object_Request Kernel_Object.Trace "again"))]'),
+                    self.NATIVE, 'a second trace request')
+
+    def test_test_console_request(self):
+        """Test_Console_ABI (ABI-002): the Kernel_Object.Test_Console request
+        is a required, write-only .cubit.caps request (kind 23) and startup
+        entry (kind 18) whose Startup function returns the typed
+        CuBit.Handles.Test_Console; never optional, never twice."""
+        typed = ('(Executable_Manifest identity => "com.cubit.logstore" version => "1" '
+                 'requests => [(Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Test_Console '
+                 '"test-console"))])')
+        result = self.compile(typed, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sections = self.sections(result.stdout)
+        caps = sections['.cubit.caps']
+        self.assertEqual(struct.unpack_from('<IHH', caps, 0), (0x43424954, 1, 1))
+        self.assertEqual(struct.unpack_from('<BBHIQ', caps, 8), (23, 2, 0, 0, 0))
+        self.assertEqual(self.startup(sections['.cubit.startup'])[1], [('test-console', 18, 1, 1, 0)])
+        generated = (self.directory / 'startup.ads').read_text()
+        self.assertIn('   function Test_Console return Standard.CuBit.Handles.Test_Console is\n'
+                      '     (Standard.CuBit.Handles.Startup.Test_Console_Named ("test-console", '
+                      'Standard.CuBit.Startup_Tables.Test_Console));', generated)
+        self.reject(typed.replace('])', '] optional => ["test-console"])'), self.NATIVE,
+                    'never optional')
+        self.reject(typed.replace('"test-console"))]', '"test-console")) (Request.Kernel_Object '
+                                  '(Kernel_Object_Request Kernel_Object.Test_Console "again"))]'),
+                    self.NATIVE, 'a second test console request')
+
+    def test_vm_create_request(self):
+        """VMM-001: the Kernel_Object.VM_Create request is a required,
+        write-only .cubit.caps request (kind 24) and startup entry (kind 19)
+        whose Startup function returns the typed CuBit.Handles.VM_Create;
+        never optional, never twice. The request alone is never approval
+        (procmgr installs it only for (vm-create approve-declared))."""
+        typed = ('(Executable_Manifest identity => "com.cubit.vmm" version => "1" '
+                 'requests => [(Request.Kernel_Object (Kernel_Object_Request Kernel_Object.VM_Create '
+                 '"vm-create"))])')
+        result = self.compile(typed, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sections = self.sections(result.stdout)
+        caps = sections['.cubit.caps']
+        self.assertEqual(struct.unpack_from('<IHH', caps, 0), (0x43424954, 1, 1))
+        self.assertEqual(struct.unpack_from('<BBHIQ', caps, 8), (24, 2, 0, 0, 0))
+        self.assertEqual(self.startup(sections['.cubit.startup'])[1], [('vm-create', 19, 1, 1, 0)])
+        generated = (self.directory / 'startup.ads').read_text()
+        self.assertIn('   function Vm_Create return Standard.CuBit.Handles.VM_Create is\n'
+                      '     (Standard.CuBit.Handles.Startup.VM_Create_Named ("vm-create", '
+                      'Standard.CuBit.Startup_Tables.VM_Create));', generated)
+        self.reject(typed.replace('])', '] optional => ["vm-create"])'), self.NATIVE,
+                    'never optional')
+        self.reject(typed.replace('"vm-create"))]', '"vm-create")) (Request.Kernel_Object '
+                                  '(Kernel_Object_Request Kernel_Object.VM_Create "again"))]'),
+                    self.NATIVE, 'a second VM creation request')
+        # Beside the test console object: two distinct kernel objects.
+        both = typed.replace('"vm-create"))]', '"vm-create")) (Request.Kernel_Object '
+                             '(Kernel_Object_Request Kernel_Object.Test_Console "test-console"))]')
+        result = self.compile(both, self.NATIVE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.startup(self.sections(result.stdout)['.cubit.startup'])[1],
+                         [('vm-create', 19, 1, 1, 0), ('test-console', 18, 1, 1, 0)])
+
     def test_platform_power_request(self):
-        """KERN-004: (Request.Platform_Power "power") is a required,
+        """KERN-004: the Kernel_Object.Platform_Power request is a required,
         write-only .cubit.caps request (kind 21) and startup entry (kind 16)
         whose Startup function returns the typed CuBit.Handles.Platform_Power;
         never optional, never twice."""
         typed = ('(Executable_Manifest identity => "com.cubit.acpi" version => "1" '
-                 'requests => [(Request.Platform_Power "power")])')
+                 'requests => [(Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Platform_Power "power"))])')
         result = self.compile(typed, self.NATIVE)
         self.assertEqual(result.returncode, 0, result.stderr)
         sections = self.sections(result.stdout)
@@ -1385,7 +1478,8 @@ class Manifests(unittest.TestCase):
                       'Standard.CuBit.Startup_Tables.Platform_Power));', generated)
         self.reject(typed.replace('])', '] optional => ["power"])'), self.NATIVE,
                     'never optional')
-        self.reject(typed.replace('"power")]', '"power") (Request.Platform_Power "again")]'),
+        self.reject(typed.replace('"power"))]', '"power")) (Request.Kernel_Object '
+                                  '(Kernel_Object_Request Kernel_Object.Platform_Power "again"))]'),
                     self.NATIVE, 'a second platform power request')
 
     def test_acpi_hardware_request(self):

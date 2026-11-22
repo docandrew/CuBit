@@ -16,7 +16,16 @@ with Log_Budgets;
 --  grant events say so (Ended). Its records are drained first, so what a
 --  publisher wrote just before it ended is kept.
 package Publisher_Rings is
-   Maximum_Publishers : constant := Log_Fanout.Publishing_Sources;
+   --  Channels come in chunks of Chunk_Rings, allocated (CuAlloc) as
+   --  publishers open them, up to the named ceiling Maximum_Publishers
+   --  (numbers stay below Source_Registrars.First_Number). A live channel
+   --  is never let go for a new one (no lost records): at the ceiling, or
+   --  without memory for a chunk, the open is refused (No_Room), and
+   --  logstore says so in its own record; the publisher keeps its lines
+   --  queued and counts what it cannot keep.
+   Chunk_Rings : constant := 64;
+   Maximum_Chunks : constant := 64;
+   Maximum_Publishers : constant := Chunk_Rings * Maximum_Chunks;
    --  Records taken from one channel per pass, so one busy publisher cannot
    --  hold the loop.
    Batch_Records : constant := 256;
@@ -25,7 +34,8 @@ package Publisher_Rings is
 
    --  Answer From's request to open a publishing channel (Authority: the
    --  kernel-stamped tag it came with), replacing any channel the same
-   --  publisher had. Reply is the reply to send.
+   --  publisher had; refused (No_Room) when no entry is free and no chunk
+   --  can be added. Reply is the reply to send.
    procedure Open
      (Item : in out Table; Store : in out Log_Fanout.Broker; Budgets : in out Log_Budgets.Limiter;
       From : CuBit.Messages.Process_ID; Authority : Unsigned_64;
@@ -58,6 +68,16 @@ package Publisher_Rings is
    --  delivered.
    procedure Release (Item : in out Table);
 
+   --  Console text (CuBit.Console_Lines) a publisher wrote, as it is
+   --  taken: test builds' logstore mirrors it onto the serial console
+   --  (Test_Console_ABI). Once set, every record is mirrored that is
+   --  console text, whatever the minimum, and publishers are told the
+   --  minimum is Trace, so they send it all; only records at the minimum
+   --  and above are kept, as before.
+   type Console_Mirror is access procedure
+     (Owner : CuBit.Messages.Process_ID; Value : CuBit.Log_Records.Log_Record);
+   procedure Set_Mirror (Mirror : not null Console_Mirror);
+
    --  Before sleeping: ask every publisher for a kick, then look again.
    --  Pending: records arrived meanwhile, so do not sleep.
    procedure Arm (Item : in out Table; Pending : out Boolean);
@@ -72,5 +92,11 @@ private
       Active_Ms : Unsigned_64 := 0;
       Unreleased : Boolean := False;   --  taken, not yet released
    end record;
-   type Table is array (1 .. Maximum_Publishers) of Ring;
+   type Chunk is array (1 .. Chunk_Rings) of aliased Ring;
+   type Chunk_Access is access Chunk;
+   type Chunk_Array is array (1 .. Maximum_Chunks) of Chunk_Access;
+   type Table is record
+      Chunks : Chunk_Array;
+      Used : Natural range 0 .. Maximum_Chunks := 0;   --  chunks allocated
+   end record;
 end Publisher_Rings;

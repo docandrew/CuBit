@@ -135,12 +135,7 @@ procedure Channel_Session is
    Ignore : Unsigned_64;
 
    function Thread_Calls return Unsigned_64 is
-      Value : CuBit.System_Facts.SP.Statistics;
-      Read : Boolean;
-   begin
-      CuBit.System_Facts.Read_Statistics (Value, Read);
-      return (if Read then Value.Thread_System_Calls else 0);
-   end Thread_Calls;
+     (CuBit.System_Facts.Thread_System_Calls);
    Calls_At_Start : constant Unsigned_64 := Thread_Calls;
 
 begin

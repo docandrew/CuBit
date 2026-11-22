@@ -5,7 +5,7 @@
 --  @summary
 --  Process Manager Service
 --
---  Handles OP_SPAWN requests from userspace clients. Reads an ELF binary
+--  Handles OP_LAUNCH requests from userspace clients. Reads an ELF binary
 --  from the filesystem service and calls SPAWN to load it into a
 --  new process.
 --
@@ -16,7 +16,11 @@
 --  its launch block before it first runs.
 ------------------------------------------------------------------------------
 with CuBit.Waits;
+with CuBit.Introduction_Ledgers;
+with CuBit.Late_Introduction;
 with Deferred_Warnings;
+with Driver_Log_Issuances;
+with CuBit.Console_Route;
 with Source_Notices;
 with CuBit.Log_Sources;
 with Ada.Unchecked_Conversion;
@@ -82,6 +86,7 @@ with CCL.Typed_Values;
 with CuBit.Stream_Regions;
 with CuBit.Stream_Rings;
 with CuBit.Child_Exits;
+with CuBit.Startup_Check;
 with CuBit.Control_Events;
 with CuBit.Launch_Authority;
 with CuBit.Failures;
@@ -94,6 +99,9 @@ with CuBit.Firmware_Snapshot_Authority;
 with CuBit.Publication_Grants;
 with CuBit.Self_Offers;
 with CuBit.Platform_Power_Authority;
+with CuBit.Trace_Authority;
+with CuBit.Test_Console_Authority;
+with CuBit.VM_Create_Authority;
 with System_Publications;
 with CuBit.Firmware_Snapshot;
 with CuBit.ACPI_Hardware_Authority;
@@ -117,13 +125,22 @@ with CuBit.Net_Manager_Control;
 with CuBit.Display_Capture;
 with CuBit.Child_Specs;
 with Class_Launch_Checks;
+with Launch_Attenuation;
+with Session_Launch;
+with Handle_Admission;
+with CCL.Setting_Codecs.System_Policy;
+with CuBit.Launch_Handles;
+with CuBit.Handles.Debug;
+with Debug_ABI;
 with Child_Parameters;
 with Supervision_Edges;
 with Shutdown_Sequences;
 with CuBit.System_Stops;
 with CuBit.Power_Requests;
+with CuBit.Debug_Protocol;
 with CuBit.Power_Event_Exchange;
 with CCL.Device_Sections;
+with CuBit.Monotonic;
 
 procedure main is
    function Image (Process : Process_ID) return String
@@ -132,11 +149,13 @@ procedure main is
    --  "kernel: device-memory denied" record says why).
    --  logstore's endpoint, once it runs (defined with the process records).
    function Logstore_Collector return CuBit.Handles.Endpoint;
-   package Warnings is new Deferred_Warnings (Issuance => 4, Collector => Logstore_Collector);
    --  Who each process procmgr starts is, for logstore (LOG-003): its
    --  records keep their name after it exits.
    package Sources is new Source_Notices
      (Issuance => CuBit.Log_Sources.Process_Manager_Issuance, Collector => Logstore_Collector);
+   package Warnings is new Deferred_Warnings
+     (Issuance => Driver_Log_Issuances.Fixed (Driver_Log_Issuances.Process_Manager),
+      Collector => Logstore_Collector, Before_Bind => Sources.Pump);
    --  The same notices for metrics.svc (MET-002): a series is labelled with
    --  its program's identity and name, which only its launcher can say.
    function Metrics_Collector return CuBit.Handles.Endpoint;
@@ -153,7 +172,7 @@ procedure main is
    package GPU_Grants renames CuBit.Capability_Grants;
    package H renames CuBit.Handles;
    use all type H.Endpoint, H.Process, H.Cspace, H.Device_Memory, H.Notification, H.Firmware_Snapshot,
-                H.Platform_Power,
+                H.Platform_Power, H.Trace, H.Test_Console, H.VM_Create,
                 H.Rights, H.Derivation;
    package HIPC renames CuBit.Handles.IPC;
    package HC renames CuBit.Handles.Control;
@@ -184,7 +203,6 @@ procedure main is
      ((Read => (Mask and 1) /= 0, Write => (Mask and 2) /= 0, others => False));
 
    --  IPC label constants
-   OP_SPAWN   : constant Unsigned_32 := 16#0100#;
    OP_LAUNCH  : constant Unsigned_32 := CuBit.Launch_Arguments.Launch_Operation;
    --  The kernel's retirement notice (kernel/src/ipc_labels.ads).
    EVENT_CHILD_EXIT : constant Unsigned_32 := 16#0103#;
@@ -284,7 +302,7 @@ procedure main is
    pendingArgumentBytes : CuBit.Launch_Arguments.Block_Length := 0;
    --  The startup plan's (arguments ...) for the program being started
    --  (docs/ccl-launch-parameters.md), as written; empty for every other
-   --  launch (OP_LAUNCH, OP_SPAWN), which cannot give typed parameters.
+   --  launch (OP_LAUNCH), which cannot give typed parameters.
    pendingParameters : CCL.Configurations.Value_Text;
    --  The block a child is given: that payload, then its startup table
    --  (CuBit.Launch_Envelopes).
@@ -304,6 +322,7 @@ procedure main is
    --  may start (its .cubit.launch table; none without one) and what it was
    --  granted, so a child it starts can be held to a subset of that.
    package LAuth renames CuBit.Launch_Authority;
+   package LAtt renames Launch_Attenuation;
    type Held_Scope is record
       Service, Rights : Unsigned_8 := 0;
       Length : Natural range 0 .. LAuth.Maximum_Prefix_Bytes := 0;
@@ -315,13 +334,24 @@ procedure main is
      array (1 .. CuBit.File_Access.Maximum_Entries) of Held_Scope;
    --  Service roles below this are tracked as held; others never pass on.
    TRACKED_SERVICE_ROLES : constant := 64;
+   --  Per role, the rights of each endpoint held (Launch_Attenuation).
+   type Role_Holdings is array (0 .. TRACKED_SERVICE_ROLES - 1) of LAtt.Held_Masks;
+   --  The network scopes a process was granted, which a child it launches
+   --  may be given within (at most this many are tracked; more never pass on).
+   MAXIMUM_HELD_NETWORK : constant := 4;
+   type Held_Network_Array is array (1 .. MAXIMUM_HELD_NETWORK) of CuBit.Network_Authority.Scope;
    type Ring_Parent_Array is array (1 .. CuBit.Outlet_Rings.Maximum_Entries)
      of CuBit.Memory_Grants.Grant_Reference;
    type Launch_State is record
       Table        : LAuth.Table_Bytes (1 .. LAuth.Maximum_Table_Bytes) :=
                        [others => 0];
       Table_Length : LAuth.Table_Length := 0;
-      Services     : Unsigned_64 := 0;
+      Services     : Role_Holdings := [others => LAtt.None_Held];
+      --  Render approved for it, for its declared render request: a child
+      --  it launches may then ask devmgr for a render session too.
+      Render_Approved : Boolean := False;
+      Network       : Held_Network_Array := [others => CuBit.Network_Authority.Denied_Scope];
+      Network_Count : Natural range 0 .. MAXIMUM_HELD_NETWORK := 0;
       Scope_Count  : Natural range 0 .. CuBit.File_Access.Maximum_Entries := 0;
       Scopes       : Held_Scope_Array;
       --  The launcher's ring grants procmgr acquired to derive this
@@ -341,6 +371,20 @@ procedure main is
    --  The OP_LAUNCH requester whose authority bounds the child being
    --  spawned (0: none), and whether the child asked for more.
    attenuateFor : Process_ID := No_Process;
+   --  The launch being served is a Launch-into-S (OP_LAUNCH through a
+   --  Launch badge, Session_Launch): the child gets its approval within the
+   --  user session's envelope, not its requester's authority (attenuateFor
+   --  is then the requester, for what it introduces).
+   launchSession : Boolean := False;
+
+   --  The image's debugging gate (CCL.Interfaces.System_Policy): the
+   --  startup plan's (policy ...), read once at boot (processInitCCL) and
+   --  fixed for the boot. A plan without one is a development plan.
+   Debugging_Gate : Handle_Admission.Debugging_Gate := Handle_Admission.Development;
+   --  The first required request the envelope withheld, for the
+   --  Request_Withheld refusal (CuBit.Launch_Arguments.Encode_Label).
+   withheldLabel : CuBit.Launch_Arguments.Label_Text := [others => ' '];
+   withheldLength : CuBit.Launch_Arguments.Label_Length := 0;
    attenuationRefused : Boolean := False;
    --  The launched child could not read the working directory its launch
    --  block names; refused like an attenuation failure.
@@ -395,7 +439,9 @@ procedure main is
    begin
       if I /= 0 then
          Launches.Values (I).Table_Length := 0;
-         Launches.Values (I).Services := 0;
+         Launches.Values (I).Services := [others => LAtt.None_Held];
+         Launches.Values (I).Render_Approved := False;
+         Launches.Values (I).Network_Count := 0;
          Launches.Values (I).Scope_Count := 0;
       end if;
    end resetLaunchState;
@@ -541,7 +587,7 @@ procedure main is
    processList : array (0 .. Process_List_Bytes - 1) of Unsigned_8 := [others => 0];
    function processListed (pid : Process_ID) return Boolean is
       count : constant Unsigned_64 :=
-        HC.Process_List (PH.Process_Root, processList'Address, Process_List_Bytes);
+        HC.Process_List (PH.Process_List_Object, processList'Address, Process_List_Bytes);
    begin
       if count = Unsigned_64'Last then
          return True;   --  unknown: do not act on the claim
@@ -589,6 +635,10 @@ procedure main is
       --  Its manifest declares the com.cubit-os.stdmetric outlet (MET-002):
       --  metrics.svc hears who it is, at its start and its exit.
       Metric_Outlet : Boolean := False;
+      --  Launched into the user session (Launch-into-S): procmgr is its
+      --  kernel parent and tells its requester when it ends (launch
+      --  handles); the debug envelope counts it a session member.
+      Session_Child : Boolean := False;
    end record;
    Empty_Process_Record : constant Process_Record := (others => <>);
    package Records is new CuBit.Identity_Tables
@@ -626,10 +676,11 @@ procedure main is
    begin
       if I = 0 then return; end if;
       Records.Values (I) := (Valid => True, Identity => [others => ' '], Identity_Length => Length,
-                             Launcher => launcher, Started => syscall (SYSCALL_GETTIME),
+                             Launcher => launcher, Started => CuBit.Monotonic.Milliseconds,
                              Control => Control, Mailbox => Mailbox, Resumed => False, Held => False,
                              Stop_Grace => 0, Sequence => Next_Launch_Sequence,
-                             Stage => CuBit.Child_Specs.Apps, Metric_Outlet => False);
+                             Stage => CuBit.Child_Specs.Apps, Metric_Outlet => False,
+                             Session_Child => False);
       if Next_Launch_Sequence < Unsigned_64'Last then
          Next_Launch_Sequence := Next_Launch_Sequence + 1;
       end if;
@@ -693,7 +744,7 @@ procedure main is
       declare
          Page : array (0 .. PO.Page_Bytes - 1) of Unsigned_8 with Import, Address => Mapped;
          Listed : constant Unsigned_64 :=
-           HC.Process_List (PH.Process_Root, processList'Address, Process_List_Bytes);
+           HC.Process_List (PH.Process_List_Object, processList'Address, Process_List_Bytes);
          procedure Put (At_Byte : Natural; Value : Unsigned_64; Bytes : Positive) is
          begin
             for I in 0 .. Bytes - 1 loop
@@ -755,79 +806,6 @@ procedure main is
       CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
       Answer ((if Count = 0 then PO.Unavailable else PO.OK));
    end handleProcessList;
-
-   --  Boot timeline (docs/boot-timeline.md): one page of the kernel's
-   --  timeline image, for a process observer. procmgr holds the CAP_PROCESS
-   --  READ the kernel requires; observers get it only through this role.
-   --  The kernel writes only procmgr's own memory, never a received grant:
-   --  each chunk lands here first.
-   Timeline_Chunk : array (0 .. CuBit.Boot_Milestone_Codes.Read_Chunk_Bytes - 1) of Unsigned_8 :=
-     [others => 0];
-
-   procedure handleBootTimeline (sender : Process_ID; msg : Message) is
-      package BMC renames CuBit.Boot_Milestone_Codes;
-      --  Pages of the image a reader may ask for; the image is smaller.
-      Maximum_Page_Index : constant := 15;
-      Reference : CuBit.Memory_Grants.Grant_Reference;
-      Mapped : System.Address;
-      Ok, Returned : Boolean;
-      Written : Unsigned_64 := 0;
-      Image_Bytes : Unsigned_64 := 0;
-      replyMsg : Message := NULL_MESSAGE;
-      ignore : Unsigned_64;
-      procedure Answer (Result : PO.Status) is
-      begin
-         replyMsg.tag := (label => Unsigned_32 (PO.Status'Enum_Rep (Result)), length => 3, protocol => 0, ipc => <>, reserved => 0);
-         replyMsg.words := [0 => Unsigned_64 (PO.Status'Enum_Rep (Result)), 1 => Written,
-                            2 => Image_Bytes, others => 0];
-         ignore := reply (sender, replyMsg);
-      end Answer;
-   begin
-      if not PO.Is_Observer (msg.authorityTag) then
-         Answer (PO.Denied);
-         return;
-      end if;
-      if msg.tag.length < 2 or else not CuBit.Grant_References.Valid_Wire (msg.words (0))
-        or else msg.words (1) > Maximum_Page_Index
-      then
-         Answer (PO.Invalid_Request);
-         return;
-      end if;
-      Reference := CuBit.Grant_References.Decode (msg.words (0));
-      CuBit.Memory_Grants.Acquire
-        (Reference, sender, 0, BMC.Page_Bytes, CuBit.Memory_Grants.Write_Access, Mapped, Ok);
-      if not Ok then
-         Answer (PO.Invalid_Request);
-         return;
-      end if;
-      declare
-         Page : array (0 .. BMC.Page_Bytes - 1) of Unsigned_8 with Import, Address => Mapped;
-         Base : constant Unsigned_64 := msg.words (1) * BMC.Page_Bytes;
-         Copied : Unsigned_64;
-      begin
-         Page := [others => 0];
-         --  The kernel copies one chunk per call; loop until the page is
-         --  full or the image ends.
-         while Written < BMC.Page_Bytes loop
-            Copied := CuBit.Handles.Devices.Read_Timeline
-              (PH.Process_Root, Unsigned_64 (To_Integer (Timeline_Chunk'Address)),
-               Base + Written,
-               Unsigned_64'Min (BMC.Read_Chunk_Bytes, BMC.Page_Bytes - Written));
-            exit when Copied = 0 or else Copied > BMC.Read_Chunk_Bytes;
-            for I in 0 .. Natural (Copied) - 1 loop
-               Page (Natural (Written) + I) := Timeline_Chunk (I);
-            end loop;
-            Written := Written + Copied;
-         end loop;
-         --  The image's end: where a read from past it returns nothing.
-         Image_Bytes := Base + Written;
-         if Written = BMC.Page_Bytes then
-            Image_Bytes := 0;   --  more follows; the last page tells the size
-         end if;
-      end;
-      CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
-      Answer ((if Written = 0 and then msg.words (1) = 0 then PO.Unavailable else PO.OK));
-   end handleBootTimeline;
 
    procedure clearAuthorityForPID (pid : Process_ID) is
    begin
@@ -891,6 +869,8 @@ procedure main is
    --  the driver is about to deliver: nvme.drv's is two 30 s attempts
    --  around an abort and a controller reset (BUG-003, NVMe_Recovery).
    File_Request_Deadline_Ms : constant := 120_000;
+   --  A launch slower than this logs where its time went (Spawn_Attempt).
+   Slow_Spawn_Ms : constant := 500;
    --  A file read at boot before the plan runs (the startup profile, the
    --  generation pointer and record): a missing or unreadable root must
    --  stop startup with a named error, never a silent wait (SYS-002). A
@@ -1040,6 +1020,12 @@ procedure main is
      CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.Firmware_Snapshot);
    CAP_TYPE_PLATFORM_POWER : constant Unsigned_64 :=
      CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.Platform_Power);
+   CAP_TYPE_TRACE : constant Unsigned_64 :=
+     CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.Trace);
+   CAP_TYPE_TEST_CONSOLE : constant Unsigned_64 :=
+     CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.Test_Console);
+   CAP_TYPE_VM_CREATE : constant Unsigned_64 :=
+     CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.VM_Create);
    CAP_TYPE_IO_PORTS : constant Unsigned_64 :=
      CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.IO_Ports);
    --  A publication page is no capability: recorded as none, its
@@ -1465,30 +1451,47 @@ procedure main is
    --  i; the requests of resource kinds (devices, DMA, scheduling) are in
    --  .cubit.resources, which procmgr never grants from.
    ---------------------------------------------------------------------------
-   --  Whether the launcher being attenuated for holds what this manifest
-   --  request asks: the same service role. Notifications, framebuffer,
-   --  render and network are never passed to a launched child.
-   function launcherHolds (reqType : Unsigned_8; role : Unsigned_32)
-     return Boolean is
-   begin
-      if reqType = REQ_SERVICE and then role < TRACKED_SERVICE_ROLES then
-         return (Launches.Values (launchIndex (attenuateFor)).Services and
-                 Shift_Left (Unsigned_64'(1), Natural (role))) /= 0;
-      end if;
-      --  An offerable self endpoint passes on only from a launcher that has one.
-      if reqType = CuBit.Self_Offers.Manifest_Request then
-         return Launches.Values (launchIndex (attenuateFor)).Offerable_Self;
-      end if;
-      return False;
-   end launcherHolds;
-
-   procedure noteService (pid : Process_ID; role : Unsigned_32) is
+   --  pid now holds an endpoint for a service role with manifest rights
+   --  Kept (bit 0 Read, bit 1 Write): a child it launches may ask for that
+   --  role with at most those rights (Launch_Attenuation).
+   procedure noteService (pid : Process_ID; role : Unsigned_32; Kept : Unsigned_64) is
    begin
       if launchIndex (pid) /= 0 and then role < TRACKED_SERVICE_ROLES then
-         Launches.Values (launchIndex (pid)).Services := Launches.Values (launchIndex (pid)).Services or
-           Shift_Left (Unsigned_64'(1), Natural (role));
+         Launches.Values (launchIndex (pid)).Services (Natural (role)) := LAtt.With_Endpoint
+           (Launches.Values (launchIndex (pid)).Services (Natural (role)),
+            LAtt.Rights_Mask (Kept and Unsigned_64 (LAtt.Read_Right + LAtt.Write_Right)));
       end if;
    end noteService;
+
+   --  pid was granted the network scope Item: a child it launches may be
+   --  given scopes within it.
+   procedure noteNetwork (pid : Process_ID; Item : CuBit.Network_Authority.Scope) is
+   begin
+      if launchIndex (pid) /= 0 then
+         declare
+            Held : Launch_State renames Launches.Values (launchIndex (pid));
+         begin
+            if Held.Network_Count < MAXIMUM_HELD_NETWORK then
+               Held.Network_Count := Held.Network_Count + 1;
+               Held.Network (Held.Network_Count) := Item;
+            end if;
+         end;
+      end if;
+   end noteNetwork;
+
+   --  Whether the launcher being attenuated for holds a network scope
+   --  covering Requested's reach: its action, addresses, ports and name
+   --  resolution. Not its channel count: that is a reservation netstack
+   --  makes for each holder against its own capacity (Network_Grants), so
+   --  a launcher need not reserve its children's channels as well.
+   function launcherNetworkCovers (Requested : CuBit.Network_Authority.Scope) return Boolean is
+     (launchIndex (attenuateFor) /= 0
+      and then (for some I in 1 .. Launches.Values (launchIndex (attenuateFor)).Network_Count =>
+                  CuBit.Network_Authority.Includes
+                    (Launches.Values (launchIndex (attenuateFor)).Network (I),
+                     (Requested with delta Connections =>
+                        Natural'Min (Requested.Connections,
+                                     Launches.Values (launchIndex (attenuateFor)).Network (I).Connections)))));
 
    --  Malformed: the image's section headers, its .cubit.caps or its
    --  .cubit.startup cannot be read, or they disagree, so its requests are
@@ -1525,7 +1528,7 @@ procedure main is
    function In_Caps (Kind : ST.Capability_Kind) return Boolean is
      (Kind in ST.Endpoint | ST.Notification | ST.Framebuffer | ST.Render | ST.Network
               | ST.Firmware_Snapshot | ST.ACPI_Hardware | ST.Publication
-              | ST.Platform_Power);
+              | ST.Platform_Power | ST.Trace | ST.Test_Console | ST.VM_Create);
 
    procedure readManifest
      (elfSize : Unsigned_64;
@@ -1662,6 +1665,12 @@ procedure main is
                           Kind /= CuBit.Publication_Grants.Manifest_Request,
                         when ST.Platform_Power =>
                           Kind /= CuBit.Platform_Power_Authority.Manifest_Request,
+                        when ST.Trace =>
+                          Kind /= CuBit.Trace_Authority.Manifest_Request,
+                        when ST.Test_Console =>
+                          Kind /= CuBit.Test_Console_Authority.Manifest_Request,
+                        when ST.VM_Create =>
+                          Kind /= CuBit.VM_Create_Authority.Manifest_Request,
                         when others          => True)
                   then
                      reading := Requests_Disagree;
@@ -1727,7 +1736,7 @@ procedure main is
    Registrant_Ready_By : array (Service_Role) of Unsigned_64 := [others => 0];
 
    --  The ready deadline of a launch the startup plan did not make (OP_LAUNCH,
-   --  OP_SPAWN), which cannot say (ready-deadline-ms N): the plan's ceiling.
+   --  Start_Child), which cannot say (ready-deadline-ms N): the plan's ceiling.
    Unplanned_Ready_Deadline : constant CCL.Configurations.Ready_Deadline :=
      CCL.Configurations.MAX_READY_DEADLINE_MS;
 
@@ -1817,7 +1826,10 @@ procedure main is
         or else Role = CuBit.Log_Protocol.Control_Service_Role then DRIVER_LOGSTORE
       elsif Role = CuBit.Metric_Protocol.Observer_Service_Role
       then CuBit.Metric_Protocol.Publisher_Service_Role
-      elsif Role = CuBit.Process_Observer.Observer_Service_Role then DRIVER_PROCMGR
+      elsif Role = CuBit.Process_Observer.Observer_Service_Role
+        or else Role = Session_Launch.Launch_Role
+        or else Role = Session_Launch.Remote_Launch_Role
+        or else Role = CuBit.Launch_Handles.Session_Debug_Role then DRIVER_PROCMGR
       elsif Role = CuBit.Disk_Install.Service_Role
         or else Role = ACPI_PCI_Window_Exchange.Service_Role then DRIVER_DEVMGR
       --  A read-only copy of the composed frame: Desktop composes it.
@@ -1828,6 +1840,142 @@ procedure main is
         or else Role = CuBit.Power_Requests.Console_Role then CuBit.Power_Requests.Service_Role
       elsif Role = CuBit.Power_Event_Exchange.Service_Role then DRIVER_ACPI
       else Role);
+
+   ---------------------------------------------------------------------------
+   --  Whether the launcher being attenuated for holds what this manifest
+   --  request asks (Launch_Attenuation): a service role through one
+   --  endpoint with every right it asks, or as that role's own registered
+   --  provider; an offerable self endpoint; render, when render was
+   --  approved for the launcher; a network scope covering the one asked.
+   --  Notifications, framebuffer, firmware, hardware and publications are
+   --  never passed to a launched child.
+   ---------------------------------------------------------------------------
+   function launcherHolds
+     (reqType : Unsigned_8; Param0 : Unsigned_32; Rights : Unsigned_8; Param1 : Unsigned_64)
+     return Boolean
+   is
+      Index : constant Launches.Index := launchIndex (attenuateFor);
+      Requested : CuBit.Network_Authority.Scope;
+      Valid_Scope : Boolean;
+   begin
+      if Index = 0 then
+         return False;
+      elsif reqType = REQ_SERVICE then
+         return Rights <= LAtt.Rights_Mask'Last
+           and then LAtt.Service_Held
+             ((if Param0 < TRACKED_SERVICE_ROLES
+               then Launches.Values (Index).Services (Natural (Param0))
+               else LAtt.None_Held),
+              --  The provider of a role issues its own endpoint (never a
+              --  role another service answers, such as display capture).
+              Provider_Role_Of (Unsigned_64 (Param0)) = Unsigned_64 (Param0)
+              and then Unsigned_64 (Param0) <= Maximum_Role
+              and then Registered_Driver (Unsigned_64 (Param0)) = attenuateFor,
+              LAtt.Rights_Mask (Rights));
+      elsif reqType = CuBit.Self_Offers.Manifest_Request then
+         --  An offerable self endpoint passes on only from a launcher that has one.
+         return Launches.Values (Index).Offerable_Self;
+      elsif reqType = CuBit.Render_Authority.Manifest_Request then
+         return Launches.Values (Index).Render_Approved;
+      elsif reqType = CuBit.Network_Authority.Manifest_Request then
+         CuBit.Network_Authority.Decode (Unsigned_64 (Param0), Param1, Requested, Valid_Scope);
+         return Valid_Scope and then launcherNetworkCovers (Requested);
+      end if;
+      return False;
+   end launcherHolds;
+
+   ---------------------------------------------------------------------------
+   --  A declared request's kind for Launch-into-S (Session_Launch): what the
+   --  session's envelope is checked against.
+   ---------------------------------------------------------------------------
+   function sessionKind
+     (reqType : Unsigned_8; Param0 : Unsigned_32; Param1 : Unsigned_64)
+     return Session_Launch.Request_Kind
+   is
+      package SLK renames Session_Launch;
+      Role : constant Unsigned_64 := Unsigned_64 (Param0);
+      Requested : CuBit.Network_Authority.Scope;
+      Valid_Scope : Boolean;
+   begin
+      if reqType = REQ_SERVICE then
+         if Role in SLK.Launch_Role | SLK.Remote_Launch_Role then
+            return SLK.Launch_Badge;
+         elsif Role = CuBit.Log_Protocol.Observer_Service_Role
+           or else Role = CuBit.Log_Protocol.Control_Service_Role
+           or else Role = CuBit.Metric_Protocol.Observer_Service_Role
+           or else Role = CuBit.Process_Observer.Observer_Service_Role
+           --  Debug-observe for the session (DBG-001): observation, within
+           --  the session's debug envelope (Handle_Admission).
+           or else Role = CuBit.Launch_Handles.Session_Debug_Role
+         then
+            return SLK.Observation;
+         elsif Role = CuBit.Audio_Control.Service_Role
+           or else Role = CuBit.Clock_Control.Service_Role
+           or else Role = CuBit.Disk_Install.Service_Role
+           or else Role = CuBit.Installer_Protocol.Service_Role
+           or else Role = CuBit.Net_Manager_Control.Service_Role
+           or else Role = CuBit.Display_Capture.Service_Role
+           or else Role = CuBit.Power_Requests.Desktop_Role
+           or else Role = CuBit.Power_Requests.Console_Role
+           or else Role = CuBit.Power_Event_Exchange.Service_Role
+           or else Role = ACPI_PCI_Window_Exchange.Service_Role
+         then
+            return SLK.Startup_Only_Control;
+         end if;
+         return SLK.Service;
+      elsif reqType = CuBit.Self_Offers.Manifest_Request then
+         return SLK.Offerable_Self;
+      elsif reqType = CuBit.Render_Authority.Manifest_Request then
+         return SLK.Render;
+      elsif reqType = CuBit.Network_Authority.Manifest_Request then
+         CuBit.Network_Authority.Decode (Role, Param1, Requested, Valid_Scope);
+         return (if Valid_Scope and then CuBit.Network_Authority.Includes
+                   (CuBit.Network_Authority.Broad_Outbound_TCP, Requested)
+                 then SLK.Outbound_Network else SLK.Other_Network);
+      elsif reqType = REQ_FRAMEBUFFER then
+         return SLK.Framebuffer;
+      elsif reqType = REQ_NOTIFICATION then
+         return SLK.Notification;
+      end if;
+      return SLK.Hardware;
+   end sessionKind;
+
+   --  The Launch badge the requester being served holds: the session's, the
+   --  remote one, or none. A launched program declaring a Launch badge gets
+   --  the same kind its requester holds, so a remote requester's children
+   --  keep the remote badge (and any confirmation it comes to need).
+   function requesterBadge return Session_Launch.Badge is
+     (if attenuateFor = No_Process then Session_Launch.No_Badge
+      elsif launcherHolds (REQ_SERVICE, Session_Launch.Launch_Role, LAtt.Read_Right + LAtt.Write_Right, 0)
+      then Session_Launch.Session_Badge
+      elsif launcherHolds (REQ_SERVICE, Session_Launch.Remote_Launch_Role,
+                           LAtt.Read_Right + LAtt.Write_Right, 0)
+      then Session_Launch.Remote_Badge
+      else Session_Launch.No_Badge);
+
+   --  Whether the launch being served may give this request: within the
+   --  user session's envelope for a Launch-into-S (a Launch badge only when
+   --  its requester introduces one it holds); within what the supervisor
+   --  holds for a supervisor's Start_Child.
+   function launchGives
+     (reqType : Unsigned_8; Param0 : Unsigned_32; Rights : Unsigned_8; Param1 : Unsigned_64)
+     return Boolean
+   is
+      Kind : constant Session_Launch.Request_Kind := sessionKind (reqType, Param0, Param1);
+      use type Session_Launch.Request_Kind;
+   begin
+      if not launchSession then
+         return launcherHolds (reqType, Param0, Rights, Param1);
+      elsif Kind = Session_Launch.Launch_Badge then
+         --  Introduced from the requester's own Launch badge, of either kind.
+         return Session_Launch."/=" (requesterBadge, Session_Launch.No_Badge)
+           and then Rights <= LAtt.Read_Right + LAtt.Write_Right;
+      end if;
+      return Rights <= Launch_Attenuation.Rights_Mask'Last
+        and then Session_Launch.Within
+          (Session_Launch.User_Session, Kind, Launch_Attenuation.Rights_Mask (Rights));
+   end launchGives;
+
 
    --  Say why Program's launch is refused for its required service Label.
    procedure reportWaitRefusal
@@ -1968,6 +2116,192 @@ procedure main is
    end offerToDeviceManager;
 
    ---------------------------------------------------------------------------
+   --  Late introduction (CuBit.Late_Introduction, ABI-002): the launch
+   --  decisions kept for optional service entries whose provider was not
+   --  running (CuBit.Introduction_Ledgers), each holder's kept Await call, and the
+   --  introductions made when a provider starts.
+   ---------------------------------------------------------------------------
+   package LI renames CuBit.Late_Introduction;
+   package LIL renames CuBit.Introduction_Ledgers;
+   use type LIL.Delivery;
+   Late : LIL.Ledger := LIL.Empty;
+   Late_Replies : array (LIL.Slot) of H.Reply := [others => H.No_Reply];
+
+   --  devmgr is not launched from a manifest: its declaration, until it
+   --  is, is this one. It takes logstore's and the desktop's untagged
+   --  endpoints, offered (a call down to it), each time one starts.
+   Device_Manager_Requests : constant array (1 .. 2) of Unsigned_64 :=
+     [DRIVER_LOGSTORE, DRIVER_DESKTOP];
+   Device_Manager_Kept : Process_ID := No_Process;
+
+   procedure keepDeviceManagerRequests is
+      Holder : constant Process_ID := Registered_Driver (DRIVER_DEVMGR);
+      Into : LIL.Slot_Count;
+   begin
+      if Holder = No_Process or else Holder = Device_Manager_Kept then
+         return;
+      end if;
+      if Device_Manager_Kept /= No_Process then
+         LIL.Forget (Late, To_Word (Device_Manager_Kept));
+      end if;
+      for K in Device_Manager_Requests'Range loop
+         LIL.Keep (Late, (Holder => To_Word (Holder), Index => Unsigned_64 (K),
+                          Role => Device_Manager_Requests (K), Rights => 0, Tag => 0,
+                          Way => LIL.Offer, Waiting => False), Into);
+      end loop;
+      Device_Manager_Kept := Holder;
+   end keepDeviceManagerRequests;
+
+   --  What a kept decision mints from its provider's endpoint.
+   function lateCopy (D : LIL.Decision; Service : CuBit.Handles.Endpoint) return H.Derivation is
+     (if D.Tag /= 0 then Badged (Service, Manifest_Rights (D.Rights), D.Tag)
+      else Copy (Service, Manifest_Rights (D.Rights)));
+
+   function lateAnswer (Label : Unsigned_32) return Message is
+     ((tag => (label => Label, length => 0, protocol => 0, ipc => <>, reserved => 0),
+       authorityTag => 0, words => [others => 0]));
+
+   --  A provider of Role started; Service is its endpoint. Every holder
+   --  waiting for one is introduced: devmgr by an offer, a program by the
+   --  answer to its kept call (its decision is then used up).
+   procedure introduceAll (Role : Unsigned_64; Service : CuBit.Handles.Endpoint) is
+      use type HIPC.Reply_Outcome;
+      S : LIL.Slot_Count;
+      From : LIL.Slot := LIL.Slot'First;
+   begin
+      if not Valid (Service) then
+         return;
+      end if;
+      keepDeviceManagerRequests;
+      loop
+         S := LIL.Next_For (Late, Role, From);
+         exit when S = 0;
+         declare
+            D : constant LIL.Decision := Late (S);
+            Holder : constant Process_ID := From_Word (D.Holder);
+         begin
+            if D.Way = LIL.Offer then
+               offerToDeviceManager (D.Role, Service);
+            else
+               declare
+                  Sent : constant HIPC.Reply_Result := HIPC.Reply_Saved_With
+                    (Late_Replies (S), lateAnswer (LI.Introduced), lateCopy (D, Service));
+               begin
+                  if Sent.Outcome = HIPC.Transferred then
+                     Warnings.Inform ("procmgr: pid" & Image (Holder) & " introduced late to role" &
+                                      Unsigned_64'Image (D.Role) & " (its entry" &
+                                      Unsigned_64'Image (D.Index) & ")");
+                  else
+                     Warnings.Warn ("procmgr: late introduction of pid" & Image (Holder) &
+                                    " to role" & Unsigned_64'Image (D.Role) & " not delivered");
+                  end if;
+                  Late_Replies (S) := H.No_Reply;
+                  LIL.Remove (Late, S);
+               end;
+            end if;
+         end;
+         exit when S = LIL.Slot'Last;
+         From := S + 1;
+      end loop;
+   end introduceAll;
+
+   --  The roles whose provider procmgr started and that have not registered
+   --  yet: introduceRegistered introduces their waiting holders once they
+   --  have (after procmgr's own registrar channel to logstore is open, so
+   --  logstore names a holder's first records), polled every
+   --  Registration_Poll_Ms while any is set, until the provider's ready
+   --  deadline.
+   Introduce_When_Registered : array (Service_Role) of Boolean := [others => False];
+
+   function introductionsDue return Boolean is
+     (for some Due of Introduce_When_Registered => Due);
+
+   procedure introduceRegistered is
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+   begin
+      for Role in Introduce_When_Registered'Range loop
+         if Introduce_When_Registered (Role) then
+            if Registered_Driver (Role) /= No_Process then
+               Introduce_When_Registered (Role) := False;
+               introduceAll (Role, providerFor (Role));
+            elsif Registrants (Role) = No_Process or else Now >= Registrant_Ready_By (Role) then
+               --  It ended, or missed its deadline: whoever provides the
+               --  role next is introduced instead.
+               Introduce_When_Registered (Role) := False;
+            end if;
+         end if;
+      end loop;
+   end introduceRegistered;
+
+   --  A holder's Await call (CuBit.Late_Introduction) over its introducer
+   --  endpoint: answered now, refused now, or kept until a provider starts.
+   procedure handleAwaitIntroduction (Sender : Process_ID; Request : Message) is
+      use type HIPC.Reply_Outcome;
+      S : LIL.Slot_Count := 0;
+      Service : CuBit.Handles.Endpoint;
+      Ignore : Unsigned_64;
+   begin
+      if Request.tag.length = LI.Await_Words and then Sender /= No_Process then
+         S := LIL.Find (Late, To_Word (Sender), Request.words (LI.Index_Word));
+      end if;
+      if S = 0 or else Late (S).Way /= LIL.Saved_Reply then
+         Warnings.Warn ("procmgr: pid" & Image (Sender) &
+                        " asked to be introduced for an entry it was not started without (refused)");
+         Ignore := reply (Sender, lateAnswer (LI.Not_Declared));
+         return;
+      elsif Late (S).Waiting then
+         Ignore := reply (Sender, lateAnswer (LI.Withdrawn));
+         return;
+      end if;
+      --  A registered provider: now. Otherwise when one registers.
+      Service := providerFor (Late (S).Role);
+      if Valid (Service) and then not Introduce_When_Registered (Late (S).Role) then
+         declare
+            Sent : constant HIPC.Reply_Result :=
+              HIPC.Reply_With (Sender, lateAnswer (LI.Introduced), lateCopy (Late (S), Service));
+         begin
+            if Sent.Outcome = HIPC.Refused then
+               Ignore := reply (Sender, lateAnswer (LI.Withdrawn));
+            else
+               Warnings.Inform ("procmgr: pid" & Image (Sender) & " introduced late to role" &
+                                Unsigned_64'Image (Late (S).Role) & " (its entry" &
+                                Unsigned_64'Image (Late (S).Index) & ", at once)");
+            end if;
+            LIL.Remove (Late, S);
+         end;
+         return;
+      end if;
+      declare
+         Saved : constant HIPC.Saved_Reply := HIPC.Save_Reply;
+      begin
+         if Saved.Saved then
+            Late_Replies (S) := Saved.Handle;
+            LIL.Set_Waiting (Late, S);
+         else
+            Ignore := reply (Sender, lateAnswer (LI.Withdrawn));
+            LIL.Remove (Late, S);
+         end if;
+      end;
+   end handleAwaitIntroduction;
+
+   --  Holder ended: its kept calls end with it, its decisions are dropped.
+   procedure forgetLate (Holder : Process_ID) is
+      Ignore : HIPC.Close_Result;
+   begin
+      for S in LIL.Slot loop
+         if LIL.Used (Late (S)) and then Late (S).Holder = To_Word (Holder)
+           and then H.Valid (Late_Replies (S))
+         then
+            Ignore := HIPC.Close (Late_Replies (S));
+            Late_Replies (S) := H.No_Reply;
+         end if;
+      end loop;
+      if Holder /= No_Process then
+         LIL.Forget (Late, To_Word (Holder));
+      end if;
+   end forgetLate;
+
+   ---------------------------------------------------------------------------
    --  Registration roles: which program may register which role, by its
    --  manifest's notification request. Package identity is self-declared,
    --  so the roles whose holder sees others' secrets also need the trusted
@@ -2014,6 +2348,11 @@ procedure main is
       elsif Role = CuBit.Secrets_Protocol.Service_Role then
          --  An impostor would receive every secret typed into it.
          return systemStartup and then Identity = "com.cubit.secrets";
+      elsif Role = CuBit.Debug_Protocol.Service_Role then
+         --  The debugger preview (DBG-001): only its demo targets (Ada and
+         --  Rust) may offer themselves to debuggers, so a debugger never
+         --  attaches to an impostor.
+         return Identity = "com.cubit.debug-demo" or else Identity = "com.cubit.debug-demo-rs";
       elsif Role = CuBit.Power_Requests.Service_Role then
          --  An impostor would take shutdown requests and could ask procmgr
          --  to stop the system (CuBit.System_Stops): the plan's power.svc only.
@@ -2027,6 +2366,9 @@ procedure main is
    ---------------------------------------------------------------------------
    ACCESS_MAGIC : constant Unsigned_32 := 16#43434143#;  -- "CACC" LE
    MAX_ACL      : constant := 16;
+   --  An access entry withheld from a launched child (its launcher does not
+   --  cover it): no service is this, so no pass installs it.
+   WITHHELD_SCOPE : constant Unsigned_8 := Unsigned_8'Last;
 
    SANDBOX_NONE       : constant Unsigned_8 := 0;
    SANDBOX_RUN_FOLDER : constant Unsigned_8 := 1;
@@ -2189,15 +2531,15 @@ procedure main is
    --  parseAndSendACL
    --  Parse .cubit.access section from the ELF in elfBuf and send
    --  OP_SET_ACL to the FS server. Missing/malformed sections grant nothing.
-   --  sandboxOverride / cwd / binaryName enable RUN_FOLDER / APP_FOLDER
-   --  prefix rewriting for wildcard FS entries.
+   --  binaryName enables the manifest's APP_FOLDER prefix rewriting for
+   --  wildcard FS entries; RUN_FOLDER has no launch directory to use (a
+   --  launcher's directory is a launch-block argument, checked separately:
+   --  launchDirectoryVisible) and grants nothing.
    ---------------------------------------------------------------------------
    procedure parseAndSendACL
      (childPID        : Process_ID;
       elfSize         : Unsigned_64;
       policyReady     : out Boolean;
-      sandboxOverride : Unsigned_8 := SANDBOX_NONE;
-      cwd             : String := "";
       binaryName      : String := "";
       --  TLS scopes reach the network through tls.svc, so they need the
       --  same launch approval as network scopes; a manifest alone never
@@ -2275,38 +2617,20 @@ procedure main is
 
                      --  Read sandbox mode from header byte 13
                      declare
-                        manifestSandbox : Unsigned_8 :=
+                        effectiveSandbox : constant Unsigned_8 :=
                            readU8 (sh_offset + 13);
-                        effectiveSandbox : Unsigned_8;
                         sandboxPrefix    : String (1 .. 64) :=
                            (others => ' ');
                         sandboxPrefixLen : Natural := 0;
                      begin
                         --  An invalid sandbox cannot mean unrestricted.
-                        if manifestSandbox > SANDBOX_APP_FOLDER then
+                        if effectiveSandbox > SANDBOX_APP_FOLDER then
                            goto No_Access_Policy;
                         end if;
 
-                        --  Most restrictive wins (higher = more
-                        --  restrictive)
-                        if sandboxOverride > manifestSandbox then
-                           effectiveSandbox := sandboxOverride;
-                        else
-                           effectiveSandbox := manifestSandbox;
-                        end if;
-
-                        --  Compute sandbox prefix
-                        if effectiveSandbox = SANDBOX_RUN_FOLDER then
-                           --  Use cwd from spawner
-                           sandboxPrefixLen := cwd'Length;
-                           if sandboxPrefixLen > 64 then
-                              goto No_Access_Policy;
-                           end if;
-                           for c in 0 .. sandboxPrefixLen - 1 loop
-                              sandboxPrefix (1 + c) :=
-                                 cwd (cwd'First + c);
-                           end loop;
-                        elsif effectiveSandbox = SANDBOX_APP_FOLDER
+                        --  Compute sandbox prefix (RUN_FOLDER: none, so
+                        --  refused below).
+                        if effectiveSandbox = SANDBOX_APP_FOLDER
                         then
                            --  dirname(binaryName): find last '/'
                            declare
@@ -2445,7 +2769,10 @@ procedure main is
                         --  one its launcher holds; record what this process
                         --  holds for the children it may start.
                         for j in 0 .. Natural (count) - 1 loop
-                           if attenuateFor /= No_Process then
+                           --  A Launch-into-S child gets its declared scopes
+                           --  (the user session narrows none yet: CTX-001);
+                           --  a supervisor's child, those it covers.
+                           if attenuateFor /= No_Process and then not launchSession then
                               declare
                                  Launcher : Launch_State renames
                                    Launches.Values (launchIndex (attenuateFor));
@@ -2462,19 +2789,18 @@ procedure main is
                                          (1 .. Natural (locals (j).prefixLen)));
                                  end loop;
                                  if not Covered then
-                                    attenuationRefused := True;
-                                    --  A logstore line: the launcher hears
-                                    --  only Not_Granted.
-                                    Warnings.Warn ("procmgr: launch of " & binaryName &
-                                      " refused: its launcher does not hold the scope " &
-                                      locals (j).prefix
-                                        (1 .. Natural (locals (j).prefixLen)) & " it declares");
-                                    policyReady := False;
-                                    return;
+                                    --  Withheld (Launch_Attenuation): the
+                                    --  child gets the scopes its launcher
+                                    --  covers, never one it does not.
+                                    Warnings.Inform ("procmgr: " & binaryName &
+                                      ": scope " & locals (j).prefix
+                                        (1 .. Natural (locals (j).prefixLen)) &
+                                      " withheld: its launcher does not hold it");
+                                    locals (j).service := WITHHELD_SCOPE;
                                  end if;
                               end;
                            end if;
-                           if launchIndex (childPID) /= 0 then
+                           if launchIndex (childPID) /= 0 and then locals (j).service /= WITHHELD_SCOPE then
                               declare
                                  Held : Launch_State renames
                                    Launches.Values (launchIndex (childPID));
@@ -2504,7 +2830,7 @@ procedure main is
                               tlsCount := tlsCount + 1;
                            elsif locals (j).service = SERVICE_METRICS then
                               metricsCount := metricsCount + 1;
-                           else
+                           elsif locals (j).service = SERVICE_FS then
                               fsCount := fsCount + 1;
                            end if;
                         end loop;
@@ -3034,7 +3360,7 @@ procedure main is
       end if;
       --  Derived grants live in procmgr's grant namespace: the child names
       --  procmgr as their owner when it acquires them.
-      Result.Owner := syscall (SYSCALL_GETPID);
+      Result.Owner := Own_Process_Word;
       for E of pendingRings.Entries (1 .. pendingRings.Count) loop
          if E.Outlet < S.Connector_Total and then S.Connectors (E.Outlet).Direction = PD.Outlet
            and then CuBit.Grant_References.Valid_Wire (E.Grant)
@@ -3091,8 +3417,6 @@ procedure main is
       name        : String;
       priority    : Unsigned_64;
       requester   : Process_ID := No_Process;
-      sandboxMode : Unsigned_8 := SANDBOX_NONE;
-      cwd         : String := "";
       approveNetwork : Network_Approval := No_Network;
       approveRender : Boolean := False;
       systemStartup : Boolean := False;
@@ -3103,6 +3427,9 @@ procedure main is
       approveFirmwareData : Boolean := False;
       approveDisplayCapture : Boolean := False;
       approvePlatformPower : Boolean := False;
+      approveTrace : Boolean := False;
+      approveTestConsole : Boolean := False;
+      approveVMCreate : Boolean := False;
       --  The time it has to register a role it provides (Registrant_Ready_By).
       readyDeadlineMs : CCL.Configurations.Ready_Deadline;
       --  Whether it may wait for a starting provider; if it must, Waits
@@ -3121,6 +3448,10 @@ procedure main is
       Child         : HC.Spawned_Child;
       pri           : Unsigned_64 := priority;
       t0, t1        : Unsigned_64;
+      --  Where a slow launch spent its time (logged at Slow_Spawn_Ms):
+      --  the file read, the kernel spawn, the policy resets, the access
+      --  section, the startup table and grants, and the quota query.
+      Span_Start, Span_Read, Span_Spawned, Span_Reset, Span_Setup : Unsigned_64 := 0;
       pkgId         : String (1 .. 128);
       pkgIdLen      : Natural := 0;
       streamBitmask : Unsigned_64 := 0;
@@ -3140,8 +3471,15 @@ procedure main is
       Render_Ticket : Render_Launch.Ticket := 0;
       --  The launch block payload (arguments, description) built for it.
       Block_Length : LA.Block_Length := pendingArgumentBytes;
-      --  Registrations procmgr approved, offered to devmgr once it runs.
-      Offer_Logstore, Offer_Desktop : Boolean := False;
+      --  The roles this child may register (procmgr approved them): once
+      --  it runs, every holder waiting for one is introduced to it.
+      Provides : array (Service_Role) of Boolean := [others => False];
+      --  A decision kept for late introduction: the child gets the
+      --  introducer endpoint (CuBit.Late_Introduction).
+      Late_Kept : Boolean := False;
+      --  Declared requests a launched child does not get: optional ones its
+      --  launcher does not hold (Launch_Attenuation.Withheld).
+      Withheld : array (ST.Entry_Index) of Boolean := [others => False];
       --  The ACPI hardware windows installed in the child (Mint_ACPI_Hardware),
       --  in ascending port order: appended to its startup table as
       --  AHA.IO_Label (ACPI_Binding, K).
@@ -3161,28 +3499,6 @@ procedure main is
       ACPI_SCI_Asked : Boolean := False;
       ACPI_Binding : ST.Name;
       use type CuBit.Render_Startup.Requirement, CuBit.Render_Startup.Attempt;
-      -- Transitional installed-system-app policy, like Desktop_Approval for
-      -- browsers. Exact boot-namespace name, never a supplied path/identity;
-      -- assumes the system executable namespace is administrator-controlled.
-      -- Do not propagate this as systemStartup or honor caller-supplied flags.
-      --  The CCL Workbench's and console's REPLs read logs too:
-      --  (logs.recent "service").
-      Log_Viewer_Approved : constant Boolean :=
-        (name = "boot-logs.app" or else name = "ccl-workbench.app" or else
-         name = "ccl-console.app" or else name = "logs.app")
-        and then requester /= No_Process and then
-        sandboxMode = SANDBOX_NONE and then cwd'Length = 0 and then
-        requester = Registered_Driver (DRIVER_DESKTOP);
-      --  The CCL Console's and Workbench's :ps / (proc.list) see what runs,
-      --  under the same narrow desktop-launched exception.
-      Process_Viewer_Approved : constant Boolean :=
-        (name = "ccl-workbench.app" or else name = "ccl-console.app" or else name = "logs.app")
-        and then requester /= No_Process and then
-        sandboxMode = SANDBOX_NONE and then cwd'Length = 0 and then
-        requester = Registered_Driver (DRIVER_DESKTOP);
-      --  Logs, the console and the Workbench may change what logstore keeps
-      --  (log-control), under the same desktop-launched exception.
-      Log_Control_Approved : constant Boolean := Process_Viewer_Approved;
       use type CCL.Configurations.Startup_Role;
 
       procedure Close_Launch_Handles is
@@ -3204,6 +3520,10 @@ procedure main is
          -- incarnation, so it can never stop a later occupant of the PID.
          Stop_Accepted := False;
          Close_Launch_Handles;
+         --  Its kept late-introduction decisions go with it.
+         if newPID /= No_Process then
+            forgetLate (newPID);
+         end if;
          if not Valid (Child.Control) or else not HC.Kill (newPID, Child.Control) then
             debugPrint ("procmgr: failed launch process cleanup rejected" & LF);
          else
@@ -3271,15 +3591,13 @@ procedure main is
          end if;
       end Install;
 
-      --  Whether a service request for Role is for a startup-only authority
-      --  this launch is not approved for: startup approval; for an
-      --  observer role, a launcher that holds it (attenuated launches,
-      --  CuBit.Authority_Policy.Launcher_Approves); or the trusted
-      --  Desktop's narrowly selected system log viewer (its launches are
-      --  not attenuated; follow-up: Desktop holding the roles instead).
-      --  These grant observation only, not the other startup-only
-      --  authorities.
-      function Startup_Only_Denied (Role : Unsigned_64) return Boolean is
+      --  Whether a service request for Role (with manifest Rights) is for a
+      --  startup-only authority this launch is not approved for: startup
+      --  approval; or, for an observer role, a launcher that holds it with
+      --  those rights (attenuated launches, CuBit.Authority_Policy.
+      --  Launcher_Approves). Never a program's name (CAP-011). These grant
+      --  observation only, not the other startup-only authorities.
+      function Startup_Only_Denied (Role : Unsigned_64; Rights : Unsigned_8) return Boolean is
          isAudioControl : constant Boolean := Role = CuBit.Audio_Control.Service_Role;
          isLogObserver : constant Boolean := Role = CuBit.Log_Protocol.Observer_Service_Role;
          isClockControl : constant Boolean := Role = CuBit.Clock_Control.Service_Role;
@@ -3323,13 +3641,30 @@ procedure main is
                 (Authority,
                  attenuateFor /= No_Process and then launchIndex (attenuateFor) /= 0
                  and then Role <= Unsigned_64 (Unsigned_32'Last)
-                 and then launcherHolds (REQ_SERVICE, Unsigned_32 (Role))) or else
-              (isLogObserver and then Log_Viewer_Approved) or else
-              (isProcessObserver and then Process_Viewer_Approved) or else
-              (isLogControl and then Log_Control_Approved),
+                 and then launchGives (REQ_SERVICE, Unsigned_32 (Role), Rights, 0)),
             Session_Approved => True,
             Issuer_Allowed => True);
       begin
+         --  A Launch badge (Session_Launch): a startup plan entry declaring
+         --  it, or a launched program whose requester holds it and
+         --  introduces it. The remote badge only from the plan.
+         --  The session's debug authority: only where the image's system
+         --  policy debugs at all (Handle_Admission.Debug_Authority_Granted).
+         if Role = CuBit.Launch_Handles.Session_Debug_Role
+           and then not Handle_Admission.Debug_Authority_Granted (Debugging_Gate)
+         then
+            Warnings.Warn ("procmgr: " & name & ": debug-session withheld: " &
+                           (if Handle_Admission."=" (Debugging_Gate, Handle_Admission.Production)
+                            then "production debugging needs owner approval (not built yet)"
+                            else "debugging is disabled for this image"));
+            return True;
+         end if;
+         if Role = Session_Launch.Launch_Role then
+            return not (systemStartup
+                        or else Session_Launch."/=" (requesterBadge, Session_Launch.No_Badge));
+         elsif Role = Session_Launch.Remote_Launch_Role then
+            return not systemStartup;
+         end if;
          --  PWR-003: shutdown requesters (Desktop's, the console's badge
          --  on power.svc) only from the trusted startup plan; acpi.svc's
          --  power badge (button watch, S5) only for its power manager.
@@ -3395,7 +3730,7 @@ procedure main is
          Handle := ST.No_Handle;
          Outcome := SB.Refused_By_Policy;
          Logged := False;
-         if Startup_Only_Denied (Role) then
+         if Startup_Only_Denied (Role, R.Rights) then
             recordAuthority
               (newPID, Index, AUTH_SOURCE_MANIFEST, AUTH_REASON_STARTUP_REQUIRED,
                CAP_TYPE_ENDPOINT, True, False, Mask (Kept), Role, 0);
@@ -3431,6 +3766,17 @@ procedure main is
          end if;
          if Role = ACPI_PCI_Window_Exchange.Service_Role then
             Issued_Tag := ACPI_PCI_Window_Exchange.Backend_Tag;
+         --  Debug-observe for the user session (DBG-001): procmgr's
+         --  endpoint badged for Session_Debug_Operation alone; what it may
+         --  observe is the session's debug envelope (Handle_Admission).
+         elsif Role = CuBit.Launch_Handles.Session_Debug_Role then
+            Issued_Tag := CuBit.Launch_Handles.Session_Debug_Tag;
+         --  A Launch badge naming the user session (Session_Launch).
+         elsif Role in Session_Launch.Launch_Role | Session_Launch.Remote_Launch_Role then
+            Issued_Tag :=
+              (if Session_Launch."=" (requesterBadge, Session_Launch.Remote_Badge)
+               then Session_Launch.Remote_Launch_Tag
+               else Session_Launch.Tag_Of (Role));
          --  PWR-003: fixed compile-time stamps; the copies keep no Grant.
          elsif Role = CuBit.Power_Requests.Desktop_Role then
             Issued_Tag := CuBit.Power_Requests.Desktop_Tag;
@@ -3503,10 +3849,27 @@ procedure main is
             if Item.Requirement = ST.Required then
                debugPrint ("procmgr: service not found, role" & Unsigned_64'Image (Role) & LF);
             else
-               Warnings.Inform
-                 ("procmgr: " & name & ": optional service """ &
-                  String (Item.Label.Text (1 .. Item.Label.Length)) &
-                  """ not running; started without it");
+               --  Every check passed but the provider: keep the decision,
+               --  to introduce the program when a provider starts
+               --  (CuBit.Late_Introduction). Not for a supervisor's binding
+               --  (that names one provider instance).
+               declare
+                  Into : LIL.Slot_Count := 0;
+               begin
+                  if Bound_Provider = CuBit.Child_Specs.No_Provider then
+                     LIL.Keep
+                       (Late, (Holder => To_Word (newPID), Index => Unsigned_64 (Index),
+                               Role => Provider_Role, Rights => Unsigned_64 (R.Rights),
+                               Tag => Issued_Tag, Way => LIL.Saved_Reply,
+                               Waiting => False), Into);
+                  end if;
+                  Late_Kept := Late_Kept or else Into /= 0;
+                  Warnings.Inform
+                    ("procmgr: " & name & ": optional service """ &
+                     String (Item.Label.Text (1 .. Item.Label.Length)) &
+                     """ not running; started without it" &
+                     (if Into /= 0 then "; introduced when it starts" else ""));
+               end;
                Logged := True;
             end if;
             return;
@@ -3519,7 +3882,7 @@ procedure main is
             (if Outcome = SB.Granted then AUTH_REASON_MANIFEST_REQUEST else AUTH_REASON_MINT_FAILED),
             CAP_TYPE_ENDPOINT, True, Outcome = SB.Granted, Mask (Kept), Provider_Role, Issued_Tag);
          if Outcome = SB.Granted then
-            noteService (newPID, R.Param0);
+            noteService (newPID, R.Param0, Mask (Kept));
             if Supervisor_Badged then
                debugPrint ("procmgr: " & name & ": " & String (Item.Label.Text (1 .. Item.Label.Length)) &
                            " badged by its supervisor's binding" & LF);
@@ -3558,13 +3921,12 @@ procedure main is
            (newPID, Index, AUTH_SOURCE_IDENTITY_POLICY, AUTH_REASON_PACKAGE_ID,
             CAP_TYPE_NOTIFICATION, True, Outcome = SB.Granted, Mask (Kept), Role, 0);
          if Outcome = SB.Granted then
-            Offer_Logstore := Offer_Logstore or else Role = DRIVER_LOGSTORE;
-            Offer_Desktop := Offer_Desktop or else Role = DRIVER_DESKTOP;
             --  Write is registration: this process may provide the role.
             if Kept.Write and then Launched_Service_Role (Role) then
+               Provides (Role) := True;
                Registrants (Role) := newPID;
                Registrant_Ready_By (Role) :=
-                 syscall (SYSCALL_GETTIME) + Unsigned_64 (readyDeadlineMs);
+                 CuBit.Monotonic.Milliseconds + Unsigned_64 (readyDeadlineMs);
             end if;
          end if;
       end Mint_Notification;
@@ -3607,7 +3969,15 @@ procedure main is
          Handle := ST.No_Handle;
          Outcome := SB.Refused_By_Policy;
          CuBit.Network_Authority.Decode (Unsigned_64 (R.Param0), R.Param1, scope, valid_Scope);
-         if not (valid_Scope and then Allows (approveNetwork, scope)
+         --  A launched child's scope lies within one its launcher was
+         --  granted (Launch_Attenuation); a plan entry's, as the plan says.
+         if not (valid_Scope
+                 and then (if attenuateFor /= No_Process
+                           then (if launchSession
+                                 then CuBit.Network_Authority.Includes
+                                   (CuBit.Network_Authority.Broad_Outbound_TCP, scope)
+                                 else launcherNetworkCovers (scope))
+                           else Allows (approveNetwork, scope))
                  and then R.Rights = 3 and then Valid (PH.Netstack))
          then
             debugPrint ("procmgr: network scope denied (not approved or invalid)" & LF);
@@ -3633,6 +4003,9 @@ procedure main is
               (newPID, Index, AUTH_SOURCE_CONFIG_POLICY, AUTH_REASON_MANIFEST_REQUEST,
                CAP_TYPE_ENDPOINT, True, Outcome = SB.Granted, Mask (Kept),
                DRIVER_NETSTACK, authorityTag);
+            if Outcome = SB.Granted then
+               noteNetwork (newPID, scope);
+            end if;
             if Outcome /= SB.Granted then
                request := NULL_MESSAGE;
                request.tag.label := CuBit.Network_Authority.OP_RELEASE_SCOPE;
@@ -3703,6 +4076,107 @@ procedure main is
            (newPID, Index, AUTH_SOURCE_CONFIG_POLICY, AUTH_REASON_MANIFEST_REQUEST,
             CAP_TYPE_PLATFORM_POWER, True, Outcome = SB.Granted, Mask (H.Write_Only), 0, 0);
       end Mint_Platform_Power;
+
+      --  The kernel trace object (Request.Trace, Trace_ABI): a Write-only
+      --  copy of devmgr's root, only for a program the trusted startup
+      --  plan started and approved, (trace approve-declared): the
+      --  benchmarks. The request itself is never approval.
+      procedure Mint_Trace
+        (R : Caps_Request; Index : ST.Entry_Index;
+         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
+      is
+      begin
+         Handle := ST.No_Handle;
+         Outcome := SB.Refused_By_Policy;
+         if Manifest_Rights (Unsigned_64 (R.Rights)) /= H.Write_Only
+           or else R.Param0 /= 0 or else R.Param1 /= 0
+         then
+            Warnings.Warn ("procmgr: trace request malformed for pid" & Image (newPID));
+         elsif not (systemStartup and then approveTrace) then
+            Warnings.Warn ("procmgr: trace refused: " & name &
+                           " is not approved by the startup plan");
+         elsif not Valid (PH.Trace_Object) then
+            Outcome := SB.Not_Available;
+            Warnings.Warn ("procmgr: trace refused: no object configured");
+         else
+            Install (Copy (PH.Trace_Object, H.Write_Only), Handle, Outcome);
+            if Outcome = SB.Granted then
+               debugPrint ("procmgr: " & name & " pid" & Image (newPID) &
+                           ": trace object installed (write)" & LF);
+            end if;
+         end if;
+         recordAuthority
+           (newPID, Index, AUTH_SOURCE_CONFIG_POLICY, AUTH_REASON_MANIFEST_REQUEST,
+            CAP_TYPE_TRACE, True, Outcome = SB.Granted, Mask (H.Write_Only), 0, 0);
+      end Mint_Trace;
+
+      --  The test console object (Kernel_Object.Test_Console,
+      --  Test_Console_ABI): a Write-only copy of devmgr's root, only for a
+      --  program the trusted startup plan started and approved,
+      --  (test-console approve-declared): test builds' logstore. The
+      --  request itself is never approval.
+      procedure Mint_Test_Console
+        (R : Caps_Request; Index : ST.Entry_Index;
+         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
+      is
+      begin
+         Handle := ST.No_Handle;
+         Outcome := SB.Refused_By_Policy;
+         if Manifest_Rights (Unsigned_64 (R.Rights)) /= H.Write_Only
+           or else R.Param0 /= 0 or else R.Param1 /= 0
+         then
+            Warnings.Warn ("procmgr: test console request malformed for pid" & Image (newPID));
+         elsif not (systemStartup and then approveTestConsole) then
+            Warnings.Warn ("procmgr: test console refused: " & name &
+                           " is not approved by the startup plan");
+         elsif not Valid (PH.Test_Console_Object) then
+            Outcome := SB.Not_Available;
+            Warnings.Warn ("procmgr: test console refused: no object configured");
+         else
+            Install (Copy (PH.Test_Console_Object, H.Write_Only), Handle, Outcome);
+            if Outcome = SB.Granted then
+               debugPrint ("procmgr: " & name & " pid" & Image (newPID) &
+                           ": test console object installed (write)" & LF);
+            end if;
+         end if;
+         recordAuthority
+           (newPID, Index, AUTH_SOURCE_CONFIG_POLICY, AUTH_REASON_MANIFEST_REQUEST,
+            CAP_TYPE_TEST_CONSOLE, True, Outcome = SB.Granted, Mask (H.Write_Only), 0, 0);
+      end Mint_Test_Console;
+
+      --  The VM creation authority (Kernel_Object.VM_Create, VMM-001,
+      --  docs/hypervisor.md): procmgr is the root issuer of VM creation. A
+      --  Write-only copy of devmgr's root, only for a program the trusted
+      --  startup plan started and approved, (vm-create approve-declared).
+      --  The request itself is never approval.
+      procedure Mint_VM_Create
+        (R : Caps_Request; Index : ST.Entry_Index;
+         Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
+      is
+      begin
+         Handle := ST.No_Handle;
+         Outcome := SB.Refused_By_Policy;
+         if Manifest_Rights (Unsigned_64 (R.Rights)) /= H.Write_Only
+           or else R.Param0 /= 0 or else R.Param1 /= 0
+         then
+            Warnings.Warn ("procmgr: VM creation request malformed for pid" & Image (newPID));
+         elsif not (systemStartup and then approveVMCreate) then
+            Warnings.Warn ("procmgr: VM creation refused: " & name &
+                           " is not approved by the startup plan");
+         elsif not Valid (PH.VM_Create_Authority) then
+            Outcome := SB.Not_Available;
+            Warnings.Warn ("procmgr: VM creation refused: no authority configured");
+         else
+            Install (Copy (PH.VM_Create_Authority, H.Write_Only), Handle, Outcome);
+            if Outcome = SB.Granted then
+               debugPrint ("procmgr: " & name & " pid" & Image (newPID) &
+                           ": VM creation authority installed (write)" & LF);
+            end if;
+         end if;
+         recordAuthority
+           (newPID, Index, AUTH_SOURCE_CONFIG_POLICY, AUTH_REASON_MANIFEST_REQUEST,
+            CAP_TYPE_VM_CREATE, True, Outcome = SB.Granted, Mask (H.Write_Only), 0, 0);
+      end Mint_VM_Create;
 
       --  The ACPI hardware windows (Request.ACPI_Hardware): only for a program
       --  the trusted startup plan started and approved, (acpi-hardware
@@ -4057,6 +4531,13 @@ procedure main is
       begin
          Handle := ST.No_Handle;
          Into.Logged := False;
+         --  Withheld from a launched child: its launcher does not hold it
+         --  (said when the requests were checked). Never introduced later.
+         if Withheld (Index) then
+            Outcome := SB.Refused_By_Policy;
+            Into.Logged := True;
+            return;
+         end if;
          --  procmgr hands out no device, port, interrupt or scheduling
          --  authority; a DMA region is devmgr's to allocate.
          if View.Request_Of (Index) = 0 then
@@ -4076,6 +4557,9 @@ procedure main is
             when ST.Network      => Mint_Network (R, Index, Handle, Outcome);
             when ST.Firmware_Snapshot => Mint_Firmware_Snapshot (R, Index, Handle, Outcome);
             when ST.Platform_Power => Mint_Platform_Power (R, Index, Handle, Outcome);
+            when ST.Trace => Mint_Trace (R, Index, Handle, Outcome);
+            when ST.Test_Console => Mint_Test_Console (R, Index, Handle, Outcome);
+            when ST.VM_Create => Mint_VM_Create (R, Index, Handle, Outcome);
             when ST.ACPI_Hardware => Mint_ACPI_Hardware (R, Index, Item, Handle, Outcome);
             when ST.Publication => Mint_Publication (R, Index, Handle, Outcome);
             when ST.Render =>
@@ -4126,7 +4610,7 @@ procedure main is
       --  launch may not have is left to Mint_Service, which refuses it.
       procedure Await_Providers (Refused : out Boolean) is
          use type ST.Need;
-         Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+         Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
          --  Bounded by the manifest's own table (ST.Maximum_Entries); only
          --  the entries found are kept, on the heap.
          Found : Awaited_Services (ST.Entry_Index);
@@ -4147,7 +4631,9 @@ procedure main is
                   Provider_Role : constant Unsigned_64 := Provider_Role_Of (Role);
                   Required : constant Boolean := Item.Requirement = ST.Required;
                begin
-                  if Provider_Role <= Maximum_Role and then not Startup_Only_Denied (Role) then
+                  if Provider_Role <= Maximum_Role
+                    and then not Startup_Only_Denied (Role, View.Caps (View.Request_Of (I)).Rights)
+                  then
                      classifyProvider (Provider_Role, Now, State, Provider, Deadline);
                      if State in Wait_Refusal and then Required then
                         reportWaitRefusal (name, Item.Label, Provider_Role, State);
@@ -4188,9 +4674,11 @@ procedure main is
       debugPrint (name);
       debugPrint ("" & LF);
 
-      t0 := syscall (SYSCALL_GETTIME);
+      t0 := CuBit.Monotonic.Milliseconds;
+      Span_Start := t0;
       elfSize := readFileFromFS (name, File_Request_Deadline_Ms);
-      t1 := syscall (SYSCALL_GETTIME);
+      t1 := CuBit.Monotonic.Milliseconds;
+      Span_Read := t1;
 
       if elfSize = 0 then
          debugPrint ("procmgr: file read failed" & LF);
@@ -4240,13 +4728,19 @@ procedure main is
          end if;
       end;
 
-      t0 := syscall (SYSCALL_GETTIME);
+      t0 := CuBit.Monotonic.Milliseconds;
       declare
          Spawned : constant HC.Spawn_Result := HC.Spawn
            (Authority => PH.Process_Root, Image => imageBuf, Bytes => elfSize,
             Priority => pri,
             Name => name (name'First .. name'First + Natural'Min (name'Length, 16) - 1),
-            Parent => requester, Limit => View.Declared.Limit);
+            --  Launch-into-S: the child's supervisor is the session S, a
+            --  node in procmgr, so procmgr is its kernel parent; the
+            --  requester gets a launch handle (answerLaunched), not the
+            --  parent's place. A plan entry or a supervisor's Start_Child
+            --  names its parent as before.
+            Parent => (if launchSession then No_Process else requester),
+            Limit => View.Declared.Limit);
       begin
          if not Spawned.Spawned then
             debugPrint ("procmgr: spawn refused: " & H.ABI.Refusal'Image (Spawned.Why) & LF);
@@ -4257,7 +4751,8 @@ procedure main is
          end if;
          Child := Spawned.Value;
       end;
-      t1 := syscall (SYSCALL_GETTIME);
+      t1 := CuBit.Monotonic.Milliseconds;
+      Span_Spawned := t1;
       newPID := Child.Child;
 
       debugPrint ("procmgr: SYSCALL_SPAWN took ");
@@ -4537,19 +5032,40 @@ procedure main is
          Metric_Sources.Started (newPID, pkgId (1 .. pkgIdLen), name);
       end if;
 
-      --  A launched child asks only for services its launcher holds; note a
-      --  render request (granted only after admission, below).
+      --  A launched child gets only what its launcher holds, with at most
+      --  the launcher's rights (Launch_Attenuation): an optional request it
+      --  does not hold is withheld, a required one refuses the launch. Note
+      --  a render request (granted only after admission, below).
       for I in 1 .. View.Declared.Count loop
          if View.Request_Of (I) /= 0 then
             declare
                R : Caps_Request renames View.Caps (View.Request_Of (I));
+               Label : constant String := String (View.Declared.Entries (I).Label.Text
+                                                    (1 .. View.Declared.Entries (I).Label.Length));
+               use type ST.Need, LAtt.Verdict;
+               Verdict : constant LAtt.Verdict :=
+                 (if attenuateFor = No_Process then LAtt.Given
+                  else LAtt.Decide
+                    (launchGives (R.Kind, R.Param0, R.Rights, R.Param1),
+                     Optional => View.Declared.Entries (I).Requirement /= ST.Required));
             begin
-               if attenuateFor /= No_Process and then not launcherHolds (R.Kind, R.Param0) then
+               if Verdict = LAtt.Refused then
                   attenuationRefused := True;
-                  Warnings.Warn ("procmgr: launch of " & name & " refused: it requests """ &
-                                 String (View.Declared.Entries (I).Label.Text
-                                           (1 .. View.Declared.Entries (I).Label.Length)) &
-                                 """, which its launcher does not hold");
+                  if withheldLength = 0 then
+                     withheldLength := Natural'Min (Label'Length, CuBit.Launch_Arguments.Withheld_Label_Bytes);
+                     withheldLabel (1 .. withheldLength) :=
+                       Label (Label'First .. Label'First + withheldLength - 1);
+                  end if;
+                  Warnings.Warn ("procmgr: launch of " & name & " refused: it requires """ &
+                                 Label & """, which " &
+                                 (if launchSession then "its session withholds"
+                                  else "its launcher does not hold"));
+               elsif Verdict = LAtt.Withheld then
+                  Withheld (I) := True;
+                  Warnings.Inform ("procmgr: " & name & ": optional """ & Label &
+                                   """ withheld: " &
+                                   (if launchSession then "outside its session's envelope"
+                                    else "its launcher does not hold it"));
                elsif R.Kind = CuBit.Render_Authority.Manifest_Request then
                   -- A render endpoint is admitted by devmgr, never copied by
                   -- the generic service path.
@@ -4564,6 +5080,12 @@ procedure main is
             end;
          end if;
       end loop;
+      --  Render approved for this child's own render request: a child it
+      --  launches may ask for render too (launcherHolds).
+      if launchIndex (newPID) /= 0 then
+         Launches.Values (launchIndex (newPID)).Render_Approved :=
+           approveRender and then Render.Requested and then Render.Valid;
+      end if;
 
       -- A software retry must retain explicit executable opt-in. Reject
       -- malformed requests and Config storage roles before external attachment.
@@ -4653,12 +5175,13 @@ procedure main is
       end;
 
       --  Parse .cubit.access and install only its validated scopes.
+      Span_Reset := CuBit.Monotonic.Milliseconds;
       declare
          Policy_Ready : Boolean;
       begin
          parseAndSendACL (newPID, elfSize, Policy_Ready,
-                          sandboxMode, cwd, name,
-                          networkApproved => approveNetwork /= No_Network);
+                          binaryName => name,
+                          networkApproved => approveNetwork /= No_Network or else launchSession);
          if Policy_Ready and then not attenuationRefused and then
            not launchDirectoryVisible (newPID)
          then
@@ -4713,7 +5236,7 @@ procedure main is
             use type Render_Launch.Phase, CuBit.Render_Startup.Decision;
             Receipt : aliased CompletionEntry;
             Consumed, Accepted : Boolean := False;
-            Now : Unsigned_64 := syscall (SYSCALL_GETTIME);
+            Now : Unsigned_64 := CuBit.Monotonic.Milliseconds;
             Deadline : Unsigned_64 := Now;
             Activity : Activity_Result;
             Mode : constant CuBit.Render_Startup.Attempt :=
@@ -4732,9 +5255,8 @@ procedure main is
             end if;
             debugPrint ("procmgr: render attempt incarnation=" & Image (Identity) &
               " software=" & Boolean'Image (Mode = CuBit.Render_Startup.Software_Only) & LF);
-            -- Only a trusted startup plan or Desktop's named GPU-app rule
-            -- (CuBit.Launch_Policy.Desktop_Render_Approval) supplies this
-            -- approval. Other spawn requests never propagate it.
+            -- Only a trusted startup plan supplies this approval, or a
+            -- launcher it was approved for passes it on (launcherHolds).
             if Mode = CuBit.Render_Startup.With_Render and then
               approveRender and then Render.Valid and then
               Now <= Unsigned_64'Last - 6_000
@@ -4749,7 +5271,7 @@ procedure main is
                -- not resume this child while its render admission is pending.
                -- This is the sole completion-token owner in procmgr today.
                while Render_Launch.State (Render_Launcher, Render_Ticket) = Render_Launch.Pending loop
-                  Now := syscall (SYSCALL_GETTIME);
+                  Now := CuBit.Monotonic.Milliseconds;
                   exit when Now >= Deadline;
                   if Poll_Completion (Receipt'Address) = 1 then
                      Render_Launch.Complete (Render_Launcher, Receipt, Consumed);
@@ -4832,7 +5354,7 @@ procedure main is
 
       --  The startup table, appended to the launch block, which goes in
       --  before the child first runs (the kernel takes it only then, once).
-      t0 := syscall (SYSCALL_GETTIME);
+      t0 := CuBit.Monotonic.Milliseconds;
       declare
          package LE renames CuBit.Launch_Envelopes;
          Built : ST.Table;
@@ -4864,6 +5386,32 @@ procedure main is
                     when others => LA.Capability_Denied));
             Discard_Authorized_Child;
             return No_Process;
+         end if;
+         --  The introducer (CuBit.Late_Introduction): procmgr's endpoint,
+         --  badged, when a decision was kept for a late introduction. Its
+         --  name is never a declared one; without room it is left out (the
+         --  program runs without the optional services, as before).
+         if Late_Kept then
+            declare
+               Label : constant ST.Name := ST.To_Name (LI.Binding);
+               Handle : Unsigned_64;
+               Outcome : SB.Mint_Outcome;
+            begin
+               if Built.Count < ST.Maximum_Entries and then ST.Find (Built, Label) = 0 then
+                  Install (Badged (PH.Self_Grantable, H.Read_Write, LI.Introducer_Tag), Handle, Outcome);
+                  if Outcome = SB.Granted then
+                     Built.Count := Built.Count + 1;
+                     Built.Entries (Built.Count) :=
+                       (Label => Label, Kind => ST.Endpoint, Requirement => ST.Optional,
+                        State => ST.Granted, Handle => Handle);
+                  end if;
+               end if;
+               if Built.Count = 0 or else ST.Find (Built, Label) = 0 then
+                  Warnings.Warn ("procmgr: " & name & ": no room for its introducer; " &
+                                 "its optional services stay absent");
+                  forgetLate (newPID);
+               end if;
+            end;
          end if;
          --  The ACPI windows, after the built entries, each under its own
          --  name (CuBit.ACPI_Hardware_Authority): never in place of a
@@ -4967,7 +5515,7 @@ procedure main is
             return No_Process;
          end if;
       end;
-      t1 := syscall (SYSCALL_GETTIME);
+      t1 := CuBit.Monotonic.Milliseconds;
       debugPrint ("procmgr: startup table took ");
       printDec (Unsigned_32 (t1 - t0));
       debugPrint ("ms" & LF);
@@ -4977,6 +5525,7 @@ procedure main is
 
       --  Resource quotas from the config store (overwrites elfBuf), given
       --  to the kernel as the child starts.
+      Span_Setup := CuBit.Monotonic.Milliseconds;
       declare
          maxFrames   : Unsigned_32 := 0;
          cpuQuotaUs  : Unsigned_32 := 0;
@@ -5019,13 +5568,32 @@ procedure main is
       debugPrint (Image (newPID));
       debugPrint ("" & LF);
 
-      --  devmgr uses logstore and the desktop: offer it their endpoints.
-      if Offer_Logstore then
-         offerToDeviceManager (DRIVER_LOGSTORE, Child.Mailbox);
-      end if;
-      if Offer_Desktop then
-         offerToDeviceManager (DRIVER_DESKTOP, Child.Mailbox);
-      end if;
+      declare
+         Done : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+         function Ms (From, To : Unsigned_64) return String is
+            Text : constant String := Unsigned_64'Image (if To >= From then To - From else 0);
+         begin
+            return Text (Text'First + 1 .. Text'Last);
+         end Ms;
+      begin
+         if Done - Span_Start >= Slow_Spawn_Ms then
+            Warnings.Inform ("procmgr: spawn " & name & " pid" & Image (newPID) & " took " &
+                             Ms (Span_Start, Done) & " ms: read " & Ms (Span_Start, Span_Read) &
+                             ", kernel spawn " & Ms (Span_Read, Span_Spawned) &
+                             ", policy resets " & Ms (Span_Spawned, Span_Reset) &
+                             ", access and grants " & Ms (Span_Reset, Span_Setup) &
+                             ", quota and resume " & Ms (Span_Setup, Done));
+         end if;
+      end;
+
+      --  A provider started: once it registers, every holder waiting for
+      --  its role is introduced to it (devmgr: logstore and the desktop;
+      --  programs: the optional entries they were started without).
+      for Role in Provides'Range loop
+         if Provides (Role) then
+            Introduce_When_Registered (Role) := True;
+         end if;
+      end loop;
 
       --  Notify requester about declared streams (after resume).
       if streamBitmask /= 0 and then requester /= No_Process then
@@ -5052,8 +5620,6 @@ procedure main is
      (name        : String;
       priority    : Unsigned_64;
       requester   : Process_ID := No_Process;
-      sandboxMode : Unsigned_8 := SANDBOX_NONE;
-      cwd         : String := "";
       approveNetwork : Network_Approval := No_Network;
       approveRender : Boolean := False;
       systemStartup : Boolean := False;
@@ -5064,6 +5630,9 @@ procedure main is
       approveFirmwareData : Boolean := False;
       approveDisplayCapture : Boolean := False;
       approvePlatformPower : Boolean := False;
+      approveTrace : Boolean := False;
+      approveTestConsole : Boolean := False;
+      approveVMCreate : Boolean := False;
       readyDeadlineMs : CCL.Configurations.Ready_Deadline;
       mayWait : Boolean;
       Waits : out Awaited_Access;
@@ -5082,10 +5651,11 @@ procedure main is
          return No_Process;
       end if;
       Result := Spawn_Attempt
-        (False, No_Process, Retry, Identity, Failure, name, priority, requester, sandboxMode,
-         cwd, approveNetwork, approveRender, systemStartup, startupRole, approveFirmwareSnapshot,
+        (False, No_Process, Retry, Identity, Failure, name, priority, requester,
+         approveNetwork, approveRender, systemStartup, startupRole, approveFirmwareSnapshot,
          approveACPIHardware, approvePCIConfig, approveFirmwareData,
-         approveDisplayCapture, approvePlatformPower, readyDeadlineMs, mayWait, Waits);
+         approveDisplayCapture, approvePlatformPower, approveTrace, approveTestConsole,
+         approveVMCreate, readyDeadlineMs, mayWait, Waits);
       if Result = No_Process and then Retry then
          -- Exactly one fresh attempt, with no broker request. The failed
          -- attempt's launcher resources stay retained independently. The
@@ -5093,10 +5663,11 @@ procedure main is
          debugPrint ("procmgr: render retry software with fresh child" & LF);
          Result := Spawn_Attempt
            (True, Identity, Retry, Retry_Identity, Failure, name, priority, requester,
-            sandboxMode, cwd, approveNetwork, approveRender, systemStartup, startupRole,
+            approveNetwork, approveRender, systemStartup, startupRole,
             approveFirmwareSnapshot, approveACPIHardware, approvePCIConfig,
-            approveFirmwareData, approveDisplayCapture, approvePlatformPower, readyDeadlineMs,
-            False, Waits);
+            approveFirmwareData, approveDisplayCapture, approvePlatformPower, approveTrace,
+            approveTestConsole, approveVMCreate,
+            readyDeadlineMs, False, Waits);
       end if;
       return Result;
    end spawnByName;
@@ -5110,10 +5681,10 @@ procedure main is
    --  procmgr reads without a call, and a provider's end is its
    --  EVENT_CHILD_EXIT, which clears its Registrants entry.
    --  A startup plan entry holds the plan's later entries back (they start
-   --  in order); an OP_LAUNCH or OP_SPAWN request keeps its requester's
+   --  in order); an OP_LAUNCH request keeps its requester's
    --  reply, saved, and is served again from its message when its waits end.
    ---------------------------------------------------------------------------
-   type Parked_Kind is (Plan_Launch, Launch_Request, Spawn_Request);
+   type Parked_Kind is (Plan_Launch, Launch_Request);
    type Parked_Launch;
    type Parked_Access is access Parked_Launch;
    type Parked_Launch (Name_Length : Natural) is record
@@ -5147,22 +5718,24 @@ procedure main is
    Deferred_Answer : H.Reply := H.No_Reply;
    function servingDeferred return Boolean is (H.Valid (Deferred_Answer));
 
-   --  Answer the OP_LAUNCH or OP_SPAWN request being served.
-   procedure answerRequest (dest : Process_ID; label : Unsigned_32; word0 : Unsigned_64) is
+   --  Answer the OP_LAUNCH request being served.
+   procedure answerRequest
+     (dest : Process_ID; label : Unsigned_32; word0 : Unsigned_64;
+      More : CuBit.Launch_Arguments.Label_Words := [others => 0];
+      Length : Unsigned_8 := 1)
+   is
+      Answer : Message := NULL_MESSAGE;
+      Ignore : Boolean;
+      Ignore_Sent : Unsigned_64;
    begin
+      Answer.tag := (label => label, length => Length, protocol => 0, ipc => <>, reserved => 0);
+      Answer.words := [word0, More (1), More (2), More (3)];
       if servingDeferred then
-         declare
-            Answer : Message := NULL_MESSAGE;
-            Ignore : Boolean;
-         begin
-            Answer.tag := (label => label, length => 1, protocol => 0, ipc => <>, reserved => 0);
-            Answer.words := [0 => word0, others => 0];
-            --  Used up either way; a requester gone since has no one to tell.
-            Ignore := HIPC.Answer (Deferred_Answer, Answer);
-            Deferred_Answer := H.No_Reply;
-         end;
+         --  Used up either way; a requester gone since has no one to tell.
+         Ignore := HIPC.Answer (Deferred_Answer, Answer);
+         Deferred_Answer := H.No_Reply;
       else
-         sendReply (dest, label, word0);
+         Ignore_Sent := reply (dest, Answer);
       end if;
    end answerRequest;
 
@@ -5197,7 +5770,6 @@ procedure main is
    --  not signature-checked: signed admission is not built yet.
    ---------------------------------------------------------------------------
    Staged_Switch_Operation : constant Unsigned_32 := CuBit.Launch_Authority.Staged_Switch_Operation;
-   End_Child_Operation     : constant Unsigned_32 := CuBit.Launch_Authority.End_Child_Operation;
    Staged_Launches_Allowed : Boolean := False;
 
    type Launch_Admission is (Named, Staged, Staged_Switch_Off, Not_Admitted);
@@ -5242,32 +5814,835 @@ procedure main is
       sendReply (sender, REPLY_OK, 0);
    end handleStagedSwitch;
 
-   --  End_Child_Operation: words (0) = a child's identity. Only its
-   --  launcher may end it (after a Stop it did not obey in time); procmgr
-   --  kills it with the process authority it holds.
-   procedure handleEndChild (sender : Process_ID; msg : Message) is
-      Child : constant Process_ID := From_Word (msg.words (0));
-      Known : Records.Index;
+   --  procmgr's own identity (its own endpoint names it), found once.
+   Own_Identity : Process_ID := No_Process;
+   function ownIdentity return Process_ID is
    begin
-      if msg.tag.length /= 1 or else Child = No_Process then
-         sendReply (sender, REPLY_ERR, 0);
+      if Own_Identity = No_Process then
+         declare
+            D : constant HIPC.Description := HIPC.Describe (PH.Self_Grantable);
+         begin
+            if D.Current then
+               Own_Identity := From_Word (D.Object);
+            end if;
+         end;
+      end if;
+      return Own_Identity;
+   end ownIdentity;
+
+   --  A process's name for the log: its manifest identity, "devmgr",
+   --  "procmgr", or its identity number.
+   function processName (Process : Process_ID) return String is
+      Known : constant Records.Index := Records.Find (Process);
+   begin
+      if Process /= No_Process and then Process = Registered_Driver (DRIVER_DEVMGR) then
+         return "devmgr";
+      elsif Process /= No_Process and then Process = ownIdentity then
+         return "procmgr";
+      elsif Known /= 0 and then Records.Values (Known).Valid then
+         return Records.Values (Known).Identity (1 .. Records.Values (Known).Identity_Length);
+      end if;
+      return "process";
+   end processName;
+
+   ---------------------------------------------------------------------------
+   --  Launch handles (CAP-012, docs/authority-model.md 7.5 item 5): what a
+   --  Launch-into-S launch gives its requester. A handle is procmgr's own
+   --  endpoint badged with one issuance's tag (CuBit.Launch_Handles); the
+   --  issuance names the child and the rights. procmgr is the child's
+   --  kernel parent (its session supervisor S is a node here), so the
+   --  handle is the requester's only way to it: observe it and its exit,
+   --  stop or end it, and ask procmgr to mint Debug_Observe on it. The
+   --  decisions are Handle_Admission's (proved); this acts on them.
+   --
+   --  Issuances live on the heap (CuAlloc), as many as are held, up to
+   --  Issuance_Ceiling (a named ceiling: past it a launch still runs, its
+   --  reply says Capacity and carries no handle). An issuance outlives its
+   --  child (Child_Gone: Observe answers the exit outcome) until its holder
+   --  revokes it or ends; a revoked one answers Revoked while its child
+   --  runs, and goes when the child ends or the table needs the room.
+   ---------------------------------------------------------------------------
+   package LH renames CuBit.Launch_Handles;
+   package HA renames Handle_Admission;
+   package HD renames CuBit.Handles.Debug;
+   use type LH.Outcome, LH.Operation, LH.Control_Request, LH.Debug_Path;
+   use type HA.Issuance_State, HA.Route, HA.Target_Class;
+   use type HIPC.Reply_Outcome, CuBit.Child_Exits.Termination_Kind;
+
+   type Issuance is record
+      --  An LH.Serial; 0: a free entry.
+      Serial : Unsigned_64 := 0;
+      --  The issuance it was narrowed from; 0: issued by a launch.
+      Parent : Unsigned_64 := 0;
+      Child  : Process_ID := No_Process;
+      --  Who it was issued to (the requester, or who narrowed it).
+      Holder : Process_ID := No_Process;
+      Rights : LH.Rights := LH.No_Rights;
+      State  : HA.Issuance_State := HA.Unknown;
+      Ended  : CuBit.Child_Exits.Report;
+   end record;
+   type Issuance_Array is array (Positive range <>) of Issuance;
+   type Issuance_Block is access Issuance_Array;
+   procedure Free is new Ada.Unchecked_Deallocation (Issuance_Array, Issuance_Block);
+   Issuances : Issuance_Block := null;
+   Initial_Issuances : constant := 16;
+   Issuance_Ceiling  : constant := 65_536;
+   Next_Serial : Unsigned_64 := 1;
+
+   function issuanceAt (Serial : Unsigned_64) return Natural is
+   begin
+      if Issuances /= null and then Serial /= 0 then
+         for K in Issuances'Range loop
+            if Issuances (K).Serial = Serial then
+               return K;
+            end if;
+         end loop;
+      end if;
+      return 0;
+   end issuanceAt;
+
+   --  A free entry, growing the table (doubling, up to the ceiling) or
+   --  dropping revoked issuances when it is full; 0 when none can be had.
+   function freeIssuance return Natural is
+      Grown : Issuance_Block;
+   begin
+      if Issuances = null then
+         Issuances := new Issuance_Array (1 .. Initial_Issuances);
+      end if;
+      for K in Issuances'Range loop
+         if Issuances (K).Serial = 0 then
+            return K;
+         end if;
+      end loop;
+      if Issuances'Length < Issuance_Ceiling then
+         Grown := new Issuance_Array (1 .. Natural'Min (2 * Issuances'Length, Issuance_Ceiling));
+         Grown (Issuances'Range) := Issuances.all;
+         Free (Issuances);
+         Issuances := Grown;
+         return Issuances'Length / 2 + 1;
+      end if;
+      for K in Issuances'Range loop
+         if Issuances (K).State = HA.Revoked then
+            Issuances (K) := (others => <>);
+         end if;
+      end loop;
+      for K in Issuances'Range loop
+         if Issuances (K).Serial = 0 then
+            return K;
+         end if;
+      end loop;
+      return 0;
+   end freeIssuance;
+
+   --  A new issuance for Child; Serial 0 when the ceiling is reached or
+   --  the serials are spent (never reused, never wrapped).
+   procedure issue
+     (Child, Holder : Process_ID; Rights : LH.Rights; Parent : Unsigned_64;
+      State : HA.Issuance_State; Ended : CuBit.Child_Exits.Report; Serial : out Unsigned_64)
+   is
+      K : Natural;
+   begin
+      Serial := 0;
+      if Next_Serial > LH.Serial'Last then
          return;
       end if;
-      Known := Records.Find (Child);
-      if Known = 0 or else not Records.Values (Known).Valid
-        or else Records.Values (Known).Launcher /= sender
-        or else not Valid (Records.Values (Known).Control)
+      K := freeIssuance;
+      if K = 0 then
+         return;
+      end if;
+      Serial := Next_Serial;
+      Next_Serial := Next_Serial + 1;
+      Issuances (K) := (Serial => Serial, Parent => Parent, Child => Child, Holder => Holder,
+                        Rights => Rights, State => State, Ended => Ended);
+   end issue;
+
+   procedure forgetIssuance (Serial : Unsigned_64) is
+      K : constant Natural := issuanceAt (Serial);
+   begin
+      if K /= 0 then
+         Issuances (K) := (others => <>);
+      end if;
+   end forgetIssuance;
+
+   --  Serial descends from Ancestor (or is it) through Parent links.
+   function descends (Serial, Ancestor : Unsigned_64) return Boolean is
+      Current : Unsigned_64 := Serial;
+      K : Natural;
+   begin
+      --  Parents are always older (smaller serials), so this ends.
+      while Current /= 0 loop
+         if Current = Ancestor then
+            return True;
+         end if;
+         K := issuanceAt (Current);
+         exit when K = 0 or else Issuances (K).Parent >= Current;
+         Current := Issuances (K).Parent;
+      end loop;
+      return False;
+   end descends;
+
+   ---------------------------------------------------------------------------
+   --  Debug sessions procmgr minted (DBG-001): the published state the
+   --  Desktop reads to show "being debugged by" (Debug_Records_Operation),
+   --  and what revoking a launch handle ends. procmgr keeps its own copy of
+   --  each session to see whether it still lives (a detached or ended
+   --  session answers Revoked) and revokes through the target's Control.
+   ---------------------------------------------------------------------------
+   type Debug_Record is record
+      Live         : Boolean := False;
+      Target       : Process_ID := No_Process;
+      Holder       : Process_ID := No_Process;
+      Kind         : Debug_ABI.Debug_Kind := Debug_ABI.Observe;
+      Path         : LH.Debug_Path := LH.Session_Authority_Path;
+      --  The launch handle it was minted through (0: the session's debug
+      --  authority).
+      Via          : Unsigned_64 := 0;
+      Session_Word : Unsigned_64 := 0;
+      Own          : HD.Session;
+   end record;
+   type Debug_Record_Array is array (Positive range <>) of Debug_Record;
+   type Debug_Record_Block is access Debug_Record_Array;
+   procedure Free is new Ada.Unchecked_Deallocation (Debug_Record_Array, Debug_Record_Block);
+   Debug_Records : Debug_Record_Block := null;
+   Initial_Debug_Records : constant := 8;
+   Debug_Record_Ceiling  : constant := 4_096;
+
+   procedure endDebugRecord (K : Positive; Revoke : Boolean) is
+      R : Debug_Record renames Debug_Records (K);
+      Known : constant Records.Index := Records.Find (R.Target);
+      Ignore_Word : Unsigned_64;
+      Ignore : Boolean;
+   begin
+      if Revoke and then Known /= 0 and then Records.Values (Known).Valid
+        and then Valid (Records.Values (Known).Control)
       then
-         sendReply (sender, REPLY_ERR, 0);
+         Ignore_Word := HD.Revoke (Records.Values (Known).Control, R.Session_Word);
+      end if;
+      if HD.Valid (R.Own) then
+         Ignore := HD.Close (R.Own);
+      end if;
+      R := (others => <>);
+   end endDebugRecord;
+
+   --  Forget sessions that ended by themselves (Detach, the viewer's end).
+   procedure pruneDebugRecords is
+   begin
+      if Debug_Records = null then
          return;
       end if;
-      Warnings.Inform ("procmgr: ending " &
-        Records.Values (Known).Identity (1 .. Records.Values (Known).Identity_Length) &
-        " pid" & Image (Child) & " for its launcher");
-      sendReply (sender,
-                 (if killProcess (Child, Records.Values (Known).Control) = 0
-                  then REPLY_OK else REPLY_ERR), 0);
-   end handleEndChild;
+      for K in Debug_Records'Range loop
+         if Debug_Records (K).Live
+           and then not HD.Outcome_Is (HD.Call (Debug_Records (K).Own, Debug_ABI.Describe),
+                                       Debug_ABI.Done)
+         then
+            Warnings.Inform ("procmgr: debug: session on pid" & Image (Debug_Records (K).Target) &
+                             " for pid" & Image (Debug_Records (K).Holder) & " has ended");
+            endDebugRecord (K, Revoke => False);
+         end if;
+      end loop;
+   end pruneDebugRecords;
+
+   procedure keepDebugRecord (Item : Debug_Record; Kept : out Boolean) is
+      Grown : Debug_Record_Block;
+   begin
+      Kept := False;
+      if Debug_Records = null then
+         Debug_Records := new Debug_Record_Array (1 .. Initial_Debug_Records);
+      end if;
+      for Pass in 1 .. 2 loop
+         for K in Debug_Records'Range loop
+            if not Debug_Records (K).Live then
+               Debug_Records (K) := Item;
+               Kept := True;
+               return;
+            end if;
+         end loop;
+         exit when Debug_Records'Length >= Debug_Record_Ceiling;
+         Grown := new Debug_Record_Array
+           (1 .. Natural'Min (2 * Debug_Records'Length, Debug_Record_Ceiling));
+         Grown (Debug_Records'Range) := Debug_Records.all;
+         Free (Debug_Records);
+         Debug_Records := Grown;
+      end loop;
+   end keepDebugRecord;
+
+   --  The answer to a handle or session-debug request: words (0) the
+   --  outcome, the rest as the operation says.
+   function handleAnswer
+     (What : LH.Outcome; W1, W2, W3 : Unsigned_64 := 0; Length : Unsigned_8 := 1) return Message
+   is
+      Answer : Message := NULL_MESSAGE;
+   begin
+      Answer.tag := (label => REPLY_OK, length => Length, protocol => 0, ipc => <>, reserved => 0);
+      Answer.words := [LH.Outcome_Word (What), W1, W2, W3];
+      return Answer;
+   end handleAnswer;
+
+   procedure answerHandle
+     (sender : Process_ID; What : LH.Outcome; W1, W2, W3 : Unsigned_64 := 0;
+      Length : Unsigned_8 := 1)
+   is
+      Ignore : Unsigned_64;
+   begin
+      Ignore := reply (sender, handleAnswer (What, W1, W2, W3, Length));
+   end answerHandle;
+
+   --  What the target is, for the debug envelope. The trusted path, the
+   --  secrets store and devmgr by the roles only they may register (the
+   --  same identities registrationAllowed admits); a program launched into
+   --  the session by its record; anything else procmgr started is a
+   --  system service.
+   function targetClass (Target : Process_ID; Known : Records.Index) return HA.Target_Class is
+      function Is_Identity (Name : String) return Boolean is
+        (Known /= 0 and then Records.Values (Known).Valid
+         and then Records.Values (Known).Identity (1 .. Records.Values (Known).Identity_Length) = Name);
+   begin
+      if Target = No_Process or else Target = ownIdentity then
+         return HA.Process_Manager;
+      elsif Target = Registered_Driver (DRIVER_DEVMGR) then
+         return HA.Device_Manager;
+      elsif Target = Registrants (CuBit.Secrets_Protocol.Service_Role)
+        or else Is_Identity ("com.cubit.secrets")
+      then
+         return HA.Secrets_Service;
+      elsif Target = Registrants (DRIVER_DESKTOP) or else Is_Identity ("com.cubit.desktop") then
+         return HA.Trusted_Path;
+      elsif Known /= 0 and then Records.Values (Known).Valid
+        and then Records.Values (Known).Session_Child
+      then
+         return HA.Session_Member;
+      end if;
+      return HA.System_Service;
+   end targetClass;
+
+   function debugKindName (Kind : Debug_ABI.Debug_Kind) return String is
+     (case Kind is
+        when Debug_ABI.Observe => "Debug_Observe", when Debug_ABI.Pause => "Debug_Pause",
+        when Debug_ABI.Modify => "Debug_Modify", when Debug_ABI.Instrument => "Debug_Instrument");
+
+   function debugPathName (Path : LH.Debug_Path) return String is
+     (if Path = LH.Launch_Handle_Path then "through its launch handle"
+      else "through the session's debug authority");
+
+   --  Mint a debug session of the kind msg asks (Kind_Word) on Target for
+   --  sender, if the session's debug envelope allows it, and hand it over
+   --  in the reply (the request must accept a capability). Every mint and
+   --  every refusal is logged (logstore, through Warnings).
+   procedure mintDebug
+     (sender : Process_ID; Target : Process_ID; Kind_Word : Unsigned_64;
+      Path : LH.Debug_Path; Via : Unsigned_64)
+   is
+      Known : constant Records.Index := (if Target = No_Process then 0 else Records.Find (Target));
+      Facts : HA.Debug_Facts;
+      Decision : LH.Outcome;
+   begin
+      if not Debug_ABI.Is_Kind_Word (Kind_Word) then
+         answerHandle (sender, LH.Malformed);
+         return;
+      end if;
+      Facts := (Path => Path, Class => targetClass (Target, Known),
+                Held_Control => Known /= 0 and then Records.Values (Known).Valid
+                                and then Records.Values (Known).Resumed
+                                and then Valid (Records.Values (Known).Control),
+                Kind => Debug_ABI.To_Kind (Kind_Word));
+      Decision := HA.Debug_Decision (Facts, HA.User_Session_Debug, Debugging_Gate);
+      if Decision /= LH.Done then
+         Warnings.Warn ("procmgr: debug: " & debugKindName (Facts.Kind) & " on " &
+                        processName (Target) & " pid" & Image (Target) & " refused for " &
+                        processName (sender) & " pid" & Image (sender) & " " &
+                        debugPathName (Path) & ": " &
+                        (case Decision is
+                           when LH.Approval_Needed =>
+                             "production debugging needs owner approval (not built yet)",
+                           when LH.Debugging_Disabled => "debugging is disabled for this image",
+                           when others => LH.Outcome'Image (Decision)));
+         answerHandle (sender, Decision);
+         return;
+      end if;
+      pruneDebugRecords;
+      declare
+         Minted : constant HD.Mint_Result :=
+           HD.Mint (Records.Values (Known).Control, Facts.Kind);
+         Kept : Boolean;
+         Ignore_Word : Unsigned_64;
+         Ignore : Boolean;
+         Result : HIPC.Reply_Result;
+      begin
+         if not Minted.Minted then
+            Warnings.Warn ("procmgr: debug: the kernel refused " & debugKindName (Facts.Kind) &
+                           " on " & processName (Target) & " pid" & Image (Target) &
+                           " (outcome" & Unsigned_64'Image (Minted.Why_Word) & ")");
+            answerHandle (sender, LH.Failed, Minted.Why_Word, Length => 2);
+            return;
+         end if;
+         keepDebugRecord
+           ((Live => True, Target => Target, Holder => sender, Kind => Facts.Kind, Path => Path,
+             Via => Via, Session_Word => Minted.Session_Word, Own => Minted.Handle), Kept);
+         if not Kept then
+            Ignore_Word := HD.Revoke (Records.Values (Known).Control, Minted.Session_Word);
+            Ignore := HD.Close (Minted.Handle);
+            answerHandle (sender, LH.Capacity);
+            return;
+         end if;
+         --  Read only, no Grant: the holder may not pass it on.
+         Result := HIPC.Reply_With
+           (sender, handleAnswer (LH.Done, To_Word (Target), Debug_ABI.Kind_Word (Facts.Kind),
+                                  Length => 3),
+            HD.Copy (Minted.Handle, Facts.Kind, (Read => True, others => False)));
+         if Result.Outcome = HIPC.Transferred then
+            Warnings.Inform ("procmgr: debug: " & debugKindName (Facts.Kind) & " on " &
+                             processName (Target) & " pid" & Image (Target) & " minted for " &
+                             processName (sender) & " pid" & Image (sender) & " " &
+                             debugPathName (Path) & "; " & processName (Target) &
+                             " is being debugged by " & processName (sender));
+            return;
+         end if;
+         --  Not taken: end the session at once.
+         for K in Debug_Records'Range loop
+            if Debug_Records (K).Live and then Debug_Records (K).Session_Word = Minted.Session_Word
+              and then Debug_Records (K).Target = Target
+            then
+               endDebugRecord (K, Revoke => True);
+            end if;
+         end loop;
+         if Result.Outcome = HIPC.Refused then
+            answerHandle (sender, LH.Not_Accepted);
+         end if;
+         Warnings.Warn ("procmgr: debug: " & processName (sender) & " pid" & Image (sender) &
+                        " did not take the session on " & processName (Target));
+      end;
+   end mintDebug;
+
+   --  Revoke an issuance and every issuance narrowed from it, and end the
+   --  debug sessions minted through any of them.
+   procedure revokeIssuance (Serial : Unsigned_64) is
+   begin
+      for K in Issuances'Range loop
+         if Issuances (K).Serial /= 0 and then descends (Issuances (K).Serial, Serial) then
+            if Debug_Records /= null then
+               for D in Debug_Records'Range loop
+                  if Debug_Records (D).Live and then Debug_Records (D).Via = Issuances (K).Serial then
+                     endDebugRecord (D, Revoke => True);
+                  end if;
+               end loop;
+            end if;
+            Issuances (K).State := HA.Revoked;
+         end if;
+      end loop;
+      --  An ended child's revoked issuances have nothing left to answer.
+      for K in Issuances'Range loop
+         if Issuances (K).State = HA.Revoked
+           and then not processListed (Issuances (K).Child)
+         then
+            Issuances (K) := (others => <>);
+         end if;
+      end loop;
+   end revokeIssuance;
+
+   --  The child's state for Observe: (state, exit code).
+   procedure observed (Item : Issuance; State, Code : out Unsigned_64) is
+   begin
+      if Item.State = HA.Child_Gone then
+         State := LH.State_Word
+           (if Item.Ended.Kind = CuBit.Child_Exits.Exited then LH.Exited else LH.Stopped);
+         Code := Item.Ended.Code;
+      else
+         State := LH.State_Word (LH.Running);
+         Code := 0;
+      end if;
+   end observed;
+
+   --  A request through a launch handle (Handle_Admission.Route_Of said so).
+   procedure handleHandleRequest (sender : Process_ID; msg : Message) is
+      Serial : constant Unsigned_64 := LH.Serial_Of (msg.authorityTag);
+      At_Index : constant Natural := issuanceAt (Serial);
+      Op : constant LH.Operation := LH.To_Operation (msg.tag.label);
+      Facts : constant HA.Facts :=
+        (if At_Index = 0 then (State => HA.Unknown, Rights => LH.No_Rights)
+         else (State => Issuances (At_Index).State, Rights => Issuances (At_Index).Rights));
+      Decision : constant LH.Outcome := HA.Decide (Facts, Op, msg.tag.length);
+   begin
+      if Decision /= LH.Done then
+         answerHandle (sender, Decision);
+         return;
+      end if;
+      declare
+         Item : constant Issuance := Issuances (At_Index);
+         Known : constant Records.Index := Records.Find (Item.Child);
+         Has_Control : constant Boolean :=
+           Known /= 0 and then Records.Values (Known).Valid and then Valid (Records.Values (Known).Control);
+      begin
+         case Op is
+            when LH.Observe_Op =>
+               declare
+                  State, Code : Unsigned_64;
+               begin
+                  observed (Item, State, Code);
+                  answerHandle (sender, LH.Done, To_Word (Item.Child), State, Code, Length => 4);
+               end;
+            when LH.Control_Op =>
+               if not LH.Is_Control_Word (msg.words (0)) then
+                  answerHandle (sender, LH.Malformed);
+               elsif not Has_Control then
+                  answerHandle (sender, LH.Failed);
+               elsif LH.To_Control (msg.words (0)) = LH.End_Now then
+                  Warnings.Inform ("procmgr: ending " & processName (Item.Child) & " pid" &
+                                   Image (Item.Child) & " for its launch handle's holder " &
+                                   processName (sender) & " pid" & Image (sender));
+                  answerHandle
+                    (sender, (if killProcess (Item.Child, Records.Values (Known).Control) = 0
+                              then LH.Done else LH.Failed));
+               else
+                  declare
+                     Kind : constant CuBit.Control_Events.Control_Kind :=
+                       (case LH.To_Control (msg.words (0)) is
+                          when LH.Ask_Stop      => CuBit.Control_Events.Stop,
+                          when LH.Ask_Interrupt => CuBit.Control_Events.Interrupt,
+                          when others           => CuBit.Control_Events.Reload);
+                     Answer : constant Unsigned_64 := HC.Send_Control
+                       (Item.Child, CuBit.Control_Events.Control_Kind'Enum_Rep (Kind),
+                        Records.Values (Known).Control);
+                  begin
+                     answerHandle (sender, (if Answer = 0 then LH.Done
+                                            elsif Answer = HC.Busy_Word then LH.Busy
+                                            else LH.Failed));
+                  end;
+               end if;
+            when LH.Attach_Op =>
+               --  Post-hoc outlet attach (7.5 item 7): the right and the
+               --  request exist; connecting arrives with the outlet ledger.
+               answerHandle (sender, LH.Not_Yet);
+            when LH.Introduce_Op =>
+               --  A late introduction from the holder's own holdings
+               --  through the ledger: procmgr does not yet keep a running
+               --  child's manifest entries to check the index against.
+               answerHandle (sender, LH.Not_Yet);
+            when LH.Debug_Op =>
+               mintDebug (sender, Item.Child, msg.words (0), LH.Launch_Handle_Path, Serial);
+            when LH.Narrow_Op =>
+               if not LH.Valid_Rights_Word (msg.words (0)) then
+                  answerHandle (sender, LH.Malformed);
+                  return;
+               end if;
+               declare
+                  Rights : constant LH.Rights :=
+                    HA.Narrowed (Item.Rights, LH.Rights_Of (msg.words (0)));
+                  New_Serial : Unsigned_64;
+                  Result : HIPC.Reply_Result;
+               begin
+                  issue (Item.Child, sender, Rights, Serial, Item.State, Item.Ended, New_Serial);
+                  if New_Serial = 0 then
+                     answerHandle (sender, LH.Capacity);
+                     return;
+                  end if;
+                  Result := HIPC.Reply_With
+                    (sender, handleAnswer (LH.Done, LH.Word_Of (Rights), To_Word (Item.Child),
+                                           Length => 3),
+                     Badged (PH.Self_Grantable, Read_Write_Grant, LH.Tag_Of (New_Serial)));
+                  if Result.Outcome /= HIPC.Transferred then
+                     forgetIssuance (New_Serial);
+                  end if;
+                  if Result.Outcome = HIPC.Refused then
+                     answerHandle (sender, LH.Not_Accepted);
+                  end if;
+               end;
+            when LH.Revoke_Op =>
+               revokeIssuance (Serial);
+               answerHandle (sender, LH.Done);
+         end case;
+      end;
+   end handleHandleRequest;
+
+   --  Session_Debug_Operation through the session's debug badge: words (0)
+   --  the target's identity, (1) a debug kind word.
+   procedure handleSessionDebug (sender : Process_ID; msg : Message) is
+   begin
+      if msg.tag.length /= LH.Session_Debug_Words then
+         answerHandle (sender, LH.Malformed);
+         return;
+      end if;
+      mintDebug (sender, From_Word (msg.words (0)), msg.words (1), LH.Session_Authority_Path, 0);
+   end handleSessionDebug;
+
+   --  Debug_Records_Operation (a process observer): record words (0).
+   procedure handleDebugRecords (sender : Process_ID; msg : Message) is
+      Wanted : Unsigned_64;
+      Seen : Unsigned_64 := 0;
+   begin
+      if not PO.Is_Observer (msg.authorityTag) then
+         answerHandle (sender, LH.Right_Missing);
+         return;
+      elsif msg.tag.length /= LH.Debug_Records_Words then
+         answerHandle (sender, LH.Malformed);
+         return;
+      end if;
+      Wanted := msg.words (0);
+      pruneDebugRecords;
+      if Debug_Records /= null then
+         for K in Debug_Records'Range loop
+            if Debug_Records (K).Live then
+               if Seen = Wanted then
+                  declare
+                     More : Boolean := False;
+                  begin
+                     for J in K + 1 .. Debug_Records'Last loop
+                        More := More or else Debug_Records (J).Live;
+                     end loop;
+                     answerHandle
+                       (sender, LH.Done, To_Word (Debug_Records (K).Target),
+                        To_Word (Debug_Records (K).Holder),
+                        LH.Record_Word (Debug_ABI.Kind_Word (Debug_Records (K).Kind),
+                                        Debug_Records (K).Path, More),
+                        Length => 4);
+                     return;
+                  end;
+               end if;
+               Seen := Seen + 1;
+            end if;
+         end loop;
+      end if;
+      --  Past the last record: no target.
+      answerHandle (sender, LH.Done, 0, 0, 0, Length => 4);
+   end handleDebugRecords;
+
+   ---------------------------------------------------------------------------
+   --  Exit notices: a child launched into the session has procmgr as its
+   --  kernel parent, so procmgr tells its requester it ended
+   --  (LH.Exit_Notice_Label through procmgr's Notice_Tag badge on the
+   --  requester's mailbox). An event the requester's lane cannot take yet
+   --  waits here and is sent again every Notice_Retry_Ms while the
+   --  requester lives: none is dropped (docs/ipc-delivery.md).
+   ---------------------------------------------------------------------------
+   Notice_Retry_Ms : constant := 20;
+   type Pending_Notice;
+   type Pending_Notice_Access is access Pending_Notice;
+   type Pending_Notice is record
+      Requester : Process_ID := No_Process;
+      Report    : CuBit.Child_Exits.Report;
+      Next      : Pending_Notice_Access;
+   end record;
+   procedure Free is new Ada.Unchecked_Deallocation (Pending_Notice, Pending_Notice_Access);
+   Notices_First : Pending_Notice_Access := null;
+   Notices_Due : Unsigned_64 := 0;
+
+   --  True when sent, or when there is no one to tell any more.
+   function sendNotice (Requester : Process_ID; Report : CuBit.Child_Exits.Report) return Boolean is
+      Mailbox : constant CuBit.Handles.Endpoint := mailboxOf (Requester);
+      Badge : CuBit.Handles.Endpoint;
+      Notice : Message := NULL_MESSAGE;
+      Sent : Boolean;
+      Ignore : HIPC.Close_Result;
+   begin
+      if not Valid (Mailbox) then
+         return True;
+      end if;
+      Badge := HC.Derive (Badged (Mailbox, H.Read_Write, LH.Notice_Tag));
+      if not Valid (Badge) then
+         return False;
+      end if;
+      Notice.tag := (label => LH.Exit_Notice_Label, length => CuBit.Child_Exits.Event_Words,
+                     protocol => 0, ipc => <>, reserved => 0);
+      Notice.words := [To_Word (Report.Process),
+                       Unsigned_64 (CuBit.Child_Exits.Termination_Kind'Enum_Rep (Report.Kind)),
+                       Report.Code, 0];
+      Sent := trySendEvent (Requester, Notice, Badge);
+      Ignore := HIPC.Close (Badge);
+      return Sent;
+   end sendNotice;
+
+   procedure queueNotice (Requester : Process_ID; Report : CuBit.Child_Exits.Report) is
+      Last : Pending_Notice_Access := Notices_First;
+      Item : constant Pending_Notice_Access :=
+        new Pending_Notice'(Requester => Requester, Report => Report, Next => null);
+   begin
+      if Last = null then
+         Notices_First := Item;
+      else
+         while Last.Next /= null loop
+            Last := Last.Next;
+         end loop;
+         Last.Next := Item;
+      end if;
+      Notices_Due := CuBit.Monotonic.Milliseconds + Notice_Retry_Ms;
+   end queueNotice;
+
+   --  Send the waiting notices again, oldest first, each requester's in
+   --  order: one that still cannot go holds its requester's later ones.
+   procedure retryNotices is
+      Item : Pending_Notice_Access := Notices_First;
+      Prior : Pending_Notice_Access := null;
+      Next : Pending_Notice_Access;
+
+      --  An older notice to the same requester is still waiting.
+      function Held_Back (Requester : Process_ID) return Boolean is
+         Scan : Pending_Notice_Access := Notices_First;
+      begin
+         while Scan /= null and then Scan /= Item loop
+            if Scan.Requester = Requester then
+               return True;
+            end if;
+            Scan := Scan.Next;
+         end loop;
+         return False;
+      end Held_Back;
+   begin
+      if Notices_First = null or else CuBit.Monotonic.Milliseconds < Notices_Due then
+         return;
+      end if;
+      while Item /= null loop
+         Next := Item.Next;
+         if not Held_Back (Item.Requester) and then sendNotice (Item.Requester, Item.Report) then
+            if Prior = null then
+               Notices_First := Next;
+            else
+               Prior.Next := Next;
+            end if;
+            Free (Item);
+         else
+            Prior := Item;
+         end if;
+         Item := Next;
+      end loop;
+      Notices_Due := (if Notices_First = null then 0
+                      else CuBit.Monotonic.Milliseconds + Notice_Retry_Ms);
+   end retryNotices;
+
+   function noticeWaiting (Requester : Process_ID) return Boolean is
+      Item : Pending_Notice_Access := Notices_First;
+   begin
+      while Item /= null loop
+         if Item.Requester = Requester then
+            return True;
+         end if;
+         Item := Item.Next;
+      end loop;
+      return False;
+   end noticeWaiting;
+
+   --  A process ended: its launch handles answer its exit from now on, its
+   --  requester hears of it, and what it held or was told goes.
+   procedure launchHandlesExited (Exited : Process_ID; Known : Records.Index;
+                                  Report : CuBit.Child_Exits.Report) is
+      Item, Prior, Next : Pending_Notice_Access;
+   begin
+      if Known /= 0 and then Records.Values (Known).Valid
+        and then Records.Values (Known).Session_Child
+        and then Records.Values (Known).Launcher /= No_Process
+      then
+         declare
+            Requester : constant Process_ID := Records.Values (Known).Launcher;
+         begin
+            if noticeWaiting (Requester) or else not sendNotice (Requester, Report) then
+               queueNotice (Requester, Report);
+            end if;
+         end;
+      end if;
+      --  Notices for it as a requester have no one to go to.
+      Item := Notices_First;
+      Prior := null;
+      while Item /= null loop
+         Next := Item.Next;
+         if Item.Requester = Exited then
+            if Prior = null then
+               Notices_First := Next;
+            else
+               Prior.Next := Next;
+            end if;
+            Free (Item);
+         else
+            Prior := Item;
+         end if;
+         Item := Next;
+      end loop;
+      if Issuances /= null then
+         for K in Issuances'Range loop
+            if Issuances (K).Serial /= 0 and then Issuances (K).Child = Exited then
+               if Issuances (K).State = HA.Revoked
+                 or else (Issuances (K).Holder /= No_Process
+                          and then not processListed (Issuances (K).Holder))
+               then
+                  Issuances (K) := (others => <>);
+               else
+                  Issuances (K).State := HA.Child_Gone;
+                  Issuances (K).Ended := Report;
+               end if;
+            elsif Issuances (K).Serial /= 0 and then Issuances (K).Holder = Exited
+              and then Issuances (K).State /= HA.Live
+            then
+               Issuances (K) := (others => <>);
+            end if;
+         end loop;
+      end if;
+      if Debug_Records /= null then
+         for K in Debug_Records'Range loop
+            if Debug_Records (K).Live
+              and then (Debug_Records (K).Target = Exited or else Debug_Records (K).Holder = Exited)
+            then
+               Warnings.Inform ("procmgr: debug: session on " & processName (Debug_Records (K).Target) &
+                                " pid" & Image (Debug_Records (K).Target) & " ended with pid" &
+                                Image (Exited));
+               endDebugRecord (K, Revoke => False);
+            end if;
+         end loop;
+      end if;
+   end launchHandlesExited;
+
+   --  Answer a launch into the session: the child's identity, the rights
+   --  of its launch handle, and the handle itself when the request accepts
+   --  a capability. words (0) = the child's identity, (1) = the handle's
+   --  rights word, (2) = an LH outcome word for the handle (Done: carried;
+   --  Not_Accepted: the request took none; Capacity: none could be issued).
+   procedure answerLaunched (dest : Process_ID; Child : Process_ID; Badge : Session_Launch.Badge) is
+      Rights : constant LH.Rights := HA.Issued (Badge);
+      Known : constant Records.Index := Records.Find (Child);
+      Serial : Unsigned_64;
+      Answer : Message := NULL_MESSAGE;
+      Result : HIPC.Reply_Result;
+      Ignore : Boolean;
+      Ignore_Sent : Unsigned_64;
+   begin
+      if Known /= 0 then
+         Records.Values (Known).Session_Child := True;
+      end if;
+      issue (Child, dest, Rights, 0, HA.Live, (others => <>), Serial);
+      Answer.tag := (label => REPLY_OK, length => 3, protocol => 0, ipc => <>, reserved => 0);
+      Answer.words := [To_Word (Child), LH.Word_Of (Rights),
+                       LH.Outcome_Word (if Serial = 0 then LH.Capacity else LH.Done), 0];
+      if Serial = 0 then
+         Warnings.Warn ("procmgr: launch handle for pid" & Image (Child) &
+                        " not issued: the handle table is at its ceiling");
+         if servingDeferred then
+            Ignore := HIPC.Answer (Deferred_Answer, Answer);
+            Deferred_Answer := H.No_Reply;
+         else
+            Ignore_Sent := reply (dest, Answer);
+         end if;
+         return;
+      end if;
+      if servingDeferred then
+         Result := HIPC.Reply_Saved_With
+           (Deferred_Answer, Answer, Badged (PH.Self_Grantable, Read_Write_Grant, LH.Tag_Of (Serial)));
+      else
+         Result := HIPC.Reply_With
+           (dest, Answer, Badged (PH.Self_Grantable, Read_Write_Grant, LH.Tag_Of (Serial)));
+      end if;
+      if Result.Outcome = HIPC.Transferred then
+         Deferred_Answer := H.No_Reply;
+         return;
+      end if;
+      --  Nobody holds it.
+      forgetIssuance (Serial);
+      if Result.Outcome = HIPC.Refused then
+         Answer.words (2) := LH.Outcome_Word (LH.Not_Accepted);
+         if servingDeferred then
+            Ignore := HIPC.Answer (Deferred_Answer, Answer);
+         else
+            Ignore_Sent := reply (dest, Answer);
+         end if;
+      end if;
+      Deferred_Answer := H.No_Reply;
+   end answerLaunched;
+
 
    ---------------------------------------------------------------------------
    --  handleLaunch
@@ -5293,6 +6668,7 @@ procedure main is
       newPID    : Process_ID;
       Failure   : LA.Launch_Failure := LA.Spawn_Failed;
       Waits     : Awaited_Access;
+      use type Session_Launch.Badge;
 
       procedure Fail (Reason : LA.Launch_Failure) is
       begin
@@ -5310,6 +6686,18 @@ procedure main is
       end if;
       if launchIndex (sender) = 0 then
          Fail (LA.Malformed_Request);
+         return;
+      end if;
+      --  Launch-into-S (CAP-012, Session_Launch): only through a Launch
+      --  badge on procmgr's endpoint. Holding procmgr's endpoint is not
+      --  launch authority.
+      if Session_Launch.Badge_Of (msg.authorityTag) = Session_Launch.No_Badge then
+         Warnings.Warn ("procmgr: launch refused: the request came without a Launch badge");
+         Fail (LA.Not_Granted);
+         return;
+      elsif Session_Launch.Needs_Device_Confirmation (Session_Launch.Badge_Of (msg.authorityTag)) then
+         --  The typed hook for confirmation on the device: none needs it yet.
+         Fail (LA.Not_Granted);
          return;
       end if;
       Reference := CuBit.Grant_References.Decode (msg.words (0));
@@ -5425,20 +6813,28 @@ procedure main is
             end if;
          end;
 
-         --  The child holds a subset of its launcher's authority: no
-         --  network or startup approvals, and its requests are checked
-         --  against what the launcher holds (attenuateFor).
+         --  The child holds a subset of its launcher's authority: each
+         --  request is checked against the user session's envelope, rights
+         --  included (Session_Launch); what the requester introduces
+         --  (delegated places, rings, its Launch badge) against what it
+         --  holds (attenuateFor).
          pendingArgumentBytes := Arguments_Length;
          attenuateFor := sender;
+         launchSession := True;
+         withheldLength := 0;
          attenuationRefused := False;
          directoryRefused := False;
          newPID := spawnByName
-           (Name, Priority, sender, readyDeadlineMs => Unplanned_Ready_Deadline,
+           (Name, Priority, sender,
+            approveRender => Session_Launch.Within
+              (Session_Launch.User_Session, Session_Launch.Render, 0),
+            readyDeadlineMs => Unplanned_Ready_Deadline,
             mayWait => not servingDeferred, Waits => Waits, Failure => Failure);
          pendingArgumentBytes := 0;
          pendingGrantBytes := 0;
          pendingRings := (others => <>);
          attenuateFor := No_Process;
+         launchSession := False;
          --  Waiting for a starting provider: served again from this
          --  request once it registers (resumeParked).
          if Waits /= null then
@@ -5459,21 +6855,39 @@ procedure main is
                "that directory")) & LF);
          directoryRefused := False;
          Fail (LA.Not_Granted);
-      elsif newPID = No_Process and then attenuationRefused then
+      elsif newPID = No_Process and then attenuationRefused and then withheldLength = 0 then
+         --  A delegated place the requester does not hold.
          debugPrint ("procmgr: " & CuBit.Failures.Explain
            ("Starting a program",
             CuBit.Failures.Failed
               (CuBit.Failures.Not_Granted,
-               "it asks for authority its launcher does not hold",
-               "grant the launcher that authority, or remove the request " &
-               "from the program's manifest")) & LF);
+               "its launcher delegates a place it does not hold",
+               "delegate only places the launcher holds")) & LF);
          attenuationRefused := False;
          Fail (LA.Not_Granted);
+      elsif newPID = No_Process and then attenuationRefused then
+         --  A required request the session withholds, named (Request_Withheld).
+         attenuationRefused := False;
+         declare
+            Words : LA.Label_Words;
+         begin
+            LA.Encode_Label (withheldLabel (1 .. withheldLength), Words);
+            debugPrint ("procmgr: " & CuBit.Failures.Explain
+              ("Starting a program",
+               CuBit.Failures.Failed
+                 (CuBit.Failures.Not_Granted,
+                  "it requires """ & withheldLabel (1 .. withheldLength) &
+                  """, which its session withholds",
+                  "make the request optional, or start it where it is approved")) & LF);
+            answerRequest (sender, REPLY_ERR, LA.Launch_Failure'Enum_Rep (LA.Request_Withheld),
+                           Words, Length => 4);
+         end;
       elsif newPID = No_Process then
          Fail (Failure);
       else
-         --  The child's identity (KERN-003): its exit event names it alike.
-         answerRequest (sender, REPLY_OK, To_Word (newPID));
+         --  The child's identity (KERN-003): its exit notice names it
+         --  alike; and its launch handle (CuBit.Launch_Handles).
+         answerLaunched (sender, newPID, Session_Launch.Badge_Of (msg.authorityTag));
       end if;
    end handleLaunch;
 
@@ -5661,121 +7075,6 @@ procedure main is
    end handleProgramDescription;
 
    ---------------------------------------------------------------------------
-   --  handleSpawn
-   --  Request: tag.label=OP_SPAWN, words(0)=grant_id (filename in grant buf),
-   --           tag.length=filename length, words(1)=priority,
-   --           words(2)=spawnFlags (low 2 bits = sandbox override),
-   --           words(3)=cwdLen (cwd bytes follow filename in grant buf)
-   --  Reply OK: words(0)=child identity; the requester is its parent and
-   --  receives its EVENT_CHILD_EXIT. Reply REPLY_ERR: words(0)=
-   --  CuBit.Launch_Arguments.Launch_Failure.
-   ---------------------------------------------------------------------------
-   procedure handleSpawn (sender : Process_ID; msg : Message) is
-      MAX_NAME    : constant := 255;
-      MAX_CWD     : constant := 128;
-      nameLen     : constant Natural := Natural (msg.tag.length);
-      priority    : constant Unsigned_64 := msg.words (1);
-      spawnFlags  : constant Unsigned_64 := msg.words (2);
-      cwdLen      : Natural := Natural (msg.words (3) and 16#FF#);
-      sandboxMode : constant Unsigned_8 :=
-         Unsigned_8 (spawnFlags and 16#03#);
-      buffer      : CuBit.Memory_Grants.Grant_Reference;
-      grantAddr   : System.Address;
-      acquired    : Boolean;
-      returned    : Boolean;
-      name        : String (1 .. MAX_NAME);
-      cwd         : String (1 .. MAX_CWD);
-      newPID      : Process_ID;
-      Failure     : CuBit.Launch_Arguments.Launch_Failure;
-      Waits       : Awaited_Access;
-
-      procedure Fail (Reason : CuBit.Launch_Arguments.Launch_Failure) is
-      begin
-         answerRequest (sender, REPLY_ERR, CuBit.Launch_Arguments.Launch_Failure'Enum_Rep (Reason));
-      end Fail;
-   begin
-      if nameLen = 0 or else nameLen > MAX_NAME or else
-        not CuBit.Grant_References.Valid_Wire (msg.words (0))
-      then
-         Fail (CuBit.Launch_Arguments.Malformed_Request);
-         return;
-      end if;
-
-      --  Clamp cwdLen to fit in grant buffer after filename
-      if cwdLen > MAX_CWD then
-         cwdLen := MAX_CWD;
-      end if;
-
-      --  The kernel checks the sender owns the buffer grant and says where
-      --  it is mapped. Copy the name and cwd out before using them: the
-      --  sender can still write the shared pages.
-      buffer := CuBit.Grant_References.Decode (msg.words (0));
-      CuBit.Memory_Grants.Acquire
-        (buffer, sender, 0, Unsigned_64 (nameLen + cwdLen),
-         CuBit.Memory_Grants.Read_Access, grantAddr, acquired);
-      if not acquired then
-         Fail (CuBit.Launch_Arguments.Grant_Unavailable);
-         return;
-      end if;
-      declare
-         shared : constant String (1 .. nameLen + cwdLen) with
-            Import, Address => grantAddr;
-      begin
-         name (1 .. nameLen) := shared (1 .. nameLen);
-         cwd (1 .. cwdLen) := shared (nameLen + 1 .. nameLen + cwdLen);
-      end;
-      CuBit.Memory_Grants.Return_Acquisition (buffer, returned);
-      if not returned then
-         Fail (CuBit.Launch_Arguments.Grant_Unavailable);
-         return;
-      end if;
-
-      declare
-         approval : constant Network_Approval := Desktop_Approval
-           (name (1 .. nameLen), sender,
-            Registered_Driver (DRIVER_DESKTOP));
-         render : constant Boolean := CuBit.Launch_Policy.Desktop_Render_Approval
-           (name (1 .. nameLen), sender, Registered_Driver (DRIVER_DESKTOP));
-      begin
-         if approval = Browser_Outbound then
-            debugPrint ("procmgr: desktop browser outbound approval: " &
-                        name (1 .. nameLen) & LF);
-         end if;
-         if cwdLen > 0 then
-            newPID := spawnByName (name (1 .. nameLen), priority,
-                                   sender,
-                                   sandboxMode, cwd (1 .. cwdLen), approval,
-                                   approveRender => render,
-                                   readyDeadlineMs => Unplanned_Ready_Deadline,
-                                   mayWait => not servingDeferred, Waits => Waits,
-                                   Failure => Failure);
-         else
-            newPID := spawnByName (name (1 .. nameLen), priority,
-                                   sender,
-                                   sandboxMode, approveNetwork => approval,
-                                   approveRender => render,
-                                   readyDeadlineMs => Unplanned_Ready_Deadline,
-                                   mayWait => not servingDeferred, Waits => Waits,
-                                   Failure => Failure);
-         end if;
-      end;
-      --  Waiting for a starting provider: served again from this request
-      --  once it registers (resumeParked).
-      if Waits /= null then
-         if parkRequest (Spawn_Request, sender, msg, name (1 .. nameLen), Waits) then
-            return;
-         end if;
-         Failure := CuBit.Launch_Arguments.Service_Unavailable;
-      end if;
-
-      if newPID = No_Process then
-         Fail (Failure);
-      else
-         answerRequest (sender, REPLY_OK, To_Word (newPID));
-      end if;
-   end handleSpawn;
-
-   ---------------------------------------------------------------------------
    --  Whether a startup entry may render on the GPU (HW-002): as its plan
    --  says, or, when the plan delegates it, (render setting "<key>"), as the
    --  GPU_Rendering setting says. Absent means enabled; one that does not
@@ -5848,6 +7147,13 @@ procedure main is
    --  until all were.
    Plan_Done : CCL.Configurations.Launch_Number := 0;
    Plan_Running : Boolean := False;
+   --  Diagnostics never depend on what they diagnose (ABI-002): once the
+   --  plan has started logstore, its later entries (each a read from
+   --  storage) wait until logstore registered and was offered to devmgr
+   --  and the holders waiting for it (introduceRegistered), or ended, or
+   --  missed its ready deadline. A stalled disk then still has its
+   --  drivers' lines reach the log.
+   Plan_Awaits_Logstore : Boolean := False;
    --  Supervision (Plan_Restarts, BUG-001): each plan entry's current
    --  process, and its restart state when the entry says (restart on-failure).
    subtype Plan_Entry is Positive range 1 .. CCL.Configurations.MAX_LAUNCHES;
@@ -5918,6 +7224,9 @@ procedure main is
          approveFirmwareData => Item.Approve_ACPI_Firmware_Data,
          approveDisplayCapture => Item.Approve_Display_Capture,
          approvePlatformPower => Item.Approve_Platform_Power,
+         approveTrace => Item.Approve_Trace,
+         approveTestConsole => Item.Approve_Test_Console,
+         approveVMCreate => Item.Approve_VM_Create,
          approveNetwork =>
            (if Item.Approval = Approve_Declared then Declared_Network
             else No_Network),
@@ -5945,7 +7254,7 @@ procedure main is
                     when CCL.Configurations.Power_Tail_Stage => CuBit.Child_Specs.Power_Tail);
             end if;
          end;
-         Plan_Restarts.Started (Plan_Runs (Number), syscall (SYSCALL_GETTIME));
+         Plan_Restarts.Started (Plan_Runs (Number), CuBit.Monotonic.Milliseconds);
       end if;
    end launchPlanEntry;
 
@@ -5970,6 +7279,23 @@ procedure main is
             return;
          end if;
          Plan_Done := Plan_Done + 1;
+         if Plan_PIDs (Plan_Done) /= No_Process
+           and then Registrants (DRIVER_LOGSTORE) = Plan_PIDs (Plan_Done)
+           and then Introduce_When_Registered (DRIVER_LOGSTORE)
+         then
+            if Registered_Driver (DRIVER_LOGSTORE) /= No_Process then
+               --  Registered already: introduce it now (procmgr's own
+               --  registrar first, as in the service loop).
+               Warnings.Pump;
+               Sources.Pump;
+               introduceRegistered;
+            end if;
+            if Introduce_When_Registered (DRIVER_LOGSTORE) then
+               debugPrint ("procmgr: init waits for logstore's registration before reading more" & LF);
+               Plan_Awaits_Logstore := True;
+               return;
+            end if;
+         end if;
       end loop;
       if Plan_Running then
          Plan_Running := False;
@@ -5992,7 +7318,7 @@ procedure main is
    procedure processInitCCL (Compiled : out Boolean) is
       use CCL.Configurations;
       Source_Size : Unsigned_64 := 0;
-      Started_At : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Started_At : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Deadline : constant Unsigned_64 := Started_At + Startup_Profile_Deadline_Ms;
       Now : Unsigned_64 := Started_At;
       Timed_Out : Boolean := False;
@@ -6014,14 +7340,14 @@ procedure main is
            (Startup_Profile_Name, Boot_Read_Deadline_Ms);
          Timed_Out := Last_Read_Timed_Out;
          exit when Source_Size > 0 or else Timed_Out;
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Monotonic.Milliseconds;
          exit when Now + Profile_Retry_Ms >= Deadline;
          declare
             Ignore : Unsigned_64;
          begin
             Ignore := CuBit.Waits.Sleep_For (Profile_Retry_Ms);
          end;
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Monotonic.Milliseconds;
       end loop;
       if Source_Size = 0 then
          if Timed_Out then
@@ -6051,6 +7377,34 @@ procedure main is
       debugPrint ("procmgr: init.ccl: ");
       printDec (Unsigned_32 (Startup_Plan.Plan.Launch_Count));
       debugPrint (" entries" & LF);
+      --  The image's system policy, once, fixed for the boot.
+      if Startup_Plan.Plan.Has_Policy then
+         declare
+            package SPC renames CCL.Setting_Codecs.System_Policy;
+            Policy : SPC.System_Policy_Value;
+            Decoded : Boolean;
+         begin
+            SPC.Decode (Startup_Plan.Plan.Policy.Data (1 .. Startup_Plan.Plan.Policy.Length), Policy, Decoded);
+            if not Decoded then
+               Stop ("its (policy ...) does not decode as a System_Policy");
+               return;
+            end if;
+            Debugging_Gate :=
+              (case Policy.debugging is
+                 when SPC.Disabled    => Handle_Admission.Disabled,
+                 when SPC.Production  => Handle_Admission.Production,
+                 when SPC.Development => Handle_Admission.Development);
+         end;
+      end if;
+      Warnings.Inform
+        ("procmgr: system policy: debugging " &
+         (case Debugging_Gate is
+            when Handle_Admission.Disabled => "Disabled: debugging is disabled for this image",
+            when Handle_Admission.Production =>
+              "Production: production debugging needs owner approval (not built yet)",
+            when Handle_Admission.Development =>
+              "Development: Debug_Observe within the session's debug envelope") &
+         (if Startup_Plan.Plan.Has_Policy then "" else " (no (policy ...): a development plan)"));
       Compiled := True;
    end processInitCCL;
 
@@ -6074,7 +7428,7 @@ procedure main is
       Ignore : Boolean;
    begin
       if Plan_Runs (Number).State = Plan_Restarts.Running then
-         Plan_Restarts.Ended (Plan_Runs (Number), syscall (SYSCALL_GETTIME), False, False, Ignore);
+         Plan_Restarts.Ended (Plan_Runs (Number), CuBit.Monotonic.Milliseconds, False, False, Ignore);
       end if;
       Warnings.Warn ("procmgr: " & Name & " ended after its stop grace (" &
                      (if Failed then "failing" else "cleanly") &
@@ -6110,7 +7464,7 @@ procedure main is
                declare
                   Ignore : Boolean;
                begin
-                  Plan_Restarts.Ended (Plan_Runs (Number), syscall (SYSCALL_GETTIME), False, False, Ignore);
+                  Plan_Restarts.Ended (Plan_Runs (Number), CuBit.Monotonic.Milliseconds, False, False, Ignore);
                end;
             end if;
          elsif Plan_PIDs (Number) = Exited and then Exited /= No_Process
@@ -6132,7 +7486,7 @@ procedure main is
                if Run.State = Plan_Restarts.Running then
                   --  Nothing restarts while the system stops (PWR-003).
                   Plan_Restarts.Ended
-                    (Run, syscall (SYSCALL_GETTIME), Failed,
+                    (Run, CuBit.Monotonic.Milliseconds, Failed,
                      Item.Restart = CCL.Configurations.On_Failure and then not Shutting_Down, Scheduled);
                   if Scheduled then
                      Warnings.Warn ("procmgr: restarting " & Name & " in" &
@@ -6166,7 +7520,7 @@ procedure main is
    --  Start every entry whose restart delay ended. Not while the plan is
    --  still starting: its own order and waits come first.
    procedure restartDue is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Waits : Awaited_Access;
    begin
       if Plan_Running or else Shutting_Down then return; end if;
@@ -6304,7 +7658,7 @@ procedure main is
             Free (Waits);
          end if;
          Must := providedRole (Plan_PIDs (Number), Role);
-         Now := Unsigned_64'Min (syscall (SYSCALL_GETTIME), SS.Latest_Time);
+         Now := Unsigned_64'Min (CuBit.Monotonic.Milliseconds, SS.Latest_Time);
          SS.Started (Switch, To_Word (Plan_PIDs (Number)), Must, Now, Next);
       end Start;
    begin
@@ -6422,7 +7776,7 @@ procedure main is
            and then Registered_Driver (Role) = From_Word (Switch.New_Process);
       end if;
       if SS.Active (Switch) then
-         SS.Tick (Switch, Unsigned_64'Min (syscall (SYSCALL_GETTIME), SS.Latest_Time), Registered, Next);
+         SS.Tick (Switch, Unsigned_64'Min (CuBit.Monotonic.Milliseconds, SS.Latest_Time), Registered, Next);
          driveSwitch (Next);
       end if;
    end switchTick;
@@ -6601,7 +7955,7 @@ procedure main is
                CCL.Configurations."=" (Startup_Plan.Plan.Launches (Number).Replacement,
                                        CCL.Configurations.Graceful),
                Grace, Health,
-               Unsigned_64'Min (syscall (SYSCALL_GETTIME), SS.Latest_Time), Next);
+               Unsigned_64'Min (CuBit.Monotonic.Milliseconds, SS.Latest_Time), Next);
             driveSwitch (Next);
          end;
       end;
@@ -6779,7 +8133,7 @@ procedure main is
    package CS renames CuBit.Child_Specs;
    package SE renames Supervision_Edges;
    use type CS.Decode_Status, CS.Parameter_Source, CS.Start_Mode, CS.Sink_Kind;
-   use type Class_Launch_Checks.Outcome, HIPC.Reply_Outcome;
+   use type Class_Launch_Checks.Outcome;
 
    --  The edges, in a heap block that doubles as needed (CuAlloc), up to a
    --  named ceiling of supervised processes alive at once.
@@ -6819,18 +8173,6 @@ procedure main is
          return False;
    end edgeRoom;
 
-   --  A process's name for the log: its manifest identity, "devmgr", or
-   --  its identity number.
-   function processName (Process : Process_ID) return String is
-      Known : constant Records.Index := Records.Find (Process);
-   begin
-      if Process /= No_Process and then Process = Registered_Driver (DRIVER_DEVMGR) then
-         return "devmgr";
-      elsif Known /= 0 and then Records.Values (Known).Valid then
-         return Records.Values (Known).Identity (1 .. Records.Values (Known).Identity_Length);
-      end if;
-      return "process";
-   end processName;
 
    procedure handleStartChild (sender : Process_ID; msg : Message) is
       package LA renames CuBit.Launch_Arguments;
@@ -7005,7 +8347,10 @@ procedure main is
          --  Never parked: the receipt is bounded. A provider still starting
          --  refuses it (the supervisor may ask again).
          newPID := spawnByName
-           (Name, Unsigned_64 (Spec.Priority), sender, readyDeadlineMs => Unplanned_Ready_Deadline,
+           (Name, Unsigned_64 (Spec.Priority), sender,
+            approveRender => not From_Device_Manager and then launchIndex (sender) /= 0
+                             and then Launches.Values (launchIndex (sender)).Render_Approved,
+            readyDeadlineMs => Unplanned_Ready_Deadline,
             mayWait => False, Waits => Waits, Failure => Failure);
          attenuateFor := No_Process;
          pendingParameters := (others => <>);
@@ -7233,7 +8578,7 @@ procedure main is
          begin
             --  Restart strategies arrive in slice 2: the decision is
             --  recorded in the log, a temporary child is never restarted.
-            SE.Decide (Item.Restart, 1, 1, Abnormal, Item.Reaping, syscall (SYSCALL_GETTIME),
+            SE.Decide (Item.Restart, 1, 1, Abnormal, Item.Reaping, CuBit.Monotonic.Milliseconds,
                        History, Decision);
             Warnings.Inform
               ("procmgr: supervised child " & processName (Exited) & " pid" & Image (Exited) &
@@ -7314,7 +8659,7 @@ procedure main is
    Driver_Answer_Ms : constant := 1_000;
 
    function stopNow return SQ.Time is
-     (Unsigned_64'Min (syscall (SYSCALL_GETTIME), SQ.Latest_Time));
+     (Unsigned_64'Min (CuBit.Monotonic.Milliseconds, SQ.Latest_Time));
 
    function Stage_Name (Stage : SQ.Stop_Stage) return String is
      (case Stage is
@@ -7363,6 +8708,40 @@ procedure main is
       end loop;
    end reportUnits;
 
+   --  logstore keeps running to the end (its unit is Kept: the system's
+   --  final lines, procmgr's own among them, go there), but its log file
+   --  is on the storage about to stop: it persists what it holds and
+   --  closes the file first (CuBit.Log_Sources.Detach_Storage), within
+   --  Log_Detach_Ms.
+   Log_Detach_Ms : constant := 5_000;
+   procedure detachLogStorage is
+      Collector : constant CuBit.Handles.Endpoint := Logstore_Collector;
+      Via : CuBit.Handles.Endpoint;
+      Request : Message := NULL_MESSAGE;
+      Tag : MessageTag;
+      Ignore : HIPC.Close_Result;
+   begin
+      if not Valid (Collector) then
+         return;
+      end if;
+      Via := HC.Derive (Badged (Collector, H.Read_Write,
+                                CuBit.Log_Sources.Registrar_Tag
+                                  (CuBit.Log_Sources.Process_Manager_Issuance)));
+      if not Valid (Via) then
+         Warnings.Warn ("procmgr: shutdown: logstore not asked to detach its storage (no endpoint)");
+         return;
+      end if;
+      Request.tag := (label => CuBit.Log_Sources.Detach_Storage, length => 0,
+                      protocol => 0, ipc => <>, reserved => 0);
+      Tag := capCall (Via, Request, CuBit.Messages.Deadline_After (Log_Detach_Ms));
+      Ignore := HIPC.Close (Via);
+      Warnings.Inform
+        ("procmgr: shutdown: logstore detached its storage: " &
+         (if Ending_Of (Tag) /= Call_Answered then "no answer"
+          elsif Request.words (0) = 1 then "log file persisted and closed"
+          else "no log file open"));
+   end detachLogStorage;
+
    --  The filesystem's commit, within the request's storage deadline.
    procedure commitStorage (Result : out STP.Storage_Outcome) is
       Request : Message := NULL_MESSAGE;
@@ -7373,6 +8752,9 @@ procedure main is
       Request.words (STP.Request_Word) := Stop_Request_Id;
       Warnings.Inform ("procmgr: shutdown: the filesystem commits (deadline" &
                        Unsigned_64'Image (Stop_Storage_Ms) & " ms)");
+      --  ABI-002: procmgr's lines so far reach logstore before the
+      --  filesystem's (the console mirror keeps the order of the steps).
+      CuBit.Console_Route.Flush;
       Tag := capCall (PH.Filesystem, Request, CuBit.Messages.Deadline_After (Stop_Storage_Ms));
       if Ending_Of (Tag) = Call_Timed_Out then
          Result := STP.Storage_Timed_Out;
@@ -7403,6 +8785,8 @@ procedure main is
       Reply.words (STP.Request_Word) := Stop_Request_Id;
       Reply.words (1) := Word1;
       Reply.words (2) := Word2;
+      --  ABI-002: procmgr's lines so far reach logstore before devmgr's.
+      CuBit.Console_Route.Flush;
       Tag := capCall (PH.Device_Manager, Reply, CuBit.Messages.Deadline_After (Driver_Answer_Ms));
       Answered := Ending_Of (Tag) = Call_Answered and then Tag.label = Label
         and then Reply.words (STP.Reply_Request_Word) = Stop_Request_Id;
@@ -7425,7 +8809,7 @@ procedure main is
       pragma Assert (Stop_Sequence.State = SQ.Finished);
       Warnings.Inform
         ("procmgr: shutdown: " & (if Stop_Sequence.Apps_Only then "apps " else "") &
-         "stopped in" & Unsigned_64'Image (syscall (SYSCALL_GETTIME) - Stop_Began) &
+         "stopped in" & Unsigned_64'Image (CuBit.Monotonic.Milliseconds - Stop_Began) &
          " ms:" & Natural'Image (Clean) & " clean," & Natural'Image (Failing) & " failing," &
          Natural'Image (Forced) & " forced," & Natural'Image (Not_Ended) & " not ended," &
          Natural'Image (Early) & " ended early," & Natural'Image (Kept) & " kept; storage " &
@@ -7440,6 +8824,9 @@ procedure main is
       Reply.words (STP.Stages_Word) := STP.Stages_Word_Of
         (Stop_Sequence.Storage, Volumes_Committed, Volumes_Failed, Stop_Sequence.Drivers,
          Driver_Clean + Driver_Failing, Driver_Forced);
+      --  The final lines reach logstore before the requester hears the
+      --  stop (power.svc then asks for S5).
+      CuBit.Console_Route.Flush;
       if H.Valid (Stop_Reply) then
          Ignore := HIPC.Answer (Stop_Reply, Reply);
       end if;
@@ -7494,6 +8881,7 @@ procedure main is
                declare
                   Result : STP.Storage_Outcome;
                begin
+                  detachLogStorage;
                   commitStorage (Result);
                   SQ.Storage_Done (Stop_Sequence, Stop_Units.all, Stop_Length, Result, stopNow, Next);
                end;
@@ -7603,7 +8991,7 @@ procedure main is
          --  A power-off keeps the declared Power_Tail for the firmware step.
          Keep_Tail : constant Boolean := STP."=" (Final, STP.Power_Off);
          Listed : constant Unsigned_64 :=
-           HC.Process_List (PH.Process_Root, processList'Address, Process_List_Bytes);
+           HC.Process_List (PH.Process_List_Object, processList'Address, Process_List_Bytes);
          Count : constant Natural :=
            (if Listed = Unsigned_64'Last then 0
             else Natural (Unsigned_64'Min (Listed, Process_List_Bytes / Process_Entry_Bytes)));
@@ -7668,7 +9056,7 @@ procedure main is
          Stop_Keep_Tail := Keep_Tail;
          Stop_Request_Id := msg.words (STP.Request_Word);
          Stop_Storage_Ms := STP.Storage_Of (msg.words (STP.Grace_Word));
-         Stop_Began := syscall (SYSCALL_GETTIME);
+         Stop_Began := CuBit.Monotonic.Milliseconds;
          Shutting_Down := True;
          Plan_Running := False;
          Stop_Length := 0;
@@ -7692,8 +9080,12 @@ procedure main is
                         then SQ.Grace_Ms (Startup_Plan.Plan.Launches (Number).Stop_Grace_Ms)
                         elsif Number = 0 and then R.Stop_Grace in SQ.Grace_Ms then R.Stop_Grace
                         else Undeclared);
+                     --  logstore is never stopped by a system stop: it
+                     --  takes the final lines (drivers', procmgr's, S5)
+                     --  until the machine stops (detachLogStorage).
                      U.State :=
                        (if Process = sender or else (Keep_Tail and then SQ."=" (U.Stage, SQ.Power_Tail))
+                          or else (not Apps_Only and then Process = Registered_Driver (DRIVER_LOGSTORE))
                         then SQ.Kept else SQ.Pending);
                      Stop_Length := Stop_Length + 1;
                      Stop_Units (Stop_Length) := U;
@@ -7703,6 +9095,8 @@ procedure main is
                         Warnings.Inform ("procmgr: shutdown: keeping " & unitName (Stop_Length) & " pid" &
                                          Image (Process) &
                                          (if Process = sender then " (the requester)"
+                                          elsif Process = Registered_Driver (DRIVER_LOGSTORE)
+                                          then " (logstore: the final lines)"
                                           else " (Power_Tail: the firmware step)"));
                      end if;
                   end;
@@ -7730,7 +9124,7 @@ procedure main is
    --  served again, answering through its saved reply.
    ---------------------------------------------------------------------------
    procedure resumeParked is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Previous : Parked_Access := null;
       Item : Parked_Access := Parked_First;
       Following : Parked_Access;
@@ -7792,16 +9186,14 @@ procedure main is
                   end if;
                   Plan_Done := Item.Entry_Number;
                   Resume_Plan := True;
-               when Launch_Request | Spawn_Request =>
+               when Launch_Request =>
                   Deferred_Answer := Item.Answer;
                   if Refused_At /= 0 then
                      answerRequest
                        (Item.Sender, REPLY_ERR, CuBit.Launch_Arguments.Launch_Failure'Enum_Rep
                           (CuBit.Launch_Arguments.Service_Unavailable));
-                  elsif Item.Kind = Launch_Request then
-                     handleLaunch (Item.Sender, Item.Request);
                   else
-                     handleSpawn (Item.Sender, Item.Request);
+                     handleLaunch (Item.Sender, Item.Request);
                   end if;
                   --  Every path answers; never leave the requester waiting.
                   if servingDeferred then
@@ -7827,9 +9219,17 @@ procedure main is
    ---------------------------------------------------------------------------
    sender : Process_ID;
    received : Boolean;
+   Route : Handle_Admission.Route;
+   Awaiting_Logstore : Boolean := False;
    msg    : Message;
 
 begin
+   --  ABI-002: this process's debug text goes into its logstore ring, never
+   --  the kernel console. It starts before logstore: the lines wait in the
+   --  route's queue until logstore is known (Warnings binds it), and the
+   --  registrar channel, opened first, names this process to logstore.
+   CuBit.Console_Route.Route_Awaiting;
+   Sources.Started (Own_Process, "com.cubit.procmgr", "procmgr.svc");
    debugPrint ("procmgr: starting..." & LF);
    if not PH.Valid then
       --  Without devmgr's handles procmgr can start nothing.
@@ -7946,8 +9346,14 @@ begin
    --  Main service loop. While launches are parked it also wakes every
    --  Registration_Poll_Ms to look at their providers (resumeParked).
    loop
+      --  procmgr's own lines wait for logstore (Warnings, the console
+      --  route): between logstore's start and its registration, look every
+      --  Registration_Poll_Ms, so they are bound as soon as it registers.
+      Awaiting_Logstore :=
+        (Warnings.Pending and then Registrants (DRIVER_LOGSTORE) /= No_Process) or else introductionsDue;
       if Parked_First = null and then nextRestart = 0 and then not Service_Switches.Active (Switch)
-        and then SQ.Wake_At (Stop_Sequence) = 0
+        and then SQ.Wake_At (Stop_Sequence) = 0 and then not Awaiting_Logstore
+        and then Notices_Due = 0
       then
          receive (sender, msg);
          received := True;
@@ -7956,8 +9362,8 @@ begin
             Deadline : Unsigned_64 := Unsigned_64'Last;
             Restart_At : constant Unsigned_64 := nextRestart;
          begin
-            if Parked_First /= null then
-               Deadline := syscall (SYSCALL_GETTIME) + Registration_Poll_Ms;
+            if Parked_First /= null or else Awaiting_Logstore then
+               Deadline := CuBit.Monotonic.Milliseconds + Registration_Poll_Ms;
             end if;
             if Restart_At /= 0 then
                Deadline := Unsigned_64'Min (Deadline, Restart_At);
@@ -7966,11 +9372,15 @@ begin
             --  registration every Registration_Poll_Ms.
             if Service_Switches.Active (Switch) then
                Deadline := Unsigned_64'Min
-                 (Deadline, syscall (SYSCALL_GETTIME) + Registration_Poll_Ms);
+                 (Deadline, CuBit.Monotonic.Milliseconds + Registration_Poll_Ms);
             end if;
             --  The root stop's next grace or poll (PWR-003).
             if SQ.Wake_At (Stop_Sequence) /= 0 then
                Deadline := Unsigned_64'Min (Deadline, SQ.Wake_At (Stop_Sequence));
+            end if;
+            --  Exit notices a requester's lane could not take yet.
+            if Notices_Due /= 0 then
+               Deadline := Unsigned_64'Min (Deadline, Notices_Due);
             end if;
             receiveUntil (Deadline, sender, msg, received);
          end;
@@ -7979,18 +9389,29 @@ begin
       Sources.Pump;
       Metric_Sources.Pump;
 
-      if received then
+      --  A launch handle reaches only its operations, the session's debug
+      --  badge only its one (Handle_Admission.Route_Of).
+      Route := (if received then HA.Route_Of (msg.authorityTag, msg.tag.label) else HA.Ordinary);
+      if received and then Route = HA.Handle_Request then
+         handleHandleRequest (sender, msg);
+      elsif received and then Route = HA.Session_Debug_Request then
+         handleSessionDebug (sender, msg);
+      elsif received and then Route = HA.Refused then
+         if LH.Is_Operation_Label (msg.tag.label) or else msg.tag.label = LH.Session_Debug_Operation then
+            answerHandle (sender, LH.Not_A_Handle);
+         else
+            sendReply (sender, REPLY_ERR, 0);
+         end if;
+      elsif received then
          case msg.tag.label is
-            when OP_SPAWN =>
-               handleSpawn (sender, msg);
             when OP_LAUNCH =>
                handleLaunch (sender, msg);
             when LAuth.Table_Operation =>
                handleLaunchTable (sender, msg);
             when Staged_Switch_Operation =>
                handleStagedSwitch (sender, msg);
-            when End_Child_Operation =>
-               handleEndChild (sender, msg);
+            when LH.Debug_Records_Operation =>
+               handleDebugRecords (sender, msg);
             when CuBit.Child_Specs.Start_Operation =>
                handleStartChild (sender, msg);
             when CuBit.Child_Specs.Release_Operation =>
@@ -8009,8 +9430,12 @@ begin
                handleProgramDescription (sender, msg);
             when CuBit.Process_Observer.List_Label =>
                handleProcessList (sender, msg);
-            when CuBit.Boot_Milestone_Codes.Timeline_Label =>
-               handleBootTimeline (sender, msg);
+            when LI.Await_Request =>
+               if msg.authorityTag = LI.Introducer_Tag then
+                  handleAwaitIntroduction (sender, msg);
+               else
+                  sendReply (sender, REPLY_ERR, 0);
+               end if;
             when EVENT_CHILD_EXIT =>
                --  A process retired (the kernel tells procmgr of each; only the
                --  kernel posts this label, with no sender). Act only if it is
@@ -8024,7 +9449,6 @@ begin
                      Known  : constant Records.Index := Records.Find (Exited);
                      Report : constant CuBit.Child_Exits.Report :=
                        CuBit.Child_Exits.Decode (msg.words (0), msg.words (1), msg.words (2));
-                     use type CuBit.Child_Exits.Termination_Kind;
                   begin
                      --  Processes procmgr launched, by manifest identity; the
                      --  kernel's "kernel: process killed" record says why when
@@ -8047,6 +9471,11 @@ begin
                              (if Report.Kind = CuBit.Child_Exits.Stopped
                               then " stopped (killed or faulted)"
                               else " exited code" & Unsigned_64'Image (Report.Code)) &
+                             --  Its own reason goes to its logstore ring, if
+                             --  it has one: the kernel console is gone (ABI-002).
+                             (if Report.Kind /= CuBit.Child_Exits.Stopped
+                                and then Report.Code = CuBit.Startup_Check.Startup_Refused
+                              then " (stopped by its CAP-003 startup check)" else "") &
                              --  Why, filed under it in logstore (LOG-004): the
                              --  kernel's typed fault report, its own last words.
                              (if Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0
@@ -8071,6 +9500,10 @@ begin
                            Metric_Sources.Exited (Exited);
                         end if;
                      end if;
+                     forgetLate (Exited);
+                     --  Its launch handles, its requester's notice, its
+                     --  debug sessions (before its record goes).
+                     launchHandlesExited (Exited, Known, Report);
                      for Registrant of Registrants loop
                         if Registrant = Exited then
                            Registrant := No_Process;
@@ -8109,8 +9542,19 @@ begin
       if Parked_First /= null then
          resumeParked;
       end if;
+      if introductionsDue then
+         --  After this pass's Warnings.Pump: procmgr's registrar is open.
+         introduceRegistered;
+      end if;
+      if Plan_Awaits_Logstore and then not Introduce_When_Registered (DRIVER_LOGSTORE) then
+         --  logstore registered and was introduced (or will not be): the
+         --  plan goes on.
+         Plan_Awaits_Logstore := False;
+         continuePlan;
+      end if;
       restartDue;
       switchTick;
       shutdownTick;
+      retryNotices;
    end loop;
 end main;

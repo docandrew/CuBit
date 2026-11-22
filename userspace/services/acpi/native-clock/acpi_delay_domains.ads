@@ -161,7 +161,7 @@ package ACPI_Delay_Domains with SPARK_Mode, Pure is
        (Current (S) /= Event_Active or else Working (S) =>
           not Accepted and then Model (S) = Model (S)'Old,
         Current (S) = Event_Active and then not Working (S) and then Clock_Available
-            and then Now >= Model (S).Floor and then Now < Deadline (S) =>
+            and then Now >= Model (S).Floor and then Now /= Tick'Last =>
           Accepted and then Model (S) = (Model (S)'Old with delta Stage => Runtime_Idle,
               Until_Time => 0, Floor => Now),
         others =>

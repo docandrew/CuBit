@@ -51,7 +51,6 @@ package CuBit.Messages is
    SYSCALL_ALLOCATE_OWNED_MEMORY : constant Unsigned_64 := 115;
    --  The monotonic ms clock: 0 hosted. The wall clock is the fixture's
    --  CuBit.System_Facts (CUBIT_TEST_WALL_CLOCK).
-   SYSCALL_GETTIME : constant Unsigned_64 := 27;
    function syscall
      (call : Unsigned_64; arg0 : Unsigned_64 := 0; arg1 : Unsigned_64 := 0;
       arg2 : Unsigned_64 := 0; arg3 : Unsigned_64 := 0;

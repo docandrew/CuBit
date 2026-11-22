@@ -4,12 +4,13 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.System_Facts;
 with CuBit.Input;
 with Input_Pending;
+with CuBit.Monotonic;
 procedure Input_Native_Check is
    package P renames Input_Pending;
    package I renames CuBit.Input;
    use type Activity_Result;
    use type P.Item;
-   PID : constant Process_ID := syscall (SYSCALL_GETPID);
+   PID : constant Process_ID := Own_Process_Word;
    -- The inherited slot-0 self endpoint is selected before any later slot.
    Authority : constant Unsigned_64 := PID;
    Ignore : Unsigned_64;
@@ -29,15 +30,8 @@ procedure Input_Native_Check is
         delivery => I.ACCUMULABLE_DISPLACEMENT,
         flags => [I.RESYNCHRONIZE => Value.Recover],
         payload => Value.Payload, snapshot => Value.Payload and 16#FF#)));
-   --  This process's mailbox drops (kernel READ_STATISTICS).
-   function Event_Drops return Unsigned_64 is
-      Statistics : CuBit.System_Facts.SP.Statistics;
-      Read : Boolean;
-   begin
-      CuBit.System_Facts.Read_Statistics (Statistics, Read);
-      Check (Read, "statistics refused");
-      return Statistics.Event_Drops;
-   end Event_Drops;
+   --  This process's mailbox drops (its readiness page).
+   function Event_Drops return Unsigned_64 is (CuBit.System_Facts.Event_Drops);
    procedure Run (Overflow : Boolean) is
       Queue : P.Queue;
       Msg, Received : Message := NULL_MESSAGE;
@@ -80,10 +74,10 @@ procedure Input_Native_Check is
          Drained := Drained + 1;
       end loop;
       Check (Drained = Filled and not Poll_Event (Received), "mailbox not drained");
-      Deadline := P.Wake_Deadline (Queue, syscall (SYSCALL_GETTIME), Unsigned_64'Last);
+      Deadline := P.Wake_Deadline (Queue, CuBit.Monotonic.Milliseconds, Unsigned_64'Last);
       Activity := Wait_For_Activity_Until (Deadline);
       Check (Activity = Deadline_Reached, "final retry did not wake on deadline");
-      Check (syscall (SYSCALL_GETTIME) >= Deadline, "early retry deadline");
+      Check (CuBit.Monotonic.Milliseconds >= Deadline, "early retry deadline");
       -- Bounded publication, exactly as the driver: acknowledge acceptance only.
       for Attempt in 1 .. P.Capacity loop
          exit when P.Count (Queue) = 0;

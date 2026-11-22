@@ -226,17 +226,7 @@ is
     ---------------------------------------------------------------------------
     function getActiveP4 return PhysAddress;
 
-    ---------------------------------------------------------------------------
-    -- setActiveP4 - load the physical address of a top-level page table into
-    -- the CR3 register, causing a new virtual address space to be used.
-    -- @param p4addr - physical address of the new top-level page table.
-    ---------------------------------------------------------------------------
-    procedure setActiveP4 (p4addr : in PhysAddress);
-
-    ---------------------------------------------------------------------------
-    -- flushTLB - reload CR3 and cause TLB to be flushed.
-    ---------------------------------------------------------------------------
-    procedure flushTLB;
+    -- CR3 loads and TLB flushes: TLB_Context (address-space tags).
 
     ---------------------------------------------------------------------------
     -- PFNToAddr - Return the address of a given Page Frame Number (PFN)

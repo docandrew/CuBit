@@ -6,11 +6,11 @@ closed input catalog without compiling. All outputs are unique below TMPDIR.
 
 The suite checks the actual production policy, report adapter and 0253 client:
 
-* 1,024 exhaustive phase/module-error/setup combinations plus 100 receipt/count retention combinations per checked/release profile.
+* 1,024 exhaustive phase/module-error/setup combinations plus 100 receipt/count retention combinations and 24 optional-event classification/declaration checks per checked/release profile (1,148 checks).
 * 58 transport scenarios per checked/release profile, including every
   receipt, malformed replies, lost receipts, immutable bounded confirmation,
   high 64-bit IDs, finite original deadlines and exact three-word launch-count receipts and retention after uncertain/positive dispatch.
-* 2,666 actual report checks against the hosted Core and real report specifications.
+* 2,918 actual report checks against the hosted Core and real report specifications.
   Discovery bodies fail closed and must never be invoked. The full Core uses
   -O0 -gnatp; this does not claim an assertion-enabled Core run.
 
@@ -28,3 +28,5 @@ retain the owner until child quiescence exists. Two-word replies and inconsisten
 nonzero counts are rejected. Other HID/physical/retained-result obligations remain
 independent. Completion follows Event_Domain.Start/Configure; runtime GPIO/AML
 register arbitration remains a separate integration obligation.
+
+Unavailable optional EC support in a safely live event domain classifies as completed with errors; non-live or recovery-required startup remains incomplete or failed. The policy enumerates all eight live/absent/recovery combinations. Client cases 41 and 52 use the canonical `Ran_To_End` contract: `Completed_With_Errors` can receive a valid completion receipt, including a positive launch count, while positive counts still retain the owner. These checks do not establish physical quiescence or authorize retirement of other owners.

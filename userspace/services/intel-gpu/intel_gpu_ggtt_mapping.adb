@@ -7,6 +7,7 @@ with CuBit.Handles;
 with CuBit.Handles.Devices;
 with Intel_GPU_Supervisor;
 with Intel_GPU_GGTT_Access;
+with CuBit.Monotonic;
 package body Intel_GPU_GGTT_Mapping is
    Attempted, Mapped : Boolean := False;
    Mapped_Bytes : Unsigned_64 := 0;
@@ -35,19 +36,19 @@ package body Intel_GPU_GGTT_Mapping is
         Table_Bytes not in 2_097_152 | 4_194_304 | 8_388_608
       then return "owner-reset-or-extent-invalid"; end if;
       Physical := Register_Base + 16#80_0000#;
-      Started := syscall (SYSCALL_GETTIME);
+      Started := CuBit.Monotonic.Milliseconds;
       if Started = Unsigned_64'Last then return "clock-unavailable"; end if;
       Previous := Started;
       Msg.tag := (label => Intel_GPU_GGTT_Access.Write_Request_Label, length => 0,
                   protocol => 0, ipc => <>, reserved => 0);
       if not Intel_GPU_Supervisor.Submit_Accepting (Msg, Token) then return "submit-failed"; end if;
       for Poll in 1 .. 30_000 loop
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Monotonic.Milliseconds;
          if Now = Unsigned_64'Last or else Now < Previous or else
            Now - Started >= 30_000
          then return "grant-timeout-or-invalid-clock"; end if;
          Previous := Now;
-         if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
+         if CuBit.Messages.Poll_Completion (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
               Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => 16#F002#, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]

@@ -31,8 +31,9 @@ Guest_Memory=8G
 Guest_CPUs=4
 
 # The -test twin differs from the image the laptop boots only in where the
-# pairing code is shown (Window -> Kernel_Console), in its profile's
-# startup plan name and its install payload's startup plan.
+# pairing code is shown (Window -> Test_Console, with ccl-remote's test
+# variant and its test-console approval), in its profile's startup plan
+# name and its install payload's startup plan.
 python3 -I - "$repo" <<'EOF'
 import re, sys
 from pathlib import Path
@@ -45,11 +46,14 @@ def body(path, swaps):
     return text
 pairs = [
     ("images/laptop-build.ccl", "images/laptop-build-test.ccl",
-     [('"init-usb-live-build-test"', '"init-usb-live-build"')]),
+     [('"init-usb-live-build-test"', '"init-usb-live-build"'),
+      ('(file optical "ccl-remote-test" "apps/ccl-remote.app")', '(file optical "ccl-remote" "apps/ccl-remote.app")')]),
     ("tests/hardware/init-usb-live-build.ccl", "tests/device-builds/init-usb-live-build-test.ccl",
-     [("Pairing_Display.Kernel_Console", "Pairing_Display.Window")]),
+     [("Pairing_Display.Test_Console", "Pairing_Display.Window"),
+      (" (test-console approve-declared)", "")]),
     ("tests/hardware/init-installed-build.ccl", "tests/device-builds/init-installed-build-test.ccl",
-     [("Pairing_Display.Kernel_Console", "Pairing_Display.Window")]),
+     [("Pairing_Display.Test_Console", "Pairing_Display.Window"),
+      (" (test-console approve-declared)", "")]),
 ]
 for shipped, twin, swaps in pairs:
     if body(shipped, []) != body(twin, swaps):

@@ -30,6 +30,7 @@ package body ACPI_Native_Event_Domain is
    Presses:array(Button) of Interfaces.Unsigned_64:=[others=>0];
    function Sources_Healthy return Boolean is (Captures_Healthy);
    package Consumers is new ACPI_Native_Consumers(Sources_Healthy);
+   Consumer_Refusals_Noted : Natural := 0;
    function Shutdown_Turns return Positive is
       Query_Fact_Slots:constant Positive:=1;
       Final_Close_Turns:constant Positive:=3;
@@ -43,7 +44,11 @@ package body ACPI_Native_Event_Domain is
      (not Q.Notifications_Pending(Server) and then not Q.Retained_Results_Pending(Server)
       and then One.Runtime.Current not in One.Runtime.Status.Fresh|One.Runtime.Status.Active
       and then One.Root.Fields.Control_Idle and then One.Root.Fields.EC_Commands.Quiescent);
-   procedure Fail(Why:Failure) is begin Last.Stage:=Failed;Last.Why:=Why;end Fail;
+   procedure Fail(Why:Failure) is
+   begin
+      Last.Stage:=Failed;Last.Why:=Why;
+      ACPI_Native_Power_Buttons.Withdraw_Sources;
+   end Fail;
    procedure Route_All(Server:Q.State;Routed:out Boolean) is
       Buttons_Routed:Boolean;
    begin
@@ -87,6 +92,40 @@ package body ACPI_Native_Event_Domain is
             " source="&(if View.Sources=0 then "NONE" else View.At_Source'Image),False);
       end if;
    end Note_GPE;
+   procedure Start_Consumer_Routes(Server:Q.State;Accepted:out Boolean) is
+   begin
+      if Consumers_Active then Accepted:=Last.Consumers_Started;return;end if;
+      Captures_Healthy:=True;Consumers.Start(Server,Accepted);
+      Consumers_Active:=Accepted;Last.Consumers_Started:=Accepted;
+   end Start_Consumer_Routes;
+   procedure Prepare_Consumers(Server:in out Q.State;Accepted:out Boolean) is
+   begin
+      Accepted:=False;
+      if Working or Has_Attempted or Last.Stage/=Fresh then return;end if;
+      if Q.Current(Server)/=Q.Complete or else not Q.Notifications_Ready(Server)
+        or else One.Runtime.Current/=One.Runtime.Status.Idle or else not One.Root.Fields.Control_Idle
+        or else Q.Retained_Results_Pending(Server) then return;end if;
+      Working:=True;Start_Consumer_Routes(Server,Accepted);
+      if not Accepted then Fail(Consumer_Start_Refused);end if;
+      Working:=False;
+   end Prepare_Consumers;
+   procedure Route_Prepared(Server:in out Q.State;Result:out ACPI_Native_Server.Owner_Outcome) is
+   begin
+      Result:=ACPI_Native_Server.Owner_Refused;
+      if Working or Has_Attempted or Last.Stage/=Fresh or not Consumers_Active then return;end if;
+      -- A captured Notify belongs to the original receipt queue. Defer its
+      -- fanout while another startup owner holds the runtime/Core boundary;
+      -- routing then would refuse and poison an otherwise healthy domain.
+      -- This does not acknowledge, drop, or reevaluate the captured method.
+      if One.Runtime.Current/=One.Runtime.Status.Idle
+        or else Q.Retained_Results_Pending(Server)
+        or else not One.Root.Fields.Control_Idle
+        or else not One.Root.Fields.EC_Commands.Quiescent then
+         Result:=ACPI_Native_Server.Owner_Idle;return;
+      end if;
+      Working:=True;Pump_One(Server,Result);Working:=False;
+      if Result=ACPI_Native_Server.Owner_Refused then Fail(Routing_Refused);end if;
+   end Route_Prepared;
    procedure Start(Server:in out Q.State;Result:out Start_Outcome) is
       Accepted,Source_Ready:Boolean;
       Boot:One.Root.Fields.EC_Boot_Report;
@@ -94,18 +133,20 @@ package body ACPI_Native_Event_Domain is
       Button_Start:ACPI_Native_Button_Discovery.Outcome;
    begin
       ACPI_Native_Power_Buttons.Configure_Fixed (ACPI_SCI_Events.Fixed_Power_Button_Available);
-      Result:=Refused;if Has_Attempted or Working then return;end if;Has_Attempted:=True;Last.Stage:=Starting;
+      Result:=Refused;if Has_Attempted or Working or Last.Stage/=Fresh then return;end if;Has_Attempted:=True;Last.Stage:=Starting;
       if Q.Current(Server)/=Q.Complete or else not Q.Notifications_Ready(Server)
         or else One.Runtime.Current/=One.Runtime.Status.Idle
         or else not One.Root.Fields.Control_Idle or else Q.Retained_Results_Pending(Server) then Fail(Not_Ready);return;end if;
-      if not ACPI_SCI_Events.Is_Armed then Last.Stage:=Fixed_Only;Result:=SCI_Unavailable;return;end if;
+      if not ACPI_SCI_Events.Is_Armed then
+         ACPI_Native_Power_Buttons.Withdraw_Sources;
+         Last.Stage:=Fixed_Only;Result:=SCI_Unavailable;return;
+      end if;
       if not ACPI_Native_GPE_Control.Exclusive then Fail(Control_Not_Exclusive);Note_GPE(Server,False);return;end if;
       Working:=True;
       -- Captured startup Notify values have the original Core's provenance.
       -- Binding/routes run no AML; collect/publish starts only after admission.
       -- Orderly masking/disarm does not revoke already captured receipts.
-      Captures_Healthy:=True;Consumers.Start(Server,Accepted);
-      Consumers_Active:=Accepted;Last.Consumers_Started:=Accepted;
+      Start_Consumer_Routes(Server,Accepted);
       if not Accepted then Fail(Consumer_Start_Refused);Working:=False;return;end if;
       for Step in 1..Shutdown_Turns loop
          exit when not Q.Notifications_Pending(Server);
@@ -141,7 +182,7 @@ package body ACPI_Native_Event_Domain is
       GPE_Active:=True;Last.General_GPEs:=General.Observe.Sources;
       ACPI_Native_Button_Discovery.Start(Server,ACPI_SCI_Events.Fixed_Power_Button_Available,Button_Start);
       if not ACPI_Native_Button_Discovery.Quiet or else One.Runtime.Current/=One.Runtime.Status.Idle then
-         Fail(Consumer_Start_Refused);Working:=False;return;
+         Fail(Button_Discovery_Refused);Working:=False;return;
       end if;
       Note_GPE(Server,True);
       Last.Stage:=Live;Consumer_Pending:=True;Result:=(if Source_Ready then Ready else EC_Unavailable);Working:=False;
@@ -181,6 +222,30 @@ package body ACPI_Native_Event_Domain is
    function Runnable return Boolean is
      (Facts_Pending or else Query_Pending or else (GPE_Active and then General.Runnable)
       or else (Consumers_Active and then Consumer_Pending));
+   procedure Read_Power (Server : Q.State; Maximum_Age : ACPI_Cached_Power_Values.Microseconds;
+      Value : out ACPI_Cached_Power_Values.Snapshot) is
+   begin
+      Value := (others => <>);
+      -- A captured hardware event can precede its AML Notify. Do not certify
+      -- cache freshness until both hardware owners and receipt routing settle.
+      if Working or else Last.Stage /= Live or else not Consumers_Active
+        or else not Captures_Healthy or else not Diagnostics_Quiet (Server)
+        or else Query_Pending
+        or else (GPE_Active and then (General.Runnable or else General.Observe.Stage /= General.Live))
+        or else (Last.EC_Armed and then S.Observe.Stage = S.Failed) then return; end if;
+      Consumers.Read_Power (Server, Maximum_Age, Value);
+   end Read_Power;
+   procedure Read_Batteries (Server : Q.State; Maximum_Age : ACPI_Cached_Power_Values.Microseconds;
+      Value : out ACPI_Cached_Battery_Values.View) is
+   begin
+      Value := (others => <>);
+      if Working or else Last.Stage /= Live or else not Consumers_Active
+        or else not Captures_Healthy or else not Diagnostics_Quiet (Server)
+        or else Query_Pending
+        or else (GPE_Active and then (General.Runnable or else General.Observe.Stage /= General.Live))
+        or else (Last.EC_Armed and then S.Observe.Stage = S.Failed) then return; end if;
+      Consumers.Read_Batteries (Server, Maximum_Age, Value);
+   end Read_Batteries;
    procedure Publish_One(Server:Q.State;Published:out Boolean) is
       Fact:S.Query_Fact;Present:Boolean;
       Line:Consumers.Fact_Line;Length:Consumers.Fact_Length;
@@ -229,6 +294,16 @@ package body ACPI_Native_Event_Domain is
             when Consumer_Turn=>
                if Consumers_Active then
                   Consumers.Advance(Server,Work);Consumer_Pending:=Work=ACPI_Native_Server.Owner_Pending;
+                  declare View : constant Consumers.Report := Consumers.Observe; begin
+                     if View.Refusal_Count /= Consumer_Refusals_Noted then
+                        Consumer_Refusals_Noted := View.Refusal_Count;
+                        for Line of View.Diagnostics loop
+                           if Line.Last /= 0 then
+                              ACPI_Native_Diagnostic_Output.Write (Line.Text (1 .. Line.Last), False);
+                           end if;
+                        end loop;
+                     end if;
+                  end;
                   if Work=ACPI_Native_Server.Owner_Refused then
                      Fail(Consumer_Work_Refused);
                      declare
@@ -280,7 +355,7 @@ package body ACPI_Native_Event_Domain is
    begin
       Result:=Retained;if Working then return;end if;
       if Last.Stage/=Stopping then Begin_Stop;end if;
-      if not Has_Attempted and then not Buttons_Pending then Result:=Drained;return;end if;
+      if not Has_Attempted and then not Consumers_Active and then not Buttons_Pending then Result:=Drained;return;end if;
       Working:=True;
       -- A known retained result can block both notification routing and the
       -- final quiet gate. Let its original owner release it first. Close may

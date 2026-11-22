@@ -9,6 +9,7 @@
 --  delegated to them here: the work place and the toolchain (decision D2).
 --  Results go to the kernel console.
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Wait_ABI;
 with Interfaces; use Interfaces;
 with CuBit.Child_Exits;
@@ -24,6 +25,7 @@ with CuBit.Outlet_Rings;
 with CuBit.Program_Descriptions;
 with CuBit.Stream_Regions;
 with CuBit.Streams;
+with CuBit.Monotonic;
 
 procedure Main is
    --  Launches go through procmgr, the manifest\'s process-manager entry.
@@ -147,7 +149,7 @@ procedure Main is
    begin
       Ignore := CuBit.Kernel_Calls.Call
         (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
-         CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds)
+         CuBit.Monotonic.Microseconds
            + Unsigned_64 (Milliseconds) * Microseconds_Per_Millisecond);
    end Sleep_Milliseconds;
 
@@ -269,6 +271,8 @@ procedure Main is
    Hello_Exit_Code : constant := 7;
    LF : constant Character := ASCII.LF;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    --  procmgr, the "process-manager" startup entry the manifest asks for.
    --  The same options and names the Linux reference uses (tests/gnat/build.sh).
    --  Relative names, from the work place: GNU tools read an argument that

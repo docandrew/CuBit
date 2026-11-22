@@ -3,8 +3,10 @@
 # userspace/rust/build/cubitshell.app, stripped, with its CCL manifest.
 # The manifest's sections are not loaded (procmgr reads them from the
 # file), so they are added after linking: changing the manifest does not
-# rebuild Servo. Uses userspace/rust/build/servo-work (checkout, CARGO_HOME,
-# target) unless SERVO_DIR/CARGO_HOME/CARGO_TARGET_DIR say otherwise.
+# rebuild Servo. Uses userspace/rust/build/servo-work (Penny's Servo fork
+# checkout servo, CARGO_HOME, target) unless SERVO_DIR/CARGO_HOME/
+# CARGO_TARGET_DIR say otherwise; a missing checkout is fetched at the
+# pinned commit (FORKS, fork-checkout.sh).
 set -euo pipefail
 # Resolved before any cd, while a relative $0 still names this script.
 gprbuild_config=${CUBIT_NATIVE_GPRBUILD_CONFIG:-$(make -s --no-print-directory -C "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/kernel" print-native-gprbuild-config)}
@@ -30,10 +32,29 @@ mkdir -p "$here/native/build/generated"
 "$repo/userspace/ccl/build/manifest/ccl-manifest" \
     "$repo/userspace/ccl/catalogs/native-runtime-services.ccl" \
     "$here/manifest.ccl" --startup-output "$here/native/build/generated/startup.ads" > "$build/manifest.S"
+# The decoders of the typed settings Penny reads (Servo_Agent_Settings,
+# Servo_Site_Agent_Settings), generated into userspace/ccl/src: only these
+# units, not the whole CCL tree, join the native library.
+for unit in ccl.ads ccl-setting_codecs.ads \
+        ccl-setting_codecs-browser_user_agent.ads ccl-setting_codecs-browser_user_agent.adb \
+        ccl-setting_codecs-site_user_agent.ads ccl-setting_codecs-site_user_agent.adb; do
+    cmp -s "$repo/userspace/ccl/src/$unit" "$here/native/build/generated/$unit" ||
+        cp -p "$repo/userspace/ccl/src/$unit" "$here/native/build/generated/$unit"
+done
 as --64 "$build/manifest.S" -o "$build/manifest.o"
 (cd "$repo/kernel" && alr exec -- gprbuild $gprbuild_config -p -P ../userspace/servo/native/servo_shell_host.gpr -j4)
 python3 "$repo/tests/servo/check_native_mmx.py" "$here/native/build/lib/libservo_shell_host.a"
 export CUBIT_SERVO_NATIVE_DIR="$here/native"
+# Penny's cryptography (WEB-004): the SPARK crates' C ABI for penny-crypto,
+# on CuBit's user runtime (linked as libgnat-user).
+(cd "$repo/kernel" && PENNY_CRYPTO_TARGET=cubit alr exec -- gprbuild $gprbuild_config -p \
+    -P ../userspace/servo/crypto/penny_crypto.gpr -j8)
+export PENNY_CRYPTO_LIB_DIR="$here/crypto/build/cubit/lib"
+export PENNY_CRYPTO_RUNTIME_DIR="$repo/userspace/runtime/adalib"
+
+# Exactly the crates of userspace/servo/Cargo.lock (and std's own lock);
+# the build itself then runs --frozen, without network.
+bash "$here/servo-cargo.sh" fetch
 
 # The main thread runs the embedder's event loop; give it 8 MiB. The stack
 # contract is a link option, so relink (cargo does not track it).
@@ -51,7 +72,10 @@ python3 "$repo/tests/servo/check_secondary_stack_link.py" \
     "$CARGO_TARGET_DIR/x86_64-unknown-cubit/release/cubitshell"
 
 
-strip -o "$out.tmp" "$CARGO_TARGET_DIR/x86_64-unknown-cubit/release/cubitshell"
+# gprbuild's linker options for the Ada library (its checkout's -L paths)
+# are build metadata, not program content.
+strip --remove-section=.GPR.linker_options -o "$out.tmp" "$CARGO_TARGET_DIR/x86_64-unknown-cubit/release/cubitshell"
+python3 "$here/content_build_id.py" "$out.tmp" "$CARGO_TARGET_DIR/x86_64-unknown-cubit/release/cubitshell"
 for section in $(readelf -SW "$build/manifest.o" | grep -o '\.cubit\.[a-z_.]*' | sort -u); do
     objcopy --dump-section "$section=$build/$section.bin" "$build/manifest.o"
     objcopy --add-section "$section=$build/$section.bin" "$out.tmp"

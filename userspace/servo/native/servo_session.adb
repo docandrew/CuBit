@@ -21,12 +21,15 @@ with Servo_Tab_Projection;
 with Servo_Bookmarks;
 with Penny_Artwork;
 with Servo_Tab_Geometry;
+with CuBit.Monotonic;
+with Servo_Page_Fonts;
 
 package body Servo_Session is
    package App renames CuBit.UI.App;
    package Editor renames CuBit.UI.Editor;
    package Geometry renames Client_Canvas_Geometry;
    use type System.Address;
+   use type Servo_Page_Fonts.Font_List_State;
    Win : App.Window;
    Address_Edit : Editor.Edit_State;
    Current_URL : String (1 .. Editor.MAX_TEXT_LENGTH) := [others => ' '];
@@ -150,7 +153,7 @@ package body Servo_Session is
    end Menu_Model;
 
    function Now return Unsigned_64 is
-     (CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME));
+     (CuBit.Monotonic.Milliseconds);
 
    procedure Begin_Input is
    begin Input_Batch := Client_Input_Budget.Open (Now); end Begin_Input;
@@ -960,6 +963,8 @@ package body Servo_Session is
       Widget : Widget_Result;
       Colors : constant Theme := Current_Theme;
       Text : constant String := Editor.Content (Address_Edit);
+      Fonts_Missing : constant Boolean :=
+        Servo_Page_Fonts.State = Servo_Page_Fonts.Missing;
       function Position (P : Editor.Text_Position) return Natural is
         (if P - 1 < First_Shown then 0 else P - 1 - First_Shown);
    begin
@@ -1025,11 +1030,12 @@ package body Servo_Session is
           elsif Preference_Error then "Layout changed; Config could not save preference"
           elsif Invalid_Address then "Enter an HTTP or HTTPS address"
           elsif Address_Too_Long then "Address exceeds editor limit; Ctrl+L enters a new address"
+          elsif Fonts_Missing then "No fonts: pages cannot show text"
           elsif Load_Marks /= 0 then ""
           elsif Busy then "Loading..." else "Ready"), "      Penny");
       if Load_Marks /= 0 and then not
         (Address_Input_Lost or Window_Limit or Preference_Error or
-         Invalid_Address or Address_Too_Long)
+         Invalid_Address or Address_Too_Long or Fonts_Missing)
       then
          declare
             X : Natural := 8;

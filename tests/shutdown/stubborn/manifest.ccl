@@ -4,4 +4,6 @@
 (Executable_Manifest
   identity => "com.cubit.test.shutdown-stubborn"
   version => "1"
-  requests_none => true)
+  # ABI-002: its debug text (CuBit.Console_Route).
+  requests => [(service "logstore" "logstore")]
+  optional => ["logstore"])

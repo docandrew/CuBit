@@ -6,6 +6,7 @@ with Ada.Command_Line;
 with Interfaces; use Interfaces;
 with Launch_Configuration; use Launch_Configuration;
 with System_Publications;
+with Readiness_Publication;
 with Round_Trips;
 with Interrupt_Line_ABI;
 
@@ -48,7 +49,8 @@ begin
          Process_Root => H (3), PCI_Ports => H (4), Registration => H (5),
          Vector_Authority => H (6), IO_Ports => H (7), Legacy_Interrupts => H (8),
          Notifications => H (9), Scheduling => H (10), Firmware_Snapshot => H (14),
-         Platform_Power => H (15));
+         Platform_Power => H (15), Trace => H (16), Process_List => H (17),
+         Test_Console => H (18), VM_Create => H (19));
       Old_Fixed_Roots : constant := 8;
       Many_Device : constant := 5 * Old_Fixed_Roots;
       Many_Firmware : constant := 7 * Old_Fixed_Roots;
@@ -144,6 +146,16 @@ begin
          Check (not OK, "a long devmgr block refused");
          Decode (W (1 .. Device_Manager_Prefix_Words - 1), D, OK);
          Check (not OK, "a block shorter than the prefix refused");
+         --  The VM creation authority (VMM-001) is the last named handle,
+         --  just before the roots.
+         W := Block_Of (V);
+         Check (W (First_Handle_Word + Device_Manager_Handle_Fields - 1) = H (19)
+                and then First_Handle_Word + Device_Manager_Handle_Fields =
+                           Device_Manager_Prefix_Words + 1,
+                "the VM creation authority is the last named handle");
+         W (First_Handle_Word + Device_Manager_Handle_Fields - 1) := 0;
+         Decode (W, D, OK);
+         Check (not OK, "a devmgr block without the VM creation authority refused");
       end;
    end;
    declare
@@ -156,7 +168,9 @@ begin
                      Netstack => H (8), Network_Policy => H (9), Mixer => 0,
                      Device_Manager => H (10), Ready => H (11), Framebuffer => H (12),
                      Device_Inspection => H (13), Firmware_Snapshot => H (14),
-                     Platform_Power => H (15)));
+                     Platform_Power => H (15), Trace => H (16),
+                     Process_List => H (17), Test_Console => H (18),
+                     VM_Create => H (19)));
       D : Process_Manager_Configuration; OK : Boolean;
       E : Encoded;
    begin
@@ -176,6 +190,12 @@ begin
          W (21) := 0;  --  no firmware snapshot reader
          Decode (W, D, OK);
          Check (not OK, "process manager refuses a missing firmware snapshot reader");
+         W := E.Words (1 .. E.Length);
+         Check (W'Last = 26 and then W (26) = H (19),
+                "process manager's VM creation authority is word 26");
+         W (26) := 0;  --  no VM creation authority (VMM-001)
+         Decode (W, D, OK);
+         Check (not OK, "process manager refuses a missing VM creation authority");
       end;
    end;
    declare
@@ -434,9 +454,15 @@ begin
    Check ((Magic and 16#FFFF#) > 16, "magic is not an argument block version");
 
    --  Layout facts the kernel and runtimes rely on.
-   Check (System_Publications.Facts_Page'Size = 136 * 8, "facts page size");
+   Check (System_Publications.Facts_Page'Size = 152 * 8, "facts page size");
    Check (System_Publications.Registry_Page'Size = (1 + 128) * 64, "registry size");
-   Check (System_Publications.Statistics'Size = 24 * 8, "statistics size");
+   --  The readiness page's statistics and the thread-count lines (layout 3).
+   Check (Readiness_Publication.Readiness_Page'Size = 64 * 8, "readiness page size");
+   Check (Readiness_Publication.Thread_Line'Size = 64 * 8
+          and then Readiness_Publication.Line_Address (127) + 64 =
+                   Readiness_Publication.Thread_Counts_Address
+                   + Readiness_Publication.Thread_Count_Pages * Readiness_Publication.Page_Bytes,
+          "thread-count lines fill their pages");
    Check (System_Publications.Wall_Clock_Address =
             16#0000_5B00_0000_3000#, "wall clock address");
 

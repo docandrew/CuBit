@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -65,6 +66,8 @@ procedure Main is
       end if;
    end Reject_Rename;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Raw := syscall (SYSCALL_SBRK, 2 * Page_Size);
    if Raw = Unsigned_64'Last then
       debugPrint ("FILESYSTEM-SCOPE-CHECK: FAIL allocation" & ASCII.LF);
@@ -142,11 +145,11 @@ begin
       --  Knowing administrative labels is not policy-installation authority.
       Msg := NULL_MESSAGE;
       Msg.tag := (label => OP_SET_ACL, length => 4, protocol => 0, ipc => <>, reserved => 0);
-      Msg.words := [0 => syscall (SYSCALL_GETPID), others => 0];
+      Msg.words := [0 => Own_Process_Word, others => 0];
       Tag := capCall (Filesystem, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_ACCESS_DENIED, "self-grant denied");
       Msg.tag := (label => OP_REVOKE_ACL, length => 1, protocol => 0, ipc => <>, reserved => 0);
-      Msg.words := [0 => syscall (SYSCALL_GETPID), others => 0];
+      Msg.words := [0 => Own_Process_Word, others => 0];
       Tag := capCall (Filesystem, Msg, CuBit.Messages.Wait_Forever);
       Check (Tag.label = REPLY_ACCESS_DENIED, "untrusted policy edit denied");
       Msg := Rewind_Directory_Request (Directory);

@@ -23,7 +23,6 @@ pub mod thread;
 enum Syscall {
     Exit = 0,
     GrowHeap = 8,
-    DebugWrite = 12,
     CallViaEndpointCapability = 128,
     ThreadCreate = 90,
     ThreadExit = 91,
@@ -32,17 +31,16 @@ enum Syscall {
     FutexWake = 93,
 }
 
-/// Early runtime diagnostics through CuBit's existing debug output route.
-/// This is not ambient application stdout or a replacement for typed stdlog.
+/// Debug text, through the Ada run time the program links (feature
+/// `console`): CuBit.Messages.Console_Put, which publishes it in the
+/// program's logstore ring once routed. There is no kernel console.
+#[cfg(feature = "console")]
 pub fn debug_write(text: &str) {
-    // SAFETY: the kernel copies the borrowed bytes synchronously; no pointer
-    // survives the syscall. Descriptor 1 is the existing Ada debug route.
-    unsafe {
-        asm!("syscall",
-            inlateout("rax") Syscall::DebugWrite as u64 => _,
-            in("rdi") 1_u64, in("rsi") text.as_ptr(), in("rdx") text.len(),
-            lateout("rcx") _, lateout("r11") _, options(nostack));
+    unsafe extern "C" {
+        fn cubit_console_put(text: *const u8, length: u64);
     }
+    // SAFETY: the run time copies the borrowed bytes before it returns.
+    unsafe { cubit_console_put(text.as_ptr(), text.len() as u64) };
 }
 
 /// A synchronous call's deadline: none (docs/ipc-fastpath.md, "Call

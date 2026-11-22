@@ -215,6 +215,19 @@ is
     function getCR2 return Unsigned_64;
 
     ---------------------------------------------------------------------------
+    -- Debug registers (DBG-001). DR6 reports which condition raised the last
+    -- #DB; DR7 enables DR0-DR3. Writing DR7 = 0 disables every breakpoint.
+    ---------------------------------------------------------------------------
+    function getDR6 return Unsigned_64;
+    procedure setDR6 (value : Unsigned_64);
+    procedure setDR0 (value : Unsigned_64);
+    procedure setDR7 (value : Unsigned_64);
+
+    -- DR6 with no condition recorded: bits 4-11 and 16-31 read as one
+    -- (Intel SDM vol. 3, 18.2.3); written back after each #DB.
+    DR6_CLEAR : constant Unsigned_64 := 16#FFFF_0FF0#;
+
+    ---------------------------------------------------------------------------
     -- Get the current value of the CR3 register (top-level page table ptr)
     ---------------------------------------------------------------------------
     function getCR3 return Integer_Address;
@@ -700,6 +713,15 @@ is
     procedure rep_movsb (dst : in System.Address;
                          src : in System.Address;
                          len : in System.Storage_Elements.Storage_Count);
+
+    ---------------------------------------------------------------------------
+    -- rep_stosb
+    -- (memset): len copies of value from dst. Fast-string stores, at least
+    -- an order of magnitude faster than a byte loop for whole pages.
+    ---------------------------------------------------------------------------
+    procedure rep_stosb (dst   : in System.Address;
+                         value : in System.Storage_Elements.Storage_Element;
+                         len   : in System.Storage_Elements.Storage_Count);
 
     -- Compare exactly len bytes and return the exact difference between the
     -- first differing pair of unsigned bytes.  Not constant-time.

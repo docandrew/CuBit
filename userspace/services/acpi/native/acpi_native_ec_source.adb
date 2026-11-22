@@ -27,7 +27,12 @@ package body ACPI_Native_EC_Source is
    use type Selection.Outcome,One.Runtime.Status.Phase,One.Runtime.Status.Outcome;
    use type Receiver.Enrollment,Receiver.Outcome,ACPI_SCI_Events.IO_Outcome;
    use type ACPI_SCI_Quiesce.Outcome;
-   Window_Microseconds : constant Interfaces.Unsigned_64 := 500_000;
+   Maximum_Startup_Window_Microseconds : constant := 5_000_000;
+   subtype Window_Allowance is Interfaces.Unsigned_64 range 1 .. Maximum_Startup_Window_Microseconds;
+   Discovery_Window_Microseconds : constant Window_Allowance := Window_Allowance'Last;
+   Query_Window_Microseconds : constant Window_Allowance := 500_000;
+   -- Namespace discovery is a once-only startup scan. Per-event queries keep
+   -- their shorter original allowance; neither window renews during its work.
    AML_Fuel : constant Natural := 100_000;
    Query_Work : constant T.Work_Budget := 10_000;
    Controller : constant E.Controller_ID := 1;
@@ -51,7 +56,7 @@ package body ACPI_Native_EC_Source is
       and then not Q.Retained_Results_Pending(Server)
       and then One.Runtime.Current=One.Runtime.Status.Idle and then Fields.Control_Idle
       and then Commands.Quiescent);
-   procedure Open_Window(Server:in out Q.State;Opened:out Boolean) is
+   procedure Open_Window(Server:in out Q.State;Window_Microseconds:Window_Allowance;Opened:out Boolean) is
       Now:Interfaces.Unsigned_64;Available:Boolean;Result:One.Runtime.Status.Outcome;
    begin
       Opened:=False;ACPI_Clock_Source.Read(Now,Available);
@@ -64,7 +69,10 @@ package body ACPI_Native_EC_Source is
       Result:One.Runtime.Status.Outcome;
    begin
       One.Runtime_Access.End_Event(Server,Completed,Result);
-      if Result/=One.Runtime.Status.Event_Completed then Fail(Window_Refused);end if;
+      --  Keep the query failure that required this close attributable.
+      if Result/=One.Runtime.Status.Event_Completed and then Last.Stage/=Failed then
+         Fail(Window_Refused);
+      end if;
    end Close_Window;
    procedure Select_Controller(Service:aliased in out C.State;Completed:out Boolean) is
       Result:Selection.Report;Enrollment:Receiver.Enrollment;
@@ -89,7 +97,7 @@ package body ACPI_Native_EC_Source is
    begin
       Accepted:=False;if Working or else Last.Stage/=Fresh or else Stopping then return;end if;
       if not Admission_Ready(Server) then Fail(Admission_Refused);return;end if;
-      Working:=True;Open_Window(Server,Opened);
+      Working:=True;Open_Window(Server,Discovery_Window_Microseconds,Opened);
       if not Opened then Fail(Window_Refused);Working:=False;return;end if;
       Configure_Work.Advance(Server,Allowed,Completed);
       if Allowed/=Configure_Work.Controller.Admitted then Fail(Admission_Refused);end if;
@@ -191,7 +199,7 @@ package body ACPI_Native_EC_Source is
          end if;
          Last.Delivery_Pending:=False;Last.Stage:=Query_Pending;
       end if;
-      Open_Window(Server,Opened);
+      Open_Window(Server,Query_Window_Microseconds,Opened);
       if not Opened then Fail(Window_Refused);Working:=False;Result:=ACPI_Native_Server.Owner_Refused;return;end if;
       Rearm_Ready:=False;Query_Work_Item.Advance(Server,Work_Allowed,Completed);
       if Work_Allowed/=Query_Work_Item.Controller.Admitted then Fail(Admission_Refused);end if;

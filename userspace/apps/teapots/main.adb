@@ -4,6 +4,7 @@
 --  status bar and the labels with the toolkit; the canvas brings the GPU
 --  frames into the same window. Space pauses, Escape closes.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Protocol;
@@ -50,7 +51,7 @@ procedure Main is
       Reading : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
    begin
       return (if Reading.Available then Reading.Microseconds
-              else syscall (SYSCALL_GETTIME) * MICROSECONDS_PER_MILLISECOND);
+              else CuBit.Monotonic.Milliseconds * MICROSECONDS_PER_MILLISECOND);
    end Now_Us;
 
    function Scene_Seconds return Float is
@@ -145,7 +146,7 @@ procedure Main is
 
    function Deadline return Unsigned_64 is
      (if GC.State (Canvas) = GC.Ready
-      then syscall (SYSCALL_GETTIME) + POLL_MILLISECONDS else 0);
+      then CuBit.Monotonic.Milliseconds + POLL_MILLISECONDS else 0);
 
    procedure Tick (Win : in out CuBit.UI.App.Window; Dirty : in out Rect; Running : in out Boolean) is
       pragma Unreferenced (Running);
@@ -155,7 +156,7 @@ procedure Main is
       GC.Poll (Canvas, New_Frame);
       if New_Frame then
          Dirty := Union_Rect (Dirty, GC.Area (Canvas));
-         Teapot_Gallery.Note_Presented (syscall (SYSCALL_GETTIME));
+         Teapot_Gallery.Note_Presented (CuBit.Monotonic.Milliseconds);
          if Teapot_Gallery.Rate_Tenths /= Shown_Rate then
             Shown_Rate := Teapot_Gallery.Rate_Tenths;
             Dirty := Union_Rect (Dirty, Status_Rect);
@@ -173,6 +174,8 @@ procedure Main is
      (UI, Controls, Render => Render, Handle_Event => Handle_Event, Next_Deadline => Deadline,
       On_Deadline => Tick, Activity_Wait => True);
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("teapots: starting" & ASCII.LF);
    CuBit.Logging.Announce ("teapots: started", Opened, Startup.Logstore);
    declare

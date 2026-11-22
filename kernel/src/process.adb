@@ -13,8 +13,11 @@
 -- @TODO Model lock ordering in SPARK to get formal guarantees of correctness.
 -------------------------------------------------------------------------------
 pragma Ada_2022;
-with Readiness_Pages;
+with Debug_Sessions;
 with Ada.Unchecked_Conversion;
+with Address_Space_Tags;
+with TLB_Context;
+with Syscall_Census;
 
 with BuddyAllocator;
 with Modules;
@@ -48,10 +51,13 @@ with Page_Admission;
 with User_Page_Walk;
 with PerCPUData;
 with Process.Futex;
+with VM_Objects;
 with Process.DMA;
 with Process.IPC;
 with Process.Owned_Memory;
 with Process.User_Memory;
+with Kernel_Window;
+with Process_Pool;
 with Process.Queues;
 with Process_Identities;
 with Scheduler;
@@ -69,6 +75,16 @@ with CPUID;
 -- Ada implementation: custom storage, address overlays or live context state.
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
 package body Process is
+
+    -- Each PID's page tables load under their own tag (PID + 1); tag 0 is
+    -- the kernel's.
+    pragma Compile_Time_Error
+        (ProcessID'Last + 1 > TLB_Context.Slot_Tags,
+         "every PID needs its own address-space tag");
+
+    function tagOf (pid : ProcessID) return TLB_Context.Slot_Tag is
+        (TLB_Context.Slot_Tag'First + pid);
+
     use type Scheduling_Shadow.Health;
     -- Separate aligned CPU-local metadata avoids changing assembly-visible
     -- PerCPUData offsets. All reads/writes use the existing Process.lock.
@@ -238,7 +254,12 @@ package body Process is
         Cpu_Times_Page.Write (CPU_Number, CPU.Times);
         if Now >= CPU.Memory_Due then
             CPU.Memory_Due := CTP.Saturating_Add (Now, ticksOf (CTP.Memory_Refresh_Microseconds));
-            Cpu_Times_Page.Set_Free_Memory (Unsigned_64 (BuddyAllocator.getFreeBytes));
+            declare
+                Free : constant Unsigned_64 := Unsigned_64 (BuddyAllocator.getFreeBytes);
+            begin
+                Cpu_Times_Page.Set_Free_Memory (Free);
+                Publication_Pages.Set_Free_Memory (Free);
+            end;
         end if;
         if C.Accepted then
             if C.Charged_Owner = NO_THREAD then
@@ -447,7 +468,8 @@ package body Process is
             Modules.Forget_Process (pid);
             Mem_mgr.unmapKernelMemFromProcess (addrtab(pid));
             deleteP4 (addrtab(pid));
-            Readiness_Pages.Release (proctab(pid).readinessFrame);
+            Readiness_Pages.Release (proctab(pid).readinessFrame,
+                                     proctab(pid).threadCountFrames);
             zeroize (addrtab(pid));
             proctab(pid).pgTable := NO_PROCESS;
         end if;
@@ -707,6 +729,25 @@ package body Process is
         resume (newPID);
     end startReaper;
 
+    procedure startWorker (procStart : System.Address; name : ProcessName) is
+        newPID : constant ProcessID := createKernelThread
+          (procStart, name, NO_PROCESS, 5);
+    begin
+        threadOf(newPID).cpu := 0;
+        threadOf(newPID).pinned := True;
+        resume (newPID);
+    end startWorker;
+
+    ---------------------------------------------------------------------------
+    -- publishOwnedBytes
+    ---------------------------------------------------------------------------
+    procedure publishOwnedBytes (pid : ProcessID) is
+    begin
+        Readiness_Pages.Set_Owned
+          (proctab(pid).readinessFrame,
+           Unsigned_64 (proctab(pid).frames.length) * Unsigned_64 (Virtmem.PAGE_SIZE));
+    end publishOwnedBytes;
+
     ---------------------------------------------------------------------------
     -- tryAddPage
     -- Allocate a page of memory for a process or thread's parent process, map
@@ -714,7 +755,8 @@ package body Process is
     -- parent process frame list so it will be freed on exit.
     ---------------------------------------------------------------------------
     procedure tryAddPage
-      (proc : in out Process; mapTo : System.Address; storage : out System.Address;
+      (proc : in out Process; mapTo : System.Address;
+       frame : out Process_Frames.Process_Frame;
        result : out Page_Allocation_Result;
        flags : Unsigned_64 := Virtmem.PG_USERDATA)
     is
@@ -747,11 +789,13 @@ package body Process is
         begin
             mapPage (Frame, To_Integer (mapTo), flags, addrtab(proc.pgTable), Accepted);
         end Map;
+        -- From the process pool, outside the kernel's linear map, zeroed
+        -- through this CPU's window before any mapping can show it (KERN-014).
         procedure Acquire is new Page_Allocation.Acquire
-          (Virtmem.PhysAddress, BuddyAllocator.allocFrame, BuddyAllocator.freeFrame,
+          (Virtmem.PhysAddress, Process_Pool.Alloc_Frame, BuddyAllocator.freeFrame,
            Track, Forget, Claim, Map);
     begin
-        storage := System.Null_Address;
+        frame := Process_Frames.No_Frame;
         if frames.length >= frames.capacity then
             result := Frame_Tracking_Full;
             return;
@@ -767,13 +811,14 @@ package body Process is
             return;
         end if;
         Acquire (newFrame, outcome);
+        publishOwnedBytes (frameOwner);
         result := Page_Allocation_Result (outcome);
         if result /= Page_Added and then not handedOff then
             Memory_Accounting.Cancel_Unbound (charge, 1, cancelled);
             if not cancelled then raise ProcessException with "Page charge rollback failed"; end if;
         end if;
         if result = Page_Added then
-            storage := Virtmem.P2Va (newFrame);
+            frame := Process_Frames.Make (Unsigned_64 (newFrame));
         end if;
     end tryAddPage;
 
@@ -834,7 +879,8 @@ package body Process is
     procedure initializeUserEntry (tid      : ThreadID;
                                    entryPoint : System.Address;
                                    userRSP  : System.Address;
-                                   argument : Unsigned_64) is
+                                   argument : Unsigned_64;
+                                   second   : Unsigned_64 := 0) is
     begin
         --  The state page follows the kernel stack in the thread's block.
         initializeState : declare
@@ -847,11 +893,15 @@ package body Process is
         end initializeState;
         threadtab (tid).kernelStack.filler := (others => 0);
 
+        -- Tagged as a first frame, so a debugger can tell it from an
+        -- interrupt or a system call frame (Debug_Sessions, DBG-001).
         threadtab (tid).kernelStack.interruptFrame := (
                 interruptNumber => 0,
+                errorCode       => Stackframe.Initial_Frame_Tag,
                 rip             => entryPoint,
                 rsp             => userRSP,
                 rdi             => argument,
+                rsi             => second,
                 rflags          => x86.FLAGS_INTERRUPT,
                 cs              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_USER_CODE) or 3,
                 ss              => Segment.GDTOffset'Enum_Rep(Segment.GDT_OFFSET_USER_DATA) or 3,
@@ -876,7 +926,7 @@ package body Process is
     is
         pid : ProcessID;
         reserved : Boolean;
-        storage : System.Address;
+        stackFrame : Process_Frames.Process_Frame;
         allocation : Page_Allocation_Result;
 
         procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
@@ -1061,6 +1111,9 @@ package body Process is
         end;
 
         zeroize (addrtab(pid));
+        -- A new address space in this slot: no CPU may keep translations it
+        -- cached under the slot's tag for an earlier one.
+        TLB_Context.Begin_Life (tagOf (pid));
         Mem_mgr.mapKernelMemIntoProcess (addrtab(pid));
         -- Every process reads the clock publication at its fixed address.
         declare
@@ -1071,10 +1124,19 @@ package body Process is
             if mapped then
                 Publication_Pages.Map (addrtab(pid), mapped);
             end if;
-            -- And its own readiness counters (KERN-013).
+            -- And its own readiness counters (KERN-013), identity and
+            -- thread counts; the main thread counts in slot 0.
             if mapped then
-                Readiness_Pages.Create (addrtab(pid), proctab(pid).readinessFrame);
+                Readiness_Pages.Create
+                  (addrtab(pid), Process_Identities.To_Word (identityOf (pid)),
+                   proctab(pid).readinessFrame, proctab(pid).threadCountFrames);
                 mapped := proctab(pid).readinessFrame /= Readiness_Pages.No_Frame;
+            end if;
+            if mapped then
+                proctab(pid).threadSlots := Thread_Slots.Main_Only;
+                threadOf (pid).countSlot := Readiness_Publication.Main_Thread_Slot;
+                threadOf (pid).callCounter := Readiness_Pages.Line
+                  (proctab(pid).threadCountFrames, Readiness_Publication.Main_Thread_Slot);
             end if;
             if not mapped then
                 discardUnpublished (pid);
@@ -1082,7 +1144,7 @@ package body Process is
             end if;
         end;
         -- Add a page for the process' stack
-        tryAddPage (proctab(pid), procStack - Virtmem.PAGE_SIZE, storage, allocation);
+        tryAddPage (proctab(pid), procStack - Virtmem.PAGE_SIZE, stackFrame, allocation);
         if allocation /= Page_Added then
             discardUnpublished (pid);
             return NO_PROCESS;
@@ -1484,6 +1546,7 @@ package body Process is
         ignore : System.Address;
     begin
         ignore := Util.memset (T'Address, 0, Thread'Size / 8);
+        T.callCounter := uncountedCalls'Address;
         T.lifetime := Process_Lifetime.Initial_State;
         T.execution := (others => <>);
         T.savedTurn := Scheduling_Turns.Empty;
@@ -1805,8 +1868,7 @@ package body Process is
         allocation : Page_Allocation_Result;
 
         pid          : ProcessID;
-        alignedStart : System.Address;
-        ignore       : System.Address;
+        imageFrame : Process_Frames.Process_Frame;
     begin
         if initSize > Virtmem.PAGE_SIZE then
             raise InitImageTooBigException with "Init image is too big to fit in one page.";
@@ -1829,7 +1891,7 @@ package body Process is
         -- add page to process, copy the init image to it
         tryAddPage (proc    => proctab(pid),
                  mapTo   => To_Address(0),
-                 storage => alignedStart,
+                 frame   => imageFrame,
                  result  => allocation,
                  flags   => Virtmem.PG_USERCODE);
         if allocation /= Page_Added then
@@ -1837,9 +1899,7 @@ package body Process is
             raise ProcessException with "Insufficient memory for bootstrap image";
         end if;
 
-        ignore := Util.memcpy (alignedStart,
-                               initBinaryStart'Address,
-                               initSize);
+        Kernel_Window.Write (imageFrame, 0, initBinaryStart'Address, initSize);
 
         publish (pid);
         resume (pid);
@@ -1861,8 +1921,34 @@ package body Process is
     procedure switchAddressSpace (pid : in ProcessID)
     is
     begin
-        Virtmem.setActiveP4 (rootPhysical (pid));
+        TLB_Context.Load_Process (Unsigned_64 (rootPhysical (pid)), tagOf (pid));
     end switchAddressSpace;
+
+    procedure restoreAddressSpace (saved : in Unsigned_64)
+    is
+        package Tags renames Address_Space_Tags;
+        tag : constant Tags.Tag := Tags.Tag_Of (saved);
+        pid : ProcessID;
+    begin
+        if not TLB_Context.Enabled or else tag = Tags.Kernel_Tag then
+            -- The kernel's tables, or a CPU without tags (each load drops
+            -- translations, as it always did).
+            if saved = Unsigned_64 (Mem_mgr.kernelRoot) then
+                Mem_mgr.switchAddressSpace;
+            else
+                TLB_Context.Load_Raw (saved);
+            end if;
+            return;
+        end if;
+        if tag > TLB_Context.Slot_Tag'Last then
+            raise ProcessException with "interrupted CR3 holds no process tag";
+        end if;
+        pid := ProcessID (tag - TLB_Context.Slot_Tag'First);
+        if Tags.Root_Of (saved) /= Unsigned_64 (rootPhysical (pid)) then
+            raise ProcessException with "interrupted CR3 is not its PID's page tables";
+        end if;
+        TLB_Context.Load_Process (Tags.Root_Of (saved), tagOf (pid));
+    end restoreAddressSpace;
 
     ---------------------------------------------------------------------------
     -- killProcess
@@ -2060,6 +2146,9 @@ package body Process is
         -- generation captured above), termination kind, exit code.
         procedure setExitReport is
         begin
+        if Build.Syscall_Census then
+            Syscall_Census.Report_Exit (pid);
+        end if;
             exitMsg.tag := (label => IPC_Labels.EVENT_CHILD_EXIT,
                             length => Process_Launch.Child_Exit_Words,
                             protocol => 0, ipc => <>, reserved => 0);
@@ -2078,6 +2167,12 @@ package body Process is
         IPC.closeNotices (pid);
         IPC.revokeAllGrants (pid);
         IPC.revokeAllGrantsTo (pid);
+        -- Its debug sessions (DBG-001), as target or viewer: views go while
+        -- its page tables still exist, and their pins with them.
+        Debug_Sessions.Process_Ended (pid);
+        -- Its VMs (VMM-001): every nested-table pin on its frames goes before
+        -- its page tables and frames are freed.
+        VM_Objects.Process_Ended (pid);
         --  Unregister IRQ and service registrations. Device vectors
         --  are retired, not freed: the device may still send until the
         --  device manager masks it and releases them.
@@ -2157,7 +2252,8 @@ package body Process is
             -- only delete the process' page tables.
             Mem_mgr.unmapKernelMemFromProcess (addrtab(pid));
             deleteP4 (addrtab(pid));
-            Readiness_Pages.Release (proctab(pid).readinessFrame);
+            Readiness_Pages.Release (proctab(pid).readinessFrame,
+                                     proctab(pid).threadCountFrames);
             proctab(pid).pgTable := NO_PROCESS;
         end if;
 
@@ -2271,7 +2367,8 @@ package body Process is
     ---------------------------------------------------------------------------
     procedure createThread (entryPoint, userStack : System.Address;
                             argument, fsBase, clearTidAddress : Unsigned_64;
-                            tid : out ThreadID)
+                            tid : out ThreadID;
+                            slot : out Thread_Slots.Slot)
     is
         USER_LIMIT : constant Unsigned_64 := 16#0000_8000_0000_0000#;
         me   : constant ThreadID := PerCPUData.getCurrentThread;
@@ -2284,11 +2381,14 @@ package body Process is
         begin
             Spinlocks.enterCriticalSection (lock);
             proctab(pid).threadCount := proctab(pid).threadCount - 1;
+            Thread_Slots.Give_Back (proctab(pid).threadSlots, slot);
             extraThreads := extraThreads - 1;
             Spinlocks.exitCriticalSection (lock);
         end unreserve;
+        slotTaken : Boolean;
     begin
         tid := NO_THREAD;
+        slot := Readiness_Publication.Main_Thread_Slot;
         if pid = NO_PROCESS or else threadtab (me).mode /= USER or else
            To_Integer (entryPoint) = 0 or else
            Unsigned_64 (To_Integer (entryPoint)) >= USER_LIMIT or else
@@ -2303,11 +2403,20 @@ package body Process is
         -- Reserve quota. The caller executes, so its process cannot be
         -- reaped during this call; it may be killed, which is rechecked.
         Spinlocks.enterCriticalSection (lock);
+        -- Its thread-count slot with it: the slots taken are the live
+        -- threads, so one is free whenever the limit allows a thread.
         if Process_Lifetime.Closing (threadtab (me).lifetime) or else
            proctab(pid).threadCount >= MAX_THREADS_PER_PROCESS or else
-           extraThreads >= MAX_EXTRA_THREADS
+           extraThreads >= MAX_EXTRA_THREADS or else
+           Readiness_Pages."=" (proctab(pid).threadCountFrames, Readiness_Pages.No_Count_Frames)
         then
             Spinlocks.exitCriticalSection (lock);
+            return;
+        end if;
+        Thread_Slots.Take (proctab(pid).threadSlots, slot, slotTaken);
+        if not slotTaken then
+            Spinlocks.exitCriticalSection (lock);
+            slot := Readiness_Publication.Main_Thread_Slot;
             return;
         end if;
         proctab(pid).threadCount := proctab(pid).threadCount + 1;
@@ -2339,7 +2448,13 @@ package body Process is
         threadtab (tid).fsBase := fsBase;
         threadtab (tid).clearTidAddress := clearTidAddress;
         threadtab (tid).state := SUSPENDED;
-        initializeUserEntry (tid, entryPoint, userStack, argument);
+        -- A slot's line starts from zero for each thread that takes it.
+        Readiness_Pages.Clear_Line (proctab(pid).threadCountFrames, slot);
+        threadtab (tid).countSlot := slot;
+        threadtab (tid).callCounter :=
+          Readiness_Pages.Line (proctab(pid).threadCountFrames, slot);
+        initializeUserEntry (tid, entryPoint, userStack, argument,
+                             Unsigned_64 (slot));
 
         -- Publish under the lock a kill takes to stop every thread: either
         -- the kill sees this thread, or this sees the kill.
@@ -2377,8 +2492,12 @@ package body Process is
         -- been joined never holds one, whenever the reaper frees it. The
         -- table itself (MAX_EXTRA_THREADS) is returned at reaping, as
         -- before.
+        -- Its thread-count slot goes with it (this thread makes no more
+        -- system calls); a thread that takes the slot clears the line.
         Spinlocks.enterCriticalSection (lock);
         proctab(pid).threadCount := proctab(pid).threadCount - 1;
+        threadtab (me).callCounter := uncountedCalls'Address;
+        Thread_Slots.Give_Back (proctab(pid).threadSlots, threadtab (me).countSlot);
         Spinlocks.exitCriticalSection (lock);
 
         -- Join support: clear the word, then wake whoever waits on it.
@@ -2440,7 +2559,7 @@ package body Process is
     procedure kernelUserFault (pid : ProcessID; addr : System.Address;
                                Write : Boolean; handled : out Boolean)
     is
-        ignore : System.Address;
+        ignore : Process_Frames.Process_Frame;
         result : Page_Allocation_Result;
         use type Page_Admission.Decision;
         page : constant Integer_Address := To_Integer (addr) and Virtmem.PAGE_MASK;
@@ -2473,7 +2592,7 @@ package body Process is
           = Page_Admission.Admitted
         then
             tryAddPage (proc => Proctab(pid), mapTo => To_Address (page),
-                        storage => ignore, result => result);
+                        frame => ignore, result => result);
             handled := result = Page_Added;
         end if;
         unlockAddressSpace (pid);
@@ -2495,7 +2614,7 @@ package body Process is
     procedure pageFault (pid : ProcessID; addr : System.Address; Write : Boolean;
                          Error_Code : Unsigned_64)
     is
-        ignore : System.Address;
+        ignore : Process_Frames.Process_Frame;
         result : Page_Allocation_Result := Page_Added;
         use type Page_Admission.Decision;
         admission : Page_Admission.Decision;
@@ -2528,7 +2647,7 @@ package body Process is
         if admission = Page_Admission.Admitted then
             tryAddPage (proc => Proctab(pid),
                         mapTo => To_Address (page),
-                        storage => ignore, result => result);
+                        frame => ignore, result => result);
         end if;
         unlockAddressSpace (pid);
 

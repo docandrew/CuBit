@@ -34,6 +34,23 @@ package Servo_Shell with SPARK_Mode => Off is
        External_Name => "cubit_servo_config_scope_check";
    function Memory_Owned return Unsigned_64
      with Export, Convention => C, External_Name => "cubit_servo_memory_owned";
+   -- Penny's User-Agent settings (cubitshell's user_agent.rs owns the
+   -- strings). User_Agent: browser.servo.user-agent's presentation, its
+   -- position in Agent_Presentation (Servo_Agent_Settings.Presentation),
+   -- or Agent_Absent (none stored) or Agent_Unreadable (refused, or not a
+   -- Browser_User_Agent).
+   Agent_Absent : constant Unsigned_32 := 16#FFFF_FFFF#;
+   Agent_Unreadable : constant Unsigned_32 := 16#FFFF_FFFE#;
+   function User_Agent return Unsigned_32
+     with Export, Convention => C, External_Name => "cubit_servo_user_agent";
+   -- Site_Agents calls Visit with each stored browser.servo.site-agent.<host>:
+   -- the host (borrowed for the call) and its presentation's position, or
+   -- Agent_Unreadable. Returns 0 when Config listed the family, else 1.
+   type Site_Visit is access procedure
+     (Context, Host : System.Address; Length, Presentation : Unsigned_32)
+     with Convention => C;
+   function Site_Agents (Visit : Site_Visit; Context : System.Address) return Unsigned_32
+     with Export, Convention => C, External_Name => "cubit_servo_site_agents";
    function Open return Unsigned_32
      with Export, Convention => C, External_Name => "cubit_servo_open";
    procedure Metrics (Result : access Viewport)
@@ -73,6 +90,9 @@ package Servo_Shell with SPARK_Mode => Off is
      with Export, Convention => C, External_Name => "cubit_servo_pending";
    procedure Window_Error
      with Export, Convention => C, External_Name => "cubit_servo_window_error";
+   -- Servo's font list has no usable face: pages cannot show text.
+   procedure Fonts_Missing
+     with Export, Convention => C, External_Name => "cubit_servo_fonts_missing";
    procedure Close
      with Export, Convention => C, External_Name => "cubit_servo_close";
 end Servo_Shell;

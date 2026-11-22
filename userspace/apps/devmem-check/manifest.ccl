@@ -2,4 +2,6 @@
 # device-memory request it makes must be refused and recorded.
 (executable-manifest v1
   (identity "com.cubit.devmem-check")
-  (version "0.1.0"))
+  (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore))

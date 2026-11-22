@@ -45,7 +45,23 @@ is
         CAP_HARDWARE_GROUP, -- Kernel catalog group; no raw-address authority
         CAP_HARDWARE_REGISTER, -- Kernel catalog member; fixed admitted operation
         CAP_FIRMWARE_SNAPSHOT, -- Read the sealed boot firmware-table snapshot
-        CAP_PLATFORM_POWER     -- Enter a system power state (KERN-004)
+        CAP_PLATFORM_POWER,    -- Enter a system power state (KERN-004)
+        CAP_TRACE,             -- Reset and summarize the kernel trace (Trace_ABI)
+        CAP_PROCESS_LIST,      -- List the kernel's processes (Process_List_ABI)
+        CAP_TEST_CONSOLE,      -- Print a line on the serial console; test builds' logstore only (Test_Console_ABI)
+        -- Debug sessions (DBG-001, Debug_ABI, Debug_Sessions): four tightly
+        -- scoped kinds, minted only from a target's Control. object.ref =
+        -- session slot, object.param = the target's identity word, gen =
+        -- the session's generation.
+        CAP_DEBUG_OBSERVE,     -- Threads, registers and read-only views of one target
+        CAP_DEBUG_PAUSE,       -- Hold, resume, step and breakpoints (not built: Not_Yet)
+        CAP_DEBUG_MODIFY,      -- Set registers and memory (not built: Not_Yet)
+        CAP_DEBUG_INSTRUMENT,  -- Record and instrument (not built: Not_Yet)
+        -- Virtual machines (VMM-001, docs/hypervisor.md): one creation
+        -- root, then the objects the kernel mints from it.
+        CAP_VM_CREATE,         -- Create VMs: kernel object, one root (devmgr to procmgr)
+        CAP_VM,                -- One VM (control and guest memory by rights)
+        CAP_VCPU               -- One vCPU of a VM
     );
 
     ---------------------------------------------------------------------------

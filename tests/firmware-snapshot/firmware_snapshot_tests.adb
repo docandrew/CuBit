@@ -177,6 +177,24 @@ procedure Firmware_Snapshot_Tests is
          ABI.Decode_Copy (W, 4, Copied, Valid);
          Check (not Valid, "copy reserved word refused");
       end loop;
+
+      --  The Call's reply message carries the varying words only; the
+      --  runtime restores the rest (ABI-002 slice 7).
+      Check (ABI.Reply_Of (ABI.Catalog_Info,
+                           ABI.Payload_Of (ABI.Catalog_Info, ABI.Encode_Info (Good_Info)))
+             = ABI.Encode_Info (Good_Info), "catalog reply message round trip");
+      Check (ABI.Reply_Of (ABI.Catalog_Info,
+                           ABI.Payload_Of (ABI.Catalog_Info, ABI.Encode_Info ((others => <>))))
+             = ABI.Encode_Info ((others => <>)), "unready catalog message round trip");
+      Check (ABI.Reply_Of (ABI.Describe_Table,
+                           ABI.Payload_Of (ABI.Describe_Table,
+                                           ABI.Encode_Description (Good_Description)))
+             = ABI.Encode_Description (Good_Description), "description message round trip");
+      Check (ABI.Reply_Of (ABI.Copy_Table_Part,
+                           ABI.Payload_Of (ABI.Copy_Table_Part, ABI.Encode_Copy (17)))
+             = ABI.Encode_Copy (17), "copy reply message round trip");
+      Check (ABI."=" (ABI.Payload_Of (ABI.Catalog_Info, ABI.Encode_Info (Good_Info)),
+               [1, 3, 65_573, 65_725]), "catalog message words: ready, count, largest, total");
    end Replies;
 
    ---------------------------------------------------------------------------

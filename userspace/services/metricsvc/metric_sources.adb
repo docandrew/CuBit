@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Log_Sources.Texts;
 with CuBit.Channel_Contracts;
 with CuBit.Channel_Protocol;
 with Heap_Growth;
@@ -192,13 +193,13 @@ package body Metric_Sources is
    function Identity_Of (T : Table; Process : Unsigned_64) return String is
       At_Entry : constant Natural := Find (T, Process);
    begin
-      return (if At_Entry = 0 then "" else LS.Identity_Of (Source_Blocks.Get (T.Sources, At_Entry - 1).Who));
+      return (if At_Entry = 0 then "" else LS.Texts.Identity_Of (Source_Blocks.Get (T.Sources, At_Entry - 1).Who));
    end Identity_Of;
 
    function Program_Of (T : Table; Process : Unsigned_64) return String is
       At_Entry : constant Natural := Find (T, Process);
    begin
-      return (if At_Entry = 0 then "" else LS.Label (Source_Blocks.Get (T.Sources, At_Entry - 1).Who));
+      return (if At_Entry = 0 then "" else LS.Texts.Label (Source_Blocks.Get (T.Sources, At_Entry - 1).Who));
    end Program_Of;
 
    function Lost (T : Table) return Unsigned_64 is (T.Losses);

@@ -1,6 +1,7 @@
 ------------------------------------------------------------------------------
 --  Deterministic typed-input publication and recovery regression.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 
@@ -83,6 +84,8 @@ procedure Main is
    end Publish_Key;
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("input-stress: waiting for input consumers" & LF);
    for attempt in 1 .. 200 loop
       pointerConsumer :=

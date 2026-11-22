@@ -1,0 +1,15 @@
+--  VMM-001: hosted test and proof of the VM ownership model
+--  (docs/hypervisor.md, section 5). Model only; no kernel sources.
+project VM_Ownership is
+   for Source_Dirs use (".");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end VM_Ownership;

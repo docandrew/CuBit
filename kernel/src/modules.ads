@@ -49,16 +49,6 @@ is
     procedure Return_Initrd_Pages (Physical, Bytes : Unsigned_64);
     procedure Note_Mapped (Holder : Process.ProcessID; Pages : Unsigned_64);
 
-    -- Copy Length bytes of the boot image at Physical (a frame found in the
-    -- caller's own read-only mapping) while those pages are still the
-    -- image's. Under the image lock, so no concurrent release can give them
-    -- to the buddy allocator mid-copy. False (nothing copied) for anything
-    -- that is not live boot-image memory.
-    procedure Copy_Resident (Physical    : Integer_Address;
-                             Length      : Storage_Count;
-                             Destination : System.Address;
-                             Copied      : out Boolean);
-
     -- The holder's own boot-image mappings at Virtual, Bytes long (whole
     -- pages, at most Maximum_Release_Pages): removed, and every page whose
     -- last mapping that was goes to the buddy allocator. All or nothing:

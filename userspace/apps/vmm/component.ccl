@@ -1,0 +1,18 @@
+# vmm: the per-VM monitor (VMM-001, docs/hypervisor.md section 6) as a
+# desktop app. Slice 1 runs the pinned Linux guest (tests/vm-linux) and shows
+# its serial console in a window, the same text on its guest.console outlet.
+(Component name => "vmm" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/apps/vmm/core"]
+    libraries => ["ui-toolkit"]
+    language => Ada_Language.Ada_2022))
+  embedded => [(Blob name => "guest-kernel"
+                 source => (vendored "firmware/vm-guest/bzImage"
+                   (SHA256_Digest 0x63b70045 0xb8caa61c 0x6b56d9bc 0x91065756
+                                  0x273a4888 0x971e9762 0x533ddcc2 0x08b59bdf))
+                 licence => "tests/vm-linux/LICENCE.guest.txt")
+               (Blob name => "guest-initrd"
+                 source => (vendored "firmware/vm-guest/initramfs.cpio"
+                   (SHA256_Digest 0x479712a6 0xc28647a5 0x9c28bd6f 0x18a0d811
+                                  0x52f96733 0x4d6eb226 0x06410487 0xa537609a))
+                 licence => "tests/vm-linux/LICENCE.guest.txt")])

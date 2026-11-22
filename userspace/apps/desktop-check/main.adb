@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Desktop_Input_Batch;
 with Desktop_Frame_Pair;
@@ -16,6 +17,7 @@ with CuBit.Memory_Grants;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Desktop_Protocol; use CuBit.Desktop_Protocol;
 with CuBit.Desktop_Messages; use CuBit.Desktop_Messages;
+with CuBit.Monotonic;
 procedure Main is
    Passed : Boolean := True;
    Wire, Response : Wire_Message;
@@ -781,7 +783,7 @@ procedure Main is
                --  Reuse the same channel: each timeout must consume its saved
                --  reply and leave the channel able to install another waiter.
                for Attempt in 1 .. 4 loop
-                  Started := syscall (SYSCALL_GETTIME);
+                  Started := CuBit.Monotonic.Milliseconds;
                   if Started > Unsigned_64'Last - 20 then
                      Check (False, "waiter monotonic clock available");
                      exit;
@@ -790,7 +792,7 @@ procedure Main is
                   Event := Decode_Input_Result
                     (Send (Encode_Input_Request
                        ((Wait_Input, Fixture.Surface, Serial, Deadline))), Wait_Input);
-                  Finished := syscall (SYSCALL_GETTIME);
+                  Finished := CuBit.Monotonic.Milliseconds;
                   Check (Event.Status = Success and then
                          Event.Value.Kind = No_Input and then
                          Event.Value.Serial = Serial,
@@ -876,13 +878,13 @@ procedure Main is
                      Event := Decode_Input_Result
                        (Send (Encode_Input_Request ((Poll_Input, Fixture.Surface, 0))), Poll_Input);
                      if Event.Status = Success then
-                        Started := syscall (SYSCALL_GETTIME);
+                        Started := CuBit.Monotonic.Milliseconds;
                         Deadline := Started + 20;
                         Event := Decode_Input_Result
                           (Send (Encode_Input_Request
                              ((Wait_Input, Fixture.Surface, Event.Value.Serial, Deadline))), Wait_Input);
                         Check (Event.Status = Success and then Event.Value.Kind = No_Input and then
-                               syscall (SYSCALL_GETTIME) >= Deadline,
+                               CuBit.Monotonic.Milliseconds >= Deadline,
                                "destroyed waiter slot accepts another deferred wait");
                      else
                         Check (False, "reused channel initial input");
@@ -899,6 +901,8 @@ procedure Main is
       end if;
    end Check_Input_Boundaries;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Wire := Encode_Create ((320, 200, Plain_Surface, Desktop_Sized));
    Wire.Words (0) := Unsigned_64'Last;
    Response := Send (Wire);

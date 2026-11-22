@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
@@ -39,6 +40,8 @@ procedure Main is
    Self_Word         : Unsigned_64;
    Kernel_Refused, Bus_Refused, Forged_Refused : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Kernel_Refused := not CuBit.Handles.Devices.Map_Device
      (CuBit.Handles.No_Device_Memory, Kernel_Image_Page, Map_Target, One_Page,
       Read_Only => True);

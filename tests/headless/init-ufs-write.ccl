@@ -3,6 +3,6 @@
 # trusted startup plan) opens the disk read-only and read-write through
 # devmgr and writes, flushes and reads back.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "disk-write-check.app" (priority 2))
 )

@@ -13,6 +13,10 @@ For a static ELF executable it:
    sections, which the loaders find by type and magic, not by symbol);
 3. links the two, `objcopy --add-gnu-debuglink`.
 
+A signed executable (SIGN-001) is staged exactly as it is: its signature
+covers its bytes, so it was stripped before it was signed (tools/
+sign_programs.py, the same three steps) and only its record is kept here.
+
 Nothing in CuBit reads DWARF or .symtab at run time (procmgr and the kernel
 loader read program headers and the .cubit.* sections only), so the staged
 binary behaves exactly as the full one.
@@ -42,10 +46,16 @@ ELFCLASS64 = 2
 ELFDATA2LSB = 1
 ET_EXEC = 2
 SHT_NOTE = 7
+SHF_ALLOC = 0x2
 NT_GNU_BUILD_ID = 3
 GNU_OWNER = b"GNU\x00"
 DEBUG_PREFIX = ".debug_"
 STRIPPED_SECTIONS = (".symtab", ".strtab")
+# SIGN-001's footer, the last 16 bytes of a signed file: magic, envelope
+# length (u32), footer version (u32); the payload is everything before
+# the envelope (docs/signed-binaries.md section 1).
+SIGNATURE_FOOTER_MAGIC = b"CUBITSIG"
+SIGNATURE_FOOTER_LENGTH = 16
 # The typed startup table (CAP-002) procmgr requires before it launches a program.
 STARTUP_TABLE_SECTION = ".cubit.startup"
 
@@ -56,6 +66,11 @@ def digest(data):
 
 def sections(data):
     """(name, type, offset, size) of each section of a little-endian ELF64."""
+    return [(label, kind, offset, size) for label, kind, _, offset, size in section_headers(data)]
+
+
+def section_headers(data):
+    """(name, type, flags, offset, size) of each section of a little-endian ELF64."""
     if len(data) < 64:
         return []
     shoff, = struct.unpack_from("<Q", data, 40)
@@ -67,11 +82,20 @@ def sections(data):
     if names_at + names_size > len(data):
         return []
     result = []
-    for name, kind, _, _, offset, size in headers:
+    for name, kind, flags, _, offset, size in headers:
         end = data.find(b"\x00", names_at + name, names_at + names_size)
         label = data[names_at + name:end].decode("ascii", "replace") if end >= 0 else ""
-        result.append((label, kind, offset, size))
+        result.append((label, kind, flags, offset, size))
     return result
+
+
+def signed_payload(data):
+    """The payload of a signed file (no checks: ccl-sign verifies), or None."""
+    if len(data) < SIGNATURE_FOOTER_LENGTH or data[-SIGNATURE_FOOTER_LENGTH:-8] != SIGNATURE_FOOTER_MAGIC:
+        return None
+    envelope, = struct.unpack_from("<I", data, len(data) - 8)
+    end = len(data) - SIGNATURE_FOOTER_LENGTH - envelope
+    return data[:end] if end >= 0 else None
 
 
 def is_executable(data):
@@ -114,9 +138,13 @@ def build_id(data):
 
 
 def debug_bytes(data):
-    """Bytes the staged copy drops: .debug_* plus the symbol tables."""
-    return sum(size for name, _, _, size in sections(data)
-               if name.startswith(DEBUG_PREFIX) or name in STRIPPED_SECTIONS)
+    """Bytes the staged copy drops: the unallocated .debug_* sections plus
+    the symbol tables. An allocated .debug_* section is program data
+    (rustc's .debug_gdb_scripts): strip keeps it, so it is not debug
+    information to separate, and a stripped program must count zero, or a
+    second split would replace its debug file with an empty one."""
+    return sum(size for name, _, flags, _, size in section_headers(data)
+               if (name.startswith(DEBUG_PREFIX) and not flags & SHF_ALLOC) or name in STRIPPED_SECTIONS)
 
 
 def run(command):
@@ -155,7 +183,17 @@ class Splitter:
 
     def split(self, destination, data):
         """The bytes to stage for destination: data itself unless it is an
-        executable with debug information to separate."""
+        unsigned executable with debug information to separate."""
+        payload = signed_payload(data)
+        if payload is not None:
+            identity = build_id(payload) if is_executable(payload) else None
+            if identity is not None:
+                self.records.append({
+                    "destination": destination, "build_id": identity, "signed": True,
+                    "input_sha256": digest(data), "staged_sha256": digest(data),
+                    "input_size": len(data), "staged_size": len(data),
+                    "debug_file": self.debug_path(identity).relative_to(self.debug_dir).as_posix()})
+            return data
         if not is_executable(data) or debug_bytes(data) == 0:
             return data
         identity = build_id(data)

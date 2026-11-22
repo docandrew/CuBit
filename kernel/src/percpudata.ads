@@ -210,6 +210,7 @@ is
         nmiStack          : ISTStack;   -- IST 1
         doubleFaultStack  : ISTStack;   -- IST 2
         machineCheckStack : ISTStack;   -- IST 3
+        debugStack        : ISTStack;   -- IST 4 (#DB, DBG-001)
     end record;
 
     -- One set of IST stacks per CPU

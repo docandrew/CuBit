@@ -69,9 +69,13 @@ package Intel_ADLN_GPIO with SPARK_Mode, Pure is
    -- at Selected.Resource, not an arbitrary firmware address. No permission or
    -- native mapping is granted here. PADBAR/revision come from that same window.
    -- Unmapped HVCMOS physical pads have no GPIO pin; gaps never alias pads.
+   function Host_Owned (Selected : Location; Owner_Value : Word) return Boolean
+     with Post => (not Host_Owned'Result or else Selected.Found);
    function Interrupt_Eligible
-     (Selected : Location; Owner_Value, Host_Value, Lock_Value : Word) return Boolean;
-   -- Additional observed ownership/lock gate only, not a pin capability. Caller
+     (Selected : Location; Owner_Value, Host_Value : Word) return Boolean;
+   -- PAD_OWN host ownership and HOSTSW_OWN GPIO mode, not configuration
+   -- mutability. A locked PADCFG must be checked separately before use/write.
+   -- Additional observed ownership gate only, not a pin capability. Caller
    -- must also hold the launcher-issued exclusive pin/region/interrupt rights.
 private
    type Group_Size is range 1 .. 32;

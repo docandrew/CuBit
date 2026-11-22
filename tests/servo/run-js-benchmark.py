@@ -39,7 +39,7 @@ profile = d / 'init.ccl'
 profile.write_text('(startup v1 (start "logstore.svc" (priority 5)) (start "clock.svc" (priority 5)) (start "display.svc" (priority 5)) (start "desktop.svc" (priority 4)) (start "cubitshell.app" (priority 3) (network approve-declared)))')
 stage = Path(os.environ.get('PENNY_STAGE', root / 'kernel/isodir/boot'))
 app = Path(os.environ.get('PENNY_APP', root / 'userspace/rust/build/cubitshell.app'))
-(d/'inputs.sha256').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p)+'\n' for p in [app, root/'userspace/servo/servo-cargo.sh', root/'userspace/servo/overlay/ports/cubitshell/Cargo.toml', Path(os.environ.get('PENNY_INITRD',str(stage/'initrd.img'))), *[stage/n for n in ('cubit_kernel','desktop.svc','display.svc','clock.svc','logstore.svc')]]))
+(d/'inputs.sha256').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p)+'\n' for p in [app, root/'userspace/servo/servo-cargo.sh', root/'userspace/servo/FORKS', Path(os.environ.get('PENNY_INITRD',str(stage/'initrd.img'))), *[stage/n for n in ('cubit_kernel','desktop.svc','display.svc','clock.svc','logstore.svc')]]))
 fonts = Path(os.environ['IBM_PLEX_SANS_FONT']).parent
 extra = ['--file', f'servo/pages={d}/pages', '--file', f'Bookmarks/keep={d}/empty','--file',f'servo/perf-check={d}/empty']
 for font in ('IBMPlexSans-Regular.ttf', 'IBMPlexSans-Bold.ttf', 'IBMPlexSerif-Regular.ttf', 'IBMPlexMono-Regular.ttf'):

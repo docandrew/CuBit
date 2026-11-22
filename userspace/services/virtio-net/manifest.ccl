@@ -16,6 +16,8 @@
     (dma "rings" 131072)
     # netstack's endpoint, badged as the network driver's authority.
     (service "network-stack" "netstack")
-    (service "device-manager" "ready")]
+    (service "device-manager" "ready")
+    # ABI-002: its debug text, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
   # A modern device's BAR is mapped by devmgr: no legacy ports then.
-  optional => ["registers"])
+  optional => ["registers" "logstore"])

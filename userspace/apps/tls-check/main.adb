@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -7,6 +8,7 @@ with CuBit.Memory_Grants;
 with CuBit.TLS_Protocol; use CuBit.TLS_Protocol;
 with CuBit.Handles;
 with Startup;
+with CuBit.Monotonic;
 
 --  Headless check for tls.svc (tls-service regression). This app holds no
 --  network authority and links no TLS library: every connection goes
@@ -63,6 +65,8 @@ procedure Main is
 
    Channel : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Check (Allocation /= Unsigned_64'Last, "transfer allocation");
    if Allocation = Unsigned_64'Last then return; end if;
    CuBit.Memory_Grants.Create_Via_Capability
@@ -108,7 +112,7 @@ begin
       Call (Write_Operation, 3, Channel, 0, 4);
       Check (Reply.tag.label = Reply_OK and then Reply.words (0) = 4,
              "plaintext written");
-      Call (Read_Operation, 4, Channel, 0, 64, syscall (SYSCALL_GETTIME) + 15_000);
+      Call (Read_Operation, 4, Channel, 0, 64, CuBit.Monotonic.Milliseconds + 15_000);
       Check (Reply.tag.label = Reply_OK and then Reply.words (0) = 4 and then
              Buffer (1 .. 4) = "PONG", "plaintext reply received");
       Call (Read_Operation, 3, Channel + 1, 0, 64);

@@ -111,6 +111,7 @@ package body ACPI_Native_EC_Discovery is
          ACPI_Native_Initializer_History.Copy_Path(Service,Last.At_Node,Last.Device_Path,Last.Path_Complete);
          ACPI_Native_Diagnostic_Output.Write("acpi: stage ec-scan status="&Code'Image&" absent="&Last.Absent_Devices'Image&
            " pruned="&Last.Pruned_Devices'Image&" node-errors="&Last.Node_Errors'Image&
+           " relevance-links="&Last.Relevance_Parent_Links'Image&
            " ecdt="&Boot_Chosen'Image&" reconciled="&Boot_Reconciled'Image&" uid-matched="&UID_Validated'Image&" bind="&Last.Boot_Association.Status'Image,False);
          Working:=False;Result:=Last;end Finish;
       -- This is a separate descriptive UID observation, not a successful
@@ -198,7 +199,7 @@ package body ACPI_Native_EC_Discovery is
          end if;
       end Identify;
       function Build_Relevance return Boolean is
-         Parent:C.Node_Descriptor;Cursor,Up:C.Namespace.Node_ID;
+         Parent:C.Node_Descriptor;Up:C.Namespace.Node_ID;
          function Step return Boolean is
          begin
             if Remaining=0 then Finish(Budget_Exhausted);return False;end if;
@@ -222,17 +223,18 @@ package body ACPI_Native_EC_Discovery is
          end loop;
          -- Keep every ancestor of a possible controller, so its _STA still
          -- gates descendants before any active _HID or controller evaluation.
-         for Position in Relevant'Range loop
-            if Relevant(Position) then
-               Cursor:=Position;
-               while Cursor/=C.Namespace.Root loop
-                  if not Step then return False;end if;
-                  C.Describe_Node(Service,Cursor,Parent,Access_Result);
-                  if Access_Result/=C.Values.Available then Finish(Recovery_Required);return False;end if;
-                  Up:=C.Values.Parent_Position(Parent);
-                  if Up not in Relevant'Range or else Up>=Cursor then Finish(Recovery_Required);return False;end if;
-                  Relevant(Up):=True;Cursor:=Up;
-               end loop;
+         -- Parent IDs precede children. Descending propagation reaches each
+         -- relevant parent after all its children, validating each edge once.
+         -- No extra parent array, repeated prefix walk, or AML evaluation.
+         for Position in reverse Relevant'Range loop
+            if Relevant(Position) and then Position/=C.Namespace.Root then
+               if not Step then return False;end if;
+               C.Describe_Node(Service,Position,Parent,Access_Result);
+               if Access_Result/=C.Values.Available then Finish(Recovery_Required);return False;end if;
+               Up:=C.Values.Parent_Position(Parent);
+               if Up not in Relevant'Range or else Up>=Position then Finish(Recovery_Required);return False;end if;
+               Last.Relevance_Parent_Links:=Last.Relevance_Parent_Links+1;
+               Relevant(Up):=True;
             end if;
          end loop;
          return True;
@@ -290,6 +292,8 @@ package body ACPI_Native_EC_Discovery is
          Last.At_Checkpoint:=Describe_Device;
          C.Describe_Node(Service,Position,Node,Access_Result);
          if Access_Result=C.Values.Available and then C.Values.Node_Kind(Node)=C.Namespace.Device_Object then
+            -- Active identity/status methods may change the namespace. Keep
+            -- the original live ancestor validation across those AML calls.
             if Ancestor_Excluded then Last.Pruned_Devices:=Last.Pruned_Devices+1;goto Next_Device;end if;
             if Expired then Finish(Window_Expired);return;end if;
             if Reconcile then
@@ -357,6 +361,10 @@ package body ACPI_Native_EC_Discovery is
                if Last.Candidates>1 then Finish(Multiple_Controllers);return;end if;
                Saved:=Working_Session;Working_Session:=null;
                Last.Description:=Driver.Description(Saved.all);
+               Last.Candidate_Described:=True;
+               Last.Candidate_Node:=C.Values.Position(Last.Description.Device);
+               ACPI_Native_Initializer_History.Copy_Path(Service,Last.Candidate_Node,
+                 Last.Candidate_Path,Last.Candidate_Path_Complete);
             end if;
          elsif Access_Result not in C.Values.Available|C.Values.Invalid_Value then
             Finish(Discovery_Failed);return;

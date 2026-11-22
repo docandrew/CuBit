@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with CuBit.Logging;
 with CuBit.Messages;
+with CuBit.Console_Route;
 with CuBit.Handles.Services;
 
 package body CuBit.Log is
@@ -25,6 +26,9 @@ package body CuBit.Log is
 
    function Wanted (Level : Logs.Severity) return Boolean is
    begin
+      if CuBit.Console_Route.Routed then
+         return CuBit.Console_Route.Wanted (Level);
+      end if;
       return CuBit.Logging.Wanted (Writer, Level);
    end Wanted;
 
@@ -37,6 +41,21 @@ package body CuBit.Log is
       Made : Logs.Decoded;
       Accepted : Boolean;
    begin
+      --  A routed program (CuBit.Console_Route) has one ring: the record
+      --  goes there, and the echo is its console mark, never a debugPrint
+      --  copy (that would come back as a second, Debug record).
+      if CuBit.Console_Route.Routed then
+         if not CuBit.Console_Route.Wanted (Level) then
+            return;
+         end if;
+         Made := Logs.Make (Text, Level);
+         if Made.Success then
+            CuBit.Console_Route.Emit (Made.Value, Console => Echo, Accepted => Accepted);
+         else
+            Lose;
+         end if;
+         return;
+      end if;
       if Echo then
          CuBit.Messages.debugPrint (Text & ASCII.LF);
       end if;
@@ -80,8 +99,12 @@ package body CuBit.Log is
    procedure Flush is
       Drained : Boolean;
    begin
+      if CuBit.Console_Route.Routed then
+         CuBit.Console_Route.Flush;
+      end if;
       CuBit.Logging.Flush (Writer, Drained);
    end Flush;
 
+   --  Routed, the route's own losses are its (CuBit.Console_Route.Lost).
    function Lost return Unsigned_64 is (Losses + CuBit.Logging.Dropped (Writer));
 end CuBit.Log;

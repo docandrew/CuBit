@@ -6,7 +6,7 @@
 # images start the same services (tests/hardware/init-usb-live.ccl) and
 # launch agent.app from the Desktop's Apps menu instead.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "clock.svc" (priority 5))
   (start "tls.svc" (priority 5) (network approve-declared))
   (start "display.svc" (priority 5))

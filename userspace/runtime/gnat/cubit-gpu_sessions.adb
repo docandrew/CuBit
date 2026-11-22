@@ -2,6 +2,7 @@ pragma Ada_2022;
 with CuBit.Waits;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Channel_Protocol;
+with CuBit.Monotonic;
 
 package body CuBit.GPU_Sessions is
 
@@ -198,7 +199,7 @@ package body CuBit.GPU_Sessions is
 
    function Now_Ms return Unsigned_64;
    function Now_Ms return Unsigned_64 is
-     (CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME));
+     (CuBit.Monotonic.Milliseconds);
 
    procedure Poll_Reached
      (S : Session; Context : GQ.Context_Index; Target : GQ.Timeline_Value;

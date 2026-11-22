@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -206,6 +207,8 @@ procedure Main is
       return True;
    end Run;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Clock.Calibrate (Rate);
    if Rate = 0 then
       debugPrint ("BENCH: FAIL storage calibration" & ASCII.LF); return;

@@ -7,7 +7,9 @@
 #   listen   Remote_Listen.Off, or Remote_Listen.LAN: port 8445 on every
 #            address netstack's interfaces hold (the network request below)
 #   display  where the pairing code is shown: Window (the desktop) or
-#            Kernel_Console (serial: headless machines, the QEMU test)
+#            Test_Console (the test console object: the QEMU tests, with
+#            the test variant of this manifest, tests/headless/
+#            ccl-remote-test; never logstore, the code is a secret)
 #   work     the work root holding the workspace and the mailbox
 #            ("@system/work": the system volume's, the only one builds
 #            accept; or a named volume's, "@ufs:0/work")
@@ -16,7 +18,7 @@
 #            replace apps with their products
 #   mail     the host may use the mailbox
 (type Remote_Listen (enum Off LAN))
-(type Pairing_Display (enum Window Kernel_Console))
+(type Pairing_Display (enum Window Test_Console))
 (type Remote_Parameters (record (listen Remote_Listen) (display Pairing_Display)
 (work String) (files Boolean) (builds Boolean) (mail Boolean)))
 (Executable_Manifest
@@ -41,7 +43,7 @@ requests => [
 # one listener per interface (at most four) and its connection.
 (network Network_Action.TCP_Listen "0.0.0.0" 0 8445 8445 false 8 "network")
 # Builds: ccl-build.app, below.
-(service "process-manager" "process-manager")
+(service "process-manager" "process-manager") (service "launch-remote" "launch")
 # The pairing window (display => Window).
 (service "desktop" "desktop")
 # Screenshots: only with (display-capture approve-declared) and the
@@ -79,7 +81,7 @@ requests => [
 (service "gpu" "gpu-probe")
 (service "mixer" "mixer")]
 # ---- end DEVELOPMENT-ONLY ---------------------------------------------
-optional => ["series" "log-observer" "process-observer" "process-manager" "desktop" "display-capture"
+optional => ["series" "log-observer" "process-observer" "process-manager" "launch" "desktop" "display-capture"
   # DEVELOPMENT-ONLY (app replace), as above.
   "log-control" "lexicon" "installer" "wifi" "power" "llm" "secrets" "device-manager" "gpu-probe" "mixer"]
 scopes => [

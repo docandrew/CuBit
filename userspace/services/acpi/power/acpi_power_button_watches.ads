@@ -14,11 +14,12 @@ generic
       Status : CuBit.Power_Event_Exchange.Watch_Status;
       Count : Interfaces.Unsigned_64;
       Source : CuBit.Power_Event_Exchange.Press_Source; Delivered : out Boolean);
+   Initially_Discovering : Boolean := False;
 package ACPI_Power_Button_Watches with SPARK_Mode is
    package E renames CuBit.Power_Event_Exchange;
    subtype Word is Interfaces.Unsigned_64;
    subtype Actual_Source is E.Press_Source range E.Fixed_Event .. E.Intel_HID;
-   type Availability is (Unobserved, Present, Absent);
+   type Availability is (Discovering, Unobserved, Present, Absent);
    type Stop_Cause is (Not_Stopping, Owner_Stopping, Counter_Exhausted);
    type Request is record
       Authority, Length, ID, Seen, Flags, Reserved : Word := 0;
@@ -32,7 +33,7 @@ package ACPI_Power_Button_Watches with SPARK_Mode is
    type Snapshot is record
       Count : Word := 0;
       Source : E.Press_Source := E.No_Press;
-      Hardware : Availability := Unobserved;
+      Hardware : Availability := (if Initially_Discovering then Discovering else Unobserved);
       Stop : Stop_Cause := Not_Stopping;
       Kept : Boolean := False;
       Request_ID, Seen : Word := 0;

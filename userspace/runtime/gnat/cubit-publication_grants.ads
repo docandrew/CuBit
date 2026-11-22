@@ -31,9 +31,14 @@ package CuBit.Publication_Grants with Pure, SPARK_Mode is
    with Pre => Known (Code);
 
    --  The manifest's name for each, and where the kernel maps it.
-   CPU_Times_Name : constant String := "cpu-times";
+   CPU_Times_Name     : constant String := "cpu-times";
+   Boot_Timeline_Name : constant String := "boot-timeline";
    function Name (P : SP.Granted_Publication) return String is
-     (case P is when SP.CPU_Times => CPU_Times_Name);
+     (case P is
+        when SP.CPU_Times     => CPU_Times_Name,
+        when SP.Boot_Timeline => Boot_Timeline_Name);
    function Page_Address (P : SP.Granted_Publication) return Unsigned_64 is
-     (case P is when SP.CPU_Times => CPU_Times_Publication.Page_Address);
+     (case P is
+        when SP.CPU_Times     => CPU_Times_Publication.Page_Address,
+        when SP.Boot_Timeline => SP.Boot_Timeline_Address);
 end CuBit.Publication_Grants;

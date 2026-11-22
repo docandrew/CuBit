@@ -9,6 +9,7 @@
 --  afterwards: Desktop must still remove the window ("desktop: surfaceN
 --  ended: its process ended").
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Waits;
@@ -29,6 +30,8 @@ procedure Main is
    Created : constant Creation_Result :=
      Decode_Creation_Result (Send (Encode_Create ((64, 48, Plain_Surface, Desktop_Sized))));
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    if Created.Status /= Success then
       debugPrint ("reap-check: FAIL no surface" & ASCII.LF);
       return;

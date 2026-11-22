@@ -16,6 +16,13 @@ package body ACPI_Local_Hardware.Pooled_Fields.Runtime is
      (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
       Args : AML_Execute.Arguments; Argument_Count : Core.Values.Argument_Count; Budget : Natural;
       Result : out Core.Values.Result; Access_Result : out Core.Values.Access_Status) renames Owner.Invoke_Retained;
+   procedure Evaluate_Sample
+     (Service : aliased in out Core.State; Item : Core.Node_Descriptor; Budget : Natural;
+      Result : out Core.Values.Result; Status : out Core.Values.Access_Status) renames Owner.Evaluate_Sample;
+   procedure Invoke_Sample
+     (Service : aliased in out Core.State; Node : Core.Namespace.Node_ID;
+      Args : Core.Values.Arguments; Argument_Count : Core.Values.Argument_Count; Budget : Natural;
+      Result : out Core.Values.Result; Status : out Core.Values.Access_Status) renames Owner.Invoke_Sample;
    procedure Evaluate_Preparation
      (Service : aliased in out Core.State; Item : Core.Node_Descriptor; Budget : Natural;
       Result : out Core.Values.Result; Status : out Core.Values.Access_Status) renames Owner.Evaluate_Preparation;

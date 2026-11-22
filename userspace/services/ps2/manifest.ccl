@@ -10,4 +10,6 @@
   (io-ports command (resource 1) (count 1))
   (interrupt keyboard-line (resource 2))
   (interrupt mouse-line (resource 3))
-  (request-service device-manager read-write ready))
+  (request-service device-manager read-write ready)
+  # ABI-002: its debug text, once devmgr introduces logstore.
+  (request-service-optional logstore read-write logstore))

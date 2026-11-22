@@ -247,8 +247,12 @@ is
       Gaps := [others => False];
       Gaps (No_Frequency) := Img.Head.Frequency < Minimum_Frequency
                              or else Img.Head.Frequency > Maximum_Frequency;
+      --  Every stage of a good boot; Device_Manager_Roots_Refused is a
+      --  failure stage a good boot never records, and recording it is a gap.
       for Stage in Kernel_Stage loop
-         if Img.Stages (Slot_Of (Stage)) = Not_Recorded then
+         if (Stage /= Device_Manager_Roots_Refused) =
+              (Img.Stages (Slot_Of (Stage)) = Not_Recorded)
+         then
             Gaps (Stage_Missing) := True;
          end if;
       end loop;

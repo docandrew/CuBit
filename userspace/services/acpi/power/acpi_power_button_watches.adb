@@ -34,7 +34,8 @@ package body ACPI_Power_Button_Watches with SPARK_Mode is
      (Item.View.Stop /= Not_Stopping);
    function Runnable (Item : State) return Boolean is
      (Item.View.Kept and then (Retirement_Requested (Item)
-       or else Item.View.Hardware /= Present or else Item.View.Count > Item.View.Seen));
+       or else (Item.View.Hardware /= Discovering and then
+         (Item.View.Hardware /= Present or else Item.View.Count /= Item.View.Seen))));
    function Quiet (Item : State) return Boolean is (not Item.View.Kept);
    procedure Answer (Item : in out State; Status : E.Watch_Status; Result : out Delivery) is
       Delivered : Boolean;
@@ -54,6 +55,7 @@ package body ACPI_Power_Button_Watches with SPARK_Mode is
       if Retirement_Requested (Item) then Answer (Item, E.Stopping, Result);
       elsif Item.View.Hardware = Absent then Answer (Item, E.No_Power_Button, Result);
       elsif Item.View.Hardware = Unobserved then Answer (Item, E.Watch_Unavailable, Result);
+      elsif Item.View.Count < Item.View.Seen then Answer (Item, E.Counter_Reset, Result);
       else Answer (Item, E.Pressed, Result);
       end if;
    end Advance;
@@ -72,7 +74,7 @@ package body ACPI_Power_Button_Watches with SPARK_Mode is
       if Retirement_Requested (Item) then Reply.Status := E.Stopping; return; end if;
       if Item.View.Hardware = Unobserved then Reply.Status := E.Watch_Unavailable; return; end if;
       if Item.View.Hardware = Absent then Reply.Status := E.No_Power_Button; return; end if;
-      if Input.Seen /= Item.View.Count then
+      if Item.View.Hardware = Present and then Input.Seen /= Item.View.Count then
          if Item.View.Kept then Answer (Item, E.Superseded, Previous); end if;
          Reply.Status := (if Input.Seen < Item.View.Count then E.Pressed else E.Counter_Reset);
          return;

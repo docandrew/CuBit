@@ -1,0 +1,38 @@
+--  SPDX-License-Identifier: GPL-3.0-or-later
+--  Hosted Debugger views (DBG-001): the app's shared units on Linux with
+--  the test double (double/) in place of the engine. Not a CuBit run.
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Debugger_Gui is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "double", "../../userspace/apps/debugger", "../../userspace/lib/text", "../../userspace/lib/ui",
+     "../../userspace/lib/theme", "../../userspace/ccl/tools/ccl-ui-preview/host",
+     "../../userspace/lib/compositor", "../../userspace/lib/display");
+   --  The native entry point and the engine-backed source are not hosted.
+   for Excluded_Source_Files use ("main.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("debugger_gui_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022");
+      Mine := ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa", "-gnatwJ");
+      for Switches ("debugger_model.adb") use Mine;
+      for Switches ("debugger_code.adb") use Mine;
+      for Switches ("debugger_locals.adb") use Mine;
+      for Switches ("cubit-ui-tree_tables.adb") use Mine;
+      for Switches ("cubit-ui-tree_tables-rows.adb") use Mine;
+      for Switches ("cubit-ui-code_views.adb") use Mine;
+      for Switches ("cubit-ui-code_views-lines.adb") use Mine;
+      for Switches ("debugger_view.adb") use Mine;
+      for Switches ("debugger_graph.adb") use Mine;
+      for Switches ("cubit-ui-graphs.adb") use Mine;
+      for Switches ("cubit-ui-graphs-views.adb") use Mine;
+      for Switches ("cubit-ui-instrument.adb") use Mine;
+      for Switches ("cubit-ui-hex_views.adb") use Mine;
+      for Switches ("cubit-ui-timelines.adb") use Mine;
+      for Switches ("debugger_source.adb") use Mine;
+      for Switches ("debugger_gui_tests.adb") use Mine;
+      for Switches ("client_glyph_blend.adb") use ("-O3", "-gnat2022", "-fno-tree-vrp");
+      for Switches ("client_raster.adb") use ("-O3", "-gnat2022", "-fno-tree-vrp");
+   end Compiler;
+end Debugger_Gui;

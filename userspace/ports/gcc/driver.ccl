@@ -14,7 +14,7 @@
 (Executable_Manifest
   identity => "org.gnu.gcc"
   version => "15.3.0"
-  requests => [(service "process-manager" "process-manager") (service "filesystem" "filesystem")]
+  requests => [(service "process-manager" "process-manager") (service "launch" "launch") (service "filesystem" "filesystem")]
   may_launch => [
     (Launch "toolchain/libexec/gcc/x86_64-linux-musl/15.3.0/cc1")
     (Launch "toolchain/libexec/gcc/x86_64-linux-musl/15.3.0/gnat1")

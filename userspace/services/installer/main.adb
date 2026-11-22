@@ -15,6 +15,7 @@
 --  the disk is held). Every step and refusal is logged.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System;
 with CuBit.Messages; use CuBit.Messages;
@@ -198,6 +199,8 @@ procedure Main is
    Ignore : Unsigned_64;
    Ignored_Activity : Activity_Result;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Installs.Initialize
      ((Disk_Install => Startup.Disk_Install, Filesystem => Startup.Filesystem, Clock => Startup.Clock));
    Ignore := registerDriver (Service_Role, Startup.Registration);

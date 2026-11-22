@@ -1,8 +1,10 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with CuBit.Logging;
 with Mesa_Probe_Log;
 with Startup;
@@ -30,6 +32,8 @@ procedure Main is
       end if;
    end Check;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Logging.Subscribe (Reader, Result);
    Check (Result = P.OK, "observer subscription");
    for Attempt in 1 .. 256 loop
@@ -48,7 +52,7 @@ begin
          CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
          exit when Result = P.Empty;
          Check (Result = P.OK and Lost = 0, "record delivery");
-         if CuBit.Log_Records.Text (Value.Data) =
+         if CuBit.Log_Records.Texts.Text (Value.Data) =
            (if Round = 3 then "MESA-LOG paced burst record"
             else "MESA-LOG native bridge record") then
             Check (P.Is_Publisher (Value.Publication_Tag) and Value.Source /= 0,
@@ -56,7 +60,7 @@ begin
             if Source = 0 then Source := Value.Source; end if;
             Check (Value.Source = Source, "stable publisher identity");
             Count := Count + 1;
-         elsif CuBit.Log_Records.Text (Value.Data) =
+         elsif CuBit.Log_Records.Texts.Text (Value.Data) =
            "MESA-LOG bridge dropped(hex)=0000000000000000" then
             Check (Value.Source = Source, "summary source identity");
             Summaries := Summaries + 1;

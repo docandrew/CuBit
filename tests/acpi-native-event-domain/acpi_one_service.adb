@@ -6,6 +6,7 @@ package body ACPI_One_Service is
    Domain:ACPI_Delay_Domains.State;
    Window:Interfaces.Unsigned_64:=0;
    Output:Boolean:=False;Next_Query:Natural:=1;
+   function Current_Event_Deadline return Interfaces.Unsigned_64 is (Window);
    function Ready(Service:C.State) return Boolean is
      (not Closed and then Anchor/=C.No_Context and then C.Current_Context(Service,Anchor));
    procedure Bind(Service:C.State;Completed:out Boolean) is
@@ -17,7 +18,10 @@ package body ACPI_One_Service is
    procedure Enter_Delays(Accepted:out Boolean) is
    begin ACPI_Delay_Domains.Enter_Runtime(Domain,Now,True,Accepted);end Enter_Delays;
    procedure Begin_Delays(Deadline:Interfaces.Unsigned_64;Accepted:out Boolean) is
-   begin Window:=Deadline;ACPI_Delay_Domains.Begin_Event(Domain,Now,Deadline,True,Accepted);end Begin_Delays;
+   begin Window:=Deadline;
+      Last_Window_Length := (if Deadline > Now then Deadline - Now else 0);
+      Maximum_Window_Length := Interfaces.Unsigned_64'Max (Maximum_Window_Length, Last_Window_Length);
+      ACPI_Delay_Domains.Begin_Event(Domain,Now,Deadline,True,Accepted);end Begin_Delays;
    procedure End_Delays(Accepted:out Boolean) is
    begin ACPI_Delay_Domains.End_Event(Domain,Now,True,Accepted);Accepted:=Accepted and not End_Fails;end End_Delays;
    procedure Stop_Delays is begin ACPI_Delay_Domains.Stop(Domain);end Stop_Delays;

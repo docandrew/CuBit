@@ -8,6 +8,7 @@
 --  server) and may neither wake nor wait on it.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
@@ -55,6 +56,8 @@ procedure Main is
    Notified : CuBit.Grant_References.Reference;
    Learned : Boolean := False;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    for Attempt in 1 .. Attempts loop
       M := NULL_MESSAGE;
       M.tag := (label => OP_WORD, length => 0, protocol => 0, ipc => <>, reserved => 0);

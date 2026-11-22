@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -11,6 +12,7 @@ with CCL.Catalog;
 with CCL.Host_Values;
 with CCL.Sessions;
 with CCL.Language;
+with CuBit.Monotonic;
 procedure Main is
    package P renames CuBit.Metric_Protocol;
    package R renames CuBit.Metric_Records;
@@ -39,7 +41,7 @@ procedure Main is
    Stages_Seen : array (3 .. 6) of Boolean := [others => False];
    Expected : constant String := "desktop.out0.submit_release";
    function Now return Unsigned_64 is
-      Millis : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Millis : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
       return (if Millis > Unsigned_64'Last / 1000 then Unsigned_64'Last else Millis * 1000);
    end Now;
@@ -63,6 +65,8 @@ procedure Main is
       then Fail ("CCL evaluation: " & Source); end if;
    end Evaluate;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CCL.Catalog.Initialize (Catalog);
    CCL.Catalog.Initialize (Grants);
    CCL.Catalog.Initialize (Missing);

@@ -4,7 +4,7 @@
 # grant below). The installed llm.svc is the llm-test.svc variant: only
 # its tls-scope differs from production's api.anthropic.com:443.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "clock.svc" (priority 5))
   (start "tls.svc" (priority 5) (network approve-declared))
   (start "display.svc" (priority 5))

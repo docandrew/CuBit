@@ -1,0 +1,8 @@
+# NOT the Debugger: the Debugger's views over the TEST DOUBLE, built natively
+# to check the views render on CuBit before the engine lands. Never shipped,
+# never used for screenshots that are published.
+(Component name => "debugger-double" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/apps/debugger" "tests/debugger-gui/double" "userspace/lib/text"]
+    libraries => ["ui-toolkit"]
+    language => Ada_Language.Ada_2022)))

@@ -13,4 +13,7 @@
   version => "0.1.0"
   parameters => (Parameter_Signature.Declared "Provider_Parameters")
   requests => [
-    (notification "startup-wait-test" Notify_Access.Manage "registration")])
+    (notification "startup-wait-test" Notify_Access.Manage "registration")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

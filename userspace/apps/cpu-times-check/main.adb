@@ -16,6 +16,7 @@
 --  the page must fault: the kernel maps it read-only.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Wait_ABI;
 with Interfaces; use Interfaces;
 with System.Storage_Elements;
@@ -110,6 +111,8 @@ procedure Main is
    Before, After : CL.Snapshot;
    Frequency : constant Unsigned_64 := CuBit.CPU_Times.Tick_Frequency;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Print ("cpu-times-check: starting" & LF);
    Check (CuBit.CPU_Times.Available, "CPU times publication granted and present");
    if not CuBit.CPU_Times.Available then

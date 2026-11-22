@@ -119,7 +119,7 @@ package Supervision_Edges with SPARK_Mode is
    ---------------------------------------------------------------------------
    --  Restart intensity (OTP's intensity/period): a child restarted more
    --  than Intensity times within Window_Ms escalates instead. Times are
-   --  SYSCALL_GETTIME milliseconds.
+   --  CuBit.Monotonic milliseconds.
    ---------------------------------------------------------------------------
    type Restart_History is record
       Window_Start : Unsigned_64 := 0;

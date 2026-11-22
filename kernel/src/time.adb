@@ -12,6 +12,7 @@ with PerCPUData;
 with Process;
 with Process.IPC;
 with Process.Futex;
+with VM_Objects;
 with Process.Queues;
 with Scheduler_Timing;
 with TextIO;
@@ -36,6 +37,21 @@ is
             Platform_Monotonic.Read (Microseconds, Success);
         end if;
     end Read_Monotonic;
+
+    procedure Read_User_Monotonic (Microseconds : out Unsigned_64;
+                                   Success : out Boolean) with SPARK_Mode => Off is
+        Ticks : constant Unsigned_64 := msTicks;
+    begin
+        if Clock_Page.Shared then
+            Read_Monotonic (Microseconds, Success);
+        elsif Ticks > Unsigned_64'Last / Milliseconds then
+            Microseconds := 0;
+            Success := False;
+        else
+            Microseconds := Ticks * Milliseconds;
+            Success := True;
+        end if;
+    end Read_User_Monotonic;
 
     function Try_CPU_TSC return Boolean with SPARK_Mode => Off is
         Rate : Boot_Timer_Rates.Frequency;
@@ -207,6 +223,7 @@ is
                 Time.msTicks := previousMs + elapsed;
             end if;
             if Time.msTicks /= previousMs then
+                Clock_Page.Note_Milliseconds (Time.msTicks);
                 Process.IPC.expireReceiveDeadlines (Time.msTicks);
                 if Time.msTicks / Process.IPC.Stuck_Report_Period_Ms /=
                    previousMs / Process.IPC.Stuck_Report_Period_Ms
@@ -214,6 +231,7 @@ is
                     Process.IPC.reportStuckCalls (Time.msTicks);
                 end if;
                 Process.Futex.expireDeadlines (Time.msTicks);
+                VM_Objects.Expire_Halts (Time.msTicks);
             end if;
         end if;
 

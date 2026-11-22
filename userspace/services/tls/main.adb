@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Log;
 with Interfaces; use Interfaces;
 with System;
@@ -21,6 +22,7 @@ with SPARKTLS.RBG;
 with X509;
 with TLS_Clock;
 with Client_Scopes;
+with CuBit.Monotonic;
 
 --  tls.svc: TLS client service. Applications ask for a TLS stream to a host
 --  name; the service checks the caller's (tls-scope ...) authority, connects
@@ -94,6 +96,13 @@ procedure Main is
 
    Channels : array (Channel_Index) of Channel;
    Sessions : array (Channel_Index) of Client_Session;
+   --  SPARKTLS keeps each in-flight handshake's working state (about 180 KB:
+   --  reassembly, peer chain, stapled OCSP, RecordFlux arena) in a slot of
+   --  this pool, one slot per channel. Allocated once at start-up, so it is
+   --  neither on the stack nor allocated while serving.
+   type Handshake_Pool_Access is access SPARKTLS.Handshake_Pool;
+   Handshakes : constant Handshake_Pool_Access :=
+     new SPARKTLS.Handshake_Pool (Size => Maximum_Channels);
    Plain : array (Channel_Index) of Byte_Seq (0 .. 16_383);
    Next_Id : Unsigned_64 := 1;
    Scopes : Client_Scopes.Table;
@@ -216,7 +225,7 @@ procedure Main is
             Fail_Request (Code, Read_Replies (I));
          end if;
       end if;
-      Drop (Sessions (I));
+      Drop (Sessions (I), Handshakes.all);
       --  Synchronous shut: netstack takes what the send ring holds (a
       --  close_notify), sends FIN and releases its acquisition of our grant.
       Streams.Close (C.Net, Net_Service);
@@ -283,7 +292,7 @@ procedure Main is
             C.Plain_Position := 0;
             Serve_Read (I);
          end if;
-         SPARKTLS.Client.Advance (Sessions (I), Result);
+         SPARKTLS.Client.Advance (Sessions (I), Handshakes.all, Result);
          case Result is
             when OK =>
                null;
@@ -541,13 +550,14 @@ procedure Main is
          C.Name (1 .. Name_Length) := Name (1 .. Name_Length);
          C.Name_Length := Name_Length;
          C.Open_Waiting := True;
-         C.Deadline := syscall (SYSCALL_GETTIME) + Handshake_Timeout_MS;
+         C.Deadline := CuBit.Monotonic.Milliseconds + Handshake_Timeout_MS;
          Sessions (I) := SPARKTLS.Client.Configure
            ((Server_Name => To_Name (Name (1 .. Name_Length)),
              Trust => Roots'Unchecked_Access,
              Get_Time => TLS_Clock.Now'Access,
              Verify_Mode => Mode_WebPKI,
-             others => <>));
+             others => <>),
+            Handshakes.all);
          Streams.Reset (C.Net);
          Streams.Submit_Open (C.Net, Net_Service, Scheme, Token (I, Op_Open), Submitted);
          if Submitted then
@@ -966,6 +976,8 @@ procedure Main is
    Completion : CompletionEntry;
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Log.Info ("tls: starting");
    SPARKTLS.RBG.Init (Entropy_OK);
    if not Entropy_OK then
@@ -1037,7 +1049,7 @@ begin
          end if;
       end if;
 
-      Expire (syscall (SYSCALL_GETTIME));
+      Expire (CuBit.Monotonic.Milliseconds);
       if not Progress and then not Wait_Outstanding then
          declare
             Interest : Unsigned_64 := 0;

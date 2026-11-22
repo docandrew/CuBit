@@ -17,6 +17,7 @@ with Intel_GPU_Metadata_Platform;
 with Intel_GPU_Record_Growth;
 with Intel_GPU_Allocation_Growth;
 with Intel_GPU_Extent_Growth;
+with CuBit.Monotonic;
 
 -- Real kernel async IPC in one privileged disposable process. This tests
 -- saved reply capabilities and production client/allocator state machines,
@@ -25,7 +26,7 @@ procedure Allocation_IPC_Check is
    package L renames Intel_GPU_Buffer_Backing;
    package V renames Intel_GPU_Buffer_Reply;
    package E renames Intel_GPU_Physical_Extents;
-   PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   PID : constant Unsigned_64 := Own_Process_Word;
    -- Runs in devmgr's place: the boot roots' process authority allocates,
    -- and the driver side submits to this process (Startup.Device_Manager).
    Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
@@ -122,7 +123,7 @@ begin
       Client.Start (Driver, Index,
         (if Index = 1 then 1024 elsif Index <= 17 then 512 else 1), OK);
       Check (OK, "driver start");
-      Deadline := syscall (SYSCALL_GETTIME) + 30_000;
+      Deadline := CuBit.Monotonic.Milliseconds + 30_000;
       while Client.Pending (Driver) loop
          declare Before : constant Natural := Calls; begin
             D.Step (Dispatcher);
@@ -225,7 +226,7 @@ begin
             end if;
          end if;
          Client.Tick (Driver);
-         Check (syscall (SYSCALL_GETTIME) < Deadline, "deadline");
+         Check (CuBit.Monotonic.Milliseconds < Deadline, "deadline");
       end loop;
       Views (Index) := Client.Result (Driver);
       Check (V.Valid (Views (Index)), "client validated backing");

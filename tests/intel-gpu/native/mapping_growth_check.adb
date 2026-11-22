@@ -27,7 +27,7 @@ procedure Mapping_Growth_Check is
    package V renames Intel_GPU_Buffer_Views;
    package R renames Intel_GPU_Buffer_Reply;
    use type V.View_State;
-   PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   PID : constant Unsigned_64 := Own_Process_Word;
    Identity, Ignore : Unsigned_64 := 0;
    Active : Boolean := True;
    function Owner return Boolean is (True);

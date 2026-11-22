@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Handles;
@@ -9,6 +10,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Net_Channels;
 with CuBit.Net_Address;
 with CuBit.Network_Authority; use CuBit.Network_Authority;
+with CuBit.Monotonic;
 
 procedure Main is
    --  The scopes are optional: launched without network approval, the
@@ -101,6 +103,8 @@ procedure Main is
       Reply_Tag := capCall (Slot, Request, CuBit.Messages.Wait_Forever);
    end Close_Listener;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    declare
       Allocation : constant Unsigned_64 :=
         Aligned_Allocation (Arena_Buffers * Stream_Bytes);
@@ -157,7 +161,7 @@ begin
 
    Request := NULL_MESSAGE; Request.tag.label := OP_INSTALL_SCOPE;
    Request.tag.length := 3; Request.authorityTag := Policy_Authority_Tag;
-   Request.words (0) := syscall (SYSCALL_GETPID);
+   Request.words (0) := Own_Process_Word;
    Request.words (2) := Descriptor (Broad_Outbound_TCP);
    Reply_Tag := capCall (Inspect_Slot, Request, CuBit.Messages.Wait_Forever);
    Check (Reply_Tag.label = Error_Label, "forged policy tag rejected");
@@ -174,7 +178,7 @@ begin
       Got : Natural;
       function Exchange (Slot : CuBit.Handles.Endpoint) return MessageTag is
          Completion : CompletionEntry;
-         Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+         Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
          Ignored : Unsigned_64;
       begin
          if not Async_Mode then return capCall (Slot, Request, CuBit.Messages.Wait_Forever); end if;
@@ -185,7 +189,7 @@ begin
          end if;
          loop
             exit when Poll_Completion (Completion'Address) = 1;
-            if syscall (SYSCALL_GETTIME) - Started > 10_000 then
+            if CuBit.Monotonic.Milliseconds - Started > 10_000 then
                Check (False, "async completion deadline");
                return NULL_TAG;
             end if;
@@ -263,11 +267,11 @@ begin
             Channels.Write (Stream, Text'Address, 4, Got);
             Check (Got = 4, "ring write");
             Channels.Await (Stream, Connect_Slot, Channels.Layout.Want_Readable,
-                            syscall (SYSCALL_GETTIME) + 10_000, Next_Wait, Ready);
+                            CuBit.Monotonic.Milliseconds + 10_000, Next_Wait, Ready);
             Channels.Read (Stream, Text'Address, 4, Got);
             if Got in 1 .. 3 then
                Channels.Await (Stream, Connect_Slot, Channels.Layout.Want_Readable,
-                               syscall (SYSCALL_GETTIME) + 10_000, Next_Wait, Ready);
+                               CuBit.Monotonic.Milliseconds + 10_000, Next_Wait, Ready);
                declare
                   More : Natural;
                begin
@@ -322,7 +326,7 @@ begin
       procedure Receive (Max : Natural; Wait_MS : Unsigned_64 := 5_000) is
       begin
          Channels.Await (Stream, Datagram_Slot, Channels.Layout.Want_Readable,
-                         syscall (SYSCALL_GETTIME) + Wait_MS, Next_Wait, Ready);
+                         CuBit.Monotonic.Milliseconds + Wait_MS, Next_Wait, Ready);
          Channels.Receive_Datagram (Stream, Text'Address, Max, Got, Truncated, Found);
       end Receive;
    begin
@@ -363,9 +367,9 @@ begin
          Check (Ready and then Found and then Got = 8 and then Truncated and then
                 Text (1 .. 8) = "LLLLLLLL",
                 "udp truncation reported");
-         Started := syscall (SYSCALL_GETTIME);
+         Started := CuBit.Monotonic.Milliseconds;
          Receive (64, 300);
-         Check (not Found and then syscall (SYSCALL_GETTIME) - Started >= 250,
+         Check (not Found and then CuBit.Monotonic.Milliseconds - Started >= 250,
                 "udp read deadline, truncated datagram consumed whole");
          Shut (Datagram_Slot, Datagram);
          Check (Reply_Tag.label = OK_Label, "udp channel closes");
@@ -438,7 +442,7 @@ begin
       Check (Reply_Tag.label = OK_Label, "inbound listener opens");
       Listener := Listener_Stream.Handle;
       Channels.Await (Listener_Stream, Listen_Slot, Channels.Layout.Want_Readable,
-                      syscall (SYSCALL_GETTIME) + 300, Next_Wait, Ready);
+                      CuBit.Monotonic.Milliseconds + 300, Next_Wait, Ready);
       Channels.Take_Arrival (Listener_Stream, Item, Found);
       Check (not Ready and then not Found, "no arrival without incoming traffic");
       --  An offer still outstanding goes with its listener: buffer 0 is
@@ -469,7 +473,7 @@ begin
             Channels.Take_Arrival (Listener_Stream, Item, Found);
             exit when Found;
             Channels.Await (Listener_Stream, Listen_Slot, Channels.Layout.Want_Readable,
-                            syscall (SYSCALL_GETTIME) + 10_000, Next_Wait, Ready);
+                            CuBit.Monotonic.Milliseconds + 10_000, Next_Wait, Ready);
             exit when not Ready;
          end loop;
          Check (Found, "inbound connection arrives");
@@ -491,7 +495,7 @@ begin
          Received := 0;
          while Received < Payload'Length loop
             Channels.Await (Stream, Listen_Slot, Channels.Layout.Want_Readable,
-                            syscall (SYSCALL_GETTIME) + 10_000, Next_Wait, Ready);
+                            CuBit.Monotonic.Milliseconds + 10_000, Next_Wait, Ready);
             Channels.Read (Stream, Payload (Received + 1)'Address,
                            Payload'Length - Received, Count);
             if not Ready or else Count = 0 then
@@ -501,7 +505,7 @@ begin
          end loop;
          Check (Payload = "CuBitIPC", "fragmented inbound bytes retained");
          Channels.Await (Stream, Listen_Slot, Channels.Layout.Want_Readable,
-                         syscall (SYSCALL_GETTIME) + 10_000, Next_Wait, Ready);
+                         CuBit.Monotonic.Milliseconds + 10_000, Next_Wait, Ready);
          Channels.Read (Stream, Payload'Address, 1, Count);
          Check (Ready and then Count = 0 and then
                 Channels.Status (Stream) = Channels.Layout.Status_Peer_Finished,
@@ -541,9 +545,9 @@ begin
       Resolve ("localhost");
       Check (Reply_Tag.label = OK_Label and then Request.words (0) = Localhost,
              "resolver answers an A record");
-      Started := syscall (SYSCALL_GETTIME);
+      Started := CuBit.Monotonic.Milliseconds;
       Resolve ("cubit-check.invalid");
-      Took := syscall (SYSCALL_GETTIME) - Started;
+      Took := CuBit.Monotonic.Milliseconds - Started;
       Check (Reply_Tag.label = Error_Label and then Took < First_Retry_MS,
              "NXDOMAIN fails at once (" & Decimal (Took) & " ms)");
       Resolve ("localhost");
@@ -592,7 +596,7 @@ begin
             exit when Channels.Status (Stream) = Channels.Layout.Status_Unreachable;
             Channels.Send_Datagram (Stream, Probe'Address, Probe'Length, Sent);
             Channels.Await (Stream, Refused_Slot, Channels.Layout.Want_Readable,
-                            syscall (SYSCALL_GETTIME) + 100, Next_Wait, Ready);
+                            CuBit.Monotonic.Milliseconds + 100, Next_Wait, Ready);
          end loop;
          Check (Channels.Status (Stream) = Channels.Layout.Status_Unreachable,
                 "port unreachable reaches the udp channel");

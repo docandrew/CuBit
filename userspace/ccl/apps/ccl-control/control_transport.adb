@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Net_Channels;
 with CCL_Native_Bindings;
+with CuBit.Monotonic;
 
 package body Control_Transport is
    package Channels renames CuBit.Net_Channels;
@@ -95,7 +96,7 @@ package body Control_Transport is
             if Channels.Failed (Stream) then return; end if;
             Channels.Await
               (Stream, CCL_Native_Bindings.Network, Channels.Layout.Want_Writable,
-               syscall (SYSCALL_GETTIME) + 30_000, Next_Wait, Ready);
+               CuBit.Monotonic.Milliseconds + 30_000, Next_Wait, Ready);
             if not Ready then return; end if;
          end if;
       end loop;

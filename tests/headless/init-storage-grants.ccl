@@ -1,5 +1,7 @@
 # Generation, acquisition-lifetime, and writable-filesystem regression.
 (startup v1
+  # ABI-002: services' debug text reaches serial only through logstore's mirror.
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "storage-check.app" (priority 5))
   (start "filesystem-scope-check.app" (priority 5))
 )

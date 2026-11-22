@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Log_Sources.Texts;
 with System.Storage_Elements; use System.Storage_Elements;
 
 package body Source_Identities is
@@ -137,9 +138,23 @@ package body Source_Identities is
            with Import, Address => Address_Of (Item.Block);
          Who : LS.Source_Identity renames Data (Position).Listed.Who;
       begin
-         return (if Who.Identity_Used > 0 then LS.Identity_Of (Who) else LS.Name_Of (Who));
+         return (if Who.Identity_Used > 0 then LS.Texts.Identity_Of (Who) else LS.Texts.Name_Of (Who));
       end;
    end Identity_Of;
+
+   function Name_Of (Item : Table; Source : Unsigned_64) return String is
+      Position : constant Natural := (if Item.Block = No_Block then 0 else Find (Item, Source));
+   begin
+      if Position = 0 then
+         return "";
+      end if;
+      declare
+         Data : constant Known_Array (1 .. Item.Capacity)
+           with Import, Address => Address_Of (Item.Block);
+      begin
+         return LS.Texts.Name_Of (Data (Position).Listed.Who);
+      end;
+   end Name_Of;
 
    function Newest (Item : Table; Position : Positive) return LS.Source_Entry is
       Data : constant Known_Array (1 .. Item.Capacity)

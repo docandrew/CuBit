@@ -8,6 +8,7 @@
 --  (CuBit.Streams, CuBit.Outlet_Channels) until the test ends.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Wait_ABI;
 with Interfaces; use Interfaces;
 with CuBit.Kernel_ABI;
@@ -17,6 +18,7 @@ with CuBit.Process_Events;
 with CuBit.Protocols;
 with CuBit.Streams;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    Outlet : constant CuBit.Streams.StreamId := 1;
@@ -27,6 +29,8 @@ procedure Main is
    Ignore_Handled : Boolean;
    Ignore_Written : Unsigned_32;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    if registerDriver (DRIVER_IPCTEST, Startup.Registration) = Unsigned_64'Last
    then
       debugPrint ("control-producer: registration FAIL" & ASCII.LF);
@@ -45,7 +49,7 @@ begin
         (Outlet, Text'Address, Text'Length, CuBit.Streams.TYPE_TEXT_LINE);
       Ignore := CuBit.Kernel_Calls.Call
         (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
-         CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds)
+         CuBit.Monotonic.Microseconds
            + Poll_Microseconds);
    end loop;
 end Main;

@@ -38,6 +38,9 @@ struct Start<T> {
 /// A running thread. Dropping it without [`join`](JoinHandle::join) detaches
 /// the thread and leaks its stack and result slot (the kernel still writes
 /// the exit word when it ends).
+/// THREAD_CREATE's result: the thread ID in the low 32 bits.
+const THREAD_ID_MASK: u64 = (1 << 32) - 1;
+
 pub struct JoinHandle<T> {
     packet: Option<Arc<Packet<T>>>,
     stack: Option<Vec<u8>>,
@@ -45,9 +48,10 @@ pub struct JoinHandle<T> {
 }
 
 impl<T> JoinHandle<T> {
-    /// The kernel thread ID.
+    /// The kernel thread ID (the low 32 bits of THREAD_CREATE's result;
+    /// its thread-count slot is above them, shared/publications/thread_abi.ads).
     pub fn id(&self) -> u64 {
-        self.id
+        self.id & THREAD_ID_MASK
     }
 
     /// Wait for the thread to end and return its result.

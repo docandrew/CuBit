@@ -131,9 +131,6 @@ package CuBit.Launch_Authority with SPARK_Mode is
    Staged_Switch_Operation : constant := 16#0111#;
    Staged_Switch_Off : constant := 0;
    Staged_Switch_On  : constant := 1;
-   --  End a child that did not stop in time: words (0) = its identity;
-   --  only its launcher may. Reply OK or ERR.
-   End_Child_Operation : constant := 16#0110#;
    --  The filesystem read right (CuBit.File_Access wire bit 0).
    Read_Right : constant Unsigned_8 := 1;
    function Admits_Staged (Item : Table_Bytes; Name : String) return Boolean

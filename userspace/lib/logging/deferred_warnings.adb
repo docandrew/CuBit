@@ -4,12 +4,15 @@ with CuBit.Logging;
 with CuBit.Log_Records;
 with CuBit.Handles.Control;
 with CuBit.Handles.Services;
+with CuBit.Handles.IPC;
+with CuBit.Console_Route;
+with Driver_Log_Issuances;
 
 package body Deferred_Warnings is
    package Logs renames CuBit.Log_Records;
 
-   --  The driver budget xhci and intel-gpu publish under too.
-   Driver_Budget : constant CuBit.Log_Protocol.Budget_Id := 15;
+   --  The shared driver budget (Driver_Log_Issuances).
+   Driver_Budget : constant CuBit.Log_Protocol.Budget_Id := Driver_Log_Issuances.Budget;
 
    --  Room for devmgr's bring-up lines (one per PCI device, HW-002: about
    --  20 on the IdeaPad) besides its warnings, before logstore runs.
@@ -68,6 +71,21 @@ package body Deferred_Warnings is
    procedure Write (Text : String; Level : Logs.Severity) is
       Length : constant Natural := Natural'Min (Text'Length, Line_Bytes);
    begin
+      --  A routed program (CuBit.Console_Route, ABI-002): the record goes
+      --  into its one ring (queued there until logstore runs), marked as
+      --  console text, never also echoed (that would make a second record).
+      if CuBit.Console_Route.Routed then
+         declare
+            Made : constant Logs.Decoded := Logs.Make (Text (Text'First .. Text'First + Length - 1), Level);
+            Accepted : Boolean;
+         begin
+            if Made.Success then
+               CuBit.Console_Route.Emit (Made.Value, Console => True, Accepted => Accepted);
+            end if;
+         end;
+         Pump_Now;
+         return;
+      end if;
       debugPrint (Text & ASCII.LF);
       Pump_Now;
       if State = Bound then
@@ -84,7 +102,8 @@ package body Deferred_Warnings is
       end if;
    end Write;
 
-   function Pending return Boolean is (State = Unbound and then (Count /= 0 or else Lost /= 0));
+   function Pending return Boolean is
+     (State = Unbound and then (Count /= 0 or else Lost /= 0 or else CuBit.Console_Route.Awaiting));
 
    procedure Pump is
    begin
@@ -103,6 +122,7 @@ package body Deferred_Warnings is
       if not H.Valid (Service) then
          return;
       end if;
+      Before_Bind;
       Target := CuBit.Handles.Control.Derive
         (H.Badged (Service, H.Read_Write,
                    CuBit.Log_Protocol.Publisher_Tag (Driver_Budget, Issuance)));
@@ -110,6 +130,20 @@ package body Deferred_Warnings is
          State := Failed;
          debugPrint ("deferred warnings: no logstore binding" & ASCII.LF);
          return;
+      end if;
+      --  The program's console route, if it waits for logstore, binds to
+      --  the same badged endpoint (its own channel) and drains its queue.
+      --  When its channel cannot be opened yet (memory exhausted), the next
+      --  Pump tries again (Pending stays True): nothing queued is lost.
+      if CuBit.Console_Route.Awaiting then
+         CuBit.Console_Route.Attach (CuBit.Handles.Services.Logstore.Granted (Target));
+         if CuBit.Console_Route.Awaiting then
+            declare
+               Ignore : constant CuBit.Handles.IPC.Close_Result := CuBit.Handles.IPC.Close (Target);
+            begin
+               return;
+            end;
+         end if;
       end if;
       CuBit.Logging.Attach (Writer, CuBit.Handles.Services.Logstore.Granted (Target));
       State := Bound;

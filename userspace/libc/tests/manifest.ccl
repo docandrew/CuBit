@@ -5,7 +5,11 @@
 (Executable_Manifest
   identity => "com.cubit.libc-check"
   version => "0.1.0"
-  requests => [(service "filesystem" "filesystem")]
+  optional => ["logstore"]
+  requests => [
+    # Its diagnostics (cubit_debug_write, the libc's records: CuBit.Libc_Log).
+    (service "logstore" "logstore")
+    (service "filesystem" "filesystem")]
   scopes => [
     (filesystem [File_Right.Read] "@nvme:0/tls")
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/libc-check")]

@@ -8,6 +8,7 @@
 --  the provider has registered, so its first call is answered.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Startup_Wait_Test;
@@ -20,6 +21,8 @@ procedure Main is
    Call_Deadline_Ms : constant := 2_000;
    Request : Message := NULL_MESSAGE;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("startup-wait-client: started" & LF);
    Request.tag.label := SW.Probe_Label;
    Request.tag := capCall (Startup.Provider, Request, Deadline_After (Call_Deadline_Ms));

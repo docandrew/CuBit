@@ -194,18 +194,17 @@ is
 
     -- Set all elements of memory to a particular value.
     -- Returns addr to match C memset ABI (GCC relies on return value at -O2).
+    -- REP STOSB, never elided (volatile asm with a memory clobber): a byte
+    -- loop cost about 380 ns per 4 KiB page, fast-string stores about 20
+    -- (KERN-014 baseline, docs/kernel-memory-map.md).
     function memset(addr   : System.Address;
                     val    : System.Storage_Elements.Storage_Element;
                     len    : System.Storage_Elements.Storage_Count)
                     return System.Address
         with SPARK_Mode => Off
     is
-        mem : Storage_Array(1..len)
-            with Import, Volatile, Address => addr;
     begin
-        for element of mem loop
-            element := val;
-        end loop;
+        x86.rep_stosb (addr, val, len);
         return addr;
     end memset;
 

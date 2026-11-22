@@ -18,3 +18,7 @@ start-symbols = []
 # here: the shared userspace/runtime/start/cubit_start.S, in this crate's
 # own object, apart from the program's generated startup check.
 start = ["start-symbols"]
+# A program that links the CuBit Ada run time (CuBit.Messages.Console_Put,
+# C cubit_console_put): debug_write puts its text there, into the program's
+# logstore ring once the Ada side routes (ABI-002: no kernel console).
+console = []

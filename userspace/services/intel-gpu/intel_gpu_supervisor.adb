@@ -42,27 +42,4 @@ package body Intel_GPU_Supervisor is
       end;
       return CuBit.Handles.No_Device_Memory;
    end Granted_Region;
-
-   function Granted_Endpoint (Receipt : Completion) return CuBit.Handles.Endpoint is
-      Item : constant IPC.Carried := IPC.Carried_By (Receipt.msg);
-   begin
-      if Item.Kind /= IPC.Present then
-         return CuBit.Handles.No_Endpoint;
-      end if;
-      declare
-         Value : constant IPC.Accepted_Endpoint := IPC.Accept_Endpoint (Item);
-      begin
-         if Value.OK then
-            return Value.Value;
-         end if;
-      end;
-      declare
-         Other : constant IPC.Accepted_Device_Memory := IPC.Accept_Device_Memory (Item);
-         Closed : IPC.Close_Result;
-         pragma Unreferenced (Closed);
-      begin
-         if Other.OK then Closed := IPC.Close (Other.Value); end if;
-      end;
-      return CuBit.Handles.No_Endpoint;
-   end Granted_Endpoint;
 end Intel_GPU_Supervisor;

@@ -1,0 +1,6 @@
+# The SPAWN rules check (CAP-012, headless --test spawn-rules). Requests
+# nothing: it runs in procmgr's place, from a test initrd only, and uses
+# the handles devmgr gives procmgr (its process root and the test console).
+(Executable_Manifest
+  identity => "com.cubit.test.spawn-rules"
+  version => "1.0.0")

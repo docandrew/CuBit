@@ -12,9 +12,11 @@ package ACPI_Native_EC_Discovery is
       Multiple_Controllers,Discovery_Failed,Device_Unusable,Source_Unsupported,
       Resources_Disagree,Recovery_Required,Notifications_Pending,Boot_Binding_Failed,Window_Expired);
    type Checkpoint_Kind is (Not_Started,Scan_Roots,Describe_Device,Identify_Device,Discover_Controller,Check_Status,Validate_Resources,Scan_Finished,Bind_Boot_Controller,Match_Boot_UID);
+   subtype Namespace_Step_Count is Natural range 0 .. ACPI_Service.Namespace.Node_ID'Last;
    type Report is record
       Status:Outcome:=Not_Attempted;
       Candidates,Charged:Natural:=0;
+      Relevance_Parent_Links:Namespace_Step_Count:=0;
       Absent_Devices,Pruned_Devices,Node_Errors:Natural:=0;
       Boot_Selected:Boolean:=False;
       Boot_Reconciled:Boolean:=False;
@@ -31,6 +33,13 @@ package ACPI_Native_EC_Discovery is
       Retained:Natural:=0;
       Device_Path:ACPI_Native_Initializer_History.Path_Text:=[others=>' '];
       Path_Complete:Boolean:=False;
+      -- First successfully described candidate, copied before the scan moves
+      -- on. This is not enrollment or proof of a unique/current controller;
+      -- Status=Ready and the event-domain arm result remain independent.
+      Candidate_Described:Boolean:=False;
+      Candidate_Node:ACPI_Service.Namespace.Node_ID:=ACPI_Service.Namespace.Root;
+      Candidate_Path:ACPI_Native_Initializer_History.Path_Text:=[others=>' '];
+      Candidate_Path_Complete:Boolean:=False;
       Description:Driver.Metadata;
       Failure:Driver.Report;
    end record;

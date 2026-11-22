@@ -3,7 +3,7 @@
 # pairing display differs, the kernel console (serial), so the host side
 # can pair (tests/device-builds/run-live.sh checks that nothing else does).
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   # MET-002: the metrics store, before every program that declares a
   # com.cubit-os.stdmetric outlet (Desktop), so their outlets are wired at launch.
   (start "metrics.svc" (priority 5))
@@ -76,9 +76,9 @@
   # beside /toolchain and /storehouse. Replacing a running app with its
   # build needs the person's "Allow app replacement" (the Deskbar's
   # Remote access section, off at boot).
-  (start "ccl-remote.app" (priority 4) (network approve-declared) (display-capture approve-declared)
+  (start "ccl-remote.app" (priority 4) (network approve-declared) (test-console approve-declared) (display-capture approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
-      display => Pairing_Display.Kernel_Console work => "@system/work"
+      display => Pairing_Display.Test_Console work => "@system/work"
       files => true builds => true mail => true)))
   # The touchpad (SUP-001): devmgr starts the HID-over-I2C driver for each
   # PNP0C50 device acpi.svc offers, through procmgr's Start_Child. The

@@ -1,0 +1,7 @@
+# TEST DOUBLE build of the Debugger views (tests/debugger-gui/native-double).
+(Executable_Manifest
+  identity => "com.cubit.debugger-double"
+  version => "0.1.0"
+  requests => [
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")])

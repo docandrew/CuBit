@@ -10,6 +10,7 @@ with I2C_Channel_Controller; with I2C_Native_Channel_Service;
 with I2C_Native_Clock; with I2C_Native_Registers; with I2C_Mapping_Policy;
 with I2C_Work_Policy; with I2C_Log;
 with CuBit.Device_Interrupts; with I2C_Interrupt_Binding;
+with CuBit.Monotonic;
 procedure Main is
    package M renames CuBit.Messages;
    package PID renames CuBit.Process_IDs;
@@ -233,7 +234,7 @@ begin
          Retained_Logged := True;
       end if;
       declare
-         Now : constant Interfaces.Unsigned_64 := M.syscall (M.SYSCALL_GETTIME);
+         Now : constant Interfaces.Unsigned_64 := CuBit.Monotonic.Milliseconds;
          Until_Time : CuBit.Deadlines.Deadline := CuBit.Deadlines.Forever;
       begin
          if Now = Interfaces.Unsigned_64'Last then

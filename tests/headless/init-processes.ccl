@@ -2,7 +2,7 @@
 # arguments through procmgr's OP_LAUNCH and collects their exit status;
 # args-check started here, without a launch block, checks the empty case.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "args-check.app" (priority 3))
   (start "spawn-check.app" (priority 3))
   (start "delegate-check.app" (priority 3))

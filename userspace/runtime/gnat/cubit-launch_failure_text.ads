@@ -21,7 +21,7 @@ package CuBit.Launch_Failure_Text with Pure, SPARK_Mode is
         when Grant_Unavailable     => "procmgr could not read the launch request",
         when Arguments_Rejected    => "its arguments were refused",
         when Spawn_Failed          => "its process could not be set up",
-        when Not_Granted           => "it needs authority its launcher does not hold",
+        when Not_Granted           => "its launcher may not start it (no Launch badge, or not in its launch table)",
         when Executable_Not_Found  => "the program file was not found",
         when Startup_Table_Missing => "it has no startup table (rebuild it)",
         when Startup_Table_Invalid => "its startup table is invalid",
@@ -33,6 +33,7 @@ package CuBit.Launch_Failure_Text with Pure, SPARK_Mode is
         when Parameters_Missing    => "it requires typed parameters and the launch gave none",
         when Parameters_Rejected   => "its typed parameters are not of its parameter record",
         when Parameters_Unexpected => "it declares no parameters and the launch gave some",
-        when Parameter_Signature_Invalid => "its parameter signature (.cubit.parameters) is malformed");
+        when Parameter_Signature_Invalid => "its parameter signature (.cubit.parameters) is malformed",
+        when Request_Withheld      => "it requires authority its session withholds");
 
 end CuBit.Launch_Failure_Text;

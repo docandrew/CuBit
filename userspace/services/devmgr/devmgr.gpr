@@ -6,6 +6,8 @@ project Devmgr is
 
     for Source_Dirs use (".", "../filesystem", "../xhci", "../intel-gpu", "../../ccl/src", "../../lib/time", "../../mesa/anv", "../../lib/display", "../../lib/logging", "../../../shared/acpi", "../../../shared/firmware",
        "platform_quirks", "../../../shared/platform", "../../lib/i2c-admission", "../../lib/gpio-admission",
+       --  acpi.svc's host-bridge snapshot codec (PCI-BAR-001), read-only.
+       "../../lib/acpi-windows",
        --  gpio.drv's admin wire (OP_GPIO_ADMIT_SINK), used read-only.
        "../gpio/lib");
 
@@ -14,7 +16,7 @@ project Devmgr is
     --  Explicit list excludes other service mains and hardware adapters.
     for Source_Files use ("main.adb", "cpio.ads", "cpio.adb", "ccl.ads",
        --  Warnings kept until logstore runs (CAP-001 diagnostics).
-       "deferred_warnings.ads", "deferred_warnings.adb",
+       "deferred_warnings.ads", "driver_log_issuances.ads", "driver_log_issuances.adb", "deferred_warnings.adb",
        --  Who each child is, for logstore (LOG-003).
        "source_notices.ads", "source_notices.adb",
        --  Children by name, for their exit lines.
@@ -30,6 +32,12 @@ project Devmgr is
        "pci_bar_extents.ads", "pci_bar_extents.adb",
        "pci_power_control.ads", "pci_power_control.adb",
        "pci_bar_placement.ads", "pci_bar_placement.adb",
+       "pci_bar_assignment.ads", "pci_bar_assignment.adb",
+       "devmgr_host_windows.ads", "devmgr_host_windows.adb",
+       "host_bridge_rows.ads", "host_bridge_rows.adb",
+       "devmgr_host_bridge_consumer.ads", "devmgr_host_bridge_consumer.adb",
+       "acpi_host_bridge_snapshot.ads", "acpi_host_bridge_snapshot.adb",
+       "acpi_host_bridge_wire.ads",
        "xhci_configure_reply.ads", "xhci_controller_identity.ads",
        "driver_manifests.ads", "driver_manifests.adb",
        --  Devices bound by their drivers' declared matches (HW-002).
@@ -169,9 +177,10 @@ project Devmgr is
        "ccl-scheduling_limits.ads",
        "ccl-configurations.ads", "ccl-configurations.adb",
        "ccl-typed_settings.ads", "ccl-typed_settings.adb", "ccl-typed_values.ads", "ccl-typed_values.adb", "ccl-diagnostics.ads", "ccl-diagnostics.adb",
-       "ccl-setting_codecs.ads", "ccl-setting_codecs-launch_entry.ads", "ccl-setting_codecs-launch_entry.adb", "ccl-setting_kinds.ads", "ccl-interfaces-desktop_input.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces-desktop_display.ads", "ccl-interfaces.ads",
+       "ccl-setting_codecs.ads", "ccl-setting_codecs-launch_entry.ads", "ccl-setting_codecs-launch_entry.adb", "ccl-setting_kinds.ads", "ccl-interfaces-desktop_input.ads", "ccl-interfaces-gpu_power.ads", "ccl-interfaces-system_policy.ads", "ccl-interfaces-desktop_display.ads", "ccl-interfaces.ads",
        "ccl-interfaces-desktop_launch.ads", "ccl-interfaces-desktop_launch-icons.ads",
-       "ccl-interfaces-calc_types.ads", "ccl-interfaces-net_interface.ads", "ccl-interfaces-log_retention.ads");
+       "ccl-interfaces-calc_types.ads", "ccl-interfaces-net_interface.ads", "ccl-interfaces-log_retention.ads",
+       "ccl-interfaces-browser_agent.ads");
 
     for Runtime ("Ada") use "../../runtime";
 

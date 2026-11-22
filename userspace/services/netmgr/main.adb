@@ -50,7 +50,8 @@ with CuBit.Owned_Reservations;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Net_Address;
-with CuBit.Granted_Logs;
+with CuBit.Console_Route;
+with CuBit.Log;
 with CuBit.Net_Link;
 with CuBit.Net_Management;
 with CuBit.Settings;
@@ -63,6 +64,7 @@ with DHCP_Client;
 with Net_Interface_Settings;
 with Network_Context;
 with Startup;
+with CuBit.Monotonic;
 
 procedure main is
    use ASCII;
@@ -232,12 +234,16 @@ procedure main is
       return Text;
    end MAC_Image;
 
-   --  One line on serial and, once devmgr grants the publisher, in logstore
-   --  (coordination/release-stack.md, "bring-up logging convention").
+   --  One line in its logstore ring (coordination/release-stack.md,
+   --  "bring-up logging convention"); devmgr introduces logstore once
+   --  procmgr offers it, and lines wait until then (CuBit.Console_Route).
    procedure Say (Text : String; Warn : Boolean := False) is
    begin
-      CuBit.Granted_Logs.Line
-        (Text, (if Warn then CuBit.Granted_Logs.Warning else CuBit.Granted_Logs.Information));
+      if Warn then
+         CuBit.Log.Warning (Text);
+      else
+         CuBit.Log.Info (Text);
+      end if;
    end Say;
 
    function Request (Op : NM.Operation; Words : NM.Words4 := [others => 0]) return Message is
@@ -322,7 +328,7 @@ procedure main is
       System.Machine_Code.Asm ("rdtsc",
         Outputs => [Unsigned_32'Asm_Output ("=a", Low), Unsigned_32'Asm_Output ("=d", High)],
         Volatile => True);
-      return Low xor (High * Golden) xor Unsigned_32 (syscall (SYSCALL_GETTIME) and 16#FFFF_FFFF#);
+      return Low xor (High * Golden) xor Unsigned_32 (CuBit.Monotonic.Milliseconds and 16#FFFF_FFFF#);
    end Random32;
 
    function Outgoing (R : Interface_Record) return System.Address is
@@ -468,7 +474,7 @@ procedure main is
                      A : D.Action;
                      Out_Bytes : D.Bytes with Import, Address => Outgoing (R);
                   begin
-                     D.Link_Up (R.Client, syscall (SYSCALL_GETTIME), Random32, Out_Bytes, A);
+                     D.Link_Up (R.Client, CuBit.Monotonic.Milliseconds, Random32, Out_Bytes, A);
                      Act (R, A);
                   end;
                end if;
@@ -787,7 +793,7 @@ procedure main is
                   A : D.Action;
                   Out_Bytes : D.Bytes with Import, Address => Outgoing (R);
                begin
-                  D.Link_Up (R.Client, syscall (SYSCALL_GETTIME), Random32, Out_Bytes, A);
+                  D.Link_Up (R.Client, CuBit.Monotonic.Milliseconds, Random32, Out_Bytes, A);
                   Act (R, A);
                end;
             end if;
@@ -957,7 +963,7 @@ procedure main is
                   declare
                      Before : constant D.Phase := R.Client.Current;
                   begin
-                     D.Receive (R.Client, syscall (SYSCALL_GETTIME), In_Bytes, Natural (C.msg.words (0)),
+                     D.Receive (R.Client, CuBit.Monotonic.Milliseconds, In_Bytes, Natural (C.msg.words (0)),
                                 Out_Bytes, A);
                      --  Only a NAK sends a client that was asking back to
                      --  DISCOVER from a received message.
@@ -976,7 +982,6 @@ procedure main is
       end if;
    end Completed;
 
-   Log_Retry_MS : constant := 1_000;
 
    --  The earliest DHCP timer.
    function Next_Deadline return Unsigned_64 is
@@ -987,16 +992,11 @@ procedure main is
             Earliest := Unsigned_64'Min (Earliest, D.Next_Deadline (Item (I).Client));
          end if;
       end loop;
-      --  Until logstore runs and devmgr grants the log publisher, look
-      --  again now and then (Request asks once logstore has registered).
-      if not CuBit.Granted_Logs.Settled and then not CuBit.Granted_Logs.Waiting then
-         Earliest := Unsigned_64'Min (Earliest, Deadline_After (Log_Retry_MS));
-      end if;
       return Earliest;
    end Next_Deadline;
 
    procedure Run_Timers is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
       for I in 1 .. Capacity loop
          if Item (I).State = Live and then Item (I).Setting.Kind = NS.Automatic
@@ -1069,6 +1069,9 @@ procedure main is
 
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: its lines into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;
@@ -1107,11 +1110,8 @@ begin
          --  the wait again at once.
          CuBit.Process_Events.Serve_Defaults;
          while Poll_Completion (Entry_Found'Address) = 1 loop
-            if not CuBit.Granted_Logs.Take (Entry_Found) then
-               Completed (Entry_Found);
-            end if;
+            Completed (Entry_Found);
          end loop;
-         CuBit.Granted_Logs.Request (Startup.Ready);
          loop
             Poll_Service_Request (Sender, Request_Message, Found);
             exit when not Found;

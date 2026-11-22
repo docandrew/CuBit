@@ -3,6 +3,7 @@ with Ada.Calendar.Formatting;
 with Ada.Command_Line;
 with Ada.Containers.Indefinite_Vectors;
 with Ada.Directories;
+with Ada.Environment_Variables;
 with Ada.Exceptions;
 with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
@@ -14,6 +15,7 @@ with Build_Declarations;
 with Build_Encoding;
 with Build_Generations;
 with Build_Platform;
+with Build_Signing;
 with Build_Steps;
 with Build_Timing;
 with Build_Store;
@@ -24,13 +26,16 @@ with Storehouse.Profiles;
 --  ccl-build, hosted on Linux (docs/ccl-build.md):
 --
 --    ccl-build build --store DIR --source-root DIR [--import NAME=PATH]...
---                    [--out DIR] [--profile NAME] [--timings] DIR/component.ccl...
+--                    [--out DIR] [--profile NAME] [--timings] [--signing DIR]
+--                    DIR/component.ccl...
 --                    (with build-params.ccl and build-catalog.ccl; NAME is a
 --                    toolchain's, or a fetched library's to seed its tree
 --                    without network; --profile makes the components'
 --                    outputs the profile's next generation and switches to
 --                    it; --timings prints where each step's time went,
---                    Build_Timing)
+--                    Build_Timing; --signing signs each program's
+--                    executable with the key in DIR, SIGN-001: the store,
+--                    the generation and --out then hold the signed file)
 --    ccl-build check --source-root DIR DIR/component.ccl...   (type-check only)
 --    ccl-build verify --store DIR
 --    ccl-build import --store DIR TREE   (copy a tree in, print its identity)
@@ -78,13 +83,13 @@ procedure Main is
         when Rollback_Command => "rollback", when Diff_Command => "diff", when Collect_Command => "gc");
 
    type Option is (Store_Option, Source_Root_Option, Import_Option, Out_Option, Profile_Option,
-                   Keep_Generations_Option, Dry_Run_Option, Timings_Option);
+                   Keep_Generations_Option, Dry_Run_Option, Timings_Option, Signing_Option);
    function Option_Name (O : Option) return String is
      (case O is
         when Store_Option => "--store", when Source_Root_Option => "--source-root",
         when Import_Option => "--import", when Out_Option => "--out", when Profile_Option => "--profile",
         when Keep_Generations_Option => "--keep-generations", when Dry_Run_Option => "--dry-run",
-        when Timings_Option => "--timings");
+        when Timings_Option => "--timings", when Signing_Option => "--signing");
    --  Options that take no value.
    function Is_Flag (O : Option) return Boolean is (O in Dry_Run_Option | Timings_Option);
    --  Options that may be given more than once.
@@ -94,7 +99,8 @@ procedure Main is
    function Allowed (C : Command) return Option_Set is
      (case C is
         when Build_Command =>
-          [Store_Option | Source_Root_Option | Import_Option | Out_Option | Profile_Option | Timings_Option => True,
+          [Store_Option | Source_Root_Option | Import_Option | Out_Option | Profile_Option | Timings_Option
+           | Signing_Option => True,
            others => False],
         when Check_Command => [Source_Root_Option => True, others => False],
         when Verify_Command | Import_Command => [Store_Option => True, others => False],
@@ -339,6 +345,36 @@ procedure Main is
       return Result;
    end Items;
 
+   --  The sign step (Build_Signing): the program's executable is replaced,
+   --  in the products and the deliverables, by the same bytes signed. Not
+   --  a cached step: the private key is never an input the store records,
+   --  and signing (one SHA-384 and one ECDSA signature) costs little.
+   procedure Sign (Store : Build_Store.Store; Directory : String; Products : in out Build_Ada_Programs.Report) is
+      Temporary_Root : constant String :=
+        (if Ada.Environment_Variables.Exists ("TMPDIR") then Ada.Environment_Variables.Value ("TMPDIR") else "/tmp");
+   begin
+      for D of Products.Deliverables loop
+         if D.Kind = Storehouse.Executable_File then
+            declare
+               Unsigned : constant Storehouse.Digest := D.Identity;
+               Signed_File : constant String := Temporary_Root / ("ccl-build-signed-" & Storehouse.Hex.Image (Unsigned));
+               Signed : Storehouse.Digest;
+            begin
+               Build_Signing.Sign (Directory, Store.Path_Of (D.Kind, Unsigned), Signed_File);
+               Store.Put_File (Signed_File, Storehouse.Executable_File, Signed);
+               Ada.Directories.Delete_File (Signed_File);
+               D.Identity := Signed;
+               for P of Products.Products loop
+                  if P.Kind = Storehouse.Executable_File and then P.Identity = Unsigned then
+                     P.Identity := Signed;
+                  end if;
+               end loop;
+               Put_Line ("sign " & Short (Signed) & "  " & To_String (D.Path));
+            end;
+         end if;
+      end loop;
+   end Sign;
+
    --  The location of the component being read, for diagnostics.
    Current_Declaration : Unbounded_String;
 
@@ -422,6 +458,9 @@ procedure Main is
                Pins.Append (Build_Generations.Item'(T.Name, Storehouse.Tree, T.Tree));
             end loop;
             Build_Ada_Programs.Build (Store, Source_Root, Profile, Program, Compiler, Binutils, Result);
+            if Given (Signing_Option) then
+               Sign (Store, Value_Of (Signing_Option), Result);
+            end if;
             Store.Put_Root (Checkout, To_String (Program.Executable),
                             Build_Generations.Encode_Root (Items (Result.Products), Pins));
             if Given (Out_Option) then
@@ -708,7 +747,7 @@ exception
       Put_Line (Standard_Error, "ccl-build: " & Ada.Exceptions.Exception_Message (E));
       Put_Line (Standard_Error,
         "usage: ccl-build build --store DIR --source-root DIR [--import NAME=PATH]... [--out DIR] [--profile NAME]" &
-        " DIR/component.ccl..." &
+        " [--signing DIR] DIR/component.ccl..." &
         ASCII.LF & "       ccl-build check --source-root DIR DIR/component.ccl..." &
         ASCII.LF & "       ccl-build verify --store DIR" & ASCII.LF & "       ccl-build import --store DIR TREE" &
         ASCII.LF & "       ccl-build hash-tree DIR" &
@@ -722,7 +761,8 @@ exception
       Put_Line (Standard_Error, To_String (Current_Declaration) & ": " & Ada.Exceptions.Exception_Message (E));
       Set_Exit_Status (Failure);
    when E : Build_Steps.Step_Error | Build_Store.Store_Error | Build_Platform.Platform_Error
-          | Build_Generations.Generation_Error | Build_Collection.Collection_Error =>
+          | Build_Generations.Generation_Error | Build_Collection.Collection_Error
+          | Build_Signing.Signing_Unavailable =>
       Put_Line (Standard_Error, "ccl-build: " & Ada.Exceptions.Exception_Message (E));
       Set_Exit_Status (Failure);
 end Main;

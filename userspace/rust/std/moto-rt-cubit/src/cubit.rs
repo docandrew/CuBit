@@ -85,7 +85,6 @@ pub extern "C" fn cubit_rust_runtime_start() {
 const SYS_EXIT: u64 = 0;
 const SYS_SBRK: u64 = 8;
 const SYS_WRITE: u64 = 12;
-const SYS_GETTIME: u64 = 27;
 const SYS_THREAD_CREATE: u64 = 90;
 const SYS_THREAD_EXIT: u64 = 91;
 // The one wait (ABI-002 slice 2, shared/capabilities/wait_abi.ads): its
@@ -115,8 +114,15 @@ fn debug_write(bytes: &[u8]) {
     unsafe { syscall(SYS_WRITE, 1, bytes.as_ptr() as u64, bytes.len() as u64, 0, 0) };
 }
 
+// The kernel's millisecond clock (msTicks), which WAIT deadlines use: one
+// word of the clock publication, beside its seqlocked conversion
+// (shared/time/clock_publication.ads, Milliseconds_Address). No system call.
+const CLOCK_MILLISECONDS_ADDRESS: usize = 0x0000_5B00_0000_0000 + 64;
+
 fn now_ms() -> u64 {
-    unsafe { syscall(SYS_GETTIME, 0, 0, 0, 0, 0) }
+    unsafe {
+        (*(CLOCK_MILLISECONDS_ADDRESS as *const AtomicU64)).load(Ordering::Acquire)
+    }
 }
 
 fn futex_wait_raw(word: *const AtomicU32, expected: u32, deadline_ms: u64) -> u64 {

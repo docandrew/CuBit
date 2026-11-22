@@ -1,0 +1,73 @@
+--  Penny's cryptography (penny_crypto.ads): the C ABI over SPARKTLSCrypto,
+--  SPARKNaCl and SPARKMLKEM, a static standalone library that
+--  userspace/rust/penny-crypto links. The crates are the pinned flake
+--  inputs, unmodified, compiled as sparktls_cubit.gpr / sparktls_host.gpr
+--  compile them (the same switches and the same reasons).
+--
+--  External:
+--    CUBIT_SPARK_CRATES   the pinned crates (nix develop exports it).
+--    PENNY_CRYPTO_TARGET  cubit (CuBit's user runtime; Penny on CuBit, which
+--                         links libgnat-user) or host (Linux; the runtime is
+--                         encapsulated in the library, for hosted Penny).
+library project Penny_Crypto is
+   Crates := external ("CUBIT_SPARK_CRATES");
+   Keccak := Crates & "libkeccak";
+   type Targets is ("cubit", "host");
+   Target : Targets := external ("PENNY_CRYPTO_TARGET", "cubit");
+
+   for Languages use ("Ada");
+   for Source_Dirs use
+     (".",
+      Crates & "sparktlscrypto/src", Crates & "sparktlscrypto/src/tiers/enabled",
+      Crates & "sparkmlkem/src",
+      Crates & "sparknacl/src",
+      Keccak & "/src/common", Keccak & "/src/generic");
+   for Excluded_Source_Files use
+     ("sparknacl-debug.ads", "sparknacl-debug.adb",
+      "sparknacl-pdebug.ads", "sparknacl-pdebug.adb");
+   for Library_Name use "penny_crypto";
+   for Library_Kind use "static";
+   for Library_Interface use ("penny_crypto");
+   --  The library's elaboration (P-384's field constants) runs once through
+   --  penny_cryptoinit, which the Rust side calls before first use.
+   for Library_Auto_Init use "false";
+
+   Machine := ();
+   case Target is
+      when "cubit" =>
+         for Object_Dir use "build/cubit/obj";
+         for Library_Dir use "build/cubit/lib";
+         for Library_Standalone use "standard";
+         for Runtime ("Ada") use "../../runtime";
+         Machine := ("-fomit-frame-pointer", "-mno-red-zone", "-fno-pic");
+      when "host" =>
+         for Object_Dir use "build/host/obj";
+         for Library_Dir use "build/host/lib";
+         for Library_Standalone use "encapsulated";
+         Machine := ("-fPIC");
+   end case;
+
+   Base := ("-O2", "-march=x86-64-v3", "-gnat2022", "-gnatp", "-fno-tree-vrp", "-gnatQ",
+            "-gnatw.X", "-gnatws") & Machine;
+   AES_NI := ("-maes", "-mpclmul", "-mssse3");
+   ADX := ("-mbmi2", "-madx");
+   AVX2 := ("-mavx2");
+   AVX512 := ("-mavx512f", "-mavx512dq", "-mavx512bw", "-mavx512vl",
+              "-mavx512ifma", "-mvaes",
+              "-mvpclmulqdq");
+
+   package Compiler is
+      for Default_Switches ("Ada") use Base;
+      for Switches ("sparktlscrypto-aes_ni.adb") use Base & AES_NI;
+      for Switches ("sparktlscrypto-ghash_ni.adb") use Base & AES_NI;
+      for Switches ("sparktlscrypto-bignat64_adx.adb") use Base & ADX;
+      for Switches ("sparktlscrypto-p256_gather_avx2.adb") use Base & AVX2;
+      for Switches ("sparktlscrypto-aes_gcm_avx512.adb") use Base & AVX512;
+      for Switches ("sparktlscrypto-chacha20_avx512.adb") use Base & AVX512;
+      for Switches ("sparktlscrypto-poly1305_avx512.adb") use Base & AVX512;
+      for Switches ("sparktlscrypto-poly1305_avx512_ifma.adb") use Base & AVX512;
+      --  Penny's own glue: style checks; the crates keep theirs off.
+      for Switches ("penny_crypto.adb") use Base & ("-gnatwa", "-gnatwe");
+      for Switches ("penny_ecdsa_digest.adb") use Base & ("-gnatwa", "-gnatwe");
+   end Compiler;
+end Penny_Crypto;

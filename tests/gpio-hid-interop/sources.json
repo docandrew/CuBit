@@ -95,7 +95,7 @@
     },
     {
       "path": "userspace/services/gpio/lib/gpio_community_park.adb",
-      "sha256": "afe4efb4d9fcf945eca1d1ab428937cb723e8723f58f61e68b3020081c5a65ea"
+      "sha256": "8e6bd362887ab99a165f1a807dfd790fcfa2658124a4273f9570487088f7a221"
     },
     {
       "path": "userspace/services/gpio/lib/gpio_community_park.ads",
@@ -178,11 +178,11 @@
       "sha256": "ce2040ed62ac727418b0b2a4cfbcd92981df4a5072857faeea938dc89a448bb4"
     },
     {
-      "path": "userspace/services/gpio/lib/gpio_polling_loop.adb",
+      "path": "tests/gpio-native/models/polling/gpio_polling_loop.adb",
       "sha256": "1b9fdb08703be6edcb2e3fd2eb80e4efec8c8e41d345e75ae14068ac1089f958"
     },
     {
-      "path": "userspace/services/gpio/lib/gpio_polling_loop.ads",
+      "path": "tests/gpio-native/models/polling/gpio_polling_loop.ads",
       "sha256": "a3c8707e768a9179982384d3024febe89d67514a1947330603687a3de21a9b4d"
     },
     {
@@ -219,11 +219,11 @@
     },
     {
       "path": "userspace/services/gpio/lib/intel_adln_gpio.adb",
-      "sha256": "3c9ce5a4f7e615c1574c661cfa037d7bedf4914383d081f6f334e8db063bd159"
+      "sha256": "74116b564512250c8ab0f5df99416aa737ec1f0b7eb3fcd542bd372e2036d788"
     },
     {
       "path": "userspace/services/gpio/lib/intel_adln_gpio.ads",
-      "sha256": "ae24574897c996d4116cad9d0d222ba5bffede7b29eef2c3a9a1e116cdca8cf1"
+      "sha256": "4dc2283bf20ace8a72db2bb307ed113234baa6998b6fb613ef74a2c8e2cf5622"
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_controller.adb",
@@ -243,11 +243,11 @@
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.adb",
-      "sha256": "26dc73d667b24a6626bb20860cd405b1b1468f239c5905881717290459a6245e"
+      "sha256": "857c484a6e32452fcb03eb3657252d7e2554b0f3052d0f84e4b0fad4b562288d"
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.ads",
-      "sha256": "c515aca26679c5be38b4951d48c7611278ce7639c5cace6567eda378f868d3f8"
+      "sha256": "d8dad407c9cf2949137a34f424477d762472dd2847211d50bcdca709f646c96d"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_gpio_reset.adb",

@@ -1,0 +1,4 @@
+# KERN-014 benchmark child: no authority.
+(executable-manifest v1
+  (identity "com.cubit.kern014-child")
+  (version "0.1.0"))

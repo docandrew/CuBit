@@ -1,0 +1,18 @@
+--  VMM-001: hosted tests and proofs of vmm's guest UART, serial keys and
+--  console line (userspace/apps/vmm).
+project VM_UART_Tests is
+   for Source_Dirs use (".", "../../userspace/apps/vmm/core", "../../userspace/apps/vmm");
+   for Source_Files use
+     ("main.adb", "guest_uart.ads", "guest_uart.adb", "serial_keys.ads", "serial_keys.adb",
+      "console_line.ads", "console_line.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end VM_UART_Tests;

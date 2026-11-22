@@ -15,5 +15,7 @@
     (dma "streams" 8388608)
     (notification "hda" Notify_Access.Manage "registration")
     (service "mixer" "mixer")
-    (service "device-manager" "ready")]
-  optional => ["registration"])
+    (service "device-manager" "ready")
+    # ABI-002: its debug text, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["registration" "logstore"])

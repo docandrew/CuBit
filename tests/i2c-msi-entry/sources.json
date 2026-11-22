@@ -3,7 +3,7 @@
   "inputs": [
     {
       "path": "shared/capabilities/capability_abi.ads",
-      "sha256": "845dec7e6ce5b6e8aa2fb618ca6710322c949cd16ede3dcd213b9dd4b96e01bc",
+      "sha256": "4f102b15b4749adbf69e6d3ddc135faccd269a9898260ceaa85f40145ded4329",
       "kind": "production"
     },
     {
@@ -113,12 +113,12 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-request_channels.ads",
-      "sha256": "743a0337642b85f42d3e5c952161abbcf775acfdd1e5c717eea06f1330664f15",
+      "sha256": "f97b3875558833430d16c1ee692ec9908f48452ca18c50b38ff792765d5a68b3",
       "kind": "runtime"
     },
     {
       "path": "userspace/runtime/gnat/cubit-request_channels.adb",
-      "sha256": "226bd16157b481608f04e70d5428033e8b51317be733f46ff9486ae101e54d75",
+      "sha256": "775ce0f5fa5e34ce559f05c072dc8a9e615d29ccfd49ba04a2aaf36d055d7214",
       "kind": "runtime"
     },
     {
@@ -373,17 +373,17 @@
     },
     {
       "path": "shared/launch/launch_configuration.ads",
-      "sha256": "c107c322fefaf11f6179134ebdb0f31d2ef1ddf11aeee07aef8f83e5aaf2f97b",
+      "sha256": "025dc055951e9cd1cd8315804ce7af7ce522bcc006700ae99b1ebc0e520bbfe8",
       "kind": "production"
     },
     {
       "path": "shared/launch/launch_configuration.adb",
-      "sha256": "5c462efca43e088b75efec4ea8b7ac029c7471808f54693fee697bf9c32dddfc",
+      "sha256": "ec31d986330e19869be766c76a98c9a75f16a506e26490bf060f13fa690e75a0",
       "kind": "production"
     },
     {
       "path": "userspace/services/i2c-dw/main.adb",
-      "sha256": "a3320a3e6785914ac6f9512e399a6d7d310d0c7498cc5c6ae855855eab7b036a",
+      "sha256": "5c69e4e0209072af25db5272df5e0d30ff48503fe13a2d58276bfe95109317f4",
       "kind": "production"
     },
     {
@@ -394,6 +394,26 @@
     {
       "path": "tests/i2c-msi-entry/host/startup.ads",
       "sha256": "6f01d888b018daa9a1d8d5b2fda8e0152fc171e0024ca7506c85bfea3f526d72",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-monotonic.ads",
+      "sha256": "6ae7dd0efc1e45e4340d0e396100eee8e55a2cd025fd370b6f2412d246067542",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-monotonic.adb",
+      "sha256": "5b8b8dcdc2f8451aee8c1969631a97306a4dec6d8c0c728e5f89a9c6df630021",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-waits.ads",
+      "sha256": "28f94c872339e7eda3019cdc5896beb7163cfa66671cc35f626a2ef4c11887f3",
+      "kind": "model"
+    },
+    {
+      "path": "tests/i2c-msi-entry/host/cubit-waits.adb",
+      "sha256": "9d5013ccded4b59e562370cc88925cda035f6bc984ec7196a4f5ec5c92d53a93",
       "kind": "model"
     }
   ],
@@ -410,7 +430,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-messages.ads",
-      "sha256": "5821c8bfe49dca95b486dc76b93d4a43377edc3f9bf8a62c1d07d023c9eac2b2",
+      "sha256": "498977f539745f88eeca515e25be2c395dcae9794fd48ad0db3da38397f63a3b",
       "kind": "native-context"
     },
     {

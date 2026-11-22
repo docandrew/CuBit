@@ -1,9 +1,10 @@
 """Test patched DOM Rc sizing with an instrumented allocator/trait adapter.
-Requires the patched Servo checkout; native tests cover the full trait path.
+Requires Penny's Servo fork checkout (userspace/servo/FORKS); native tests cover the full trait path.
 """
+import os
 from pathlib import Path
 import subprocess,tempfile
-root=Path(__file__).resolve().parents[2];servo=root/'userspace/rust/build/servo-work/servo'
+root=Path(__file__).resolve().parents[2];servo=Path(os.environ.get('SERVO_DIR',root/'userspace/rust/build/servo-work/servo'))
 mem=(servo/'components/script_bindings/mem.rs').read_text()
 a=mem.index('pub(crate) unsafe fn malloc_size_of_including_raw_rc_self');b=mem.index('\n}',a)+2
 helper=mem[a:b]

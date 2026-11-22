@@ -14,6 +14,9 @@
   requests => [
     (Request.Firmware_Snapshot "tables")
     (Request.ACPI_Hardware "hardware")
-    (Request.Platform_Power "power")
-    (notification "acpi" Notify_Access.Manage "registration")]
+    (Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Platform_Power "power"))
+    (notification "acpi" Notify_Access.Manage "registration")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"]
   parameters => (Parameter_Signature.Declared "Standin_Parameters"))

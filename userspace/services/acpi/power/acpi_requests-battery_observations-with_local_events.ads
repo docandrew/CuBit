@@ -48,6 +48,7 @@ private
       Armed:Boolean:=False;
    end record;
    Snapshot:Collection_Diagnostic;
+   function Collection_Isolatable return Boolean;
    procedure Invalidate(Data:in out Storage);
    procedure Observe_Claimed(Data:in out Storage;Server:State;Observed:out Boolean);
    function Current(Value:Inventory.Observation;Server:State) return Boolean;
@@ -56,5 +57,6 @@ private
    function Cached_Read(Data:Storage;Server:State;Now:Samples.Clock_Reading;Maximum_Age:Samples.Tick) return Samples.View;
    package Owner is new ACPI_Local_Sample_Events
      (Inventory.Observation,Inventory.Empty_Observation,Samples,Storage,Observe_Claimed,Invalidate,
-      Collect,Publish,Cached_Read,Runtime_Current,Begin_Event,End_Event,Read_Clock,Report_Publication,Events_Healthy,Fuel_Budget,Window_Microseconds);
+      Collect,Publish,Cached_Read,Runtime_Current,Begin_Event,End_Event,Read_Clock,Report_Publication,Events_Healthy,Fuel_Budget,Window_Microseconds,
+      Collection_Isolatable);
 end ACPI_Requests.Battery_Observations.With_Local_Events;

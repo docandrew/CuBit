@@ -63,6 +63,7 @@ is
                Timer_Before => Platform_Monotonic.Diagnostic (4),
                Timer_After  => Platform_Monotonic.Diagnostic (5));
             Facts.User_Wait_Cycles := User_Wait.Published_Cycles;
+            Facts.Free_Memory_Bytes := Unsigned_64 (BuddyAllocator.getFreeBytes);
             Facts.Version := SP.Layout_Version;
             Registry.Version := SP.Layout_Version;
             Wall.Version := SP.Layout_Version;
@@ -121,6 +122,17 @@ is
             Count_Word := Count;
         end if;
     end Set_Device_Memory_Denials;
+
+    procedure Set_Free_Memory (Bytes : Unsigned_64) is
+        Facts : SP.Facts_Page with
+            Import, Volatile, Address => Virtmem.P2Va (Facts_Frame);
+        Free_Word : Unsigned_64 with
+            Import, Atomic, Address => Facts.Free_Memory_Bytes'Address;
+    begin
+        if Facts_Frame /= 0 then
+            Free_Word := Bytes;
+        end if;
+    end Set_Free_Memory;
 
     procedure Set_User_Wait_Cycles (Cycles : Unsigned_64) is
         Facts : SP.Facts_Page with

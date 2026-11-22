@@ -37,8 +37,8 @@ def check(data):
         assert 0 < length <= 64
         scopes.append((service, rights, row[8:8 + length].decode('ascii')))
     # FS service 0: read=1, write=2, create=8. Config service 1: read/write=3.
-    expected = {(0, 11, '@nvme:0/Bookmarks'), (0, 11, '@nvme:0/Downloads'),
-                (0, 1, '@nvme:0/fonts'), (0, 1, '@nvme:0/servo'), (0, 1, '@nvme:0/tls'),
+    expected = {(0, 11, '@system/Bookmarks'), (0, 11, '@system/Downloads'),
+                (0, 1, '@system/servo'), (0, 1, '@system/tls'),
                 (1, 3, 'browser.servo')}
     assert len(scopes) == len(expected) and set(scopes) == expected, scopes
     return scopes

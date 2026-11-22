@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -7,6 +8,8 @@ with CuBit.Desktop_Messages; use CuBit.Desktop_Messages;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
 with Startup;
+with CuBit.Handles.Tracing;
+with CuBit.Monotonic;
 
 --  Closed-loop diagnostic, NOT an interrupt-to-app or open-loop SLA test.
 --  The same process publishes a normalized key and receives the focused
@@ -23,6 +26,14 @@ procedure Main is
    Passed : Boolean := True;
    Trace_Active : Boolean := False;
    Trace_Frozen : Boolean := False;
+   package Tracing renames CuBit.Handles.Tracing;
+   --  One timeline operation on the kernel trace object (LATENCY_TRACE
+   --  kernels); its answer is not needed (Trace_Active said it works).
+   procedure Timeline (Operation : Tracing.ABI.Operation) is
+      Ignore : constant Tracing.Outcome := Tracing.Perform (Startup.Trace, Operation);
+   begin
+      null;
+   end Timeline;
    type Tail_Sample is record
       Started, Published, Finished : Unsigned_64 := 0;
    end record;
@@ -81,7 +92,7 @@ procedure Main is
          -- Up arrow: no additional text event or desktop modifier shortcut.
          Report.payload := (if Expected = Key_Pressed then 16#48# else 16#C8#);
          Request := Input.Encode (Report);
-         Deadline := syscall (SYSCALL_GETTIME) + 1_000;
+         Deadline := CuBit.Monotonic.Milliseconds + 1_000;
          Started := Clock.Read_Counter;
          if not trySendEvent (Consumer, Request, Startup.Keyboard) then
             Fail ("publication rejected"); return;
@@ -117,8 +128,7 @@ procedure Main is
               Finished - Started >= 4 * Rate
             then
                -- Freeze in memory, with no serial output in the measurement.
-               Ignored := syscall (SYSCALL_TRACE_SUMMARY,
-                 Trace_Control_Operation'Enum_Rep (Freeze_Local));
+               Timeline (Tracing.ABI.Freeze_Local);
                Trace_Frozen := True;
             end if;
          end if;
@@ -167,17 +177,16 @@ procedure Main is
       Clock.Calibrate (Rate);
       if Rate = 0 then Fail ("uncalibrated clock"); return; end if;
       debugPrint ("INPUT-BENCH: START boundary=publication-to-app closed_loop=1" & ASCII.LF);
-      Trace_Active := syscall (SYSCALL_TRACE_SUMMARY,
-        Trace_Control_Operation'Enum_Rep (Start_Local)) = 0;
+      --  Done only on LATENCY_TRACE kernels (else Not_In_This_Kernel).
+      Trace_Active := Tracing.Done
+        (Tracing.Perform (Startup.Trace, Tracing.ABI.Start_Local));
       for Mode in Scenario loop
          Run (Mode);
          exit when not Passed;
       end loop;
       if Trace_Active then
-         Ignored := syscall (SYSCALL_TRACE_SUMMARY,
-           Trace_Control_Operation'Enum_Rep (Freeze_Local));
-         Ignored := syscall (SYSCALL_TRACE_SUMMARY,
-           Trace_Control_Operation'Enum_Rep (Dump_Local));
+         Timeline (Tracing.ABI.Freeze_Local);
+         Timeline (Tracing.ABI.Dump_Local);
       end if;
       if Passed then
          debugPrint ("INPUT-BENCH: COMPLETE" & ASCII.LF);
@@ -189,6 +198,8 @@ procedure Main is
       end if;
    end Exercise;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Exercise;
    Ignored := syscall (SYSCALL_EXIT, (if Passed then 0 else 1));
 end Main;

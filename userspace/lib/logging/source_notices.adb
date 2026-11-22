@@ -4,6 +4,7 @@ with CuBit.Channels;
 with CuBit.Channel_Protocol;
 with CuBit.Handles.Control;
 with CuBit.Messages;
+with CuBit.Monotonic;
 
 package body Source_Notices is
    package LS renames CuBit.Log_Sources;
@@ -111,7 +112,7 @@ package body Source_Notices is
       Service : H.Endpoint;
       Opened : CuBit.Channels.Open_Result;
       Ignore_Refusal : CuBit.Channel_Protocol.Open_Refusal;
-      Now : constant Unsigned_64 := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
       if Now < Next_Try_Ms then
          return;

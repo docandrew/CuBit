@@ -49,6 +49,14 @@ package CuBit.Log_Sources with Pure, SPARK_Mode is
      ((Tag and 16#FFFF_FFFF_0000_0000#) = Registrar_Tag_Base and then
       (Tag and 16#FFFF_FFFF#) /= 0);
 
+   --  Shutdown (PWR-003, ABI-002): procmgr, under its registrar tag
+   --  (Process_Manager_Issuance), before storage stops. logstore takes what
+   --  its publishers wrote, appends everything it persists to its file,
+   --  flushes and closes it, and persists nothing more; it keeps running
+   --  in RAM for the system's final lines. A call; the reply's words (0)
+   --  says whether a file was open (1) or not (0). Length 0.
+   Detach_Storage : constant Unsigned_32 := 16#0C11#;
+
    --  No process: a source word never names this.
    No_Source : constant Unsigned_64 := 0;
 
@@ -83,10 +91,8 @@ package CuBit.Log_Sources with Pure, SPARK_Mode is
    function Named (Item : Source_Identity) return Boolean is
      (Item.Identity_Used > 0 or else Item.Name_Used > 0);
 
-   function Identity_Of (Item : Source_Identity) return String is
-     (Item.Identity (1 .. Item.Identity_Used));
-   function Name_Of (Item : Source_Identity) return String is
-     (Item.Name (1 .. Item.Name_Used));
+   --  Identity_Of, Name_Of and Label return text: CuBit.Log_Sources.Texts
+   --  (this package needs no secondary stack: CuBit.Logging withs it).
 
    --  What a launcher knows of a process it started: its identity and its
    --  program's name (the file name, any directory left off). Each is cut
@@ -95,11 +101,16 @@ package CuBit.Log_Sources with Pure, SPARK_Mode is
    with Pre  => Source /= No_Source and then Name'Last < Positive'Last,
         Post => Make'Result.Source = Source and then Valid (Make'Result);
 
-   --  The short name a person types for it: its program name before the
-   --  first '.' (acpi for acpi.svc), else its identity's last part (acpi for
-   --  com.cubit.acpi); empty when it is not Named.
-   function Label (Item : Source_Identity) return String
-   with Post => Label'Result'Length <= Identity_Bytes;
+   --  The short name a person types for it (Texts.Label): its program name
+   --  before the first '.' (acpi for acpi.svc), else its identity's last
+   --  part (acpi for com.cubit.acpi); empty when it is not Named. Here its
+   --  bounds: Item.Name (1 .. Label_Last) when From_Name, else
+   --  Item.Identity (Label_First .. Item.Identity_Used).
+   function From_Name (Item : Source_Identity) return Boolean is (Item.Name_Used > 0);
+   function Label_Last (Item : Source_Identity) return Name_Length
+   with Pre => From_Name (Item), Post => Label_Last'Result <= Item.Name_Used;
+   function Label_First (Item : Source_Identity) return Positive
+   with Pre => not From_Name (Item), Post => Label_First'Result <= Item.Identity_Used + 1;
 
    --  Whether Wanted names it: its program name, its label, its identity, or
    --  the end of its identity after a '.' (cubit.acpi, acpi).

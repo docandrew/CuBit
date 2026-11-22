@@ -32,6 +32,7 @@ with CuBit.Process_IDs;
 with CuBit.Startup_Tables;
 with CCL.Device_Sections;
 with CCL.Resource_Sections;
+with CuBit.Messages;
 with Driver_Manifests;
 with Launch_Configuration;
 
@@ -134,6 +135,26 @@ package Devmgr_Launches is
    --  log publisher's endpoint to logstore).
    procedure Give_Service (Item : Child; Role : Unsigned_32; Copy : H.Derivation)
    with Pre => Item /= No_Child;
+   --  Late introduction (CuBit.Late_Introduction, ABI-002): the service
+   --  of Role is not running yet. Every (service ...) request of its
+   --  manifest for Role that is optional is left Absent and the decision
+   --  kept: a copy of the service's endpoint with the rights it asked for,
+   --  badged with Tag (0: untagged). The child then gets the introducer
+   --  endpoint (devmgr's, badged); its Await call is answered when
+   --  Introduce gives devmgr the service. A required request still fails
+   --  the launch.
+   procedure Give_Service_Later (Item : Child; Role : Unsigned_32; Tag : Unsigned_64)
+   with Pre => Item /= No_Child;
+   --  The service of Role is now Service: every child waiting for it is
+   --  introduced (its kept decision is used up).
+   procedure Introduce (Role : Unsigned_32; Service : H.Endpoint);
+   --  A child's Await call (CuBit.Late_Introduction.Await_Request over its
+   --  introducer: the caller checked the Introducer_Tag): answered now,
+   --  refused now, or kept until Introduce.
+   procedure Await (From : Process_ID; Request : CuBit.Messages.Message);
+   --  A child ended: its kept call and decisions go with it.
+   procedure Forget_Introductions (Process : Process_ID);
+
    --  Its decoded .cubit.resources (Count 0 when it has none).
    function Resources_Of (Item : Child) return CCL.Resource_Sections.Section_Plan
    with Pre => Item /= No_Child;

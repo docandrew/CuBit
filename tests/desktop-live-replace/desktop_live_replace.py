@@ -133,6 +133,10 @@ class Monitor:
         self.hmp("mouse_button 0")
 
     def close(self):
+        # The stream holds the socket open too, and QEMU serves one QMP
+        # client at a time: a live Monitor whose socket alone was closed
+        # stalls the next connection.
+        self.stream.close()
         self.connection.close()
 
 
@@ -245,21 +249,18 @@ METRICS_SECONDS = 15
 # ccl-remote holds, DEVELOPMENT-ONLY, what the shipped apps ask for
 # (its manifest), and names it in (hello) and at start.
 DEVELOPMENT = "development-only authority for app replace: services "
-# An attenuated launcher never passes on a render request (procmgr's
-# launcherHolds counts services only): teapots' swap stays refused, and
-# says why on the wire and in both logs.
+# Launch-into-S (CAP-012, docs/authority-model.md 7.5): a swapped-in app
+# gets its approval within the user session's envelope, not what ccl-remote
+# holds; teapots' optional render request is inside it, so teapots starts.
 TEAPOTS_PRODUCT = "refused/teapots.app"
-TEAPOTS_REFUSAL = b'refused: it requests "render", which its launcher does not hold'
-TEAPOTS_WHY = (b"ccl-remote: app teapots not started: teapots the new generation did not start "
-               b"(procmgr: it needs authority its launcher does not hold, failure 5)")
 # Every app the laptop images ship (images/laptop-install.ccl; cubitshell is
-# not built), with the development-only services each needs ccl-remote to
-# hold (its manifest's block). ccl-remote holds an optional service only
-# while its provider runs at its start ("(absent)" in hello otherwise): an
-# app starts when swapped in exactly when none it needs is absent; teapots
-# (render) never. The observer roles the viewers need (log-observer,
-# process-observer, log-control, series) ccl-remote holds by its plan entry
-# and passes on, as procmgr passes any role a launcher holds.
+# not built), with the services each asks for that some plans run without
+# (ccl-remote's hello marks those "(absent)"). Launched into the user
+# session, an app gets them within the session's envelope; one whose
+# provider is absent is left out when the app declares it optional, which
+# every service here is for the apps that ask for one that is absent. So
+# every shipped app starts when swapped in. ccl-remote still names its
+# development-only block in hello.
 OBSERVERS_PASSED = "observer roles passed on log-observer, process-observer, series, log-control;"
 SHIPPED = {
     "agent": ["llm", "secrets"],
@@ -311,8 +312,8 @@ def series_published(host, name):
 
 def replace_apps(host, when):
     """cubit-remote app replace, as on the laptop: the built metricsview
-    starts, shows its window and publishes; teapots is refused, and the
-    refusal says why on the host and on the device."""
+    starts, shows its window and publishes; teapots starts too, its render
+    request within the user session's envelope (CAP-012)."""
     shown = serial_bytes().count(METRICSVIEW_SHOWN)
     report = app_replace(host, METRICSVIEW_PRODUCT, when)
     check(report["refused"] is None and report["result"] == APP_REPLACED and report["current"] > 0,
@@ -321,16 +322,10 @@ def replace_apps(host, when):
     found, text = series_published(host, METRICSVIEW_SERIES)
     check(found, "%s: it publishes through its stdmetric outlet: %s in metrics.svc (%s)"
           % (when, METRICSVIEW_SERIES, text[:160]))
-    refusals = serial_bytes().count(TEAPOTS_REFUSAL)
-    said = serial_bytes().count(TEAPOTS_WHY)
     report = app_replace(host, TEAPOTS_PRODUCT, when)
-    check(report["refused"] == "Start_Failed" and report["result"] == APP_START_FAILED
-          and report["failure"] == NOT_GRANTED,
-          "%s: teapots' replace is Start_Failed, procmgr's reason on the wire: Not_Granted (%s, failure %d)"
-          % (when, report["refused"], report["failure"]))
-    check(wait_for_serial(TEAPOTS_REFUSAL, 10, refusals + 1),
-          "%s: procmgr's log line names the request ccl-remote cannot pass on" % when)
-    check(wait_for_serial(TEAPOTS_WHY, 10, said + 1), "%s: ccl-remote's log line says why" % when)
+    check(report["refused"] is None and report["result"] == APP_REPLACED,
+          "%s: teapots' replace starts it, render within the user session's envelope (%s)"
+          % (when, report["refused"]))
 
 
 def survey(host, absent):
@@ -338,13 +333,10 @@ def survey(host, absent):
     for app, needs in sorted(SHIPPED.items()):
         missing = sorted(set(needs) & absent)
         report = app_replace(host, "shipped/%s.app" % app, "survey")
-        if not missing:
-            check(report["refused"] is None and report["result"] == APP_REPLACED,
-                  "survey: %s starts when swapped in (%s)" % (app, report["refused"]))
-        else:
-            check(report["refused"] == "Start_Failed" and report["failure"] == NOT_GRANTED,
-                  "survey: %s needs %s, absent in this plan: refused, Not_Granted (%s)"
-                  % (app, ", ".join(missing), report["refused"]))
+        check(report["refused"] is None and report["result"] == APP_REPLACED,
+              "survey: %s starts when swapped in%s (%s)"
+              % (app, " without its absent optional " + ", ".join(missing) if missing else "",
+                 report["refused"]))
 
 
 def desktop_processes(host):

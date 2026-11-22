@@ -115,7 +115,6 @@ PENDING = {
     "userspace/services/logstore/manifest.ccl",
     "userspace/services/tls/main.adb",
     "userspace/services/tls/manifest.ccl",
-    "userspace/servo/manifest.ccl",
 }
 
 SKIP_DIRS = {".git", "build", "obj", "target", "node_modules", "isodir"}

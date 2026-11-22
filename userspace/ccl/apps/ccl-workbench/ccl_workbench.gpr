@@ -4,15 +4,15 @@ with "../../../lib/calc/calc_flags.gpr";
 with "../../../lib/tls/sparktls_cubit.gpr";
 project CCL_Workbench is
    for Languages use ("Ada");
-   for Source_Dirs use ("../../../lib/lexicon", "../../../lib/bible", "../../../lib/bible/native", "../../../lib/lexicon/channel", ".", "../../src", "../../../lib/agent", "../../native", "../../tools/ccl-ui-preview",
+   for Source_Dirs use ("../../../lib/lexicon", "../../../lib/bible", "../../../lib/bible/native", "../../../lib/debug", "../../../lib/debug/native", "../../../lib/lexicon/channel", ".", "../../src", "../../../lib/agent", "../../native", "../../tools/ccl-ui-preview",
       "../../../lib/ui", "../../../lib/calc", "../../../lib/theme", "../../../lib/config", "../../../lib/compositor", "../../../lib/display", "../../../allocator/src");
    for Object_Dir use "build";
-   for Main use ("main.adb");
+   for Main use ("ccl_workbench_main.adb");
    for Runtime ("Ada") use "../../../runtime";
    for Library_Dir use "";
 
    package Builder is
-      for Executable ("main.adb") use "ccl-workbench.app";
+      for Executable ("ccl_workbench_main.adb") use "ccl-workbench.app";
       for Default_Switches ("Ada") use
         ("-g", "-gnatwa", "-gnatw.X", "-s", "-v", "-nostdlib");
    end Builder;

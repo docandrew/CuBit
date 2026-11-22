@@ -33,7 +33,7 @@ package body ACPI_Local_Sample_Events is
          Observed : Boolean;
       begin
          Accepted:=False;
-         if State not in Ready|Publishing or else Working or else not Events_Healthy
+         if State not in Ready|Publishing|Suspended or else Working or else not Events_Healthy
            or else Runtime_Current not in R.Idle|R.Stopped or else ID=0 or else
            not C.Current_Context(Service,Anchor) or else ID<Last_Receipt then return;end if;
          if ID=Last_Receipt then Accepted:=True;return;end if;
@@ -45,7 +45,7 @@ package body ACPI_Local_Sample_Events is
             -- external work and must not be lost when publication finishes.
             if Self_Notifications>0 then Self_Notifications:=Self_Notifications-1;
             else Resample:=True;end if;
-         else Needed:=True;end if;
+         elsif State/=Suspended then Needed:=True;end if;
          Accepted:=True;
       end Observe;
       package Bridge is new Q.With_Retained_Notification (Token,Observe);
@@ -61,7 +61,7 @@ package body ACPI_Local_Sample_Events is
       return Cached_Read(Data,Server,Now,Maximum_Age);
    end Read;
    procedure Advance (Server : in out Q.State; Result : out Status.Outcome) is
-      Same,Available,Healthy,Published : Boolean;
+      Same,Available,Healthy,Published,Isolatable : Boolean;
       Now : Samples.Tick;
       Transition : R.Outcome;
       Flags : Interfaces.Unsigned_64 := 0;
@@ -108,13 +108,23 @@ package body ACPI_Local_Sample_Events is
       if Transition/=R.Event_Opened then Fail(Status.Window_Refused,Result);return;end if;
       Collected:=False;Resample:=False;Self_Notifications:=0;
       Collect(Data,Server,Fuel_Budget,Healthy,Collected);
+      -- Only an ordinary collection refusal with the original runtime still
+      -- active can be isolated. End_Event remains the mandatory provider-idle,
+      -- retained-root and delay-owner barrier; it may still stop the owner.
+      Isolatable:=not Healthy and then Collection_Isolatable and then Runtime_Current=R.Active;
       Pending_Count.Advance(Server,Same);Healthy:=Healthy and then Same and then State/=Stopped and then Events_Healthy;
+      Isolatable:=Isolatable and then Same and then State/=Stopped and then Events_Healthy;
       if Healthy and then Collected then
          Read_Clock(Now,Available);Healthy:=Available and then Now>=Last_Clock;
          Collection_Time:=(Available,Now);if Healthy then Last_Clock:=Now;end if;
       end if;
       Healthy:=Healthy and then Runtime_Current=R.Active;
-      End_Event(Server,Healthy,Transition);
+      End_Event(Server,Healthy or Isolatable,Transition);
+      if Isolatable and then Transition=R.Event_Completed and then Runtime_Current=R.Idle then
+         Invalidate(Data);State:=Suspended;Failure:=Status.Acquisition_Failed;
+         Needed:=False;Collected:=False;Resample:=False;
+         Finish(Status.Isolated);return;
+      end if;
       if not Healthy or else Transition/=R.Event_Completed or else Runtime_Current/=R.Idle then
          Fail((if not Events_Healthy then Status.Source_Unhealthy else Status.Acquisition_Failed),Result);return;
       end if;

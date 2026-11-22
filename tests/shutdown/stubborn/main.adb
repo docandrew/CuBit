@@ -1,5 +1,6 @@
 --  shutdown-stubborn (tests/shutdown, headless shutdown): ignores Stop, so
 --  procmgr ends it after its grace (FORCED).
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Control_Events;
@@ -14,6 +15,8 @@ procedure Main is
    Found : Boolean;
    Activity : Activity_Result;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("shutdown-stubborn: running" & ASCII.LF);
    loop
       Activity := Wait_For_Activity_Until (Deadline_After (Poll_Ms));

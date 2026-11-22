@@ -50,10 +50,9 @@ package CuBit.Handles.Devices is
    function Reserve_Realtime
      (Period_Us, Budget_Us, Flags : Unsigned_64; Authority : Scheduling) return Unsigned_64;
 
-   --  The kernel's boot timeline (docs/boot-timeline.md): Read needs a
-   --  process handle with Read, Mark the milestone owner's notification.
-   function Read_Timeline
-     (Authority : Process; Buffer, Offset, Bytes : Unsigned_64) return Unsigned_64;
+   --  Mark a boot milestone (docs/boot-timeline.md, Boot_Timeline_Layout):
+   --  a Call on the owner role's notification handle. True when the kernel
+   --  answered Marked. (The timeline itself is a granted publication.)
    function Mark_Milestone (Milestone : Unsigned_64; Authority : Notification)
      return Boolean;
 

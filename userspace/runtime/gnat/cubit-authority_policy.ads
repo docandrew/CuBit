@@ -42,7 +42,7 @@ package CuBit.Authority_Policy with Pure, SPARK_Mode is
      range ACPI_Register_Frontend .. Display_Capture;
 
    --  Transitional development-image approval: entry in the trusted startup
-   --  plan approves declared privileged requests. OP_SPAWN cannot select it.
+   --  plan approves declared privileged requests. A launch cannot select it.
    --  Publication preserves the existing manifest-request policy.
    function Bootstrap_Approves
      (Authority : Bootstrap_Authority; Trusted_Startup : Boolean)

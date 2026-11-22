@@ -1,0 +1,2 @@
+(Component name => "launch-gate-child" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

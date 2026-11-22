@@ -15,7 +15,11 @@ for kind in ("guard-read", "readonly-write"):
     # are the kernel slot its serial diagnostics print.
     pid = str(int(posix_pid) & 0xFFFFFF)
     category = "unmapped" if kind == "guard-read" else "write-protection"
-    fault = re.compile(rf"USER-MEMORY-FAULT: pid {pid} address {int(address, 16)} kind={category}\b").search(log, armed[0].end())
+    # The probe's line is a record logstore mirrors (ABI-002): it reaches
+    # serial when logstore drains it, often after the kernel's own fault
+    # line. Lines of two sources are not ordered; pid and address are the
+    # match (one armed probe of each kind).
+    fault = re.compile(rf"USER-MEMORY-FAULT: pid {pid} address {int(address, 16)} kind={category}\b").search(log)
     if not fault:
         raise SystemExit(f"{kind}: missing matching address/PID fault")
     if not re.compile(rf"Process.reclaimProcess: stopped PID {pid}\b").search(log, fault.end()):

@@ -20,6 +20,7 @@
 --  writes to its outlets is shown on the kernel console. Results go to the
 --  kernel console, ending with CCL-BUILD-NATIVE: PASS or FAIL.
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Wait_ABI;
 with Interfaces; use Interfaces;
 with CuBit.Child_Exits;
@@ -36,6 +37,7 @@ with CuBit.Program_Descriptions;
 with CuBit.Stream_Regions;
 with CuBit.Streams;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    Launcher : constant CuBit.Launching.Launcher := CuBit.Launching.Using (Startup.Process_Manager);
@@ -236,14 +238,14 @@ procedure Main is
    Poll_Milliseconds : constant := 1;
 
    function Now_Milliseconds return Unsigned_64 is
-     (CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds) / Microseconds_Per_Millisecond);
+     (CuBit.Monotonic.Microseconds / Microseconds_Per_Millisecond);
 
    procedure Sleep_Milliseconds (Milliseconds : Natural) is
       Ignore : Unsigned_64;
    begin
       Ignore := CuBit.Kernel_Calls.Call
         (CuBit.Kernel_ABI.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
-         CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds)
+         CuBit.Monotonic.Microseconds
            + Unsigned_64 (Milliseconds) * Microseconds_Per_Millisecond);
    end Sleep_Milliseconds;
 
@@ -443,6 +445,8 @@ procedure Main is
    SIGINT : constant := 2;
    Interrupted_Exit_Code : constant := Signal_Exit_Base + SIGINT;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    --  1. Interrupted.
    declare
       Started : CuBit.Launching.Child;

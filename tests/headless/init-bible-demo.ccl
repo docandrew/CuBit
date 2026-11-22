@@ -2,7 +2,7 @@
 # (the Apps menu's Reference group holds Dictionary and Bible), with the
 # Bible started. tests/bible-app/make-demo.sh builds the disk with it.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "clock.svc" (priority 5))
   (start "config-storage.svc" (priority 5) (role config-storage))
   (start "tls.svc" (priority 5) (network approve-declared))

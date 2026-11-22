@@ -44,7 +44,7 @@ for(const kind of ['policy','client','reports']){
   const required=kind==='policy'?['acpi_startup_completion']:kind==='client'?['acpi_startup_completion','acpi_native_consumer_completion']:['acpi_startup_completion','acpi_native_startup_completion'];
   for(const n of required){const ali=fs.readFileSync(dir+'/obj/'+n+'.ali','utf8').split('\n');for(const f of flags.filter(f=>f.startsWith('-gnat')))if(!ali.includes('A '+f))throw Error('Profile mismatch '+n);}
   let count=0;for(let mode=1;mode<=(kind==='client'?58:1);mode++){const text=run(kind+'-'+profile+'-'+mode,[dir+'/bin/'+main,...(kind==='client'?[String(mode)]:[])],30),match=new RegExp('^'+(kind==='policy'?'Startup completion':kind==='client'?'Consumer completion':'Startup report')+' checks (\\d+)\\n$').exec(text);if(!match)throw Error('Verdict');count+=Number(match[1]);}
-  if(kind!=='client'&&count!==(kind==='policy'?1124:2918))throw Error('Check count');
+  if(kind!=='client'&&count!==(kind==='policy'?1148:2918))throw Error('Check count');
   if(kind==='client'&&profile==='release'&&count!==checks['client-checked'])throw Error('Profile coverage differs');checks[kind+'-'+profile]=count;
  }
 }

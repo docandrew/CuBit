@@ -1,0 +1,7 @@
+# Interrupt-entry direction flag check: runs with RFLAGS.DF set while timer
+# interrupts and page faults enter the kernel. No authority.
+(executable-manifest v1
+  (identity "com.cubit.direction-flag-check")
+  (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore))

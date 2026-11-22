@@ -3,7 +3,7 @@
 
 Usage: fixture.py SERIAL_LOG QMP_SOCKET TIMEOUT_SECONDS MODE RESULT_FILE
 
-Once nvme.drv is serving, throttle the NVMe drive's reads through QMP
+Once nvme.drv is serving and logstore's mirror is up, throttle the NVMe drive's reads through QMP
 (block_set_io_throttle) to THROTTLE_BYTES_PER_SECOND. QEMU's leaky bucket
 lets the first read through and holds every later one for at least
 (previous read's bytes) / rate, so the next read outlives the driver's
@@ -30,7 +30,12 @@ POLL_SECONDS = 0.2
 THROTTLE_BYTES_PER_SECOND = 10
 DRIVE = "nvme0"
 
-READY = b"NVMe Driver: Ready, entering message loop."
+# nvme.drv's own lines are routed (ABI-002): they reach serial only through
+# logstore's test mirror, after the boot's reads. logstore's first line is
+# the earliest sign that nvme.drv serves (devmgr started procmgr after it,
+# procmgr started logstore) and that the driver's timeout lines will reach
+# serial; the services after logstore still read their files.
+READY = b"logstore: authorized typed diagnostics ready"
 TIMED_OUT = b"NVMe: command timed out:"
 RECOVERING = (b"NVMe: resetting controller", b"NVMe: recovered without a reset")
 FAILED_TYPED = b"outcome=timed-out"
@@ -99,7 +104,7 @@ class Monitor:
 
 def main():
     if not wait_for(READY):
-        note("nvme.drv never became ready")
+        note("logstore never became ready")
         return 1
     monitor = Monitor(socket_path)
     monitor.throttle(THROTTLE_BYTES_PER_SECOND)

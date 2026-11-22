@@ -4,7 +4,9 @@
 --  so a live key can never silently change the meaning of an existing object.
 package CCL.Objects.Catalog with SPARK_Mode is
    --  Checked against CCL_Host_Environment.MOST_SCHEMAS at compile time.
-   Maximum_Schemas : constant := 96;
+   --  112 (stopgap, DBG-001): debug.* adds 14 schemas. Drop with catalogs
+   --  sized by their input.
+   Maximum_Schemas : constant := 112;
    subtype Schema_Count is Natural range 0 .. Maximum_Schemas;
    type Schema_Catalog is private;
    type Publication_Result is

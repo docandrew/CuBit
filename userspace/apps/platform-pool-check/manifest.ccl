@@ -7,9 +7,11 @@
 (Executable_Manifest
   identity => "com.cubit.acpi"
   version => "0.1.0"
-  optional => ["pci-windows"]
+  optional => ["pci-windows" "logstore"]
   requests => [
     (Request.Firmware_Snapshot "tables")
     (Request.ACPI_Hardware "hardware")
     (service "acpi-pci-windows" "pci-windows")
-    (service "device-manager" "device-manager")])
+    (service "device-manager" "device-manager")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")])

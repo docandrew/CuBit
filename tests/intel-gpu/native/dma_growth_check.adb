@@ -8,7 +8,7 @@ with CuBit.Handles.Control;
 
 -- Privileged disposable supervisor. No GPU device accesses these pages.
 procedure DMA_Growth_Check is
-   PID : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   PID : constant Unsigned_64 := Own_Process_Word;
    -- Runs in devmgr's place: the boot roots' process authority allocates.
    Roots : constant CuBit.Handles.Boot_Roots.Roots := CuBit.Handles.Boot_Roots.Get;
    function Allocate_DMA (Order, Virtual, Mode, Ceiling : Unsigned_64) return Unsigned_64 is

@@ -1,0 +1,12 @@
+# Penny's forks of Servo and SpiderMonkey (mozjs_sys), WEB-004, pinned by
+# commit: git checks every object against its hash, so the commit id is the
+# content address. Public repositories (user, 2026-11-19), plain rather than
+# GitHub forks. penny-servo's history starts at an exact snapshot of
+# upstream Servo (UPSTREAM_REVISION; the snapshot's tree is UPSTREAM_TREE);
+# penny-mozjs's at the crates.io mozjs_sys package byte for byte.
+# PENNY_SERVO_URL and PENNY_MOZJS_URL name another copy of the same history
+# (the pre-GitHub archive is on Chungus: /home/doc/git/penny-servo.git and
+# /home/doc/git/penny-mozjs.git, whose Servo history is shallow).
+# name commit default-url
+servo 1255d53b3ce39636ee77b1cfb15b90e1804aa629 https://github.com/docandrew/penny-servo.git
+mozjs 38f47c330e12ddfd21331dfe39397fdef7a55e61 https://github.com/docandrew/penny-mozjs.git

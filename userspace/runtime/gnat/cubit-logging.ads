@@ -46,6 +46,16 @@ package CuBit.Logging is
      (Item : in out Publisher; Value : CuBit.Log_Records.Log_Record;
       Submitted : out Boolean);
    function Dropped (Item : Publisher) return Unsigned_64;
+   --  Open the channel now, if it is not open yet: the one call to logstore
+   --  a publisher makes (Emit does it on the first record otherwise), for a
+   --  caller that must not make it while holding a lock of its own.
+   --  Opened: the channel is open (False: no binding, or refused; a
+   --  refused open is tried again by the next Open or Emit).
+   procedure Open (Item : in out Publisher; Opened : out Boolean);
+   --  Bind a publisher whose channel is not open (awaiting, or refused) to
+   --  Target instead, for its next Open: the caller's earlier endpoint may
+   --  be gone. No effect once the channel is open.
+   procedure Retarget (Item : in out Publisher; Target : Logstore_Handles.Endpoint);
    --  The least severe record logstore keeps, as it last published in the
    --  channel (Trace before it opens). Records below it are discarded there; Wanted
    --  lets a publisher skip them before encoding.
@@ -159,6 +169,25 @@ package CuBit.Logging is
    procedure Announce
      (Text : String; Published : out Boolean; Target : Logstore_Handles.Endpoint;
       Level : CuBit.Log_Records.Severity := CuBit.Log_Records.Information);
+
+   --  A program whose console text is routed (CuBit.Console_Route) has one
+   --  channel to logstore, the route's: logstore keeps one channel per
+   --  publisher, and a second open replaces the first (every record after
+   --  it would go into a ring nobody reads). Once the route is set, every
+   --  other Publisher of the program bound to the route's logstore endpoint
+   --  (its own, Publish_Now's, Announce's, the last words') emits, flushes
+   --  and reads the minimum through it and never opens a channel of its own;
+   --  one bound to another logstore authority keeps its own channel.
+   type Route_Emit is access procedure
+     (Value : CuBit.Log_Records.Log_Record; Accepted : out Boolean);
+   --  Drained: logstore took everything the route holds.
+   type Route_Flush is access procedure (Drained : out Boolean);
+   --  The minimum logstore keeps, as the route last read it.
+   type Route_Minimum is access function return CuBit.Log_Records.Severity;
+   procedure Set_Route
+     (Emit : not null Route_Emit; Flush : not null Route_Flush; Minimum : not null Route_Minimum);
+   --  Item is the route's own publisher.
+   procedure Mark_Route (Item : in out Publisher);
 private
    type Writer_State is (Uninitialized, Ready, Disabled);
    type Publisher is limited record
@@ -169,6 +198,8 @@ private
       State : Writer_State := Uninitialized;
       Loss : Unsigned_64 := 0;
       Disconnecting : Boolean := False;
+      --  The route's own publisher (Mark_Route): it keeps its channel.
+      Route_Own : Boolean := False;
    end record;
    function Awaiting (Item : Publisher) return Boolean is (Item.Pending);
    type Reader is limited record

@@ -28,5 +28,4 @@ package Intel_GPU_Supervisor is
    -- What a grant reply carries; the null handle when it carries nothing or
    -- something of another kind (that handle is closed again).
    function Granted_Region (Receipt : Completion) return CuBit.Handles.Device_Memory;
-   function Granted_Endpoint (Receipt : Completion) return CuBit.Handles.Endpoint;
 end Intel_GPU_Supervisor;

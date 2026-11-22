@@ -654,11 +654,15 @@ package body Process.IPC is
         takeClass (owner, Request_Class, item, success);
     end dequeueRingServiceRequest;
 
-    -- One of receiver's kernel notices, if its doorbell rang (grant ends,
-    -- exit and fault reports). Called with the receiver mailbox locked
-    -- (mailbox, then grant and report locks: docs/kernel-locking.md).
+    -- One of receiver's kernel notices (grant ends, exit and fault reports,
+    -- controls), or its wake-word notice. Called with the receiver mailbox
+    -- locked (mailbox, then grant and report locks: docs/kernel-locking.md).
     procedure takeKernelNotice
       (receiver : ProcessID; item : out RingEntry; found : out Boolean);
+
+    -- Whether receiver has a kernel notice to take (not counting the
+    -- doorbell). Called with the receiver mailbox locked, as above.
+    function noticeAvailableLocked (receiver : ProcessID) return Boolean;
 
     -- Called with the receiver mailbox locked. Each successful take advances
     -- a persistent lane cursor. A continuously available eligible lane waits
@@ -910,6 +914,15 @@ package body Process.IPC is
                     result := Activity_Event;
                     return;
                 end if;
+            end if;
+            -- A doorbell whose notices were all taken already (a wait for
+            -- events took them before it rang) is no work: forget it, or
+            -- every activity wait would answer at once (devmgr spun about
+            -- 1.4 million turns a second, 2026-11-19).
+            if proctab(receiver).kernelNoticePending and then
+               not noticeAvailableLocked (receiver)
+            then
+                proctab(receiver).kernelNoticePending := False;
             end if;
             if queued (receiver) or else
                not Queues.isEmpty (mailtab(receiver).sendQueue) or else
@@ -1210,7 +1223,8 @@ package body Process.IPC is
              when WAITINGFORREPLY      => "call",
              when WAITINGFORCOMPLETION => "compl",
              when SUSPENDED            => "susp",
-             when FUTEXWAITING         => "futex");
+             when FUTEXWAITING         => "futex",
+             when VMHALTED             => "guest-halted");
     begin
         for tid in ThreadID range 1 .. ThreadID'Last loop
             exit when count = Boot_Diagnostics.Stuck_Rows;
@@ -1825,7 +1839,7 @@ package body Process.IPC is
                      accepted);
 
         if not accepted then
-            proctab(dest).eventDrops := proctab(dest).eventDrops + 1;
+            Readiness_Pages.Note_Drop (proctab(dest).readinessFrame);
         end if;
 
         --  receive() is the intentional mixed-lane wait primitive: it may
@@ -3205,6 +3219,26 @@ package body Process.IPC is
         end if;
     end sendControl;
 
+    function noticeAvailableLocked (receiver : ProcessID) return Boolean is
+        any : Boolean;
+    begin
+        Spinlocks.enterCriticalSection (grantLock);
+        any := grantsOf (receiver).ownerNotices > 0 or else
+               grantsOf (receiver).granteeNotices > 0;
+        Spinlocks.exitCriticalSection (grantLock);
+        if not any then
+            Spinlocks.enterCriticalSection (reportLock);
+            any := Kernel_Reports.Unread_For (reports, Kernel_Reports.Process (receiver));
+            Spinlocks.exitCriticalSection (reportLock);
+        end if;
+        if not any then
+            Spinlocks.enterCriticalSection (controlLock);
+            any := Kernel_Controls.Any_Pending (proctab(receiver).controls);
+            Spinlocks.exitCriticalSection (controlLock);
+        end if;
+        return any;
+    end noticeAvailableLocked;
+
     procedure takeKernelNotice
       (receiver : ProcessID; item : out RingEntry; found : out Boolean)
     is
@@ -3214,17 +3248,15 @@ package body Process.IPC is
     begin
         item := NULL_RING_ENTRY;
         found := False;
-        if not proctab(receiver).kernelNoticePending and then
-           not proctab(receiver).wakeWordPending
-        then
-            return;
-        end if;
-        if proctab(receiver).kernelNoticePending then
-            Spinlocks.enterCriticalSection (grantLock);
-            takeGrantNoticeLocked (receiver, msg, found);
-            Spinlocks.exitCriticalSection (grantLock);
-        end if;
-        if not found and then proctab(receiver).kernelNoticePending then
+        -- Look whether or not the doorbell rang yet: a grant notice is
+        -- counted on the readiness page when it is posted and rung after
+        -- grantLock is free, so a process may come for it in between. Its
+        -- count is consumed then; turned away, it would not come again,
+        -- and the doorbell would leave every activity wait answering Work.
+        Spinlocks.enterCriticalSection (grantLock);
+        takeGrantNoticeLocked (receiver, msg, found);
+        Spinlocks.exitCriticalSection (grantLock);
+        if not found then
             Spinlocks.enterCriticalSection (reportLock);
             Kernel_Reports.Take
               (reports, Kernel_Reports.Process (receiver), value, found, released);
@@ -3234,7 +3266,7 @@ package body Process.IPC is
                 msg := toMessage (value);
             end if;
         end if;
-        if not found and then proctab(receiver).kernelNoticePending then
+        if not found then
             declare
                 sender : Kernel_Controls.Sender_Id;
                 senderGeneration : Unsigned_64;

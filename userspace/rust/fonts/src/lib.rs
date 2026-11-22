@@ -930,13 +930,61 @@ static ALLOCATOR: cubit_allocator::BoundedAllocator = cubit_allocator::BoundedAl
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
     use core::fmt::Write;
+    // The Ada program this engine is linked into routes its console text
+    // (CuBit.Messages.Console_Put; ABI-002: no kernel console).
+    unsafe extern "C" {
+        fn cubit_console_put(text: *const u8, length: u64);
+    }
     struct Diagnostic;
     impl core::fmt::Write for Diagnostic {
         fn write_str(&mut self, text: &str) -> core::fmt::Result {
-            cubit::debug_write(text);
+            // SAFETY: the runtime copies the borrowed bytes before it returns.
+            unsafe { cubit_console_put(text.as_ptr(), text.len() as u64) };
             Ok(())
         }
     }
     let _ = writeln!(Diagnostic, "fonts: fatal Rust runtime error: {info}");
     cubit::exit(1)
+}
+
+// Kept last: code above keeps its line numbers (panic locations), so the
+// native archive is unchanged by these std-only items.
+/// A face linked into every program, for engines that shape and rasterize
+/// whole font files themselves (Penny's Servo). The UI's own text goes
+/// through the face numbers (FACE_SANS ...) instead. Not in the native
+/// archive, whose programs have no such engine.
+#[cfg(not(feature = "native"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BundledFace {
+    Sans,
+    SansSemibold,
+    Mono,
+}
+
+#[cfg(not(feature = "native"))]
+impl BundledFace {
+    pub const ALL: [BundledFace; BUNDLED_FACES] = [Self::Sans, Self::SansSemibold, Self::Mono];
+
+    /// The face's font file (one face per file, face index 0).
+    pub const fn bytes(self) -> &'static [u8] {
+        match self {
+            Self::Sans => SANS,
+            Self::SansSemibold => SEMIBOLD,
+            Self::Mono => MONO,
+        }
+    }
+}
+
+#[cfg(test)]
+mod bundled_face_tests {
+    use super::*;
+
+    #[test]
+    fn bundled_faces_are_the_numbered_faces() {
+        let numbers = [FACE_SANS, FACE_SANS_SEMIBOLD, FACE_MONO];
+        for (face, number) in BundledFace::ALL.into_iter().zip(numbers) {
+            assert_eq!(Some(face.bytes()), face_bytes(number as usize));
+            assert!(Face::parse(face.bytes(), 0).is_ok());
+        }
+    }
 }

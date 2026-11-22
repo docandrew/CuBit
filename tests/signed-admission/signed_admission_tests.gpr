@@ -1,0 +1,29 @@
+--  Hosted tests and proof of signed admission (SIGN-001,
+--  userspace/lib/signing, docs/signed-binaries.md): the envelope parser,
+--  the profile and chain checks, revocations, scopes, the decision, the
+--  certificate encoder and the signer. CUBIT_SPARK_CRATES names the
+--  crates (nix develop exports the pinned set).
+with "../../userspace/lib/tls/sparktls_host.gpr";
+with "../../userspace/ccl/cubit_shared.gpr";
+project Signed_Admission_Tests is
+   for Source_Dirs use (".", external ("SIGNED_ADMISSION_SOURCES", "../../userspace/lib/signing"));
+   for Object_Dir use external ("SIGNED_ADMISSION_OBJ", "build");
+   for Exec_Dir use external ("SIGNED_ADMISSION_OBJ", "build");
+   for Main use ("main.adb");
+   --  Contracts are checked at run time unless SIGNED_ADMISSION_CONTRACTS is
+   --  off (mutations.sh then shows what the tests alone catch).
+   type Switch is ("on", "off");
+   Contracts : Switch := external ("SIGNED_ADMISSION_CONTRACTS", "on");
+   Contract_Switches := ();
+   case Contracts is
+      when "on" => Contract_Switches := ("-gnata");
+      when "off" => null;
+   end case;
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-gnato", "-O2", "-fno-tree-vrp", "-gnatwa", "-gnatwJ", "-gnatw.X") & Contract_Switches;
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--counterexamples=off");
+   end Prove;
+end Signed_Admission_Tests;

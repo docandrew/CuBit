@@ -18,15 +18,17 @@ The focused proof passes **20 checks, none unproved or justified**:
 
 The descriptor bit size is named in `Buddy_Blocks` and used in both its record
 representation and the boot-admission array component size. A compile-time
-check rejects byte/stride mismatches. Pin and owner entries remain one byte;
-block descriptors remain two bytes. No extra metadata is allocated.
+check rejects byte/stride mismatches. Pin entries are one byte, owner
+entries four, block descriptors two. Free-list links (KERN-014) are eight bytes
+per frame: the next and previous `Free_Link_Codes` of a listed block, out of
+the block itself (proved separately, tests/free-link-codes).
 
 The kernel takes the common highest-frame value from the already-admitted
 `Buddy_Bitmap` layout. Boot requests are checked against `BootAllocator.AllocSize`
 before conversion, since release kernel builds deliberately omit subtype
 checks. This is one cold-path input-size admission check, not a new check on
 every descriptor lookup. A too-large firmware-derived metadata extent is
-rejected before any of these three table allocations are attempted.
+rejected before any of these four table allocations are attempted.
 
 `Fits_At` and all proof lemmas are Ghost. The actual `Address_Of` arithmetic is
 inlined. With the pinned x86-64 toolchain, production `descriptorAddress` remains

@@ -11,6 +11,7 @@ with CuBit.Log_Streams;
 with CuBit.Channel_Rings;
 with CuBit.Datagram_Rings;
 with CuBit.Log_Sources;
+with CuBit.Log_Sources.Texts;
 with Source_Identities;
 with CuAlloc_Host;
 
@@ -723,11 +724,11 @@ begin
       Exit_Ms : constant := 1_000;
    begin
       pragma Assert (LS.Valid (Who) and then LS.Named (Who));
-      pragma Assert (LS.Name_Of (Who) = "acpi.svc");
-      pragma Assert (LS.Identity_Of (Who) = "com.cubit.acpi");
-      pragma Assert (LS.Label (Who) = "acpi");
-      pragma Assert (LS.Label (Bare) = "wifi");
-      pragma Assert (LS.Identity_Of (LS.Make (7_003, "bad id" & ASCII.LF, "x")) = "badid");
+      pragma Assert (LS.Texts.Name_Of (Who) = "acpi.svc");
+      pragma Assert (LS.Texts.Identity_Of (Who) = "com.cubit.acpi");
+      pragma Assert (LS.Texts.Label (Who) = "acpi");
+      pragma Assert (LS.Texts.Label (Bare) = "wifi");
+      pragma Assert (LS.Texts.Identity_Of (LS.Make (7_003, "bad id" & ASCII.LF, "x")) = "badid");
       pragma Assert (LS.Make (7_004, Long_Identity, "").Identity_Used = LS.Identity_Bytes);
       pragma Assert (not LS.Named (LS.Make (7_005, "", "")));
       pragma Assert (LS.Answers_To (Who, "acpi") and then LS.Answers_To (Who, "acpi.svc"));

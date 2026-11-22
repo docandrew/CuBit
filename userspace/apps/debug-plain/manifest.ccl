@@ -1,0 +1,12 @@
+# A debugger target without the cooperative stub (DBG-001, headless --test
+# debug-kernel): it links nothing for a debugger and offers nothing; the
+# Debugger attaches through the kernel (Debug_Observe, minted by procmgr).
+# It counts rounds and sleeps between them, so a thread waits in a known
+# call chain with live locals.
+(Executable_Manifest
+  identity => "com.cubit.debug-plain"
+  version => "0.1.0"
+  requests => [
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

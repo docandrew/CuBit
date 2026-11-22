@@ -124,8 +124,10 @@ package Launch_Configuration with Pure, SPARK_Mode is
    --  ports, its own registration, the device-vector authority, the I/O
    --  port space, the legacy interrupt lines, every service role's
    --  notification, real-time scheduling, reading the sealed firmware-table
-   --  snapshot (FIRMWARE_SNAPSHOT), the platform power object (KERN-004).
-   --  After these named handles, the block
+   --  snapshot (FIRMWARE_SNAPSHOT), the platform power object (KERN-004),
+   --  the kernel trace object (Trace_ABI), the process-list object
+   --  (Process_List_ABI), the test console object (Test_Console_ABI), the
+   --  VM creation authority (VMM-001). After these named handles, the block
    --  carries one device-memory root per maximal run of device-mappable
    --  pages, ascending, then the firmware-memory roots (kernel
    --  Physical_Ranges.Next_Firmware_Run): ACPI NVS runs, the FACS page,
@@ -148,8 +150,18 @@ package Launch_Configuration with Pure, SPARK_Mode is
       Firmware_Snapshot : Unsigned_64 := 0;
       --  Entering a system power state (KERN-004, Platform_Power_ABI).
       Platform_Power    : Unsigned_64 := 0;
+      --  Resetting and summarizing the kernel trace (Trace_ABI).
+      Trace             : Unsigned_64 := 0;
+      --  Listing the kernel's processes (Process_List_ABI).
+      Process_List      : Unsigned_64 := 0;
+      --  A line on the serial console, for test builds' logstore
+      --  (Test_Console_ABI).
+      Test_Console      : Unsigned_64 := 0;
+      --  Creating virtual machines (VMM-001, docs/hypervisor.md): the
+      --  only VM creation authority.
+      VM_Create         : Unsigned_64 := 0;
    end record;
-   Device_Manager_Handle_Fields : constant := 13;
+   Device_Manager_Handle_Fields : constant := 17;
 
    --  A handle word: its generation (high half) is never zero.
    function Is_Handle (Word : Unsigned_64) return Boolean is
@@ -163,7 +175,9 @@ package Launch_Configuration with Pure, SPARK_Mode is
       and then Is_Handle (H.Vector_Authority) and then Is_Handle (H.IO_Ports)
       and then Is_Handle (H.Legacy_Interrupts) and then Is_Handle (H.Notifications)
       and then Is_Handle (H.Scheduling) and then Is_Handle (H.Firmware_Snapshot)
-      and then Is_Handle (H.Platform_Power));
+      and then Is_Handle (H.Platform_Power) and then Is_Handle (H.Trace)
+      and then Is_Handle (H.Process_List) and then Is_Handle (H.Test_Console)
+      and then Is_Handle (H.VM_Create));
 
    --  devmgr's words: the header, the two root counts, the boot image,
    --  the framebuffer (first, bytes), the named handles, then one word per
@@ -252,8 +266,24 @@ package Launch_Configuration with Pure, SPARK_Mode is
       --  (Write only) in a program whose manifest declares it and whose
       --  startup entry approves it (Platform_Power_ABI, KERN-004).
       Platform_Power    : Unsigned_64 := 0;
+      --  The kernel trace object, with Grant: procmgr installs a copy
+      --  (Write only) in a program whose manifest declares it and whose
+      --  startup entry approves it (Trace_ABI).
+      Trace             : Unsigned_64 := 0;
+      --  The process-list object (Process_List_ABI): procmgr is its only
+      --  holder; it answers its process-observer role from it.
+      Process_List      : Unsigned_64 := 0;
+      --  The test console object, with Grant: procmgr installs a copy
+      --  (Write only) in a program whose manifest declares it and whose
+      --  startup entry approves it (Test_Console_ABI): test builds'
+      --  logstore only.
+      Test_Console      : Unsigned_64 := 0;
+      --  The VM creation authority, with Grant (VMM-001): procmgr is its
+      --  root issuer and installs a copy (Write only) in a program whose
+      --  manifest declares it and whose startup entry approves it.
+      VM_Create         : Unsigned_64 := 0;
    end record;
-   Process_Manager_Handle_Fields : constant := 17;
+   Process_Manager_Handle_Fields : constant := 21;
 
    --  The handles every procmgr needs are handles; the others (mixer, the
    --  framebuffer) are a handle or zero.
@@ -268,7 +298,11 @@ package Launch_Configuration with Pure, SPARK_Mode is
       and then (H.Framebuffer = 0 or else Is_Handle (H.Framebuffer))
       and then Is_Handle (H.Device_Inspection)
       and then Is_Handle (H.Firmware_Snapshot)
-      and then Is_Handle (H.Platform_Power));
+      and then Is_Handle (H.Platform_Power)
+      and then Is_Handle (H.Trace)
+      and then Is_Handle (H.Process_List)
+      and then Is_Handle (H.Test_Console)
+      and then Is_Handle (H.VM_Create));
 
    --  devmgr to procmgr.
    type Process_Manager_Configuration is record
@@ -507,7 +541,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
    function Handle_Words (H : Device_Manager_Handles) return Word_Array is
      [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.PCI_Ports,
       H.Registration, H.Vector_Authority, H.IO_Ports, H.Legacy_Interrupts,
-      H.Notifications, H.Scheduling, H.Firmware_Snapshot, H.Platform_Power]
+      H.Notifications, H.Scheduling, H.Firmware_Snapshot, H.Platform_Power, H.Trace,
+      H.Process_List, H.Test_Console, H.VM_Create]
    with Post => Handle_Words'Result'First = 1
                 and then Handle_Words'Result'Length = Device_Manager_Handle_Fields;
 
@@ -552,12 +587,13 @@ package Launch_Configuration with Pure, SPARK_Mode is
                             Encode_Prefix'Result.Words (First_Handle_Word - 1 + I) =
                               Handle_Words (Value.Handles) (I));
 
-   --  The handles' words, in field order (Words (6 .. 22)).
+   --  The handles' words, in field order (Words (6 .. 26)).
    function Process_Handle_Words (H : Process_Manager_Handles) return Word_Array is
      [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.Registration,
       H.Notifications, H.Filesystem, H.Config, H.Netstack, H.Network_Policy,
       H.Mixer, H.Device_Manager, H.Ready, H.Framebuffer, H.Device_Inspection,
-      H.Firmware_Snapshot, H.Platform_Power]
+      H.Firmware_Snapshot, H.Platform_Power, H.Trace, H.Process_List,
+      H.Test_Console, H.VM_Create]
    with Post => Process_Handle_Words'Result'First = 1
                 and then Process_Handle_Words'Result'Length = Process_Manager_Handle_Fields;
 
@@ -652,7 +688,11 @@ package Launch_Configuration with Pure, SPARK_Mode is
                              Ready => Words (18), Framebuffer => Words (19),
                              Device_Inspection => Words (20),
                              Firmware_Snapshot => Words (21),
-                             Platform_Power => Words (22))))
+                             Platform_Power => Words (22),
+                             Trace => Words (23),
+                             Process_List => Words (24),
+                             Test_Console => Words (25),
+                             VM_Create => Words (26))))
                 and then (if Valid then
                             Value.Framebuffer.First = Words (4)
                             and then Value.Framebuffer.Bytes = Words (5)

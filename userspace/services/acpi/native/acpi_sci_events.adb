@@ -473,7 +473,7 @@ package body ACPI_SCI_Events is
    ---------------------------------------------------------------------------
    -- Disarm
    ---------------------------------------------------------------------------
-   procedure Disarm (Result : out ACPI_SCI_Quiesce.Result) is
+   procedure Disarm_At_Boundary (Result : out ACPI_SCI_Quiesce.Result; Peer_Quiet : Boolean) is
       package Q renames ACPI_SCI_Quiesce;
       Fixed_Done, GPE_Done, Acknowledged : Boolean := True;
       Current : Word;
@@ -517,12 +517,14 @@ package body ACPI_SCI_Events is
       Result := Q.Report (Fixed_Done, GPE_Done, Acknowledged);
       case Result.State is
          when Q.Quiesced =>
-            ACPI_Native_Log.Info ("acpi: SCI disarmed QUIESCED interrupts=" &
-              Word'Image (S.Stats.Interrupts) & " (sources disabled, status kept, line acknowledged)");
+            ACPI_Native_Log.Copied ("acpi: SCI disarmed QUIESCED interrupts=" &
+              Word'Image (S.Stats.Interrupts) & " (sources disabled, status kept, line acknowledged)", Peer_Quiet, True);
          when Q.Pending =>
-            ACPI_Native_Log.Warning ("acpi: SCI disarm PENDING " & Q.Pending_Reason'Image (Result.Why));
+            ACPI_Native_Log.Copied ("acpi: SCI disarm PENDING " & Q.Pending_Reason'Image (Result.Why), Peer_Quiet);
       end case;
-   end Disarm;
+   end Disarm_At_Boundary;
+   procedure Disarm (Result : out ACPI_SCI_Quiesce.Result) is
+   begin Disarm_At_Boundary (Result, True); end Disarm;
 
    procedure Acknowledge_Only
      (Publisher : CuBit.Process_IDs.Process_ID; Item : CuBit.Messages.Message;
@@ -565,6 +567,8 @@ package body ACPI_SCI_Events is
    -- The SCI
    ---------------------------------------------------------------------------
    package body With_Consumer is
+      Pending_SCI : Boolean := False;
+      function Deferred return Boolean is (Pending_SCI);
       procedure Service is
          Status, Enabled, Active : Word;
          Disposed : Disposition;
@@ -658,6 +662,22 @@ package body ACPI_SCI_Events is
             (if GPE_Total > GPE_Listed then " +" & Image (GPE_Total - GPE_Listed) else "") & "]");
       end Service;
 
+      procedure Defer_Event
+        (Publisher : CuBit.Process_IDs.Process_ID; Item : CuBit.Messages.Message;
+         Result : out ACPI_SCI_Quiesce.Acknowledgement) is
+      begin
+         if S.Armed and then ACPI_SCI_Quiesce.Classify
+           (CuBit.Device_Interrupts.Is_Doorbell (Item), Publisher = CuBit.Process_IDs.No_Process, S.Line_Held)
+             = ACPI_SCI_Quiesce.SCI_Doorbell
+         then Pending_SCI := True; end if;
+         Acknowledge_Only (Publisher, Item, Result);
+      end Defer_Event;
+      procedure Service_Deferred is
+      begin
+         if not Pending_SCI then return; end if;
+         Pending_SCI := False;
+         if S.Armed then Service; end if;
+      end Service_Deferred;
       procedure Handle_Event
         (Publisher : CuBit.Process_IDs.Process_ID; Item : CuBit.Messages.Message;
          Stop : out Boolean; Handled : out Boolean)
@@ -679,6 +699,7 @@ package body ACPI_SCI_Events is
          -- Unarmed (refused, or disarmed): acknowledge only, so this owner
          -- never holds a shared or handed-over line masked.
          if S.Armed then
+            Pending_SCI := False;
             S.Stats.Interrupts := S.Stats.Interrupts + 1;
             Service;
          end if;

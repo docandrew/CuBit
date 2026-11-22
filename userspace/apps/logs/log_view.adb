@@ -1,4 +1,5 @@
 with CuBit.UI_Metrics;
+with CuBit.Log_Records.Texts;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.Widgets;
 
@@ -190,7 +191,7 @@ package body Log_View is
       (if Item.Lost > 0 then Image64 (Item.Lost) & " records lost before delivery" else "") &
       " " & ELLIPSIS);
    function Message_Of (Item : Log_Entry) return String is
-     (if Item.Kind = Gap_Entry then Gap_Text (Item) else LR.Text (Item.Item));
+     (if Item.Kind = Gap_Entry then Gap_Text (Item) else LR.Texts.Text (Item.Item));
 
    --  The filters, as the controls hold them.
    function Floor (State : View_State) return LR.Severity is
@@ -208,7 +209,7 @@ package body Log_View is
    --  name or its node. Gaps never match.
    function Search_Hit (State : View_State; Item : Log_Entry) return Boolean is
      (Item.Kind = Record_Entry and then Query (State)'Length > 0
-      and then (Find (LR.Text (Item.Item), Query (State)) > 0
+      and then (Find (LR.Texts.Text (Item.Item), Query (State)) > 0
                 or else Find (Name_Of (State, Item.Source, Item.Time_Ms), Query (State)) > 0
                 or else Find (Node_Text (Item.Node, Short => False), Query (State)) > 0));
 
@@ -1197,7 +1198,7 @@ package body Log_View is
                      when Node_Column => Node_Text (E.Node),
                      when Level_Column => Level_Label (LR.Level (E.Item)),
                      when Source_Column => Name_Of (State, E.Source, E.Time_Ms),
-                     when Message_Column => LR.Text (E.Item)));
+                     when Message_Column => LR.Texts.Text (E.Item)));
             function Ink (Column : Tables.Column_Index; Default : Color) return Color is
               (if Selected then Default
                elsif E.Kind = Gap_Entry then Level_Color (LR.Error, Colors.field)
@@ -1305,7 +1306,7 @@ package body Log_View is
                     Node_Text (E.Node, Short => False) & ")",
                     Level_Color (LR.Level (E.Item), Colors.panel), Colors.panel);
                   declare
-                     Text : constant String := LR.Text (E.Item);
+                     Text : constant String := LR.Texts.Text (E.Item);
                      First : Natural := Text'First;
                   begin
                      while First <= Text'Last and then Line < 3 loop
@@ -1330,7 +1331,7 @@ package body Log_View is
                         declare
                            F : constant LR.Field := LR.Field_At (E.Item, I);
                         begin
-                           Put ((if Length = 0 then "" else "  ") & LR.Name (F) & "=");
+                           Put ((if Length = 0 then "" else "  ") & LR.Texts.Name (F) & "=");
                            case LR.Kind (F) is
                               when LR.Signed_Integer =>
                                  declare
@@ -1429,7 +1430,7 @@ package body Log_View is
    function Selected_Text (State : View_State) return String is
      (if State.Position.Selected in 1 .. State.Position.Count
          and then Shown_Entry (State, State.Position.Selected).Kind = Record_Entry
-      then LR.Text (Shown_Entry (State, State.Position.Selected).Item) else "");
+      then LR.Texts.Text (Shown_Entry (State, State.Position.Selected).Item) else "");
    function Search_Focused (State : View_State) return Boolean is (State.Focus = Search_Focus);
 
    procedure Edit_Search_Field (State : in out View_State; Focus : Boolean) is
@@ -1472,10 +1473,10 @@ package body Log_View is
             return;
          end if;
          CT.Append (Text, Uptime (E.Time_Ms) & "   " & Level_Label (LR.Level (E.Item)) & "   " &
-                    Name_Of (State, E.Source, E.Time_Ms) & "   " & LR.Text (E.Item));
+                    Name_Of (State, E.Source, E.Time_Ms) & "   " & LR.Texts.Text (E.Item));
          CT.Append (Literal, "(" & LOG_ENTRY_TYPE & " " & Image64 (E.Time_Ms) & " Severity." &
                     Severity_Member (LR.Level (E.Item)) & " " & Image64 (E.Source) & " ");
-         CT.Append_Quoted (Literal, LR.Text (E.Item));
+         CT.Append_Quoted (Literal, LR.Texts.Text (E.Item));
          CT.Append (Literal, ")");
       end;
    end Selected_Copy;

@@ -11,6 +11,7 @@
 --  next boot finds it in the file.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System;
@@ -21,6 +22,7 @@ with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Logging;
 with CuBit.Log_Records;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    Log_Path : constant String := "@ufs:0/logstore.log";
@@ -43,7 +45,7 @@ procedure Main is
    Offset : Unsigned_64 := 0;
    Boots, Markers : Natural := 0;
    Opened : Boolean := False;
-   Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+   Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    Ignore : Unsigned_64;
 
    function Call (Item : in out Message) return Boolean is
@@ -76,6 +78,8 @@ procedure Main is
       end if;
    end Emit;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Raw := syscall (SYSCALL_SBRK, (Loan_Pages + 1) * CuBit.Memory_Grants.PAGE_SIZE);
    Buffer := To_Address (Integer_Address
      ((Raw + CuBit.Memory_Grants.PAGE_SIZE - 1) and not (CuBit.Memory_Grants.PAGE_SIZE - 1)));
@@ -88,7 +92,7 @@ begin
       end;
       Request := Open_Request (Loan, Log_Path'Length);
       Opened := Call (Request);
-      exit when Opened or else syscall (SYSCALL_GETTIME) - Started > Wait_Milliseconds;
+      exit when Opened or else CuBit.Monotonic.Milliseconds - Started > Wait_Milliseconds;
       Ignore := CuBit.Waits.Sleep_For (Poll_Milliseconds);
    end loop;
    if not Opened then

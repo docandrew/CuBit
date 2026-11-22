@@ -5,6 +5,7 @@
 --  Keep this intentionally boring: benchmark clients should measure kernel IPC
 --  and scheduler behavior, not app-side business logic.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 
@@ -38,6 +39,8 @@ procedure main is
    end makeReply;
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    ret := registerDriver (DRIVER_IPCTEST, Startup.Registration);
    if ret = Unsigned_64'Last then
       debugPrint ("BENCH: FAIL ipc server-register" & LF);

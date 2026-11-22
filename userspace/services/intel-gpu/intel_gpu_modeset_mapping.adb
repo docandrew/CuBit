@@ -6,6 +6,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
 with CuBit.Handles.Devices;
 with Intel_GPU_Supervisor;
+with CuBit.Monotonic;
 package body Intel_GPU_Modeset_Mapping is
    package PP renames Intel_GPU_Modeset_Pages;
    Attempted, Mapped : array (PP.Page) of Boolean := [others => False];
@@ -33,19 +34,19 @@ package body Intel_GPU_Modeset_Mapping is
         Register_Base mod PP.Page_Bytes /= 0 or else
         Register_Base > Unsigned_64'Last - PP.Offset (Item) - PP.Page_Bytes
       then return "owner-or-BAR-invalid"; end if;
-      Started := syscall (SYSCALL_GETTIME);
+      Started := CuBit.Monotonic.Milliseconds;
       if Started = Unsigned_64'Last then return "clock-unavailable"; end if;
       Previous := Started;
       Msg.tag := (label => PP.Request_Label, length => 1, protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [PP.Index (Item), 0, 0, 0];
       if not Intel_GPU_Supervisor.Submit_Accepting (Msg, Token) then return "submit-failed"; end if;
       loop
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Monotonic.Milliseconds;
          if Now = Unsigned_64'Last or else Now < Previous or else
            Now - Started >= Grant_Deadline_Ms
          then return "grant-timeout-or-invalid-clock"; end if;
          Previous := Now;
-         if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 and then Receipt.token = Token then
+         if CuBit.Messages.Poll_Completion (Receipt'Address) /= 0 and then Receipt.token = Token then
             if Receipt.status = COMPLETION_OK and then
               Intel_GPU_Supervisor.Reply_Tag (Receipt) = (label => Retry_Label, length => 0, protocol => 0, ipc => <>, reserved => 0) and then
               Receipt.msg.words = [0, 0, 0, 0]

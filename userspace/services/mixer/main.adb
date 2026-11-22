@@ -12,6 +12,7 @@
 --  through one-way capability IPC; control operations use capCall.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
@@ -27,6 +28,7 @@ with CuBit.Timing_Histograms;
 
 with CuBit.Handles.Devices;
 with Startup;
+with CuBit.Monotonic;
 
 procedure main is
    use ASCII;
@@ -133,7 +135,7 @@ procedure main is
    end totalUnderruns;
 
    procedure maybePrintStats is
-      now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       underruns : Unsigned_64;
    begin
       if now = Unsigned_64'Last then
@@ -271,6 +273,9 @@ procedure main is
    end stopHardware;
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;

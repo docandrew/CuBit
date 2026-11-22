@@ -1,6 +1,7 @@
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Log_Records; use CuBit.Log_Records;
+with CuBit.Log_Records.Texts; use CuBit.Log_Records.Texts;
 with CuBit.Text_To_Log; use CuBit.Text_To_Log;
 procedure Main is
    Bytes, Bad : Wire_Buffer;

@@ -37,6 +37,9 @@ generic
    with function Events_Healthy return Boolean;
    Fuel_Budget : Positive := ACPI_Local_Sample_Status.Default_Fuel;
    Window_Microseconds : ACPI_Local_Sample_Status.Window_Allowance := ACPI_Local_Sample_Status.Default_Window_Microseconds;
+   -- Explicit family policy; false is fail-closed. True attests an ordinary
+   -- collection refusal, not a provider contract, binding or source failure.
+   with function Collection_Isolatable return Boolean is ACPI_Local_Sample_Status.No_Isolation;
 -- One serialized process-lived event consumer. It owns no interpreter,
 -- provider, mapping or backing. Bind the same local request/runtime instance
 -- as startup. All callbacks are trusted, bounded and normally returning.
@@ -65,7 +68,7 @@ package ACPI_Local_Sample_Events is
    -- close or backing retirement. Native Main separately stops the shared owner.
    procedure Stop;
 private
-   type Phase is (Fresh, Ready, Publishing, Stopped);
+   type Phase is (Fresh, Ready, Publishing, Suspended, Stopped);
    State : Phase := Fresh;
    Failure : Status.Failure := Status.None;
    Attempted, Working, Needed, Collected, Resample : Boolean := False;

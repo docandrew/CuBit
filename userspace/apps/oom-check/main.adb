@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
@@ -67,6 +68,8 @@ procedure Main is
       end loop;
    end Touch_Stack;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    for I in Loan_Index loop
       declare
          Loan : CuBit.Memory_Grants.Grant_Reference;

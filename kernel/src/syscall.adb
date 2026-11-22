@@ -6,6 +6,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with PerCpuData;
 with Process;
+with Syscall_Census;
 with Modules;
 with Process_Identities;
 with Process.Futex;
@@ -13,6 +14,8 @@ with Process.Owned_Memory;
 with Owned_Reservation_Policy;
 with Process.IPC;
 with Process.User_Memory;
+with Process.Map_Probe;
+with Debug_Register_Probe;
 with Capabilities;
 with Process_Capabilities;
 with Spinlocks;
@@ -27,13 +30,18 @@ with x86;
 with Build;
 with Boot_Timeline;
 with Boot_Timeline_Layout;
-with Firmware_Snapshot_Export;
 with Wait_ABI;
 with Wait_Policy;
 with Futex_ABI;
+with Thread_ABI;
+with Thread_Slots;
 
 
 package body Syscall is
+
+    pragma Compile_Time_Error
+        (SyscallNumber'Pos (SyscallNumber'Last) >= Syscall_Census.Calls,
+         "the system call census needs an index per call");
 
     ---------------------------------------------------------------------------
     -- exit
@@ -75,9 +83,23 @@ package body Syscall is
                    Unsigned_64 (To_Integer (buf)) + bytesWritten,
                    chunk'Address, Storage_Count (length), copied);
                 exit when not copied;
-                -- A process's text, not a kernel line: it stays out of
-                -- the kernel log ring (LOG-004).
-                printUser (chunk (1 .. length));
+                declare
+                    probed : Boolean := False;
+                begin
+                    if Build.Kernel_Map_Probe then
+                        Process.Map_Probe.Handle_Request
+                          (PerCPUData.getCurrentPID, chunk (1 .. length), probed);
+                    end if;
+                    if Build.Debug_Register_Probe and then not probed then
+                        Debug_Register_Probe.Handle_Request
+                          (PerCPUData.getCurrentPID, chunk (1 .. length), probed);
+                    end if;
+                    -- A process's text, not a kernel line: it stays out of
+                    -- the kernel log ring (LOG-004).
+                    if not probed then
+                        printUser (chunk (1 .. length));
+                    end if;
+                end;
                 bytesWritten := bytesWritten + Unsigned_64 (length);
             end loop;
         end if;
@@ -100,7 +122,6 @@ package body Syscall is
         valid := True;
         case raw is
             when 0    => number := SYSCALL_EXIT;
-            when 6    => number := SYSCALL_GETPID;
             when 7    => number := SYSCALL_KILL;
             when 8    => number := SYSCALL_SBRK;
             when 146  => number := SYSCALL_RESERVE_OWNED_REGION;
@@ -112,8 +133,6 @@ package body Syscall is
             when 12   => number := SYSCALL_WRITE;
             when 18   => number := SYSCALL_REPLY;
             when 19   => number := SYSCALL_SEND_EVENT;
-            when 27   => number := SYSCALL_GETTIME;
-            when 114  => number := SYSCALL_READ_MONOTONIC_MICROSECONDS;
             when 29   => number := SYSCALL_MAPFB;
             when 30   => number := SYSCALL_INP8;
             when 31   => number := SYSCALL_OUTP8;
@@ -126,9 +145,6 @@ package body Syscall is
             when 130  => number := SYSCALL_ALLOCATE_DEVICE_VECTORS;
             when 131  => number := SYSCALL_RELEASE_DEVICE_VECTORS;
             when 132  => number := SYSCALL_READ_DEVICE_VECTOR;
-            when Boot_Timeline_Layout.System_Call_Number =>
-                number := SYSCALL_BOOT_TIMELINE;
-            when 134  => number := SYSCALL_READ_STATISTICS;
             when 135  => number := SYSCALL_PUBLISH;
             when 137  => number := SYSCALL_CLOSE_HANDLE;
             when 138  => number := SYSCALL_INSTALL_CAPABILITY;
@@ -136,8 +152,6 @@ package body Syscall is
             when 140  => number := SYSCALL_CALL_OFFERING_CAPABILITY;
             when 142  => number := SYSCALL_REPLY_SAVED_WITH_CAPABILITY;
             when 143  => number := SYSCALL_DERIVE_CAPABILITY;
-            when Firmware_Snapshot_ABI.System_Call_Number =>
-                number := SYSCALL_FIRMWARE_SNAPSHOT;
             when Wait_ABI.System_Call_Number => number := SYSCALL_WAIT;
             when 42   => number := SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY;
             when 48   => number := SYSCALL_REPLY_WAIT;
@@ -146,15 +160,12 @@ package body Syscall is
                 number := SYSCALL_REPLY_AND_CONSUME_REPLY_CAPABILITY;
             when 60   => number := SYSCALL_SPAWN;
             when 70   => number := SYSCALL_MAP_DEVICE;
-            when 71   => number := SYSCALL_PROCLIST;
             when 73   => number := SYSCALL_RESUME;
             when 74   => number := SYSCALL_ALLOC_DMA;
             when 75   => number := SYSCALL_ENABLE_IRQ;
             when 76   => number := SYSCALL_MAP_INTO;
             when 78   => number := SYSCALL_SET_CPU;
             when 81   => number := SYSCALL_SET_LATENCY_CONTRACT;
-            when 82   => number := SYSCALL_TRACE_RESET;
-            when 83   => number := SYSCALL_TRACE_SUMMARY;
             when 84   => number := SYSCALL_INSPECT_CAPABILITY;
             when 90   => number := SYSCALL_THREAD_CREATE;
             when 91   => number := SYSCALL_THREAD_EXIT;
@@ -231,21 +242,24 @@ package body Syscall is
         -- CPU, where percpu no longer describes it.
         waitPID    : Process.ProcessID := Process.NO_PROCESS;
     begin
-        Process.threadtab (percpu.currentThread).systemCalls :=
-          Process.threadtab (percpu.currentThread).systemCalls + 1;
+        -- The thread's own line in its process's thread-count pages
+        -- (Readiness_Publication; only this thread writes it).
+        declare
+            calls : Unsigned_64 with Import, Volatile,
+                Address => Process.threadtab (percpu.currentThread).callCounter;
+        begin
+            calls := calls + 1;
+        end;
         if traceActive then
             startTSC := x86.rdtsc;
-            -- Tight compute controls issue GETTIME repeatedly. Keep their
-            -- timer/dispatch events without letting clock reads evict the
-            -- bounded latency trace before the delayed receiver can freeze it.
-            if not Build.Test_Latency_Trace or else
-              syscallNumRaw /= SyscallNumber'Enum_Rep (SYSCALL_GETTIME)
-            then
-                Trace.Emit (Trace.EVENT_SYSCALL_ENTER, syscallNumRaw, arg0);
-            end if;
+            Trace.Emit (Trace.EVENT_SYSCALL_ENTER, syscallNumRaw, arg0);
         end if;
 
         decodeSyscall (syscallNumRaw, syscallNum, validSyscall);
+        if Build.Syscall_Census and then validSyscall then
+            Syscall_Census.Note (Process.processOf (percpu.currentThread),
+                                 SyscallNumber'Pos (syscallNum), syscallNumRaw);
+        end if;
         if not validSyscall then
             print ("Unknown syscall: "); printd (syscallNumRaw);
             print (" from PID: "); println (Process.processOf (percpu.currentThread));
@@ -299,16 +313,9 @@ package body Syscall is
             when SYSCALL_EXIT =>
                 exitp (Process.processOf (percpu.currentThread), arg0);
 
-            when SYSCALL_BOOT_TIMELINE =>
-                Admin.handleBootTimeline
-                  (Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, retval);
-
             when SYSCALL_KILL =>
                 Admin.handleKill (
                     Process.processOf (percpu.currentThread), arg0, arg1, retval);
-
-            when SYSCALL_GETPID =>
-                retval := Process_Identities.To_Word (Process.identityOf (Process.processOf (percpu.currentThread)));
 
             when SYSCALL_WRITE =>
                 retval := write (
@@ -318,10 +325,12 @@ package body Syscall is
 
             -- arg0 entry, arg1 stack pointer, arg2 argument (RDI), arg3 FS
             -- base, arg4 word cleared and futex-woken at exit (0: none).
-            -- Returns the thread ID, or Unsigned_64'Last.
+            -- Returns the thread ID and its thread-count slot (also its
+            -- RSI at entry) as Thread_ABI.Created, or Thread_ABI.Refused.
             when SYSCALL_THREAD_CREATE =>
                 declare
                     tid : Process.ThreadID;
+                    slot : Thread_Slots.Slot;
                 begin
                     Process.createThread
                       (entryPoint      => Util.numToAddr (arg0),
@@ -329,9 +338,11 @@ package body Syscall is
                        argument        => arg2,
                        fsBase          => arg3,
                        clearTidAddress => arg4,
-                       tid             => tid);
+                       tid             => tid,
+                       slot            => slot);
                     retval := (if Process."=" (tid, Process.NO_THREAD)
-                               then Unsigned_64'Last else Unsigned_64 (tid));
+                               then Thread_ABI.Refused
+                               else Thread_ABI.Created (Unsigned_64 (tid), slot));
                 end;
 
             when SYSCALL_THREAD_EXIT =>
@@ -395,17 +406,6 @@ package body Syscall is
                     retval := (if Released then 0 else Unsigned_64'Last);
                 end;
 
-            when SYSCALL_GETTIME =>
-                retval := Time.msTicks;
-
-            when SYSCALL_READ_MONOTONIC_MICROSECONDS =>
-                declare
-                    Available : Boolean;
-                begin
-                    Time.Read_Monotonic (retval, Available);
-                    if not Available then retval := Unsigned_64'Last; end if;
-                end;
-
             -- Give the CPU to any other ready thread; the caller is re-queued
             -- behind its peers and runs again when next picked.
             when SYSCALL_YIELD =>
@@ -461,10 +461,6 @@ package body Syscall is
                   (Process.processOf (percpu.currentThread),
                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
-            when SYSCALL_READ_STATISTICS =>
-                IPC.handleReadStatistics (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
-
             when SYSCALL_PUBLISH =>
                 Admin.handlePublish (
                     Process.processOf (percpu.currentThread), arg0, arg1, retval);
@@ -503,12 +499,6 @@ package body Syscall is
             when SYSCALL_WAIT =>
                 IPC.handleWait (arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
-            when SYSCALL_FIRMWARE_SNAPSHOT =>
-                Firmware_Snapshot_Export.Handle
-                  (Process.processOf (percpu.currentThread),
-                   arg0, (Op => arg1, Table => arg2, Offset => arg3,
-                          Destination => arg4, Capacity => arg5), arg6, retval);
-
             when SYSCALL_REPLY_WITH_CAPABILITY =>
                 IPC.handleReplyWithCap (
                     Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
@@ -545,10 +535,6 @@ package body Syscall is
             when SYSCALL_MAP_DEVICE =>
                 IPC.handleMapDevice (
                     Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, arg5, retval);
-
-            when SYSCALL_PROCLIST =>
-                Admin.handleProclist (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
 
             when SYSCALL_INSPECT_CAPABILITY =>
                 Admin.handleInspectCap (
@@ -646,25 +632,6 @@ package body Syscall is
                     end;
                 end if;
 
-            when SYSCALL_TRACE_RESET =>
-                Trace.Reset;
-                retval := 0;
-
-            when SYSCALL_TRACE_SUMMARY =>
-                if arg0 = Trace.Control_Operation'Enum_Rep (Trace.Summary) then
-                    Trace.PrintSummary;
-                    Process.printOwnAccounting;
-                elsif Build.Test_Latency_Trace then
-                    case arg0 is
-                        when Trace.Control_Operation'Enum_Rep (Trace.Start_Local) => Trace.StartLocal;
-                        when Trace.Control_Operation'Enum_Rep (Trace.Freeze_Local) => Trace.FreezeLocal;
-                        when Trace.Control_Operation'Enum_Rep (Trace.Dump_Local) => Trace.DumpLocal;
-                        when others => retval := Unsigned_64'Last;
-                    end case;
-                else
-                    retval := Unsigned_64'Last;
-                end if;
-
             when SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY =>
                 IPC.handleGrantViaCap (
                     Process.processOf (percpu.currentThread),
@@ -691,10 +658,7 @@ package body Syscall is
         end if;
         Process.serviceReschedule;
         Process.checkTermination;
-        if Trace.IsEnabled and then
-          (not Build.Test_Latency_Trace or else
-           syscallNumRaw /= SyscallNumber'Enum_Rep (SYSCALL_GETTIME))
-        then
+        if Trace.IsEnabled then
             Trace.Emit (Trace.EVENT_SYSCALL_RETURN, syscallNumRaw, 0);
         end if;
         return retval;

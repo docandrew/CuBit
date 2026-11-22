@@ -43,4 +43,14 @@ package StackFrame is
         rsp     : System.Address;
         ss      : Unsigned_64;
     end record with Size => 64 * 22;
+
+    ---------------------------------------------------------------------------
+    -- The errorCode word of a frame SYSCALL entry builds, and of a thread's
+    -- first frame (no CPU error code reaches 2 ** 31), so the three kinds
+    -- of saved user frame are told apart (DBG-001; Debug_ABI repeats them
+    -- for userspace, and Debug_Sessions checks they agree). SYSCALL_FRAME_TAG
+    -- in cubit.inc must match the first.
+    ---------------------------------------------------------------------------
+    System_Call_Frame_Tag : constant := 16#5359_5343#;   -- "SYSC"
+    Initial_Frame_Tag     : constant := 16#494E_4954#;   -- "INIT"
 end StackFrame;

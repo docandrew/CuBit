@@ -2,7 +2,7 @@ project Fields is
    for Source_Dirs use (".", "build/source");
    for Source_Files use
      ("main.adb", "cubit.ads", "cubit-protocols.ads",
-      "cubit-log_records.ads", "cubit-log_records.adb");
+      "cubit-log_records.ads", "cubit-log_records.adb", "cubit-log_records-texts.ads", "cubit-log_records-texts.adb");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    for Main use ("main.adb");

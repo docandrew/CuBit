@@ -61,7 +61,7 @@ procedure HID_Events_Tests is
       Result:out C.Values.Result;Status:out C.Values.Access_Status) is
       Ignored:R.Outcome;
    begin
-      R.Evaluate_Named(Service,Item,Budget,Result,Status);
+      R.Evaluate_Sample(Service,Item,Budget,Result,Status);
       if C.Values.Node_Name(Item)="_CRS" then
          Crs_Calls:=Crs_Calls+1;
          if Mode="stopped" then R.Request_Stop(Ignored);end if;
@@ -70,7 +70,7 @@ procedure HID_Events_Tests is
    procedure Invoke(Service:aliased in out C.State;Node:C.Namespace.Node_ID;
       Args:C.Values.Arguments;Argument_Count:C.Values.Argument_Count;Budget:Natural;
       Result:out C.Values.Result;Status:out C.Values.Access_Status) is
-   begin Dsm_Calls:=Dsm_Calls+1;R.Invoke_With_Arguments(Service,Node,Args,Argument_Count,Budget,Result,Status);end Invoke;
+   begin Dsm_Calls:=Dsm_Calls+1;R.Invoke_Sample(Service,Node,Args,Argument_Count,Budget,Result,Status);end Invoke;
    package Candidates is new ACPI_HID_I2C_Candidate(256);
    package Discovery is new ACPI_HID_I2C_Discovery(C,Invoke,Evaluate);
    package Resolver is new ACPI_HID_I2C_Resolved(C,Candidates);
@@ -147,7 +147,15 @@ begin
    Check(Begin_Calls=1 and End_Calls=1,"one finite event window");
    Check(E.Collection_Report.Charged<=Fuel,"one total discovery/collection budget");
    if Mode in "small"|"limit"|"budget"|"missing"|"stopped" then
-      Check(Result=E.Status.Refused,"typed refusal");
+      if Mode in "small"|"limit"|"budget" then
+         Check(Result=E.Status.Isolated and R.Current=R.Status.Idle and Close_Calls=0,
+            "ordinary complete-inventory refusal suspends only this family");
+         declare Before:constant Natural:=Crs_Calls+Dsm_Calls;begin
+            E.Advance(Server,Result);Check(Result=E.Status.Refused and R.Current=R.Status.Idle,
+               "suspended owner is not silently resumed");
+            Check(Crs_Calls+Dsm_Calls=Before,"no AML retry after isolated refusal");
+         end;
+      else Check(Result=E.Status.Refused,"unsafe source/owner refusal stays fail-closed");end if;
       Check(E.Read(Server,(Available=>True,Value=>30),100).Status/=Inventory.Samples.Available,"no partial inventory");
       if Mode="small" then Check(E.Collection_Report.Outcome=E.Capacity_Refused,"bounded copy refusal after one cleanup");
       elsif Mode="limit" then Check(E.Collection_Report.Outcome=E.Inventory_Limit and E.Collection_Report.Count=2,"no third probe");

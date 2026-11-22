@@ -3,6 +3,7 @@ with System;
 with System.Machine_Code;
 with System.Storage_Elements; use System.Storage_Elements;
 with Virtmem; use Virtmem;
+with TLB_Context;
 with BuddyAllocator;
 with TLB_Shootdown;
 with TLB_Reclamation;
@@ -62,7 +63,7 @@ package body Big_Page_SMP_Check is
       Saved : constant PhysAddress := x86.getCR3;
       Started : constant Unsigned_64 := x86.rdtsc;
    begin
-      setActiveP4 (Root_Address);
+      TLB_Context.Load_Raw (Unsigned_64 (Root_Address));
       for I in 0 .. 511 loop
          declare
             Value : Unsigned_64 with Import, Volatile,
@@ -86,7 +87,7 @@ package body Big_Page_SMP_Check is
             Check (Value = 16#2000# + Unsigned_64 (I));
          end;
       end loop;
-      setActiveP4 (Saved);
+      TLB_Context.Load_Raw (Unsigned_64 (Saved));
       Done (CPU) := True;
    end Secondary;
    procedure Finish (Count : Natural) is

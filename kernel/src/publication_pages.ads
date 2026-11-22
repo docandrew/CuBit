@@ -58,4 +58,8 @@ is
 
     -- The futex pause's limit (User_Wait), 0 for none.
     procedure Set_User_Wait_Cycles (Cycles : Unsigned_64);
+
+    -- Free physical memory, in bytes (a snapshot; Process refreshes it with
+    -- the CPU-times page's copy).
+    procedure Set_Free_Memory (Bytes : Unsigned_64);
 end Publication_Pages;

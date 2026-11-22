@@ -120,9 +120,9 @@
   # other. An app built here replaces the running one only while the
   # person turns on "Allow app replacement" (the Deskbar's Remote access
   # section, off at boot); screenshots likewise ("Allow screen capture").
-  (start "ccl-remote.app" (priority 4) (network approve-declared) (display-capture approve-declared)
+  (start "ccl-remote.app" (priority 4) (network approve-declared) (test-console approve-declared) (display-capture approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
-      display => Pairing_Display.Kernel_Console work => "@system/work"
+      display => Pairing_Display.Test_Console work => "@system/work"
       files => true builds => true mail => true)))
   # Installing (SYS-001): installer.svc, and the CCL console from this
   # trusted plan, which grants it the installer role: (system.disks) and

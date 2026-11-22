@@ -3,7 +3,7 @@
 # the console still returns them, and boot-logs still names them. boot-logs
 # opens before the console, so the console has the keyboard.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "log-exit-probe.app" (priority 5))
   (start "clock.svc" (priority 5))
   (start "display.svc" (priority 5))

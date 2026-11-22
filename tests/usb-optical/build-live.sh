@@ -42,6 +42,15 @@ elif [[ ${3:-} == --desktop-vulkan-compositor ]]; then
     desktop_candidate=$(python3 ../tools/verify_desktop_vulkan_compositor.py \
         "${CUBIT_DESKTOP_VULKAN_DIR:?explicit verified Vulkan compositor directory required}")
     extra_inputs=(--input "desktop-mesa-startup=$desktop_candidate")
+elif [[ ${3:-} == --preview ]]; then
+    # RELEASE-001: the public preview image (no development-only programs).
+    profile=../images/preview.ccl
+    output=cubit_preview_uefi.img
+elif [[ ${3:-} == --vmm ]]; then
+    # VMM-001 slice 1: the live image plus vmm.app (tests/hardware/vmm-laptop-build.sh).
+    profile=../images/laptop-usb-vmm.ccl
+    output=cubit_live_uefi_vmm.img
+    make vmm
 elif [[ ${3:-} == --install ]]; then
     # SYS-001: the installer's live medium. The realizer adds the install
     # payload (@cd:0/install) from the plan: this loader, the installed
@@ -77,7 +86,7 @@ elif [[ ${3:-} == --device-build || ${3:-} == --device-build-test ]]; then
                   --install-initrd isodir/boot/installed-initrd.img
                   --install-startup "$installed_startup" --install-live-root)
 elif [[ -n ${3:-} ]]; then
-    echo 'Expected --install, --device-build, --device-build-test, --render-session, --mesa-device, --mesa-triangle, --mesa-triangle-window, --desktop-mesa-startup or --desktop-vulkan-compositor after the platform option' >&2
+    echo 'Expected --preview, --install, --device-build, --device-build-test, --render-session, --mesa-device, --mesa-triangle, --mesa-triangle-window, --desktop-mesa-startup or --desktop-vulkan-compositor after the platform option' >&2
     exit 2
 fi
 if [[ -n ${SAMEBOY_ROMS_DIR:-} ]]; then
@@ -95,6 +104,9 @@ fi
 # This wrapper supplies local build inputs, not image membership or shell code
 # from CCL. The checked image profile owns every bootstrap/optical placement.
 make logstore boot-logs logs ccl-console laptop_live_rw.img
+# SIGN-001: the programs just rebuilt must be signed again, or the image
+# trust list refuses them (ccl-console.app: NOT_SIGNED).
+make sign-programs
 intel_blob=$(nix eval --raw --file ../tests/intel-gpu/firmware-source.nix blob)
 intel_license=$(nix eval --raw --file ../tests/intel-gpu/firmware-source.nix license)
 mesa_notices=$(cat ../userspace/mesa/build/notice-path)
@@ -116,4 +128,5 @@ python3 ../userspace/ccl/tools/ccl-image/realize.py "$profile" \
     --input "openlibm-notices=${SAMEBOY_LIBM_NOTICES:?run in nix develop}" \
     --input "mesa-notices=$mesa_notices" \
     "${extra_inputs[@]}" \
+    --import "cubit-signing-ca=${CUBIT_SIGNING:?the signing directory (make -C kernel signing-key)}/builder-ca.der" \
     "${rom_args[@]}" "${platform_args[@]}" --audit-usb --output "$output"

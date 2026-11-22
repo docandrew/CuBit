@@ -474,10 +474,13 @@ procedure Main is
          when ST.Firmware_Snapshot => "Firmware_Snapshot",
          when ST.ACPI_Hardware => "ACPI_Hardware",
          when ST.Platform_Power => "Platform_Power",
+         when ST.Trace         => "Trace",
+         when ST.Test_Console  => "Test_Console",
+         when ST.VM_Create     => "VM_Create",
          when ST.DMA | ST.Resource | ST.Publication => "");
 
-   --  An enumeration literal's image in Ada's mixed case (IO and DMA stay
-   --  upper case, as declared).
+   --  An enumeration literal's image in Ada's mixed case (IO, DMA, ACPI
+   --  and VM stay upper case, as declared).
    function Mixed (Image : String) return String is
       Result : String := Ada.Characters.Handling.To_Lower (Image);
       Start : Boolean := True;
@@ -494,6 +497,8 @@ procedure Main is
          Result := "DMA";
       elsif Result'Length >= 5 and then Result (Result'First .. Result'First + 4) = "Acpi_" then
          Result (Result'First .. Result'First + 3) := "ACPI";
+      elsif Result'Length >= 3 and then Result (Result'First .. Result'First + 2) = "Vm_" then
+         Result (Result'First + 1) := 'M';
       end if;
       return Result;
    end Mixed;
@@ -589,7 +594,10 @@ procedure Main is
          when ST.Firmware_Snapshot => "FirmwareSnapshot",
          when ST.ACPI_Hardware => "AcpiHardware",
          when ST.Publication   => "Publication",
-         when ST.Platform_Power => "PlatformPower");
+         when ST.Platform_Power => "PlatformPower",
+         when ST.Trace         => "Trace",
+         when ST.Test_Console  => "TestConsole",
+         when ST.VM_Create     => "VmCreate");
 
    --  The Rust startup accessors (CAP-003): module startup, one function
    --  per endpoint binding, taking the program's startup table
@@ -674,6 +682,8 @@ procedure Main is
       Put_Line (Output, "/* The endpoint the startup table grants under name, or CUBIT_NO_ENDPOINT");
       Put_Line (Output, " * (CuBit.Libc_Startup); programs call the functions below instead. */");
       Put_Line (Output, "cubit_endpoint cubit_startup_endpoint(const char *name);");
+      Put_Line (Output, "/* The kernel trace object granted under name, or a null one. */");
+      Put_Line (Output, "cubit_trace cubit_startup_trace_named(const char *name);");
       for Binding of Result.Bindings (1 .. Result.Binding_Count) loop
          declare
             Name : constant String := Binding.Name.Data (1 .. Binding.Name.Length);
@@ -687,6 +697,11 @@ procedure Main is
                Put_Line (Output, "static inline cubit_endpoint cubit_startup_" & Snake_Name (Name) & "(void)");
                Put_Line (Output, "{");
                Put_Line (Output, "    return cubit_startup_endpoint(""" & Name & """);");
+               Put_Line (Output, "}");
+            elsif ST."=" (Binding.Kind, ST.Trace) then
+               Put_Line (Output, "static inline cubit_trace cubit_startup_" & Snake_Name (Name) & "(void)");
+               Put_Line (Output, "{");
+               Put_Line (Output, "    return cubit_startup_trace_named(""" & Name & """);");
                Put_Line (Output, "}");
             else
                Put_Line (Output, "/* (no C accessor for this kind yet) */");

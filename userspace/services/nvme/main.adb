@@ -12,6 +12,7 @@
 --  DMA region is pre-mapped by the kernel at 0x7000_0000_0000 (1 MiB).
 --  BAR0 is mapped at 0x6000_0000_0000 (16KB) at startup.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System; use System;
 
@@ -132,6 +133,9 @@ procedure main is
    configValid : Boolean;
    queuesOk : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;

@@ -4,6 +4,7 @@
 --  Receives async requests, saves each request's reply (a Reply handle,
 --  CAP-002), and completes the request later with replyCap.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
@@ -14,6 +15,7 @@ with CuBit.Handles.IPC;
 with Startup;
 with Channel_Session;
 with IPCtest_Channel;
+with CuBit.Monotonic;
 
 procedure main is
    use ASCII;
@@ -102,6 +104,7 @@ procedure main is
    from : Process_ID;
    msg  : Message;
    ret  : Unsigned_64;
+   timedDeadline : Unsigned_64 := 0;
 
    --  Set the request being served aside into Saved: 1 when saved, 0 when
    --  the kernel refused (as MOVE_REPLY_CAPABILITY reported).
@@ -176,6 +179,8 @@ procedure main is
       return replyMsg;
    end makeEchoReply;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("ipctest-server: starting" & LF);
 
    ret := registerDriver (DRIVER_IPCTEST, Startup.Registration);
@@ -195,6 +200,9 @@ begin
          --  to this process must restore it. Set before each receive, since
          --  this program's own record copies may use XMM0 (it is built with
          --  SSE).
+         --  The deadline first: reading the clock is Ada code (it may use
+         --  XMM0), not a system call.
+         timedDeadline := CuBit.Monotonic.Milliseconds + 1000;
          loadFPUProbe;
          found := True;
          case mode is
@@ -202,7 +210,7 @@ begin
             when Service_Poll => Poll_Service_Request (from, msg, found);
             when Mixed_Poll => Poll_Any_Ipc (from, msg, found);
             when Timed =>
-               receiveUntil (syscall (SYSCALL_GETTIME) + 1000, from, msg, found);
+               receiveUntil (timedDeadline, from, msg, found);
             when Activity =>
                declare
                   activity : constant Activity_Result :=
@@ -244,7 +252,7 @@ begin
       elsif msg.tag.label = OP_ASYNC_ECHO then
          declare
             activity : constant Activity_Result :=
-              Wait_For_Activity_Until (syscall (SYSCALL_GETTIME));
+              Wait_For_Activity_Until (CuBit.Monotonic.Milliseconds);
          begin
             -- Readiness must not clear the current request's reply authority.
             if activity = Unavailable then

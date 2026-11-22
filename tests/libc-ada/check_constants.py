@@ -15,14 +15,13 @@ def value(text):
     return int(m.group(2), int(m.group(1))) if m else int(text, 0)
 known = {n: int(v) for n, v in re.findall(r"(SYSCALL_\w+)\s*=>\s*(\d+)\s*,", kernel)}
 pairs = {
-    "Exit_Process": "SYSCALL_EXIT", "Get_Process_Id": "SYSCALL_GETPID",
+    "Exit_Process": "SYSCALL_EXIT",
     "Grow_Heap": "SYSCALL_SBRK", "Write": "SYSCALL_WRITE",
     "Reply": "SYSCALL_REPLY",
     
     "Create_Shared_Memory_Grant_For_Process_Id": "SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID",
     
     
-    "Get_Time": "SYSCALL_GETTIME",
     "Call_Via_Endpoint_Capability": "SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY",
     "Submit_Via_Endpoint_Capability": "SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY",
     "Revoke_Shared_Memory_Grant": "SYSCALL_REVOKE_SHARED_MEMORY_GRANT",
@@ -31,7 +30,7 @@ pairs = {
     "Change_Owned_Range": "SYSCALL_CHANGE_OWNED_RANGE",
     "Release_Owned_Region": "SYSCALL_RELEASE_OWNED_REGION",
     "Send_Control": "SYSCALL_SEND_CONTROL",
-    "Read_Statistics": "SYSCALL_READ_STATISTICS", "Publish": "SYSCALL_PUBLISH",
+    "Publish": "SYSCALL_PUBLISH",
     "Thread_Create": "SYSCALL_THREAD_CREATE", "Thread_Exit": "SYSCALL_THREAD_EXIT", 
     "Futex_Wake": "SYSCALL_FUTEX_WAKE",
     "Create_Shared_Memory_Grant_Via_Capability": "SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY",
@@ -39,7 +38,6 @@ pairs = {
     "Acquire_Shared_Memory_Grant": "SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT",
     "Acquire_Shared_Memory_Grant_Via_Capability": "SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY",
     
-    "Read_Monotonic_Microseconds": "SYSCALL_READ_MONOTONIC_MICROSECONDS",
     "Yield": "SYSCALL_YIELD",
     
 }
@@ -244,6 +242,24 @@ for macro_line in ("#define _a_stacksize __u.__s[0]", "#define _a_guardsize __u.
     checked += 1
     if macro_line not in impl:
         print(f"FAIL: musl pthread_attr_t macro changed: {macro_line}")
+        failed = True
+# The C trace-object codes (cubit_handles.h) are Trace_ABI's.
+trace_abi = (repo / "shared/capabilities/trace_abi.ads").read_text()
+handles_h = (repo / "userspace/c/cubit_handles.h").read_text()
+def enum_reps(type_name):
+    m = re.search(r"for " + type_name + r" use\s*\(([^)]*)\)", trace_abi)
+    return {k.lower(): int(v) for k, v in re.findall(r"(\w+)\s*=>\s*(\d+)", m.group(1))} if m else {}
+ops, outcomes = enum_reps("Operation"), enum_reps("Outcome")
+for c_name, table, ada_name in (("CUBIT_TRACE_RESET", ops, "reset"), ("CUBIT_TRACE_SUMMARY", ops, "summary"),
+                                ("CUBIT_TRACE_START_LOCAL", ops, "start_local"),
+                                ("CUBIT_TRACE_FREEZE_LOCAL", ops, "freeze_local"),
+                                ("CUBIT_TRACE_DUMP_LOCAL", ops, "dump_local"),
+                                ("CUBIT_TRACE_DONE", outcomes, "done"),
+                                ("CUBIT_TRACE_NOT_IN_THIS_KERNEL", outcomes, "not_in_this_kernel")):
+    checked += 1
+    m = re.search(r"#define " + c_name + r"\s+(\d+)u", handles_h)
+    if not m or table.get(ada_name) != int(m.group(1)):
+        print(f"FAIL: {c_name} differs from Trace_ABI")
         failed = True
 print(f"libc-abi: {'PASS' if not failed else 'FAIL'} ({checked} constants against musl)")
 sys.exit(1 if failed else 0)

@@ -1,6 +1,10 @@
 pragma Ada_2022;
 package body ACPI_Startup_Completion with SPARK_Mode is
    package P renames CuBit.Consumer_Initialization_Exchange;
+   function Unavailable_Events (Domain_Live, Controller_Absent, Recovery_Required : Boolean)
+      return Phase_Result is
+     (if Recovery_Required then Failed elsif not Domain_Live then Incomplete
+      elsif Controller_Absent then Finished else Finished_With_Errors);
    function Decide (Devices, HID, Power : Phase_Result; Setup_Closed : Boolean;
       Events : Phase_Result := Finished; Module_Errors : Boolean := False)
       return P.Phase_Status is

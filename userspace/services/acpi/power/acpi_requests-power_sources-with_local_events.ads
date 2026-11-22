@@ -40,6 +40,8 @@ package ACPI_Requests.Power_Sources.With_Local_Events is
    procedure Stop;
 private
    Snapshot : Collection_Diagnostic;
+   May_Isolate : Boolean := False;
+   function Collection_Isolatable return Boolean is (May_Isolate);
    procedure Collect (Data : in out Cache; Server : in out State; Budget : Natural;
       Healthy,Collected : out Boolean);
    procedure Publish_Collected (Data : in out Cache; Server : State; At_Time : Samples.Clock_Reading;
@@ -49,5 +51,5 @@ private
    package Owner is new ACPI_Local_Sample_Events
      (Cached.Sample,Cached.Empty_Sample,Samples,Cache,Observe_Claimed,Invalidate,
       Collect,Publish_Collected,Read_Cache,Runtime_Current,Begin_Event,End_Event,
-      Read_Clock,Report_Publication,Events_Healthy,Fuel_Budget,Window_Microseconds);
+      Read_Clock,Report_Publication,Events_Healthy,Fuel_Budget,Window_Microseconds,Collection_Isolatable);
 end ACPI_Requests.Power_Sources.With_Local_Events;

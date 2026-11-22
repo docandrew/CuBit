@@ -241,4 +241,27 @@ package body CuBit.Launch_Arguments with SPARK_Mode is
       end if;
    end Attach_Description;
 
+   procedure Encode_Label (Label : String; Words : out Label_Words) is
+      Count : constant Natural := Natural'Min (Label'Length, Withheld_Label_Bytes);
+   begin
+      Words := [others => 0];
+      for I in 0 .. Count - 1 loop
+         Words (1 + I / 8) := Words (1 + I / 8) or
+           Shift_Left (Unsigned_64 (Character'Pos (Label (Label'First + I))), 8 * (I mod 8));
+      end loop;
+   end Encode_Label;
+
+   procedure Decode_Label (Words : Label_Words; Text : out Label_Text; Length : out Label_Length) is
+      Byte : Unsigned_64;
+   begin
+      Text := [others => ' '];
+      Length := 0;
+      for I in 0 .. Withheld_Label_Bytes - 1 loop
+         Byte := Shift_Right (Words (1 + I / 8), 8 * (I mod 8)) and 16#FF#;
+         exit when Byte = 0;
+         Text (I + 1) := Character'Val (Byte);
+         Length := I + 1;
+      end loop;
+   end Decode_Label;
+
 end CuBit.Launch_Arguments;

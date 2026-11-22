@@ -1,6 +1,7 @@
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with Virtmem; use Virtmem;
+with TLB_Context;
 with BuddyAllocator;
 with TextIO;
 with System;
@@ -113,7 +114,7 @@ begin
       Check (First /= System.Null_Address and Second /= System.Null_Address);
       Check (tableWalk (VA, Live, True) = 0);
       Map_Big (V2P (First), VA, Flags, Live, OK); Check (OK);
-      setActiveP4 (Test_CR3);
+      TLB_Context.Load_Raw (Unsigned_64 (Test_CR3));
       for I in 0 .. 511 loop
          declare
             Offset : constant Integer_Address := Integer_Address (I) * 4096;
@@ -129,9 +130,9 @@ begin
          end;
       end loop;
       unmapPage (VA, Live, OK); Check (OK);
-      flushTLB;
+      TLB_Context.Flush_All;
       Map_Big (V2P (Second), VA, Flags, Live, OK); Check (OK);
-      flushTLB;
+      TLB_Context.Flush_All;
       for I in 0 .. 511 loop
          declare
             CPU : Unsigned_64 with Import, Volatile,
@@ -141,9 +142,9 @@ begin
          end;
       end loop;
       unmapPage (VA, Live, OK); Check (OK);
-      flushTLB;
+      TLB_Context.Flush_All;
       -- Test-only retained frames; never free while alias lifecycle is unproved.
-      setActiveP4 (Saved_CR3);
+      TLB_Context.Load_Raw (Unsigned_64 (Saved_CR3));
       TextIO.println ("BIG-PAGE CPU PASS:512 writes remap local TLB invalidation");
    end;
 end Native_Walk_Check;

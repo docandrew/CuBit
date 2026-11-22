@@ -34,7 +34,6 @@ package body UDP_Tests is
       pragma Assert (Includes (Named, (Connect_UDP, 16#0A00_0202#, 32, 123, 123, False, 4)));
       pragma Assert (not Includes (NTP, Named));
       --  Browser approval is TCP only; UDP needs declared approval.
-      pragma Assert (not Policy.Allows (Policy.Browser_Outbound, NTP));
       pragma Assert (Policy.Allows (Policy.Declared_Network, NTP));
       Decode (Unsigned_64 (NTP.Network), Descriptor (NTP), Decoded, Success);
       pragma Assert (Success and Decoded = NTP);

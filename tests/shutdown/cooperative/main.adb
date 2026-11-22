@@ -1,5 +1,6 @@
 --  shutdown-cooperative (tests/shutdown, headless shutdown): obeys Stop
 --  within its quiesce time and exits 0 (STOPPED_CLEAN).
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -18,6 +19,8 @@ procedure Main is
    Activity : Activity_Result;
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("shutdown-cooperative: running" & ASCII.LF);
    loop
       Activity := Wait_For_Activity_Until (Deadline_After (Poll_Ms));

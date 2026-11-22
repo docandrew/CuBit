@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -6,6 +7,7 @@ with CuBit.Audio;
 with Startup;
 with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
+with CuBit.Monotonic;
 
 procedure Main is
    package Audio renames CuBit.Audio;
@@ -73,6 +75,8 @@ procedure Main is
       end if;
    end Refill;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Audio.Bind (Startup.Mixer);
    Clock.Calibrate (Rate);
    if Rate = 0 then
@@ -88,7 +92,7 @@ begin
    Refill;
    debugPrint ("AUDIO-BENCH: START tone_hz=500 rate=48000 duration_ms=8000" & ASCII.LF);
    Audio.start (Stream);
-   Started := syscall (SYSCALL_GETTIME);
+   Started := CuBit.Monotonic.Milliseconds;
    Previous := Clock.Read_Counter;
    loop
       Now := Clock.Read_Counter;
@@ -103,7 +107,7 @@ begin
          debugPrint ("BENCH: FAIL audio statistics" & ASCII.LF);
          exit;
       end if;
-      Elapsed := syscall (SYSCALL_GETTIME) - Started;
+      Elapsed := CuBit.Monotonic.Milliseconds - Started;
       Current_Phase := Natural'Min (3, Natural (Elapsed / 2000));
       Target := Targets (Current_Phase);
       -- Allow each reduced queue to settle before measuring its occupancy.
@@ -127,7 +131,7 @@ begin
          Queued_Max := Natural'Max (Queued_Max, Snapshot.Queued_Frames);
       end if;
       Refill;
-      exit when syscall (SYSCALL_GETTIME) - Started >= 8_000;
+      exit when CuBit.Monotonic.Milliseconds - Started >= 8_000;
       -- Explicit producer model: 1 ms timer refill, NOT the mixer design.
       Ignored := CuBit.Waits.Sleep_For (1);
    end loop;

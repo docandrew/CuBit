@@ -1,11 +1,14 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with CuBit.Logging;
 with Startup;
+with CuBit.Monotonic;
 
 --  The chatty source of the log-retention headless test (LOG-002): once
 --  log-retention-check has published its boot records, write thousands of
@@ -36,7 +39,7 @@ procedure Main is
    Result : P.Status;
    Value : P.Event;
    Lost : Unsigned_64;
-   Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+   Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    Ready : Boolean := False;
    Submitted, Drained : Boolean;
 
@@ -64,6 +67,8 @@ procedure Main is
       CuBit.Logging.Emit (Writer, Made.Value, Submitted);
    end Publish;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Wait for the quiet source's boot records (its Warning marker).
    CuBit.Logging.Subscribe (Reader, Result, Minimum => L.Warning);
    if Result /= P.OK then
@@ -71,10 +76,10 @@ begin
    end if;
    while not Ready loop
       CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
-      if Result = P.OK and then L.Text (Value.Data) = Quiet_Done_Text then
+      if Result = P.OK and then L.Texts.Text (Value.Data) = Quiet_Done_Text then
          Ready := True;
       elsif Result = P.Empty then
-         if syscall (SYSCALL_GETTIME) - Started > Wait_Limit_Ms then
+         if CuBit.Monotonic.Milliseconds - Started > Wait_Limit_Ms then
             Fail ("the quiet source never finished its boot records");
          end if;
          Ignore := CuBit.Waits.Sleep_For (Poll_Ms);

@@ -22,12 +22,12 @@ release profiles and audits compiler ALI switches. Expected checks per profile:
 
 | Suite | Checks | Scope |
 | --- | ---: | --- |
-| main | 13,880 | Actual IRQ-driven Main; 26 startup/lifecycle/failure scenarios |
+| main | 15,092 | Actual routed production Main; 27 startup/lifecycle/failure scenarios |
 | registry | 14,414 | Dynamic admission/retirement and joined IRQ turn; 45 cases |
-| slots | 5,129 | Controller arbitration and released-slot retarget/reuse |
+| slots | 5,238 | Controller arbitration and released-slot retarget/reuse |
 | park | 2,580,955 | Whole GPIO pin-domain enumeration, parking and 27 I/O fault cases |
 | irq | 388 | Notice authentication/hold, absent-parent dispatch, bounded turn |
-| total | 2,614,766 | Checked and release profiles; explicit modeled hardware/kernel boundaries |
+| total | 2,616,087 | Checked and release profiles; explicit modeled hardware/kernel boundaries |
 
 Large counts include repeated enumeration assertions and are not a percentage of
 hardware, AML or independent test coverage. The Main model uses ordinary register
@@ -72,3 +72,61 @@ semantic checks are in tests/gpio-native-entry; no native execution or hardware
 acceptance is established by either hosted suite.
 
 The IRQ additions are hosted-tested, not newly proved. The existing scoped proof gate covers its listed low-level units; it does not establish the new parent-line handoff, native queue/ABI/clock/ACK behavior, or whole-service correctness. Native preflight in tests/gpio-native-entry regenerates the real optional parent Startup and checks the component against the coordinator schema; it does not link or boot a guest.
+
+## Current entry wrapper and hosted wait boundary
+
+Every lifecycle scenario calls the actual production `Main`, which passes the
+generated optional `Startup.Parent` to `GPIO_Main_Entry`. A validated parent and
+confirmed initial ACK are required before role registration or readiness. The
+missing-route case declines once and admits no sink; mismatched descriptions
+and refused initial ACKs retain resources for supervision without serving.
+There is no production polling entry, enable API or polling timing policy.
+
+The IRQ-free scheduling loop lives only in `models/polling` for the hosted
+registry/dynamic scheduling models. It is outside the production component.
+The redundant test-only IRQ_Main wrapper was removed. MMIO, kernel waits and
+native IRQ delivery remain modeled; no laptop interrupt acceptance is implied.
+
+## Detached runtime fault snapshot
+
+The first runtime-supervision transition copies controller, registry, admin,
+IRQ, clock and selected pin-engine observations before logging or stop handling.
+Seven short records identify the retained operation, access result and possible
+hardware effects. No register read, clock sample, retry, cleanup or authority
+release is added by the snapshot. Later supervised waits do not repeat it.
+
+The actual-Main IRQ scenario injects an unknown configuration write after
+readiness. It verifies the controller/registry/admin and engine diagnostics,
+one bounded snapshot, uncertain saved reply, retained sink and unchanged MMIO
+counters through three retained waits. Hardware/kernel boundaries remain models.
+
+Production requests the optional platform interrupt `parent` at resource0. The
+existing devmgr launch path still chooses the observed GSI/trigger/polarity and
+enforces SCI exclusion and capability/description checks. A missing/refused
+route produces an explicit failure and no sink service. Native gpio-launch and
+gpio-bootstrap gates, then the laptop, remain separate coordinator acceptance.
+
+## Locked input pads
+
+PAD_OWN host ownership and HOSTSW_OWN GPIO mode are required independently of
+PADCFG mutability. A locked pad is accepted only when its observed GPIO input,
+route, trigger and polarity already match the requested input. Its PADCFG is
+never written. Group mask/status operations still require the same exclusive
+owner and confirmed reads/writes. Incompatible locked settings have a distinct
+refusal, and ownership failures identify PAD_OWN versus HOSTSW checkpoints.
+
+The dedicated fixture uses image32's ACPI209 -> pad136/community1/bit17 mapping,
+revision0x960000, PADBAR0x700,64KiB window and exact lock word0xef5ff. The input
+configuration and ownership values are explicit model data, since the capture
+contains only the lock read. Eleven cases/109 checks cover compatible locked
+input, other-pad lock bits, six incompatible configurations, physical/ACPI
+ownership refusals and changed configuration before rearm. Mask/event/rearm and
+pause/resume retain neighbor bits and pending events, with no locked PADCFG
+write or terminal-failure retry. Hardware acceptance remains separate.
+
+Changed-unit runtime-safety/stated-contract proofs cover geometry and the IRQ
+and parking owner instantiations at levels1/2 (150 checks/level), under arbitrary
+imported IO/clock observations. These do not prove the chipset's locking rules,
+stable ownership/concurrency assumptions, native IRQ delivery or the absence of
+configuration writes as a whole-service property; the explicit regression checks
+that behavior. Proof reports and dependency qualification accompany the packet.

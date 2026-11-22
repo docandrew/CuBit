@@ -73,8 +73,10 @@
 --              current caller (identity word A) offered with its call.
 --              Result: a handle word or a Capability_ABI refusal code.
 --    Timer     {Timer}, deadline Forever: sleep until the absolute
---              monotonic microsecond A (READ_MONOTONIC_MICROSECONDS's
---              clock). A time already passed returns at once. Result 0.
+--              monotonic microsecond A on the clock user space reads
+--              (CuBit.Monotonic: the clock publication's conversion, else
+--              the kernel's millisecond word in microseconds). A time
+--              already passed returns at once. Result 0.
 --
 --  Every form that takes a message replaces the thread's reply authority
 --  exactly as the receive it replaces did (Process.IPC.receive).

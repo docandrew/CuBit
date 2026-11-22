@@ -2,6 +2,7 @@ with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Monotonic;
 
 --  Atomics, the futex mutex, shared state and thread bodies for futex-check.
 --  Library-level, so thread entry points need no trampolines.
@@ -55,7 +56,7 @@ package Futex_Check_Support is
    procedure Thread_Exit;
    procedure Join (Exit_Word : access Word);
    function Read_FS return Unsigned_64;
-   function Now_Ms return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Now_Ms return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
 
    --  Test 1: mutex contention across CPUs, join, FS base.
    Workers    : constant := 8;

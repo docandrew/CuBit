@@ -109,6 +109,17 @@ package Clock_Publication with Pure, SPARK_Mode is
    end record;
    for Page'Size use 6 * 64;
 
+   --  Beside the conversion, outside its seqlock: the kernel's millisecond
+   --  clock (Time.msTicks) itself, one atomic word the kernel stores at
+   --  every CPU 0 tick that advances it, published always (with or without
+   --  an invariant TSC). Readers without a usable conversion use it, at a
+   --  tick's resolution; there is no system call for the time.
+   Milliseconds_Offset : constant := 64;
+   Milliseconds_Address : constant := Page_Address + Milliseconds_Offset;
+   pragma Compile_Time_Error
+     (Milliseconds_Offset < Page'Size / 8 or else Milliseconds_Offset mod 8 /= 0,
+      "the millisecond word must follow the seqlocked page, aligned");
+
    Not_Published : constant Parameters :=
      (Version => Unpublished, Frequency | Scale | Base_Ticks | Base_Time => 0);
 

@@ -3,7 +3,7 @@
 # storehouse and generation 1; procmgr applies the current generation
 # before this plan runs. A desktop: the installed disk must reach it.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "clock.svc" (priority 5))
   (start "display.svc" (priority 5))
   (start "desktop.svc" (priority 4))

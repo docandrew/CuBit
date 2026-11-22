@@ -2,7 +2,9 @@
 """Linux image realization boundary; CCL produces data, never command strings.
 
 All inputs are snapshotted and checked before archive/ISO tools run. This is
-not a hermetic builder, signature verifier, or source build-graph executor.
+not a hermetic builder or source build-graph executor. It is the build-time
+half of signed admission (SIGN-001): every executable placed must verify,
+with ccl-sign's proved verifier, against the image's own trust list.
 """
 import argparse
 from dataclasses import dataclass
@@ -25,6 +27,13 @@ import install_payload  # noqa: E402  (tools/install_payload.py, SYS-001)
 CCL = ROOT / "userspace/ccl/build/image/ccl-image"
 CONFIG = ROOT / "userspace/ccl/build/config/ccl-config"
 DEVICE_INDEX = ROOT / "userspace/ccl/build/image/ccl-device-index"
+# The verifier the gate runs (userspace/ccl/tools/ccl-sign, SIGN-001).
+SIGN_TOOL = ROOT / "userspace/ccl/build/sign/ccl-sign"
+# A trust list anchor: one DER certificate (CuBit.Signed_Admission's ceiling).
+MAX_ANCHOR = 4096
+PLAN_FORMAT = "CCL-IMAGE-2"
+ELF_MAGIC = b"\x7fELF"
+ELF_PROGRAM_TYPES = (2, 3)   # ET_EXEC, ET_DYN
 # The generated driver index devmgr binds devices by (docs/device-matching.md).
 DEVICE_INDEX_NAME = "devices.index"
 DRIVER_SUFFIX = ".drv"
@@ -79,6 +88,13 @@ def conflict(left, right):
 
 
 def compile_plan(catalog, profile):
+    header, rows, _, sources = compile_plan_with_builders(catalog, profile)
+    return header, rows, sources
+
+
+def compile_plan_with_builders(catalog, profile):
+    """The plan's header, placement rows, trust list (BUILDER rows: kind,
+    import name, ceiling, identity prefixes) and source hashes."""
     # Compile exact snapshots, so a later source edit cannot change the
     # meaning of a realization recorded under an earlier source hash.
     documents = [read_regular(p, MAX_SOURCE) for p in (catalog, profile)]
@@ -92,19 +108,70 @@ def compile_plan(catalog, profile):
         raise ValueError(result.stderr.strip())
     lines = result.stdout.splitlines()
     header = lines[0].split("\t") if lines else []
-    if len(header) != 4 or header[0] != "CCL-IMAGE-1":
+    if len(header) != 4 or header[0] != PLAN_FORMAT:
         raise ValueError("unsupported CCL plan encoding")
     if header[1] not in ("BOOTSTRAP_ONLY", "OPTICAL_IMAGE"):
         raise ValueError("unsupported layout")
-    rows = [line.split("\t") for line in lines[1:]]
+    fields = [line.split("\t") for line in lines[1:]]
+    builders = [row[1:] for row in fields if row and row[0] == "BUILDER"]
+    rows = [row for row in fields if not row or row[0] != "BUILDER"]
+    if not builders or any(len(builder) != 4 for builder in builders):
+        raise ValueError("invalid trust list")
     # Sized by the profile: every driver is in every image (HW-002).
     if not rows or any(len(row) != 6 for row in rows):
         raise ValueError("invalid placement list")
-    return header, rows, [digest(data) for data in documents]
+    return header, rows, builders, [digest(data) for data in documents]
 
 
-def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROOT):
-    header, rows, sources = compile_plan(catalog, profile)
+def is_program(data):
+    """An ELF executable or shared object: what a spawner or mapper loads."""
+    return (data[:4] == ELF_MAGIC and len(data) >= 18
+            and struct.unpack_from("<H", data, 16)[0] in ELF_PROGRAM_TYPES)
+
+
+def load_anchors(builders, imports):
+    """Each builder's CA certificate, from the --import naming it."""
+    anchors = []
+    for kind, name, ceiling, identities in builders:
+        if name not in imports:
+            raise ValueError(f"builder {name} ({kind.lower()}) needs --import {name}=PATH to its CA certificate")
+        anchors.append(imports[name])
+        read_regular(imports[name], MAX_ANCHOR)
+    unused = set(imports) - {name for _, name, _, _ in builders}
+    if unused:
+        raise ValueError("unused imports: " + ", ".join(sorted(unused)))
+    return anchors
+
+
+def refuse_unsigned(files, anchors, sign_tool):
+    """The ccl-image gate (SIGN-001): every program placed verifies against
+    the image's trust list, so a built image cannot hold unsigned code.
+    The kernel is the boot trusted base, outside this claim."""
+    with tempfile.TemporaryDirectory(prefix="ccl-image-gate.") as directory:
+        refused = []
+        for index, item in enumerate(files):
+            if item.role == "KERNEL" or not is_program(item.data):
+                continue
+            path = Path(directory) / str(index)
+            path.write_bytes(item.data)
+            command = [sign_tool, "verify"]
+            for anchor in anchors:
+                command += ["--anchor", anchor]
+            result = subprocess.run([*command, path], capture_output=True, text=True, timeout=120)
+            if result.returncode:
+                verdict = (result.stdout.strip() or result.stderr.strip()).splitlines()
+                refused.append(f"{item.region.lower()}/{item.destination} "
+                               f"({verdict[0] if verdict else 'not verified'})")
+            path.unlink()
+        if refused:
+            raise ValueError("executables that do not verify against the image's trust list "
+                             "(sign them: make -C kernel sign-programs): " + "; ".join(refused))
+
+
+def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROOT,
+            imports=None, sign_tool=SIGN_TOOL):
+    header, rows, builders, sources = compile_plan_with_builders(catalog, profile)
+    anchors = load_anchors(builders, imports or {})
     if release and private_roms is not None:
         raise ValueError("release images cannot include private cartridges")
     files, used, total = [], set(), 0
@@ -166,6 +233,7 @@ def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROO
             add(region, role, artifact, destination, read_regular(path))
     if set(inputs) != used:
         raise ValueError("unused supplied inputs: " + ", ".join(sorted(set(inputs) - used)))
+    refuse_unsigned(files, anchors, sign_tool)
 
     if private_roms is not None:
         if header[1] != "OPTICAL_IMAGE" or not any(
@@ -232,6 +300,10 @@ def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROO
         "format": "ccl-image-realization-1", "layout": header[1],
         "catalog": header[2], "provider": header[3],
         "catalog_sha256": sources[0], "profile_sha256": sources[1],
+        "builders": [{"kind": kind, "import": name, "ceiling": ceiling,
+                      "identities": identities.split(","),
+                      "sha256": digest(read_regular(anchor, MAX_ANCHOR))}
+                     for (kind, name, ceiling, identities), anchor in zip(builders, anchors)],
         "private_inputs": any(f.private for f in files),
         "files": [{"region": f.region, "role": f.role, "artifact": f.artifact,
                    "destination": f.destination, "size": len(f.data),
@@ -576,7 +648,11 @@ def realize_staged(directory, files, report, output, optical_layout, audit_usb, 
         check_iso(result, expected, efi=grub_directory is not None)
         if audit_usb:
             records = directory / "debug-split.json"
-            records.write_text(json.dumps(splitter.records))
+            # Programs signed before staging were stripped by sign_programs.py
+            # (SIGN-001); its records say what each payload was built as.
+            signed = Path(splitter.debug_dir) / "images" / "sign-programs.build-ids.json"
+            signer = json.loads(signed.read_text()).get("binaries", []) if signed.is_file() else []
+            records.write_text(json.dumps(splitter.records + signer))
             subprocess.run(["python3", ROOT / "tests/usb-optical/check-image.py", result, records],
                            check=True)
     report["output_sha256"] = digest(result.read_bytes())
@@ -599,6 +675,10 @@ def main():
     parser.add_argument("profile", type=Path)
     parser.add_argument("--catalog", type=Path, default=ROOT / "images/artifacts.ccl")
     parser.add_argument("--input", action="append", default=[], metavar="NAME=PATH")
+    parser.add_argument("--import", dest="imports", action="append", default=[], metavar="NAME=PATH",
+                        help="a builder's CA certificate, by the import name the profile gives it (SIGN-001)")
+    parser.add_argument("--sign-tool", type=Path, default=SIGN_TOOL,
+                        help="the ccl-sign that verifies every placed executable")
     parser.add_argument("--private-rom-dir", type=Path)
     parser.add_argument("--release", action="store_true")
     parser.add_argument("--check-only", action="store_true")
@@ -627,10 +707,17 @@ def main():
             if not name or not path or name in inputs:
                 raise ValueError("invalid or duplicate input binding")
             inputs[name] = Path(path)
+        imports = {}
+        for binding in args.imports:
+            name, path = binding.split("=", 1)
+            if not name or not path or name in imports:
+                raise ValueError("invalid or duplicate import binding")
+            imports[name] = Path(path)
         if not args.check_only and args.output is None:
             raise ValueError("--output is required for realization")
         files, report = prepare(args.catalog, args.profile, inputs,
-                                args.private_rom_dir, args.release)
+                                args.private_rom_dir, args.release,
+                                imports=imports, sign_tool=args.sign_tool)
         if args.check_only:
             print(json.dumps(report, indent=2, sort_keys=True))
         else:

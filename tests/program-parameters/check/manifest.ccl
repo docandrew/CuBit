@@ -11,4 +11,7 @@
 (Executable_Manifest
   identity => "com.cubit.parameters-check"
   version => "1"
+  # ABI-002: its debug text (CuBit.Console_Route).
+  requests => [(service "logstore" "logstore")]
+  optional => ["logstore"]
   parameters => (Parameter_Signature.Declared "Check_Parameters"))

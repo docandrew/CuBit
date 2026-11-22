@@ -47,9 +47,16 @@
   # The production trust store (kernel/build/tls-roots.der, tools/pem_bundle_to_der.py).
   (artifact "tls-roots" repository "kernel/build/tls-roots.der")
   (artifact "ccl-remote" repository "kernel/isodir/boot/ccl-remote.app")
+  # Test images only (images/*-test.ccl): ccl-remote with the test console
+  # object for its pairing code (make ccl-remote-test, ABI-002).
+  (artifact "ccl-remote-test" repository "kernel/isodir/boot/ccl-remote-test.app")
   (artifact "devices" repository "kernel/isodir/boot/devices.app")
   (artifact "config-inspector" repository "kernel/isodir/boot/config-inspector.app")
   (artifact "boot-logs" repository "kernel/isodir/boot/boot-logs.app")
+  # The Debugger (DBG-001) and its Ada and Rust demo targets.
+  (artifact "debugger" repository "kernel/isodir/boot/debugger.app")
+  (artifact "debug-demo" repository "kernel/isodir/boot/debug-demo.app")
+  (artifact "debug-demo-rs" repository "kernel/isodir/boot/debug-demo-rs.app")
   (artifact "logs" repository "kernel/isodir/boot/logs.app")
   (artifact "gpu-viewer" repository "kernel/isodir/boot/gpu-viewer.app")
   (artifact "render-session" repository "kernel/isodir/boot/render-session.app")
@@ -76,6 +83,12 @@
   (artifact "system-llm-test" repository "tests/llm/system-llm-test.ccl")
   (artifact "system-config-storage-test" repository "tests/config-turso/native/system-storage-test.ccl")
   (artifact "init-usb-live" repository "tests/hardware/init-usb-live.ccl")
+  # The public preview image's startup (images/preview.ccl).
+  (artifact "init-preview" repository "tests/hardware/init-preview.ccl")
+  (artifact "init-usb-live-vmm" repository "tests/hardware/init-usb-live-vmm.ccl")
+  (artifact "vmm" repository "kernel/isodir/boot/vmm.app")
+  # The notice for the Linux and BusyBox binaries vmm.app embeds.
+  (artifact "vm-guest-license" repository "tests/vm-linux/LICENCE.guest.txt")
   # The device-build live image (images/laptop-build.ccl), and as QEMU
   # tests it (pairing code on the kernel console).
   (artifact "init-usb-live-build" repository "tests/hardware/init-usb-live-build.ccl")

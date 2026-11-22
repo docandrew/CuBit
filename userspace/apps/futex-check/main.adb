@@ -16,6 +16,7 @@
 --  Thread bodies avoid the secondary stack and printing: only the main
 --  thread prints.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Wait_ABI;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
@@ -51,6 +52,8 @@ procedure Main is
    Quota_Probe_Stack  : constant := 128;
    Probe_Refusals : Natural;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("futex-check: starting" & LF);
 
    for I in Stacks'Range loop

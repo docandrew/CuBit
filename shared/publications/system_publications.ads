@@ -25,8 +25,9 @@
 --    (SYSCALL_PUBLISH); UTC now = this + monotonic milliseconds.
 --
 --  These were public through SYSCALL_INFO before; nothing here is new
---  knowledge for any process. Per-process statistics and free memory are a
---  query instead (SYSCALL_READ_STATISTICS).
+--  knowledge for any process. Free memory is a live word here too (as it
+--  was through SYSCALL_READ_STATISTICS); a process's own statistics are on
+--  its readiness page (Readiness_Publication).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
@@ -42,7 +43,7 @@ package System_Publications with Pure, SPARK_Mode is
    Page_Count : constant := 3;
 
    --  Version word of every page: the layouts below, or not yet written.
-   Layout_Version : constant := 1;
+   Layout_Version : constant := 2;
    Unpublished    : constant := 0;
 
    ---------------------------------------------------------------------------
@@ -95,6 +96,11 @@ package System_Publications with Pure, SPARK_Mode is
       --  on its futex word before the kernel sleep (the kernel's
       --  IA32_UMWAIT_CONTROL maximum on every CPU); 0: no pause.
       User_Wait_Cycles : Unsigned_64 := 0;
+      --  Free physical memory in the whole system, in bytes: a snapshot a
+      --  CPU crossing a scheduling boundary refreshes at most every
+      --  CPU_Times_Publication.Memory_Refresh_Microseconds of its own,
+      --  with the CPU-times page's copy.
+      Free_Memory_Bytes : Unsigned_64 := 0;
    end record;
    for Facts_Page use record
       Version             at 0 range 0 .. 63;
@@ -107,6 +113,7 @@ package System_Publications with Pure, SPARK_Mode is
       Process_Kills         at 120 range 0 .. 63;
       Scanout_Overwrites    at 128 range 0 .. 63;
       User_Wait_Cycles      at 136 range 0 .. 63;
+      Free_Memory_Bytes     at 144 range 0 .. 63;
    end record;
    for Framebuffer_Geometry use record
       Width          at 0 range 0 .. 63;
@@ -180,7 +187,13 @@ package System_Publications with Pure, SPARK_Mode is
    --  what the child's manifest requests, (request-publication NAME), is
    --  ever granted (procmgr). A set with other bits is refused.
    ---------------------------------------------------------------------------
-   type Granted_Publication is (CPU_Times);   --  CPU_Times_Publication
+   --  CPU_Times: CPU_Times_Publication (one page at +5).
+   --  Boot_Timeline: the kernel's boot timeline Image (Boot_Timeline_Layout,
+   --  docs/boot-timeline.md), Boot_Timeline_Pages pages from
+   --  Boot_Timeline_Address (+9; the thread-count pages are +7, +8).
+   type Granted_Publication is (CPU_Times, Boot_Timeline);
+   Boot_Timeline_Address : constant := Clock_Publication.Page_Address + 9 * Page_Bytes;
+   Boot_Timeline_Pages   : constant := 3;
 
    function Bit (P : Granted_Publication) return Unsigned_64 is
      (Shift_Left (1, Granted_Publication'Pos (P)));
@@ -188,29 +201,4 @@ package System_Publications with Pure, SPARK_Mode is
    All_Publications : constant :=
      2 ** (Granted_Publication'Pos (Granted_Publication'Last) + 1) - 1;
 
-   ---------------------------------------------------------------------------
-   --  SYSCALL_READ_STATISTICS: arg0 the address of a Statistics record the
-   --  kernel fills (caller's own memory, writable), arg1 its size in bytes.
-   --  Returns 0, or Unsigned_64'Last if the buffer is not the caller's.
-   ---------------------------------------------------------------------------
-   type Statistics is record
-      --  The caller's own physical frames, in bytes: excludes borrowed
-      --  mappings, page-table frames and other services' allocations.
-      Owned_Bytes       : Unsigned_64 := 0;
-      --  Events the caller's mailbox refused because it was full.
-      Event_Drops       : Unsigned_64 := 0;
-      --  Free physical memory in the whole system, in bytes (a snapshot).
-      Free_Memory_Bytes : Unsigned_64 := 0;
-      --  System calls the calling thread has made, this one included.
-      Thread_System_Calls : Unsigned_64 := 0;
-   end record;
-   for Statistics use record
-      Owned_Bytes         at 0 range 0 .. 63;
-      Event_Drops         at 8 range 0 .. 63;
-      Free_Memory_Bytes   at 16 range 0 .. 63;
-      Thread_System_Calls at 24 range 0 .. 63;
-   end record;
-   Statistics_Bytes : constant := 32;
-   pragma Compile_Time_Error (Statistics'Size /= Statistics_Bytes * 8,
-                              "the statistics ABI is 32 bytes");
 end System_Publications;

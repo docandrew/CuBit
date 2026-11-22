@@ -44,11 +44,10 @@
 -- docs/allocator-verification.md. Physical overlays are not formally safe
 -- merely because they use addresses instead of access types.
 --
--- @CAUTION This allocator builds its free lists in the virtual, linear-mapped
---  memory range. All the internal addresses it uses are going to be
---  higher-half. If you're going to take one of these blocks for user process
---  memory, you'll want to make sure you're mapping the equivalent physical
---  address using Virtmem.V2P.
+-- @CAUTION This allocator names blocks by their linear-mapped (higher-half)
+--  addresses. If you're going to take one of these blocks for user process
+--  memory, map the equivalent physical address (Virtmem.V2P). The free lists
+--  themselves live out of the blocks (KERN-014), in a link table.
 -------------------------------------------------------------------------------
 with System.Storage_Elements; use System.Storage_Elements;
 with Interfaces; use Interfaces;
@@ -103,17 +102,15 @@ is
     type Order is new Natural range 0 .. Config.MAX_BUDDY_ORDER;
 
     ---------------------------------------------------------------------------
-    -- FreeBlock - this record is created _inside_ the free memory block,
-    --  except for the list heads in freeLists, which are kept in the
-    --  freeLists array.
+    -- FreeBlock - a free list's head, kept in the freeLists array. Blocks'
+    --  own links are out of band (KERN-014): one Free_Link_Codes.Links per
+    --  frame in a table beside the block descriptors, so a free block holds
+    --  nothing of the allocator's.
     --
-    -- @param prevNode - the previous node in the free list, NOT necessarily
-    --  this node's buddy.
-    -- @param nextNode - the next node in the free list, again, NOT necessarily
-    --  this node's buddy.
-    -- @param buddy - legacy diagnostic field; not consulted for coalescing.
-    -- @param numFreeBlocks - number of free blocks in this list (only 
-    --  applies to head of list)
+    -- @param prevNode - the last block in the list (or the head itself).
+    -- @param nextNode - the first block in the list (or the head itself).
+    -- @param buddy - unused.
+    -- @param numFreeBlocks - number of free blocks in this list.
     ---------------------------------------------------------------------------
     type FreeBlock is
     record
@@ -124,7 +121,8 @@ is
     end record;
 
     ---------------------------------------------------------------------------
-    -- Circular intrusive lists. Physical overlays remain outside SPARK proof.
+    -- Circular lists through the link table. Its overlays remain outside
+    -- SPARK proof; the splices are Intrusive_List_Splices.
     ---------------------------------------------------------------------------
     type FreeListArray is array (Order) of FreeBlock;
 
@@ -134,6 +132,9 @@ is
     freeLists : FreeListArray;
 
     totalManagedBytes : Storage_Count := 0;
+
+    -- Free frames in the process pool (KERN-014), counted as free memory.
+    poolFreeFrameCount : Natural := 0;
 
     lockName : aliased constant String := "buddy";
     lock : Spinlocks.Spinlock;
@@ -273,6 +274,52 @@ is
         Post    => isValidBlock (0, To_Address(addr));
 
     ---------------------------------------------------------------------------
+    -- The process pool (KERN-014 slice 4, docs/kernel-memory-map.md): 2 MiB
+    -- regions outside the kernel's linear map. Process_Pool moves regions
+    -- in and out (the linear-map detach, the TLB round, zeroing through the
+    -- kernel window); these primitives keep the books under the allocator
+    -- lock. A frame of a joined region freed through freeFrame, unpinFrame
+    -- or free (DMA runs up to order 9) returns to the pool, dirty.
+    ---------------------------------------------------------------------------
+    -- An order-9 block of the kernel's lists, zeroed through the linear map
+    -- (it is still mapped), for Process_Pool to detach; 0 if none.
+    procedure takeRegion
+      (base : out Virtmem.PhysAddress; ceiling : Interfaces.Unsigned_64 := 0)
+      with SPARK_Mode => Off;
+    -- After its linear-map entry is cleared (Saved) and a TLB round has
+    -- completed: every frame free and clean, in the pool.
+    procedure joinPool (base : Virtmem.PhysAddress; Saved : Virtmem.PageTableEntry)
+      with SPARK_Mode => Off;
+    -- An aligned run of 2**ord frames of the pool below ceiling (0: any);
+    -- base 0 if none. With onlyClean, only a run of clean frames: zeroed
+    -- with a TLB round since (no CPU can still translate them through the
+    -- kernel window); clean says whether the run is.
+    procedure allocFromPool
+      (ord : Order; ceiling : Interfaces.Unsigned_64; onlyClean : Boolean;
+       base : out Virtmem.PhysAddress; clean : out Boolean)
+      with SPARK_Mode => Off, Pre => ord <= 9;
+    -- Laundering (Process_Pool): up to Frames'Length free dirty frames are
+    -- taken out of the pool for zeroing through the window; after a TLB
+    -- round each goes back clean.
+    type Frame_List is array (Positive range <>) of Virtmem.PhysAddress;
+    procedure takeDirty (Frames : out Frame_List; Count : out Natural)
+      with SPARK_Mode => Off;
+    procedure returnClean (frame : Virtmem.PhysAddress) with SPARK_Mode => Off;
+    -- A wholly free region leaves the pool (found False: none); it is still
+    -- detached. Its frames' Clean bits stay readable (poolFrameClean) until
+    -- the caller zeroes the dirty ones, attaches it and frees it (free (9)).
+    procedure leavePool
+      (base : out Virtmem.PhysAddress; Saved : out Virtmem.PageTableEntry;
+       found : out Boolean) with SPARK_Mode => Off;
+    function poolFrameClean (addr : Virtmem.PhysAddress) return Boolean
+      with SPARK_Mode => Off;
+    -- Called (outside the lock) when a kernel allocation finds no block:
+    -- give wholly free pool regions back; Released when any went.
+    type Pool_Reclaim_Handler is access procedure (Released : out Boolean);
+    procedure installPoolReclaimHandler (Handler : not null Pool_Reclaim_Handler)
+      with SPARK_Mode => Off;
+
+    ---------------------------------------------------------------------------
     -- free
     -- Free a block of memory of specific order
     -- @param ord - order of the _original allocation_
@@ -365,9 +412,9 @@ is
     -- Returns the amount of memory available (in bytes) from this allocator
     ---------------------------------------------------------------------------
     function getFreeBytes return Storage_Count with
-        Global  => (Input       => freeLists,
+        Global  => (Input       => (freeLists, poolFreeFrameCount),
                     Proof_In    => BuddyAllocator.initialized),
-        Depends => (getFreeBytes'Result => freeLists),
+        Depends => (getFreeBytes'Result => (freeLists, poolFreeFrameCount)),
         Pre     => BuddyAllocator.initialized;
 
     ---------------------------------------------------------------------------
@@ -375,9 +422,9 @@ is
     -- Returns the amount of frames available from this allocator
     ---------------------------------------------------------------------------
     function getFreeFrames return Natural with
-        Global  => (Input       => freeLists,
+        Global  => (Input       => (freeLists, poolFreeFrameCount),
                     Proof_In    => BuddyAllocator.initialized),
-        Depends => (getFreeFrames'Result => freeLists),
+        Depends => (getFreeFrames'Result => (freeLists, poolFreeFrameCount)),
         Pre     => BuddyAllocator.initialized;
 
     ---------------------------------------------------------------------------

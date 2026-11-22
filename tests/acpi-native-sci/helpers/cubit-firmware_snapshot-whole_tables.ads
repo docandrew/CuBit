@@ -1,0 +1,3 @@
+with Interfaces;package CuBit.Firmware_Snapshot.Whole_Tables is type Byte_Array is array(Positive range <>) of Interfaces.Unsigned_8;subtype Table_Bytes is Natural range 0..1_048_576;type Read_Status is (Found,Absent,Too_Large,Read_Failed);
+ procedure Find(Tables:Authority;Signature:String;Table:out Table_ID;Bytes:out Table_Bytes;Status:out Read_Status);
+ procedure Copy(Tables:Authority;Table:Table_ID;Into:out Byte_Array;Status:out Read_Status);end CuBit.Firmware_Snapshot.Whole_Tables;

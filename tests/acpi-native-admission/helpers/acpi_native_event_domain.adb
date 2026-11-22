@@ -1,0 +1,1 @@
+with Admission_Probe;package body ACPI_Native_Event_Domain is function Diagnostics_Quiet(Server:ACPI_Requests.State) return Boolean is pragma Unreferenced(Server);begin Admission_Probe.Diagnostics:=Admission_Probe.Diagnostics+1;return Admission_Probe.Quiet;end;end ACPI_Native_Event_Domain;

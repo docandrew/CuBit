@@ -10,6 +10,7 @@
 --           tree as the runtime, and its manifest object).
 with "cubit_shared.gpr";
 with "../lib/tls/sparktls_host.gpr";
+with "../lib/signing/signing_host.gpr";
 project CCL_Build is
    type Tool_Targets is ("linux", "cubit");
    Tool_Target : Tool_Targets := external ("CCL_TOOL_TARGET", "linux");

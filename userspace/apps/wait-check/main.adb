@@ -9,6 +9,7 @@
 --  per entry queued and never goes down.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with System.Storage_Elements;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -55,6 +56,8 @@ procedure Main is
    Before, After : R.Count;
    Started : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Self := CuBit.Handles.Startup.Endpoint_Named (ST.Self_Text);
 
    --  Every class empty: Now looks once and finds nothing.

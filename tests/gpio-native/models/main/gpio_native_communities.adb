@@ -2,7 +2,7 @@ pragma Ada_2022;
 with Main_Model;
 package body GPIO_Native_Communities is
    package B renames Main_Model;
-   use type P.Address, I.Word, I.Access_Status, G.Outcome, G.Plan_Result, G.Memory_Resource_Ordinal, G.Pad_Number, B.Scenario;
+   use type P.Address, I.Word, I.Access_Status, I.Write_ID, G.Outcome, G.Plan_Result, G.Memory_Resource_Ordinal, G.Pad_Number, B.Scenario;
    Mapped, Probed : array (G.Memory_Resource_Ordinal) of Boolean := [others => False];
    Frozen : Boolean := False;
    Cache : array (G.Pad_Number) of G.Plan_Result;
@@ -57,7 +57,7 @@ package body GPIO_Native_Communities is
          "only exact cached admitted plans write modeled registers");
       B.Check (G.Interrupt_Eligible (Plan.Selected,
          B.Memory (Plan.Selected.Resource) (Natural (Plan.Selected.Owner_Register) / 4),
-         B.Memory (Plan.Selected.Resource) (Natural (Plan.Selected.Host_Register) / 4), 0),
+         B.Memory (Plan.Selected.Resource) (Natural (Plan.Selected.Host_Register) / 4)),
          "all Main writes target observed host-owned pads");
       B.Register_Writes := B.Register_Writes + 1;
       case ID is
@@ -72,6 +72,10 @@ package body GPIO_Native_Communities is
                "pad configuration only after startup Ready and runtime admission");
             B.Memory (Plan.Selected.Resource) (Offset) := Value;
       end case;
-      Status := (if B.Current = B.Parking_Unknown and then B.Register_Writes = 1 then I.Unknown_Effect else I.Access_OK);
+      Status := (if (B.Current = B.Parking_Unknown and then B.Register_Writes = 1) or else
+         (B.Current = B.Runtime_Write_Unknown and then ID = I.Write_Configuration) then I.Unknown_Effect else I.Access_OK);
+      if B.Current = B.Runtime_Write_Unknown and then Status = I.Unknown_Effect then
+         B.Reads_At_Fault := B.Register_Reads; B.Writes_At_Fault := B.Register_Writes;
+      end if;
    end Write;
 end GPIO_Native_Communities;

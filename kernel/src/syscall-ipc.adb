@@ -41,6 +41,8 @@ with PerCPUData;
 with Channel_Wake_ABI;
 with Contiguous_Memory;
 with Process;
+with Process_Frames;
+with Process_Pool;
 with Process_Identities;
 with Process.DMA;
 with Process.IPC;
@@ -51,13 +53,13 @@ with Wait_Policy;
 with Process.Owned_Memory;
 with Process.Loader;
 with Process.User_Memory;
+with Spawn_Admission;
 with Spinlocks;
 with Process_Lifetime;
 with Physical_Range_Map;
 with Platform_Pool;
 with Platform_Pool_ABI;
 with Service_Registry;
-with System_Publications;
 with TextIO; use TextIO;
 with TLB_Shootdown;
 with Util;
@@ -199,6 +201,7 @@ package body Syscall.IPC is
         limitOK  : Boolean;
         started  : constant Unsigned_64 := Boot_Timeline.Now;
         refuse   : ABI.Refusal := ABI.Invalid_Argument;
+        found    : Process_Capabilities.Found;
 
         procedure refused (why : ABI.Refusal; text : String) is
         begin
@@ -208,11 +211,16 @@ package body Syscall.IPC is
     begin
         retval := ABI.Refusal_Word (ABI.Invalid_Argument);
 
-        -- arg0 names the spawn authority: a CAP_PROCESS with RIGHT_EXECUTE.
-        if not findOwn (callerPID, arg0, Capabilities.CAP_PROCESS,
-                        onlyRight (Capabilities.RIGHT_EXECUTE)).OK
-        then
+        -- arg0 names the spawn authority: a CAP_PROCESS with RIGHT_EXECUTE
+        -- that names every process (Spawn_Admission rule 1). A child's
+        -- Control never spawns: it would mint control of another process.
+        found := findOwn (callerPID, arg0, Capabilities.CAP_PROCESS,
+                          onlyRight (Capabilities.RIGHT_EXECUTE));
+        if not found.OK then
             refused (ABI.Not_Permitted, "SPAWN: denied, no CAP_PROCESS/EXECUTE");
+            return;
+        elsif not Spawn_Admission.Is_Spawn_Authority (found.Cap) then
+            refused (ABI.Not_Permitted, "SPAWN: denied, the authority names one process");
             return;
         end if;
         Process.User_Memory.Copy
@@ -222,6 +230,24 @@ package body Syscall.IPC is
         then
             refused (refuse, "SPAWN: request or result unreadable");
             return;
+        end if;
+
+        -- The parent by identity; a stale one refuses the spawn rather than
+        -- naming whoever holds the slot now. Another process than the caller
+        -- only under Grant over it (rule 3): the parent takes the child's
+        -- exit and may send it control messages. Checked before the image.
+        if request (ABI.Parent) /= 0 then
+            parent := Process.processOfIdentity (Process_Identities.From_Word (request (ABI.Parent)));
+            if parent = Process.NO_PROCESS then
+                refused (ABI.Target_Gone, "SPAWN: parent identity is stale");
+                return;
+            elsif not Spawn_Admission.Parent_Admitted
+                (found.Cap, parent = callerPID, Unsigned_64 (parent),
+                 Process.generationOf (parent))
+            then
+                refused (ABI.Not_Permitted, "SPAWN: denied, no Grant over the named parent");
+                return;
+            end if;
         end if;
         Process_Capabilities.Limit_Of
           (request (ABI.Limit), request (ABI.Limit_Count), limit, limitOK);
@@ -257,16 +283,6 @@ package body Syscall.IPC is
             priority := Process.ProcessPriority (request (ABI.Priority));
         end if;
 
-        -- The parent by identity; a stale one refuses the spawn rather than
-        -- naming whoever holds the slot now.
-        if request (ABI.Parent) /= 0 then
-            parent := Process.processOfIdentity (Process_Identities.From_Word (request (ABI.Parent)));
-            if parent = Process.NO_PROCESS then
-                refused (ABI.Target_Gone, "SPAWN: parent identity is stale");
-                return;
-            end if;
-        end if;
-
         -- The name (0 = default "spawned").
         if request (ABI.Name) /= 0 then
             Process.User_Memory.Copy_Name (callerPID, request (ABI.Name), name, copied);
@@ -295,44 +311,50 @@ package body Syscall.IPC is
         end if;
 
         -- The spawner's handles for the new process, kernel objects for
-        -- their owner: control (all rights), an untagged endpoint it may
-        -- badge and pass on, and the CSPACE for installing the child's
-        -- startup capabilities until it first runs. Placed under the
-        -- spawner's mailbox lock.
+        -- their owner, never wider than the authority (Spawn_Admission rule
+        -- 2): control with the authority's rights; with Grant, also an
+        -- untagged endpoint it may badge and pass on and the CSPACE for
+        -- installing the child's startup capabilities until it first runs
+        -- (ABI.No_Handle otherwise). Placed under the spawner's mailbox lock.
         declare
             gen : constant Capabilities.Generation := Process.generationOf (newPID);
             ref : constant Unsigned_64 := Unsigned_64 (newPID);
-            words : array (1 .. 3) of Unsigned_64;
+            mailbox : constant Boolean := Spawn_Admission.Gives_Mailbox (found.Cap);
+            words : array (1 .. 3) of Unsigned_64 := [others => ABI.No_Handle];
         begin
             Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
             Process_Capabilities.Insert
               (Process.proctab(callerPID).caps,
                (capType => Capabilities.CAP_PROCESS,
-                rights  => (Capabilities.RIGHT_READ | Capabilities.RIGHT_WRITE |
-                            Capabilities.RIGHT_EXECUTE | Capabilities.RIGHT_GRANT => True,
-                            others => False),
+                rights  => Spawn_Admission.Control_Rights (found.Cap),
                 authorityTag => Capabilities.NO_AUTHORITY_TAG,
                 object  => (ref => ref, param => 0),
                 gen     => gen), words (1));
-            Process_Capabilities.Insert
-              (Process.proctab(callerPID).caps,
-               (capType => Capabilities.CAP_ENDPOINT,
-                rights  => (Capabilities.RIGHT_READ | Capabilities.RIGHT_WRITE |
-                            Capabilities.RIGHT_GRANT => True, others => False),
-                authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                object  => (ref => ref, param => 0),
-                gen     => gen), words (2));
-            Process_Capabilities.Insert
-              (Process.proctab(callerPID).caps,
-               (capType => Capabilities.CAP_CSPACE,
-                rights  => (Capabilities.RIGHT_GRANT => True, others => False),
-                authorityTag => Capabilities.NO_AUTHORITY_TAG,
-                object  => (ref => ref, param => 0),
-                gen     => gen), words (3));
-            if not (for all W of words => ABI.Is_Handle_Word (W)) then
+            if mailbox then
+                Process_Capabilities.Insert
+                  (Process.proctab(callerPID).caps,
+                   (capType => Capabilities.CAP_ENDPOINT,
+                    rights  => Spawn_Admission.Endpoint_Rights (found.Cap),
+                    authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                    object  => (ref => ref, param => 0),
+                    gen     => gen), words (2));
+                Process_Capabilities.Insert
+                  (Process.proctab(callerPID).caps,
+                   (capType => Capabilities.CAP_CSPACE,
+                    rights  => Spawn_Admission.Cspace_Rights,
+                    authorityTag => Capabilities.NO_AUTHORITY_TAG,
+                    object  => (ref => ref, param => 0),
+                    gen     => gen), words (3));
+            end if;
+            if not ABI.Is_Handle_Word (words (1)) or else
+               (mailbox and then
+                not (ABI.Is_Handle_Word (words (2)) and then ABI.Is_Handle_Word (words (3))))
+            then
                 -- The spawner's table is full: undo, and discard the child.
                 for W of words loop
-                    if ABI.Is_Handle_Word (W) then
+                    if W = ABI.No_Handle then
+                        null;
+                    elsif ABI.Is_Handle_Word (W) then
                         declare
                             ignoreCap  : Capabilities.Capability;
                             ignoreWord : Unsigned_64;
@@ -671,7 +693,20 @@ package body Syscall.IPC is
             println ("ALLOC_DMA: tracking metadata unavailable");
             return;
         end if;
-        if ceiling = 0 then
+        if Natural (order) <= 9 then
+            -- From the process pool (KERN-014): outside the kernel's map,
+            -- zeroed through the window. dmaAddr is only the allocator's
+            -- name for the block (its linear-map address, never accessed).
+            declare
+                base : Virtmem.PhysAddress;
+            begin
+                Process_Pool.Alloc_Run (Natural (order), ceiling, base);
+                dmaAddr := (if base = 0 then BuddyAllocator.NO_BLOCK_AVAILABLE
+                            else Virtmem.P2Va (base));
+            end;
+        elsif ceiling = 0 then
+            -- Larger than one region: still the kernel's lists (KERN-014
+            -- follow-up), so the kernel's map still covers these.
             BuddyAllocator.alloc (order, dmaAddr);
         else
             BuddyAllocator.allocBelow (order, ceiling, dmaAddr);
@@ -1198,14 +1233,14 @@ package body Syscall.IPC is
         success : Boolean;
 
         procedure Add (Index : Natural; Success : out Boolean) is
-            storage : System.Address;
+            storage : Process_Frames.Process_Frame;
             allocation : Process.Page_Allocation_Result;
         begin
             Process.tryAddPage
               (proc => Process.proctab(callerPID),
                mapTo => To_Address (Integer_Address (plan.First_Page) +
                                     Integer_Address (Index) * Virtmem.PAGE_SIZE),
-               storage => storage, result => allocation, flags => Virtmem.PG_USERDATA);
+               frame => storage, result => allocation, flags => Virtmem.PG_USERDATA);
             Success := allocation = Process.Page_Added;
         end Add;
         procedure Unmap (Index : Natural) is
@@ -1222,6 +1257,7 @@ package body Syscall.IPC is
             frame : constant Virtmem.PhysAddress := Process.FrameLists.front (frames);
         begin
             Process.FrameLists.popFront (frames);
+            Process.publishOwnedBytes (callerPID);
             BuddyAllocator.freeFrame (frame);
         end Release_Latest;
         procedure Grow is new Heap_Growth.Apply
@@ -1908,39 +1944,6 @@ package body Syscall.IPC is
     end handleRevokeGrantReference;
 
     ---------------------------------------------------------------------------
-    -- handleReadStatistics (SYSCALL_READ_STATISTICS)
-    -- arg0 = address of a System_Publications.Statistics in the caller's own
-    -- writable memory, arg1 = its size. Only the caller's own counters and
-    -- the system's free memory: callerPID comes from the running thread, so
-    -- no argument can select another process.
-    ---------------------------------------------------------------------------
-    procedure handleReadStatistics (callerPID  : Process.ProcessID;
-                                    arg0, arg1 : Unsigned_64;
-                                    retval     : out Unsigned_64) with
-        SPARK_Mode => Off
-    is
-        Snapshot : constant System_Publications.Statistics :=
-          (Owned_Bytes       => Unsigned_64 (Process.proctab(callerPID).frames.length) *
-                                  Unsigned_64 (Virtmem.PAGE_SIZE),
-           Event_Drops       => Process.proctab(callerPID).eventDrops,
-           Free_Memory_Bytes => Unsigned_64 (BuddyAllocator.getFreeBytes),
-           Thread_System_Calls =>
-             Process.threadtab (PerCPUData.getCurrentThread).systemCalls);
-        copied : Boolean;
-    begin
-        retval := reterr;
-        if arg1 /= System_Publications.Statistics_Bytes then
-            return;
-        end if;
-        Process.User_Memory.Copy_To_User
-          (callerPID, arg0, Snapshot'Address,
-           System_Publications.Statistics_Bytes, copied);
-        if copied then
-            retval := 0;
-        end if;
-    end handleReadStatistics;
-
-    ---------------------------------------------------------------------------
     -- handleGrantViaCap
     -- Create a shared memory grant using a capability slot to identify the
     -- grantee, instead of a raw PID.
@@ -2251,13 +2254,14 @@ package body Syscall.IPC is
                   (Process.processOfIdentity (Process_Identities.From_Word (a)));
 
             when Wait_Policy.Timer =>
-                -- a: an absolute time on READ_MONOTONIC_MICROSECONDS's
-                -- clock. A time already passed returns at once.
+                -- a: an absolute time on user space's monotonic clock
+                -- (Time.Read_User_Monotonic, CuBit.Monotonic). A time
+                -- already passed returns at once.
                 declare
                     nowUs : Unsigned_64;
                     available : Boolean;
                 begin
-                    Time.Read_Monotonic (nowUs, available);
+                    Time.Read_User_Monotonic (nowUs, available);
                     if available and then a > nowUs then
                         Process.sleep (Time.Duration (a - nowUs));
                     end if;

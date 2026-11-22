@@ -9,7 +9,10 @@ with CuBit.Launch_Envelopes;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Libc_Process;
+with System.Storage_Elements;
+with Trace_ABI;
 
+with CuBit.Libc_Log;
 package body CuBit.Libc_Startup is
 
    package ST renames CuBit.Startup_Tables;
@@ -83,6 +86,72 @@ package body CuBit.Libc_Startup is
    begin
       return CuBit.Handles.C_ABI.To_Endpoint ((Opaque => Word));
    end Endpoint_Named;
+
+   --  Name's text (NUL-terminated, at most Maximum_Name_Bytes), or Found
+   --  False.
+   procedure Name_Text (Name : System.Address; Length : out Natural; Found : out Boolean) is
+      use type System.Address;
+      Text : String (1 .. ST.Maximum_Name_Bytes + 1) with Import, Address => Name;
+   begin
+      Length := 0;
+      Found := False;
+      if Name = System.Null_Address then
+         return;
+      end if;
+      for L in 0 .. ST.Maximum_Name_Bytes loop
+         if Text (L + 1) = ASCII.NUL then
+            Length := L;
+            Found := True;
+            return;
+         end if;
+      end loop;
+   end Name_Text;
+
+   function Startup_Trace
+     (Name : System.Address) return CuBit.Handles.C_ABI.C_Trace
+   is
+      Length : Natural;
+      Found : Boolean;
+   begin
+      Name_Text (Name, Length, Found);
+      if not Found then
+         return CuBit.Handles.C_ABI.No_C_Trace;
+      end if;
+      declare
+         Text : constant String (1 .. Length) with Import, Address => Name;
+      begin
+         return (Opaque => Granted (Text, ST.Trace));
+      end;
+   end Startup_Trace;
+
+   function Trace_Perform
+     (Object : CuBit.Handles.C_ABI.C_Trace; Operation : Interfaces.C.unsigned)
+      return Interfaces.C.unsigned
+   is
+      use type Interfaces.C.unsigned;
+      M : aliased CuBit.Kernel_ABI.Message :=
+        (Label => Unsigned_32 (Operation), Length => Trace_ABI.Request_Words, others => <>);
+      Result : Unsigned_64;
+   begin
+      if Object.Opaque = 0
+        or else not Trace_ABI.Is_Operation_Label (Unsigned_64 (Operation))
+      then
+         return 0;
+      end if;
+      --  The one Call: the kernel resolves the handle and, for its trace
+      --  object, answers in M.
+      Result := CuBit.Kernel_Calls.Call
+        (CuBit.Kernel_ABI.Call_Via_Endpoint_Capability, Object.Opaque,
+         Unsigned_64 (System.Storage_Elements.To_Integer (M'Address)), CuBit.Kernel_ABI.Forever);
+      if Result = 0 or else Result = Unsigned_64'Last
+        or else M.Label /= Unsigned_32 (Operation)
+        or else M.Length /= Trace_ABI.Reply_Words
+        or else not Trace_ABI.Is_Outcome_Word (M.Words (Trace_ABI.Outcome_Word))
+      then
+         return 0;
+      end if;
+      return Interfaces.C.unsigned (M.Words (Trace_ABI.Outcome_Word));
+   end Trace_Perform;
 
    function Startup_Endpoint
      (Name : System.Address) return CuBit.Handles.C_ABI.C_Endpoint
@@ -159,6 +228,7 @@ package body CuBit.Libc_Startup is
          end if;
          Put ("; stopping (CAP-003 startup check)" & ASCII.LF);
          CuBit.Libc_Process.Debug_Write (Note'Address, Interfaces.C.size_t (Note_Length));
+         CuBit.Libc_Log.Flush;
          loop
             Ignore := CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Exit_Process, Startup_Refused);
          end loop;

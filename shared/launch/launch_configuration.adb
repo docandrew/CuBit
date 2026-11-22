@@ -76,7 +76,7 @@ package body Launch_Configuration with SPARK_Mode is
    begin
       Result.Words (4) := Value.Framebuffer.First;
       Result.Words (5) := Value.Framebuffer.Bytes;
-      Result.Words (6 .. 22) := Process_Handle_Words (Value.Handles);
+      Result.Words (6 .. 5 + Process_Manager_Handle_Fields) := Process_Handle_Words (Value.Handles);
       return Result;
    end Encode;
 
@@ -165,7 +165,11 @@ package body Launch_Configuration with SPARK_Mode is
                       Notifications     => Words (First_Handle_Word + 9),
                       Scheduling        => Words (First_Handle_Word + 10),
                       Firmware_Snapshot => Words (First_Handle_Word + 11),
-                      Platform_Power    => Words (First_Handle_Word + 12)));
+                      Platform_Power    => Words (First_Handle_Word + 12),
+                      Trace             => Words (First_Handle_Word + 13),
+                      Process_List      => Words (First_Handle_Word + 14),
+                      Test_Console      => Words (First_Handle_Word + 15),
+                      VM_Create         => Words (First_Handle_Word + 16)));
       end if;
    end Decode;
 
@@ -188,7 +192,9 @@ package body Launch_Configuration with SPARK_Mode is
          Mixer => Words (16), Device_Manager => Words (17),
          Ready => Words (18), Framebuffer => Words (19),
          Device_Inspection => Words (20), Firmware_Snapshot => Words (21),
-         Platform_Power => Words (22));
+         Platform_Power => Words (22), Trace => Words (23),
+         Process_List => Words (24), Test_Console => Words (25),
+         VM_Create => Words (26));
       Valid := Process_Handles_Well_Formed (Value.Handles);
       if Valid then
          Value.Framebuffer := (First => Words (4), Bytes => Words (5));

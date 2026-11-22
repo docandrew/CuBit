@@ -21,7 +21,7 @@ package Intel_GPIO_IRQ_Owner with SPARK_Mode is
       Acknowledge, Event_Ready, Faulted);
    type Failure is (None, Clock_Unavailable, Clock_Reversed, Deadline_Expired,
       Budget_Exhausted, Register_Refused, Register_Indeterminate,
-      Ownership_Refused, Readback_Refused, Tickets_Exhausted);
+      Ownership_Refused, Readback_Refused, Tickets_Exhausted, Locked_Configuration_Refused);
    type Admission is (Accepted, Busy, Invalid_Plan, Clock_Refused, Expired, Wrong_Ticket);
    type Report is record
       At_Phase : Phase := Cold;
@@ -86,7 +86,7 @@ private
       Owner, Host, Desired_Config, Desired_Enable : I.Word := 0;
       Deadline, Previous : I.Tick := 0;
       Remaining : I.Count := 0;
-      Rearming, Pausing, Initial_Masked : Boolean := False;
+      Rearming, Pausing, Initial_Masked, Config_Is_Locked : Boolean := False;
    end record with Type_Invariant => Valid_State (State);
    function Valid_State (S : State) return Boolean is
      (if S.Info.At_Phase in Cold | Faulted then True

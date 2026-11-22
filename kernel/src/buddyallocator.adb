@@ -13,6 +13,8 @@ with Buddy_Blocks;
 with Buddy_Geometry;
 with Buddy_Boot_Admission;
 with Buddy_Metadata;
+with Free_Link_Codes;
+with Pool_Region_Maps;
 with Firmware_Frames;
 with Intrusive_List_Splices;
 with TextIO; use TextIO;
@@ -56,6 +58,45 @@ is
     chargeMetadataPages : Unsigned_64 := 0;
     maxPinPFN       : Unsigned_64 := 0;
     blockStateBase : System.Address := System.Null_Address;
+    -- Free-list links, one Free_Link_Codes.Links per frame (KERN-014): a
+    -- free block's next and previous live here, never in the block, so a
+    -- frame a process gave back carries no kernel addresses and a frame
+    -- outside the kernel's map can still be listed.
+    linkBase : System.Address := System.Null_Address;
+    ---------------------------------------------------------------------------
+    -- The process pool (KERN-014 slice 4): 2 MiB regions taken from the
+    -- kernel's lists as order-9 blocks and detached from the kernel's linear
+    -- map (Process_Pool does the detach and the TLB round). Process frames
+    -- come from here; a frame a process frees comes back here, never to the
+    -- kernel's lists. One record per region of RAM, in use only while the
+    -- region is joined.
+    ---------------------------------------------------------------------------
+    Region_Frames : constant := Pool_Region_Maps.Frames_Per_Region;
+    No_Region : constant Unsigned_32 := Unsigned_32'Last;
+    type Pool_Record is record
+        Map         : Pool_Region_Maps.Region_Map;
+        Free_Frames : Natural range 0 .. Region_Frames := 0;
+        Hint        : Pool_Region_Maps.Frame_Offset := 0;
+        Joined      : Boolean := False;
+        Listed      : Boolean := False;   -- on the with-free list
+        Next        : Unsigned_32 := No_Region;
+        Saved       : Virtmem.PageTableEntry := Virtmem.EMPTY_PTE;
+    end record;
+    poolBase : System.Address := System.Null_Address;
+    maxRegion : Unsigned_64 := 0;
+    poolFreeList : Unsigned_32 := No_Region;
+    poolRegions : Natural := 0;
+    poolReclaim : Pool_Reclaim_Handler := null;
+    reclaiming  : Boolean := False with Atomic;
+
+    function poolRecordAddress (region : Unsigned_64) return System.Address is
+      (poolBase + Storage_Offset (region) * (Pool_Record'Size / System.Storage_Unit))
+      with Inline;
+
+    pragma Compile_Time_Error
+      (Free_Link_Codes.Links'Size /= Buddy_Metadata.Link_Bytes * System.Storage_Unit
+       or else Natural (Order'Last) >= Free_Link_Codes.List_Count,
+       "Free-list link entries must match their metadata slots and name every order");
 
     -- Only this adapter converts addresses into metadata locations. All
     -- callers hold the allocator lock (or are in single-threaded setup).
@@ -267,6 +308,9 @@ is
           (highest, Buddy_Metadata.Frame_Owners, Buddy_Metadata.Page_Size (Virtmem.FRAME_SIZE));
         blockPages : constant Buddy_Metadata.Table_Size := Buddy_Metadata.Pages
           (highest, Buddy_Metadata.Block_State, Buddy_Metadata.Page_Size (Virtmem.FRAME_SIZE));
+        linkPages : constant Buddy_Metadata.Table_Size := Buddy_Metadata.Pages
+          (highest, Buddy_Metadata.Free_Links, Buddy_Metadata.Page_Size (Virtmem.FRAME_SIZE));
+        linkPhys   : Virtmem.PhysAddress;
         pinPhys    : Virtmem.PhysAddress;
         ownerPhys  : Virtmem.PhysAddress;
         blockPhys  : Virtmem.PhysAddress;
@@ -277,13 +321,54 @@ is
         if statePages > Buddy_Metadata.Byte_Count (BootAllocator.AllocSize'Last)
           or else ownerPages > Buddy_Metadata.Byte_Count (BootAllocator.AllocSize'Last)
           or else blockPages > Buddy_Metadata.Byte_Count (BootAllocator.AllocSize'Last)
+          or else linkPages > Buddy_Metadata.Byte_Count (BootAllocator.AllocSize'Last)
         then
             raise BootAllocator.OutOfMemoryException with "Buddy metadata exceeds boot allocation capacity";
+        end if;
+        -- Links name frames in 32 bits (Free_Link_Codes): 16 TiB, the
+        -- linear map's own limit.
+        if Unsigned_64 (highest) > Free_Link_Codes.Frame_Number'Last then
+            raise AllocatorException with "Physical memory beyond free-list link range";
         end if;
         BootAllocator.allocFrames (BootAllocator.AllocSize (statePages), pinPhys);
         BootAllocator.allocFrames (BootAllocator.AllocSize (ownerPages), ownerPhys);
         BootAllocator.allocFrames (BootAllocator.AllocSize (blockPages), blockPhys);
+        -- Not cleared: an entry means something only while its frame heads
+        -- a listed block, and listing writes both links.
+        BootAllocator.allocFrames (BootAllocator.AllocSize (linkPages), linkPhys);
         pinStateBase := Virtmem.P2Va (pinPhys);
+        linkBase := Virtmem.P2Va (linkPhys);
+        -- One process-pool record per 2 MiB region (KERN-014).
+        maxRegion := Unsigned_64 (highest) / Region_Frames;
+        declare
+            poolBytes : constant Unsigned_64 :=
+              (maxRegion + 1) * Unsigned_64 (Pool_Record'Size / System.Storage_Unit);
+            poolPages : constant Unsigned_64 :=
+              (poolBytes + Unsigned_64 (Virtmem.FRAME_SIZE) - 1) / Unsigned_64 (Virtmem.FRAME_SIZE);
+            poolPhys : Virtmem.PhysAddress;
+        begin
+            if poolPages > Unsigned_64 (BootAllocator.AllocSize'Last) then
+                raise BootAllocator.OutOfMemoryException with "Process pool records exceed boot allocation capacity";
+            end if;
+            BootAllocator.allocFrames (BootAllocator.AllocSize (poolPages), poolPhys);
+            poolBase := Virtmem.P2Va (poolPhys);
+            for r in 0 .. maxRegion loop
+                declare
+                    item : Pool_Record with Import, Address => poolRecordAddress (r);
+                begin
+                    for f in Pool_Region_Maps.Frame_Offset loop
+                        item.Map.Free (f) := False;
+                        item.Map.Clean (f) := False;
+                    end loop;
+                    item.Free_Frames := 0;
+                    item.Hint := 0;
+                    item.Joined := False;
+                    item.Listed := False;
+                    item.Next := No_Region;
+                    item.Saved := Virtmem.EMPTY_PTE;
+                end;
+            end loop;
+        end;
         frameOwnerBase := Virtmem.P2Va (ownerPhys);
         blockStateBase := Virtmem.P2Va (blockPhys);
         maxPinPFN := Unsigned_64 (highest);
@@ -349,32 +434,150 @@ is
     end testBit;
 
     ---------------------------------------------------------------------------
+    -- Out-of-band free-list links (KERN-014). A list reference is still the
+    -- block's linear address, or the order's list head (getListAddress); only
+    -- where a block's links are stored changed. The list heads keep their
+    -- own fields in freeLists.
+    ---------------------------------------------------------------------------
+    List_Stride : constant Integer_Address :=
+      Integer_Address (FreeListArray'Component_Size / System.Storage_Unit);
+
+    -- The order whose list head is addr, or -1 when addr is a block.
+    function headOrder (addr : System.Address) return Integer
+      with SPARK_Mode => Off, Inline
+    is
+        first : constant Integer_Address := To_Integer (getListAddress (Order'First));
+        here : constant Integer_Address := To_Integer (addr);
+    begin
+        if here >= first and then here - first < List_Stride * (Integer_Address (Order'Last) + 1)
+          and then (here - first) mod List_Stride = 0
+        then
+            return Integer ((here - first) / List_Stride);
+        end if;
+        return -1;
+    end headOrder;
+
+    function linkAddress (addr : System.Address) return System.Address
+      with SPARK_Mode => Off, Inline
+    is
+        pfn : Unsigned_64;
+    begin
+        if To_Integer (addr) < Virtmem.LINEAR_BASE then
+            raise AllocatorException with "Invalid free-list block";
+        end if;
+        pfn := Unsigned_64 ((To_Integer (addr) - Virtmem.LINEAR_BASE) /
+                            Integer_Address (Virtmem.FRAME_SIZE));
+        if linkBase = System.Null_Address or else pfn > maxPinPFN then
+            raise AllocatorException with "Free-list block outside allocator metadata";
+        end if;
+        return To_Address (Integer_Address (Buddy_Metadata.Address_Of
+          (Unsigned_64 (To_Integer (linkBase)), Buddy_Metadata.Frame (pfn),
+           Buddy_Metadata.Free_Links)));
+    end linkAddress;
+
+    function encode (addr : System.Address) return Free_Link_Codes.Code
+      with SPARK_Mode => Off, Inline
+    is
+        ord : constant Integer := headOrder (addr);
+    begin
+        if ord >= 0 then
+            return Free_Link_Codes.Of_List (Free_Link_Codes.List_Index (ord));
+        end if;
+        return Free_Link_Codes.Of_Frame (Free_Link_Codes.Frame_Number
+          ((To_Integer (addr) - Virtmem.LINEAR_BASE) / Integer_Address (Virtmem.FRAME_SIZE)));
+    end encode;
+
+    function decode (item : Free_Link_Codes.Code) return System.Address
+      with SPARK_Mode => Off, Inline
+    is
+    begin
+        if Free_Link_Codes.Is_List (item) then
+            return getListAddress (Order (Free_Link_Codes.List_Of (item)));
+        end if;
+        return Virtmem.P2Va (Virtmem.PhysAddress (Free_Link_Codes.Frame_Of (item)) *
+                             Virtmem.PhysAddress (Virtmem.FRAME_SIZE));
+    end decode;
+
+    function nextOf (addr : System.Address) return System.Address
+      with SPARK_Mode => Off, Inline
+    is
+        ord : constant Integer := headOrder (addr);
+    begin
+        if ord >= 0 then
+            return freeLists (Order (ord)).nextBlock;
+        end if;
+        declare
+            links : Free_Link_Codes.Links with Import, Volatile, Address => linkAddress (addr);
+        begin
+            return decode (links.Next);
+        end;
+    end nextOf;
+
+    function prevOf (addr : System.Address) return System.Address
+      with SPARK_Mode => Off, Inline
+    is
+        ord : constant Integer := headOrder (addr);
+    begin
+        if ord >= 0 then
+            return freeLists (Order (ord)).prevBlock;
+        end if;
+        declare
+            links : Free_Link_Codes.Links with Import, Volatile, Address => linkAddress (addr);
+        begin
+            return decode (links.Previous);
+        end;
+    end prevOf;
+
+    procedure setNext (addr, value : System.Address) with SPARK_Mode => Off, Inline is
+        ord : constant Integer := headOrder (addr);
+    begin
+        if ord >= 0 then
+            freeLists (Order (ord)).nextBlock := value;
+            return;
+        end if;
+        declare
+            links : Free_Link_Codes.Links with Import, Volatile, Address => linkAddress (addr);
+        begin
+            links.Next := encode (value);
+        end;
+    end setNext;
+
+    procedure setPrev (addr, value : System.Address) with SPARK_Mode => Off, Inline is
+        ord : constant Integer := headOrder (addr);
+    begin
+        if ord >= 0 then
+            freeLists (Order (ord)).prevBlock := value;
+            return;
+        end if;
+        declare
+            links : Free_Link_Codes.Links with Import, Volatile, Address => linkAddress (addr);
+        begin
+            links.Previous := encode (value);
+        end;
+    end setPrev;
+
+    ---------------------------------------------------------------------------
     -- popFromFreeList
     ---------------------------------------------------------------------------
     procedure popFromFreeList (ord  : in Order;
                                addr : out System.Address) with
-        SPARK_Mode => Off, -- physical-memory free-list overlays
+        SPARK_Mode => Off, -- out-of-band link table overlays
         Pre     => freeLists(ord).numFreeBlocks > 0,
         Post    => freeLists(ord).numFreeBlocks =
                    freeLists(ord).numFreeBlocks'Old - 1
     is
-        retBlock : aliased FreeBlock
-            with Import, Volatile, Address => freeLists(ord).nextBlock;
+        following : System.Address;
+        headNext, followingPrevious : System.Address;
     begin
         -- set output
         addr := freeLists(ord).nextBlock;
         moveBlock (ord, addr, Buddy_Blocks.Remove);
-
-        linkNext:
-        declare
-            nextBlock : aliased FreeBlock
-                with Import, Volatile, Address => retBlock.nextBlock;
-        begin
-            -- fwd link to next block in list (may be the head)
-            List_Splices.Remove
-              (freeLists (ord).nextBlock, nextBlock.prevBlock,
-               getListAddress (ord), retBlock.nextBlock);
-        end linkNext;
+        following := nextOf (addr);
+        -- fwd link to next block in list (may be the head)
+        List_Splices.Remove
+          (headNext, followingPrevious, getListAddress (ord), following);
+        freeLists (ord).nextBlock := headNext;
+        setPrev (following, followingPrevious);
 
         freeLists (ord).numFreeBlocks := List_Splices.Removed
           (freeLists (ord).numFreeBlocks);
@@ -391,20 +594,20 @@ is
     ---------------------------------------------------------------------------
     procedure addToFreeList (ord : Order;
                              newBlockAddr : in System.Address) with
-        SPARK_Mode => Off -- physical-memory free-list overlays
+        SPARK_Mode => Off -- out-of-band link table overlays
     is
-        newBlock  : aliased FreeBlock with
-            Import, Volatile, Address => newBlockAddr;
-
-        nextBlock : aliased FreeBlock with
-            Import, Volatile, Address => freeLists(ord).nextBlock;
+        first : constant System.Address := freeLists (ord).nextBlock;
+        headNext : System.Address := first;
+        firstPrevious, newPrevious, newNext : System.Address;
     begin
         moveBlock (ord, newBlockAddr, Buddy_Blocks.Publish);
         List_Splices.Insert_Front
-          (freeLists (ord).nextBlock, nextBlock.prevBlock,
-           newBlock.prevBlock, newBlock.nextBlock,
+          (headNext, firstPrevious, newPrevious, newNext,
            getListAddress (ord), newBlockAddr);
-        newBlock.buddy              := getBuddy (ord, newBlockAddr);
+        freeLists (ord).nextBlock := headNext;
+        setPrev (first, firstPrevious);
+        setPrev (newBlockAddr, newPrevious);
+        setNext (newBlockAddr, newNext);
         freeLists (ord).numFreeBlocks := List_Splices.Added
           (freeLists (ord).numFreeBlocks);
     end addToFreeList;
@@ -471,30 +674,22 @@ is
     -- @param addr - address of the block to remove from the free list
     ---------------------------------------------------------------------------
     procedure unlink (ord : in Order; addr : in System.Address) with
-        SPARK_Mode => Off, -- physical-memory free-list overlays
+        SPARK_Mode => Off, -- out-of-band link table overlays
         Pre  => freeLists(ord).numFreeBlocks > 0,
         Post => freeLists(ord).numFreeBlocks =
                 freeLists(ord).numFreeBlocks'Old - 1
     is
-        block : aliased FreeBlock with
-            Import, Volatile, Address => addr;
-
+        previous, following : System.Address;
+        previousNext, followingPrevious : System.Address;
     begin
-        -- Validate membership before reading potentially live payload as links.
+        -- Validate membership before reading its links.
         moveBlock (ord, addr, Buddy_Blocks.Remove);
-        linkNeighbors:
-        declare
-            prevAddr : constant System.Address := block.prevBlock;
-            nextAddr : constant System.Address := block.nextBlock;
-            prevBlock : aliased FreeBlock with
-                Import, Volatile, Address => prevAddr;
-
-            nextBlock : aliased FreeBlock with
-                Import, Volatile, Address => nextAddr;
-        begin
-            List_Splices.Remove
-              (prevBlock.nextBlock, nextBlock.prevBlock, prevAddr, nextAddr);
-        end linkNeighbors;
+        previous := prevOf (addr);
+        following := nextOf (addr);
+        List_Splices.Remove
+          (previousNext, followingPrevious, previous, following);
+        setNext (previous, previousNext);
+        setPrev (following, followingPrevious);
 
         freeLists (ord).numFreeBlocks := List_Splices.Removed
           (freeLists (ord).numFreeBlocks);
@@ -728,7 +923,22 @@ is
     ---------------------------------------------------------------------------
     -- alloc
     ---------------------------------------------------------------------------
+    -- The allocation; Zero_It says whether to zero the block here, through
+    -- the linear map (kernel blocks), or leave it to the caller (process
+    -- frames are zeroed through the kernel window, KERN-014).
+    procedure allocBlock (ord : in Order; addr : out System.Address; Zero_It : Boolean;
+                          May_Reclaim : Boolean := True)
+      with SPARK_Mode => Off;
+
     procedure alloc (ord : in Order; addr : out System.Address) with
+        SPARK_Mode => Off
+    is
+    begin
+        allocBlock (ord, addr, Zero_It => True);
+    end alloc;
+
+    procedure allocBlock (ord : in Order; addr : out System.Address; Zero_It : Boolean;
+                          May_Reclaim : Boolean := True) with
         SPARK_Mode => Off  -- lock calls change Global contract
     is
         use System;
@@ -766,11 +976,13 @@ is
                 -- Zero the allocated block outside the lock to prevent
                 -- information leakage between processes. Only zero the
                 -- requested size, not the full popped block.
-                declare
-                    ignore : System.Address;
-                begin
-                    ignore := Util.memset (addr, 0, blockSize (ord));
-                end;
+                if Zero_It then
+                    declare
+                        ignore : System.Address;
+                    begin
+                        ignore := Util.memset (addr, 0, blockSize (ord));
+                    end;
+                end if;
                 return;
             end if;
 
@@ -781,7 +993,21 @@ is
         -- no blocks found that can satisfy the request
         addr := NO_BLOCK_AVAILABLE;
         Spinlocks.exitCriticalSection (lock);
-    end alloc;
+        -- The kernel's lists are empty: wholly free process-pool regions go
+        -- back (KERN-014), then one more try. Not for the pool's own growth.
+        if May_Reclaim and then poolReclaim /= null and then not reclaiming then
+            declare
+                released : Boolean;
+            begin
+                reclaiming := True;
+                poolReclaim (released);
+                reclaiming := False;
+                if released then
+                    allocBlock (ord, addr, Zero_It, May_Reclaim => False);
+                end if;
+            end;
+        end if;
+    end allocBlock;
 
     procedure allocBelow
       (ord : Order; ceiling : Unsigned_64; addr : out System.Address) with
@@ -817,11 +1043,7 @@ is
                     Ignored := Util.memset (addr, 0, blockSize (ord));
                     return;
                 end if;
-                declare
-                    Node : FreeBlock with Import, Volatile, Address => Candidate;
-                begin
-                    Candidate := Node.nextBlock;
-                end;
+                Candidate := nextOf (Candidate);
             end loop;
         end loop;
         Spinlocks.exitCriticalSection (lock);
@@ -839,6 +1061,264 @@ is
         -- Null is the allocation-failure sentinel, not a linear-map address.
         addr := (if vaddr = NO_BLOCK_AVAILABLE then 0 else Virtmem.V2P (vaddr));
     end allocFrame;
+
+    ---------------------------------------------------------------------------
+    -- Process pool (KERN-014 slice 4). Callers of the pool* helpers hold lock.
+    ---------------------------------------------------------------------------
+    function inPool (pfn : Unsigned_64) return Boolean with SPARK_Mode => Off is
+    begin
+        if poolBase = System.Null_Address or else pfn / Region_Frames > maxRegion then
+            return False;
+        end if;
+        declare
+            item : Pool_Record with Import, Address => poolRecordAddress (pfn / Region_Frames);
+        begin
+            return item.Joined;
+        end;
+    end inPool;
+
+    procedure poolGive (pfn : Unsigned_64; ord : Order) with SPARK_Mode => Off is
+        region : constant Unsigned_64 := pfn / Region_Frames;
+        item : Pool_Record with Import, Address => poolRecordAddress (region);
+        first : constant Pool_Region_Maps.Frame_Offset :=
+          Pool_Region_Maps.Frame_Offset (pfn mod Region_Frames);
+        frames : constant Natural := 2 ** Natural (ord);
+    begin
+        if not item.Joined or else ord > Pool_Region_Maps.Max_Run_Order
+          or else first mod frames /= 0
+        then
+            raise AllocatorException with "Invalid process-pool free";
+        end if;
+        for i in 0 .. frames - 1 loop
+            if item.Map.Free (first + i) then
+                raise AllocatorException with "Process-pool frame freed twice";
+            end if;
+        end loop;
+        Pool_Region_Maps.Give (item.Map, first, Pool_Region_Maps.Run_Order (ord));
+        item.Free_Frames := item.Free_Frames + frames;
+        poolFreeFrameCount := poolFreeFrameCount + frames;
+        if not item.Listed then
+            item.Listed := True;
+            item.Next := poolFreeList;
+            poolFreeList := Unsigned_32 (region);
+        end if;
+    end poolGive;
+
+    procedure takeRegion
+      (base : out Virtmem.PhysAddress; ceiling : Interfaces.Unsigned_64 := 0)
+      with SPARK_Mode => Off
+    is
+        vaddr : System.Address;
+    begin
+        -- Never by giving pool regions back: that is what the pool grows from.
+        if ceiling = 0 then
+            allocBlock (9, vaddr, Zero_It => True, May_Reclaim => False);
+        else
+            allocBelow (9, ceiling, vaddr);   -- zeroes, as alloc does
+        end if;
+        base := (if vaddr = NO_BLOCK_AVAILABLE then 0 else Virtmem.V2P (vaddr));
+    end takeRegion;
+
+    procedure joinPool (base : Virtmem.PhysAddress; Saved : Virtmem.PageTableEntry)
+      with SPARK_Mode => Off
+    is
+        region : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (base)) / Region_Frames;
+        item : Pool_Record with Import, Address => poolRecordAddress (region);
+    begin
+        if base mod Virtmem.BIG_FRAME_SIZE /= 0 or else region > maxRegion then
+            raise AllocatorException with "Invalid process-pool region";
+        end if;
+        Spinlocks.enterCriticalSection (lock);
+        if item.Joined then
+            Spinlocks.exitCriticalSection (lock);
+            raise AllocatorException with "Process-pool region joined twice";
+        end if;
+        -- Field by field: the record is 1 KiB, too big for a stack temporary.
+        for f in Pool_Region_Maps.Frame_Offset loop
+            item.Map.Free (f) := True;
+            item.Map.Clean (f) := True;
+        end loop;
+        item.Free_Frames := Region_Frames;
+        item.Hint := 0;
+        item.Joined := True;
+        item.Listed := True;
+        item.Next := poolFreeList;
+        item.Saved := Saved;
+        poolFreeList := Unsigned_32 (region);
+        poolFreeFrameCount := poolFreeFrameCount + Region_Frames;
+        poolRegions := poolRegions + 1;
+        Spinlocks.exitCriticalSection (lock);
+    end joinPool;
+
+    procedure allocFromPool
+      (ord : Order; ceiling : Interfaces.Unsigned_64; onlyClean : Boolean;
+       base : out Virtmem.PhysAddress; clean : out Boolean) with SPARK_Mode => Off
+    is
+        frames : constant Natural := 2 ** Natural (ord);
+        previous : Unsigned_32 := No_Region;
+        region : Unsigned_32;
+        first : Pool_Region_Maps.Frame_Offset;
+        found : Boolean;
+    begin
+        base := 0;
+        clean := False;
+        Spinlocks.enterCriticalSection (lock);
+        region := poolFreeList;
+        while region /= No_Region loop
+            declare
+                item : Pool_Record with Import, Address => poolRecordAddress (Unsigned_64 (region));
+                regionBase : constant Unsigned_64 :=
+                  Unsigned_64 (region) * Region_Frames * Unsigned_64 (Virtmem.FRAME_SIZE);
+                following : constant Unsigned_32 := item.Next;
+            begin
+                if item.Free_Frames = 0 then
+                    -- Drop full regions from the list as they are met.
+                    item.Listed := False;
+                    item.Next := No_Region;
+                    if previous = No_Region then
+                        poolFreeList := following;
+                    else
+                        declare
+                            before : Pool_Record with Import,
+                              Address => poolRecordAddress (Unsigned_64 (previous));
+                        begin
+                            before.Next := following;
+                        end;
+                    end if;
+                else
+                    if item.Free_Frames >= frames then
+                        Pool_Region_Maps.Find
+                          ((if onlyClean then item.Map.Clean else item.Map.Free),
+                           Pool_Region_Maps.Run_Order (ord), item.Hint, first, found);
+                        if found and then
+                          (ceiling = 0 or else regionBase + Unsigned_64 (first + frames) *
+                             Unsigned_64 (Virtmem.FRAME_SIZE) <= ceiling)
+                        then
+                            clean := True;
+                            for i in 0 .. frames - 1 loop
+                                clean := clean and then item.Map.Clean (first + i);
+                            end loop;
+                            Pool_Region_Maps.Take (item.Map, first, Pool_Region_Maps.Run_Order (ord));
+                            item.Free_Frames := item.Free_Frames - frames;
+                            poolFreeFrameCount := poolFreeFrameCount - frames;
+                            item.Hint := (first + frames) mod Region_Frames;
+                            base := Virtmem.PhysAddress (regionBase) +
+                              Virtmem.PhysAddress (first) * Virtmem.PhysAddress (Virtmem.FRAME_SIZE);
+                            Spinlocks.exitCriticalSection (lock);
+                            return;
+                        end if;
+                    end if;
+                    previous := region;
+                end if;
+                region := following;
+            end;
+        end loop;
+        Spinlocks.exitCriticalSection (lock);
+    end allocFromPool;
+
+    procedure leavePool
+      (base : out Virtmem.PhysAddress; Saved : out Virtmem.PageTableEntry;
+       found : out Boolean) with SPARK_Mode => Off
+    is
+        previous : Unsigned_32 := No_Region;
+        region : Unsigned_32;
+    begin
+        base := 0;
+        Saved := Virtmem.EMPTY_PTE;
+        found := False;
+        Spinlocks.enterCriticalSection (lock);
+        region := poolFreeList;
+        while region /= No_Region loop
+            declare
+                item : Pool_Record with Import, Address => poolRecordAddress (Unsigned_64 (region));
+                following : constant Unsigned_32 := item.Next;
+            begin
+                if item.Free_Frames = Region_Frames then
+                    if previous = No_Region then
+                        poolFreeList := following;
+                    else
+                        declare
+                            before : Pool_Record with Import,
+                              Address => poolRecordAddress (Unsigned_64 (previous));
+                        begin
+                            before.Next := following;
+                        end;
+                    end if;
+                    item.Joined := False;
+                    item.Listed := False;
+                    item.Next := No_Region;
+                    poolFreeFrameCount := poolFreeFrameCount - Region_Frames;
+                    poolRegions := poolRegions - 1;
+                    base := Virtmem.PhysAddress (Unsigned_64 (region) * Region_Frames) *
+                      Virtmem.PhysAddress (Virtmem.FRAME_SIZE);
+                    Saved := item.Saved;
+                    found := True;
+                    Spinlocks.exitCriticalSection (lock);
+                    return;
+                end if;
+                previous := region;
+                region := following;
+            end;
+        end loop;
+        Spinlocks.exitCriticalSection (lock);
+    end leavePool;
+
+    procedure takeDirty (Frames : out Frame_List; Count : out Natural) with SPARK_Mode => Off is
+        region : Unsigned_32;
+    begin
+        Frames := (others => 0);
+        Count := 0;
+        Spinlocks.enterCriticalSection (lock);
+        region := poolFreeList;
+        while region /= No_Region and then Count < Frames'Length loop
+            declare
+                item : Pool_Record with Import, Address => poolRecordAddress (Unsigned_64 (region));
+            begin
+                for f in Pool_Region_Maps.Frame_Offset loop
+                    exit when Count = Frames'Length;
+                    if item.Map.Free (f) and then not item.Map.Clean (f) then
+                        Pool_Region_Maps.Take (item.Map, f, 0);
+                        item.Free_Frames := item.Free_Frames - 1;
+                        poolFreeFrameCount := poolFreeFrameCount - 1;
+                        Count := Count + 1;
+                        Frames (Frames'First + Count - 1) :=
+                          (Virtmem.PhysAddress (region) * Region_Frames + Virtmem.PhysAddress (f)) *
+                          Virtmem.PhysAddress (Virtmem.FRAME_SIZE);
+                    end if;
+                end loop;
+                region := item.Next;
+            end;
+        end loop;
+        Spinlocks.exitCriticalSection (lock);
+    end takeDirty;
+
+    procedure returnClean (frame : Virtmem.PhysAddress) with SPARK_Mode => Off is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (frame));
+        offset : constant Pool_Region_Maps.Frame_Offset :=
+          Pool_Region_Maps.Frame_Offset (pfn mod Region_Frames);
+    begin
+        Spinlocks.enterCriticalSection (lock);
+        poolGive (pfn, 0);
+        declare
+            item : Pool_Record with Import, Address => poolRecordAddress (pfn / Region_Frames);
+        begin
+            Pool_Region_Maps.Mark_Clean (item.Map, offset);
+        end;
+        Spinlocks.exitCriticalSection (lock);
+    end returnClean;
+
+    function poolFrameClean (addr : Virtmem.PhysAddress) return Boolean with SPARK_Mode => Off is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
+        item : Pool_Record with Import, Address => poolRecordAddress (pfn / Region_Frames);
+    begin
+        return item.Map.Clean (Pool_Region_Maps.Frame_Offset (pfn mod Region_Frames));
+    end poolFrameClean;
+
+    procedure installPoolReclaimHandler (Handler : not null Pool_Reclaim_Handler)
+      with SPARK_Mode => Off is
+    begin
+        poolReclaim := Handler;
+    end installPoolReclaimHandler;
 
     ---------------------------------------------------------------------------
     -- free
@@ -1152,7 +1632,9 @@ is
                     end if;
                 end;
             end loop;
-            moveBlock (ord, addr, Buddy_Blocks.Release_Block);
+            if not inPool (Unsigned_64 (pfn)) then
+                moveBlock (ord, addr, Buddy_Blocks.Release_Block);
+            end if;
             for i in pins'Range loop
                 declare
                     ignored : constant Unsigned_64 := detachCharge (Unsigned_64 (pfn) + Unsigned_64 (i));
@@ -1161,8 +1643,13 @@ is
                     null;
                 end;
             end loop;
+            if inPool (Unsigned_64 (pfn)) then
+                -- A process-pool run (DMA, KERN-014) goes back to the pool.
+                poolGive (Unsigned_64 (pfn), ord);
+            else
+                freeLocked (ord, addr);
+            end if;
         end;
-        freeLocked (ord, addr);
 
         Spinlocks.exitCriticalSection (lock);
         if refundIdentity /= 0 then
@@ -1181,6 +1668,33 @@ is
         refundIdentity : Unsigned_64 := 0;
     begin
         Spinlocks.enterCriticalSection (lock);
+        if inPool (pfn) then
+            -- A process-pool frame (KERN-014): the same owner, pin and charge
+            -- rules; it goes back to the pool, never to the kernel's lists.
+            declare
+                state : Unsigned_8 with Import, Volatile,
+                    Address => pinStateBase + Storage_Offset (pfn);
+                owner : Frame_Owner with Import, Volatile, Address => ownerAddress (pfn);
+                lifetime : Frame_Pins.State;
+                action : Frame_Pins.Release_Action;
+            begin
+                owner := 0;
+                lifetime := Frame_Pins.Decode (state);
+                Frame_Pins.Request_Free (lifetime, action);
+                state := Frame_Pins.Encode (lifetime);
+                if action = Frame_Pins.Keep_Frame then
+                    Spinlocks.exitCriticalSection (lock);
+                    return;
+                end if;
+            end;
+            refundIdentity := detachCharge (pfn);
+            poolGive (pfn, 0);
+            Spinlocks.exitCriticalSection (lock);
+            if refundIdentity /= 0 then
+                chargeRefund (refundIdentity, 1);
+            end if;
+            return;
+        end if;
         -- Admission occurs before owner/pin mutations as well as list writes.
         moveBlock (0, Virtmem.P2Va (addr), Buddy_Blocks.Defer);
         if pinStateBase /= System.Null_Address and then pfn <= maxPinPFN then
@@ -1274,9 +1788,13 @@ is
             Frame_Pins.Unpin (lifetime, success, action);
             state := Frame_Pins.Encode (lifetime);
             if action = Frame_Pins.Reclaim_Frame then
-                moveBlock (0, Virtmem.P2Va (addr), Buddy_Blocks.Reclaim);
                 refundIdentity := detachCharge (pfn);
-                freeLocked (0, Virtmem.P2Va (addr));
+                if inPool (pfn) then
+                    poolGive (pfn, 0);
+                else
+                    moveBlock (0, Virtmem.P2Va (addr), Buddy_Blocks.Reclaim);
+                    freeLocked (0, Virtmem.P2Va (addr));
+                end if;
             end if;
         end;
         Spinlocks.exitCriticalSection (lock);
@@ -1392,6 +1910,7 @@ is
             pragma Loop_Invariant (ret <= Storage_Count (ord) * Max_Term);
             ret := ret + (Storage_Count(freeLists(ord).numFreeBlocks) * blockSize (ord));
         end loop;
+        ret := ret + Storage_Count (poolFreeFrameCount) * Virtmem.FRAME_SIZE;
 
         return ret;
     end getFreeBytes;

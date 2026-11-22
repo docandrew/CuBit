@@ -24,6 +24,8 @@ with CuBit.Handles.IPC;
 with Startup;
 with CuBit.Process_IDs;
 with CuBit.Busy_Poll;
+with CuBit.Monotonic;
+with CuBit.Readiness;
 with Net;
 with SipHash;
 with TCP_Congestion;
@@ -1249,7 +1251,7 @@ package body Netstack_Service is
    procedure sendARPRequest (ifc : Interface_Access; targetIP : Net.IPv4Address) is
    begin
       --  The reply to this, and only it, may resolve targetIP.
-      ARP_Cache.Request (ifc.arpCache, arpIP (targetIP), syscall (SYSCALL_GETTIME));
+      ARP_Cache.Request (ifc.arpCache, arpIP (targetIP), CuBit.Monotonic.Milliseconds);
       declare
          pos : constant Integer := ARP_Cache.Position (ifc.arpCache, arpIP (targetIP));
       begin
@@ -1516,7 +1518,7 @@ package body Netstack_Service is
             --  This server cannot answer: try the next at once, if any
             --  attempts remain.
             if pendingReqs (match).attempts < DNS_ATTEMPTS then
-               sendAttempt (pendingReqs (match), syscall (SYSCALL_GETTIME));
+               sendAttempt (pendingReqs (match), CuBit.Monotonic.Milliseconds);
             else
                failQuery (pendingReqs (match));
             end if;
@@ -1894,7 +1896,7 @@ package body Netstack_Service is
       function mapped (A : Net.IPv4Address) return TCP_Isn.Address is
         [11 => 16#FF#, 12 => 16#FF#, 13 => A (0), 14 => A (1), 15 => A (2), 16 => A (3),
          others => 0];
-      clock : constant Unsigned_64 := syscall (SYSCALL_GETTIME) * 250;
+      clock : constant Unsigned_64 := CuBit.Monotonic.Milliseconds * 250;
    begin
       return TCP_Isn.Initial_Sequence
         (isnKey,
@@ -2053,7 +2055,7 @@ package body Netstack_Service is
    --  established connection finishes closing on its own, for at most
    --  ORPHAN_LINGER_MS.
    procedure releaseConnection (Index : TCP_Slots.Connection_Index) is
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
       if not tcpConns (Index).inUse then
          return;
@@ -2167,7 +2169,7 @@ package body Netstack_Service is
       agreements (idx) := (others => <>);
       Flows.Open_Active
         (tcpFlows (idx), tcpPool, TCP_Engine.Owner (idx), newISS (idx),
-         TCP_Limits.Default_IPv4_MSS, syscall (SYSCALL_GETTIME));
+         TCP_Limits.Default_IPv4_MSS, CuBit.Monotonic.Milliseconds);
       lingerDeadline (idx) := Unsigned_64'Last;
       sendSyn (idx);
       return idx;
@@ -2969,6 +2971,32 @@ package body Netstack_Service is
 
    --  WAIT: complete now if a channel is ready, else when one becomes
    --  ready or at the deadline. One WAIT per process.
+   --  Take the client's consumed index of each of owner's streams among
+   --  interest: readiness (channelReady) counts what the client has not
+   --  read, and a client reads without telling (no kick). Without this a
+   --  stream the client had read empty stayed readable here, so every WAIT
+   --  on it was answered at once: ccl-remote sent about 3.5 million a
+   --  second while a remote session was up (2026-11-19).
+   procedure acceptReads (owner : Process_ID; interest : Unsigned_64) is
+      ok : Boolean;
+   begin
+      for I in channels'Range loop
+         if channels (I).pid = owner and then channels (I).stream and then
+           (interest and waitBitOf (I)) /= 0 and then channels (I).rx.Fill > 0 and then
+           not failedStatus (channels (I).status)
+         then
+            Rings.Accept_Consumed
+              (channels (I).rx, Rings.Index (headerWord (I, Layout.Rx_Consumed_At)), ok);
+            if not ok then
+               setStatus (I, Layout.Status_Protocol_Error);
+               if channels (I).connIdx in tcpConns'Range then
+                  abortConnection (channels (I).connIdx, clockNow);
+               end if;
+            end if;
+         end if;
+      end loop;
+   end acceptReads;
+
    procedure handleNetWait (snd : Process_ID; m : Message) is
       mask : Unsigned_64;
    begin
@@ -2979,6 +3007,7 @@ package body Netstack_Service is
          end if;
       end loop;
       kickChannels (snd, m.words (0));
+      acceptReads (snd, m.words (2));
       mask := readyMask (snd, m.words (2));
       if answersWaiting (snd) then
          replyWait ((replySlot => Current_Request, others => <>), mask, True);
@@ -3464,7 +3493,7 @@ package body Netstack_Service is
       ours := ifc.configured and then targetIP = ifc.ipv4;
       --  Learn only what the proved cache accepts (no unsolicited replies,
       --  no rewriting a resolved address, no bogus senders).
-      ARP_Cache.Learn (ifc.arpCache, p, ours, syscall (SYSCALL_GETTIME));
+      ARP_Cache.Learn (ifc.arpCache, p, ours, CuBit.Monotonic.Milliseconds);
 
       if p.Op = ARP_Packet.Request and then ours and then
         ARP_Cache.Usable_Sender (p.Sender_IP, p.Sender_HW)
@@ -4206,7 +4235,7 @@ package body Netstack_Service is
                          name    : DNS_Name.Wire;
                          nameLen : DNS_Name.Wire_Length;
                          ok      : out Boolean) is
-      now  : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      now  : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       port : constant Unsigned_16 :=
         DNS_PORT_FIRST + Unsigned_16 (dnsRandom mod DNS_PORT_COUNT);
       txid : constant Unsigned_16 := Unsigned_16 (dnsRandom and 16#FFFF#);
@@ -5671,6 +5700,26 @@ package body Netstack_Service is
    --  flows (CuBit.Busy_Poll).
    lastActivity : Unsigned_64 := 0;
 
+   --  The busy-poll window's own cost (headless bench-net): windows opened,
+   --  turns taken in them, and kernel calls those turns made. The window
+   --  should poll memory: a turn enters the kernel only for a request the
+   --  readiness page counted. Reported at each power of two windows from
+   --  Window_Report_First.
+   Window_Report_First : constant := 1_024;
+   windowsOpened, windowTurns, windowCalls : Unsigned_64 := 0;
+
+   procedure noteWindow is
+   begin
+      windowsOpened := windowsOpened + 1;
+      if windowsOpened >= Window_Report_First
+        and then (windowsOpened and (windowsOpened - 1)) = 0
+      then
+         debugPrint ("netstack: busy-poll windows=" & Unsigned_64'Image (windowsOpened) &
+                     " turns=" & Unsigned_64'Image (windowTurns) &
+                     " kernel calls=" & Unsigned_64'Image (windowCalls) & LF);
+      end if;
+   end noteWindow;
+
    --  Frames wait in some interface's receive ring.
    function rxPending return Boolean is
    begin
@@ -5756,7 +5805,7 @@ package body Netstack_Service is
          System.Machine_Code.Asm ("", Clobber => "memory", Volatile => True);
          if ifc.rxRing.Available > 0 then
             inRxBatch := True;
-            clockNow := syscall (SYSCALL_GETTIME);
+            clockNow := CuBit.Monotonic.Milliseconds;
             mark := Prof.Now;
             while ifc.rxRing.Available > 0 loop
                declare
@@ -5855,7 +5904,7 @@ package body Netstack_Service is
                        Unsigned_32'Asm_Output ("=d", high)],
            Volatile => True);
       value := (Shift_Left (Unsigned_64 (high), 32) or Unsigned_64 (low)) xor
-               syscall (SYSCALL_GETTIME) * 16#9E37_79B9_7F4A_7C15#;
+               CuBit.Monotonic.Milliseconds * 16#9E37_79B9_7F4A_7C15#;
       return value;
    end hardwareRandom;
 
@@ -5986,7 +6035,7 @@ package body Netstack_Service is
       --  Loopback: 127.0.0.0/8 or one of our addresses: answered at once.
       if dstIP (0) = IPv4_Frame.Loopback_Net or else isOurAddress (dstIP) then
          declare
-            nowMs : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            nowMs : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
             loopReply : constant Message :=
               (tag      => (label => REPLY_OK, length => 3, protocol => 0, ipc => <>, reserved => 0),
                authorityTag => 0,
@@ -6123,7 +6172,7 @@ package body Netstack_Service is
    loop
       found := False;
       --  Timers must run even under a continuous stream of service requests.
-      clockNow := syscall (SYSCALL_GETTIME);
+      clockNow := CuBit.Monotonic.Milliseconds;
       --  Deadlines are in milliseconds: look at them once per tick, not on
       --  every message.
       if clockNow /= lastExpiry then
@@ -6181,19 +6230,41 @@ package body Netstack_Service is
       elsif not found then
          declare
             dueAt : constant Unsigned_64 := nextDeadline;
+            opened : Boolean := False;
+            --  The window polls memory, not the kernel: a service request
+            --  is looked for only when the readiness page counted one since
+            --  the last look (CuBit.Readiness), and the deadline is read
+            --  from the clock page. The first turn looks regardless (a
+            --  request may have been counted since step 1 looked), and so
+            --  does every turn without the page (Produced is then Last).
+            use type CuBit.Readiness.Count;
+            first : Boolean := True;
+            seen  : CuBit.Readiness.Count := 0;
+            now   : CuBit.Readiness.Count;
          begin
             while arrivalExpected and then CuBit.Busy_Poll.Within
               (lastActivity, CuBit.Busy_Poll.Default_Window_Microseconds)
             loop
+               opened := True;
+               windowTurns := windowTurns + 1;
                if rxPending then
                   drainAll (arm => False);
                   lastActivity := CuBit.Busy_Poll.Now;
                end if;
                serviceQueues;
-               Poll_Service_Request (sender, msg, found);
-               exit when found or else syscall (SYSCALL_GETTIME) >= dueAt;
+               now := CuBit.Readiness.Produced (CuBit.Readiness.Requests);
+               if first or else now /= seen or else now = CuBit.Readiness.Count'Last then
+                  first := False;
+                  seen := now;
+                  Poll_Service_Request (sender, msg, found);
+                  windowCalls := windowCalls + 1;
+               end if;
+               exit when found or else CuBit.Monotonic.Milliseconds >= dueAt;
                CuBit.Busy_Poll.Relax;
             end loop;
+            if opened then
+               noteWindow;
+            end if;
          end;
          if not found then
             peerActive := False;

@@ -1,0 +1,2 @@
+(Component name => "spawn-rules-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

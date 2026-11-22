@@ -11,6 +11,12 @@ project CCL_Manifest_ABI is
       "cubit-self_offers.ads",
       --  The platform power object (KERN-004).
       "cubit-platform_power_authority.ads",
+      --  The kernel trace object (Trace_ABI).
+      "cubit-trace_authority.ads",
+      --  The test console object (Test_Console_ABI).
+      "cubit-test_console_authority.ads",
+      --  The VM creation authority (VMM-001).
+      "cubit-vm_create_authority.ads",
       "clock_publication.ads", "clock_publication.adb",
       "cubit-network_authority.ads", "cubit-network_authority.adb",
       "cubit-tls_scopes.ads", "cubit-tls_scopes.adb",

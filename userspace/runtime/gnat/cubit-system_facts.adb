@@ -4,18 +4,20 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with System;
-with System.Storage_Elements;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with Readiness_Publication;
 with System_Publications;
 
 package body CuBit.System_Facts is
 
    package Pages renames System_Publications;
+   package RP renames Readiness_Publication;
 
    --  The reader's types and constants are the shared layout's.
    pragma Compile_Time_Error
-     (SP.Statistics'Size /= Pages.Statistics'Size or else
+     (SP.Maximum_Threads /= RP.Maximum_Threads or else
+      SP.Thread_Slot'Pos (SP.Main_Thread_Slot) /= RP.Thread_Slot'Pos (RP.Main_Thread_Slot) or else
       SP.Published_Value'Enum_Rep (SP.Wall_Clock_Offset) /=
         Pages.Published_Value'Enum_Rep (Pages.Wall_Clock_Offset) or else
       SP.Published_Value'Enum_Rep (SP.Boot_Display_Native) /=
@@ -28,6 +30,16 @@ package body CuBit.System_Facts is
    with Import, Volatile, Address => System'To_Address (Pages.Registry_Address);
    Wall : Pages.Wall_Clock_Page
    with Import, Volatile, Address => System'To_Address (Pages.Wall_Clock_Address);
+   Own : RP.Readiness_Page
+   with Import, Volatile, Address => System'To_Address (RP.Page_Address);
+   type Thread_Lines is array (SP.Thread_Slot) of RP.Thread_Line
+   with Component_Size => RP.Slot_Bytes * 8;
+   Lines : Thread_Lines
+   with Import, Volatile, Address => System'To_Address (RP.Thread_Counts_Address);
+
+   --  The calling thread's slot (Enter_Thread); the main thread's until
+   --  then, which is the main thread's own.
+   Own_Slot : SP.Thread_Slot := SP.Main_Thread_Slot with Thread_Local_Storage;
 
    function Facts_Published return Boolean is
      (Facts.Version = Pages.Layout_Version);
@@ -78,18 +90,28 @@ package body CuBit.System_Facts is
    function Wall_Clock_Offset return Unsigned_64 is
      (if Wall.Version = Pages.Layout_Version then Wall.Offset_Ms else 0);
 
-   procedure Read_Statistics
-     (Value : out SP.Statistics; Success : out Boolean)
-   is
-      Result : Unsigned_64;
+   function Free_Memory_Bytes return Unsigned_64 is
+     (if Facts_Published then Facts.Free_Memory_Bytes else 0);
+
+   function Own_Published return Boolean is
+     (Own.Version = RP.Layout_Version);
+
+   function Owned_Bytes return Unsigned_64 is
+     (if Own_Published then Own.Owned_Bytes else 0);
+
+   function Event_Drops return Unsigned_64 is
+     (if Own_Published then Unsigned_64 (Own.Event_Drops) else 0);
+
+   function Thread_System_Calls (Slot : SP.Thread_Slot) return Unsigned_64 is
+     (if Own_Published then Lines (Slot).System_Calls else 0);
+
+   function Thread_System_Calls return Unsigned_64 is
+     (Thread_System_Calls (Own_Slot));
+
+   procedure Enter_Thread (Slot : SP.Thread_Slot) is
    begin
-      Value := (others => 0);
-      Result := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Read_Statistics,
-         Unsigned_64 (System.Storage_Elements.To_Integer (Value'Address)),
-         Pages.Statistics_Bytes);
-      Success := Result = 0;
-   end Read_Statistics;
+      Own_Slot := Slot;
+   end Enter_Thread;
 
    function Publish
      (Value : SP.Published_Value; Word : Unsigned_64) return Boolean is

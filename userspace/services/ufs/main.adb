@@ -12,6 +12,7 @@
 --  logical unit as a Block.Device.V1 device, read only except through the
 --  block write grant (UFS_Service).
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
@@ -157,6 +158,8 @@ procedure Main is
    Progressed : Boolean;
    Ignored_Activity : Activity_Result;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;

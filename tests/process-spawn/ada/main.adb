@@ -1,6 +1,7 @@
 --  Ada.Command_Line on CuBit (docs/process-arguments.md): started by
 --  spawn-check with arguments; reports on the kernel console and exits
 --  with 43 when every argument arrived.
+with CuBit.Console_Route;
 with Ada.Command_Line; use Ada.Command_Line;
 with CuBit.Messages; use CuBit.Messages;
 
@@ -13,6 +14,8 @@ procedure Main is
      and then Argument (2) = "two words"
      and then Argument (3) = "";
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    if OK then
       debugPrint ("ada-args-check: Ada.Command_Line PASS" & ASCII.LF);
       Set_Exit_Status (Expected_Exit);

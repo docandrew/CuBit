@@ -28,6 +28,8 @@ acpi_control_method_button-receipts.adb
 acpi_control_method_button-receipts.ads
 acpi_control_method_button.adb
 acpi_control_method_button.ads
+acpi_delay_domains.adb
+acpi_delay_domains.ads
 acpi_delay_waits.adb
 acpi_delay_waits.ads
 acpi_device_initialization.adb
@@ -87,10 +89,12 @@ acpi_native_diagnostic_output.adb
 acpi_native_diagnostic_output.ads
 acpi_native_ec_boot_notes.adb
 acpi_native_ec_discovery.adb
+acpi_native_ec_discovery.ads
 acpi_native_ec_source.adb
 acpi_native_endpoint.adb
 acpi_native_endpoint.ads
 acpi_native_event_domain.adb
+acpi_native_event_domain.ads
 acpi_native_events.adb
 acpi_native_gpio_admission.adb
 acpi_native_gpio_admission.ads
@@ -121,6 +125,8 @@ acpi_native_pre_device.adb
 acpi_native_pre_device.ads
 acpi_native_regions.adb
 acpi_native_server-with_ec_events.adb
+acpi_native_server-with_host_bridges.adb
+acpi_native_server-with_host_bridges.ads
 acpi_native_server-with_notifications.adb
 acpi_native_server-with_power_entry.adb
 acpi_native_server-with_power_entry.ads
@@ -142,6 +148,7 @@ acpi_power_button_watches.adb
 acpi_power_button_watches.ads
 acpi_power_entry.adb
 acpi_power_entry.ads
+acpi_power_retirement_replies.adb
 acpi_power_source.adb
 acpi_region_activation_order.adb
 acpi_region_activation_order.ads
@@ -219,4 +226,3 @@ i2c_channel_badges.adb
 main.adb
 startup.adb
 startup.ads
-acpi_power_retirement_replies.adb

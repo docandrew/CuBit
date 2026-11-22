@@ -8,6 +8,9 @@ with CuBit.ACPI_Hardware_Authority;
 with CuBit.Publication_Grants;
 with CuBit.Self_Offers;
 with CuBit.Platform_Power_Authority;
+with CuBit.Trace_Authority;
+with CuBit.Test_Console_Authority;
+with CuBit.VM_Create_Authority;
 with CuBit.Launch_Authority;
 with CuBit.Program_Descriptions;
 with CuBit.Startup_Tables;
@@ -30,7 +33,7 @@ package CCL.Manifests.Model with SPARK_Mode => On is
      (Framebuffer_Request, Service_Request, Notification_Request, Network_Request,
       Render_Request, Firmware_Snapshot_Request, ACPI_Hardware_Request, Publication_Request,
       Offerable_Self_Request, Device_Memory_Request, IO_Port_Request, Interrupt_Request, DMA_Request, Scheduling_Request,
-      Platform_Power_Request);
+      Platform_Power_Request, Trace_Request, Test_Console_Request, VM_Create_Request);
    package Sections renames CCL.Resource_Sections;
    for Request_Kind use
      (Framebuffer_Request => 1, Service_Request => 2, Notification_Request => 7,
@@ -45,7 +48,10 @@ package CCL.Manifests.Model with SPARK_Mode => On is
       Interrupt_Request => Sections.Resource_Kind'Enum_Rep (Sections.Interrupt),
       DMA_Request => Sections.Resource_Kind'Enum_Rep (Sections.DMA),
       Scheduling_Request => Sections.Resource_Kind'Enum_Rep (Sections.Scheduling),
-      Platform_Power_Request => CuBit.Platform_Power_Authority.Manifest_Request);
+      Platform_Power_Request => CuBit.Platform_Power_Authority.Manifest_Request,
+      Trace_Request => CuBit.Trace_Authority.Manifest_Request,
+      Test_Console_Request => CuBit.Test_Console_Authority.Manifest_Request,
+      VM_Create_Request => CuBit.VM_Create_Authority.Manifest_Request);
    subtype Resource_Request is Request_Kind
      range Device_Memory_Request .. Scheduling_Request;
    subtype Device_Request is Request_Kind

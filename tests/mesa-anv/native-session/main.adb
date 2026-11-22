@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements;
@@ -120,6 +121,8 @@ procedure Main is
       -- do not submit it or close its name while the sealed VM retains it.
    end Exercise;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Report ("RENDER-SESSION admitted app entered");
    Exercise;
    -- Exactly one close attempt, also on error. Uncertain resources stay held

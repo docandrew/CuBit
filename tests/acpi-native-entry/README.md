@@ -20,3 +20,7 @@ Runtime-selected SDK declarations also receive -gnatg and -gnatyM120 to
 check the runtime style rules while preserving each checked/release profile.
 
 --mode native-object regenerates Startup and compiles the actual Native_Instance to an object with the native ccl-build command flags, including O2, no-red-zone and no-pic. It uses neither gnatc nor gnatp and checks the emitted object/ALI profile. Source/output paths are private substitutions of the image15 CCL step. It performs no link, full/kernel/image build or native execution. This is required alongside the checked/release semantic profiles before native integration publications.
+
+The default semantic inventory contains 227 selections, retaining all 222 earlier selections and adding five startup bridge/event/delay declarations or bodies. For a bounded startup iteration, run `bash tests/acpi-native-entry/run.sh --mode release --selection startup` (or `--mode checked --selection startup`). This explicit named selection checks nine units and reports its own selection/artifact counts; it does not stand in for the default full selection. Unknown selection names and named native-object selections are refused. Native object/build/boot validation is coordinator-owned in the current ACPI workflow.
+
+The ancestor-propagation change extends the explicit startup semantic selection to 11 units, including both EC discovery spec and body. The full default inventory now contains 228 selections; all earlier 227 remain. Native object generation and hardware execution remain coordinator-owned.

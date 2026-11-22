@@ -1090,3 +1090,114 @@ ended"). Failed before: the look ran only when a frame was composed.
 make -C kernel world reap-check
 bash tests/headless/run.sh --test desktop-reap --accel kvm --timeout 60
 ```
+
+## tlb-tags (address-space tags, PCID: no stale translations)
+
+No process sees translations another address space left under its tag:
+twelve lives of tlb-probe on reused PIDs each find their fresh pages zero
+(exit, then PID reuse), and every second life faults reading pages its
+owner revoked while a waiting thread had them cached (revocation, unmap).
+Only a TAGGED_TLB=1 kernel on Intel (PCID and INVPCID) can show a stale
+translation here; on the AMD hosts and TCG it checks the untagged path.
+The proofs and their mutants are tests/address-space-tags.
+
+```sh
+make -C kernel world tlb-tags
+bash tests/headless/run.sh --test tlb-tags --accel kvm
+make -C kernel test-address-space-tags prove-address-space-tags
+```
+
+## futex-share idle after notices (stale notice doorbell)
+
+An activity loop sleeps when it is idle after kernel notices. A grant-return
+notice is counted on the readiness page when it is posted, and its doorbell
+rings once grantLock is free; a process that took it in between (its event
+wait) used to be turned away by the kernel (no doorbell yet) and then left
+the doorbell answering every activity wait with Work: devmgr spun 1.4 million
+turns a second in gpio-launch. futex-share's client takes notices on a
+second thread while the server gives back 2000 notified grants, then an idle
+300 ms activity loop may turn at most 50 times. Failed before (51 turns, 3 of
+3 runs), passes after (1 turn).
+
+```sh
+make -C kernel world futex-share
+bash tests/headless/run.sh --test futex-share --accel kvm --timeout 300
+```
+
+## net-link idle stream (a stream read empty lets its reader sleep)
+
+netstack counted bytes a client had already read as unread (clients read
+without telling it), so every NET_WAIT on such a stream was answered at
+once: ccl-remote sent about 22 million waits in one desktop-live-replace
+run. net-link-check reads a 1460-byte stream that then goes quiet
+(tests/net-link/fixture.py, port 18462) and waits 300 ms for more: at most
+50 system calls. 163,132 before, 4 after.
+
+```sh
+make -C kernel world net-link-check
+bash tests/headless/run.sh --test net-link --accel kvm
+```
+
+## alignment-flag (interrupt entry clears RFLAGS.AC, SEC-026)
+
+User code may hold RFLAGS.AC set (POPFQ at CPL 3), an interrupt keeps it,
+and under SMAP a set AC lets supervisor code touch user pages, so interrupt
+handlers ran with SMAP off. alignment-flag-check sets AC and takes timer
+interrupts and page faults; a probe kernel (SMAP_ENTRY_PROBE=1) reads the
+process's own page from each and wants the SMAP fault. Needs a CPU model
+with SMAP (Chungus KVM guests have it).
+
+```sh
+SMAP_ENTRY_PROBE=1 make -C kernel world
+bash tests/headless/run.sh --test alignment-flag --accel kvm --timeout 60
+```
+
+## kernel-map-probe (what the kernel's own map reaches, KERN-014)
+
+The kernel maps all of RAM at `LINEAR_BASE`, so a kernel read bug or a
+speculative gadget reaches every process's pages (docs/kernel-memory-map.md).
+A probe kernel (KERN014_PROBE=1) reads, on kernel-map-probe's request, one
+word of its heap page through the linear map, and at boot frees a frame and
+reports whether the buddy allocator wrote its free-list links into it. Since
+KERN-014 slice 4 process frames come from regions outside the kernel's
+linear map, so the probe's read faults ("unmapped"); before, it read the
+marker. Since slice 1 a freed frame holds no free-list links (the probe
+reported "yes" before it). Since slice 2 the kernel reaches a process's
+memory only through the process's own mapping: kernel-map-probe asks for
+kernel stores into a writable page (stored), a read-only page (refused,
+unchanged), a reserved page with no frame and the kernel half (refused), and
+wants at least two recovered user-access faults (none were counted before:
+the kernel walked page tables and wrote through its linear map).
+
+```sh
+rm -f kernel/build/libcubit.a    # build.ads is regenerated with the flag
+export KERN014_PROBE=1    # run.sh rebuilds the kernel: keep the flag
+make -C kernel world
+bash tests/headless/run.sh --test kernel-map-probe --accel kvm --timeout 40
+```
+
+## startup-health: the idle shell sleeps (no 1 ms poll)
+
+shell.app (root init.ccl) idled by polling for an event and sleeping 1 ms:
+about 1,980 WAIT calls a second, the largest idle consumer in a desktop boot
+(census, Chungus KVM). It now waits for activity. Once, 1 s after its first
+prompt with no key, it prints its own thread's system calls over that
+second; startup-health allows at most 50.
+
+```sh
+make -C kernel world
+bash tests/headless/run.sh --test startup-health --accel kvm --timeout 90
+```
+
+## bench-net: netstack's busy-poll window polls memory
+
+While traffic flows netstack polls for 50 us before it sleeps. Each turn
+made two kernel calls (a request poll and GETTIME): about 107,000 a second
+of each while ccl-remote streamed (desktop-live-replace census). netstack
+reports windows, turns and kernel calls at each power of two windows from
+1,024; bench-net allows one call per ten turns.
+
+```sh
+make -C kernel netstack && tests/net-bench/build-cubit.sh
+bash tests/headless/run.sh --test bench-net --accel kvm --timeout 240
+```

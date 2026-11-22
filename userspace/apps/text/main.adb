@@ -8,6 +8,7 @@
 --  the shell's next deadline. Nothing here blocks on the filesystem: files
 --  load and save through Text_Host_Native, a request at a time.
 ------------------------------------------------------------------------------
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -111,7 +112,7 @@ procedure Main is
       Reading : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
    begin
       return (if Reading.Available then Reading.Microseconds
-              else syscall (SYSCALL_GETTIME) * MICROSECONDS_PER_MILLISECOND);
+              else CuBit.Monotonic.Milliseconds * MICROSECONDS_PER_MILLISECOND);
    end Now_Us;
 
    Started_Us : Unsigned_64 := 0;
@@ -252,7 +253,7 @@ procedure Main is
       Step : constant Positive := Positive'Min (Copy_Chunk'Length, Text_Host_Native.Chunk_Limit (Host));
       Offset : Natural := 0;
       Ignore : Unsigned_64;
-      function Late return Boolean is (syscall (SYSCALL_GETTIME) >= Deadline);
+      function Late return Boolean is (CuBit.Monotonic.Milliseconds >= Deadline);
    begin
       Ok := False;
       Text_Host_Native.Start_Save (Host, Copy, Status);
@@ -291,7 +292,7 @@ procedure Main is
    procedure Save_Recovery (Win : in out CuBit.UI.App.Window; Reason : CuBit.UI.Input.Close_Reason) is
       pragma Unreferenced (Win);
       use type CuBit.UI.Input.Close_Reason;
-      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + CuBit.UI.Recovery.Budget_Milliseconds;
+      Deadline : constant Unsigned_64 := CuBit.Monotonic.Milliseconds + CuBit.UI.Recovery.Budget_Milliseconds;
       Written : Natural := 0;
    begin
       if Reason /= CuBit.UI.Input.System_Shutdown then
@@ -372,7 +373,7 @@ procedure Main is
       Shift : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_SHIFT) /= 0;
       Control : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_CTRL) /= 0;
       Alt : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_ALT) /= 0;
-      Time_Ms : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Time_Ms : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
       Text_Shell.Set_Clock (App, Now_Us);
       if Event.kind = CuBit.UI.Input.INPUT_CLOSE_REQUEST then
@@ -436,7 +437,7 @@ procedure Main is
    --  the shell's own deadline otherwise; zero for none.
    function Deadline return Unsigned_64 is
       Due_Us : constant Unsigned_64 := Text_Shell.Next_Deadline_Us (App);
-      Now_Ms : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now_Ms : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Current_Us : Unsigned_64;
    begin
       if Busy then
@@ -477,6 +478,8 @@ procedure Main is
 
    Queue_Ready : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Started_Us := Now_Us;
    debugPrint ("text: starting" & ASCII.LF);
    CuBit.Logging.Announce ("text: started", Opened, Startup.Logstore);

@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with CuBit.Readiness;
 with CuBit.Handles;
@@ -13,6 +14,7 @@ with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Monotonic;
 
 procedure main is
    use ASCII;
@@ -92,6 +94,8 @@ procedure main is
    occupiedCompleted : Natural := 0;
    occupiedHoldSeen  : Boolean := False;
    occupiedProbeSeen : Boolean := False;
+   --  The first FP/SIMD read's verdict (fpu-initial-isolation).
+   Initial_FPU_Clear : Boolean := False;
 
    procedure fail (reason : String) is
    begin
@@ -121,10 +125,15 @@ procedure main is
    end readFPUProbe;
 
 begin
-   --  This must be the first explicit FP/SIMD access made by the process.
-   --  A zero result proves that the initialized process image was restored,
-   --  rather than exposing XMM state left by the previously running server.
-   if readFPUProbe /= 0 then
+   --  This must be the first explicit FP/SIMD access made by the process,
+   --  before any other code of its own runs (routing below copies records
+   --  through XMM registers). A zero result proves that the initialized
+   --  process image was restored, rather than exposing XMM state left by
+   --  the previously running server. Its verdict is printed once routed.
+   Initial_FPU_Clear := readFPUProbe = 0;
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
+   if not Initial_FPU_Clear then
       fail ("fpu-initial-isolation");
    end if;
 
@@ -578,9 +587,9 @@ begin
          -- A server that never answers: the call ends at its deadline.
          msg.tag := (label => OP_DEADLINE_SILENT, length => 0,
                      protocol => 0, ipc => <>, reserved => 0);
-         started := syscall (SYSCALL_GETTIME);
+         started := CuBit.Monotonic.Milliseconds;
          tag := capCall (IPC_Test, msg, Deadline_After (DEADLINE_MS));
-         elapsed := syscall (SYSCALL_GETTIME) - started;
+         elapsed := CuBit.Monotonic.Milliseconds - started;
          if tag.label /= REPLY_TIMEOUT then
             fail ("deadline-silent-not-timed-out");
          elsif elapsed < DEADLINE_MS or else elapsed >= DEADLINE_LATEST_MS then
@@ -615,9 +624,9 @@ begin
          msg := NULL_MESSAGE;
          msg.tag := (label => OP_DEADLINE_QUEUED, length => 0,
                      protocol => 0, ipc => <>, reserved => 0);
-         started := syscall (SYSCALL_GETTIME);
+         started := CuBit.Monotonic.Milliseconds;
          tag := capCall (IPC_Test, msg, Deadline_After (DEADLINE_MS));
-         elapsed := syscall (SYSCALL_GETTIME) - started;
+         elapsed := CuBit.Monotonic.Milliseconds - started;
          if tag.label /= REPLY_TIMEOUT then
             fail ("deadline-queued-not-timed-out");
          elsif elapsed < DEADLINE_MS or else elapsed >= DEADLINE_LATEST_MS then
@@ -687,9 +696,9 @@ begin
          msg := NULL_MESSAGE;
          msg.tag := (label => OP_DISPLACE_FIRST, length => 0,
                      protocol => 0, ipc => <>, reserved => 0);
-         started := syscall (SYSCALL_GETTIME);
+         started := CuBit.Monotonic.Milliseconds;
          tag := capCall (IPC_Test, msg, Deadline_After (DISPLACE_DEADLINE_MS));
-         elapsed := syscall (SYSCALL_GETTIME) - started;
+         elapsed := CuBit.Monotonic.Milliseconds - started;
          if tag.label = REPLY_TIMEOUT then
             fail ("displaced-call-stranded-until-deadline");
          elsif tag.label /= REPLY_ENDED or else Ending_Of (tag) /= Call_Ended then
@@ -819,24 +828,24 @@ begin
                found := Poll_Event (event);
                exit when not found;
             end loop;
-            if Wait_For_Activity_Until (syscall (SYSCALL_GETTIME) + 10) /=
+            if Wait_For_Activity_Until (CuBit.Monotonic.Milliseconds + 10) /=
               Deadline_Reached
             then fail ("activity-empty-deadline"); end if;
             msg := NULL_MESSAGE;
             msg.tag := (label => OP_ASYNC_ECHO, length => 1,
                         protocol => 0, ipc => <>, reserved => 0);
             msg.words (0) := 123;
-            started := syscall (SYSCALL_GETTIME);
+            started := CuBit.Monotonic.Milliseconds;
             if not capSubmit (IPC_Test, msg, 16#AC71#) then
                fail ("activity-submit");
             end if;
             if Wait_For_Activity_Until (started + 5000) /=
               Work_Available
             then fail ("activity-completion-wake"); end if;
-            if syscall (SYSCALL_GETTIME) - started >= 2500 then
+            if CuBit.Monotonic.Milliseconds - started >= 2500 then
                fail ("activity-completion-only-woke-at-deadline");
             end if;
-            if Wait_For_Activity_Until (syscall (SYSCALL_GETTIME)) /=
+            if Wait_For_Activity_Until (CuBit.Monotonic.Milliseconds) /=
               Work_Available
             then fail ("activity-ready-does-not-consume"); end if;
             ret := Poll_Completion (completion'Address);
@@ -864,11 +873,11 @@ begin
 
    if ok then
       declare
-         started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+         started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       begin
          if Wait_For_Activity_Until (started + 5000) /= Work_Available then
             fail ("activity-death-wake");
-         elsif syscall (SYSCALL_GETTIME) - started >= 2500 then
+         elsif CuBit.Monotonic.Milliseconds - started >= 2500 then
             fail ("activity-death-only-woke-at-deadline");
          end if;
          completion := NULL_COMPLETION;

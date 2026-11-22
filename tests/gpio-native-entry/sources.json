@@ -7,7 +7,7 @@
     },
     {
       "path": "build-params.ccl",
-      "sha256": "5506acd48ee4248dd2b444e14f2f1fc4bbe4b93fb3cf98db233915bdd739a0a2"
+      "sha256": "fb3401f1cbc18bc7daac265f97d4231d332b3fa320d7ecccc8ecc8eac50d15f2"
     },
     {
       "path": "shared/acpi/acpi_field_protocol_frames.adb",
@@ -135,7 +135,7 @@
     },
     {
       "path": "shared/boot/boot_timeline_layout.ads",
-      "sha256": "0ac8d8d0140bb068fd7687ccc27e16327e0decce9ba81a48d0d1a467b1322c6b"
+      "sha256": "e6292e9ce0c711973d2eb91eb4a6983ca55d8dbe986b701416dca270b86a6780"
     },
     {
       "path": "shared/boot/firmware_snapshot_abi.adb",
@@ -143,7 +143,7 @@
     },
     {
       "path": "shared/boot/firmware_snapshot_abi.ads",
-      "sha256": "a3be1c99dac9a4bc7387fa65d9b634512b0f095d29eb4c4b5764b18858aaa351"
+      "sha256": "823456cbf76dfdcda75865eefde715dd5a2fd7ab96329544807ae4914df56d5d"
     },
     {
       "path": "shared/capabilities/capability_abi.adb",
@@ -151,11 +151,11 @@
     },
     {
       "path": "shared/capabilities/capability_abi.ads",
-      "sha256": "845dec7e6ce5b6e8aa2fb618ca6710322c949cd16ede3dcd213b9dd4b96e01bc"
+      "sha256": "3cb666bc1f49820880887dfb9d0598e4bd406dcb71576f52569998851d8cfaba"
     },
     {
       "path": "shared/capabilities/channel_wake_abi.ads",
-      "sha256": "ef921b0ac679aff21ba9bbe4909f07b0ca904a03842b9596feee06d3b33bfeea"
+      "sha256": "c802b6bec8ad6876b38d076f919b5796ce6d7f7f7cf4dc26ff4ba1921f152882"
     },
     {
       "path": "shared/capabilities/firmware_data_abi.ads",
@@ -335,11 +335,11 @@
     },
     {
       "path": "shared/launch/launch_configuration.adb",
-      "sha256": "5c462efca43e088b75efec4ea8b7ac029c7471808f54693fee697bf9c32dddfc"
+      "sha256": "d5d384ceae92b169d651d2fb4ca66d7b71cd504a5c80de00ab074566760de7a0"
     },
     {
       "path": "shared/launch/launch_configuration.ads",
-      "sha256": "c107c322fefaf11f6179134ebdb0f31d2ef1ddf11aeee07aef8f83e5aaf2f97b"
+      "sha256": "57c36ff7cbeb69c52d99d5aeb2752f99fb144ca94b1a8d9b29dbb44e1a02354f"
     },
     {
       "path": "shared/launch/process_layout.ads",
@@ -407,7 +407,7 @@
     },
     {
       "path": "shared/publications/system_publications.ads",
-      "sha256": "1c23c9932334c32b75f329e1321ccaba6b6774aba22787c10b8d2e13cf960696"
+      "sha256": "93d4182202f587eda57dccc8a6345afc36254daaa2e7f06a3af6f8d5ff9e905c"
     },
     {
       "path": "shared/time/clock_publication-sample.adb",
@@ -423,7 +423,7 @@
     },
     {
       "path": "shared/time/clock_publication.ads",
-      "sha256": "37d2e81e63d2683884367156aa31e41b309a5256667632cd95d10e2f50c009aa"
+      "sha256": "32d692d3b8ee2b2adb5e861607b71147603cf0a4f24c24437592cbd9850c5234"
     },
     {
       "path": "userspace/ccl/catalogs/bootstrap-services.ccl",
@@ -431,11 +431,11 @@
     },
     {
       "path": "userspace/ccl/catalogs/driver-services.ccl",
-      "sha256": "890abdecbf303d558b9a352f9e6e498343ebbc62cdc05d06d0f9c5f9068ffd23"
+      "sha256": "d36fa23123c77346aa1a3cb8fedfe1d99294e2390bb52aa620919f74a145607b"
     },
     {
       "path": "userspace/ccl/catalogs/native-runtime-services.ccl",
-      "sha256": "a313dafa6b8f108d44b651c050f91ac99da5e08bfbcd5e5879c1755724c39452"
+      "sha256": "e1357321c6979d41e377c3ae870393efe541a3782a655dd966d999777d1fbf22"
     },
     {
       "path": "userspace/ccl/interfaces/build.ccl",
@@ -443,7 +443,7 @@
     },
     {
       "path": "userspace/ccl/interfaces/executable-manifest.ccl",
-      "sha256": "679f2bd02aea77c5557d8484e8484a0e4abc131b5389bf1c7d67268c4b493f7c"
+      "sha256": "4f642ab93eaf3b081be17ad5d3531b72a2056eb55a1f561c472f502e465b862d"
     },
     {
       "path": "userspace/ccl/interfaces/setting-catalog.ccl",
@@ -451,7 +451,7 @@
     },
     {
       "path": "userspace/ccl/interfaces/settings/applications.ccl",
-      "sha256": "5b1b5d49755e9136bc15f82fc4fa80bfea696197b6089eebfbf433c71c118729"
+      "sha256": "c7ac87daaa0e6a3ba25200cbd4a0664d7bfe972d927708daa26cf123913f37dd"
     },
     {
       "path": "userspace/ccl/interfaces/settings/clock.ccl",
@@ -459,7 +459,7 @@
     },
     {
       "path": "userspace/ccl/interfaces/settings/desktop.ccl",
-      "sha256": "409ca2a2297755cb81d20170ccd6fc4fb9da5f090a24d73b24f1814229f8146c"
+      "sha256": "43f7312833ce1bebab0e92a2ee8e515ffd8bfe4718f02dfabb817ff9d2b9d49f"
     },
     {
       "path": "userspace/ccl/interfaces/settings/net.ccl",
@@ -471,7 +471,7 @@
     },
     {
       "path": "userspace/ccl/interfaces/settings/startup.ccl",
-      "sha256": "c1a35672eed5849ead1c61bfab261b8ed9fa7a8b163efd5535aacd71ebb071e6"
+      "sha256": "f467a40d2d08f17daf8b9e93a00da53b6b6cfbc22bebe39cf925b323f2c1b2e2"
     },
     {
       "path": "userspace/ccl/interfaces/settings/system.ccl",
@@ -715,23 +715,15 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-authority_policy.ads",
-      "sha256": "6a449c3398f4c584b56613aaad33dcb1e7a3a8c6b79ef7cfb805be10ed6f69a1"
+      "sha256": "ad84531e899c52c7e9bf9404c27cddbaf8d2c597734676080c962f8fa89c6a35"
     },
     {
       "path": "userspace/runtime/gnat/cubit-authority.ads",
       "sha256": "6d3f996c9ec705f7e1cc1830cdbf1e3887a562dc0d9dbd41c53c8f58279d1901"
     },
     {
-      "path": "userspace/runtime/gnat/cubit-bell_sets.adb",
-      "sha256": "b2d3c16900bbbc2237b061878a7f2790bcab1720eb5ebff9e9c58670782657d7"
-    },
-    {
-      "path": "userspace/runtime/gnat/cubit-bell_sets.ads",
-      "sha256": "6790b0b6a83578c67e1cfc378498381bbba6d622e59413a2d5d3aca7596fbfef"
-    },
-    {
       "path": "userspace/runtime/gnat/cubit-benchmark_clock.adb",
-      "sha256": "7a064f86aa855cc71dedae27ba87d2051d90d9c841c219573fbe9e8d59ab5985"
+      "sha256": "517a84abecf84f6269c2ff872d8ef961d1e25d6998b7e96d94da8c9d304f1286"
     },
     {
       "path": "userspace/runtime/gnat/cubit-benchmark_clock.ads",
@@ -831,11 +823,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-channel_bells.adb",
-      "sha256": "0cabc9edd7bf449ba5169bb34ae03d04439e030f97ec89a44bbee4969525e931"
+      "sha256": "d91ec675c0eb2b49cea4711bc8755bfaaa91953751906b5bdae7ac87737ef72f"
     },
     {
       "path": "userspace/runtime/gnat/cubit-channel_bells.ads",
-      "sha256": "5b32e05b56375ab0d64690acb7448b7f645e7f71b71518542a31e3655964d891"
+      "sha256": "c009700b353e20bded6d4eb3a011bacf87897daf8ce3bd41ab712362c0f0a6ae"
     },
     {
       "path": "userspace/runtime/gnat/cubit-channel_clients.adb",
@@ -867,7 +859,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-channel_protocol.ads",
-      "sha256": "aa4281240968488e12f24c74ee8630ac370022dafff59476a430f21b71938dd8"
+      "sha256": "fc170aefa2fbd8037721250abac7915cc68188ca530249d535e85de8ad1bb559"
     },
     {
       "path": "userspace/runtime/gnat/cubit-channel_rings_c.adb",
@@ -895,23 +887,23 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-channel_servers.adb",
-      "sha256": "49628224d01a429f3fa13056ef932236077be0d70facc2070f5c26b5d0f56cb1"
+      "sha256": "7fcc3ec35a095baa172188fbd8ffd627bdd45b305aa52f3743c1d5b9676285b6"
     },
     {
       "path": "userspace/runtime/gnat/cubit-channel_servers.ads",
-      "sha256": "8e78d79e546f4568d512bbe3f104db9bfe564f213b2920d567893a380b0dc58f"
+      "sha256": "ec984186f87e16f675aa62573c47898acdb422f8a23582d382998976a2387bce"
     },
     {
       "path": "userspace/runtime/gnat/cubit-channels.adb",
-      "sha256": "e6bfe758cc773ff9f71b76572d3227d6b29a6b27a23b5bc656465cf64782dcaa"
+      "sha256": "d45fc0f9f5b243409d51a8c78133050dc7b84f38956ab1cf3b7b3a02cd899726"
     },
     {
       "path": "userspace/runtime/gnat/cubit-channels.ads",
-      "sha256": "e4fdf99de018efea5ab91f84a36234827b5f85363df08e1b9976c3a03508b869"
+      "sha256": "63437b45f4218abd4faed3f4679decd00399106c9ce347d7fd5ddba1cfe0d875"
     },
     {
       "path": "userspace/runtime/gnat/cubit-child_exits.ads",
-      "sha256": "f84fd8d5d89bcc5160beacf20729b4f552506097e62bac40d5ea615379525a75"
+      "sha256": "940bd0e3dc62c212621908a501587e86ba53ecb0ce7c612490e66edfff298ee0"
     },
     {
       "path": "userspace/runtime/gnat/cubit-child_table.adb",
@@ -1111,19 +1103,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-display_protocol.adb",
-      "sha256": "491f424dd5b54388a6c3f7a546c015e23017f90a26a5d0572ad3061e0e41e75a"
+      "sha256": "7c55716b4b98cdc8f42aa2e411cfc2ff141ee519b2ddb42e51d6d8aa6b6088b6"
     },
     {
       "path": "userspace/runtime/gnat/cubit-display_protocol.ads",
-      "sha256": "40820a6a5ecef894e36676d8cb4524c73f97d957deb0e4d375224b34b3df89ee"
-    },
-    {
-      "path": "userspace/runtime/gnat/cubit-doorbells.adb",
-      "sha256": "351d88cf7601c396da35e32d5c179110a33f27138a2c13db3d89858f2fc9c739"
-    },
-    {
-      "path": "userspace/runtime/gnat/cubit-doorbells.ads",
-      "sha256": "1af7662884689ecbc6ff51764bcb698636fb469343d8e8dd94a9a7cbaf4b899c"
+      "sha256": "ac46716e16df4b35e4c08197bed8f8998b3a6df499d793c2bebad013280b8507"
     },
     {
       "path": "userspace/runtime/gnat/cubit-driver_readiness.ads",
@@ -1219,7 +1203,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-futex_locks.adb",
-      "sha256": "3169432db7dc783d0ae121653ac0ccb53b5425237213d266824de1b8ad3939c3"
+      "sha256": "ca678042019d7414c649974dca1dd0b1c1877d03414c2be6837847dbdb17281c"
     },
     {
       "path": "userspace/runtime/gnat/cubit-futex_locks.ads",
@@ -1247,7 +1231,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-gpu_sessions.adb",
-      "sha256": "93806d881012ef673a6a4c4127e1a06543b6f1c7bbde7c0640fdae1fcaf703da"
+      "sha256": "fce57473f794774a5bc982be5300dcb51e9355cf9eab1d29c236bf1f4aa0de63"
     },
     {
       "path": "userspace/runtime/gnat/cubit-gpu_sessions.ads",
@@ -1256,14 +1240,6 @@
     {
       "path": "userspace/runtime/gnat/cubit-grant_references.ads",
       "sha256": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e"
-    },
-    {
-      "path": "userspace/runtime/gnat/cubit-granted_logs.adb",
-      "sha256": "9ff06ee5b26ab8c56b3e22d4774b8f0cd71a83350e1832f7d2133b0ebdcfc676"
-    },
-    {
-      "path": "userspace/runtime/gnat/cubit-granted_logs.ads",
-      "sha256": "613a89ae7544919f5d4f8daf7b672af3a95bd224c05a11873fa27ec4eb9351d7"
     },
     {
       "path": "userspace/runtime/gnat/cubit-graphics_metrics_io.adb",
@@ -1283,39 +1259,39 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-boot_roots.adb",
-      "sha256": "ab324f1fb2c442489baab2e8ffdd5621c814d1ff11ee8292bd9e1307b38cb296"
+      "sha256": "35ea63b77370a055acada8b30219812ba0909706b170f11778d1267985e6a522"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-boot_roots.ads",
-      "sha256": "df98765cf5d9a0a6034747c1ed021de127f6e6c85f03076038f081037e45eee3"
+      "sha256": "4e9bed27e4c5c904cf5d3de7d01069a350ebf5c97a1840690ef4cdeb32496043"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-c_abi.ads",
-      "sha256": "614adacf9fb2c90f3baa0723c4d41bc595ccd77459047edb303e3db40c7e7551"
+      "sha256": "0b567244b589aefa64a9557e18f2a8c17f974f38fc7d232277f0df657d4404be"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-control.adb",
-      "sha256": "dc7835a2edc518666484075b50d0eff9117764f4256c24d0965528000c7d0dc9"
+      "sha256": "0944858bbf77f5702e4ccd5be60ac4ae0412a57c0b07cdbec99873793a07b569"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-control.ads",
-      "sha256": "554687bbcd4e341671228c6e99b67546f6b25f5602387d411e77e5d3b00aff44"
+      "sha256": "244e99bea1613894ee7b4093d93a3feede844ad230e76e38626657f0db4a7279"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-devices.adb",
-      "sha256": "61d906197040ce119aa8c319a4ec2baabe614aa5163a5329ebace1e51aabc6bc"
+      "sha256": "d9e34421fdd1932ff94f4d1b443e707bdcc7962d813106c29c904b7cad471bd4"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-devices.ads",
-      "sha256": "1e136672fc71b64dbcf3e28c0a6277956dbf9f82a8ea518b8aab1c4142b86dbd"
+      "sha256": "6cdb6a1e50923b2c1facd743275d9cea6e55eca103d3010f4cd1616dc3205d3a"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-firmware_snapshots.adb",
-      "sha256": "03f3558cb4606c077731cedf2fa1c8de9e21ee06fac12e2df39230ea611d10df"
+      "sha256": "45ba2ab865b38171b4466d1ab5ed885f3a4ce93dfa4353d2938d5806129cf3d1"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-firmware_snapshots.ads",
-      "sha256": "79255983c83bf8981d8067fb3ff9e6ea7f5eaf1db67c7c19120072a08e0f1996"
+      "sha256": "37a7203088b89e2aee595b078cf295fd9ce234ab0ceceaf7308017429e044bcf"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-grants.adb",
@@ -1327,19 +1303,19 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-ipc.adb",
-      "sha256": "f96e19a53501c9e99da9d832298972d5278745ebadb54b39decaa19f0a2fd675"
+      "sha256": "cecfdf63870f12c09c4c8893bb8981979be753345d0f2d619956a6ddc3907a07"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-ipc.ads",
-      "sha256": "9be31d1553a61cf2627dd3ff732b5cdb901386deda24d0fc701b8f332cfb031d"
+      "sha256": "17bc4b74dc228329e9a37287391889f62ae39ce106413f8116f7f1540bc828b0"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-kernel.adb",
-      "sha256": "bbf81220c207393eceec6a964e926094c96cd8b8599c06fbdae52ed8058cb3cf"
+      "sha256": "bce612c5f45d5f591799661d90436292f9609cc668f3d63c743a83fe4cfb9ae5"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-kernel.ads",
-      "sha256": "0d196a29dfad362d78192433d8bb646639731d4205e09e8f8b76b34eb59b1019"
+      "sha256": "4a221bf691815683021eb355aa8ccecabc5237f4467af1567dae9bc666c3cc60"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-lines.adb",
@@ -1363,11 +1339,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-startup.adb",
-      "sha256": "282d64af1f2fc2054b084ab9722c932ec4f4f65ac61b26cf6d88bd001e4fd31b"
+      "sha256": "eca0d179630a00525010d7f9af24494af7bc456e38de9fdc89161497ddcb9f30"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-startup.ads",
-      "sha256": "662ad62de5378aa7cccbe59cf4dfb3e2463ff54ea62b03e8e9428b7bf5ae87c0"
+      "sha256": "b3b7beebf9fd12fe3d65219879d7654c552fa1f077a145bbb02ee0691ab998ed"
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles-typed_endpoints.adb",
@@ -1379,7 +1355,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-handles.ads",
-      "sha256": "a974a7110bef7339a223fb254a77c530768821a547f34ff7a8f1db4adcd8197d"
+      "sha256": "172b4d844c30af183cf30a6a613e014c1a89681b73da286df3299e69f1bd2f24"
     },
     {
       "path": "userspace/runtime/gnat/cubit-hardware_random.adb",
@@ -1399,11 +1375,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-input.adb",
-      "sha256": "cdd7d07dc539effebc5fc1bbba75353bce5dc1d72d7aa6ccae8a6102816c339d"
+      "sha256": "083d011186309496750a2c384e3576e98f7a9bcdc3935c37204785af5e25f000"
     },
     {
       "path": "userspace/runtime/gnat/cubit-input.ads",
-      "sha256": "d9aacc43abbb203c59968ad1e6a7b21e16d2a8e5e4e10d8edbb6f250b5aeda98"
+      "sha256": "89a1d8dba9525c0cac5bb232ed2f22f897e647544e6d009e6dd903a9a4ea5a8b"
     },
     {
       "path": "userspace/runtime/gnat/cubit-installer_protocol.adb",
@@ -1415,11 +1391,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-kernel_abi.ads",
-      "sha256": "4b733e8d4fab8a4fa8bab33df833ff1a55be6978ef43a30f58719ba64fafe388"
+      "sha256": "64d867aac0218e5e904d0bfcacd69867f12e0536f7ffeee91d0d2b5e943d6fce"
     },
     {
       "path": "userspace/runtime/gnat/cubit-kernel_calls.adb",
-      "sha256": "332bfbf89ba2cc813bd59ec0b7b86140e98d20ead1b8d8e6d42444538a8ba9d0"
+      "sha256": "66bdf6362125b10e66004b7d5d139efced3f40f046cf6ec8d7c9a5dba7190448"
     },
     {
       "path": "userspace/runtime/gnat/cubit-kernel_calls.ads",
@@ -1443,19 +1419,19 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_arguments.adb",
-      "sha256": "077a7ba88117f75a45e021b26fa154b09440a4e85c2919d5ea3317ba5ae18629"
+      "sha256": "5fe3e455409590dd7eaa19923b95eb2bea6f4b20cab0cb1bfdd7160ef279e1ed"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_arguments.ads",
-      "sha256": "65beb6b48dc22c31474e67607c1b7cf20ccf8d7b0a462b08ec953b9606422b75"
+      "sha256": "f495defa4aee738b6fb029c051341566e836867a0bcacb0fb6b010a848e9275d"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_authority.adb",
-      "sha256": "d031b3cbd205f6e591d03181e80101fc73c3b9331a5be6f8b5babcb6a36e2c95"
+      "sha256": "170fe058b6bd5b58e19c468f67944ae692570dbc1bc187b4d8390d23725ff336"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_authority.ads",
-      "sha256": "d621a8bffc94675431202d1ce3d67b345c0a80b6a5d757774931636dbecb06be"
+      "sha256": "bde005c9f96d1a6cdc3b3cf4f6e8620a64142c1fec1c9b37613075caff39d072"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_block.adb",
@@ -1483,7 +1459,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_failure_text.ads",
-      "sha256": "e569dce05028354bdf5e8a335991ce86700800f077415e7503919d9d9e5780d4"
+      "sha256": "ccad643a86c68d2b8b0b798a5cf3cd05dcac03b9e1d605b8db1918d6f96965a0"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_grants.adb",
@@ -1503,19 +1479,19 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_policy.adb",
-      "sha256": "1698ca3f266f5cb0917724edf2c14ca646f4689a7c8df13b7aa2144bbe90c6ab"
+      "sha256": "be028f6b637d4db6cd56a2d35f9fbdf9b5d989980f6fe8d0b992c08361e75e6c"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launch_policy.ads",
-      "sha256": "db7b1e5924e552cf9ef8a470be00184e6cc2d87a4bfd486e8c367812d8ba1e75"
+      "sha256": "f01b2f62acd1561ba6104d68cc2b64417c808cbedd6af5ae6cb269a0595d0cdc"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launching.adb",
-      "sha256": "9077add2b97ce75708803f6ef0394f691dcf4a275b022a52d491a18a8156138b"
+      "sha256": "54db7bbdb4071cc09ed2288fce14f7784b793720e3d0d6c2c9f506559636cf1b"
     },
     {
       "path": "userspace/runtime/gnat/cubit-launching.ads",
-      "sha256": "0c61b5f90c9e583d5fd559405a9db782ff3030fb90435fd51a315cc3df1be29e"
+      "sha256": "10883c94bd582af4fca847f33e65ea81d4301665785643e8ef398f3d227d7984"
     },
     {
       "path": "userspace/runtime/gnat/cubit-llm_protocol.ads",
@@ -1539,19 +1515,19 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-log_records.adb",
-      "sha256": "c362d0e60181cc7c3c1b2405f63526549ecd4a69daa593459c6984466b953888"
+      "sha256": "16fd979761f66786d2be5424113e1d1166448d8a09392b87d9b8ea62128001c7"
     },
     {
       "path": "userspace/runtime/gnat/cubit-log_records.ads",
-      "sha256": "9d9cbcb0e1b462b7d6a596d0b1d1fbcb424f6343ed2a4b1cee0c05f7a366c0f0"
+      "sha256": "d96589c35063d3ba90c9b114f4192e0eccf544e5359266f7c8a299385c34b3f9"
     },
     {
       "path": "userspace/runtime/gnat/cubit-log_sources.adb",
-      "sha256": "43bc79c4d55ffa9d41a5105871f55c840ffba4ccef775bd96b9cadeb37a6a7e3"
+      "sha256": "3454697ce1eb735f9bd88c3a1254e2e52cd7a2362100f3e0518824f758197076"
     },
     {
       "path": "userspace/runtime/gnat/cubit-log_sources.ads",
-      "sha256": "9ba8286b943e7106d7d092ec145c5339fb48a365f0364eb48c6d5e2fba77f9b3"
+      "sha256": "d7567423306e21ddf6bd5658856c54944e32856b430194300ccca7a1773e9482"
     },
     {
       "path": "userspace/runtime/gnat/cubit-log_streams.adb",
@@ -1563,7 +1539,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-log.adb",
-      "sha256": "abd872918506d59817599c89642cd08ae75a683ba7a41b5c40e4ec3cdf5abcc8"
+      "sha256": "c80c5b925b70c67b95017f6d0eafb0a199a20ccd97b27f50b9803fcfe747f159"
     },
     {
       "path": "userspace/runtime/gnat/cubit-log.ads",
@@ -1571,27 +1547,27 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-logging.adb",
-      "sha256": "d967498e2224608cd9d6068c9b333d6d61770765f4b84aa284501e9519ac4ff8"
+      "sha256": "266f8952226bd10214e3d11712c96190c9224129432536789224227cf1e97b7c"
     },
     {
       "path": "userspace/runtime/gnat/cubit-logging.ads",
-      "sha256": "c328827bba721977716686a1765bc7bf4c8e411a2159b68c5bf3f9bddfd33c7f"
+      "sha256": "642cb3c603979e4df245880184340fbd37f0d2cd0511862cbe957c151d311406"
     },
     {
       "path": "userspace/runtime/gnat/cubit-memory_grants.adb",
-      "sha256": "362f6f248d9ccbcc3c106c752a7655dfdcfeef27880eb9c5cfe88eb35afec78a"
+      "sha256": "9685a303422820f2e38cda4d2d176d368e63770437c9d0a59c27fd63a9e82a6f"
     },
     {
       "path": "userspace/runtime/gnat/cubit-memory_grants.ads",
-      "sha256": "f338947f267391543eda29562cea527fabf56fc05d7905e7a5062d67f92b37b7"
+      "sha256": "0dac95aae3846a63cca73f4ab321c872fee3270317036c6cc242e692628b242c"
     },
     {
       "path": "userspace/runtime/gnat/cubit-messages.adb",
-      "sha256": "0a1cc66a5f7aeff67286f6264790f0b0928b322ef255847dae8356b6c41f5866"
+      "sha256": "7efedb8ca75f084a43423605c888b4f981ac5b0b03f5450c3391980281858d6a"
     },
     {
       "path": "userspace/runtime/gnat/cubit-messages.ads",
-      "sha256": "5821c8bfe49dca95b486dc76b93d4a43377edc3f9bf8a62c1d07d023c9eac2b2"
+      "sha256": "498977f539745f88eeca515e25be2c395dcae9794fd48ad0db3da38397f63a3b"
     },
     {
       "path": "userspace/runtime/gnat/cubit-metric_batches.adb",
@@ -1603,11 +1579,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-metric_protocol.ads",
-      "sha256": "8e898f6fc95629dc25a77c786f399f962551a8722c2ab127575e1d86f6ffeb1a"
+      "sha256": "8efbb451b15367c150257026cbfea18706d668924607d2184ed2a36be76ca34f"
     },
     {
       "path": "userspace/runtime/gnat/cubit-metric_raw_observer.adb",
-      "sha256": "94e7c10777a088db4be115c6ecf9ccd1126b18ee8fe12844700b389dd2c2b51e"
+      "sha256": "93dd7bd2a20a0106681026b2fcafc4bae63347af57aef1443d2829b17d4dc6d9"
     },
     {
       "path": "userspace/runtime/gnat/cubit-metric_raw_observer.ads",
@@ -1631,19 +1607,19 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-metrics.adb",
-      "sha256": "f2c93008a7911a1b2a4f8330bf0ec0cd5db51cadfecdf42c32d34346262f769c"
+      "sha256": "5e90a2f48ea2ab8b2fb2236c6d9545e89c2a79e00310dab67c5aaceedf2009f3"
     },
     {
       "path": "userspace/runtime/gnat/cubit-metrics.ads",
-      "sha256": "4d270aec532f07ad537be967514ac35ca561faac5f53ed61efe77cb77939683d"
+      "sha256": "c034c16962ec2275fbb764073c13a2bca696f100b6f3c92acd211e886c175ae1"
     },
     {
       "path": "userspace/runtime/gnat/cubit-monotonic.adb",
-      "sha256": "b45003d23cba5e35ef8000c5accbc9a6fd529bd21cd7dfbc3a6d9cf603cd40f8"
+      "sha256": "e96e63ab6bddb6ebe780e4c0129ab2e6a48e9147a436b96b6924d1f5d6f4396d"
     },
     {
       "path": "userspace/runtime/gnat/cubit-monotonic.ads",
-      "sha256": "8903038c2ffd0a064d9df8b296a02ac887ecff5772bb6519c2c2f6619e53fc7b"
+      "sha256": "25b99d7094497de58e8996cfbc099195d33dbfe3277eb9e1cacda533dc88ddd2"
     },
     {
       "path": "userspace/runtime/gnat/cubit-net_address.ads",
@@ -1727,11 +1703,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-owned_reservations.adb",
-      "sha256": "3fe3eeea37fc81ad625f7af481005a73d4edc3341f112138a49a0a0bf455f649"
+      "sha256": "d4c4ff1fddde75da5fd37515cbb9c700b46c7ad7e2f67b094744f883cf33d8ff"
     },
     {
       "path": "userspace/runtime/gnat/cubit-owned_reservations.ads",
-      "sha256": "06e9f5be1ec9ddd08b9aaf6f02d37a8591f7f2798c1913571866f102e6f05ccf"
+      "sha256": "78d67c7de6baef2179b92925456f464d8039c93a652e63b922c03993de1d0e72"
     },
     {
       "path": "userspace/runtime/gnat/cubit-parameter_sections.adb",
@@ -1779,11 +1755,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-process_events.adb",
-      "sha256": "6e3000e910c83f1d6267e7204ff917b090ec4686b5d66447393e357c4836ba6c"
+      "sha256": "50ee64314b6cc4b7f054eedcb95713f29e28726fee5597001554cf87c255812a"
     },
     {
       "path": "userspace/runtime/gnat/cubit-process_events.ads",
-      "sha256": "101ebd8bbcf973f8814dbc07f252df2c00c14936b2f5dc52f2d09c9b51d22c27"
+      "sha256": "32bd3f010ac0715562efabd0c68663a44e39284fc385a38f00b35116e6f5047d"
     },
     {
       "path": "userspace/runtime/gnat/cubit-process_ids-text.adb",
@@ -1815,11 +1791,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-program_descriptions.adb",
-      "sha256": "54b8ce22263d4c2eb28ee33369f5cedabe5a6e24813809e14cb23f7ac9190e55"
+      "sha256": "e28b20e1ff2d7466b7d2a6319fe521b9490aa8eb6bdebbd7997ac4b80716ea8b"
     },
     {
       "path": "userspace/runtime/gnat/cubit-program_descriptions.ads",
-      "sha256": "f460816c3bf2d0c9664c466dd571a560b6ae1a6d66d202a491fb1180a8af2c0d"
+      "sha256": "d423497bbc0a4a2f628663d1da6e62b61e0bee2484cac1d6376321b08eac471f"
     },
     {
       "path": "userspace/runtime/gnat/cubit-program_endings-last_chance.adb",
@@ -1855,15 +1831,15 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-publication_grants.ads",
-      "sha256": "22581b97b34064fd1119f7617007ef89e579f3eb8349f5ee175f81551d032eef"
+      "sha256": "eed71da94faeb015ea038c05eddf9c1dccac3bdf2d952aec72ee14d791806f17"
     },
     {
       "path": "userspace/runtime/gnat/cubit-published_clock.adb",
-      "sha256": "15558a382fb6b44e972c47db0a8e90a203c37afb8643b9844db2b8f3c7078817"
+      "sha256": "c34d2f1c36112711f74f5cef44bf4f0bf7241a3cd772c9db58c217d9b6d68250"
     },
     {
       "path": "userspace/runtime/gnat/cubit-published_clock.ads",
-      "sha256": "b52800e86e9e07a90f1274cc58c46cc62a862bc41a27c0766d72e9cc8b5bcad8"
+      "sha256": "2ac39d5499a9fbee3648d3e61d91120a019f5a523d50af53e6f76689688512c5"
     },
     {
       "path": "userspace/runtime/gnat/cubit-refusal_notes.adb",
@@ -1883,11 +1859,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-request_channels.adb",
-      "sha256": "226bd16157b481608f04e70d5428033e8b51317be733f46ff9486ae101e54d75"
+      "sha256": "775ce0f5fa5e34ce559f05c072dc8a9e615d29ccfd49ba04a2aaf36d055d7214"
     },
     {
       "path": "userspace/runtime/gnat/cubit-request_channels.ads",
-      "sha256": "743a0337642b85f42d3e5c952161abbcf775acfdd1e5c717eea06f1330664f15"
+      "sha256": "f97b3875558833430d16c1ee692ec9908f48452ca18c50b38ff792765d5a68b3"
     },
     {
       "path": "userspace/runtime/gnat/cubit-request_tags.adb",
@@ -1947,7 +1923,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-settings-inspection.adb",
-      "sha256": "72d5798efcc48ce5c471830be047975a14ea97460f329004baf1c7a6d90ed24f"
+      "sha256": "fa98cc9d9ee0424427ca93721d98fe45e04b4d65f7592977e1e6e9dab18410a1"
     },
     {
       "path": "userspace/runtime/gnat/cubit-settings-inspection.ads",
@@ -2039,7 +2015,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-startup_tables.ads",
-      "sha256": "911f21a96cd3a9e5a1d01106c135647a84722d88eaac1b81d2ad1270d42267db"
+      "sha256": "2f0d2cce31811ac1dae513013a449486fff1f127272cb768553f9d40c08f6944"
     },
     {
       "path": "userspace/runtime/gnat/cubit-startup_wait_test.ads",
@@ -2087,11 +2063,11 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-system_facts.adb",
-      "sha256": "56900a39f015425693c35e40556bd42c3e4ee88f8be949bb0be92a259afb0053"
+      "sha256": "8a9c1056c4f6f148a3c48eb4bdbfda477d22aeea2276f2b9ddef3dd4ff466330"
     },
     {
       "path": "userspace/runtime/gnat/cubit-system_facts.ads",
-      "sha256": "a6764a185cb71f278c8beff9af75207f900dccdc38eae06059224db03d832753"
+      "sha256": "6bcae9117c409bb756f78eb04842040abc4dd1799148c1b283c61de85c99f697"
     },
     {
       "path": "userspace/runtime/gnat/cubit-text_to_log.adb",
@@ -2103,7 +2079,7 @@
     },
     {
       "path": "userspace/runtime/gnat/cubit-thread_areas.adb",
-      "sha256": "638c82e3631d022737d743da5b14ac6c80322f57435649a42ebb1a898b637609"
+      "sha256": "f9ed76fbf94fe9d7dab6c0cd03f1309d7c59ab73b2961a3df36210838e17eaed"
     },
     {
       "path": "userspace/runtime/gnat/cubit-thread_areas.ads",
@@ -2567,7 +2543,7 @@
     },
     {
       "path": "userspace/services/gpio/lib/gpio_community_park.adb",
-      "sha256": "afe4efb4d9fcf945eca1d1ab428937cb723e8723f58f61e68b3020081c5a65ea"
+      "sha256": "8e6bd362887ab99a165f1a807dfd790fcfa2658124a4273f9570487088f7a221"
     },
     {
       "path": "userspace/services/gpio/lib/gpio_community_park.ads",
@@ -2626,14 +2602,6 @@
       "sha256": "ce2040ed62ac727418b0b2a4cfbcd92981df4a5072857faeea938dc89a448bb4"
     },
     {
-      "path": "userspace/services/gpio/lib/gpio_polling_loop.adb",
-      "sha256": "1b9fdb08703be6edcb2e3fd2eb80e4efec8c8e41d345e75ae14068ac1089f958"
-    },
-    {
-      "path": "userspace/services/gpio/lib/gpio_polling_loop.ads",
-      "sha256": "a3c8707e768a9179982384d3024febe89d67514a1947330603687a3de21a9b4d"
-    },
-    {
       "path": "userspace/services/gpio/lib/gpio_request_dispatch.adb",
       "sha256": "6dab2d979a5275aec7d939f16ebe55a26fd2872693c1fe1fde8043013e7a61e5"
     },
@@ -2667,11 +2635,11 @@
     },
     {
       "path": "userspace/services/gpio/lib/intel_adln_gpio.adb",
-      "sha256": "3c9ce5a4f7e615c1574c661cfa037d7bedf4914383d081f6f334e8db063bd159"
+      "sha256": "74116b564512250c8ab0f5df99416aa737ec1f0b7eb3fcd542bd372e2036d788"
     },
     {
       "path": "userspace/services/gpio/lib/intel_adln_gpio.ads",
-      "sha256": "ae24574897c996d4116cad9d0d222ba5bffede7b29eef2c3a9a1e116cdca8cf1"
+      "sha256": "4dc2283bf20ace8a72db2bb307ed113234baa6998b6fb613ef74a2c8e2cf5622"
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_controller.adb",
@@ -2683,11 +2651,11 @@
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.adb",
-      "sha256": "26dc73d667b24a6626bb20860cd405b1b1468f239c5905881717290459a6245e"
+      "sha256": "857c484a6e32452fcb03eb3657252d7e2554b0f3052d0f84e4b0fad4b562288d"
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_irq_owner.ads",
-      "sha256": "c515aca26679c5be38b4951d48c7611278ce7639c5cace6567eda378f868d3f8"
+      "sha256": "d8dad407c9cf2949137a34f424477d762472dd2847211d50bcdca709f646c96d"
     },
     {
       "path": "userspace/services/gpio/lib/intel_gpio_irq.adb",
@@ -2699,11 +2667,11 @@
     },
     {
       "path": "userspace/services/gpio/main.adb",
-      "sha256": "9162e83132e8db7b5c5c8e311cfe54e32aa9cc44610936ee05e845ee8ce237ae"
+      "sha256": "0ed576f16cd4f6dbc7824b9ad01b103e36dc1abca313938e1498c46c0ae5fea7"
     },
     {
       "path": "userspace/services/gpio/manifest.ccl",
-      "sha256": "7ba82ce41fe439656280985bd08ed5666d01094817a32e8c9ac2c2b1e9961894"
+      "sha256": "1689b8dd51aceaf6de38ae10dd815131300516dc579cf696c28359d0993acbf9"
     },
     {
       "path": "userspace/services/gpio/native/gpio_kernel_regions.adb",
@@ -2727,7 +2695,7 @@
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_clock.adb",
-      "sha256": "5c755127195fdd810924e47e02eba43588d80239e8a6e03e434affa7f87fd731"
+      "sha256": "5f91d1c93dd4381128a1395855e175b907e60229472300e66ce8a32f78ef21d3"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_clock.ads",
@@ -2767,11 +2735,11 @@
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_log.adb",
-      "sha256": "26c24b964eb3c6f8cced11d160314b185ad26fd321a0d6d771d4d1c6d51688b8"
+      "sha256": "6c23ed0bfca33bb30fe34995ba08080c1a358bea6b208c935971b37ef12891ee"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_log.ads",
-      "sha256": "ba2cffc010e1377f2962ef26dd2a8869dae38d9a4520bef1684a55d04e2fe828"
+      "sha256": "70234a6df52ec4e47da7a15e0871129b5a9c67217dde7b2c0adf532f245e0872"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_policy.ads",
@@ -2779,11 +2747,11 @@
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_pump.adb",
-      "sha256": "b093a38bc2bc8b9042a346ca64ed3e861edd162dde275d2cc388622f01623ba2"
+      "sha256": "174aecbbbfcc2a79764b6231de66230147245e09ab5ab086e8e095ce7679f72f"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_pump.ads",
-      "sha256": "698d76a80d715bb7c7e9464bc8519d16e18f54b965786be612da55797392f3a5"
+      "sha256": "c550874730ced5067fd8a4e2c6b20d3452446e9996f5de92b9fcc82907679132"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_request_io.adb",
@@ -2811,7 +2779,7 @@
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_wait.adb",
-      "sha256": "7780bf7b9812166e58d1dadfff51f3178f42f472573cb7b68050defa6e7a5441"
+      "sha256": "26fe235ec052be37475fca4ca3ab6c9c99e8b01ffec0f486c9bc573464127087"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_wait.ads",
@@ -2895,7 +2863,299 @@
     },
     {
       "path": "userspace/ccl/src/ccl-manifests-typed.adb",
-      "sha256": "3e07d272d2830a28553c5338f19b58af7d2cf1c389be76fc0d7c6f98bbad54b8"
+      "sha256": "97c1716cd6bae7ee0669df6a559f42d263441dd30b4d8b409c8ab5b6b5c232da"
+    },
+    {
+      "path": "shared/acpi/acpi_battery_observation_protocol.ads",
+      "sha256": "49e49d08f580ee4d16cba26015c90d7eabdbf3a2a4045e6209be99ebeac4a8c4"
+    },
+    {
+      "path": "shared/acpi/acpi_power_observation_protocol.ads",
+      "sha256": "3edb5961c1f25964c07c45e26453c8eaac4954b16c8869348dbef1dc1d6c030e"
+    },
+    {
+      "path": "shared/capabilities/debug_abi.ads",
+      "sha256": "d8f9081a76fc42a839bfcb2613c520530743737391fb58d612382ab9eb8c05f2"
+    },
+    {
+      "path": "shared/capabilities/futex_abi.ads",
+      "sha256": "1518a52e47eca124e62a4af46e4dfeac3ff99fc277034813f7b6f4584816b4d3"
+    },
+    {
+      "path": "shared/capabilities/platform_power_abi.ads",
+      "sha256": "1e3bb67d83de79860981db7d2cb93d6de2d635b6acbb0adf9962c57a161b7397"
+    },
+    {
+      "path": "shared/capabilities/process_list_abi.ads",
+      "sha256": "5efc71d044eda338bb20cbb3b8587f193fef1f25eccec386cc2dd2cd45c4903d"
+    },
+    {
+      "path": "shared/capabilities/test_console_abi.ads",
+      "sha256": "1fbd8aacb0fa86d05a5cc616feb553d47c0b2fafd008049478b004e3db52e730"
+    },
+    {
+      "path": "shared/capabilities/trace_abi.ads",
+      "sha256": "703a2dab0dd43a3434f4ff38cf97b4f61019ebbdcdfa257743b69918ec054649"
+    },
+    {
+      "path": "shared/capabilities/wait_abi.ads",
+      "sha256": "62895a5a8bbec07b787a87472bd39ca0a346276d41dd8ef607fe0bd64c0c67e2"
+    },
+    {
+      "path": "shared/firmware/firmware_tables-power_registers.adb",
+      "sha256": "209beb9cd5f753383f4c02fa9cc2f0ddab2ade4b518a61abcb9e9e7ec1ef888c"
+    },
+    {
+      "path": "shared/firmware/firmware_tables-power_registers.ads",
+      "sha256": "8246027c3bff8e1b72c823b68c89612606ad9af8f37e181503f27912d51e6b4a"
+    },
+    {
+      "path": "shared/publications/readiness_publication.ads",
+      "sha256": "06b6fb9cff3f4124eab251c36c8e5d6dd33661fc63b3164f96f981c92f8b5cad"
+    },
+    {
+      "path": "shared/publications/thread_abi.ads",
+      "sha256": "a344ff43fd7930bbdb829c9ab66cfd53e7ae398abaa7ed047af3572b04846934"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-call_census.adb",
+      "sha256": "cf6949407a6d4576e93f76462f3965a42927654a2f4827bfb016d1da8f8acb05"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-call_census.ads",
+      "sha256": "5c7744b0b14c88bd8d684613316aa4844fd950c5caf812e4a0bdae1f4e0b65fa"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-console_lines.adb",
+      "sha256": "1f0b8eb3427ae83e083862ae49940e6b5c1fbd3d0bcc67b15761ec3f7f389817"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-console_lines.ads",
+      "sha256": "0a6478a2c1b5a3bee12e9a79c272f6f21b6601e9368fd92584e105c68573c54e"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-console_route.adb",
+      "sha256": "dd55c1e6b49be9898777e800c779404a71a965ffaaee2437154ede98b932d9f5"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-console_route.ads",
+      "sha256": "2c4978af0faec9678d4569eb0fe3e25b0be7a6e459d498f620fcff8d2501b006"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-debug_protocol.ads",
+      "sha256": "7b8b0b664237a127e09722ab2a8198cf806f4b42ce2ab8d91aa2ef2edc9040c4"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-event_channels.adb",
+      "sha256": "d6c47218300582446f5cbf18736cd7c21a77c9aa778453f7cd1decf52083a399"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-event_channels.ads",
+      "sha256": "73a6eeac90f4a45886a6c3327b138c77e91053d4164d8118da0e156f2fb5d4f1"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-handles-debug.adb",
+      "sha256": "0c3430b12a11b1926b8ae73f956ea9206af4044b57d3503702090dd72c885024"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-handles-debug.ads",
+      "sha256": "fb7f4f767618a6145f30b155a807f66ad99e00dc319fe5fd0f1d40814717fd1c"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-handles-power.adb",
+      "sha256": "1d17da1c00255c6e976473bcf5043e86da36e8d4376f156d7c8eceb08064ecb4"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-handles-power.ads",
+      "sha256": "a65eba11828891cd150924200337303a5d68d477a995db567e669e39a469ce2e"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-handles-test_consoles.adb",
+      "sha256": "bb5ac5141fa5bee3a3a5ac179b65c84221ad876b5d8879a425fbc82943dc0372"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-handles-test_consoles.ads",
+      "sha256": "0eee088139c417420dfa571d12f1459e005cc3698beef36204ba54ff4d678e26"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-handles-tracing.adb",
+      "sha256": "a66338c7cc0d96446495c5c400da86d7605ce7efb2461b07283c8bd7422bd771"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-handles-tracing.ads",
+      "sha256": "2e661861cdfd29e7c9f4239b6f2ce7f9bf2ba2601ac51c3ba9a2b732da5c08b0"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-host_bridge_windows.ads",
+      "sha256": "deb54f25e8b302a2a98874395890c1ecea545a8567d58bbe76262ffb523ffc88"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-input_rings.ads",
+      "sha256": "2861a0bfd98d2b073554540ffa1d1b0b87e8f8c2a4acb1621f06fc39c42a9dcf"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-introduction_ledgers.adb",
+      "sha256": "0620a2dfcc057cbdd1b44a87b9434ce87a631260bb8ada625876d2a2034d6dac"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-introduction_ledgers.ads",
+      "sha256": "91ddf20e291fdc8401e4ca6b76f720a54b40cf95bcee38a6cd78bffd1e3ec8e1"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-introductions.adb",
+      "sha256": "09f3514f55d5c7c52022597f3f5478b069df205e3d4376bd451b387339216e69"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-introductions.ads",
+      "sha256": "f24ebe9d92f5b833f3bca90572d798c7d147ae63794f9e97905709a193dd2caa"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-late_introduction.ads",
+      "sha256": "9a443087318d380142581edb5139ff4a6593ce570d61165cad6dec48a160bcc5"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-launch_handles.ads",
+      "sha256": "b88b0cfd1f17bc490b3d57e82f82852d689da5c2ebc43f40b35b4aeb20fb4a70"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-log_records-texts.adb",
+      "sha256": "af4434c545689e62402d04a6f91a90488ca9c7699805d78cdf93b3779cef0592"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-log_records-texts.ads",
+      "sha256": "328cda982c85c1365fee181daee7c0c88746f93b32ebe2d0068b5210536141ec"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-log_sources-texts.ads",
+      "sha256": "e04533c67755975846e1de8add42a5fdb27b8dec389b3bab486623132e998f8e"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-metric_outlet.adb",
+      "sha256": "dd0b7571801fc208f50ed8bf2dacf331eea8ff6dd354ac8430853da1473deb2f"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-metric_outlet.ads",
+      "sha256": "d53e7984c2876b830a38c064efa579d11cf2db6d9b4f3d4d5c0d5cc305964c58"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-metric_pages.adb",
+      "sha256": "96dd5811a9545a08e1fa619862ab8d34f01556ce6b24d22570a1b3591bb73b73"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-metric_pages.ads",
+      "sha256": "a18f756bf6fd8d78656a59765b556f035d305192ed334c02c7bc4ee2e30aa2f5"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-metric_queries.adb",
+      "sha256": "b50b86969d2d8fe098236565a15df804ed5df8f1f736bd26c9f2655fd61ff399"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-metric_queries.ads",
+      "sha256": "f005cb6ecee647af092c87ff7c7d4adb9fcc3c22a7391368a4a3727c94114e18"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-metric_query_pages.adb",
+      "sha256": "f362be04b6b3ead78b3d4928a6484aa6c537302a100f31d2c3ae901a54bf48ce"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-metric_query_pages.ads",
+      "sha256": "c7bc2263c029a14abe071e9b8eaef873bdee107a723f21c438230182e4796243"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-metric_updates.adb",
+      "sha256": "82d47b184be3a2648ff1e90dae7a0bef281cbc57f7693c5d0d05843cc9897b33"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-metric_updates.ads",
+      "sha256": "42dac5619a6ec84c13fd28617bfbe3bb09b915d42d029de7638965edd0948aa8"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-platform_power_authority.ads",
+      "sha256": "599abf26395392974f02d6e3605972c6ca186de73e8c7df5bafba24ad6846116"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-present_timing.adb",
+      "sha256": "32109acc3b7421f8a97c9752c5dfb044e80f5514c8e353faf97352e01fc9b3ad"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-present_timing.ads",
+      "sha256": "6ec85aad75065d1466eed594884cf246f293ba4251405780687d563b73198556"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_observer_lists.adb",
+      "sha256": "f1343692c12e1520ddaa9c94d7a3d136fcfd25fa7a9d3d29d470f7142b41f043"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-process_observer_lists.ads",
+      "sha256": "c6f039864dee02724ea5e7cf92ec8d05e3bce044e2cfc9b73976914b7d52acd8"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-readiness.adb",
+      "sha256": "3ac14939421434a2901bfa4f27e01e9987d1bb15ba0bb8a847cb42de12a42d90"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-readiness.ads",
+      "sha256": "7f853b35bcab2c391656bb23402d372abc0d28512a6a1bbb754d4ad4efaa1892"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-self_offers.ads",
+      "sha256": "6cc62671566b2180a78c95ff7feada914f6381311d54d7f41cc564e934077bc7"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-shared_copies.adb",
+      "sha256": "0b8f06f2f558790cd8a0045afac626eb0dddee46443d3fbe0cfad5383f461227"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-shared_copies.ads",
+      "sha256": "ae527097b744a36316597569cdef3fc56a9962214ccbd8eb9874f5290e5af4d1"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-test_console_authority.ads",
+      "sha256": "47ae97f2e00ca2f8ea41db8fd043f15a6b51419bb36cc667a522815bed0df8dd"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-trace_authority.ads",
+      "sha256": "6bb384bfe99c48e262e6806e22b21936e1785b2f6dee0177100aa46a5beff088"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-waits.adb",
+      "sha256": "be4fa37fe49c226e4207095b38ce09bcb5fa4458c59100f6b025739f77990ca9"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-waits.ads",
+      "sha256": "6658847bda655b033cc05e7c76aa9c4ba42aabf4edaad99b62701f3b8c434bb4"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-wake_words.adb",
+      "sha256": "a245881bb0d5a7190c9b2e09b84c8a209342c5676fea22f701d6508225db7835"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-wake_words.ads",
+      "sha256": "dfe3ebf1b4d3a8787eae0798f7c345171ca82378f985c49a07df596b324b5cc5"
+    },
+    {
+      "path": "userspace/services/gpio/native/gpio_main_entry.adb",
+      "sha256": "0bddc51fa98a3dcd584769b3d3a84576059f48562f6dc99441b217bc18d87720"
+    },
+    {
+      "path": "userspace/services/gpio/native/gpio_main_entry.ads",
+      "sha256": "608a99765f62dae59db680bad738e489dfe118a2b155d0b3022cc4dfa65e65db"
+    },
+    {
+      "path": "shared/capabilities/vm_abi.ads",
+      "sha256": "34f57a3582e857e0562f88a3351f4c3301b255f6300420a35a618137aecf0239"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-handles-vms.ads",
+      "sha256": "6fe3b10c7e80a56649663dc51f6f15ed93fccea44830a132c25e28d7fc3c0143"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-handles-vms.adb",
+      "sha256": "2eab55e46ec5302fa1ca149457801ae35e68ad0ac45a517e1e683a86aa5838bd"
+    },
+    {
+      "path": "userspace/runtime/gnat/cubit-vm_create_authority.ads",
+      "sha256": "811768b715c4925044b088f4c3af4ee778476b5823dd98c2278b80884ee20fd7"
     }
   ],
   "ada_directories": [
@@ -2922,12 +3182,12 @@
       "sha256": "e7da2e4db68e9580d173085936ddd9d60f40ebd2f0126f4ef65334f67bd97e8c"
     },
     "build": {
-      "repository_path": "userspace/ccl/build/ccl-build/ccl-build",
-      "sha256": "2c0748ea30fbc6c13b3ce45c2757517b32c9cea8c834a4027ef8eb51e4222f96"
+      "path": "/home/doc/git/.acpi-proof-work/img31-gpio-diagnostics-20261121-v1/tree/userspace/ccl/build/ccl-build/ccl-build",
+      "sha256": "9de9171974866f432e009dd0baef3cce61aecd8337efb0c29d11c871dc7c51d8"
     },
     "manifest": {
-      "repository_path": "userspace/ccl/build/manifest/ccl-manifest",
-      "sha256": "0aa0fcde9a05d92d1ad8ea6c4f1415e3ff7f35cd9a30082db23384278485ae04"
+      "path": "/home/doc/git/.acpi-proof-work/img31-gpio-diagnostics-20261121-v1/tree/userspace/ccl/build/manifest/ccl-manifest",
+      "sha256": "3ea9e3809ba388099925484f8dedd0e31dea6541c906a973f9a0ded1014ca32f"
     }
   },
   "binutils": "/nix/store/8lkj89binl0xhraqxb8bwmv0q4p3pnlr-binutils-2.46/bin"

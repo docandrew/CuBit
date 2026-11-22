@@ -5,6 +5,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with Intel_GPU_Firmware_Reader;
+with CuBit.Monotonic;
 package body Intel_GPU_Firmware_File is
    use Interfaces;
    use CuBit.Messages;
@@ -24,7 +25,7 @@ package body Intel_GPU_Firmware_File is
       Bytes : out Unsigned_64; Plan : out Intel_GPU_Firmware.Layout;
       Status : out Load_Status)
    is
-      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Token : Unsigned_64 := 16#4947_1000#;
       Pending : Boolean := False;
       Failed : Boolean := False;
@@ -42,7 +43,7 @@ package body Intel_GPU_Firmware_File is
          pragma Unreferenced (Activity);
       begin
          if Failed then return False; end if;
-         Now := syscall (SYSCALL_GETTIME);
+         Now := CuBit.Monotonic.Milliseconds;
          if Now < Started or else Now - Started >= 30_000 then
             Failed := True; return False;
          end if;
@@ -52,11 +53,11 @@ package body Intel_GPU_Firmware_File is
          end if;
          Pending := True;
          loop
-            Now := syscall (SYSCALL_GETTIME);
+            Now := CuBit.Monotonic.Milliseconds;
             if Now < Started or else Now - Started >= 30_000 then
                Failed := True; return False;
             end if;
-            if Intel_GPU_Diagnostics.Poll_Driver (Receipt'Address) /= 0 then
+            if CuBit.Messages.Poll_Completion (Receipt'Address) /= 0 then
                --  The log grant may be in flight too (Poll_Driver takes
                --  it). Never mistake an unrelated completion for return
                --  of our loan.

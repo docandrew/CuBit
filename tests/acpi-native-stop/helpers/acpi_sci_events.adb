@@ -1,0 +1,1 @@
+package body ACPI_SCI_Events is procedure Acknowledge_Only(Publisher:CuBit.Process_IDs.Process_ID;Item:CuBit.Messages.Message;Result:out ACPI_SCI_Quiesce.Acknowledgement) is pragma Unreferenced(Publisher,Item);begin Acknowledgements:=Acknowledgements+1;Result:=ACPI_SCI_Quiesce.Acknowledged;end;end ACPI_SCI_Events;

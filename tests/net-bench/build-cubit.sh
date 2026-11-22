@@ -9,7 +9,8 @@ root=$(cd "$here/../.." && pwd)
 out=$here/build
 mkdir -p "$out"
 "$root/userspace/ccl/build/manifest/ccl-manifest" \
-    "$root/userspace/ccl/catalogs/native-runtime-services.ccl" "$here/manifest.ccl" > "$out/net-bench-manifest.S"
+    "$root/userspace/ccl/catalogs/native-runtime-services.ccl" "$here/manifest.ccl" \
+    --c-output "$out/startup.h" > "$out/net-bench-manifest.S"
 as --64 "$out/net-bench-manifest.S" -o "$out/net-bench-manifest.o"
-"$root/userspace/libc/cubit-cc" -O2 -g -DCUBIT ${NET_BENCH_CFLAGS:-} -o "$root/kernel/isodir/boot/net-bench.app" \
+"$root/userspace/libc/cubit-cc" -O2 -g -DCUBIT ${NET_BENCH_CFLAGS:-} -I"$out" -I"$root/userspace/c" -o "$root/kernel/isodir/boot/net-bench.app" \
     "$here/net-bench.c" --manifest "$out/net-bench-manifest.o"

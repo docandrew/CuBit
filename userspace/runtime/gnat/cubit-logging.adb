@@ -27,6 +27,20 @@ package body CuBit.Logging is
    --  channel open to logstore for the process's life.
    Announcer : Publisher;
 
+   --  Set once the program routes (CuBit.Console_Route).
+   Routed_Emit : Route_Emit := null;
+   Routed_Flush : Route_Flush := null;
+   Routed_Minimum : Route_Minimum := null;
+   --  The endpoint the route's publisher is bound to: publishers bound to it
+   --  are the same publisher to logstore (a publisher bound to another
+   --  logstore authority keeps its own channel).
+   Route_Slot : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+   --  Item's records go through the route (not the route's own publisher).
+   function Delegated (Item : Publisher) return Boolean is
+     (Routed_Emit /= null and then not Item.Route_Own
+      and then CuBit.Handles.Valid (Route_Slot)
+      and then CuBit.Handles."=" (Item.Slot, Route_Slot));
+
    --  Last words (CuBit.Last_Words, LOG-004): the logstore endpoint of the
    --  first channel this process opened, kept as a value, so the
    --  last-chance handler can publish through the Announcer whatever
@@ -82,7 +96,7 @@ package body CuBit.Logging is
             end if;
          end;
       end if;
-      if Announcer.State = Uninitialized then
+      if Announcer.State = Uninitialized and then not Delegated (Announcer) then
          if not CuBit.Handles.Valid (Announcer.Slot) then
             Announcer.Slot := Last_Words_Slot;
          end if;
@@ -117,6 +131,19 @@ package body CuBit.Logging is
      (Slot => (if Target.Present then Observer_Handles.Handle (Target.Value)
                else CuBit.Handles.No_Endpoint),
       others => <>);
+
+   procedure Set_Route
+     (Emit : not null Route_Emit; Flush : not null Route_Flush; Minimum : not null Route_Minimum) is
+   begin
+      Routed_Emit := Emit;
+      Routed_Flush := Flush;
+      Routed_Minimum := Minimum;
+   end Set_Route;
+
+   procedure Mark_Route (Item : in out Publisher) is
+   begin
+      Item.Route_Own := True;
+   end Mark_Route;
 
    procedure Publish_Now
      (Value : Logs.Log_Record; Result : out Status; Kept_From : out Logs.Severity;
@@ -183,7 +210,8 @@ package body CuBit.Logging is
    end Drop;
    function Dropped (Item : Publisher) return Unsigned_64 is (Item.Loss);
    function Minimum (Item : Publisher) return Logs.Severity is
-     (if Item.State = Ready
+     (if Delegated (Item) then Routed_Minimum.all
+      elsif Item.State = Ready
         and then Channels.Consumer_Word (Item.Link, Publish_Rings.Minimum_Word)
                    <= Logs.Severity'Pos (Logs.Severity'Last)
       then Logs.Severity'Val (Channels.Consumer_Word (Item.Link, Publish_Rings.Minimum_Word))
@@ -244,6 +272,13 @@ package body CuBit.Logging is
       Result : Channels.Put_Result;
    begin
       Submitted := False;
+      if Delegated (Item) then
+         Routed_Emit (Value, Submitted);
+         if not Submitted then
+            Drop (Item);
+         end if;
+         return;
+      end if;
       if Item.Pending or else Item.Disconnecting or else Item.State = Disabled then
          Drop (Item);
          return;
@@ -264,10 +299,43 @@ package body CuBit.Logging is
       end if;
    end Emit;
 
+   procedure Open (Item : in out Publisher; Opened : out Boolean) is
+   begin
+      if Delegated (Item) then
+         Opened := True;
+         return;
+      end if;
+      if not Item.Pending and then not Item.Disconnecting and then Item.State = Uninitialized then
+         Open_Channel (Item);
+         --  Refused (no memory for the ring, logstore busy): a later Open
+         --  or Emit tries again, rather than dropping everything after.
+         if Item.State = Disabled and then CuBit.Handles.Valid (Item.Slot) then
+            Item.State := Uninitialized;
+         end if;
+      end if;
+      Opened := Item.State = Ready;
+   end Open;
+
+   procedure Retarget (Item : in out Publisher; Target : Logstore_Handles.Endpoint) is
+   begin
+      if Item.Route_Own then
+         Route_Slot := Logstore_Handles.Handle (Target);
+      end if;
+      if Item.State /= Ready and then not Item.Disconnecting then
+         Item.Slot := Logstore_Handles.Handle (Target);
+         Item.Pending := False;
+         Item.State := Uninitialized;
+      end if;
+   end Retarget;
+
    procedure Flush (Item : in out Publisher; Drained : out Boolean; Wait_Ms : Natural := 200) is
       Waited : Natural := 0;
       Ignore : Unsigned_64;
    begin
+      if Delegated (Item) then
+         Routed_Flush (Drained);
+         return;
+      end if;
       if Item.State /= Ready then
          Drained := Item.State /= Disabled;
          return;

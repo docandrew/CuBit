@@ -14,5 +14,7 @@
     (interrupt "completion" Interrupt_Mode.MSI_X 1)
     (dma "queues" 1048576)
     (notification "nvme" Notify_Access.Manage "registration")
-    (service "device-manager" "ready")]
-  optional => ["registration"])
+    (service "device-manager" "ready")
+    # ABI-002: its debug text, once devmgr introduces logstore.
+    (service "logstore" "logstore")]
+  optional => ["registration" "logstore"])

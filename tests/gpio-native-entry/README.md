@@ -14,3 +14,9 @@ The GPIO_Kernel_Regions specification and body live in different component sourc
 directories; both source selections produce one logical ALI. Exact distinct ALI
 names and profile flags are checked. Inputs are snapshotted and original/copy
 hashes rechecked around commands. Kernel behavior remains a separate native gate.
+
+The parent-IRQ component has45 semantic selections and44 distinct ALIs per
+profile. Its real manifest declares an optional platform interrupt at resource0,
+and generated Startup exposes the optional parent used by production Main. The
+removed polling loop is now only a hosted model and is outside this component.
+No native execution or physical parent-IRQ delivery is established here.

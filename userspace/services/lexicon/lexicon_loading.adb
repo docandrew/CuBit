@@ -7,6 +7,7 @@ with CuBit.Filesystem_Sessions;
 with CuBit.Filesystems;
 with CuBit.Messages;
 with Startup;
+with CuBit.Monotonic;
 
 package body Lexicon_Loading is
    use Interfaces;
@@ -98,7 +99,7 @@ package body Lexicon_Loading is
    procedure Load (Budget_Ms : Natural; Data : out Image_Access; Layout : out Lexicon_Images.Layout;
                    Result : out Load_Result)
    is
-      Started : constant Unsigned_64 := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Deadline : constant Unsigned_64 := CuBit.Messages.Deadline_After (Unsigned_64 (Budget_Ms));
       Root : String (1 .. MAXIMUM_ROOT);
       Root_Length : Natural;
@@ -110,7 +111,7 @@ package body Lexicon_Loading is
       procedure Finish (Status : Load_Status) is
       begin
          Result.Status := Status;
-         Result.Elapsed_Ms := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME) - Started;
+         Result.Elapsed_Ms := CuBit.Monotonic.Milliseconds - Started;
       end Finish;
 
       --  Read the open file into Data, sized from its header.

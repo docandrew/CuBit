@@ -1,0 +1,5 @@
+# Kernel-map probe (KERN-014): asks a probe kernel to read one word of its
+# own page through the kernel's linear map. No authority.
+(executable-manifest v1
+  (identity "com.cubit.kernel-map-probe")
+  (version "0.1.0"))

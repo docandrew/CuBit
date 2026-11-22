@@ -30,10 +30,12 @@ system operations:
   - lexicon pinned to lexicon-crash: Rolled_Back (it ended inside its health
     window), lexicon-good runs again, the current generation stays;
   - clock pinned to clock-good with no stop grace: refused (a graceful
-    entry needs one); with a grace: Stop sent, clock does not quiesce, so
-    the switch fails with clock still running (never ended to make way);
-  - system rollback: the current generation's previous (the image, 0) is
-    activated: lexicon's image program runs again;
+    entry needs one); with a grace: Stop sent, clock ends on it (PWR-003,
+    Exit_On_Stop), so clock-good runs from the storehouse and registered;
+    procmgr never ended clock itself;
+  - system rollback twice (with clock's grace): each activates the current
+    generation's previous: lexicon-good's (clock's image program again),
+    then the image's (0: lexicon's image program again);
   - system generations lists the records (typed CCL values) and current 0;
   - at next boot: logstore.svc (restart contract reboot, never switched
     live) pinned to logstore-good.svc (logstore with 16 bytes appended: the
@@ -151,6 +153,10 @@ class Monitor:
         self.hmp("mouse_button 0")
 
     def close(self):
+        # The stream holds the socket open too, and QEMU serves one QMP
+        # client at a time: a live Monitor whose socket alone was closed
+        # stalls the next connection.
+        self.stream.close()
         self.connection.close()
 
 
@@ -321,19 +327,32 @@ def main():
           "procmgr rolled back to lexicon-good (the program before)")
     check(wait_for_serial(READY, 10, count=3), "lexicon-good registered again")
 
-    # Graceful: clock must quiesce on Stop; it does not handle Stop.
+    # Graceful: clock must quiesce on Stop; it ends on Stop (PWR-003,
+    # dac8a666c: clock.svc declares Exit_On_Stop).
     report = activate(host, "clock.svc", "switch/clock-good.svc", grace=0)
     check(report["refused"] == "Refused" and report["detail"] == 1,
           "a graceful entry with no stop grace is refused")
+    clock_hash = paths["clock-good.svc"][1]
     report = activate(host, "clock.svc", "switch/clock-good.svc", grace=CLOCK_GRACE_MS)
-    check(report["refused"] == "Stop_Failed" and report["current"] == good_generation,
-          "clock (graceful) did not quiesce in its grace: not switched; generation %d stays" % good_generation)
-    check(wait_for_serial(b"procmgr: switch clock.svc not switched: the running instance did not end;"
-                          b" it runs clock.svc pid"),
-          "clock keeps running its image program (never ended to make way)")
-    check(b"procmgr: switch clock.svc: ending" not in serial_bytes(), "procmgr never ended clock")
+    check(report["refused"] is None and report["result_name"] == "Activated"
+          and report["current"] > good_generation and report["pin_sha256"] == clock_hash
+          and report["running"] != 0,
+          "clock (graceful) ended on Stop in its grace: switched to clock-good")
+    check(wait_for_serial(b"procmgr: switch clock.svc switched; it runs " + (STOREHOUSE + clock_hash).encode()),
+          "procmgr runs clock-good from the storehouse by content address")
+    check(b"procmgr: switch clock.svc: ending" not in serial_bytes(), "procmgr never ended clock (it ended on Stop)")
 
-    report = cr.system_rollback(host, HEALTH_MS, STOP_GRACE_MS)
+    # A system rollback activates the current generation's previous: first
+    # lexicon-good's (clock's image program again; clock needs its grace),
+    # then the image's (0: lexicon's image program again).
+    report = cr.system_rollback(host, HEALTH_MS, CLOCK_GRACE_MS)
+    print("service-switch: rollback: %s (%s)" % (report, cr.generation_image(report)), flush=True)
+    check(report["result_name"] == "Activated" and report["current"] == good_generation
+          and report["running"] != 0,
+          "system rollback: generation %d (lexicon-good, clock's image) is current again" % good_generation)
+    check(wait_for_serial(b"procmgr: switch clock.svc switched; it runs clock.svc pid"),
+          "procmgr runs clock's image program again")
+    report = cr.system_rollback(host, HEALTH_MS, CLOCK_GRACE_MS)
     print("service-switch: rollback: %s (%s)" % (report, cr.generation_image(report)), flush=True)
     check(report["result_name"] == "Activated" and report["current"] == 0 and report["running"] != 0,
           "system rollback: the image's generation (0) is current again")

@@ -4,7 +4,7 @@
 # stops with the rest, in reverse order; shutdown-standin is the TEST
 # STAND-IN for acpi.svc's S5 (q35: \_S5 is 0).
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "shutdown-standin.app" (priority 5) (stop-stage power-tail)
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (platform-power approve-declared)
     (arguments (Standin_Parameters s5_sleep_type => 0)))

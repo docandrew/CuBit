@@ -33,6 +33,25 @@ static inline int cubit_endpoint_same(cubit_endpoint a, cubit_endpoint b)
     return a.opaque == b.opaque;
 }
 
+/* The kernel trace object (shared/capabilities/trace_abi.ads): benchmarks
+ * reset the kernel's scheduling and system-call trace before a measured run
+ * and print its summary after. */
+typedef struct cubit_trace { uint64_t opaque; } cubit_trace;
+
+/* Trace_ABI.Operation codes. */
+#define CUBIT_TRACE_RESET        1u
+#define CUBIT_TRACE_SUMMARY      2u
+#define CUBIT_TRACE_START_LOCAL  3u  /* LATENCY_TRACE kernels only */
+#define CUBIT_TRACE_FREEZE_LOCAL 4u  /* LATENCY_TRACE kernels only */
+#define CUBIT_TRACE_DUMP_LOCAL   5u  /* LATENCY_TRACE kernels only */
+
+/* Trace_ABI.Outcome codes; 0: no trace object answered. */
+#define CUBIT_TRACE_DONE               1u
+#define CUBIT_TRACE_NOT_IN_THIS_KERNEL 5u
+
+/* One operation on the trace object (the libc's CuBit.Libc_Startup). */
+unsigned cubit_trace_perform(cubit_trace t, unsigned operation);
+
 /* A program's startup endpoints come from its generated startup header
  * (ccl-manifest --c-output startup.h, CAP-003): cubit_startup_<binding>()
  * for each binding its manifest declares, so a misspelt name is a compile

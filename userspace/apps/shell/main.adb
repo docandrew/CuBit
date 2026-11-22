@@ -13,7 +13,10 @@
 --    12 = CAP_ENDPOINT to procmgr
 --    22 = CAP_ENDPOINT to display.svc
 ------------------------------------------------------------------------------
+with CuBit.Child_Exits;
+with CuBit.Console_Route;
 with CuBit.Waits;
+with CuBit.Monotonic;
 with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -29,12 +32,16 @@ with CuBit.Process_List;
 with CuBit.Display_Protocol;
 with CuBit.Desktop_Messages;
 with CuBit.Grant_References;
+with CuBit.Launch_Arguments;
+with CuBit.Launch_Failure_Text;
+with CuBit.Launch_Grants;
 with CuBit.Net_Link;
 with CuBit.Net_Management;
 with CuBit.Memory_Grants;
 with CuBit.Logging;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with CuBit.Streams;
 with CuBit.Protocols;
 with Font8x16;
@@ -44,6 +51,8 @@ with CuBit.Handles.Startup;
 with CuBit.Handles.Services;
 with CuBit.Startup_Tables;
 with Startup;
+with CuBit.Process_Observer_Lists;
+with CuBit.Monotonic;
 
 procedure main is
    --  The shell holds no process authority over what procmgr starts for it
@@ -59,6 +68,9 @@ procedure main is
    --  procmgr, for the shell's own raw launch and process requests.
    Process_Manager_Endpoint : constant CuBit.Handles.Endpoint :=
      CuBit.Handles.Services.Process_Manager.Handle (Startup.Process_Manager);
+   --  The Launch badge into the user session: spawn and bg (CAP-012).
+   Launch_Endpoint : constant CuBit.Handles.Endpoint :=
+     CuBit.Handles.Services.Process_Manager.Handle (Startup.Launch);
    Network_Service : constant CuBit.Handles.Endpoint :=
      (if Startup.Network.Present then Startup.Network.Value
       else CuBit.Handles.No_Endpoint);
@@ -73,7 +85,8 @@ procedure main is
    O_WRONLY   : constant Unsigned_64 := 1;
    O_CREAT    : constant Unsigned_64 := 64;
    O_TRUNC    : constant Unsigned_64 := 512;
-   OP_SPAWN   : constant Unsigned_32 := 16#0100#;
+   --  Launched programs' scheduling priority.
+   Launch_Priority : constant Unsigned_32 := 5;
    REPLY_OK   : constant Unsigned_32 := 16#F000#;
    REPLY_ERR  : constant Unsigned_32 := 16#F001#;
 
@@ -137,7 +150,6 @@ procedure main is
 
    --  Foreground child process tracking
    foregroundPID : Process_ID := No_Process;
-   EVENT_CHILD_EXIT : constant Unsigned_32 := 16#0103#;
    EVENT_CAP_FAULT  : constant Unsigned_32 := 16#0104#;
 
    --  The foreground child's first output port (ring 1), subscribed
@@ -146,6 +158,19 @@ procedure main is
    childStream : CuBit.Streams.SubInfo;
    streamSubPending : Boolean := False;  -- async subscribe in flight
    streamDrainPolls : Natural := 0;      -- polls since child exit
+
+   --  The idle check (headless startup-health): the system calls this
+   --  thread makes in its first second at the prompt, printed once unless a
+   --  key comes first. The idle loop waits for activity; it used to poll
+   --  for events and sleep 1 ms, about 2,000 system calls a second.
+   Idle_Check_Ms : constant := 1_000;
+   idleCheckDue  : Unsigned_64 := 0;     --  0: reported, cancelled or not started
+   idleCheckFrom : Unsigned_64 := 0;
+   --  The last activity wait answered Work and no event was there.
+   wokeForNothing : Boolean := False;
+
+   function threadCalls return Unsigned_64 is
+     (CuBit.System_Facts.Thread_System_Calls);
    STREAM_SUB_TOKEN  : constant Unsigned_64 := 42;
    STREAM_LIST_TOKEN : constant Unsigned_64 := 43;
 
@@ -798,6 +823,35 @@ procedure main is
       putChar (LF);
    end cmdEcho;
 
+   --  procmgr's OP_LAUNCH for the program named by the first Length bytes
+   --  of the grant buffer (CuBit.Launch_Arguments), through the shell's
+   --  Launch badge: it must be in this shell's launch table (manifest
+   --  may_launch), and it gets its approval within the user session's
+   --  envelope, none of the shell's authority (CAP-012). No arguments,
+   --  delegated places or rings.
+   function Launch_Request (Length : Natural) return Message is
+      Request : Message := NULL_MESSAGE;
+   begin
+      Request.tag := (label  => CuBit.Launch_Arguments.Launch_Operation,
+                      length => CuBit.Launch_Arguments.Launch_Request_Words,
+                      protocol  => 0, ipc => <>, reserved  => 0);
+      Request.words (0) := CuBit.Grant_References.Encode (spawnGrant);
+      Request.words (1) := Unsigned_64 (Length);
+      Request.words (2) := 0;
+      Request.words (3) := CuBit.Launch_Grants.Request_Word (Launch_Priority, 0);
+      return Request;
+   end Launch_Request;
+
+   --  Why procmgr refused a launch (its error reply's typed reason).
+   procedure putLaunchRefusal (Command : String; Reply : Message) is
+   begin
+      putStr (Command & ": not started: " &
+              (if CuBit.Launch_Arguments.Is_Failure (Reply.words (0))
+               then CuBit.Launch_Failure_Text.Explanation
+                      (CuBit.Launch_Arguments.Failure_Of (Reply.words (0)))
+               else "procmgr gave no reason") & LF);
+   end putLaunchRefusal;
+
    procedure cmdSpawn (filename : String) is
       msg : Message;
       tag : MessageTag;
@@ -832,24 +886,8 @@ procedure main is
             pos := pos + 1;
          end loop;
          totalLen := pos;
-
-         --  Append cwd after filename for sandbox support
-         for i in 1 .. cwdLen loop
-            buf (totalLen + i - 1) :=
-               Unsigned_8 (Character'Pos (cwdBuf (i)));
-         end loop;
-
-         --  Send OP_SPAWN to procmgr
-         msg := NULL_MESSAGE;
-         msg.tag := (label  => OP_SPAWN,
-                     length => Unsigned_8 (totalLen),
-                     protocol  => 0, ipc => <>,
-                     reserved  => 0);
-         msg.words (0) := CuBit.Grant_References.Encode (spawnGrant);
-         msg.words (1) := 5;  -- default priority
-         msg.words (2) := 0;  -- no sandbox override from shell
-         msg.words (3) := Unsigned_64 (cwdLen);
-         tag := capCall (Process_Manager_Endpoint, msg, CuBit.Messages.Wait_Forever);
+         msg := Launch_Request (totalLen);
+         tag := capCall (Launch_Endpoint, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label = REPLY_OK then
@@ -888,7 +926,7 @@ procedure main is
             end if;
          end;
       else
-         putStr ("spawn failed" & LF);
+         putLaunchRefusal ("spawn", msg);
       end if;
    end cmdSpawn;
 
@@ -928,23 +966,8 @@ procedure main is
             pos := pos + 1;
          end loop;
          totalLen := pos;
-
-         --  Append cwd after filename for sandbox support
-         for i in 1 .. cwdLen loop
-            buf (totalLen + i - 1) :=
-               Unsigned_8 (Character'Pos (cwdBuf (i)));
-         end loop;
-
-         msg := NULL_MESSAGE;
-         msg.tag := (label  => OP_SPAWN,
-                     length => Unsigned_8 (totalLen),
-                     protocol  => 0, ipc => <>,
-                     reserved  => 0);
-         msg.words (0) := CuBit.Grant_References.Encode (spawnGrant);
-         msg.words (1) := 5;
-         msg.words (2) := 0;  -- no sandbox override from shell
-         msg.words (3) := Unsigned_64 (cwdLen);
-         tag := capCall (Process_Manager_Endpoint, msg, CuBit.Messages.Wait_Forever);
+         msg := Launch_Request (totalLen);
+         tag := capCall (Launch_Endpoint, msg, CuBit.Messages.Wait_Forever);
       end;
 
       if tag.label = REPLY_OK then
@@ -952,7 +975,7 @@ procedure main is
          putDec (msg.words (0));
          putChar (LF);
       else
-         putStr ("bg: spawn failed" & LF);
+         putLaunchRefusal ("bg", msg);
       end if;
    end cmdBg;
 
@@ -1468,7 +1491,7 @@ procedure main is
       hrs  : Unsigned_64;
       days : Unsigned_64;
    begin
-      ms   := syscall (SYSCALL_GETTIME);
+      ms   := CuBit.Monotonic.Milliseconds;
       days := ms / 86_400_000;
       hrs  := (ms / 3_600_000) mod 24;
       mins := (ms / 60_000) mod 60;
@@ -1495,16 +1518,10 @@ procedure main is
       free  : Unsigned_64;
       used  : Unsigned_64;
    begin
-      declare
-         Statistics : CuBit.System_Facts.SP.Statistics;
-         Read : Boolean;
-      begin
-         CuBit.System_Facts.Read_Statistics (Statistics, Read);
-         total := CuBit.System_Facts.Memory_Bytes;
-         free  := (if Read then Statistics.Free_Memory_Bytes else Unsigned_64'Last);
-      end;
+      total := CuBit.System_Facts.Memory_Bytes;
+      free  := CuBit.System_Facts.Free_Memory_Bytes;
 
-      if total = 0 or free = Unsigned_64'Last or free > total then
+      if total = 0 or free = 0 or free > total then
          putStr ("error: memory info not available" & LF);
          return;
       end if;
@@ -1647,10 +1664,12 @@ procedure main is
       end if;
       psBuf := To_Address (Integer_Address (ret));
 
-      --  The process list: any process handle with Read (the shell's own).
-      count := CuBit.Handles.Control.Process_List
-        (CuBit.Handles.Startup.Process_Named (CuBit.Startup_Tables.Self_Process_Text),
-         psBuf, PS_BUF_SIZE);
+      --  The process list, from procmgr's process-observer role.
+      count := CuBit.Process_Observer_Lists.Read (Startup.Process_Observer, psBuf, PS_BUF_SIZE);
+      if count = Unsigned_64'Last then
+         putStr ("ps: the process list is unavailable" & LF);
+         return;
+      end if;
 
       --  Print header
       putStr ((1 .. PID_COLUMN - 3 => ' ') & "PID  NAME              STATE      CPU  PRI   MEM" & LF);
@@ -3071,7 +3090,7 @@ procedure main is
 
       for seq in 1 .. 4 loop
          declare
-            sendTs : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+            sendTs : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
             ignore : Unsigned_64;
          begin
             msg := NULL_MESSAGE;
@@ -3266,7 +3285,7 @@ procedure main is
             putDec64 (Value.Monotonic_Ms);
             putStr (" " & CuBit.Log_Records.Severity'Image
                       (CuBit.Log_Records.Level (Value.Data)) & ": " &
-                    CuBit.Log_Records.Text (Value.Data) & LF);
+                    CuBit.Log_Records.Texts.Text (Value.Data) & LF);
          elsif Result = Gap then
             putStr ("logs: dropped ");
             putDec64 (Lost);
@@ -3417,7 +3436,7 @@ procedure main is
                printDec (Unsigned_32 (ret));
                debugPrint ("" & LF);
             end;
-            --  Don't clear foregroundPID here; the EVENT_CHILD_EXIT
+            --  Do not clear foregroundPID here; the exit
             --  handler in the main loop will do it.
          end if;
          return;
@@ -3497,6 +3516,8 @@ procedure main is
    eventMsg : Message;
 
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("shell: starting..." & LF);
 
    --  Register as the raw-input consumer only for a console-only boot.  A
@@ -3678,6 +3699,8 @@ begin
    putStr ("Type 'help' for available commands." & LF);
    putChar (LF);
    printPrompt;
+   idleCheckFrom := threadCalls;
+   idleCheckDue := CuBit.Monotonic.Milliseconds + Idle_Check_Ms;
 
    --  Main loop: poll keyboard events, or wait for foreground child
    loop
@@ -3697,8 +3720,12 @@ begin
                debugPrint (Image (foregroundPID));
                debugPrint ("" & LF);
             end if;
+            --  The kernel's exit event, or procmgr's notice for a child
+            --  launched into the session (procmgr is its kernel parent).
             if found and then
-               eventMsg.tag.label = EVENT_CHILD_EXIT and then
+               CuBit.Child_Exits.Is_Exit
+                 (eventMsg.tag.label, eventMsg.tag.length, eventMsg.authorityTag,
+                  eventMsg.words (0), eventMsg.words (1), eventMsg.words (2)) and then
                From_Word (eventMsg.words (0)) = foregroundPID
             then
                debugPrint ("shell: child exited, reclaiming input" & LF);
@@ -3833,8 +3860,10 @@ begin
          begin
             found := Poll_Event (eventMsg);
             if found then
+               wokeForNothing := False;
                --  Only process keyboard events (label=1), skip mouse/other
                if eventMsg.tag.label = 1 then
+                  idleCheckDue := 0;
                   declare
                      raw : constant Unsigned_8 :=
                         Unsigned_8 (eventMsg.words (0) and 16#FF#);
@@ -3850,10 +3879,39 @@ begin
                   renderDirty;
                end if;
             else
+               --  Nothing to do: wait for an event (or a completion, which
+               --  the stream drain below takes), not a 1 ms sleep.
                declare
                   ignore : Unsigned_64;
+                  comp   : CompletionEntry;
+                  now    : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+                  due    : Unsigned_64 := Unsigned_64'Last;   --  no deadline
+                  woke   : Activity_Result;
                begin
-                  ignore := CuBit.Waits.Sleep_For (1);
+                  if idleCheckDue /= 0 and then now >= idleCheckDue then
+                     debugPrint ("shell: idle system calls in" &
+                                 Unsigned_64'Image (Idle_Check_Ms) & " ms=" &
+                                 Unsigned_64'Image (threadCalls - idleCheckFrom) & LF);
+                     idleCheckDue := 0;
+                  end if;
+                  --  Outside a stream subscription no completion is wanted:
+                  --  one left over would answer every wait.
+                  if wokeForNothing and then not streamSubPending then
+                     while Poll_Completion (comp'Address) = 1 loop
+                        null;
+                     end loop;
+                  end if;
+                  if streamSubPending then
+                     due := now + 1;   --  the drain below counts turns
+                  end if;
+                  if idleCheckDue /= 0 then
+                     due := Unsigned_64'Min (due, idleCheckDue);
+                  end if;
+                  woke := Wait_For_Activity_Until (due);
+                  wokeForNothing := woke = Work_Available;
+                  if woke = Unavailable then
+                     ignore := CuBit.Waits.Sleep_For (1);
+                  end if;
                end;
             end if;
          end;

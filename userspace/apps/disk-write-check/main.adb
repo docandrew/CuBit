@@ -15,6 +15,7 @@
 --     flushes, and reads both back. The host then checks the image file.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -25,6 +26,7 @@ with CuBit.Block_Client; use CuBit.Block_Client;
 with CuBit.Disk_Install; use CuBit.Disk_Install;
 with CuBit.Disk_Install.Client;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    package DIC renames CuBit.Disk_Install.Client;
@@ -105,6 +107,8 @@ procedure Main is
    Result : Transfer_Result;
    Durable : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    --  1. No capability without the badge, or for a disk devmgr lacks.
    Disk := DIC.Open (Startup.Device_Manager, (Disk => 0, Mode => Read_Write), Request_Deadline_Ms);
    Check (not Disk.Opened, "device-manager endpoint cannot open a disk");
@@ -113,13 +117,13 @@ begin
    --  after logstore, so disk 0 may appear only after this program runs:
    --  it is asked for until Disk_Wait_Milliseconds have passed.
    declare
-      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Ignore : Unsigned_64;
    begin
       loop
          Disk := DIC.Open (Startup.Disk_Install, (Disk => 0, Mode => Read_Only), Request_Deadline_Ms);
          exit when Disk.Opened
-           or else syscall (SYSCALL_GETTIME) - Started > Disk_Wait_Milliseconds;
+           or else CuBit.Monotonic.Milliseconds - Started > Disk_Wait_Milliseconds;
          Ignore := CuBit.Waits.Sleep_For (Disk_Poll_Milliseconds);
       end loop;
    end;

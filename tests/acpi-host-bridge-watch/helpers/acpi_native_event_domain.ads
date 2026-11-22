@@ -1,0 +1,1 @@
+with ACPI_Requests;package ACPI_Native_Event_Domain is function Diagnostics_Quiet(Server:ACPI_Requests.State) return Boolean;end ACPI_Native_Event_Domain;

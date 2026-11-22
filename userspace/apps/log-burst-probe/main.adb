@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -70,6 +71,8 @@ procedure Main is
       end if;
    end Flush;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    for Number in 1 .. Phase_One_Lines loop
       Line (Number);
       if Number mod Batch = 0 then

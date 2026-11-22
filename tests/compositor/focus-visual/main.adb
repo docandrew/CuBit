@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -12,6 +13,8 @@ procedure Main is
  Ignore : Wire_Message;
  Slept : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
  A:=Decode_Creation_Result(Send(Encode_Create((300,200,Window_Surface, Desktop_Sized))));
  B:=Decode_Creation_Result(Send(Encode_Create((300,200,Window_Surface, Desktop_Sized))));
  if A.Status/=Success or B.Status/=Success then

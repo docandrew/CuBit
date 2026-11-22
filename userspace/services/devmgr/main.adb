@@ -22,6 +22,7 @@ with CuBit.Input_Rings;
 with CuBit.Channel_Contracts;
 with CuBit.Channel_Protocol;
 with CuBit.Channels;
+with CuBit.Process_Events;
 with CuBit.Handles.Boot_Roots;
 with CuBit.Handles.Control;
 with CuBit.Handles.IPC;
@@ -80,6 +81,10 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with PCI_Power_Control;
+with PCI_BAR_Placement;
+with PCI_BAR_Assignment;
+with Devmgr_Host_Windows;
+with Devmgr_Host_Bridge_Consumer;
 with DMA_Allocation_ABI;
 with CuBit.Launch_Configurations;
 with CuBit.System_Facts;
@@ -108,6 +113,9 @@ with CuBit.Memory_Grants;
 with CuBit.File_Access;
 with Cpio;
 with Deferred_Warnings;
+with Driver_Log_Issuances;
+with CuBit.Console_Route;
+with CuBit.Late_Introduction;
 with Source_Notices;
 with CuBit.Log_Sources;
 with XHCI_DMA_Layout;
@@ -143,6 +151,7 @@ with Intel_GPU_Broker_Request;
 with Intel_Render_Broker;
 with CuBit.System_Stops;
 with Devmgr_Driver_Stops;
+with CuBit.Monotonic;
 
 procedure main is
    use ASCII;
@@ -234,6 +243,7 @@ procedure main is
    package STP renames CuBit.System_Stops;
    package IPC renames CuBit.Handles.IPC;
    package DL renames Devmgr_Launches;
+   package DLI renames Driver_Log_Issuances;
    package ST renames CuBit.Startup_Tables;
    use type IPC.Reply_Outcome;
    use type DL.Child;
@@ -1510,7 +1520,10 @@ procedure main is
    ---------------------------------------------------------------------------
    -- Mint a capability into a target process
    ---------------------------------------------------------------------------
-   package Warnings is new Deferred_Warnings (Issuance => 3, Collector => Logstore);
+   package Warnings is new Deferred_Warnings
+     (Issuance => DLI.Fixed (DLI.Device_Manager), Collector => Logstore, Before_Bind => Sources.Pump);
+   --  PCI-BAR-001: acpi.svc's host-bridge snapshot channel.
+   package Host_Bridge is new Devmgr_Host_Bridge_Consumer (Report => Warnings.Inform);
    function Hex (Value : Unsigned_64) return String renames Warnings.Hex;
    --  Refused launches (a child's startup entry, spawn, install) as warnings.
    procedure Forward_Launch_Refusals is new DL.Forward_Refusals (Warnings.Warn);
@@ -1537,6 +1550,7 @@ procedure main is
          Devmgr_Children.Take_Next_Exit (Child, Name, Length, Report, Found);
          exit when not Found;
          Sources.Exited (Child);
+         DL.Forget_Introductions (Child);
          declare
             Line : constant String :=
               "devmgr: child " & Name (1 .. Length) & " (" & Hex (To_Word (Child)) & ") " &
@@ -1933,18 +1947,6 @@ procedure main is
    --  A request whose tag carries this flag accepts a capability in the reply.
    Accepting : constant IPC_Flags := (Accepts_Capability => True, others => False);
 
-   --  intel-gpu's request for its logstore publisher (label 16#0229#): only
-   --  from intel-gpu's PID, over the endpoint badged Intel_Ready_Tag.
-   Intel_Log_Grant_Label : constant Unsigned_32 := 16#0229#;
-   function Intel_Log_Grant_Request (From : Process_ID; Msg : Message) return Boolean is
-     (Msg.tag = (label => Intel_Log_Grant_Label, length => 0, protocol => 0,
-                 ipc => Accepting, reserved => 0) and then
-      Intel_Inspection_PID /= No_Process and then From = Intel_Inspection_PID and then
-      Msg.authorityTag = Intel_Ready_Tag and then Msg.words = [0, 0, 0, 0]);
-   --  Answer it: the publisher endpoint, or REPLY_ERR while devmgr has no
-   --  logstore endpoint yet (intel-gpu asks again).
-   procedure Answer_Intel_Log_Grant (From : Process_ID);
-
    function waitReady (driverPID : Process_ID) return Boolean is
       sender : Process_ID;
       rdyMsg : Message;
@@ -1952,13 +1954,15 @@ procedure main is
    begin
       loop
          receive (sender, rdyMsg);
-         if sender = driverPID then
+         if rdyMsg.tag.label = CuBit.Late_Introduction.Await_Request
+           and then rdyMsg.authorityTag = CuBit.Late_Introduction.Introducer_Tag
+         then
+            --  A child's introduction thread (the driver awaited may be the
+            --  one asking): never its ready message.
+            DL.Await (sender, rdyMsg);
+         elsif sender = driverPID then
             ignore := reply (sender, NULL_MESSAGE);
             return rdyMsg.tag.label = OP_READY;
-         elsif Intel_Log_Grant_Request (sender, rdyMsg) then
-            --  Its bring-up lines must not wait for the service loop
-            --  (IdeaPad 46D4, 2026-10-24: none reached logstore).
-            Answer_Intel_Log_Grant (sender);
          elsif sender = Intel_Inspection_PID and then sender /= No_Process and then
            rdyMsg.authorityTag = Intel_Ready_Tag
          then
@@ -2171,13 +2175,41 @@ procedure main is
 
    --  The shared driver log budget and the issuances of devmgr's drivers
    --  in it (CuBit.Log_Protocol.Publisher_Tag).
-   Driver_Log_Budget  : constant CuBit.Log_Protocol.Budget_Id := 15;
-   XHCI_Log_Issuance  : constant CuBit.Log_Protocol.Publication_Issuance := 1;
-   Intel_Log_Issuance : constant CuBit.Log_Protocol.Publication_Issuance := 2;
+   Driver_Log_Budget  : constant CuBit.Log_Protocol.Budget_Id := DLI.Budget;
+   function Intel_Log_Issuance return DLI.Issuance is (DLI.Fixed (DLI.Intel_GPU));
    --  netmgr's link and configuration lines (docs/net-link.md).
-   Netmgr_Log_Issuance : constant CuBit.Log_Protocol.Publication_Issuance := 3;
+   function Netmgr_Log_Issuance return DLI.Issuance is (DLI.Fixed (DLI.Netmgr));
    --  wifi.svc's join and connection lines (docs/wifi.md).
-   Wifi_Log_Issuance : constant CuBit.Log_Protocol.Publication_Issuance := 4;
+   function Wifi_Log_Issuance return DLI.Issuance is (DLI.Fixed (DLI.Wifi));
+   --  Every other publisher's (generic and ACPI drivers, each xhci, hda and
+   --  nvme instance): the next one, never shared (Driver_Log_Issuances).
+   Issuances : DLI.Allocator;
+   function Next_Log_Issuance return Unsigned_64 is
+      Value : Unsigned_64;
+      Granted : Boolean;
+   begin
+      DLI.Allocate (Issuances, Value, Granted);
+      if not Granted then
+         Warnings.Warn ("devmgr: driver log issuances used up; a driver runs without logstore");
+      end if;
+      return Value;
+   end Next_Log_Issuance;
+
+   --  A child's (service "logstore" ...) requests: a publisher endpoint
+   --  badged with Issuance, now if logstore is known, else by late
+   --  introduction once procmgr offers it (optional requests only).
+   procedure Give_Logstore (Item : DL.Child; Issuance : Unsigned_64) is
+      Tag : constant Unsigned_64 :=
+        (if Issuance in DLI.Issuance then CuBit.Log_Protocol.Publisher_Tag (Driver_Log_Budget, Issuance) else 0);
+   begin
+      if Tag = 0 then
+         return;
+      elsif H.Valid (Logstore_Endpoint) then
+         DL.Give_Service (Item, Unsigned_32 (DRIVER_LOGSTORE), H.Badged (Logstore_Endpoint, H.Read_Write, Tag));
+      else
+         DL.Give_Service_Later (Item, Unsigned_32 (DRIVER_LOGSTORE), Tag);
+      end if;
+   end Give_Logstore;
 
    procedure Warn_Capacity (What : String; Report : Ledgers.Capacity_Report) is
    begin
@@ -2217,17 +2249,6 @@ procedure main is
             return False;
       end case;
    end Answer_With;
-
-   procedure Answer_Intel_Log_Grant (From : Process_ID) is
-   begin
-      if not H.Valid (Logstore_Endpoint) or else
-        not Answer_With (From, [others => 0], 0,
-          H.Badged (Logstore_Endpoint, H.Read_Write,
-                    CuBit.Log_Protocol.Publisher_Tag (Driver_Log_Budget, Intel_Log_Issuance)))
-      then
-         Refuse (From, Answered => H.Valid (Logstore_Endpoint));
-      end if;
-   end Answer_Intel_Log_Grant;
 
    procedure Close_Quietly (Item : H.Endpoint) is
       Ignore : constant IPC.Close_Result := IPC.Close (Item);
@@ -3790,6 +3811,187 @@ procedure main is
       end;
    end Prepare_BAR;
 
+   --  PCI-BAR-001: give a memory BAR the firmware left at 0 an address
+   --  inside its host bridge's windows (Devmgr_Host_Windows, from acpi.svc's
+   --  _CRS snapshot), as Linux's pci_assign_unassigned_resources does:
+   --  - placed by PCI_BAR_Assignment (proved) only where a window meets
+   --    devmgr's device memory, at or above 1 MiB, clear of every extent
+   --    claimed for devices and every ACPI root;
+   --  - checked once more against devmgr's device-memory authority (fail
+   --    closed: a data envelope granted later is ACPI's);
+   --  - claimed for devices;
+   --  - written with the function's memory decode off, then read back.
+   --  Waiting is True when no window has been published yet: the caller
+   --  defers the launch, and devmgr retries it when the windows arrive.
+   procedure Assign_Unassigned_BAR
+     (dev : PCIDeviceInfo; Register : Unsigned_8; Name : String; Waiting : out Boolean)
+   is
+      package BA renames PCI_BAR_Assignment;
+      package PL renames PCI_BAR_Placement;
+      use type BA.Outcome;
+      PCI_Segment : constant Unsigned_16 := 0;   --  devmgr's PCI view is segment 0 (MCFG)
+      Low : constant Unsigned_32 := pciReadConfig32 (dev.bus, dev.slot, dev.func, Register);
+      Wide : constant Boolean := BA.Is_64 (Low);
+      High : constant Unsigned_32 :=
+        (if Wide and then Register < PCI_BASEADDR_0 + 5 * PCI_BAR_BYTES
+         then pciReadConfig32 (dev.bus, dev.slot, dev.func, Register + PCI_BAR_BYTES) else 0);
+      Prefetch_Bit : constant Unsigned_32 := 16#8#;
+   begin
+      Waiting := False;
+      if BA.Is_IO (Low) or else BA.Decoded (Low, High, Wide) /= 0 then
+         return;
+      end if;
+      declare
+         Size : constant Unsigned_64 :=
+           probeMemoryBARSize (dev, Register, CCL.Resource_Sections.MAX_DEVICE_MEMORY_BYTES);
+      begin
+         if Size = 0 or else Size > BA.Largest_BAR_Bytes then
+            return;
+         end if;
+         if not Devmgr_Host_Windows.Known then
+            Waiting := True;
+            Warnings.Inform ("devmgr: " & Name & " at " & Location_Text (dev) & " BAR at " &
+                             Hex (Unsigned_64 (Register)) & " unassigned (" & Hex (Size) &
+                             " bytes); waiting for the host bridge's windows (PCI-BAR-001)");
+            return;
+         end if;
+         declare
+            Count : constant Natural := Devmgr_Host_Windows.Count_For (PCI_Segment, dev.bus);
+            Windows : PL.Span_Array (1 .. Natural'Max (Count, 1));
+            Last : Natural;
+            --  Where placing is legal at all: devmgr's device memory, the
+            --  runs the kernel granted it (whole pages, ascending).
+            Runs : constant Natural := Devmgr_Authority.Device_Root_Count;
+            Allowed : PL.Span_Array (1 .. Natural'Max (Runs, 1)) := [others => (0, 0)];
+            --  Taken: every BAR extent and bridge window claimed for devices,
+            --  and every ACPI root (firmware windows, PCI configuration,
+            --  firmware data), which device memory never covers.
+            BAR_Count : constant Natural := BAR_Extent_Store.Length (BAR_Extents_Claimed);
+            ACPI_Windows : constant Natural := Devmgr_Authority.ACPI_Window_Count;
+            PCI_Roots : constant Natural := Devmgr_Authority.PCI_Root_Count;
+            Data_Roots : constant Natural := Devmgr_Authority.Data_Root_Count;
+            Taken : PL.Span_Array (1 .. Natural'Max (BAR_Count + ACPI_Windows + PCI_Roots + Data_Roots, 1)) :=
+              [others => (0, 0)];
+            Next_Taken : Natural := 0;
+            A : BA.Assignment;
+
+            --  The whole pages of [First, First + Bytes) (not Valid when none).
+            function Inner_Pages (First, Bytes : Unsigned_64) return PL.Span is
+              (if Bytes = 0 or else First > Unsigned_64'Last - Bytes
+                 or else (First + Bytes) / BA.Page_Bytes > PL.Page_Limit
+               then (0, 0)
+               else ((First + BA.Page_Bytes - 1) / BA.Page_Bytes, (First + Bytes) / BA.Page_Bytes));
+            --  Every page [First, First + Bytes) touches (to the limit).
+            function Outer_Pages (First, Bytes : Unsigned_64) return PL.Span is
+              (if Bytes = 0 or else Bytes > Unsigned_64'Last - (BA.Page_Bytes - 1)
+                 or else First > Unsigned_64'Last - (BA.Page_Bytes - 1) - Bytes
+                 or else First / BA.Page_Bytes >= PL.Page_Limit
+               then (0, 0)
+               else (First / BA.Page_Bytes,
+                     Unsigned_64'Min ((First + Bytes + BA.Page_Bytes - 1) / BA.Page_Bytes, PL.Page_Limit)));
+            procedure Take (S : PL.Span) is
+            begin
+               if PL.Valid (S) and then Next_Taken < Taken'Last then
+                  Next_Taken := Next_Taken + 1;
+                  Taken (Next_Taken) := S;
+               end if;
+            end Take;
+         begin
+            Devmgr_Host_Windows.Windows_For
+              (PCI_Segment, dev.bus, High_First => Wide and then (Low and Prefetch_Bit) /= 0, Result => Windows,
+               Last => Last);
+            for K in 1 .. Runs loop
+               declare
+                  First, Bytes : Unsigned_64;
+               begin
+                  Devmgr_Authority.Device_Root_Extent (K, First, Bytes);
+                  Allowed (K) := Inner_Pages (First, Bytes);
+               end;
+            end loop;
+            for I in 1 .. BAR_Count loop
+               declare
+                  E : constant Devmgr_Data_Windows.Page_Range := BAR_Extent_Store.Element_At (BAR_Extents_Claimed, I);
+               begin
+                  Take ((E.First_Page, E.First_Page + E.Pages));
+               end;
+            end loop;
+            for K in 1 .. ACPI_Windows loop
+               declare
+                  W : constant Devmgr_Authority.ACPI_Window := Devmgr_Authority.ACPI_Window_At (K);
+               begin
+                  Take (Outer_Pages (W.First, W.Bytes));
+               end;
+            end loop;
+            for K in 1 .. PCI_Roots loop
+               declare
+                  W : constant Devmgr_Authority.ACPI_Window := Devmgr_Authority.PCI_Root_At (K);
+               begin
+                  Take (Outer_Pages (W.First, W.Bytes));
+               end;
+            end loop;
+            for K in 1 .. Data_Roots loop
+               declare
+                  D : constant Devmgr_Authority.Data_Root := Devmgr_Authority.Data_Root_At (K);
+               begin
+                  Take (Outer_Pages (D.First, D.Bytes));
+               end;
+            end loop;
+            BA.Assign (Low, High, Size, Windows (1 .. Last), Allowed (1 .. Runs), Taken (1 .. Next_Taken), A);
+            if A.Result /= BA.Assigned then
+               Warnings.Warn ("devmgr: " & Name & " at " & Location_Text (dev) & " BAR at " &
+                              Hex (Unsigned_64 (Register)) & " (" & Hex (Size) & " bytes) not placed: " &
+                              BA.Outcome'Image (A.Result) & " in" & Natural'Image (Last) & " window(s) and" &
+                              Natural'Image (Runs) & " device-memory run(s), at or above " &
+                              Hex (BA.Lowest_Placement_Bytes));
+               return;
+            end if;
+            declare
+               Base : constant Unsigned_64 := A.Where.First * BA.Page_Bytes;
+               Bytes : constant Unsigned_64 := (A.Where.Past - A.Where.First) * BA.Page_Bytes;
+               Claim : Devmgr_Memory_Claims.Claim_Result;
+               Report : Devmgr_Authority.Capacity_Report;
+               Room : BAR_Extent_Store.Capacity_Report;
+               Command : constant Unsigned_16 := pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND);
+               use type Devmgr_Memory_Claims.Claim_Result;
+            begin
+               if not Devmgr_Authority.Covered (Base, Bytes) then
+                  Warnings.Warn ("devmgr: " & Name & " at " & Location_Text (dev) & " BAR place " & Hex (Base) &
+                                 " +" & Hex (Bytes) & " is outside devmgr's device memory; not assigned");
+                  return;
+               end if;
+               Devmgr_Authority.Claim_Device_Pages (A.Where.First, A.Where.Past, Claim, Report);
+               if Claim /= Devmgr_Memory_Claims.Granted then
+                  Warnings.Warn ("devmgr: " & Name & " at " & Location_Text (dev) & " BAR place " & Hex (Base) &
+                                 " could not be claimed for devices: " &
+                                 Devmgr_Memory_Claims.Claim_Result'Image (Claim));
+                  return;
+               end if;
+               BAR_Extent_Store.Append
+                 (BAR_Extents_Claimed, (First_Page => A.Where.First, Pages => A.Where.Past - A.Where.First), Room);
+               --  Memory decode off while the BAR moves (PCI Local Bus 3.0,
+               --  6.2.5.1), high word first, then back to what it was.
+               pciWriteConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND, Command and not PCI_COMMAND_MEMORY);
+               if Wide then
+                  pciWriteConfig32 (dev.bus, dev.slot, dev.func, Register + PCI_BAR_BYTES, A.New_High);
+               end if;
+               pciWriteConfig32 (dev.bus, dev.slot, dev.func, Register, A.New_Low);
+               pciWriteConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND, Command);
+               declare
+                  Read_Low : constant Unsigned_32 := pciReadConfig32 (dev.bus, dev.slot, dev.func, Register);
+                  Read_High : constant Unsigned_32 :=
+                    (if Wide then pciReadConfig32 (dev.bus, dev.slot, dev.func, Register + PCI_BAR_BYTES) else 0);
+               begin
+                  Warnings.Inform
+                    ("devmgr: " & Name & " at " & Location_Text (dev) & " BAR at " & Hex (Unsigned_64 (Register)) &
+                     " assigned " & Hex (Base) & " +" & Hex (Bytes) & " in its host bridge's window" &
+                     (if BA.Decoded (Read_Low, Read_High, Wide) = Base then ""
+                      else "; READ BACK " & Hex (BA.Decoded (Read_Low, Read_High, Wide)) & " (not taken)"));
+               end;
+            end;
+         end;
+      end;
+   end Assign_Unassigned_BAR;
+
    procedure Report_Refused_BARs (Moment : String) is
    begin
       for I in 1 .. Refused_BAR_Total loop
@@ -3966,6 +4168,8 @@ procedure main is
       --  registering or replacing them) and its endpoint to devmgr come
       --  from its manifest too.
       Give_Registers (child, "xhci.drv", bar0Phys, barPages * PAGE_BYTES, H.Read_Write);
+      --  Its lines (logstore tells instances apart by their process).
+      Give_Logstore (child, Next_Log_Issuance);
       --  Its location, which names it in its log lines; the registers and
       --  DMA region come in the configure message, which it checks.
       DL.Set_Payload
@@ -4067,9 +4271,11 @@ procedure main is
    Generic_Children : array (1 .. Generic_Capacity) of Generic_Child;
    Generic_Total : Natural range 0 .. Generic_Capacity := 0;
    Generic_Started : array (Inventory_Index) of Boolean := [others => False];
-   --  Each generic driver's log publications (CuBit.Log_Protocol), after
-   --  devmgr's own drivers' issuances.
-   Generic_Log_Issuance_First : constant CuBit.Log_Protocol.Publication_Issuance := 16;
+   --  PCI-BAR-001: the last Launch_Generic_PCI stopped only because a BAR
+   --  waits for the host bridge's windows. The caller marks the device so
+   --  that it is launched again once they are published.
+   Launch_Deferred : Boolean := False;
+   Waiting_For_Windows : array (Inventory_Index) of Boolean := [others => False];
 
    procedure Launch_Generic_PCI (Item : Inventory_Device; Name : String) is
       package RS renames CCL.Resource_Sections;
@@ -4092,6 +4298,7 @@ procedure main is
          Failed := True;
       end Refuse;
    begin
+      Launch_Deferred := False;
       Child := spawnFromBootStorage (Name, 5);
       if Child = DL.No_Child then
          Warnings.Warn ("devmgr: " & Name & " bound to " & Location_Text (dev) & " but not spawned");
@@ -4114,7 +4321,7 @@ procedure main is
          DL.Give_Service (Child, Unsigned_32 (DRIVER_LOGSTORE),
            H.Badged (Logstore_Endpoint, H.Read_Write,
              CuBit.Log_Protocol.Publisher_Tag
-               (Driver_Log_Budget, Generic_Log_Issuance_First + Unsigned_64 (Generic_Total))));
+               (Driver_Log_Budget, Next_Log_Issuance)));
       end if;
       --  A network driver's (service "network-stack" ...) request: netstack's
       --  endpoint badged as the network driver's authority, as virtio-net
@@ -4137,6 +4344,14 @@ procedure main is
                   else
                      Prepare_BAR (dev, PCI_BASEADDR_0 + Unsigned_8 (R.Index) * PCI_BAR_BYTES, Name);
                      declare
+                        Waiting : Boolean;
+                     begin
+                        Assign_Unassigned_BAR (dev, PCI_BASEADDR_0 + Unsigned_8 (R.Index) * PCI_BAR_BYTES, Name, Waiting);
+                        if Waiting then
+                           Launch_Deferred := True;
+                        end if;
+                     end;
+                     declare
                         Offset : constant Unsigned_8 := PCI_BASEADDR_0 + Unsigned_8 (R.Index) * PCI_BAR_BYTES;
                         Low : constant Unsigned_32 := pciReadConfig32 (dev.bus, dev.slot, dev.func, Offset);
                         High : constant Unsigned_32 :=
@@ -4151,7 +4366,10 @@ procedure main is
                           Devmgr_Windows.Window (R.Amount, Size);
                         Bytes : constant Unsigned_64 := Grant.Bytes;
                      begin
-                        if (Low and PCI_BAR_IO) /= 0 or else Base = 0 or else Size = 0 then
+                        if Launch_Deferred and then Base = 0 then
+                           Refuse ("BAR" & Unsigned_32'Image (R.Index) &
+                                   " waits for the host bridge's windows; started when they are published");
+                        elsif (Low and PCI_BAR_IO) /= 0 or else Base = 0 or else Size = 0 then
                            --  The raw evidence (touchpad bring-up, image 27): the
                            --  BAR words as found, the decoded size, the command
                            --  register and the PCI power state, so an unassigned
@@ -4310,6 +4528,10 @@ procedure main is
                if not Has_Driver_Setup (Name) then
                   Generic_Started (I) := True;
                   Launch_Generic_PCI (inventory (I), Name);
+                  if Launch_Deferred then
+                     Generic_Started (I) := False;
+                     Waiting_For_Windows (I) := True;
+                  end if;
                   if Generic_Total > Before and then waitReady (Generic_Children (Generic_Total).PID) then
                      Generic_Children (Generic_Total).Waiting := False;
                      Generic_Children (Generic_Total).Serving := True;
@@ -5843,18 +6065,33 @@ procedure main is
    procedure Launch_Pending_Generic is
    begin
       for I in 1 .. inventoryCount loop
-         if deviceBindings (I).Kind = DI.Bound and then not Generic_Started (I) then
+         if deviceBindings (I).Kind = DI.Bound and then not Generic_Started (I)
+           and then (not Waiting_For_Windows (I) or else Devmgr_Host_Windows.Known)
+         then
             declare
                Name : constant String := Devmgr_Bindings.Name_Of (deviceBindings (I).Driver);
             begin
                if not Has_Driver_Setup (Name) then
                   Generic_Started (I) := True;
                   Launch_Generic_PCI (inventory (I), Name);
+                  if Launch_Deferred then
+                     Generic_Started (I) := False;
+                     Waiting_For_Windows (I) := True;
+                  end if;
                end if;
             end;
          end if;
       end loop;
    end Launch_Pending_Generic;
+
+   --  PCI-BAR-001: the host bridges' windows were published (or replaced);
+   --  launches that waited for a BAR's place are tried again.
+   procedure Host_Windows_Published is
+   begin
+      if (for some W of Waiting_For_Windows => W) then
+         Launch_Pending_Generic;
+      end if;
+   end Host_Windows_Published;
 
    ---------------------------------------------------------------------------
    --  The ACPI launch (docs/device-matching.md "ACPI launch"): the driver
@@ -5870,9 +6107,6 @@ procedure main is
    --  publisher, and reports OP_READY or OP_NOT_PRESENT to the service loop
    --  (ACPI_Report); devmgr never waits for it.
    ---------------------------------------------------------------------------
-   --  Each ACPI driver's log publications, after the generic PCI drivers'.
-   ACPI_Log_Issuance_First : constant CuBit.Log_Protocol.Publication_Issuance :=
-     Generic_Log_Issuance_First + Generic_Capacity;
 
    procedure Launch_Generic_ACPI (Device : in out ACPI_Device; Ordinal : Positive) is
       package AW renames Devmgr_ACPI_Windows;
@@ -6012,7 +6246,7 @@ procedure main is
             DL.Give_Service (Child, Unsigned_32 (DRIVER_LOGSTORE),
               H.Badged (Logstore_Endpoint, H.Read_Write,
                 CuBit.Log_Protocol.Publisher_Tag
-                  (Driver_Log_Budget, ACPI_Log_Issuance_First + Unsigned_64 (Ordinal))));
+                  (Driver_Log_Budget, Next_Log_Issuance)));
          end if;
          DL.Set_Payload (Child, LC.Encode (Config));
          --  PWR-003: a driver of a device acpi.svc reported serves its AML
@@ -6625,7 +6859,7 @@ procedure main is
       Target : constant H.Endpoint := Provider_Mailbox (GPIO_Driver);
       Request : Message := NULL_MESSAGE;
       Tag : MessageTag;
-      Now : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
    begin
       if not H.Valid (Target) or else not H.Valid (Sink) then
          Warnings.Warn (Who & ": GPIO sink not admitted: " &
@@ -6888,6 +7122,12 @@ procedure main is
    from         : Process_ID;
 
 begin
+   --  ABI-002: this process's debug text goes into its logstore ring, never
+   --  the kernel console. It starts before logstore: the lines wait in the
+   --  route's queue until logstore is known (Warnings binds it), and the
+   --  registrar channel, opened first, names this process to logstore.
+   CuBit.Console_Route.Route_Awaiting;
+   Sources.Started (Own_Process, "com.cubit.devmgr", "devmgr.svc");
    debugPrint ("devmgr: starting" & LF);
    --  The handles the kernel placed before devmgr ran (its launch
    --  configuration); without them devmgr can do nothing.
@@ -7011,6 +7251,7 @@ begin
          DL.Set_Payload
            (ramdiskChild, LC.Encode (LC.Boot_Image_Configuration'(Boot_Image => initrdSize)));
          assignCPU (ramdiskChild, "ramdisk.drv");
+         Give_Logstore (ramdiskChild, Next_Log_Issuance);
          if not DL.Start (ramdiskChild) or else not waitReady (ramdiskPID) then
             ret := syscall (SYSCALL_EXIT);
             return;
@@ -7163,6 +7404,7 @@ begin
          DL.Withhold (filesystemChild, "ramdisk");
       end if;
       assignCPU (filesystemChild, "filesystem.svc");
+      Give_Logstore (filesystemChild, DLI.Fixed (DLI.Filesystem));
       if DL.Start (filesystemChild) then
          debugPrint ("devmgr: filesystem server started" & LF);
          --  Wait for FS to signal ready; then devmgr's own endpoint to it
@@ -7192,6 +7434,7 @@ begin
    if ataPID /= No_Process then
       setupAta;
       assignCPU (ataChild, "ata.drv");
+      Give_Logstore (ataChild, Next_Log_Issuance);
       if DL.Start (ataChild) then
          debugPrint ("devmgr: ATA driver started" & LF);
          if not waitReady (ataPID) then
@@ -7234,6 +7477,7 @@ begin
                   if Role_Taken then
                      DL.Withhold (child, "registration");
                   end if;
+                  Give_Logstore (child, Next_Log_Issuance);
                   if not DL.Start (child) then
                      Close_Message_Interrupts (instances (I).Interrupts);
                      PID := No_Process;
@@ -7297,6 +7541,7 @@ begin
    if ps2PID /= No_Process then
       setupPS2;
       assignCPU (ps2Child, "ps2.drv");
+      Give_Logstore (ps2Child, DLI.Fixed (DLI.PS2));
       if DL.Start (ps2Child) then
          debugPrint ("devmgr: PS/2 driver started" & LF);
          if not waitReady (ps2PID) then
@@ -7317,6 +7562,7 @@ begin
          --  Placed first: its vector goes to the CPU it runs on.
          assignCPU (virtioInputChild, "virtio-input.drv");
          setupVirtioInput;
+         Give_Logstore (virtioInputChild, Next_Log_Issuance);
       end if;
       if virtioInputPID /= No_Process and then inputTransportReady
         and then DL.Start (virtioInputChild)
@@ -7377,6 +7623,7 @@ begin
    configPID := PID_Of (configChild);
    if configPID /= No_Process then
       assignCPU (configChild, "config.svc");
+      Give_Logstore (configChild, DLI.Fixed (DLI.Config));
       if DL.Start (configChild) then
          debugPrint ("devmgr: config server started" & LF);
          if not waitReady (configPID) then
@@ -7561,6 +7808,7 @@ begin
       --  Placed first: its vector goes to the CPU it runs on.
       assignCPU (virtioGpuChild, "virtio-gpu.drv");
       setupVirtioGpu;
+      Give_Logstore (virtioGpuChild, DLI.Fixed (DLI.Virtio_GPU));
       if DL.Start (virtioGpuChild) then
          debugPrint ("devmgr: virtio-gpu driver started" & LF);
          if not waitReady (virtioGpuPID) then
@@ -7584,6 +7832,7 @@ begin
    netstackPID := PID_Of (netstackChild);
    if netstackPID /= No_Process then
       assignCPU (netstackChild, "netstack.svc");
+      Give_Logstore (netstackChild, DLI.Fixed (DLI.Netstack));
       if DL.Start (netstackChild) then
          debugPrint ("devmgr: netstack started" & LF);
          if not waitReady (netstackPID) then
@@ -7618,6 +7867,7 @@ begin
                  H.Badged (DL.Mailbox (netstackChild), H.Read_Write,
                            CuBit.Network_Authority.Driver_Authority_Tag));
 
+               Give_Logstore (virtioNetChild, DLI.Fixed (DLI.Virtio_Net));
                if netTransportReady and then DL.Start (virtioNetChild) then
                   declare
                      use CuBit.Virtio_Net_Control;
@@ -7686,6 +7936,7 @@ begin
       sendDeclaredConfigScopes (netmgrChild, "netmgr.svc");
 
       assignCPU (netmgrChild, "netmgr.svc");
+      Give_Logstore (netmgrChild, Netmgr_Log_Issuance);
       if DL.Start (netmgrChild) then
          debugPrint ("devmgr: netmgr started" & LF);
          if waitReady (netmgrPID) then
@@ -7710,6 +7961,7 @@ begin
    if wifiPID /= No_Process then
       sendDeclaredConfigScopes (wifiChild, "wifi.svc");
       assignCPU (wifiChild, "wifi.svc");
+      Give_Logstore (wifiChild, Wifi_Log_Issuance);
       if DL.Start (wifiChild) then
          debugPrint ("devmgr: wifi started" & LF);
          if waitReady (wifiPID) then
@@ -7810,6 +8062,8 @@ begin
                  H.Badged (Root.Self_Grantable, H.Read_Write, Intel_Ready_Tag));
                Give_Registers (Intel_Child, "intel-gpu.drv", Plan.Physical_Base, Plan.Bytes,
                                H.Read_Only, Name => "registers");
+               --  Its diagnostic lines, once procmgr offers logstore.
+               Give_Logstore (Intel_Child, Intel_Log_Issuance);
                -- Optional boot diagnostic, created suspended. It reaches the
                -- driver and devmgr only through endpoints badged with the
                -- viewer tag; the desktop endpoint comes later by request.
@@ -7907,6 +8161,7 @@ begin
                   if Mixer_Output /= 0 then
                      DL.Withhold (instances (I).Child, "registration");
                   end if;
+                  Give_Logstore (instances (I).Child, Next_Log_Issuance);
                   if DL.Start (instances (I).Child) then
                      debugPrint ("devmgr: " & Name & " started" & LF);
                      if not waitReady (instances (I).PID) then
@@ -7945,6 +8200,7 @@ begin
       DL.Give (mixerChild, "scheduling",
         H.Narrowed (Root.Scheduling_Root, MIXER_REALTIME_BUDGET_US, MIXER_REALTIME_PERIOD_US));
       assignCPU (mixerChild, "mixer.svc");
+      Give_Logstore (mixerChild, DLI.Fixed (DLI.Mixer));
       if DL.Start (mixerChild) then
          debugPrint ("devmgr: mixer started" & LF);
          if not waitReady (mixerPID) then
@@ -8027,6 +8283,32 @@ begin
             --  never calls it.
             Platform_Power =>
               DL.Place (C, H.Copy (Root.Platform_Power_Root,
+                                   (Write | Grant => True, others => False))),
+            --  The kernel trace object, with Grant: procmgr installs a
+            --  Write-only copy only where the startup plan approves a
+            --  declared request (Trace_ABI, the benchmarks). devmgr never
+            --  calls it.
+            Trace =>
+              DL.Place (C, H.Copy (Root.Trace_Root,
+                                   (Write | Grant => True, others => False))),
+            --  The process-list object (Process_List_ABI), Read only:
+            --  procmgr is its only holder. devmgr never calls it.
+            Process_List =>
+              DL.Place (C, H.Copy (Root.Process_List_Root,
+                                   (Read => True, others => False))),
+            --  The test console object, with Grant: procmgr installs a
+            --  Write-only copy only where the startup plan approves a
+            --  declared request (Test_Console_ABI: test builds' logstore).
+            --  devmgr never calls it.
+            Test_Console =>
+              DL.Place (C, H.Copy (Root.Test_Console_Root,
+                                   (Write | Grant => True, others => False))),
+            --  The VM creation authority, with Grant: procmgr, the root
+            --  issuer of VM creation (VMM-001, docs/hypervisor.md),
+            --  installs a Write-only copy only where the startup plan
+            --  approves a declared request. devmgr never calls it.
+            VM_Create =>
+              DL.Place (C, H.Copy (Root.VM_Create_Root,
                                    (Write | Grant => True, others => False))));
       begin
          if not LC.Process_Handles_Well_Formed (Handles) then
@@ -8065,10 +8347,17 @@ begin
    loop
       -- One completion, one admission step and one request per iteration:
       -- incoming device traffic cannot starve pending GPU launch completion.
-      Launch_Now := syscall (SYSCALL_GETTIME);
+      Launch_Now := CuBit.Monotonic.Milliseconds;
       Forward_Launch_Refusals;
       Warnings.Pump;
       Sources.Pump;
+      --  The kernel's notices to devmgr (grant events, child exits): read
+      --  every turn. Exits are filed for Devmgr_Children's Take_Exit; the
+      --  rest have no use here (devmgr's stop is procmgr's message, not a
+      --  control Stop). Unread, a notice keeps Wait_For_Activity_Until
+      --  answering at once: devmgr spun about 1.4 million turns a second
+      --  from 4.6 s after boot (gpio-launch, 2026-11-19).
+      CuBit.Process_Events.Serve_Defaults;
       --  PWR-003: the root stop's driver stage takes its children's exits
       --  itself (they are not logged twice), and nothing starts after it.
       Devmgr_Driver_Stops.Step (Launch_Now);
@@ -8094,10 +8383,18 @@ begin
       end if;
       GPU_Launch.Step (GPU_Launches, Launch_Now);
       Intel_Allocation_Growth.Step (Intel_Allocations);
+      declare
+         Windows_Changed : Boolean;
+      begin
+         Host_Bridge.Pump (Windows_Changed);
+         if Windows_Changed then
+            Host_Windows_Published;
+         end if;
+      end;
       Poll_Service_Request (from, msg, Request_Found);
       if not Request_Found then
          if not GPU_Launch.Runnable (GPU_Launches) and then
-           not Intel_Allocation_Growth.Pending (Intel_Allocations) then
+           not Intel_Allocation_Growth.Pending (Intel_Allocations) and then Host_Bridge.Arm then
             Launch_Activity := Wait_For_Activity_Until
               (Unsigned_64'Min
                  ((if Devmgr_Driver_Stops.Wake_At = 0 then Unsigned_64'Last
@@ -8122,7 +8419,7 @@ begin
          declare
             ID : GPU_Launch.Ticket;
          begin
-            Launch_Now := syscall (SYSCALL_GETTIME);
+            Launch_Now := CuBit.Monotonic.Milliseconds;
             GPU_Launch.Begin_Request
               (GPU_Launches, To_Word (procmgrPID), To_Word (from), msg.authorityTag, msg,
                Launch_Now,
@@ -8170,7 +8467,7 @@ begin
                   Devmgr_Driver_Stops.Begin_Stop
                     (STP.Grace_Ms (msg.words (STP.Driver_Grace_Word)), procmgrPID,
                      msg.words (STP.Keep_Tail_Word) = STP.Keep_Tail,
-                     syscall (SYSCALL_GETTIME), Asked, Receipt);
+                     CuBit.Monotonic.Milliseconds, Asked, Receipt);
                end if;
                debugPrint ("devmgr: shutdown: procmgr asks to stop the drivers: " &
                            STP.Driver_Receipt'Image (Receipt) & "," & Natural'Image (Asked) & " asked" & LF);
@@ -8180,6 +8477,10 @@ begin
                Answer.words (STP.Phase_Word) := STP.Driver_Phase'Enum_Rep (Devmgr_Driver_Stops.Phase);
                Answer.words (STP.Driver_Counts_Word) := Devmgr_Driver_Stops.Counts_Word;
             end if;
+            --  ABI-002: devmgr's stop lines reach logstore before procmgr
+            --  hears the receipt or the phase, so procmgr's later lines
+            --  (and the console mirror) follow them.
+            CuBit.Console_Route.Flush;
             ret := reply (from, Answer);
          end;
       elsif msg.tag = (label => CuBit.Service_Exchange.Endpoint_Request, length => 1, protocol => 0, ipc => Accepting, reserved => 0)
@@ -8326,8 +8627,40 @@ begin
                                  words => [others => 0]));
             --  After the reply: procmgr is not kept waiting while they spawn.
             if Role = DRIVER_LOGSTORE and then H.Valid (Logstore_Endpoint) then
+               --  The children started before it, waiting to be introduced:
+               --  after devmgr's registrar channel has told logstore who they
+               --  are (and its own lines are bound), so their first records
+               --  carry their names.
+               Warnings.Pump;
+               Sources.Pump;
+               DL.Introduce (Unsigned_32 (DRIVER_LOGSTORE), Logstore_Endpoint);
                Launch_Pending_Generic;
             end if;
+         end;
+      elsif msg.tag.label = CuBit.Late_Introduction.Await_Request
+        and then msg.authorityTag = CuBit.Late_Introduction.Introducer_Tag
+      then
+         --  A child started before a service it declared optional asks to
+         --  be introduced to it (CuBit.Late_Introduction).
+         DL.Await (from, msg);
+      elsif msg.tag.label in CuBit.Channel_Protocol.OP_OPEN_PRODUCING | CuBit.Channel_Protocol.OP_OPEN_CONSUMING then
+         --  PCI-BAR-001: acpi.svc's host-bridge snapshot channel is the
+         --  only channel devmgr accepts; any other open is refused.
+         declare
+            Is_Open : Boolean;
+            Answer : Message;
+         begin
+            Host_Bridge.Handle_Open (from, msg, Is_Open, Answer);
+            if not Is_Open then
+               Answer := CuBit.Channels.Refusal_Reply (CuBit.Channel_Protocol.Not_Admitted);
+            end if;
+            ret := reply (from, Answer);
+         end;
+      elsif msg.tag.label = CuBit.Channel_Protocol.OP_CLOSE then
+         declare
+            Closed : Boolean;
+         begin
+            Host_Bridge.Handle_Close (from, msg, Closed);
          end;
       elsif msg.tag.label = CuBit.Channel_Protocol.OP_INTRODUCE then
          --  A driver asks to be introduced to the peer serving a channel
@@ -8414,28 +8747,6 @@ begin
                  authorityTag => 0, words => [Code, 1, 0, 0]));
             end if;
          end;
-      elsif msg.tag = (label => 16#0228#, length => 0, protocol => 0, ipc => Accepting, reserved => 0) and then
-        (Instance_Of (from, "xhci.drv") /= 0 or else
-         (from /= No_Process and then (from = netmgrPID or else from = wifiPID))) and then
-        msg.words = [0, 0, 0, 0]
-      then
-         --  A log publisher for a child started before logstore (every
-         --  xhci instance, netmgr): a logstore endpoint badged with its
-         --  publication tag, in the reply (logstore tells xhci instances
-         --  apart by their process).
-         if not H.Valid (Logstore_Endpoint) or else
-           not Answer_With (from, [others => 0], 0,
-             H.Badged (Logstore_Endpoint, H.Read_Write,
-                       CuBit.Log_Protocol.Publisher_Tag
-                         (Driver_Log_Budget,
-                          (if from = netmgrPID then Netmgr_Log_Issuance
-                           elsif from = wifiPID then Wifi_Log_Issuance
-                           else XHCI_Log_Issuance))))
-         then
-            Refuse (from, Answered => H.Valid (Logstore_Endpoint));
-         end if;
-      elsif Intel_Log_Grant_Request (from, msg) then
-         Answer_Intel_Log_Grant (from);
       elsif msg.tag = (label => 16#022A#, length => 0, protocol => 0, ipc => Accepting, reserved => 0) and then
         Intel_Inspection_PID /= No_Process and then from = Intel_Inspection_PID and then
         msg.authorityTag = Intel_Ready_Tag and then msg.words = [0, 0, 0, 0]

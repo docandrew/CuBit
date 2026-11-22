@@ -6,7 +6,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 runtime="$here/../../userspace/runtime/gnat"
 mkdir -p "$here/build/source"
 for unit in cubit.ads cubit-protocols.ads cubit-log_records.ads \
-    cubit-log_records.adb; do
+    cubit-log_records.adb cubit-log_records-texts.ads cubit-log_records-texts.adb; do
     cp "$runtime/$unit" "$here/build/source/"
 done
 cd "$here/../../kernel"

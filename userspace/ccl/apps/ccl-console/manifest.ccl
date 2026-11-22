@@ -21,7 +21,7 @@
     (service "config" "config")
     (service "filesystem" "filesystem")
     # Programs it may start with typed parameters (docs/ccl-launch-parameters.md).
-    (service "process-manager" "process-manager")
+    (service "process-manager" "process-manager") (service "launch" "launch")
     # (dict ..), (synonym ..), (thesaurus ..), (spell-check ..): lexicon.svc.
     (service "lexicon" "lexicon")
     # system.* (installer.svc, startup only)
@@ -38,10 +38,13 @@
     (service "secrets" "secrets")
     # (power-off), (halt): power.svc, as the console's own requester badge
     # (PWR-003; startup plan only).
-    (service "power-console" "power")]
+    (service "power-console" "power")
+    # debug.*: the debugger engine (DBG-001), Observe only: procmgr mints
+    # Debug_Observe within the user session's debug envelope.
+    (service "debug-session" "debug-session")]
   # Without these the console runs; lexicon.*, system.*, wifi.*, llm.*,
   # secrets.* and machine.* say why not (machine.* is then absent).
-  optional => ["series" "lexicon" "installer" "network-stack" "wifi" "llm" "secrets" "power"]
+  optional => ["series" "lexicon" "installer" "network-stack" "wifi" "llm" "secrets" "power" "debug-session"]
   scopes => [
     (config-all [File_Right.Read])
     # Every series, read only.
@@ -56,7 +59,9 @@
     (filesystem [File_Right.Read] "@cd:0/Assets/cubit-bible/")
     # Apps built on this machine (ccl-build's products, cubit-remote put):
     # read only, the staging area alone, not the rest of @system/work.
-    (filesystem [File_Right.Read] "@system/work/remote/out")]
+    (filesystem [File_Right.Read] "@system/work/remote/out")
+    # debug.*: targets' build-id debug files and sources, read only.
+    (filesystem [File_Right.Read] "@system/Debug/")]
   # Each becomes a CCL interface generated from its description: as.run,
   # ld.run, gcc.run (named by the last component), and their ports
   # (as.unix.stderr ...). The staging directory admits the programs built

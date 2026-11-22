@@ -1,5 +1,10 @@
 with Interfaces; use Interfaces;
+with CuBit.Handles;
+with CuBit.Handles.Startup;
+with CuBit.Handles.Test_Consoles;
 with CuBit.Hardware_Random;
+with CuBit.Test_Console_Authority;
+with Test_Console_ABI;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.UI;
 with CuBit.UI.App;
@@ -319,10 +324,19 @@ package body Remote_Pairing is
          return;
       end if;
       case Where is
-         when Kernel_Console =>
-            --  The console is this machine's screen (serial): not a log.
-            debugPrint ("ccl-remote: pairing code " & Grouped & " (grants: " & Grants & ")" & ASCII.LF);
-            Shown := True;
+         when Test_Console =>
+            --  The test console is the QEMU machine's screen (serial),
+            --  never a log: the code does not go through debugPrint.
+            declare
+               Console : constant CuBit.Handles.Test_Console :=
+                 CuBit.Handles.Startup.Test_Console_Named (CuBit.Test_Console_Authority.Binding);
+               Line : constant String :=
+                 "ccl-remote: pairing code " & Grouped & " (grants: " & Grants & ")" & ASCII.LF;
+            begin
+               if CuBit.Handles.Valid (Console) and then Line'Length <= Test_Console_ABI.Maximum_Bytes then
+                  Shown := CuBit.Handles.Test_Consoles.Done (CuBit.Handles.Test_Consoles.Write (Console, Line));
+               end if;
+            end;
          when Window =>
             Keep (Addresses, Address_Text, Address_Length);
             Keep (Grants, Grant_Text, Grant_Length);

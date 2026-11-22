@@ -2,6 +2,8 @@
 --  ccl-manifest --setting-codecs (CAP-003); do not edit.
 pragma Ada_2022;
 with CCL.Setting_Codecs.Calc_Options;
+with CCL.Setting_Codecs.Browser_User_Agent;
+with CCL.Setting_Codecs.Site_User_Agent;
 with CCL.Setting_Codecs.Appearance;
 with CCL.Setting_Codecs.Launch_Entry;
 with CCL.Setting_Codecs.Key_Repeat;
@@ -13,6 +15,7 @@ with CCL.Setting_Codecs.Desktop_Composition;
 with CCL.Setting_Codecs.Net_Interface;
 with CCL.Setting_Codecs.Log_Retention;
 with CCL.Setting_Codecs.GPU_Rendering;
+with CCL.Setting_Codecs.System_Policy;
 
 package body CCL.Setting_Codecs.Checks with SPARK_Mode is
    package Kinds renames CCL.Setting_Kinds;
@@ -28,6 +31,18 @@ package body CCL.Setting_Codecs.Checks with SPARK_Mode is
                Item : Calc_Options.Calc_Options_Value;
             begin
                Calc_Options.Decode (Source, Item, OK);
+            end;
+         when Kinds.Browser_User_Agent_Setting =>
+            declare
+               Item : Browser_User_Agent.Browser_User_Agent_Value;
+            begin
+               Browser_User_Agent.Decode (Source, Item, OK);
+            end;
+         when Kinds.Site_User_Agent_Setting =>
+            declare
+               Item : Site_User_Agent.Site_User_Agent_Value;
+            begin
+               Site_User_Agent.Decode (Source, Item, OK);
             end;
          when Kinds.Appearance_Setting =>
             declare
@@ -94,6 +109,12 @@ package body CCL.Setting_Codecs.Checks with SPARK_Mode is
                Item : GPU_Rendering.GPU_Rendering_Value;
             begin
                GPU_Rendering.Decode (Source, Item, OK);
+            end;
+         when Kinds.System_Policy_Setting =>
+            declare
+               Item : System_Policy.System_Policy_Value;
+            begin
+               System_Policy.Decode (Source, Item, OK);
             end;
          when Kinds.Untyped =>
             null;

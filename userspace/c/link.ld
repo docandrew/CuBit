@@ -37,6 +37,10 @@ SECTIONS
     {
         KEEP(*(.note.gnu.build-id))
     }
+    /* Where the note is, for a program that publishes its build-id itself
+     * (the Rust debug stub, DBG-001): LLD loads no ELF header to find it
+     * by, as __ehdr_start would under GNU ld. */
+    __cubit_build_id_note = ADDR(.note.gnu.build-id);
 
     /* Unwind tables for zero-cost Ada exceptions and tracebacks (EXC-001):
      * the call-frame information, the binary-search table over it that

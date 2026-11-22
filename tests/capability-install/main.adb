@@ -97,11 +97,29 @@ procedure Main is
       for K in CapabilityType loop
          if K not in CAP_ENDPOINT | CAP_NOTIFICATION | CAP_IOPORT | CAP_IRQ |
                      CAP_PROCESS | CAP_DEVICE_MEM | CAP_SCHEDULING |
-                     CAP_FIRMWARE_SNAPSHOT | CAP_PLATFORM_POWER
+                     CAP_FIRMWARE_SNAPSHOT | CAP_PLATFORM_POWER | CAP_TRACE |
+                     CAP_PROCESS_LIST | CAP_TEST_CONSOLE |
+                     CAP_DEBUG_OBSERVE | CAP_DEBUG_PAUSE | CAP_DEBUG_MODIFY |
+                     CAP_DEBUG_INSTRUMENT | CAP_VM_CREATE
          then
             Expect_Refusal (Cap (K, ALL_RIGHTS, 5, 1), Req (READ_ONLY),
                             ABI.Not_Transferable, "kind " & K'Image);
          end if;
+      end loop;
+      -- A debug session (DBG-001): procmgr mints it with Read and Grant
+      -- and passes on a read-only copy of the same session; never more.
+      for K in CAP_DEBUG_OBSERVE .. CAP_DEBUG_INSTRUMENT loop
+         declare
+            Session : constant Capability :=
+              Cap (K, (RIGHT_READ | RIGHT_GRANT => True, others => False), 3, 16#1000_0020#);
+         begin
+            Expect_Copy (Session, Req (READ_ONLY), Cap (K, READ_ONLY, 3, 16#1000_0020#, 0),
+                         "debug session read-only copy " & K'Image);
+            Expect_Refusal (Session, Req (READ_WRITE), ABI.Would_Amplify,
+                            "debug session write " & K'Image);
+            Expect_Refusal (Cap (K, READ_ONLY, 3, 16#1000_0020#), Req (READ_ONLY),
+                            ABI.Insufficient_Rights, "debug session copy without grant " & K'Image);
+         end;
       end loop;
       -- The firmware snapshot reader: devmgr to procmgr (with Grant), then a
       -- read-only copy to the program; never a tag, never narrowed, never
@@ -128,6 +146,62 @@ procedure Main is
          Expect_Refusal (Power, Req (READ_WRITE), ABI.Would_Amplify, "platform power read");
          Expect_Refusal (Cap (CAP_PLATFORM_POWER, Write_Only, 0, 0), Req (Write_Only),
                          ABI.Insufficient_Rights, "platform power copy without grant");
+      end;
+      -- The kernel trace object (Trace_ABI): devmgr to procmgr (Write and
+      -- Grant), then a Write-only copy to each benchmark; never more.
+      declare
+         Tracing : constant Capability :=
+           Cap (CAP_TRACE, (RIGHT_WRITE | RIGHT_GRANT => True, others => False), 0, 0);
+         Write_Only : constant CapabilityRights := (RIGHT_WRITE => True, others => False);
+      begin
+         Expect_Copy (Tracing, Req (Write_Only), Cap (CAP_TRACE, Write_Only, 0, 0, 0),
+                      "trace write-only copy");
+         Expect_Refusal (Tracing, Req (READ_WRITE), ABI.Would_Amplify, "trace read");
+         Expect_Refusal (Cap (CAP_TRACE, Write_Only, 0, 0), Req (Write_Only),
+                         ABI.Insufficient_Rights, "trace copy without grant");
+      end;
+      -- The process-list object (Process_List_ABI): devmgr's root (Read and
+      -- Grant) to procmgr as Read only, which procmgr cannot pass on.
+      declare
+         Listing : constant Capability :=
+           Cap (CAP_PROCESS_LIST, (RIGHT_READ | RIGHT_GRANT => True, others => False), 0, 0);
+      begin
+         Expect_Copy (Listing, Req (READ_ONLY), Cap (CAP_PROCESS_LIST, READ_ONLY, 0, 0, 0),
+                      "process list read-only copy");
+         Expect_Refusal (Listing, Req (READ_WRITE), ABI.Would_Amplify, "process list write");
+         Expect_Refusal (Cap (CAP_PROCESS_LIST, READ_ONLY, 0, 0), Req (READ_ONLY),
+                         ABI.Insufficient_Rights, "process list copy without grant");
+      end;
+      -- The test console object (Test_Console_ABI): devmgr to procmgr (Write
+      -- and Grant), then a Write-only copy to test builds' logstore; never
+      -- more.
+      declare
+         Console : constant Capability :=
+           Cap (CAP_TEST_CONSOLE, (RIGHT_WRITE | RIGHT_GRANT => True, others => False), 0, 0);
+         Write_Only : constant CapabilityRights := (RIGHT_WRITE => True, others => False);
+      begin
+         Expect_Copy (Console, Req (Write_Only), Cap (CAP_TEST_CONSOLE, Write_Only, 0, 0, 0),
+                      "test console write-only copy");
+         Expect_Refusal (Console, Req (READ_WRITE), ABI.Would_Amplify, "test console read");
+         Expect_Refusal (Cap (CAP_TEST_CONSOLE, Write_Only, 0, 0), Req (Write_Only),
+                         ABI.Insufficient_Rights, "test console copy without grant");
+      end;
+      -- The VM creation authority (VMM-001): devmgr to procmgr (Write and
+      -- Grant), then a Write-only copy to the program the startup plan
+      -- approves; never more. A VM or a vCPU is never copied (the loop
+      -- above: the kernel mints them from this authority).
+      declare
+         Creation : constant Capability :=
+           Cap (CAP_VM_CREATE, (RIGHT_WRITE | RIGHT_GRANT => True, others => False), 0, 0);
+         Write_Only : constant CapabilityRights := (RIGHT_WRITE => True, others => False);
+      begin
+         Expect_Copy (Creation, Req ((RIGHT_WRITE | RIGHT_GRANT => True, others => False)),
+                      Creation, "VM creation devmgr to procmgr, with grant");
+         Expect_Copy (Creation, Req (Write_Only), Cap (CAP_VM_CREATE, Write_Only, 0, 0, 0),
+                      "VM creation write-only copy");
+         Expect_Refusal (Creation, Req (READ_WRITE), ABI.Would_Amplify, "VM creation read");
+         Expect_Refusal (Cap (CAP_VM_CREATE, Write_Only, 0, 0), Req (Write_Only),
+                         ABI.Insufficient_Rights, "VM creation copy without grant");
       end;
       -- Device vectors: never; legacy lines: yes, and narrowed.
       Expect_Refusal (Vectors, Req (READ_ONLY), ABI.Not_Transferable, "vector authority");

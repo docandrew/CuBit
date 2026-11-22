@@ -18,15 +18,9 @@ package CuBit.Messages is
    --  Syscall Numbers
 
    SYSCALL_EXIT            : constant Unsigned_64 := 0;
-   SYSCALL_GETPID          : constant Unsigned_64 := 6;
    SYSCALL_SBRK            : constant Unsigned_64 := 8;
    SYSCALL_WRITE           : constant Unsigned_64 := 12;
    SYSCALL_REPLY           : constant Unsigned_64 := 18;
-   SYSCALL_GETTIME         : constant Unsigned_64 := 27;
-   --  GETTIME's epoch when the kernel publishes the clock page (then read
-   --  CuBit.Monotonic instead, docs/fast-clock.md), else the HPET's own;
-   --  Last indicates unavailable. Never UTC.
-   SYSCALL_READ_MONOTONIC_MICROSECONDS : constant Unsigned_64 := 114;
    --  Owned memory, one region API (kernel Process.Owned_Memory, ABI-002);
    --  CuBit.Owned_Reservations wraps these. Reserve: arg0 page-aligned
    --  bytes (up to 2 GiB), arg1 alignment (0: a page); the base, or zero.
@@ -51,8 +45,6 @@ package CuBit.Messages is
    --  numbers are not here, so no program can pass a number for a handle.
 
    SYSCALL_SET_LATENCY_CONTRACT : constant Unsigned_64 := 81;
-   SYSCALL_TRACE_RESET     : constant Unsigned_64 := 82;
-   SYSCALL_TRACE_SUMMARY   : constant Unsigned_64 := 83;
 
    --  Atomic reply+receive
    SYSCALL_REPLY_WAIT      : constant Unsigned_64 := 48;
@@ -68,11 +60,6 @@ package CuBit.Messages is
       constant Unsigned_64 := 111;
 
    type Activity_Result is (Work_Available, Deadline_Reached, Unavailable);
-   --  TRACE_SUMMARY controls beyond Summary require a LATENCY_TRACE kernel.
-   type Trace_Control_Operation is
-     (Summary, Start_Local, Freeze_Local, Dump_Local);
-   for Trace_Control_Operation use
-     (Summary => 0, Start_Local => 1, Freeze_Local => 2, Dump_Local => 3);
    --  Readiness hint only: drain typed queues separately.
    --  Last means no deadline.
    --  Available work wins over an expired deadline. Another receiver may
@@ -521,14 +508,33 @@ package CuBit.Messages is
    --  (CuBit.System_Facts), no system call.
    function Registered_Driver (Driver : Unsigned_64) return Process_ID;
 
-   --  This process.
+   --  This process: its identity word from its own page
+   --  (Readiness_Publication.Identity_Address); no system call.
    function Own_Process return Process_ID;
+   function Own_Process_Word return Unsigned_64;
 
    --  Register for a service role, with a notification handle (Write)
    --  covering it. This process's identity word, or -1.
    function registerDriver
      (driver : Unsigned_64; authority : CuBit.Handles.Notification) return Unsigned_64;
 
+   --  Debug text. A program that routes it (CuBit.Console_Route, ABI-002)
+   --  has it published as Debug records in its logstore ring; one that
+   --  does not yet still writes it to the kernel console (SYSCALL_WRITE),
+   --  until every program routes and WRITE is deleted.
    procedure debugPrint (str : String);
+
+   --  debugPrint for the Rust and C code an Ada program links (the font
+   --  engine's panic report): Length bytes at Text.
+   procedure Console_Put (Text : System.Address; Length : Unsigned_64)
+   with Export, Convention => C, External_Name => "cubit_console_put";
+
+   --  Where debugPrint's text goes once routed: set once, by
+   --  CuBit.Console_Route (or logstore, whose own text goes straight into
+   --  its store). Never called with the text of a nested debugPrint the
+   --  sink itself caused (the sink must count such text, not recurse).
+   type Console_Sink is access procedure (Text : String);
+   procedure Set_Console_Sink (Sink : not null Console_Sink);
+   function Console_Routed return Boolean;
 
 end CuBit.Messages;

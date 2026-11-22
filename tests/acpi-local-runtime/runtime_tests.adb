@@ -40,6 +40,7 @@ procedure Runtime_Tests is
      Evaluate,Invoke,Invoke_Values);
    package Other is new ACPI_Local_Runtime (C,Ready,Owner_Idle,Claim,Close_Owner,Enter_Delays,Begin_Delays,End_Delays,Stop_Delays,
      Evaluate,Invoke,Invoke_Values);
+   Held_Error_Result : C.Values.Result;
    use type R.Phase, R.Outcome;
    procedure Claim (S : C.State; Accepted : out Boolean) is
       Ignored : R.Outcome;
@@ -72,7 +73,18 @@ procedure Runtime_Tests is
    end Hook;
    procedure Evaluate (S : aliased in out C.State; Node : C.Node_Descriptor; Budget : Natural;
      Result : out C.Values.Result; Status : out C.Values.Access_Status) is
-   begin Calls := Calls+1; Hook (S); C.Evaluate_Named (S,Node,Budget,Result,Status); end Evaluate;
+   begin
+      Calls := Calls+1; Hook (S); C.Evaluate_Named (S,Node,Budget,Result,Status);
+      if Mode="sample-retained-error" then
+         C.Create_Buffer_Result(S,[1,2],Held_Error_Result,Status);Check(Status=C.Values.Available);
+         Result:=(AML_Execute.Unsupported_Value,0);
+      elsif Mode="sample-unknown" then Result:=(AML_Execute.Field_Indeterminate,0);
+      elsif Mode="sample-module" then Result:=(AML_Execute.Module_Completed,0);
+      elsif Mode="sample-charge" then Result:=(AML_Execute.Unsupported_Value,Budget+1);
+      elsif Mode="sample-access" then Status:=C.Values.Wrong_Phase;
+      elsif Mode="sample-owner-busy" then Idle:=False;
+      end if;
+   end Evaluate;
    procedure Invoke (S : aliased in out C.State; Node : C.Namespace.Node_ID;
      Args : AML_Execute.Arguments; Count : C.Values.Argument_Count; Budget : Natural;
      Result : out C.Values.Result; Status : out C.Values.Access_Status) is
@@ -127,7 +139,30 @@ begin
    if Mode="begin-refused" then Check(Outcome=R.Status.Delay_Refused and Close_Calls=1 and Stop_Calls=1); Finish; return; end if;
    Check(Outcome=R.Status.Event_Opened and R.Current=R.Status.Active);
    R.Begin_Event(Service,200,Outcome); Check(Outcome=R.Status.Rejected and Begin_Calls=1);
-   if Mode="opaque-args" then
+   if Mode'Length>=7 and then Mode(Mode'First..Mode'First+6)="sample-" then
+      if Mode="sample-invoke" then
+         Find("ADD0");R.Invoke_Sample(Service,Found.Node,
+            [0=>(Kind=>C.Values.Immediate_Argument,Number=>41),
+             others=>(Kind=>C.Values.Immediate_Argument,Number=>0)],1,100,Result,Status);
+         Check(Status=C.Values.Available and Result.Status=AML_Execute.Returned and Result.Number=42);
+         Check(R.Current=R.Status.Active and Close_Calls=0);
+      else
+         Find((if Mode="sample-error" then "ERR0" else "VAL0"));
+         R.Evaluate_Sample(Service,Item,100,Result,Status);
+         if Mode="sample-error" then
+            Check(Status=C.Values.Available and Result.Status=AML_Execute.Division_By_Zero);
+            Check(R.Current=R.Status.Active and Close_Calls=0 and Stop_Calls=0);
+            Find("VAL0");R.Evaluate_Sample(Service,Item,100,Result,Status);
+            Check(Status=C.Values.Available and Result.Status=AML_Execute.Returned and Result.Number=42);
+         else
+            Check(R.Current=R.Status.Stopped and Close_Calls=1 and Stop_Calls=1);
+            if Mode="sample-retained-error" then
+               Check(C.Retained_Results(Service)=1);
+               C.Release_Result(Service,Held_Error_Result.Handle,Status);Check(Status=C.Values.Available);
+            end if;
+         end if;
+      end if;
+   elsif Mode="opaque-args" then
       C.Create_Buffer_Result(Service,[1,2],Argument,Status); Check(Status=C.Values.Available);
       Find("SIZ0"); R.Invoke_With_Arguments(Service,Found.Node,
         [0=>(Kind=>C.Values.Retained_Argument,Handle=>Argument.Handle),

@@ -269,21 +269,30 @@ package CuBit.Launch_Arguments with Pure, SPARK_Mode is
    --    words (1) name bytes, (2) argument bytes, (3) priority (0: default)
    --      in the low half and, in the high half, the length of delegated
    --      places after the block (CuBit.Launch_Grants.Request_Word)
-   --  Reply OK: words (0) = child PID, (1) = its generation (as in its
-   --  EVENT_CHILD_EXIT); the requester becomes the child's parent and
-   --  receives that event (CuBit.Child_Exits).
-   --  Reply error: words (0) = Launch_Failure.
+   --  Reply OK: words (0) = the child's identity (as in its exit report),
+   --  (1) = its launch handle's rights word, (2) = an outcome word for the
+   --  handle (CuBit.Launch_Handles); a request that accepts a capability
+   --  gets the handle with the reply. The child's kernel parent is procmgr
+   --  (its session supervisor's process); procmgr tells the requester when
+   --  it ends (CuBit.Child_Exits.Notice_Label).
+   --  Reply error: words (0) = Launch_Failure; for Request_Withheld, words
+   --  (1) .. (3) name the withheld request (Encode_Label).
+   --  The request must come through a Launch badge on procmgr's endpoint
+   --  (the startup binding "launch", CAP-012, docs/authority-model.md 7.5):
+   --  the child is started into the badge's session and gets its install
+   --  approval within the session's envelope, never the requester's
+   --  authority.
    ---------------------------------------------------------------------------
    Launch_Operation     : constant := 16#0106#;
    Launch_Request_Words : constant := 4;
 
-   --  Why procmgr did not start a program; the error reply of OP_LAUNCH and
-   --  of OP_SPAWN (words (0)). Codes are fixed; a new reason takes a new
+   --  Why procmgr did not start a program; the error reply of OP_LAUNCH
+   --  (words (0)). Codes are fixed; a new reason takes a new
    --  code. A child that ends before it is useful is reported to its
    --  launcher separately and asynchronously (CuBit.Child_Exits).
-   --  Not_Granted: the requester's launch table (CuBit.Launch_Authority)
-   --  does not name the program, or the program asks for authority the
-   --  requester does not hold.
+   --  Not_Granted: the request came without a Launch badge, or the
+   --  requester's launch table (CuBit.Launch_Authority) does not name the
+   --  program.
    --  Spawn_Failed: procmgr, the kernel or a policy service could not finish
    --  setting the child up, for a reason none of the others names.
    --  Executable_Not_Found: no readable program file by that name.
@@ -300,20 +309,22 @@ package CuBit.Launch_Arguments with Pure, SPARK_Mode is
    --  Typed program parameters (docs/ccl-launch-parameters.md):
    --  Parameters_Missing: the program declares parameters (every one is
    --  required) and the launch gave no value, or came through a path that
-   --  cannot give one (OP_LAUNCH, OP_SPAWN).
+   --  cannot give one (OP_LAUNCH).
    --  Parameters_Rejected: the value is not of the program's parameter
    --  record: ill-typed, a field missing or unknown, a number outside its
    --  range, or a canonical source over its budget.
    --  Parameters_Unexpected: a value for a program that declares none.
    --  Parameter_Signature_Invalid: the program's .cubit.parameters is
    --  malformed.
+   --  Request_Withheld: the program requires a request the session's
+   --  envelope withholds; the reply names it (words (1) .. (3)).
    type Launch_Failure is
      (Malformed_Request, Grant_Unavailable, Arguments_Rejected, Spawn_Failed,
       Not_Granted, Executable_Not_Found, Startup_Table_Missing,
       Startup_Table_Invalid, Manifest_Refused, Capability_Denied,
       Service_Unavailable, Render_Denied, Out_Of_Memory,
       Parameters_Missing, Parameters_Rejected, Parameters_Unexpected,
-      Parameter_Signature_Invalid);
+      Parameter_Signature_Invalid, Request_Withheld);
    for Launch_Failure use
      (Malformed_Request => 1, Grant_Unavailable => 2,
       Arguments_Rejected => 3, Spawn_Failed => 4, Not_Granted => 5,
@@ -322,7 +333,8 @@ package CuBit.Launch_Arguments with Pure, SPARK_Mode is
       Capability_Denied => 10, Service_Unavailable => 11,
       Render_Denied => 12, Out_Of_Memory => 13,
       Parameters_Missing => 14, Parameters_Rejected => 15,
-      Parameters_Unexpected => 16, Parameter_Signature_Invalid => 17);
+      Parameters_Unexpected => 16, Parameter_Signature_Invalid => 17,
+      Request_Withheld => 18);
 
    --  A reply word that names a Launch_Failure (the codes are contiguous),
    --  and which one.
@@ -348,9 +360,20 @@ package CuBit.Launch_Arguments with Pure, SPARK_Mode is
         when Launch_Failure'Enum_Rep (Parameters_Rejected)   => Parameters_Rejected,
         when Launch_Failure'Enum_Rep (Parameters_Unexpected) => Parameters_Unexpected,
         when Launch_Failure'Enum_Rep (Parameter_Signature_Invalid) => Parameter_Signature_Invalid,
+        when Launch_Failure'Enum_Rep (Request_Withheld)      => Request_Withheld,
         when others                                          => Spawn_Failed)
      with Pre  => Is_Failure (Word),
           Post => Launch_Failure'Enum_Rep (Failure_Of'Result) = Word;
+
+   --  The withheld request's startup label in a Request_Withheld reply:
+   --  words (1) .. (3), its bytes in order, little-endian, NUL padded; a
+   --  longer label is cut to its first Withheld_Label_Bytes.
+   Withheld_Label_Bytes : constant := 24;
+   type Label_Words is array (1 .. 3) of Unsigned_64;
+   subtype Label_Text is String (1 .. Withheld_Label_Bytes);
+   subtype Label_Length is Natural range 0 .. Withheld_Label_Bytes;
+   procedure Encode_Label (Label : String; Words : out Label_Words);
+   procedure Decode_Label (Words : Label_Words; Text : out Label_Text; Length : out Label_Length);
 
    Maximum_Name_Bytes : constant := 255;
    subtype Name_Length is Natural range 1 .. Maximum_Name_Bytes;

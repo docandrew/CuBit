@@ -2,6 +2,8 @@
 (executable-manifest v1
   (identity "com.cubit.input-stress")
   (version "1.0.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore)
   # Test-only publishers for input regression coverage.
   (request-notification keyboard publish keyboard)
   (request-notification mouse publish mouse))

@@ -4,7 +4,9 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Logging;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with Startup;
+with CuBit.Monotonic;
 procedure Main is
    package P renames CuBit.Log_Protocol;
    package L renames CuBit.Log_Records;
@@ -29,24 +31,24 @@ procedure Main is
      (Text'Length >= Prefix'Length and then
       Text (Text'First .. Text'First + Prefix'Length - 1) = Prefix);
 begin
-   Deadline := syscall (SYSCALL_GETTIME) + 30000;
+   Deadline := CuBit.Monotonic.Milliseconds + 30000;
    loop
       Source := To_Word (Registered_Driver (DRIVER_DESKTOP));
       exit when Source /= 0;
-      Check (syscall (SYSCALL_GETTIME) < Deadline, "desktop registration timeout");
+      Check (CuBit.Monotonic.Milliseconds < Deadline, "desktop registration timeout");
       Ignore := CuBit.Waits.Sleep_For (10);
    end loop;
    CuBit.Logging.Subscribe (Reader, Result, Source => Source);
    Check (Result = P.OK, "observer subscription");
    loop
-      Check (syscall (SYSCALL_GETTIME) < Deadline, "startup records timeout");
+      Check (CuBit.Monotonic.Milliseconds < Deadline, "startup records timeout");
       for Batch in 1 .. 64 loop
          CuBit.Logging.Read_Next (Reader, Value, Lost, Result);
          exit when Result = P.Empty;
          Check (Result = P.OK and then Lost = 0, "stream gap or read failure");
          Check (Value.Source = Source and then P.Is_Publisher (Value.Publication_Tag),
                 "source or publication authority");
-         declare Text : constant String := L.Text (Value.Data);
+         declare Text : constant String := L.Texts.Text (Value.Data);
          begin
             if Text = "DESKTOP-CHECKPOINT: ENTERED" then
                Check (Step = 0, "ENTERED order/duplicate"); Step := 1;

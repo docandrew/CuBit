@@ -84,7 +84,7 @@ if args.device_startup_probe:
    '   type Probe_Words is array (0 .. 5) of Unsigned_64;\n'
    '   Probe_Cap : aliased Probe_Words := (others => 0);\n'
    '   Probe_Result : Unsigned_64;\nbegin\n'
-   '   Probe_Result := syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID), 62,\n'
+   '   Probe_Result := syscall (SYSCALL_INSPECT_CAPABILITY, Own_Process_Word, 62,\n'
    "      Unsigned_64 (System.Storage_Elements.To_Integer (Probe_Cap'Address)));\n"
    '   if Probe_Result /= 1 or else Probe_Cap (0) /= 0 then\n'
    '      debugPrint ("DESKTOP-OPTIONAL-RENDER: FAIL slot" & LF); return;\n'
@@ -112,7 +112,7 @@ if args.admitted_startup:
   '         when Vulkan_Device_Owner.Quarantined => return "QUARANTINED";\n'
   '      end case;\n'
   '   end GPU_Phase_Name;\nbegin\n'
-  '   Probe_Result := syscall (SYSCALL_INSPECT_CAPABILITY, syscall (SYSCALL_GETPID), 62,\n'
+  '   Probe_Result := syscall (SYSCALL_INSPECT_CAPABILITY, Own_Process_Word, 62,\n'
   "      Unsigned_64 (System.Storage_Elements.To_Integer (Probe_Cap'Address)));\n"
   '   if Probe_Result = 1 and then Probe_Cap (0) = 0 then\n'
   '      debugPrint ("DESKTOP-OPTIONAL-RENDER: PASS empty slot" & LF);\n'

@@ -2,7 +2,7 @@
 # after its first frame (CUBIT_DESKTOP_FAULT=exit-once); procmgr must start
 # it again and display.svc must lease the output to the restart.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "display.svc" (priority 5))
   (start "desktop.svc" (priority 4) (restart on-failure))
 )

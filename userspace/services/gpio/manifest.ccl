@@ -5,6 +5,7 @@
     (device-memory "community1" 1 65536 Access.Read_Write)
     (device-memory "community4" 2 65536 Access.Read_Write)
     (device-memory "community5" 3 65536 Access.Read_Write)
+    (platform-interrupt "parent" 0)
     (notification "gpio" Notify_Access.Manage "registration")
     (service "device-manager" "ready") (service "logstore" "logstore")]
-  optional => ["logstore"])
+  optional => ["parent" "logstore"])

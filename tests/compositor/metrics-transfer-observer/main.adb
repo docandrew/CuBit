@@ -1,3 +1,4 @@
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -32,6 +33,8 @@ procedure Main is
       loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
    end Fail;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Metric_Pages.Bind (Watcher, Startup.Metrics_Observer);
    for Attempt in 1 .. 400 loop
       CuBit.Metric_Pages.Query (Watcher, 0, Rows, Written, Next, Result);

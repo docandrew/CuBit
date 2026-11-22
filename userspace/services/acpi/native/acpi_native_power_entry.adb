@@ -8,7 +8,7 @@ package body ACPI_Native_Power_Entry is
    package H renames CuBit.Handles; package IPC renames CuBit.Handles.IPC;
    package M renames CuBit.Messages; package S renames ACPI_Sleep_Entry; package E renames S.E;
    use type Interfaces.Unsigned_64, Interfaces.Unsigned_32, Q.Phase, One.Runtime.Status.Phase;
-   Runtime_Mode : Boolean := False;
+   Runtime_Mode, Cached_Mode : Boolean := False;
    procedure Read_Prepared (Service : Q.State; Available : out Boolean;
       Registers : out S.Register_Model; A, B : out E.Sleep_Type) is
       Copy : constant P.Controller.Copied_Types := ACPI_Native_Power_Preparation.Current_Types (Service);
@@ -24,7 +24,9 @@ package body ACPI_Native_Power_Entry is
    function Owner_Ready (Service : Q.State) return Boolean is
      (Runtime_Mode and then Q.Current (Service) = Q.Complete
       and then not Q.Notifications_Pending (Service) and then not Q.Retained_Results_Pending (Service)
-      and then One.Runtime.Current = One.Runtime.Status.Idle and then One.Root.Hardware.Admitting
+      and then (One.Runtime.Current = One.Runtime.Status.Idle
+        or else (Cached_Mode and then One.Runtime.Current = One.Runtime.Status.Stopped))
+      and then One.Root.Hardware.Admitting
       and then One.Root.Fields.Control_Idle and then One.Root.Fields.EC_Commands.Quiescent);
    procedure Read_Wait_Clock (Milliseconds : out Interfaces.Unsigned_64; Available : out Boolean) is
    begin Milliseconds := CuBit.Monotonic.Milliseconds; Available := Milliseconds /= M.Wait_Forever; end Read_Wait_Clock;
@@ -48,12 +50,14 @@ package body ACPI_Native_Power_Entry is
    use type Owner.Delivery;
    Item : Owner.State;
    procedure Dispatch (Server : Q.State; Request : M.Message;
-      Runtime_Selected : Boolean; Reply : out M.Message; Handled, Reply_Now : out Boolean) is
+      Runtime_Selected : Boolean; Reply : out M.Message; Handled, Reply_Now : out Boolean;
+      Cached_Shutdown_Selected : Boolean := False) is
       Response : Owner.Response; Deferred : Boolean;
    begin
       Reply := M.NULL_MESSAGE; Reply_Now := True; Handled := Request.tag.label = E.Enter_Sleep_State;
       if not Handled then return; end if;
-      Runtime_Mode := Runtime_Selected;
+      Runtime_Mode := Runtime_Selected or Cached_Shutdown_Selected;
+      Cached_Mode := Cached_Shutdown_Selected;
       Owner.Enter (Item, Server,
         (Stamp => Request.authorityTag, Length => Interfaces.Unsigned_64 (Request.tag.length),
          ID => Request.words (E.Request_Word), State => Request.words (E.State_Word),

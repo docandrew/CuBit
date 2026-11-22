@@ -48,7 +48,7 @@ procedure Park_Tests is
       Owner_Value : constant I.Word := Memory (Resource) (Natural (Plan.Selected.Owner_Register) / 4);
       Host_Value : constant I.Word := Memory (Resource) (Natural (Plan.Selected.Host_Register) / 4);
    begin
-      Check (G.Interrupt_Eligible (Plan.Selected, Owner_Value, Host_Value, 0), "writes only observed host-owned GPIO");
+      Check (G.Interrupt_Eligible (Plan.Selected, Owner_Value, Host_Value), "writes only observed host-owned GPIO");
       Check (ID in I.Write_Enable | I.Clear_Status, "parking never changes pad configuration");
       Accesses := Accesses + 1; Writes := Writes + 1;
       if ID = I.Write_Configuration then Configuration_Writes := Configuration_Writes + 1; end if;
@@ -122,7 +122,7 @@ begin
             if Available (L.Resource) then
                Expected_Mapped := Expected_Mapped + 1;
                if G.Interrupt_Eligible (L, Memory (L.Resource) (Natural (L.Owner_Register) / 4),
-                    Memory (L.Resource) (Natural (L.Host_Register) / 4), 0)
+                    Memory (L.Resource) (Natural (L.Host_Register) / 4))
                then Expected_Host := Expected_Host + 1; end if;
             end if;
          end;
@@ -165,7 +165,7 @@ begin
                      declare L : constant G.Location := G.Locate (Starts (Group) + G.ACPI_Pin (N)); begin
                         if L.Resource = Resource and then Available (Resource) and then
                            G.Interrupt_Eligible (L, Before (Resource) (Natural (L.Owner_Register) / 4),
-                             Before (Resource) (Natural (L.Host_Register) / 4), 0) and then
+                             Before (Resource) (Natural (L.Host_Register) / 4)) and then
                            (Offset = Natural (L.Enable_Register) / 4 or else Offset = Natural (L.Status_Register) / 4)
                         then Expected := Expected and not L.Interrupt_Mask; end if;
                      end;

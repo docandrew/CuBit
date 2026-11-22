@@ -1,0 +1,6 @@
+# launch-gate (CAP-012): a child that requires clock control, which the user
+# session's envelope withholds: procmgr refuses it, naming the request.
+(Executable_Manifest
+  identity => "com.cubit.test.launch-gate-greedy"
+  version => "1.0.0"
+  requests => [(service "logstore" "logstore") (service "clock-control" "clock-control")])

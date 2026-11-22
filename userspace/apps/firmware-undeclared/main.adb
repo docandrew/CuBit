@@ -3,14 +3,18 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  FIRMWARE_SNAPSHOT regression: without a declared reader the program has
---  no firmware snapshot handle, and the call refuses every word it might
---  pass as one (no handle, its own endpoint, its own process, a forged
---  word) with Not_Authorized, before looking at the request.
+--  Firmware snapshot regression: without a declared reader the program has
+--  no firmware snapshot handle, and no word it might pass as one (no
+--  handle, its own process, a forged word) is answered as a snapshot: the
+--  Call reads Not_Authorized. (Its own endpoint is not tried: a Call on an
+--  endpoint is a message to it, here to itself.)
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Kernel_ABI;
+with System.Storage_Elements;
 with CuBit.Startup_State;
 with CuBit.Startup_Tables;
 with Firmware_Snapshot_ABI;
@@ -24,11 +28,23 @@ procedure Main is
    Failures : Natural := 0;
    Forged_Generation : constant Unsigned_64 := 2 ** 32;
 
+   --  The Call a firmware snapshot reader makes, on a raw handle word:
+   --  answered as a snapshot only when the word names one (the reply's
+   --  label an Outcome word). Anything else, refused or answered otherwise,
+   --  is Not_Authorized to the runtime.
    procedure Try (Handle : Unsigned_64; Name : String) is
-      Op : constant Unsigned_64 := ABI.Operation'Enum_Rep (ABI.Catalog_Info);
-      Result : constant Unsigned_64 := syscall (ABI.System_Call_Number, Handle, Op);
+      Msg : aliased Message := NULL_MESSAGE;
+      Result : Unsigned_64;
    begin
-      if ABI.To_Outcome (Result) = ABI.Not_Authorized then
+      Msg.tag.label := ABI.Operation'Enum_Rep (ABI.Catalog_Info);
+      Msg.tag.length := ABI.Message_Words;
+      Result := syscall (CuBit.Kernel_ABI.Call_Via_Endpoint_Capability, Handle,
+                         Unsigned_64 (System.Storage_Elements.To_Integer (Msg'Address)),
+                         Wait_Forever);
+      if Result = 0 or else Result = Unsigned_64'Last
+        or else not ABI.Is_Outcome_Word (Unsigned_64 (Msg.tag.label))
+        or else ABI.To_Outcome (Unsigned_64 (Msg.tag.label)) = ABI.Not_Authorized
+      then
          debugPrint ("firmware-undeclared: " & Name & " not authorized PASS" & LF);
       else
          Failures := Failures + 1;
@@ -36,8 +52,9 @@ procedure Main is
       end if;
    end Try;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Try (0, "no handle");
-   Try (CuBit.Startup_State.Granted (ST.Self_Text, ST.Endpoint), "own endpoint");
    Try (CuBit.Startup_State.Granted (ST.Self_Process_Text, ST.Process), "own process");
    Try (Forged_Generation + 1, "forged handle word");
    --  No (service "acpi" ...) declared: no ACPI client endpoint either.

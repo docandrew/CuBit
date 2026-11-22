@@ -22,30 +22,36 @@ package CCL.Interfaces.Processes with SPARK_Mode is
 
    TYPE_SOURCE : constant String :=
      "(type Run_State (enum Ready Running Sleeping Waiting Waiting_Event Sending Receiving " &
-     "Waiting_Reply Waiting_Completion Suspended Futex_Waiting)) (type Bytes (range 0 " &
+     "Waiting_Reply Waiting_Completion Suspended Futex_Waiting Vm_Halted Unknown)) (type " &
+     "Bytes (range 0 " &
      "9223372036854775807)) (type Milliseconds (range 0 9223372036854775807)) (type Process " &
      "(record (pid Integer) (name String) (identity String) (state Run_State) (memory Bytes) " &
      "(launcher Integer) (age Milliseconds)))";
    DIGEST : constant CCL.Catalog.Descriptor_Digest :=
-     [16#95CC_CEB2_A09D_0CC1#,
-      16#59B2_230E_AB40_9E7D#,
-      16#5B2A_DCC6_9F86_D807#,
-      16#9A9B_6126_94DB_8C93#];
+     [16#43DD_AB8D_12A4_4386#,
+      16#41B9_F1FC_E62A_F9C7#,
+      16#2840_A7F8_0072_A307#,
+      16#0A20_DF24_45B5_2450#];
    PROCESS_KEY : constant CCL.Objects.Schema_Key :=
-     [16#058F_54C1_12F4_D711#,
-      16#B5BF_7977_6988_EC07#,
-      16#C821_C4C2_F889_5A81#,
-      16#411A_D91E_C493_2FE0#];
+     [16#D16A_9DAB_91E4_1556#,
+      16#FCC1_40D4_ECED_6D71#,
+      16#0384_84E4_F92D_4171#,
+      16#914A_A108_091A_77C2#];
    PROCESSES_KEY : constant CCL.Objects.Schema_Key :=
-     [16#13A5_B65D_5A58_EA2C#,
-      16#B910_ED66_8F3D_76F1#,
-      16#DB2F_7683_2BF6_378C#,
-      16#EABC_BAEA_6940_7D12#];
+     [16#80C9_C7B7_46D8_CBAD#,
+      16#592B_3693_EBF1_43F9#,
+      16#8250_02C0_9D3F_A991#,
+      16#39C6_90E4_592D_3CC8#];
 
-   --  The kernel's states (process.ads ProcessState) after INVALID, in order.
+   --  The kernel's states (process.ads ProcessState) after INVALID, in order,
+   --  then Unknown: a state this console does not know yet is listed as
+   --  Unknown, never dropped (tests/ccl-console/check_run_state.py keeps the
+   --  list in step with the kernel's).
    type Run_State is
      (Ready, Running, Sleeping, Waiting, Waiting_Event, Sending, Receiving,
-      Waiting_Reply, Waiting_Completion, Suspended, Futex_Waiting);
+      Waiting_Reply, Waiting_Completion, Suspended, Futex_Waiting, Vm_Halted,
+      Unknown);
+   subtype Kernel_Run_State is Run_State range Ready .. Vm_Halted;
    PROCESS_FIELDS : constant := 7;
    --  A Process takes its product cell, pid, name, identity, two cells of
    --  state and three Integers; a listing's count cell comes first. The

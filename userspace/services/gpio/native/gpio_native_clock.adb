@@ -1,6 +1,6 @@
 pragma Ada_2022;
 with Interfaces;
-with CuBit.Messages;
+with CuBit.Monotonic;
 package body GPIO_Native_Clock is
    use type Interfaces.Unsigned_64;
    Seen : Boolean := False;
@@ -9,7 +9,7 @@ package body GPIO_Native_Clock is
    function Last_Outcome return Outcome is (Status);
    procedure Read (Now : out Intel_GPIO_IRQ.Tick; Available : out Boolean) is
       Value : constant Interfaces.Unsigned_64 :=
-        CuBit.Messages.syscall (CuBit.Messages.SYSCALL_GETTIME);
+        CuBit.Monotonic.Milliseconds;
    begin
       Now := 0; Available := False;
       if Value = Interfaces.Unsigned_64'Last then Status := Unavailable;

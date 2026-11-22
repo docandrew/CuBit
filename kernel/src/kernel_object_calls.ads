@@ -15,7 +15,13 @@
 -- same, so a userspace service can stand in for a kernel object behind the
 -- same handle.
 --
--- Kernel objects: CAP_PLATFORM_POWER (Platform_Power). The other kernel
+-- Kernel objects: CAP_PLATFORM_POWER (Platform_Power), CAP_FIRMWARE_SNAPSHOT
+-- (Firmware_Snapshot_Export), CAP_TRACE (Trace_Object), CAP_PROCESS_LIST
+-- (Process_List_Object), CAP_TEST_CONSOLE (Test_Console_Object), and a
+-- CAP_NOTIFICATION's milestone mark (Boot_Timeline_Marks), and debug
+-- sessions (Debug_Sessions: Mint_Debug and Revoke_Debug on a CAP_PROCESS,
+-- and the four debug kinds' operations), and virtual machines (VM_Objects:
+-- CAP_VM_CREATE, CAP_VM, CAP_VCPU). The other kernel
 -- operations move here slice by slice (docs/syscall-abi-audit.md).
 -------------------------------------------------------------------------------
 pragma Ada_2022;

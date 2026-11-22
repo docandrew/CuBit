@@ -11,6 +11,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Process;
 with ELF_Admission;
 with Process.User_Memory;
+with Kernel_Window;
 with Strings;
 with TextIO; use TextIO;
 
@@ -176,7 +177,7 @@ package body Process.Loader is
         numPages : constant Storage_Count := Storage_Count
           ((segment.p_memsz + 4095) / 4096);
         flags    : constant Unsigned_64 := toPageFlags (ELF.SegmentFlags (segment.p_flags));
-        storage  : System.Address;
+        storage  : Process_Frames.Process_Frame;
         allocation : Page_Allocation_Result;
         copied : Boolean;
         first : constant System.Address := To_Address (Integer_Address (segment.p_vaddr));
@@ -206,7 +207,7 @@ package body Process.Loader is
         for i in 0..numPages-1 loop
             tryAddPage (proc    => proc,
                      mapTo   => first + (i * Virtmem.PAGE_SIZE),
-                     storage => storage,
+                     frame   => storage,
                      result  => allocation,
                      flags   => flags);
             if allocation /= Page_Added then
@@ -226,8 +227,16 @@ package body Process.Loader is
                     if copySize > Virtmem.PAGE_SIZE then
                         copySize := Virtmem.PAGE_SIZE;
                     end if;
-                    readSource (elfAddr, segment.p_offset + Unsigned_64 (pageOff),
-                                copySize, storage, sourcePID, copied);
+                    -- The child's frame, through this CPU's window
+                    -- (KERN-014): never through the kernel's linear map.
+                    declare
+                        page : System.Address;
+                    begin
+                        Kernel_Window.Open (storage, page);
+                        readSource (elfAddr, segment.p_offset + Unsigned_64 (pageOff),
+                                    copySize, page, sourcePID, copied);
+                        Kernel_Window.Close;
+                    end;
                     if not copied then
                         println ("Process.Loader: source segment unreadable");
                         return;

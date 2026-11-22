@@ -10,7 +10,9 @@ package body GPIO_Native_Pump is
    use type B.Scenario, W.Completion_Status, B.I.Word;
    Notices : GPIO_IRQ_Notices.State;
    procedure Configure_Parent (Present : Boolean; Accepted : out Boolean) is
-   begin GPIO_IRQ_Notices.Configure (Notices, Present, Accepted); end Configure_Parent;
+   begin
+      GPIO_IRQ_Notices.Configure (Notices, Present, Accepted);
+   end Configure_Parent;
    procedure Take_Parent_Notice (Pending : out Boolean) is
    begin GPIO_IRQ_Notices.Take (Notices, Pending); end Take_Parent_Notice;
    procedure Hold_Requests (Held : Boolean) is

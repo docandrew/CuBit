@@ -7,4 +7,7 @@
   version => "0.1.0"
   requests => [
     (service "gpu" "gpu-probe")
-    (service "device-manager" "device-manager")])
+    (service "device-manager" "device-manager")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

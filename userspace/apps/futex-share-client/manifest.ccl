@@ -3,4 +3,7 @@
 (Executable_Manifest
   identity => "com.cubit.futex-share.client"
   version => "1.0.0"
-  requests => [(service "ipc-test" "ipc-test")])
+  requests => [(service "ipc-test" "ipc-test")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

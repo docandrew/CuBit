@@ -1,0 +1,16 @@
+# The shipped plan (init.ccl) for tests that use it, but with the test
+# console approved for logstore (ABI-002): routed programs' debug text
+# reaches the serial console only through logstore's mirror.
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "clock.svc" (priority 5))
+  # Approves timesync's declared scope: outbound UDP port 123 and DNS.
+  (start "timesync.svc" (priority 5) (network approve-declared))
+  # Approves tls.svc's declared scope: outbound TCP with DNS. Clients still
+  # need their own tls-scope names.
+  (start "tls.svc" (priority 5) (network approve-declared))
+  (start "display.svc" (priority 5))
+  # Dictionary, thesaurus and spelling for the apps and CCL (docs/lexicon.md).
+  (start "lexicon.svc" (priority 4))
+  (start "shell.app" (priority 4))
+)

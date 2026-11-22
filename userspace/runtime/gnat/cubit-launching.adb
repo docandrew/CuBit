@@ -10,11 +10,15 @@ with CuBit.Stream_Rings;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Published_Clock;
+with CuBit.Handles.IPC;
 
 package body CuBit.Launching is
 
    package LA renames CuBit.Launch_Arguments;
    package LG renames CuBit.Launch_Grants;
+   package LH renames CuBit.Launch_Handles;
+   use type LH.Outcome;
 
    Page_Bytes : constant := 4096;
    Request_Bytes : constant :=
@@ -27,6 +31,21 @@ package body CuBit.Launching is
    Request : Request_Area with Alignment => Page_Bytes;
    Lent : Boolean := False;
    Lent_Reference : CuBit.Memory_Grants.Grant_Reference;
+
+   --  The Launch badge (startup binding "launch", CAP-012): OP_LAUNCH goes
+   --  through it; a program without one cannot launch.
+   Launch_Badge : constant CuBit.Handles.Services.Process_Manager.Optional_Endpoint :=
+     CuBit.Handles.Services.Process_Manager.Optional_Named ("launch");
+   --  The last Request_Withheld refusal's label.
+   Last_Withheld : LA.Label_Words := [others => 0];
+
+   function Withheld_Request return String is
+      Text : LA.Label_Text;
+      Length : LA.Label_Length;
+   begin
+      LA.Decode_Label (Last_Withheld, Text, Length);
+      return Text (1 .. Length);
+   end Withheld_Request;
 
    package PP renames CuBit.Program_Descriptions;
    Describe_Bytes : constant := LA.Maximum_Name_Bytes + PP.Maximum_Descriptor_Bytes;
@@ -90,18 +109,42 @@ package body CuBit.Launching is
         [CuBit.Grant_References.Encode (Lent_Reference),
          Unsigned_64 (Program'Length), Unsigned_64 (Arguments'Length),
          LG.Request_Word (0, Grants'Length, Ring_Bytes)];
-      Reply := capCall (Service, Msg, CuBit.Messages.Wait_Forever);
-      if Reply.label = CuBit.Kernel_ABI.Reply_OK then
-         Started := (Process => CuBit.Process_IDs.From_Word (Msg.words (0)));
-         Result := Launched;
-         return;
-      end if;
+      declare
+         Received : CuBit.Handles.IPC.Carried;
+      begin
+         Reply := CuBit.Handles.IPC.Call_Accepting
+           ((if Launch_Badge.Present
+             then CuBit.Handles.Services.Process_Manager.Handle (Launch_Badge.Value)
+             else Service),
+            Msg, CuBit.Messages.Wait_Forever, Received);
+         if Reply.label = CuBit.Kernel_ABI.Reply_OK then
+            Started := (Process => CuBit.Process_IDs.From_Word (Msg.words (0)), others => <>);
+            declare
+               Taken : constant CuBit.Handles.IPC.Accepted_Endpoint :=
+                 CuBit.Handles.IPC.Accept_Endpoint (Received);
+               Ignore : CuBit.Handles.IPC.Close_Result;
+            begin
+               if Taken.OK and then LH.Valid_Rights_Word (Msg.words (1)) then
+                  Started.Handle := Taken.Value;
+                  Started.Rights := LH.Rights_Of (Msg.words (1));
+               else
+                  Ignore := CuBit.Handles.IPC.Close (Received);
+               end if;
+            end;
+            Result := Launched;
+            return;
+         end if;
+      end;
       Result := Refused;
       for Reason in LA.Launch_Failure loop
          if Msg.words (0) = LA.Launch_Failure'Enum_Rep (Reason) then
             Failure := Reason;
          end if;
       end loop;
+      Last_Withheld := [others => 0];
+      if LA."=" (Failure, LA.Request_Withheld) then
+         Last_Withheld := [Msg.words (1), Msg.words (2), Msg.words (3)];
+      end if;
    end Launch;
 
    procedure Lend_Ring
@@ -139,24 +182,170 @@ package body CuBit.Launching is
       end if;
    end Lend_Ring;
 
-   --  Exit reports drained from the event queue, until asked for.
+   ---------------------------------------------------------------------------
+   --  Through the launch handle
+   ---------------------------------------------------------------------------
+   --  One call on Started's handle: Op with W0, its answer in Msg (words
+   --  (0) an outcome word); Received what came with it when Accepting.
+   procedure Handle_Call
+     (Started : Child; Op : LH.Operation; W0 : Unsigned_64; Until_Time : Unsigned_64;
+      Accepting : Boolean; Msg : out Message; Outcome : out LH.Outcome;
+      Received : out CuBit.Handles.IPC.Carried);
+
+   procedure Handle_Call
+     (Started : Child; Op : LH.Operation; W0 : Unsigned_64; Until_Time : Unsigned_64;
+      Accepting : Boolean; Msg : out Message; Outcome : out LH.Outcome;
+      Received : out CuBit.Handles.IPC.Carried)
+   is
+      Reply : MessageTag;
+   begin
+      Msg := NULL_MESSAGE;
+      Received := (Kind => CuBit.Handles.IPC.Absent);
+      if not CuBit.Handles.Valid (Started.Handle) then
+         Outcome := LH.Not_A_Handle;
+         return;
+      end if;
+      Msg.tag := (label => LH.Label_Of (Op), length => LH.Request_Words (Op),
+                  protocol => 0, ipc => <>, reserved => 0);
+      Msg.words (0) := W0;
+      if Accepting then
+         Reply := CuBit.Handles.IPC.Call_Accepting (Started.Handle, Msg, Until_Time, Received);
+      else
+         Reply := capCall (Started.Handle, Msg, Until_Time);
+      end if;
+      Outcome :=
+        (if Reply.label /= CuBit.Kernel_ABI.Reply_OK then LH.Failed
+         elsif LH.Is_Outcome_Word (Msg.words (0)) then LH.To_Outcome (Msg.words (0))
+         else LH.Malformed);
+   end Handle_Call;
+
    procedure Send_Control
      (Started : Child; Kind : CuBit.Control_Events.Control_Kind;
       Result : out Control_Result)
    is
-      Answer : constant Unsigned_64 := CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Send_Control, CuBit.Process_IDs.To_Word (Started.Process),
-         CuBit.Control_Events.Control_Kind'Enum_Rep (Kind));
+      Msg : Message;
+      Outcome : LH.Outcome;
+      Ignore : CuBit.Handles.IPC.Carried;
+      Request : constant LH.Control_Request :=
+        (case Kind is
+           when CuBit.Control_Events.Stop      => LH.Ask_Stop,
+           when CuBit.Control_Events.Interrupt => LH.Ask_Interrupt,
+           when CuBit.Control_Events.Reload    => LH.Ask_Reload);
    begin
-      Result := (if Answer = 0 then Sent
-                 elsif Answer = CuBit.Kernel_ABI.Busy then Busy
-                 else Refused);
+      Handle_Call (Started, LH.Control_Op, LH.Control_Word (Request),
+                   Deadline_After (Handle_Answer_Ms), False, Msg, Outcome, Ignore);
+      Result := (case Outcome is
+                   when LH.Done => Sent,
+                   when LH.Busy => Busy,
+                   when others  => Refused);
    end Send_Control;
+
+   procedure End_Child (Started : Child; Result : out Launch_Result) is
+      Msg : Message;
+      Outcome : LH.Outcome;
+      Ignore : CuBit.Handles.IPC.Carried;
+   begin
+      if not CuBit.Handles.Valid (Started.Handle) then
+         Result := No_Process_Manager;
+         return;
+      end if;
+      Handle_Call (Started, LH.Control_Op, LH.Control_Word (LH.End_Now),
+                   Deadline_After (Handle_Answer_Ms), False, Msg, Outcome, Ignore);
+      Result := (if Outcome = LH.Done then Launched else Refused);
+   end End_Child;
+
+   procedure Observe
+     (Started : Child; State : out LH.Child_State; Code : out Unsigned_64;
+      Outcome : out LH.Outcome)
+   is
+      Msg : Message;
+      Ignore : CuBit.Handles.IPC.Carried;
+   begin
+      State := LH.Running;
+      Code := 0;
+      Handle_Call (Started, LH.Observe_Op, 0, Deadline_After (Handle_Answer_Ms), False,
+                   Msg, Outcome, Ignore);
+      if Outcome = LH.Done then
+         State := (if Msg.words (2) = LH.State_Word (LH.Exited) then LH.Exited
+                   elsif Msg.words (2) = LH.State_Word (LH.Stopped) then LH.Stopped
+                   else LH.Running);
+         Code := Msg.words (3);
+      end if;
+   end Observe;
+
+   procedure Debug
+     (Started : Child; Until_Time : Unsigned_64; Session : out CuBit.Handles.Debug.Session;
+      Outcome : out LH.Outcome)
+   is
+      package DA renames CuBit.Handles.Debug.ABI;
+      Msg : Message;
+      Received : CuBit.Handles.IPC.Carried;
+      Ignore : CuBit.Handles.IPC.Close_Result;
+   begin
+      Session := CuBit.Handles.Debug.From_Word (0);
+      Handle_Call (Started, LH.Debug_Op, DA.Kind_Word (DA.Observe), Until_Time, True,
+                   Msg, Outcome, Received);
+      if Outcome = LH.Done then
+         declare
+            Taken : constant CuBit.Handles.Debug.Accepted_Session :=
+              CuBit.Handles.Debug.Accept_Session (Received, DA.Observe);
+         begin
+            if Taken.OK then
+               Session := Taken.Value;
+            else
+               Ignore := CuBit.Handles.IPC.Close (Received);
+               Outcome := LH.Failed;
+            end if;
+         end;
+      end if;
+   end Debug;
+
+   procedure Narrow
+     (Started : Child; Rights : LH.Rights; Narrowed : out Child; Outcome : out LH.Outcome)
+   is
+      Msg : Message;
+      Received : CuBit.Handles.IPC.Carried;
+      Ignore : CuBit.Handles.IPC.Close_Result;
+   begin
+      Narrowed := (Process => Started.Process, others => <>);
+      Handle_Call (Started, LH.Narrow_Op, LH.Word_Of (Rights), Deadline_After (Handle_Answer_Ms),
+                   True, Msg, Outcome, Received);
+      if Outcome = LH.Done then
+         declare
+            Taken : constant CuBit.Handles.IPC.Accepted_Endpoint :=
+              CuBit.Handles.IPC.Accept_Endpoint (Received);
+         begin
+            if Taken.OK and then LH.Valid_Rights_Word (Msg.words (1)) then
+               Narrowed.Handle := Taken.Value;
+               Narrowed.Rights := LH.Rights_Of (Msg.words (1));
+            else
+               Ignore := CuBit.Handles.IPC.Close (Received);
+               Outcome := LH.Failed;
+            end if;
+         end;
+      end if;
+   end Narrow;
+
+   procedure Release (Started : Child) is
+      Msg : Message;
+      Outcome : LH.Outcome;
+      Ignore : CuBit.Handles.IPC.Carried;
+      Ignore_Closed : CuBit.Handles.IPC.Close_Result;
+   begin
+      if CuBit.Handles.Valid (Started.Handle) then
+         Handle_Call (Started, LH.Revoke_Op, 0, Deadline_After (Handle_Answer_Ms), False,
+                      Msg, Outcome, Ignore);
+         Ignore_Closed := CuBit.Handles.IPC.Close (Started.Handle);
+      end if;
+   end Release;
 
    procedure Poll_Exit
      (Started : Child; Has_Ended : out Boolean; Ended : out CuBit.Child_Exits.Report) is
    begin
       CuBit.Process_Events.Take_Exit (Started.Process, Has_Ended, Ended);
+      if Has_Ended then
+         Release (Started);
+      end if;
    end Poll_Exit;
 
    procedure Wait (Started : Child; Ended : out CuBit.Child_Exits.Report) is
@@ -174,7 +363,7 @@ package body CuBit.Launching is
          Ignore := KC.Call (KA.Wait, Wait_ABI.Ready_Sources, Wait_ABI.Forever);
          Ignore := KC.Call
            (KA.Wait, Wait_ABI.Timer_Sources, Wait_ABI.Forever,
-            KC.Call (KA.Read_Monotonic_Microseconds) + Idle_Pause_Microseconds);
+            CuBit.Published_Clock.Microseconds_Now + Idle_Pause_Microseconds);
       end loop;
    end Wait;
 
@@ -184,21 +373,6 @@ package body CuBit.Launching is
    Table_Answer : Table_Area with Alignment => Page_Bytes;
    Table_Lent : Boolean := False;
    Table_Reference : CuBit.Memory_Grants.Grant_Reference;
-
-   procedure End_Child (Through : Launcher; Started : Child; Result : out Launch_Result) is
-      Msg : Message := NULL_MESSAGE;
-      Reply : MessageTag;
-   begin
-      if not CuBit.Handles.Valid (Through.Service) then
-         Result := No_Process_Manager;
-         return;
-      end if;
-      Msg.tag := (label => CuBit.Launch_Authority.End_Child_Operation,
-                  length => 1, protocol => 0, ipc => <>, reserved => 0);
-      Msg.words (0) := CuBit.Process_IDs.To_Word (Started.Process);
-      Reply := capCall (Through.Service, Msg, CuBit.Messages.Wait_Forever);
-      Result := (if Reply.label = CuBit.Kernel_ABI.Reply_OK then Launched else Refused);
-   end End_Child;
 
    function Set_Staged_Launches (Allowed : Boolean) return CuBit.Messages.Message is
       Msg : Message := NULL_MESSAGE;

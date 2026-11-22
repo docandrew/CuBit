@@ -3,27 +3,22 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  xhci.drv's log lines: serial always, logstore once devmgr grants it.
+--  xhci.drv's log lines, in its logstore ring.
 --
 --  @description
 --  Bring-up convention (coordination/release-stack.md): one
 --  "xhci: <location> stage <name> ok|fail ..." line per stage, so one photo
 --  of the Boot diagnostics app (filter xhci, or B for bring-up) shows a
---  controller's bring-up. Lines written before the grant are captured
---  (Capture_Capacity lines, the overflow counted and reported); after it
---  every line is emitted at once (a copy into the publisher's ring, never a
---  wait). The grant request retries (Driver_Log_Grant); Poll is the
---  process's only Poll_Completion site, and a completion that is not the
---  grant reply is counted and reported, never silently dropped.
+--  controller's bring-up. xhci.drv starts before logstore: devmgr
+--  introduces logstore once procmgr offers it, and lines written before
+--  then wait in the program's queue (CuBit.Console_Route, ABI-002).
 ------------------------------------------------------------------------------
-with Interfaces;
 package Boot_Log is
-   Maximum_Line : constant := 160;
-   --  A stage line, through logstore and serial. Warning marks a failure.
+   --  A stage line (Information; Warning marks a failure).
    procedure Line (Text : String; Warning : Boolean := False);
-   --  Serial only (QEMU regression evidence, per-second statistics).
-   procedure Serial (Text : String);
-   procedure Poll;
-   --  When Poll next has work; Interfaces.Unsigned_64'Last for none.
-   function Deadline return Interfaces.Unsigned_64;
+   --  Debug text (QEMU regression evidence, per-second statistics): kept
+   --  only when logstore's minimum is lowered; test builds mirror it.
+   procedure Debug (Text : String);
+   --  Wait briefly until logstore has taken the lines (before exiting).
+   procedure Flush;
 end Boot_Log;

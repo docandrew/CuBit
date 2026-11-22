@@ -1,3 +1,6 @@
 (executable-manifest v1
   (identity "com.cubit.softpipe-check")
-  (version "0.1.0"))
+  (version "0.1.0")
+  # Its diagnostics (cubit_debug_write, the libc's records: CuBit.Libc_Log).
+  (request-service logstore read-write logstore)
+  (optional logstore))

@@ -11,7 +11,7 @@ def audit(serial, interaction, expected):
     faults = [s for s in ('USER-MEMORY-FAULT', 'PENNY-ABORT:', 'CUBITSHELL: panic',
                           'CUBITSHELL: FAIL') if s in serial]
     resync = [int(n) for n in re.findall(r'\binput_resync=(\d+)', serial)]
-    paints = [int(n) for n in re.findall(r'PENNY-FRAME: render=true paint_ms=(\d+)', serial)]
+    paints = [int(n) for n in re.findall(r'PENNY-FRAME: render=true paint_us=(\d+)', serial)]
     recovery = interaction.get('recovery_attempts')
     survival = interaction.get('result') == 'PASS' and not faults
     addresses = submitted == expected
@@ -23,7 +23,7 @@ def audit(serial, interaction, expected):
         'input_reliability_pass': survival and addresses and complete and not recovery and max(resync) == 0,
         'recovery_attempts': recovery,
         'max_reported_input_resync': max(resync, default=None),
-        'max_paint_guest_wall_ms': max(paints, default=None),
+        'max_paint_guest_wall_us': max(paints, default=None),
         'fault_markers': faults,
         'expected_addresses': expected,
         'submitted_addresses': submitted,
@@ -33,7 +33,7 @@ def audit(serial, interaction, expected):
 
 def self_test():
     log = ('CUBITSHELL-BROWSER: submitted https://example.org/\n'
-           'desktop: stats input_resync=0\nPENNY-FRAME: render=true paint_ms=1050\n')
+           'desktop: stats input_resync=0\nPENNY-FRAME: render=true paint_us=1050000\n')
     expected = ['https://example.org/']
     state = {'result': 'PASS', 'recovery_attempts': []}
     assert audit(log, state, expected)['input_reliability_pass']

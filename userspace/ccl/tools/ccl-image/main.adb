@@ -56,8 +56,27 @@ begin
    end if;
    --  Path alphabet excludes tabs/newlines, so this versioned interchange
    --  cannot inject fields. The host adapter treats every field as data.
-   Put_Line ("CCL-IMAGE-1" & Tab & Profile.Plan.Layout'Image & Tab &
+   Put_Line ("CCL-IMAGE-2" & Tab & Profile.Plan.Layout'Image & Tab &
              Value (Profile.Plan.Catalog_Name) & Tab & Value (Profile.Plan.Provider));
+   --  The trust list (SIGN-001): BUILDER, kind, import name, ceiling, and
+   --  the identity prefixes joined by commas (the identity alphabet has none).
+   for B of Profile.Plan.Builders (1 .. Profile.Plan.Builder_Count) loop
+      declare
+         Identities : String (1 .. MAX_IDENTITIES * (MAX_IDENTITY + 1));
+         Length : Natural := 0;
+      begin
+         for I in 1 .. B.Identity_Count loop
+            if I > 1 then
+               Length := Length + 1;
+               Identities (Length) := ',';
+            end if;
+            Identities (Length + 1 .. Length + B.Identities (I).Length) := Value (B.Identities (I));
+            Length := Length + B.Identities (I).Length;
+         end loop;
+         Put_Line ("BUILDER" & Tab & B.Kind'Image & Tab & Value (B.Import_Name) & Tab & B.Ceiling'Image
+                   & Tab & Identities (1 .. Length));
+      end;
+   end loop;
    for Item of Profile.Plan.Placements (1 .. Profile.Plan.Placement_Count) loop
       for Input of Catalog.Plan.Artifacts (1 .. Catalog.Plan.Artifact_Count) loop
          if Input.Name = Item.Artifact_Name then

@@ -1,14 +1,19 @@
 # The device-build live medium as QEMU tests it (tests/device-builds
 # run-live.sh): images/laptop-build.ccl exactly, except that the startup
-# plans (live and installed) show ccl-remote's pairing code on the kernel
-# console (serial) instead of in a window, so the host side can pair.
-# run-live.sh checks that this is the only difference.
+# plans (live and installed) show ccl-remote's pairing code on the test
+# console (serial) instead of in a window, so the host side can pair, and
+# ccl-remote is its test variant (make ccl-remote-test), which declares
+# that object. run-live.sh checks that these are the only differences.
 # Only the services needed to reach USB ISO9660 belong in bootstrap.
 # Membership is not launch approval or a capability grant.
 (system-image v1
   (catalog "cubit-native-v1")
   (layout optical)
   (provider "usb-optical")
+  # The image's trust list (SIGN-001): every executable placed must verify
+  # against it. The host development CA comes from ccl-image's --import
+  # (make: $(CUBIT_SIGNING)/builder-ca.der), never from a path in the tree.
+  (builder host-development (import "cubit-signing-ca") (identities "*") (ceiling hardware-and-system))
   (kernel "kernel")
   (boot-menu "grub-usb-live")
   (settings "system-live")
@@ -77,11 +82,13 @@
   (file optical "tls-roots" "apps/tls/roots.der")
   # The LAN remote session, listening with builds granted, and the
   # builder it starts (ccl-build.app, against @system).
-  (file optical "ccl-remote" "apps/ccl-remote.app")
+  (file optical "ccl-remote-test" "apps/ccl-remote.app")
   (file optical "ccl-build" "apps/ccl-build.app")
   (file optical "devices" "apps/devices.app")
   (file optical "config-inspector" "apps/config-inspector.app")
   (file optical "boot-logs" "apps/boot-logs.app")
+  # The Debugger (DBG-001), an Apps menu entry.
+  (file optical "debugger" "apps/debugger.app")
   (file optical "logs" "apps/logs.app")
   (file optical "metricsview" "apps/metricsview.app")
   (file optical "files" "apps/files.app")

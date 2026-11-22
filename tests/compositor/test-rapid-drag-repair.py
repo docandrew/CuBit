@@ -190,7 +190,7 @@ try:
         release()
         shot('bench-end')
         for line in log_text().splitlines():
-            if line.startswith(('desktop: stats', 'desktop: frames=')):
+            if 'desktop: stats' in line or 'desktop: frames=' in line:
                 print(line, flush=True)
         failed = False
         sys.exit(0)

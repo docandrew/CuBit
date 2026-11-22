@@ -26,12 +26,15 @@
 --  Unhandled_Exception outcome), not corrupted memory.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Ada.Exceptions;
 with Interfaces; use Interfaces;
 with System;
 pragma Warnings (Off, "internal GNAT unit");
 with System.Secondary_Stack;
 pragma Warnings (On, "internal GNAT unit");
+with CuBit.Kernel_ABI;
+with CuBit.Kernel_Calls;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Secondary_Stack_Layout;
 with CuBit.System_Facts;
@@ -44,6 +47,7 @@ procedure Main is
    package SS renames System.Secondary_Stack;
    package Layout renames CuBit.Secondary_Stack_Layout;
    use type SS.Mark_Id;
+   use type SP.Thread_Slot;
 
    --  The declared primary stack (component.ccl).
    Main_Stack_Bytes : constant := 96 * MiB;
@@ -79,13 +83,7 @@ procedure Main is
       end if;
    end Check;
 
-   function Owned_Bytes return Unsigned_64 is
-      Value : CuBit.System_Facts.SP.Statistics;
-      Success : Boolean;
-   begin
-      CuBit.System_Facts.Read_Statistics (Value, Success);
-      return (if Success then Value.Owned_Bytes else Unsigned_64'Last);
-   end Owned_Bytes;
+   function Owned_Bytes return Unsigned_64 is (CuBit.System_Facts.Owned_Bytes);
 
    function Outside_Main_Stack (Where : Unsigned_64) return Boolean is
      (not Inside (Where, Main_Stack_Base, Main_Stack_Bytes));
@@ -119,6 +117,19 @@ procedure Main is
          Check (not Inside (Results (I).Result_Address, Threads (I).Stack, Stack_Threads.Stack_Bytes)
                   and then Outside_Main_Stack (Results (I).Result_Address),
                 "extra thread" & I'Image & "'s secondary stack is outside every primary stack");
+      end loop;
+      --  Thread counts (Readiness_Publication): each worker had its own
+      --  slot, never the main thread's, the same in THREAD_CREATE's result
+      --  and its entry; its line started from zero (a slot a first-batch
+      --  thread gave back included) and one YIELD added exactly one.
+      for I in Worker_Index loop
+         Check (Threads (I).Slot /= SP.Main_Thread_Slot
+                  and then Counts (I).Entry_Slot = Threads (I).Slot
+                  and then (for all J in Worker_Index =>
+                              J = I or else Threads (J).Slot /= Threads (I).Slot),
+                "extra thread" & I'Image & " has its own thread-count slot");
+         Check (Counts (I).First_Count = 0 and then Counts (I).Yield_Added = 1,
+                "extra thread" & I'Image & " counts its own system calls from zero");
       end loop;
       return Together;
    end Batch;
@@ -192,12 +203,24 @@ procedure Main is
    Alone, Together, Again, After : Outcome;
    Before, After_First, After_Second : Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    debugPrint ("secondary-stack-check: starting" & LF);
 
    Alone := Full_Run (Alone_Seed);
    Check_Run (Alone, "main thread");
    Check (Outside_Main_Stack (Alone.Result_Address) and then Outside_Main_Stack (Alone.Stack),
           "main thread's secondary stack is outside its primary stack");
+
+   --  The main thread's count: one YIELD is one call, the reads none.
+   declare
+      Before : constant Unsigned_64 := CuBit.System_Facts.Thread_System_Calls;
+      Ignore : Unsigned_64;
+   begin
+      Ignore := CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Yield);
+      Check (CuBit.System_Facts.Thread_System_Calls - Before = 1,
+             "the main thread counts its own system calls");
+   end;
 
    --  Two batches of threads; the second may not need more than the first.
    Before := Owned_Bytes;

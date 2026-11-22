@@ -14,6 +14,7 @@
 --  the device after OP_READY.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -29,6 +30,7 @@ with CuBit.Log_Records;
 with Startup;
 with Fixture_Probe;
 with CuBit.Kernel_ABI;
+with CuBit.Monotonic;
 
 procedure Main is
    package LC renames Launch_Configuration;
@@ -145,7 +147,7 @@ procedure Main is
    --  One edu DMA of Count bytes, waited for (bounded): True when the
    --  engine reported it done.
    function Run_DMA (Source, Destination, Count, Direction : Unsigned_64) return Boolean is
-      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + DMA_WAIT_MS;
+      Deadline : constant Unsigned_64 := CuBit.Monotonic.Milliseconds + DMA_WAIT_MS;
       Ignore : Activity_Result;
    begin
       Set_Register_64 (EDU_DMA_SOURCE, Source);
@@ -153,10 +155,10 @@ procedure Main is
       Set_Register_64 (EDU_DMA_COUNT, Count);
       Set_Register_64 (EDU_DMA_COMMAND, EDU_DMA_START or Direction);
       while (Register_64 (EDU_DMA_COMMAND) and EDU_DMA_START) /= 0 loop
-         if syscall (SYSCALL_GETTIME) >= Deadline then
+         if CuBit.Monotonic.Milliseconds >= Deadline then
             return False;
          end if;
-         Ignore := Wait_For_Activity_Until (syscall (SYSCALL_GETTIME) + DMA_POLL_MS);
+         Ignore := Wait_For_Activity_Until (CuBit.Monotonic.Milliseconds + DMA_POLL_MS);
       end loop;
       return True;
    end Run_DMA;
@@ -174,6 +176,8 @@ procedure Main is
       Report (CuBit.Driver_Readiness.Not_Present_Label);
    end Decline;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;
@@ -270,14 +274,14 @@ begin
    declare
       Block : constant CuBit.Device_Interrupts.Interrupt_Block :=
         CuBit.Device_Interrupts.Block_Of (Startup.Device);
-      Deadline : constant Unsigned_64 := syscall (SYSCALL_GETTIME) + INTERRUPT_WAIT_MS;
+      Deadline : constant Unsigned_64 := CuBit.Monotonic.Milliseconds + INTERRUPT_WAIT_MS;
       Event : Message;
       Fired : Boolean := False;
       Status : Unsigned_32;
       Ignore : Activity_Result;
    begin
       Set_Register (EDU_INTERRUPT_RAISE, INTERRUPT_PATTERN);
-      while not Fired and then syscall (SYSCALL_GETTIME) < Deadline loop
+      while not Fired and then CuBit.Monotonic.Milliseconds < Deadline loop
          while Poll_Event (Event) loop
             Fired := Fired or else
               (Block.Valid and then CuBit.Device_Interrupts.Is_Doorbell (Event)

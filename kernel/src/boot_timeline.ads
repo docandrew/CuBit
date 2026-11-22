@@ -11,12 +11,17 @@
 -- lock is ever taken while it is held), the TSC readings, and an atomic
 -- mirror of "still recording" so each hook costs one load once the window
 -- has closed. Always on; bounded and allocation-free.
+--
+-- Readers see the Image as a granted publication (System_Publications.
+-- Boot_Timeline): a page-aligned kernel copy, rewritten whole after every
+-- record while the window is open, mapped read-only into a program whose
+-- manifest declares it (Map_Into, at launch).
 -------------------------------------------------------------------------------
 pragma Ada_2022;
 with Interfaces; use Interfaces;
-with System;
 with Boot_Timeline_Layout;
 with Boot_Timeline_Records;
+with Virtmem;
 
 package Boot_Timeline with
    SPARK_Mode => Off -- global state behind a spinlock; the logic is proved
@@ -61,10 +66,7 @@ is
 
    procedure Mark_Milestone (Item : Layout.Milestone; Marker : Unsigned_64);
 
-   --  Copy up to Length (at most Layout.Read_Chunk_Bytes) bytes of the
-   --  Image from Offset into the kernel buffer at Into.
-   procedure Read (Into   : System.Address;
-                   Offset : Unsigned_64;
-                   Length : Unsigned_64;
-                   Copied : out Unsigned_64);
+   --  Map the published Image read-only into Root at
+   --  System_Publications.Boot_Timeline_Address (already there: Success).
+   procedure Map_Into (Root : in out Virtmem.P4; Success : out Boolean);
 end Boot_Timeline;

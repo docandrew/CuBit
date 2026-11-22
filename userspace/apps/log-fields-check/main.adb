@@ -1,9 +1,11 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
+with CuBit.Log_Records.Texts;
 with CuBit.Logging;
 with Startup;
 
@@ -75,8 +77,10 @@ procedure Main is
    end Field_Record;
 
    Information : constant L.Decoded := L.Make (Filtered_Text, L.Information);
-   Own_Pid : constant Unsigned_64 := syscall (SYSCALL_GETPID);
+   Own_Pid : constant Unsigned_64 := Own_Process_Word;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    CuBit.Logging.Subscribe (Reader, Result, Minimum => L.Warning);
    Check (Result = P.OK, "startup observer subscribes with filter");
    loop
@@ -96,14 +100,14 @@ begin
       exit when Result = P.Empty;
       Check (Result = P.OK, "filtered read");
       Check (L.Level (Value.Data) >= L.Warning, "filter honoured");
-      if L.Text (Value.Data) = Filtered_Text then
+      if L.Texts.Text (Value.Data) = Filtered_Text then
          Saw_Filtered := True;
-      elsif L.Text (Value.Data) = Kept_Text and then Value.Source = Own_Pid
+      elsif L.Texts.Text (Value.Data) = Kept_Text and then Value.Source = Own_Pid
       then
          Saw_Kept := True;
          Check (P.Is_Publisher (Value.Publication_Tag), "authenticated tag");
          Check (L.Field_Total (Value.Data) = 4, "four fields");
-         Check (L.Name (L.Field_At (Value.Data, 1)) = "latency_us" and then
+         Check (L.Texts.Name (L.Field_At (Value.Data, 1)) = "latency_us" and then
                 L.Kind (L.Field_At (Value.Data, 1)) =
                   L.Duration_Microseconds and then
                 L.Value (L.Field_At (Value.Data, 1)) = Frame_Latency_Us,

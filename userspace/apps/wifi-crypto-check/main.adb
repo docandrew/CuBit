@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with WiFi_Crypto.Self_Test;
@@ -11,6 +12,8 @@ procedure Main is
    Passed  : Boolean;
    Ignore  : Interfaces.Unsigned_64;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    WiFi_Crypto.Self_Test.Run (Results);
    Passed := WiFi_Crypto.Self_Test.All_Passed (Results);
    debugPrint ("wifi-crypto-check: " & WiFi_Crypto.Self_Test.Image (Results) & " "

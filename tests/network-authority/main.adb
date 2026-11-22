@@ -26,34 +26,8 @@ begin
       package Policy renames CuBit.Launch_Policy;
       use type Policy.Network_Approval;
    begin
-      --  NetSurf is retired: its old name no longer carries browser
-      --  approval.
-      pragma Assert (Policy.Desktop_Approval ("netsurf.app", PID (42), PID (42)) =
-        Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", PID (0), PID (0)) =
-        Policy.No_Network);
-      --  Slot 0 is ill formed, whatever its generation; the all-ones word
-      --  is a well-formed identity, not a sentinel.
-      pragma Assert (Policy.Desktop_Approval
-        ("cubitshell.app", CuBit.Process_IDs.To_Process_ID (Slot => 0, Generation => 1),
-         CuBit.Process_IDs.To_Process_ID (Slot => 0, Generation => 1)) = Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval
-        ("cubitshell.app", PID (Unsigned_64'Last), PID (Unsigned_64'Last)) =
-         Policy.Browser_Outbound);
-      pragma Assert (Policy.Desktop_Approval ("other.app", PID (42), PID (42)) =
-        Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("/cubitshell.app", PID (42), PID (42)) =
-        Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", PID (42), PID (42)) =
-        Policy.Browser_Outbound);
-      pragma Assert (Policy.Desktop_Approval ("cubitshell.app", PID (41), PID (42)) =
-        Policy.No_Network);
-      pragma Assert (Policy.Desktop_Approval ("cubitshell.apps", PID (42), PID (42)) =
-        Policy.No_Network);
-      pragma Assert (Policy.Allows (Policy.Browser_Outbound, Broad_Outbound_TCP));
-      pragma Assert (Policy.Allows (Policy.Browser_Outbound, Narrow));
-      pragma Assert (not Policy.Allows (Policy.Browser_Outbound, Listener));
-      pragma Assert (not Policy.Allows (Policy.Browser_Outbound, Denied_Scope));
+      --  No program name carries a network approval (CAP-011): only a
+      --  plan entry's (network approve-declared) does.
       pragma Assert (not Policy.Allows (Policy.No_Network, Broad_Outbound_TCP));
       pragma Assert (Policy.Allows (Policy.Declared_Network, Listener));
    end;

@@ -4,13 +4,12 @@ package body ACPI_Native_Power_Buttons is
    package W renames ACPI_Native_Power_Watches;
    use type W.Step_Outcome;
    Item : W.State;
-   Configured, Fixed_Available, Method_Configured, Method_Available, Stopping : Boolean := False;
+   Configured, Fixed_Available, Method_Configured, Method_Available, Stopping, Sources_Withdrawn : Boolean := False;
    procedure Configure_Fixed (Available : Boolean) is
    begin
-      if Configured or Stopping then return;end if;
+      if Configured or Stopping or Sources_Withdrawn then return;end if;
       Configured := True; Fixed_Available := Available;
-      if Available then W.Mark_Present (Item);
-      else W.Mark_Unavailable (Item);end if;
+      if Available then W.Mark_Present (Item);end if;
       -- No fixed source does not prove the absence of an AML/HID button.
    end Configure_Fixed;
    procedure Fixed_Press is
@@ -21,7 +20,7 @@ package body ACPI_Native_Power_Buttons is
    end Fixed_Press;
    procedure Configure_Control_Method (Available : Boolean) is
    begin
-      if not Configured or Fixed_Available or Method_Configured or Stopping then return;end if;
+      if not Configured or Fixed_Available or Method_Configured or Stopping or Sources_Withdrawn then return;end if;
       Method_Configured := True;Method_Available := Available;
       if Available then W.Mark_Present (Item);else W.Mark_Unavailable (Item);end if;
    end Configure_Control_Method;
@@ -30,6 +29,12 @@ package body ACPI_Native_Power_Buttons is
       Method_Available := False;
       if not Fixed_Available then W.Mark_Unavailable (Item);end if;
    end Withdraw_Control_Method;
+   procedure Withdraw_Sources is
+   begin
+      Sources_Withdrawn := True;
+      Fixed_Available := False; Method_Available := False;
+      W.Mark_Unavailable (Item);
+   end Withdraw_Sources;
    procedure Control_Method_Press is
    begin
       if Method_Available and then not Fixed_Available and then not Stopping then W.Record_Press (Item, W.E.Control_Method);end if;

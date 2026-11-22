@@ -49,6 +49,7 @@ package body Intel_GPIO_IRQ_Owner with SPARK_Mode is
       S.Info := (At_Phase => Read_Owner, Event => Previous_Event, others => <>);
       S.Owner := 0; S.Host := 0; S.Desired_Config := 0; S.Desired_Enable := 0;
       S.Rearming := False; S.Pausing := False; S.Initial_Masked := True;
+      S.Config_Is_Locked := False;
    end Retarget_Parked;
    procedure Poll
      (S : in out State; Deadline : I.Tick; Budget : I.Limit; Result : out Admission) is
@@ -144,27 +145,39 @@ package body Intel_GPIO_IRQ_Owner with SPARK_Mode is
          Fail (S, (if Status = I.Unknown_Effect then Register_Indeterminate else Register_Refused)); return;
       end if;
       case S.Info.At_Phase is
-         when Read_Owner => S.Owner := Value; S.Info.At_Phase := Read_Host;
-         when Read_Host => S.Host := Value; S.Info.At_Phase := Read_Lock;
+         when Read_Owner =>
+            S.Owner := Value;
+            if not G.Host_Owned (S.Plan.Selected, Value) then Fail (S, Ownership_Refused);
+            else S.Info.At_Phase := Read_Host; end if;
+         when Read_Host =>
+            S.Host := Value;
+            if not G.Interrupt_Eligible (S.Plan.Selected, S.Owner, Value) then Fail (S, Ownership_Refused);
+            else S.Info.At_Phase := Read_Lock; end if;
          when Read_Lock =>
-            if not G.Interrupt_Eligible (S.Plan.Selected, S.Owner, S.Host, Value)
-            then Fail (S, Ownership_Refused);
-            else S.Info.At_Phase := (if S.Pausing then Park_Mask_Read elsif S.Rearming then Enable_Read else Read_Config);
-            end if;
+            S.Config_Is_Locked := (Value and Mask) /= 0;
+            S.Info.At_Phase := (if S.Pausing then Park_Mask_Read
+               elsif S.Rearming and not S.Config_Is_Locked then Enable_Read else Read_Config);
          when Park_Mask_Read => S.Desired_Enable := Value and not Mask; S.Info.At_Phase := Park_Mask_Write;
          when Park_Mask_Write => S.Info.At_Phase := Park_Mask_Confirm;
          when Park_Mask_Confirm =>
             if (Value and Mask) /= 0 then Fail (S, Readback_Refused);
             else S.Info.Pin_May_Be_Enabled := False; S.Info.At_Phase := Held_Masked;
             end if;
-         when Read_Config => S.Desired_Config := I.Input_Configuration (Value, S.Mode); S.Info.At_Phase := Read_Mask;
+         when Read_Config =>
+            S.Desired_Config := I.Input_Configuration (Value, S.Mode);
+            if S.Config_Is_Locked and then ((Value xor S.Desired_Config) and I.Changed_Fields) /= 0 then
+               -- The group enable/status registers remain separate. Never
+               -- write locked PADCFG or pretend a refused write configured it.
+               Fail (S, Locked_Configuration_Refused);
+            else S.Info.At_Phase := (if S.Rearming then Enable_Read else Read_Mask); end if;
          when Read_Mask => S.Desired_Enable := Value and not Mask; S.Info.At_Phase := Mask_Write;
          when Mask_Write => S.Info.At_Phase := Mask_Confirm;
          when Mask_Confirm | Event_Mask_Confirm =>
             if (Value and Mask) /= 0 then Fail (S, Readback_Refused);
             else
                S.Info.Pin_May_Be_Enabled := False;
-               S.Info.At_Phase := (if S.Info.At_Phase = Mask_Confirm then Config_Write else Acknowledge);
+               S.Info.At_Phase := (if S.Info.At_Phase /= Mask_Confirm then Acknowledge
+                  elsif S.Config_Is_Locked then Clear_Stale else Config_Write);
             end if;
          when Config_Write => S.Info.At_Phase := Config_Confirm;
          when Config_Confirm =>

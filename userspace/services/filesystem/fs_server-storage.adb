@@ -16,6 +16,7 @@ with Fs_Server.Delegations; use Fs_Server.Delegations;
 with Fs_Server.Replies; use Fs_Server.Replies;
 with Fs_Server.Watches; use Fs_Server.Watches;
 with CuBit.System_Stops;
+with CuBit.Console_Route;
 
 package body Fs_Server.Storage is
 
@@ -549,6 +550,9 @@ package body Fs_Server.Storage is
       Answer.words (STP.Reply_Request_Word) := msg.words (STP.Request_Word);
       Answer.words (STP.Storage_Status_Word) := STP.Storage_Outcome'Enum_Rep (Outcome);
       Answer.words (STP.Volumes_Word) := STP.Counts_Word (Committed, Failed, Passed, 0);
+      --  ABI-002: these lines reach logstore before procmgr hears the
+      --  outcome, so its lines (and the console mirror) follow them.
+      CuBit.Console_Route.Flush;
       Ignore := reply (sender, Answer);
    end handleStorageStop;
 

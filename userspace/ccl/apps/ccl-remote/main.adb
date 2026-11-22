@@ -22,8 +22,8 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
-with CuBit.Logging;
-with CCL_Native_Bindings;
+with CuBit.Console_Route;
+with Remote_Log;
 with Parameters;
 with Startup;
 pragma Unreferenced (Startup);   --  its body checks the startup table first
@@ -39,6 +39,7 @@ with Remote_Activity;
 with Remote_Capture;
 with Remote_Development;
 with System;
+with CuBit.Monotonic;
 
 procedure Main is
    package W renames Remote_Wire;
@@ -78,18 +79,11 @@ procedure Main is
    Paired : Boolean := False;
    OK : Boolean;
 
-   function Now return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Now return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
    function After (Milliseconds : Unsigned_64) return Unsigned_64 is
      (if Now > Unsigned_64'Last - Milliseconds then Unsigned_64'Last else Now + Milliseconds);
 
-   procedure Log (Text : String) is
-      Ignore : Boolean;
-   begin
-      debugPrint ("ccl-remote: " & Text & ASCII.LF);
-      if CCL_Native_Bindings.Logstore.Present then
-         CuBit.Logging.Announce ("ccl-remote: " & Text, Ignore, CCL_Native_Bindings.Logstore.Value);
-      end if;
-   end Log;
+   procedure Log (Text : String) renames Remote_Log.Note;
 
    function Grant_Names return String is
      ("diagnose" & (if P.files then ", files" else "") & (if P.builds then ", builds" else "") &
@@ -523,6 +517,9 @@ procedure Main is
    Next_Refresh : Unsigned_64 := 0;
    Shown : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console
+   --  (the pairing code is not debug text: Remote_Pairing).
+   CuBit.Console_Route.Route_Named ("logstore");
    if P.listen = Parameters.Off then
       Log ("off (launch parameter listen => Remote_Listen.Off)");
       return;
@@ -558,7 +555,7 @@ begin
    Remote_Transport.Refresh (Port, Changed);
    Next_Refresh := After (if Remote_Transport.Listening = 0 then Address_Wait_Ms else Address_Refresh_Ms);
    Remote_Pairing.Show
-     ((if P.display = Parameters.Window then Remote_Pairing.Window else Remote_Pairing.Kernel_Console),
+     ((if P.display = Parameters.Window then Remote_Pairing.Window else Remote_Pairing.Test_Console),
       Addresses, Grant_Names, Shown);
    if not Shown then
       Log ("the pairing code could not be shown (no desktop?); not listening");

@@ -3,7 +3,7 @@
 # no scheduling authority or pinning. The server starts first so the
 # client's ipc-test binding resolves.
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (start "bench-ipc-server.app" (priority 3))
   (start "sched-latency.app" (priority 3))
 )

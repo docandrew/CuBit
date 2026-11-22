@@ -1,0 +1,7 @@
+# Debugger (DBG-001 preview): the GUI over the engine (userspace/lib/debug).
+(Component name => "debugger" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/apps/debugger/native" "userspace/lib/debug" "userspace/lib/debug/native"
+                "userspace/lib/text"]
+    libraries => ["ui-toolkit"]
+    language => Ada_Language.Ada_2022)))

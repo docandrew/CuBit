@@ -12,14 +12,14 @@ with CuBit.Startup_Tables;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
 with CuBit.Display_Capture;
-with CuBit.Logging;
+with Remote_Log;
 with SPARKNaCl;
 with SPARKTLSCrypto.Hashing.SHA256;
-with CCL_Native_Bindings;
 with Remote_Activity;
 with Remote_Files;
 with Remote_Pairing;
 with Remote_PNG;
+with CuBit.Monotonic;
 
 package body Remote_Capture is
    package DC renames CuBit.Display_Capture;
@@ -51,16 +51,9 @@ package body Remote_Capture is
    Last_Loan : GR.Reference;
    Lent_Once : Boolean := False;
 
-   function Now return Unsigned_64 is (syscall (SYSCALL_GETTIME));
+   function Now return Unsigned_64 is (CuBit.Monotonic.Milliseconds);
 
-   procedure Log (Text : String) is
-      Ignore : Boolean;
-   begin
-      debugPrint ("ccl-remote: " & Text & ASCII.LF);
-      if CCL_Native_Bindings.Logstore.Present then
-         CuBit.Logging.Announce ("ccl-remote: " & Text, Ignore, CCL_Native_Bindings.Logstore.Value);
-      end if;
-   end Log;
+   procedure Log (Text : String) renames Remote_Log.Note;
 
    function Reason (Item : W.Capture_Result) return String is
      (case Item is

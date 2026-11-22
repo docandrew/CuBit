@@ -6,25 +6,44 @@
 -------------------------------------------------------------------------------
 pragma Ada_2022;
 with System.Storage_Elements; use System.Storage_Elements;
+with BuddyAllocator;
 with Spinlocks;
+with System_Publications;
 with x86;
 
 package body Boot_Timeline with
    SPARK_Mode => Off
 is
    package R renames Boot_Timeline_Records;
+   package SP renames System_Publications;
+   use type Virtmem.PhysAddress;
 
    Lock  : Spinlocks.Spinlock;
    State : R.State;
    Open  : Boolean := False with Atomic;
 
+   --  The published copy of State.Wire (System_Publications.Boot_Timeline):
+   --  whole pages of kernel .bss, mapped read-only into declared readers.
+   --  Zero (Version 0: not yet published) until Initialize.
+   Page_Bytes : constant := 4096;
+   Published_Bytes : constant := SP.Boot_Timeline_Pages * Page_Bytes;
+   pragma Compile_Time_Error (Layout.Image_Bytes > Published_Bytes,
+                              "the boot timeline outgrew its publication pages");
+   Published : Storage_Array (1 .. Published_Bytes)
+     with Alignment => Page_Bytes, Volatile;
+
    function Recording return Boolean is (Open);
 
    function Now return Unsigned_64 is (x86.rdtsc);
 
-   --  Call with Lock held: mirror the record's recording state.
+   --  Call with Lock held, after every record: mirror the record's
+   --  recording state and rewrite the published Image (only while the
+   --  window is open, so at most a few hundred times per boot).
    procedure Publish_State is
+      Source : Storage_Array (1 .. Layout.Image_Bytes)
+        with Import, Address => State.Wire'Address;
    begin
+      Published (1 .. Layout.Image_Bytes) := Source;
       if not R.Recording (State) then
          Open := False;
       end if;
@@ -39,6 +58,7 @@ is
       R.Initialize (State);
       R.Mark_Stage (State, Layout.Kernel_Entry, Entry_Ticks);
       Open := True;
+      Publish_State;
    end Initialize;
 
    procedure Mark_Stage (Stage : Layout.Kernel_Stage) is
@@ -55,6 +75,7 @@ is
       if not Open then return; end if;
       Spinlocks.enterCriticalSection (Lock);
       R.Set_Frequency (State, Frequency, Now);
+      Publish_State;
       Spinlocks.exitCriticalSection (Lock);
    end Set_Frequency;
 
@@ -113,32 +134,22 @@ is
       Spinlocks.exitCriticalSection (Lock);
    end Mark_Milestone;
 
-   procedure Read (Into   : System.Address;
-                   Offset : Unsigned_64;
-                   Length : Unsigned_64;
-                   Copied : out Unsigned_64)
-   is
-      Wanted : Unsigned_64 := Unsigned_64'Min (Length, Layout.Read_Chunk_Bytes);
+   procedure Map_Into (Root : in out Virtmem.P4; Success : out Boolean) is
+      procedure mapPage is new Virtmem.mapPage (BuddyAllocator.allocFrame);
+      First : constant Virtmem.PhysAddress := Virtmem.K2P (Published'Address);
    begin
-      Copied := 0;
-      if Offset >= Layout.Image_Bytes or else Wanted = 0 then
-         return;
-      end if;
-      Wanted := Unsigned_64'Min (Wanted, Layout.Image_Bytes - Offset);
-      Spinlocks.enterCriticalSection (Lock);
-      --  Expiry is checked on each read too, so a reader sees the window
-      --  close even when no hook has run since.
-      R.Expire (State, Now);
-      Publish_State;
-      declare
-         Source : Storage_Array (1 .. Storage_Offset (Wanted))
-           with Import, Address => State.Wire'Address + Storage_Offset (Offset);
-         Target : Storage_Array (1 .. Storage_Offset (Wanted))
-           with Import, Address => Into;
-      begin
-         Target := Source;
-      end;
-      Spinlocks.exitCriticalSection (Lock);
-      Copied := Wanted;
-   end Read;
+      Success := True;
+      for Page in Integer_Address range 0 .. SP.Boot_Timeline_Pages - 1 loop
+         declare
+            Frame : constant Virtmem.PhysAddress := First + Page * Page_Bytes;
+            Where : constant Virtmem.VirtAddress :=
+              SP.Boot_Timeline_Address + Page * Page_Bytes;
+         begin
+            if Virtmem.tableWalk (Where, Root) /= Frame then
+               mapPage (Frame, Where, Virtmem.PG_USERDATARO, Root, Success);
+               exit when not Success;
+            end if;
+         end;
+      end loop;
+   end Map_Into;
 end Boot_Timeline;

@@ -17,6 +17,7 @@ with BootAllocator;
 with BuddyAllocator;
 with Boot_Reclaim;
 with Build;
+with Interrupt_Entry;
 with Config;
 with Cpuid;
 with Ioapic;
@@ -49,18 +50,25 @@ with Video.EGA;
 with Boot_Diagnostics;
 with Boot_Timer_Setup;
 with Boot_Timeline;
+with TLB_Context;
+with Syscall_Census;
 with User_Wait;
 with Boot_Timeline_Layout;
 with Virtmem; use Virtmem;
 with x86;
 with CPUID;
 with CPU_Baseline;
+with Virtualization_Report;
+with VM_Objects;
 
 -- Not explicitly called, need to be with'd here for compilation
 with Last_Chance_Handler;
 pragma Unreferenced(Last_Chance_Handler);
 
 with Syscall;
+with Process.Map_Probe;
+with Kernel_Window;
+with Process_Pool;
 pragma Unreferenced(Syscall);
 
 -- Ada implementation: custom storage, address overlays or live context state.
@@ -195,10 +203,16 @@ begin
             println ("SMEP enabled");
         end if;
         if cpuid.leaf7ebx.hasSMAP then
+            -- The interrupt entry stubs clear AC from here on, as SYSCALL
+            -- does (Interrupt_Entry); every CPU has the BSP's features.
+            Interrupt_Entry.Clears_Alignment_Check := True;
             cr4 := cr4 or x86.CR4_SMAP;
             println ("SMAP enabled");
         end if;
         x86.setCR4 (cr4);
+        if Build.Smap_Entry_Probe then
+            println ("SMAP probe: armed");
+        end if;
     end enableSMEPSMAP;
 
     earlyCheckpoint ("CPU-local state");
@@ -231,6 +245,8 @@ begin
 
     earlyCheckpoint ("kernel page tables");
     Mem_mgr.setup (bootMemoryAreas (1 .. memAreaCount));
+    -- On the kernel's tables now (untagged): CPUs may tag address spaces.
+    TLB_Context.Setup_This_CPU (Boot_CPU => True);
     earlyCheckpoint ("buddy allocator");
     BuddyAllocator.setup (bootAllocationMap (1 .. memAreaCount));
     -- The buddy allocator owns every frame now: nothing may use the boot
@@ -240,8 +256,15 @@ begin
     Boot_Reclaim.Release_Loader_Metadata;
     earlyCheckpoint ("storage pools");
     StoragePools.setup;
+    earlyCheckpoint ("kernel window");
+    Kernel_Window.Setup;
+    Process_Pool.Setup;
     earlyCheckpoint ("process tables");
     Process.setup;
+    if Build.Kernel_Map_Probe then
+        println ("KERN014 probe: armed");
+        Process.Map_Probe.Check_Free_Links;
+    end if;
     earlyCheckpoint ("memory initialization complete");
     Boot_Timeline.Mark_Stage (BT.Memory_Ready);
 
@@ -417,6 +440,9 @@ begin
     Boot_Timeline.Mark_Stage (BT.Clock_Calibrated);
     -- PERF-013: how fast the boot CPU runs before any frequency policy.
     CPU_Performance_Report.Report;
+    -- VMM-001 slice 0: what the CPU offers a hypervisor (enables nothing).
+    Virtualization_Report.Report;
+    VM_Objects.Setup_This_CPU;
     Boot_Diagnostics.Begin_Step ("Calibrating LAPIC countdown against TSC");
 
 
@@ -615,6 +641,9 @@ begin
     initScheduler: declare
     begin
         Process.startReaper;
+        if Build.Syscall_Census then
+            Syscall_Census.Start;
+        end if;
         showBootStage ("Starting userspace...");
         Boot_Diagnostics.Begin_Step ("Starting services / NUC trace 12");
         println("Starting scheduler on CPU 0");
@@ -659,6 +688,7 @@ begin
 
     -- switch to the kernel's primary page tables.
     Mem_mgr.switchAddressSpace;
+    TLB_Context.Setup_This_CPU (Boot_CPU => False);
     AP_Startup_Stage := 3;
 
     -- Diagnostic rendering needs both CPU-local lock bookkeeping and the
@@ -678,6 +708,9 @@ begin
         end if;
         x86.setCR4 (cr4);
     end enableAPSMEPSMAP;
+
+    -- VMM-001: SVM on this AP too, when the boot CPU found it usable.
+    VM_Objects.Setup_This_CPU;
 
     -- Set up LAPIC timer on this AP using BSP's calibrated interval
     setupAPLapic : declare

@@ -24,6 +24,8 @@ with CuBit.Busy_Poll;
 with Fs_Server;
 with Fs_Attachments;
 with Startup;
+with CuBit.Console_Route;
+with CuBit.Monotonic;
 
 procedure main is
    use ASCII;
@@ -36,6 +38,9 @@ procedure main is
    received   : Boolean := False;
    volumesOk  : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore.
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, after procmgr's storage stage): commit anything that
    --  stage left, then end (CuBit.Messages.On_Stop).
    On_Stop (Fs_Server.Commit_On_Stop'Access);
@@ -84,7 +89,7 @@ begin
    --  Uses blocking receive for lowest latency.  Future async work
    --  can switch to Poll_Service_Request + Poll_Completion when capSubmit-based
    --  driver I/O is implemented.
-   nextCommit := syscall (SYSCALL_GETTIME) + Fs_Server.Commit_Interval_Ms;
+   nextCommit := CuBit.Monotonic.Milliseconds + Fs_Server.Commit_Interval_Ms;
    loop
       --  Queued requests first; block only when none wait, and at most
       --  until the next journal commit.
@@ -165,9 +170,9 @@ begin
       end case;
       end if;
       end if;
-      if syscall (SYSCALL_GETTIME) >= nextCommit then
+      if CuBit.Monotonic.Milliseconds >= nextCommit then
          Fs_Server.Commit_Tick;
-         nextCommit := syscall (SYSCALL_GETTIME) + Fs_Server.Commit_Interval_Ms;
+         nextCommit := CuBit.Monotonic.Milliseconds + Fs_Server.Commit_Interval_Ms;
       end if;
    end loop;
 end main;

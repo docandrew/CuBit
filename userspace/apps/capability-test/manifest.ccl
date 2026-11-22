@@ -4,4 +4,8 @@
 (Executable_Manifest
   identity => "com.cubit.cap-test"
   version => "1.0.0"
+  # ABI-002: its debug text (CuBit.Console_Route), attached after the
+  # handle-table checks, which count this entry.
+  requests => [(service "logstore" "logstore")]
+  optional => ["logstore"]
   handles => (Handle_Limit.At_Most 8))

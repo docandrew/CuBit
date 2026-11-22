@@ -1,4 +1,11 @@
 with ACPI_Native_Server.With_Passive_Queries;
+with ACPI_Native_Server.With_Host_Bridges;
+with ACPI_Host_Bridge_Owners;
+with ACPI_Native_Host_Bridge_Windows;
+with CuBit.Host_Bridge_Windows;
+with CuBit.Control_Events;
+with CuBit.Device_Interrupts;
+with ACPI_Native_Events;
 with ACPI_Native_Field_Profile;
 with ACPI_Native_Passive_Queries;
 with ACPI_Startup_Phase_Trace;
@@ -75,10 +82,74 @@ package body ACPI_Native_Instance is
    package Root renames ACPI_One_Service.Root;
    use type L.Outcome;
    use type ACPI_Native_Server.Stop_Reason;
+   use type ACPI_Native_EC_Discovery.Outcome;
+   use type ACPI_Native_Server.Owner_Outcome;
    use type One.Runtime.Status.Outcome;
    use type One.Runtime.Status.Phase;
    use type L.State_Access;
    use type L.R.Tick;
+   package HB renames ACPI_Host_Bridge_Owners;
+   package HB_Windows renames ACPI_Native_Host_Bridge_Windows;
+   Owner : L.State_Access;
+   Bridge_Target : CuBit.Handles.Endpoint := CuBit.Handles.No_Endpoint;
+   Bridge_Peer : CuBit.Process_IDs.Process_ID := CuBit.Process_IDs.No_Process;
+   Bridge_Query_Microseconds : constant Unsigned_64 := 5_000_000;
+   Bridge_Query_Milliseconds : constant Unsigned_64 := 5_000;
+   Bridge_Metadata_Batch : constant Positive := 16;
+   Bridge_Metadata_Budget : constant Natural := ACPI_Service.Max_Namespace_Nodes + 1;
+   Bridge_AML_Budget : constant Natural := 1_000_000;
+   Bridge_Item_Limit : constant HB.G.H.R.Item_Count := 4096;
+   Bridge_Stop_Milliseconds : constant Unsigned_64 := 1_000;
+   -- Process-local reservation ACHB: low 32 bits are paired, never reused.
+   Bridge_Token_First : constant Unsigned_64 := 16#4143_4842_0000_0000#;
+   Bridge_Token_Entries : constant Unsigned_64 := 2 ** 32;
+   subtype Bridge_Allocation_Count is Unsigned_64 range 0 .. Bridge_Token_Entries / 2;
+   Bridge_Used : Bridge_Allocation_Count := 0;
+   Bridge_Connector : constant Unsigned_16 := 0;
+   Bridge_First_Sequence : constant Unsigned_64 := 1;
+   Bridge_SCI_Ack_Noted : Boolean := False;
+   Bridge_Report_Noted : Boolean := False;
+   Bridge_Retention_Noted : Boolean := False;
+   function Bridge_Metadata_Ready return Boolean;
+   function Bridge_Query_Ready return Boolean;
+   procedure Bridge_Correlation (Device : ACPI_Service.Node_Descriptor;
+      Root_ID, Sequence, Open_Token, Data_Token : out Unsigned_64; Available : out Boolean) is
+      pragma Unreferenced (Device);
+   begin
+      Root_ID := 0; Sequence := 0; Open_Token := 0; Data_Token := 0; Available := False;
+      if Bridge_Used = Bridge_Allocation_Count'Last then return; end if;
+      Bridge_Used := Bridge_Used + 1; Root_ID := Bridge_Used; Sequence := Bridge_First_Sequence;
+      Open_Token := Bridge_Token_First + 2 * (Bridge_Used - 1); Data_Token := Open_Token + 1;
+      Available := True;
+   end Bridge_Correlation;
+   package Bridges is new HB.Managers
+     (L.State_Access, Bridge_Metadata_Ready, Bridge_Query_Ready, HB_Windows.Current,
+      HB_Windows.Clock, HB_Windows.Begin_Window, HB_Windows.End_Window,
+      One.Runtime.Evaluate_Named, Bridge_Correlation, HB.G.Canonical_Reasons);
+   use type HB.Phase;
+   procedure Maybe_Start_Bridges (Server : in out ACPI_Requests.State) is
+      Us, Ms : Unsigned_64; Good : Boolean;
+   begin
+      if Bridges.Observe.Attempted or Bridges.Observe.Stop_Requested then return; end if;
+      if not ACPI_Requests.Valid (Server) then Bridges.Request_Stop; return; end if;
+      if not CuBit.Handles.Valid (Bridge_Target) or else not CuBit.Process_IDs.Is_Process (Bridge_Peer) then
+         Bridges.Request_Stop;
+         ACPI_Native_Diagnostic_Output.Write ("acpi: stage host-bridge fail ENDPOINT_UNAVAILABLE", False);
+         return;
+      end if;
+      if not Bridge_Metadata_Ready then return; end if;
+      HB_Windows.Clock (Us, Ms, Good);
+      if not Good or else Us >= CuBit.Messages.Wait_Forever - Bridge_Query_Microseconds
+        or else Ms >= CuBit.Messages.Wait_Forever - Bridge_Query_Milliseconds then
+         Bridges.Request_Stop;
+         ACPI_Native_Diagnostic_Output.Write ("acpi: stage host-bridge fail CLOCK_UNAVAILABLE", False);
+         return;
+      end if;
+      Bridges.Start (Owner, Bridge_Target, Bridge_Peer, CuBit.Host_Bridge_Windows.Element, Bridge_Connector,
+         Us + Bridge_Query_Microseconds, Ms + Bridge_Query_Milliseconds,
+         Bridge_Metadata_Budget, Bridge_Metadata_Batch, Bridge_AML_Budget, Bridge_Item_Limit);
+   end Maybe_Start_Bridges;
+
    -- Native monotonic samples and snapshot deadlines are microseconds.
    Startup_Timeout_Microseconds : constant L.R.Tick := 60_000_000;
    -- Separate absolute deadlines: snapshot/delays use microseconds; setup
@@ -400,8 +471,15 @@ package body ACPI_Native_Instance is
       ACPI_Native_Power_Entry.Advance (Server, Result);
       Did_Work := Button_Work or else Result /= ACPI_Native_Power_Entry.Idle;
    end Advance_Power;
+   function Bridge_Metadata_Ready return Boolean is
+     (Owner /= null and then not SCI.Deferred and then HB_Windows.Metadata_Ready (Owner.all));
+   function Bridge_Query_Ready return Boolean is
+     (Owner /= null and then not SCI.Deferred and then HB_Windows.Query_Ready (Owner.all));
    procedure Advance_Normal (Server : in out ACPI_Requests.State; Result : out ACPI_Native_Server.Owner_Outcome) is
    begin
+      if SCI.Deferred and then not Bridges.Blocks_AML and then ACPI_Native_Event_Domain.Diagnostics_Quiet (Server) then
+         SCI.Service_Deferred;
+      end if;
       if ACPI_Native_Power_Buttons.Retirement_Requested then
          Result := ACPI_Native_Server.Owner_Refused;
       else ACPI_Native_Event_Domain.Advance (Server, Result);end if;
@@ -413,29 +491,85 @@ package body ACPI_Native_Instance is
    package Query_Loop is new ACPI_Native_Server.With_Passive_Queries
      (Power_Loop.Advance,Power_Loop.Maintain);
    package Observer_Query_Loop is new ACPI_Native_Server.With_Passive_Queries;
+   procedure Maintain_Bridge_Owner (Deadline : out Unsigned_64; May_Continue : out Boolean) is
+      Query_Deadline : Unsigned_64;
+      Queries_Healthy : Boolean;
+   begin
+      --  The bridge manager exclusively owns this active or retained AML window.
+      --  Keep actual hardware maintenance; do not apply the normal Idle-only test.
+      Root.Maintain_Owner (Deadline, May_Continue);
+      ACPI_Native_Passive_Queries.Maintain (Query_Deadline, Queries_Healthy);
+      Deadline := Unsigned_64'Min (Deadline, Query_Deadline);
+      Deadline := Unsigned_64'Min (Deadline, ACPI_Native_Power_Entry.Wake_Deadline_Milliseconds);
+      May_Continue := May_Continue and then Queries_Healthy
+        and then Bridges.Blocks_AML
+        and then (One.Runtime.Current in One.Runtime.Status.Idle | One.Runtime.Status.Active
+          or else Bridges.Observe.Stage = HB.Retained);
+   end Maintain_Bridge_Owner;
+   package Bridge_Loop is new ACPI_Native_Server.With_Host_Bridges
+     (Bridges, Maybe_Start_Bridges, Query_Loop.Advance, Power_Loop.Advance,
+      ACPI_Native_Power_Entry.Blocks_Runtime, Query_Loop.Maintain, Power_Loop.Diagnostics_Quiet, Maintain_Bridge_Owner);
+   procedure Runtime_Dispatch (Server : in out ACPI_Requests.State; From : CuBit.Messages.Process_ID;
+      Request : CuBit.Messages.Message; Reply : out CuBit.Messages.Message) is
+   begin
+      ACPI_Native_Endpoint.Dispatch_With_Admission (Server, From, Request, Reply,
+        Bridge_Loop.Admission_Open, Cached_Button_Watches_Open => True);
+   end Runtime_Dispatch;
+   procedure Runtime_Advance (Server : in out ACPI_Requests.State; Result : out ACPI_Native_Server.Owner_Outcome) is
+      View : HB.Report;
+   begin
+      Bridge_Loop.Advance (Server, Result); View := Bridges.Observe;
+      if View.Attempted and then View.Stage in HB.Holding | HB.Finished | HB.Retained
+        and then (not Bridge_Report_Noted or else (View.Stage = HB.Retained and then not Bridge_Retention_Noted)) then
+         Bridge_Report_Noted := True;
+         if View.Stage = HB.Retained then Bridge_Retention_Noted := True; end if;
+         ACPI_Native_Diagnostic_Output.Write
+           ("acpi: stage host-bridge " & (if View.Had_Errors then "fail " else "ok ") &
+            (if View.Stage = HB.Retained then "RETAINED" else "DISCOVERY_FINISHED") &
+            " reason-id=" & HB.Failure'Pos (View.Why)'Image & " candidates=" & View.Candidates'Image &
+            " visited=" & View.Visited'Image & " opened=" & View.Reports_Opened'Image &
+            " acknowledged=" & View.Acknowledged'Image & " held=" & View.Held_Sessions'Image &
+            " failed=" & View.Failed_Reports'Image & " incomplete=" & View.Incomplete_Reports'Image,
+            Bridge_Loop.Diagnostics_Quiet (Server));
+      end if;
+   end Runtime_Advance;
    procedure Serving_Event (Publisher : CuBit.Messages.Process_ID; Item : CuBit.Messages.Message;
       Stop : out Boolean; Handled : out Boolean) is
       Ack : ACPI_SCI_Quiesce.Acknowledgement;
       use type ACPI_System_Events.Action;
+      use type ACPI_SCI_Quiesce.Acknowledgement;
+      Ends : Boolean := False;
    begin
-      if ACPI_Native_Power_Entry.Blocks_Runtime then
+      if ACPI_System_Events.Classify (Publisher, Item) = ACPI_System_Events.Grant_Notice then
+         Bridges.Note_Event (CuBit.Control_Events.Decode (Item.tag.label, Item.tag.length,
+           Item.words (0), Item.words (1), Item.words (2)), Ends);
+      end if;
+      if Bridges.Blocks_AML and then CuBit.Device_Interrupts.Is_Doorbell (Item) then
+         SCI.Defer_Event (Publisher, Item, Ack); Stop := False; Handled := True;
+         if Ack = ACPI_SCI_Quiesce.Acknowledge_Refused and then not Bridge_SCI_Ack_Noted then
+            Bridge_SCI_Ack_Noted := True;
+            ACPI_Native_Diagnostic_Output.Write ("acpi: stage sci fail ACK_REFUSED deferred=1", False);
+         end if;
+      elsif ACPI_Native_Power_Entry.Blocks_Runtime then
          Stop := ACPI_System_Events.Classify (Publisher, Item) = ACPI_System_Events.Stop_Requested;
          ACPI_SCI_Events.Acknowledge_Only (Publisher, Item, Ack);
          Handled := True;
          -- Final entry admits no more GPE/EC/consumer work or channel logging.
       else SCI.Handle_Event (Publisher, Item, Stop, Handled); end if;
+      Stop := Stop or Ends;
    end Serving_Event;
    package Serving is new ACPI_Native_Server.With_Dispatch
-     (ACPI_Native_Endpoint.Dispatch, Handle_Event => Serving_Event,
-      Advance_Owner => Query_Loop.Advance, Maintain_Owner => Query_Loop.Maintain,
-      Diagnostics_Quiet => Power_Loop.Diagnostics_Quiet, Reply_Now => ACPI_Native_Endpoint.Reply_Now);
+     (Runtime_Dispatch, Handle_Event => Serving_Event,
+      Advance_Owner => Runtime_Advance, Maintain_Owner => Bridge_Loop.Maintain,
+      Diagnostics_Quiet => Bridge_Loop.Diagnostics_Quiet, Reply_Now => ACPI_Native_Endpoint.Reply_Now,
+      Handle_Completion => Bridge_Loop.Handle_Completion);
    package Observer_Serving is new ACPI_Native_Server.With_Dispatch
      (ACPI_Native_Endpoint.Dispatch,Advance_Owner=>Observer_Query_Loop.Advance,
       Maintain_Owner=>Observer_Query_Loop.Maintain,Reply_Now=>ACPI_Native_Endpoint.Reply_Now);
    Device_Run : Driver.Session;
-   Owner : L.State_Access;
    function Owner_Quiet return Boolean is
      (Owner /= null and then ACPI_Requests.Valid (Owner.all)
+      and then not Bridges.Blocks_AML and then Bridges.Observe.Stage /= HB.Retained
       and then One.Runtime.Current = One.Runtime.Status.Idle
       and then ACPI_Native_Pre_Device.Quiet
       and then (ACPI_Native_Regions.May_Open_Diagnostic_Channel and then not ACPI_Native_Power_Entry.Blocks_Runtime)
@@ -747,6 +881,7 @@ package body ACPI_Native_Instance is
          return "UNKNOWN";
       end EC_Path_Image;
       Path:constant String:=EC_Path_Image(EC_Start_View.Device_Path);
+      Candidate_Path:constant String:=EC_Path_Image(EC_Start_View.Candidate_Path);
       Maximum_Path_Preview:constant Positive:=100;
    begin
       if not Event_Start_Captured then return; end if;
@@ -766,7 +901,7 @@ package body ACPI_Native_Instance is
         ("acpi: stage ec-selector status="&EC_Start_View.Status'Image&
          " check="&EC_Start_View.At_Checkpoint'Image&" node="&EC_Start_View.At_Node'Image&
          " hid="&EC_Start_View.Identity_Node'Image&" roots="&EC_Start_View.Retained'Image&
-         " candidates="&EC_Start_View.Candidates'Image,False);
+         " candidates="&EC_Start_View.Candidates'Image&" role=SCAN",False);
       ACPI_Native_Diagnostic_Output.Write
         ("acpi: stage ec-identity access="&EC_Start_View.Identity_Access'Image&
          " exec="&EC_Start_View.Identity_Execution'Image&" cleanup="&EC_Start_View.Identity_Cleanup'Image&
@@ -777,8 +912,19 @@ package body ACPI_Native_Instance is
          " uncertain="&EC_Start_View.Failure.Field_Uncertainty'Image,False);
       ACPI_Native_Diagnostic_Output.Write
         ("acpi: stage ec-path complete="&EC_Start_View.Path_Complete'Image&
-         " clipped="&Boolean'Image(Path'Length>Maximum_Path_Preview)&
+         " clipped="&Boolean'Image(Path'Length>Maximum_Path_Preview)&" role=SCAN"&
          " path="&Path(Path'First..Path'First+Natural'Min(Path'Length,Maximum_Path_Preview)-1),False);
+      ACPI_Native_Diagnostic_Output.Write
+        ("acpi: stage ec-candidate described="&Bit(EC_Start_View.Candidate_Described)&
+         " ready="&Bit(EC_Start_View.Status=ACPI_Native_EC_Discovery.Ready)&
+         " armed="&Bit(Event_Start_View.EC_Armed)&" node="&EC_Start_View.Candidate_Node'Image,False);
+      if EC_Start_View.Candidate_Described then
+         ACPI_Native_Diagnostic_Output.Write
+           ("acpi: stage ec-candidate-path complete="&EC_Start_View.Candidate_Path_Complete'Image&
+            " clipped="&Boolean'Image(Candidate_Path'Length>Maximum_Path_Preview)&
+            " path="&Candidate_Path(Candidate_Path'First..Candidate_Path'First+
+              Natural'Min(Candidate_Path'Length,Maximum_Path_Preview)-1),False);
+      end if;
    end Report_Event_Start_Checkpoint;
    procedure Park_With_Final_Checkpoint is
       View : constant Phase_Trace.Checkpoint := Phase_Trace.Observe (Post_Device_Trace);
@@ -918,6 +1064,7 @@ package body ACPI_Native_Instance is
       Reason : ACPI_Native_Server.Stop_Reason;
       Runtime_Entry : One.Runtime.Status.Outcome;
       Observer_Only, Mode_Selected : Boolean := False;
+      Runtime_Serve_Started : Boolean := False;
       Core_View : One.Core_Retirement_State := One.Unobserved;
       SCI_View : One.SCI_Retirement_State := One.Not_Armed;
       Events_Quiet:Boolean:=True;
@@ -926,13 +1073,173 @@ package body ACPI_Native_Instance is
       Original_Startup_Deadline : Unsigned_64 := 0;
       use type One.SCI_Retirement_State;
       use type ACPI_Native_Event_Domain.Drain_Outcome;
+      procedure Publish_Bridges_Before_Events (Completed : out Boolean) is
+         Until_Ms : Unsigned_64 := 0;
+         Routes_Ready, Publication_Complete : Boolean := False;
+         Publication_Reason : ACPI_Native_Server.Stop_Reason;
+         procedure Advance_Publication (Server : in out ACPI_Requests.State;
+            Outcome : out ACPI_Native_Server.Owner_Outcome) is
+         begin
+            -- Metadata enumeration and an open query window both belong to
+            -- Bridges. Receipt fanout changes the broker revision: wait for
+            -- that owner's boundary before draining captured notifications.
+            if not Bridges.Blocks_AML then
+               ACPI_Native_Event_Domain.Route_Prepared (Server, Outcome);
+               -- Preserve runnable notification batches. The bridge cannot
+               -- start until the captured queue is drained, so sleeping here
+               -- could consume the whole original publication allowance.
+               if Outcome /= ACPI_Native_Server.Owner_Idle then return; end if;
+            end if;
+            Bridge_Loop.Advance_Publication (Server, Outcome);
+            if Bridges.Observe.Stage in HB.Holding | HB.Finished
+              and then not Bridges.Blocks_AML then
+               Publication_Complete := True;
+               -- Local loop completion, not a refusal of the native runtime.
+               Outcome := ACPI_Native_Server.Owner_Refused;
+            end if;
+         end Advance_Publication;
+         procedure Maintain_Publication (Deadline : out Unsigned_64; May_Continue : out Boolean) is
+            Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+         begin
+            Deadline := Until_Ms;
+            May_Continue := Now /= CuBit.Messages.Wait_Forever and then Now < Until_Ms;
+            if May_Continue then
+               Bridge_Loop.Maintain (Deadline, May_Continue);
+               Deadline := Unsigned_64'Min (Deadline, Until_Ms);
+            end if;
+         end Maintain_Publication;
+         procedure Publication_Dispatch (Server : in out ACPI_Requests.State;
+            From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message;
+            Reply : out CuBit.Messages.Message) is
+         begin
+            ACPI_Native_Endpoint.Dispatch_With_Admission
+              (Server, From, Request, Reply, False, Cached_Button_Watches_Open => True);
+         end Publication_Dispatch;
+         function Never_Diagnose (Server : ACPI_Requests.State) return Boolean is
+            pragma Unreferenced (Server);
+         begin return False; end Never_Diagnose;
+         package Publication_Loop is new ACPI_Native_Server.With_Dispatch
+           (Publication_Dispatch, Serving_Event, Advance_Publication,
+            Maintain_Publication, Never_Diagnose, ACPI_Native_Endpoint.Reply_Now,
+            Bridge_Loop.Handle_Completion);
+      begin
+         Completed := False;
+         ACPI_Native_Event_Domain.Prepare_Consumers (Owner.all, Routes_Ready);
+         if not Routes_Ready then return; end if;
+         Until_Ms := CuBit.Monotonic.Milliseconds;
+         if Until_Ms = CuBit.Messages.Wait_Forever
+           or else Until_Ms >= CuBit.Messages.Wait_Forever - Bridge_Query_Milliseconds then return; end if;
+         Until_Ms := Until_Ms + Bridge_Query_Milliseconds;
+         Publication_Loop.Serve (Owner.all, Publication_Reason);
+         Completed := Publication_Complete
+           and then Publication_Reason = ACPI_Native_Server.Owner_Work_Refused;
+         ACPI_Native_Diagnostic_Output.Write
+           ("acpi: stage host-bridge-before-events " & (if Completed then "ok " else "fail ") &
+            (if Completed then "BOUNDARY_CLOSED" else "PUBLICATION_STOPPED") &
+            " acknowledged=" & Bridges.Observe.Acknowledged'Image &
+            " held=" & Bridges.Observe.Held_Sessions'Image, False);
+      end Publish_Bridges_Before_Events;
+      procedure Serve_Preserved_Bridges is
+         procedure Preserved_Dispatch (Server : in out ACPI_Requests.State;
+            From : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message;
+            Reply : out CuBit.Messages.Message) is
+         begin
+            ACPI_Native_Endpoint.Dispatch_With_Admission
+              (Server, From, Request, Reply, False, Cached_Button_Watches_Open => True, Cached_Shutdown_Open => True);
+         end Preserved_Dispatch;
+         procedure Preserved_Event (Publisher : CuBit.Messages.Process_ID;
+            Item : CuBit.Messages.Message; Stop, Handled : out Boolean) is
+            Ends : Boolean := False;
+            Ack : ACPI_SCI_Quiesce.Acknowledgement;
+            use type ACPI_System_Events.Action;
+         begin
+            if ACPI_System_Events.Classify (Publisher, Item) = ACPI_System_Events.Grant_Notice then
+               Bridges.Note_Event (CuBit.Control_Events.Decode (Item.tag.label, Item.tag.length,
+                 Item.words (0), Item.words (1), Item.words (2)), Ends);
+            end if;
+            ACPI_Native_Events.Handle (Publisher, Item, Stop, Handled);
+            ACPI_SCI_Events.Acknowledge_Only (Publisher, Item, Ack);
+            Stop := Stop or Ends;
+         end Preserved_Event;
+         function Never_Diagnose (Server : ACPI_Requests.State) return Boolean is
+            pragma Unreferenced (Server);
+         begin return False; end Never_Diagnose;
+         procedure Advance_Shutdown (Server : ACPI_Requests.State; Did_Work : out Boolean) is
+            Outcome : ACPI_Native_Power_Entry.Step_Outcome;
+            use type ACPI_Native_Power_Entry.Step_Outcome;
+         begin
+            ACPI_Native_Power_Entry.Advance (Server, Outcome);
+            Did_Work := Outcome /= ACPI_Native_Power_Entry.Idle;
+         end Advance_Shutdown;
+         package Preserved_Power is new ACPI_Native_Server.With_Power_Entry
+           (Advance_Shutdown, ACPI_Native_Power_Entry.Runnable, ACPI_Native_Power_Entry.Blocks_Runtime,
+            ACPI_Native_Power_Entry.Wake_Deadline_Milliseconds, ACPI_Native_Server.Idle_Owner,
+            ACPI_Native_Server.No_Maintenance, Never_Diagnose);
+         -- Only final sleep-entry advancement; no normal/event/passive AML.
+         -- Already acknowledged original producer sessions stay owned until
+         -- a real Stop/revocation. Unknown retained owners are not retried.
+         package Preserved_Loop is new ACPI_Native_Server.With_Dispatch
+           (Preserved_Dispatch, Preserved_Event, Preserved_Power.Advance,
+            Preserved_Power.Maintain, Never_Diagnose,
+            ACPI_Native_Endpoint.Reply_Now, Bridge_Loop.Handle_Completion);
+      begin
+         ACPI_Native_Diagnostic_Output.Write
+           ("acpi: stage event-quarantine fail CACHED_ONLY acknowledged=" &
+            Bridges.Observe.Acknowledged'Image & " held=" & Bridges.Observe.Held_Sessions'Image, False);
+         Preserved_Loop.Serve (Owner.all, Reason);
+      end Serve_Preserved_Bridges;
+      procedure Drain_Bridges is
+         Until_Ms : Unsigned_64 := 0;
+         Drain_Reason : ACPI_Native_Server.Stop_Reason;
+         procedure Advance_Drain (Server : in out ACPI_Requests.State; Outcome : out ACPI_Native_Server.Owner_Outcome) is
+         begin
+            Bridge_Loop.Drain (Server, Outcome);
+            if Bridges.Retired then Outcome := ACPI_Native_Server.Owner_Refused; end if;
+         end Advance_Drain;
+         procedure Maintain_Drain (Deadline : out Unsigned_64; May_Continue : out Boolean) is
+            Now : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+         begin
+            Deadline := Until_Ms; May_Continue := Now /= CuBit.Messages.Wait_Forever and then Now < Until_Ms;
+            if May_Continue then
+               Bridge_Loop.Maintain (Deadline, May_Continue); Deadline := Unsigned_64'Min (Deadline, Until_Ms);
+            end if;
+         end Maintain_Drain;
+         procedure Drain_Event (Publisher : CuBit.Messages.Process_ID; Item : CuBit.Messages.Message; Stop, Handled : out Boolean) is
+            Ends, Ignored : Boolean; Ack : ACPI_SCI_Quiesce.Acknowledgement;
+            use type ACPI_System_Events.Action;
+         begin
+            if ACPI_System_Events.Classify (Publisher, Item) = ACPI_System_Events.Grant_Notice then
+               Bridges.Note_Event (CuBit.Control_Events.Decode (Item.tag.label, Item.tag.length,
+                 Item.words (0), Item.words (1), Item.words (2)), Ends);
+            end if;
+            ACPI_Native_Events.Handle (Publisher, Item, Ignored, Handled);
+            ACPI_SCI_Events.Acknowledge_Only (Publisher, Item, Ack);
+            Stop := False;
+         end Drain_Event;
+         procedure Drain_Dispatch (Server : in out ACPI_Requests.State; From : CuBit.Messages.Process_ID;
+            Request : CuBit.Messages.Message; Reply : out CuBit.Messages.Message) is
+         begin ACPI_Native_Endpoint.Dispatch_With_Admission (Server, From, Request, Reply, False); end Drain_Dispatch;
+         function Never_Diagnose (Server : ACPI_Requests.State) return Boolean is
+            pragma Unreferenced (Server);
+         begin return False; end Never_Diagnose;
+         package Drain_Loop is new ACPI_Native_Server.With_Dispatch
+           (Drain_Dispatch, Drain_Event, Advance_Drain, Maintain_Drain, Never_Diagnose,
+            ACPI_Native_Endpoint.Reply_Now, Bridge_Loop.Handle_Completion);
+      begin
+         Bridges.Request_Stop;
+         if Bridges.Retired then return; end if;
+         Until_Ms := CuBit.Monotonic.Milliseconds;
+         if Until_Ms = CuBit.Messages.Wait_Forever or else Until_Ms >= CuBit.Messages.Wait_Forever - Bridge_Stop_Milliseconds then return; end if;
+         Until_Ms := Until_Ms + Bridge_Stop_Milliseconds;
+         Drain_Loop.Serve (Owner.all, Drain_Reason);
+      end Drain_Bridges;
       procedure Close_SCI is
          use type ACPI_SCI_Quiesce.Outcome;
          Result:ACPI_SCI_Quiesce.Result;
       begin
-         if SCI_View=One.Not_Armed then return;end if;
+         if SCI_View in One.Not_Armed | One.Clear_SCI | One.Retained_SCI then return;end if;
          for Attempt in 1..SCI_Disarm_Attempts loop
-            ACPI_SCI_Events.Disarm(Result);
+            ACPI_SCI_Events.Disarm_At_Boundary (Result, Owner_Quiet);
             exit when Result.State=ACPI_SCI_Quiesce.Quiesced;
          end loop;
          ACPI_Native_Event_Domain.Confirm_Disarm(Result);
@@ -1051,6 +1358,7 @@ package body ACPI_Native_Instance is
                   PCI := (Present => True, Endpoint => PCI_Endpoint.Value,
                           Expected_Owner => CuBit.Process_IDs.From_Word (D.Object),
                           Epoch => CuBit.Messages.To_Word (CuBit.Messages.Own_Process));
+                  Bridge_Target := PCI.Endpoint; Bridge_Peer := PCI.Expected_Owner;
                end if;
             end;
          end if;
@@ -1387,6 +1695,11 @@ package body ACPI_Native_Instance is
          Enter_Phase (Phase_Trace.Serve);
          Observer_Serving.Serve(Owner.all,Reason);
       else
+      declare Published : Boolean;
+      begin
+         Publish_Bridges_Before_Events (Published);
+         if not Published then return; end if;
+      end;
       -- The SCI, once the namespace and device _INI are done: arm it, then
       -- serve. Not armed is a typed state; nothing polls instead.
       declare
@@ -1407,7 +1720,6 @@ package body ACPI_Native_Instance is
          Outcome:ACPI_Native_Event_Domain.Start_Outcome;
          use type ACPI_Native_Event_Domain.Start_Outcome;
          use type ACPI_Native_Event_Domain.Phase;
-         use type ACPI_Native_EC_Discovery.Outcome;
       begin
          Enter_Phase (Phase_Trace.Start_Events);
          ACPI_Native_Event_Domain.Start(Owner.all,Outcome);
@@ -1425,7 +1737,17 @@ package body ACPI_Native_Instance is
                ACPI_Native_Log.Info("acpi: stage events ok FIXED_ONLY ec=ABSENT");
             else ACPI_Native_Log.Warning("acpi: stage events fail "&Outcome'Image&" ec="&ACPI_Native_Event_Domain.Observe.EC'Image);end if;
          end if;
-         if Outcome=ACPI_Native_Event_Domain.Refused then return;end if;
+         if Outcome=ACPI_Native_Event_Domain.Refused then
+            -- Stop SCI dispatch before copied-only serving. Keep bridge grants
+            -- out of the outer retirement path until a real stop/revocation.
+            Startup_Diagnostic_Checkpoint;
+            Close_SCI;
+            Enter_Phase (Phase_Trace.Serve);
+            Serve_Preserved_Bridges;
+            Leave_Phase (Phase_Trace.Serve, Serve_Phase_Result (Reason),
+              Reason = ACPI_Native_Server.Stop_Requested);
+            return;
+         end if;
          -- Configure may evaluate AML. Fresh HID collection is the LAST startup
          -- AML. Every candidate finishes and the runtime window closes before
          -- any offer IPC or the consumer initialization declaration.
@@ -1513,14 +1835,15 @@ package body ACPI_Native_Instance is
             use type ACPI_Service.Namespace.Owned.Module_Error_Count;
             function Event_Result return ACPI_Startup_Completion.Phase_Result is
             begin
-               if Outcome /= ACPI_Native_Event_Domain.EC_Unavailable then
+               if Outcome = ACPI_Native_Event_Domain.Ready then
                   return ACPI_Startup_Completion.Finished;
-               elsif ACPI_Native_Event_Domain.Observe.EC = ACPI_Native_EC_Discovery.No_EC then
-                  return ACPI_Startup_Completion.Finished;
-               elsif ACPI_Native_Event_Domain.Observe.EC = ACPI_Native_EC_Discovery.Recovery_Required then
-                  return ACPI_Startup_Completion.Failed;
+               elsif Outcome = ACPI_Native_Event_Domain.EC_Unavailable then
+                  return ACPI_Startup_Completion.Unavailable_Events
+                    (Domain_Live => ACPI_Native_Event_Domain.Observe.Stage = ACPI_Native_Event_Domain.Live,
+                     Controller_Absent => ACPI_Native_Event_Domain.Observe.EC = ACPI_Native_EC_Discovery.No_EC,
+                     Recovery_Required => ACPI_Native_Event_Domain.Observe.EC = ACPI_Native_EC_Discovery.Recovery_Required);
                else
-                  return ACPI_Startup_Completion.Incomplete;
+                  return ACPI_Startup_Completion.Failed;
                end if;
             end Event_Result;
             Status : P.Phase_Status := ACPI_Native_Startup_Completion.Classify
@@ -1559,6 +1882,7 @@ package body ACPI_Native_Instance is
       end;
       Startup_Diagnostic_Checkpoint;
       Enter_Phase (Phase_Trace.Serve);
+      Runtime_Serve_Started := Mode_Selected;
       Serving.Serve (Owner.all, Reason);
       end if;
       Leave_Phase (Phase_Trace.Serve, Serve_Phase_Result (Reason),
@@ -1566,7 +1890,7 @@ package body ACPI_Native_Instance is
       -- A served Stop counts for the exit status whether or not Fields are
       -- idle now; only the logging below waits for an idle Field boundary.
       Stop_Served := Reason = ACPI_Native_Server.Stop_Requested;
-      if Root.Fields.Control_Idle and then not ACPI_Native_Power_Entry.Blocks_Runtime then
+      if Bridge_Loop.Diagnostics_Quiet (Owner.all) then
       ACPI_Native_Module_Notes.Observe (ACPI_Requests.Module_Errors (Owner.all));
       if Reason = ACPI_Native_Server.Stop_Requested then
          ACPI_Native_Log.Info ("acpi: stage serve ok STOP_REQUESTED");
@@ -1583,6 +1907,25 @@ package body ACPI_Native_Instance is
       -- Expected failures return typed outcomes from Attempt. The native
       -- runtime terminates unexpected failures; it has no exception handlers.
       Attempt;
+      if Runtime_Serve_Started and then Reason=ACPI_Native_Server.Owner_Work_Refused
+        and then One.Runtime.Current in One.Runtime.Status.Idle | One.Runtime.Status.Stopped
+        and then Owner/=null and then ACPI_Requests.Valid(Owner.all)
+        and then not ACPI_Requests.Storage_Released(Owner.all)
+      then
+         -- A failed AML owner cannot be reopened. Keep its original namespace,
+         -- bridge sessions and uncertain resources alive, disarm sources once,
+         -- and continue the already selected cached-only power endpoint before
+         -- Begin_Stop permanently closes the sleep-entry owner. Its existing
+         -- context/Fields/EC/hardware guards remain mandatory for cached S5.
+         if One.Runtime.Current=One.Runtime.Status.Idle then One.Runtime.Request_Stop(Runtime_Entry);end if;
+         ACPI_Native_Event_Domain.Begin_Stop;
+         Close_SCI;
+         ACPI_Native_Diagnostic_Output.Write
+           ("acpi: stage runtime-quarantine fail CACHED_SHUTDOWN retained=1",False);
+         Serve_Preserved_Bridges;
+         if Reason/=ACPI_Native_Server.Stop_Requested then Park_With_Final_Checkpoint;end if;
+         Stop_Served:=True;
+      end if;
       ACPI_Native_Passive_Queries.Begin_Stop;
       ACPI_Native_Button_Discovery.Begin_Stop;
       ACPI_Native_Power_Buttons.Begin_Stop;
@@ -1606,6 +1949,11 @@ package body ACPI_Native_Instance is
       -- Route before _REG(0), keep routes alive for its own Notify, then close.
       ACPI_Native_Event_Domain.Begin_Stop;
       Close_SCI;
+      Drain_Bridges;
+      if not Bridges.Retired then
+         ACPI_Native_Diagnostic_Output.Write ("acpi: stage host-bridge-retire fail RETAINED", False);
+         Park_With_Final_Checkpoint;
+      end if;
       if Owner/=null and then ACPI_Requests.Valid(Owner.all) and then not ACPI_Requests.Storage_Released(Owner.all) then
          declare Queries_Quiet:Boolean;begin
             ACPI_Native_Passive_Queries.Drain(Owner.all,Queries_Quiet);

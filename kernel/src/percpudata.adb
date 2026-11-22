@@ -63,10 +63,12 @@ is
             allISTStacks(cpuNum).nmiStack.cpuDataAddr          := cpuDataWord;
             allISTStacks(cpuNum).doubleFaultStack.cpuDataAddr  := cpuDataWord;
             allISTStacks(cpuNum).machineCheckStack.cpuDataAddr := cpuDataWord;
+            allISTStacks(cpuNum).debugStack.cpuDataAddr        := cpuDataWord;
 
             cpuData.tss.ist1 := frameTop (allISTStacks(cpuNum).nmiStack);
             cpuData.tss.ist2 := frameTop (allISTStacks(cpuNum).doubleFaultStack);
             cpuData.tss.ist3 := frameTop (allISTStacks(cpuNum).machineCheckStack);
+            cpuData.tss.ist4 := frameTop (allISTStacks(cpuNum).debugStack);
         end setupIST;
 
         cpuData.cpuNum := cpuNum;

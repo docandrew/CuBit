@@ -35,7 +35,8 @@ with CuBit.Kernel_Calls;
 with CuBit.Owned_Reservations;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
-with CuBit.Granted_Logs;
+with CuBit.Console_Route;
+with CuBit.Log;
 with CuBit.Hardware_Random;
 with CuBit.Monotonic;
 with CuBit.Net_Link;
@@ -87,8 +88,11 @@ procedure Main is
 
    procedure Say (Text : String; Warn : Boolean := False) is
    begin
-      CuBit.Granted_Logs.Line
-        (Text, (if Warn then CuBit.Granted_Logs.Warning else CuBit.Granted_Logs.Information));
+      if Warn then
+         CuBit.Log.Warning (Text);
+      else
+         CuBit.Log.Info (Text);
+      end if;
    end Say;
 
    function Image (V : Unsigned_64) return String is
@@ -926,6 +930,9 @@ procedure Main is
 
    Ignore : Unsigned_64;
 begin
+   --  ABI-002: its lines into its logstore ring, never the kernel console;
+   --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;
@@ -954,12 +961,11 @@ begin
          --  Kernel notices (a Stop among them) are read, not left to wake
          --  the wait again at once.
          CuBit.Process_Events.Serve_Defaults;
+         --  wifi submits nothing that completes; drain what the kernel
+         --  queues all the same.
          while Poll_Completion (Entry_Found'Address) = 1 loop
-            if not CuBit.Granted_Logs.Take (Entry_Found) then
-               null;
-            end if;
+            null;
          end loop;
-         CuBit.Granted_Logs.Request (Startup.Ready);
          loop
             Poll_Service_Request (Sender, Request, Found);
             exit when not Found;

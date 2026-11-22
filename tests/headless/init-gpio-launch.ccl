@@ -13,7 +13,7 @@
   (start "gpio-bootstrap-check.app" (priority 3)
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
     (acpi-firmware-data approve-declared))
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
   (driver-class "PNP0C50"
     (Device_Class_Launch
       facts => ["descriptor_register"]

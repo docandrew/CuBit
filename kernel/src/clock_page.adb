@@ -62,7 +62,21 @@ is
                 Write (Kernel_Copy);
             end if;
         end if;
+        Note_Milliseconds (Base_Milliseconds);
     end Publish;
+
+    procedure Note_Milliseconds (Milliseconds : Unsigned_64) is
+    begin
+        if Frame = 0 then
+            return;
+        end if;
+        declare
+            Word : Unsigned_64 with Import, Volatile, Atomic,
+                Address => Virtmem.P2Va (Frame + CP.Milliseconds_Offset);
+        begin
+            Word := Milliseconds;
+        end;
+    end Note_Milliseconds;
 
     procedure Read (Counter     : Unsigned_64;
                     Nanoseconds : out Unsigned_64;

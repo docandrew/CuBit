@@ -1,0 +1,2 @@
+(Component name => "alignment-flag-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))

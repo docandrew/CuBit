@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 
+with CuBit.Console_Route;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Protocols; use CuBit.Protocols;
 with CuBit.Clocks;
@@ -8,6 +9,7 @@ with CuBit.Logging;
 with CuBit.Log_Records;
 with Wall_Clock;
 with Startup;
+with CuBit.Monotonic;
 
 procedure Main is
    use ASCII;
@@ -26,6 +28,8 @@ procedure Main is
    Completion : CompletionEntry;
    Found, Handled, Submitted : Boolean;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    --  Stop (procmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;
@@ -63,7 +67,7 @@ begin
          if Request.tag.label = CLOCK_OP_MONOTONIC_MS and then
            Request.tag.length = 1 and then Request.words (0) = 0
          then
-            Now_Ms := syscall (SYSCALL_GETTIME);
+            Now_Ms := CuBit.Monotonic.Milliseconds;
             Response.tag :=
               (label => REPLY_OK, length => 1, protocol => 0, ipc => <>, reserved => 0);
             Response.words (0) := Unsigned_64'Min

@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -18,6 +19,7 @@ with X509;
 with TLS_Probe_Roots;
 with CuBit.Handles;
 with Startup;
+with CuBit.Monotonic;
 
 --  Native SPARKTLS probe (headless tls-probe regression). Links SPARKTLS into
 --  a CuBit process, seeds its RBG from SPARKEntropy, loads a test root from
@@ -42,6 +44,11 @@ procedure Main is
    Transfer : Byte_Seq (0 .. Transfer_Size - 1)
      with Import, Address => Transfer_Address;
    Stream : Channels.Stream;
+   --  One handshake at a time: a one-slot SPARKTLS handshake pool (about
+   --  180 KB), allocated once rather than placed on the stack.
+   type Handshake_Pool_Access is access SPARKTLS.Handshake_Pool;
+   Handshakes : constant Handshake_Pool_Access :=
+     new SPARKTLS.Handshake_Pool (Size => 1);
    Token : Unsigned_64 := 0;
 
    function Next_Token return Unsigned_64 is
@@ -95,7 +102,7 @@ procedure Main is
                end if;
                Channels.Await
                  (Stream, Slot, Channels.Layout.Want_Writable,
-                  syscall (SYSCALL_GETTIME) + 15_000, Next_Token, Ready);
+                  CuBit.Monotonic.Milliseconds + 15_000, Next_Token, Ready);
                if not Ready then
                   return False;
                end if;
@@ -114,7 +121,7 @@ procedure Main is
    begin
       Channels.Await
         (Stream, Slot, Channels.Layout.Want_Readable,
-         syscall (SYSCALL_GETTIME) + 15_000, Next_Token, Ready);
+         CuBit.Monotonic.Milliseconds + 15_000, Next_Token, Ready);
       Channels.Read (Stream, Transfer_Address, Transfer_Size, Got);
       if not Ready or else Got = 0 then
          return False;
@@ -146,7 +153,7 @@ procedure Main is
       Submitted, Completed : Boolean;
       Result : Action;
       Count : N32;
-      Started : constant Unsigned_64 := syscall (SYSCALL_GETTIME);
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       Established, Exchanged, Failed : Boolean := False;
       Error : Error_Code := No_Error;
    begin
@@ -166,9 +173,10 @@ procedure Main is
           Trust => Roots'Unchecked_Access,
           Get_Time => TLS_Clock.Now'Access,
           Verify_Mode => Mode_WebPKI,
-          others => <>));
+          others => <>),
+         Handshakes.all);
       Handshake : loop
-         SPARKTLS.Client.Advance (Session, Result);
+         SPARKTLS.Client.Advance (Session, Handshakes.all, Result);
          case Result is
             when OK => null;
             when Has_Output =>
@@ -190,7 +198,7 @@ procedure Main is
       end loop Handshake;
       if Established then
          debugPrint ("tls-probe: " & Name & ": handshake" &
-                     Unsigned_64'Image (syscall (SYSCALL_GETTIME) - Started) & " ms, " &
+                     Unsigned_64'Image (CuBit.Monotonic.Milliseconds - Started) & " ms, " &
                      (case Get_Version (Session) is
                         when TLS_1_3 => "TLS 1.3",
                         when TLS_1_2 => "TLS 1.2",
@@ -199,7 +207,7 @@ procedure Main is
                                     Character'Pos ('N'), Character'Pos ('G')], Count);
          if Count = 4 and then Flush then
             Exchange : loop
-               SPARKTLS.Client.Advance (Session, Result);
+               SPARKTLS.Client.Advance (Session, Handshakes.all, Result);
                case Result is
                   when Plaintext_Ready =>
                      Read_Plaintext (Session, Transfer, Count);
@@ -221,7 +229,7 @@ procedure Main is
             if Flush then null; end if;
          end if;
       end if;
-      Drop (Session);
+      Drop (Session, Handshakes.all);
       Channels.Close (Stream, Slot);
       if Expect_Success then
          Check (Established and then Exchanged, Name & ": verified handshake and data exchange");
@@ -282,11 +290,13 @@ procedure Main is
       end if;
    end Diagnose;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Diagnose;
-   Started := syscall (SYSCALL_GETTIME);
+   Started := CuBit.Monotonic.Milliseconds;
    SPARKTLS.RBG.Init (Entropy_OK);
    debugPrint ("tls-probe: entropy start-up" &
-               Unsigned_64'Image (syscall (SYSCALL_GETTIME) - Started) & " ms, OSR" &
+               Unsigned_64'Image (CuBit.Monotonic.Milliseconds - Started) & " ms, OSR" &
                SPARKTLS.RBG.Entropy_OSR'Image & ", resets" &
                SPARKTLS.RBG.Entropy_Resets'Image & ASCII.LF);
    Check (Entropy_OK, "SPARKEntropy health tests and DRBG instantiation");

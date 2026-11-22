@@ -76,7 +76,12 @@ def check(serial, mode):
         pid = re.search('Loaded module desktop\\.svc w/ process ID (\\d+)', serial)
         if not pid or 'OUTPUT-DRAIN: PASS reopened' in serial:
             raise ValueError('missing process identity or shutdown reopened')
-        required += ['Process.reclaimProcess: stopped PID ' + pid[1] + '\n']
+        # The kernel's line: after Desktop was loaded, but in no fixed order
+        # against Desktop's own lines, which reach serial through logstore's
+        # mirror (ABI-002).
+        reclaimed = serial.find('Process.reclaimProcess: stopped PID ' + pid[1] + '\n')
+        if reclaimed < serial.find(pid[0]):
+            raise ValueError('missing or reordered marker: Desktop never reclaimed')
     offset = 0
     for marker in required:
         found = serial.find(marker, offset)

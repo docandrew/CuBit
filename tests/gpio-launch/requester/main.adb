@@ -45,6 +45,7 @@ with CuBit.Grant_References;
 with CuBit.Deadlines.Clock;
 with GPIO_Bootstrap_Payload;
 with HID_Offer_Payload;
+with CuBit.Monotonic;
 
 procedure Main is
    use ASCII;
@@ -155,7 +156,7 @@ procedure Main is
 
    procedure Pause is
       Now_Us : constant Unsigned_64 :=
-        CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Read_Monotonic_Microseconds);
+        CuBit.Monotonic.Microseconds;
       Ignore : Unsigned_64;
    begin
       Ignore := CuBit.Kernel_Calls.Call

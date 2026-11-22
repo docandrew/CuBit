@@ -12,7 +12,8 @@ procedure Main is
    Checks : Natural := 0;
    procedure Check (Highest, Item : Frame; Kind : Table_Kind) is
       Width : constant Unsigned_64 :=
-        (case Kind is when Pin_State => 1, when Frame_Owners => 4, when Block_State => 2);
+        (case Kind is when Pin_State => 1, when Frame_Owners => 4, when Block_State => 2,
+                   when Free_Links => 8);
       Expected_Bytes : constant Unsigned_64 := (Unsigned_64 (Highest) + 1) * Width;
    begin
       pragma Assert (Unsigned_64 (Bytes (Highest, Kind)) = Expected_Bytes);

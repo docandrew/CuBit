@@ -2,6 +2,7 @@
 --  child through CuBit.Launching / CuBit.Launch_Grants, checked by procmgr
 --  against what the launcher holds. Results go to the kernel console.
 pragma Ada_2022;
+with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Grants;
@@ -65,6 +66,8 @@ procedure Main is
    Result : CuBit.Launching.Launch_Result;
    Failure : LA.Launch_Failure;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    --  procmgr, the "process-manager" startup entry its manifest asks for.
    --  Its own manifest does not let args-check read the place.
    Start ("denied", 0, "", Result, Failure);

@@ -1,0 +1,17 @@
+--  VMM-001 slice 0: hosted tests and proof of the kernel's decoder of the
+--  VMX capability MSRs and SVM CPUID leaves (Virtualization_Features).
+project Virtualization_Features_Tests is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use
+     ("main.adb", "virtualization_features.ads", "virtualization_features.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Virtualization_Features_Tests;

@@ -1,0 +1,22 @@
+# The debugger engine's kernel-path check (DBG-001, CAP-012; headless --test
+# debug-kernel). It launches debug-plain (no stub) into the user session,
+# asks procmgr through the launch handle for Debug_Observe on it, and reads
+# real threads, frames, locals and memory through the kernel; then it
+# observes clock.svc, a system service, through the session's debug
+# authority. Observe only: it changes nothing in either.
+(Executable_Manifest
+  identity => "com.cubit.debug-kernel-check"
+  version => "0.1.0"
+  requests => [
+    (service "process-manager" "process-manager")
+    (service "launch" "launch")
+    (service "debug-session" "debug-session")
+    # The service to observe through the session's debug authority.
+    (service "clock" "clock")
+    # The targets' build-id debug files and sources, read only.
+    (service "filesystem" "filesystem")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"]
+  scopes => [(filesystem [File_Right.Read] "@system/Debug/")]
+  may_launch => [(Launch "debug-plain.app")])

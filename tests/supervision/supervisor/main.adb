@@ -5,6 +5,7 @@
 --  start-children scope, a device-class start, badge bindings and an
 --  unknown dependency, each with its typed reason; then starts a child
 --  that lingers and ends itself, so procmgr must reap the child.
+with CuBit.Console_Route;
 with CuBit.Waits;
 with Ada.Command_Line;
 with Interfaces; use Interfaces;
@@ -78,6 +79,8 @@ procedure Main is
    Ended : CuBit.Child_Exits.Report;
    Found : Boolean := False;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    --  1. A child with typed parameters; its exit comes to its supervisor.
    First := Ask (Temporary_Child
      ("(Child_Parameters label => Child_Label.First count => 7 mode => (Child_Mode.Exit_With 3))"));
