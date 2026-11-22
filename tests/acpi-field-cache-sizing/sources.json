@@ -1283,11 +1283,11 @@
     },
     {
       "path": "userspace/services/acpi/backend/acpi_local_sample_events.adb",
-      "sha256": "3a7111f6a16ff4ba78b24d8b31fc18e238c91f336c6e867bef6ade42e0d1d4c9"
+      "sha256": "497163a3f3e3d551e5f88724deb4efae487b6dfe963af3f2a50b92a61b46d98b"
     },
     {
       "path": "userspace/services/acpi/backend/acpi_local_sample_events.ads",
-      "sha256": "95b386f8805abd5563341022f3d5d9b886a8ee1c5820a530a5b2c055b221d2a4"
+      "sha256": "69e8a15ed36ac4825b6eb13cca241195de3f3aab846a82bbb2c0cf894d318b03"
     },
     {
       "path": "userspace/services/acpi/backend/acpi_local_sample_status.ads",
@@ -1800,10 +1800,6 @@
     {
       "path": "shared/acpi/acpi_pci_window_exchange.ads",
       "sha256": "00c73104fe5e4ca78da389223703266454c0cbb2ec475246855f5d9dab5877a8"
-    },
-    {
-      "path": "shared/acpi/acpi_power_query_protocol.ads",
-      "sha256": "e2fdea5002bd7040173b6ddea676d2845db08f9437f3ccd894cd01351acb2839"
     },
     {
       "path": "shared/acpi/acpi_protocol.ads",

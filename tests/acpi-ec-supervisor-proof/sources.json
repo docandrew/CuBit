@@ -223,7 +223,7 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_endpoint.adb",
-      "sha256": "1d4ed36e9af0b0b90cea584c2eef261fac545b6f053c382d8741c40c37a376ad"
+      "sha256": "1ced7ccad7e00bb45b03440ab8e8e8f56e7f19f646e914424455734e72311dac"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_endpoint.ads",
@@ -265,7 +265,7 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_instance.adb",
-      "sha256": "babd1dfb4a418e48a789dadaaab55d6fe64de0991590021375434324e946b020"
+      "sha256": "de5df5906ddf8abba191e4f3a3d11dc8c285352bee8682a1ee27c17bc7ec07ca"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_instance.ads",

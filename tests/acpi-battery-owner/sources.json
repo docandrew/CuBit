@@ -3561,12 +3561,12 @@
     {
       "path": "userspace/services/acpi/power/acpi_battery_cache-observers.adb",
       "kind": "ada",
-      "sha256": "0ab505a84c794afd77a467b0b35efeeca429935c4201a74baa791cb0eb791a5f"
+      "sha256": "ab6dcb1fe38010579108be933a4a850bac0ba2532ca509bc428032c0f51ebb8c"
     },
     {
       "path": "userspace/services/acpi/power/acpi_battery_cache-observers.ads",
       "kind": "ada",
-      "sha256": "455afd1a888c400d6207146d8e75c62730ad6f99f442ff52094e4a37f1a2d3ad"
+      "sha256": "0fffe480336451e1eb0fb0f543a695a7d8dc7a549f79b08ec1ae5346b44ed21d"
     },
     {
       "path": "userspace/services/acpi/power/acpi_battery_cache.adb",
@@ -3659,12 +3659,12 @@
     {
       "path": "userspace/services/acpi/power/acpi_bootstrap-power_sources.adb",
       "kind": "ada",
-      "sha256": "69bd76ad11c624811c6f646ea4c763d654eaba769a2769ba05431c338ca9447b"
+      "sha256": "c965268ff8a877eec2ed4b54a154043e11bee76cd433af22486f445fc6b133d4"
     },
     {
       "path": "userspace/services/acpi/power/acpi_bootstrap-power_sources.ads",
       "kind": "ada",
-      "sha256": "464afc59d7f1e627e03a79306ef11cb3af0dca2f002fa3872e4f5fa4d9d9dd72"
+      "sha256": "49699a3050bb642b245af531792fc668d0b82ebc71c1d2fd8b199eaf27a47dfe"
     },
     {
       "path": "userspace/services/acpi/power/acpi_bootstrap-sleep_registers.adb",
@@ -3723,7 +3723,7 @@
     {
       "path": "userspace/services/acpi/power/acpi_requests-power_sources.ads",
       "kind": "ada",
-      "sha256": "dff14a2a5da525e4296ed98021207e2eb497afd505963c5a2956c3aa162095f5"
+      "sha256": "f0450abfcbb0eced55567f03db7453d47dbc89e70152196b31a586807c309f22"
     },
     {
       "path": "userspace/services/acpi/power/acpi_requests-sleep_registers.adb",

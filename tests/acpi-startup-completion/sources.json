@@ -110,10 +110,6 @@
       "sha256": "3edb5961c1f25964c07c45e26453c8eaac4954b16c8869348dbef1dc1d6c030e"
     },
     {
-      "path": "shared/acpi/acpi_power_query_protocol.ads",
-      "sha256": "e2fdea5002bd7040173b6ddea676d2845db08f9437f3ccd894cd01351acb2839"
-    },
-    {
       "path": "shared/acpi/acpi_protocol.ads",
       "sha256": "ce40736ea2bb6a09747b1e52ff0063d4f1e321cc6bd67b90ac67a4fa0e1e2d6c"
     },
@@ -2508,6 +2504,14 @@
     {
       "path": "userspace/services/acpi/snapshot/acpi_startup_diagnostics.ads",
       "sha256": "f120281b974b2a23cc7dc9ef664ea1cfdd4bb17405d005498dbdf4132f57cd15"
+    },
+    {
+      "path": "shared/acpi/acpi_power_watch_protocol.ads",
+      "sha256": "a908e20392147db2d06548b6616c237810f0c39c7b68510ab724b961275846b3"
+    },
+    {
+      "path": "shared/acpi/acpi_power_identity_protocol.ads",
+      "sha256": "cc0c590ccd102f55489d335ab7eb7e88f7e5dd75dec2970ec454b0e552c04d38"
     }
   ],
   "ada_directories": [

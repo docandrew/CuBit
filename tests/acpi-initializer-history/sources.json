@@ -102,10 +102,6 @@
       "sha256": "00c73104fe5e4ca78da389223703266454c0cbb2ec475246855f5d9dab5877a8"
     },
     {
-      "path": "shared/acpi/acpi_power_query_protocol.ads",
-      "sha256": "e2fdea5002bd7040173b6ddea676d2845db08f9437f3ccd894cd01351acb2839"
-    },
-    {
       "path": "shared/acpi/acpi_protocol.ads",
       "sha256": "ce40736ea2bb6a09747b1e52ff0063d4f1e321cc6bd67b90ac67a4fa0e1e2d6c"
     },
@@ -1135,7 +1131,7 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_instance.adb",
-      "sha256": "babd1dfb4a418e48a789dadaaab55d6fe64de0991590021375434324e946b020"
+      "sha256": "de5df5906ddf8abba191e4f3a3d11dc8c285352bee8682a1ee27c17bc7ec07ca"
     },
     {
       "path": "userspace/services/acpi/native/acpi_service.ads",

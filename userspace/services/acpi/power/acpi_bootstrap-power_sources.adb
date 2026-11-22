@@ -47,7 +47,9 @@ package body ACPI_Bootstrap.Power_Sources with SPARK_Mode is
             if not Same_Topology then Report.Outcome := Failed; return; end if;
             case Report.Last_Identity.Outcome is
                when Driver.Matched =>
-                  Item.Device := Snapshot (I); Report.Outcome := Found; return;
+                  if Item = No_Binding then Item.Device := Snapshot (I);end if;
+                  Remember_Device(Snapshot(I));
+                  if not Observe_All then Report.Outcome:=Found;return;end if;
                when Driver.Not_Power_Source | Driver.Missing_HID => null;
                when Driver.Budget_Exhausted => return;
                when Driver.Wrong_HID_Type | Driver.Evaluation_Failed =>
@@ -59,7 +61,7 @@ package body ACPI_Bootstrap.Power_Sources with SPARK_Mode is
             end case;
          end if;
       end loop;
-      Report.Outcome := (if Report.Errors = 0 then No_Match else Failed);
+      Report.Outcome := (if Report.Errors /= 0 then Failed elsif Item /= No_Binding then Found else No_Match);
    end Find;
    procedure Query (Session : in out State; Item : Binding; Budget : Natural;
       Admission : out Query_Admission; Report : out Driver.Query_Report) is

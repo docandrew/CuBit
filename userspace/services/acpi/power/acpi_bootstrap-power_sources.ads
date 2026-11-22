@@ -2,6 +2,9 @@ pragma Ada_2022;
 with ACPI_Power_Source;
 generic
    with package Driver is new ACPI_Power_Source (Core => ACPI_Service, others => <>);
+   Observe_All : Boolean := False;
+   -- Copies discovered identities only; no IPC/AML/Core mutation or reentry.
+   with procedure Remember_Device (Device : ACPI_Service.Node_Descriptor) is null;
 package ACPI_Bootstrap.Power_Sources with SPARK_Mode is
    type Binding is private;
    No_Binding : constant Binding;
@@ -14,7 +17,9 @@ package ACPI_Bootstrap.Power_Sources with SPARK_Mode is
    -- Trusted controller API. Searches for the first matching power source only, after
    -- successful device initialization. It never exposes the Core arena or
    -- accepts a wire-supplied namespace node. Find may evaluate firmware _HID.
-   -- Other power sources and device-status policy remain separate enumeration work.
+   -- Observe_All additionally visits every matching identity under the same
+   -- shared budget/topology guards; selected measurement remains the first.
+   -- An incomplete scan is never reported as a complete discovery.
    procedure Find (Session : in out State; Budget : Natural;
       Item : out Binding; Report : out Discovery_Report)
      with Pre => Valid (Session), Post => Valid (Session)

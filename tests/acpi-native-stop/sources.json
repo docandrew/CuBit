@@ -168,7 +168,7 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_endpoint.adb",
-      "sha256": "8d81afa9cd2f787e8320df44325b6fe683aace42197e1459bab21d6bb5b06257"
+      "sha256": "1ced7ccad7e00bb45b03440ab8e8e8f56e7f19f646e914424455734e72311dac"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_endpoint.ads",

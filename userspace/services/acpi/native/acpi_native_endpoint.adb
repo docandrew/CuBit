@@ -3,6 +3,9 @@ with ACPI_Native_Passive_Queries;
 with ACPI_Native_Power_Preparation;
 with ACPI_Native_Power_Entry;
 with ACPI_Native_Power_Buttons;
+with ACPI_Native_Power_Inventory;
+with ACPI_Native_Battery_Reads;
+with ACPI_Native_Power_Identities;
 with ACPI_Native_Event_Domain;
 with ACPI_Endpoint;
 with ACPI_Protocol;
@@ -21,7 +24,7 @@ package body ACPI_Native_Endpoint is
    procedure Select_Observer(Facts:ACPI_Serving_State.Eligibility;
       Physical_Retirement_Confirmed:Boolean;Accepted:out Boolean) is
    begin ACPI_Serving_State.Select_Observer(Serving,Facts,Physical_Retirement_Confirmed,Accepted);
-      if Accepted then ACPI_Native_Power_Buttons.Begin_Stop;ACPI_Native_Power_Entry.Begin_Stop;end if;end;
+      if Accepted then ACPI_Native_Battery_Reads.Begin_Stop;ACPI_Native_Power_Inventory.Begin_Stop;ACPI_Native_Power_Buttons.Begin_Stop;ACPI_Native_Power_Entry.Begin_Stop;end if;end;
    function Serving_State return ACPI_Serving_State.Snapshot is(ACPI_Serving_State.Observe(Serving));
    procedure Dispatch_With_Admission
      (Server : in out ACPI_Requests.State;
@@ -36,15 +39,26 @@ package body ACPI_Native_Endpoint is
    begin
       Current_Reply_Now := True;
       declare Mode : constant ACPI_Serving_State.Snapshot := Serving_State; begin
-         ACPI_Native_Cached_Battery.Dispatch (Server, Request,
+         ACPI_Native_Power_Identities.Dispatch(Server,Request,
+           Admission_Open and then Mode.Selected and then Mode.Current=ACPI_Serving_State.Local_Runtime
+             and then not ACPI_Native_Power_Entry.Blocks_Runtime,Reply,Power_Handled);
+         if Power_Handled then return;end if;
+         ACPI_Native_Battery_Reads.Dispatch (Server, Request,
            Admission_Open and then Mode.Selected and then Mode.Current = ACPI_Serving_State.Local_Runtime
-             and then not ACPI_Native_Power_Entry.Blocks_Runtime, Reply, Power_Handled);
+             and then not ACPI_Native_Power_Entry.Blocks_Runtime, Reply, Power_Handled, Current_Reply_Now);
          if Power_Handled then return; end if;
          ACPI_Native_Cached_Power.Dispatch (Server, Request,
            Admission_Open and then Mode.Selected and then Mode.Current = ACPI_Serving_State.Local_Runtime
              and then not ACPI_Native_Power_Entry.Blocks_Runtime, Reply, Power_Handled);
          if Power_Handled then return; end if;
       end;
+      ACPI_Native_Power_Inventory.Dispatch (From,Request,
+        Admission_Open and then Serving_State.Selected
+          and then Serving_State.Current=ACPI_Serving_State.Local_Runtime
+          and then not ACPI_Native_Power_Entry.Blocks_Runtime
+          and then ACPI_Native_Event_Domain.Diagnostics_Quiet(Server),
+        Reply,Power_Handled,Current_Reply_Now);
+      if Power_Handled then return;end if;
       ACPI_Native_Power_Buttons.Dispatch (Request,
         (Cached_Button_Watches_Open and then Serving_State.Selected
           and then Serving_State.Current = ACPI_Serving_State.Local_Runtime)
@@ -58,7 +72,7 @@ package body ACPI_Native_Endpoint is
            Cached_Shutdown_Selected => Cached_Shutdown_Open and then Mode.Selected
              and then Mode.Current=ACPI_Serving_State.Local_Runtime);
          if Power_Handled then
-            if ACPI_Native_Power_Entry.Blocks_Runtime then ACPI_Native_Power_Buttons.Begin_Stop;end if;
+            if ACPI_Native_Power_Entry.Blocks_Runtime then ACPI_Native_Battery_Reads.Begin_Stop;ACPI_Native_Power_Inventory.Begin_Stop;ACPI_Native_Power_Buttons.Begin_Stop;end if;
             return;
          end if;
          ACPI_Native_Power_Preparation.Dispatch (Server,Request,

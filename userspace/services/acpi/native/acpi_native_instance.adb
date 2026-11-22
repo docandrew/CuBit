@@ -32,6 +32,9 @@ with ACPI_One_Service;
 with ACPI_Native_Endpoint;
 with ACPI_Native_Power_Entry;
 with ACPI_Native_Power_Buttons;
+with ACPI_Native_Power_Inventory;
+with ACPI_Native_Battery_Reads;
+with ACPI_Power_Watch_Protocol;
 with ACPI_Native_Button_Discovery;
 with ACPI_Native_Server.With_Power_Entry;
 with ACPI_System_Events;
@@ -465,11 +468,14 @@ package body ACPI_Native_Instance is
    procedure Advance_Power (Server : ACPI_Requests.State; Did_Work : out Boolean) is
       Result : ACPI_Native_Power_Entry.Step_Outcome;
       use type ACPI_Native_Power_Entry.Step_Outcome;
-      Button_Work : Boolean;
+      Button_Work,Inventory_Work,Read_Work : Boolean;
    begin
+      ACPI_Native_Battery_Reads.Advance(Server,ACPI_Native_Event_Domain.Diagnostics_Quiet(Server),
+        not ACPI_Native_Power_Entry.Blocks_Runtime,Read_Work);
+      ACPI_Native_Power_Inventory.Advance(ACPI_Native_Event_Domain.Diagnostics_Quiet(Server),Inventory_Work);
       ACPI_Native_Power_Buttons.Advance (ACPI_Native_Event_Domain.Diagnostics_Quiet (Server), Button_Work);
       ACPI_Native_Power_Entry.Advance (Server, Result);
-      Did_Work := Button_Work or else Result /= ACPI_Native_Power_Entry.Idle;
+      Did_Work := Read_Work or else Button_Work or else Inventory_Work or else Result /= ACPI_Native_Power_Entry.Idle;
    end Advance_Power;
    function Bridge_Metadata_Ready return Boolean is
      (Owner /= null and then not SCI.Deferred and then HB_Windows.Metadata_Ready (Owner.all));
@@ -482,7 +488,13 @@ package body ACPI_Native_Instance is
       end if;
       if ACPI_Native_Power_Buttons.Retirement_Requested then
          Result := ACPI_Native_Server.Owner_Refused;
-      else ACPI_Native_Event_Domain.Advance (Server, Result);end if;
+      else
+         ACPI_Native_Event_Domain.Advance (Server, Result);
+         if Result=ACPI_Native_Server.Owner_Idle and then (ACPI_Native_Power_Inventory.Pending or ACPI_Native_Battery_Reads.Pending)
+           and then ACPI_Native_Event_Domain.Diagnostics_Quiet(Server) then
+            Result:=ACPI_Native_Server.Owner_Pending;
+         end if;
+      end if;
    end Advance_Normal;
    package Power_Loop is new ACPI_Native_Server.With_Power_Entry
      (Advance_Power, ACPI_Native_Power_Entry.Runnable, ACPI_Native_Power_Entry.Blocks_Runtime,
@@ -1165,15 +1177,24 @@ package body ACPI_Native_Instance is
             pragma Unreferenced (Server);
          begin return False; end Never_Diagnose;
          procedure Advance_Shutdown (Server : ACPI_Requests.State; Did_Work : out Boolean) is
+            Inventory_Work,Read_Work : Boolean;
             Outcome : ACPI_Native_Power_Entry.Step_Outcome;
             use type ACPI_Native_Power_Entry.Step_Outcome;
          begin
             ACPI_Native_Power_Entry.Advance (Server, Outcome);
-            Did_Work := Outcome /= ACPI_Native_Power_Entry.Idle;
+            ACPI_Native_Battery_Reads.Advance(Server,ACPI_Native_Event_Domain.Diagnostics_Quiet(Server),
+        False,Read_Work);
+      ACPI_Native_Power_Inventory.Advance(ACPI_Native_Event_Domain.Diagnostics_Quiet(Server),Inventory_Work);
+            Did_Work := Read_Work or else Inventory_Work or else ACPI_Native_Battery_Reads.Pending or else ACPI_Native_Power_Inventory.Pending or else Outcome /= ACPI_Native_Power_Entry.Idle;
          end Advance_Shutdown;
+         procedure Preserved_Idle (Server : in out ACPI_Requests.State; Outcome : out ACPI_Native_Server.Owner_Outcome) is
+         begin
+            Outcome:=(if (ACPI_Native_Power_Inventory.Pending or ACPI_Native_Battery_Reads.Pending) and then ACPI_Native_Event_Domain.Diagnostics_Quiet(Server)
+              then ACPI_Native_Server.Owner_Pending else ACPI_Native_Server.Owner_Idle);
+         end Preserved_Idle;
          package Preserved_Power is new ACPI_Native_Server.With_Power_Entry
            (Advance_Shutdown, ACPI_Native_Power_Entry.Runnable, ACPI_Native_Power_Entry.Blocks_Runtime,
-            ACPI_Native_Power_Entry.Wake_Deadline_Milliseconds, ACPI_Native_Server.Idle_Owner,
+            ACPI_Native_Power_Entry.Wake_Deadline_Milliseconds, Preserved_Idle,
             ACPI_Native_Server.No_Maintenance, Never_Diagnose);
          -- Only final sleep-entry advancement; no normal/event/passive AML.
          -- Already acknowledged original producer sessions stay owned until
@@ -1918,6 +1939,7 @@ package body ACPI_Native_Instance is
          -- Begin_Stop permanently closes the sleep-entry owner. Its existing
          -- context/Fields/EC/hardware guards remain mandatory for cached S5.
          if One.Runtime.Current=One.Runtime.Status.Idle then One.Runtime.Request_Stop(Runtime_Entry);end if;
+         ACPI_Native_Battery_Reads.Begin_Stop;ACPI_Native_Power_Inventory.Begin_Stop;
          ACPI_Native_Event_Domain.Begin_Stop;
          Close_SCI;
          ACPI_Native_Diagnostic_Output.Write
@@ -1926,17 +1948,20 @@ package body ACPI_Native_Instance is
          if Reason/=ACPI_Native_Server.Stop_Requested then Park_With_Final_Checkpoint;end if;
          Stop_Served:=True;
       end if;
+      ACPI_Native_Battery_Reads.Begin_Stop;ACPI_Native_Power_Inventory.Begin_Stop;
       ACPI_Native_Passive_Queries.Begin_Stop;
       ACPI_Native_Button_Discovery.Begin_Stop;
       ACPI_Native_Power_Buttons.Begin_Stop;
       ACPI_Native_Power_Entry.Begin_Stop;
       if Owner /= null and then ACPI_Requests.Valid (Owner.all) and then not ACPI_Requests.Storage_Released (Owner.all) then
          declare
-            Stop_Drain_Turns : constant Positive := 2;
+            Stop_Drain_Turns : constant Positive := Positive'Max(ACPI_Power_Watch_Protocol.Maximum_Watches,ACPI_Native_Battery_Reads.Maximum_Pending);
             Step : ACPI_Native_Power_Entry.Step_Outcome;
             Button_Work : Boolean;
          begin
             for Turn in 1 .. Stop_Drain_Turns loop
+               ACPI_Native_Battery_Reads.Advance(Owner.all,ACPI_Native_Event_Domain.Diagnostics_Quiet(Owner.all),False,Button_Work);
+               ACPI_Native_Power_Inventory.Advance(ACPI_Native_Event_Domain.Diagnostics_Quiet(Owner.all),Button_Work);
                ACPI_Native_Power_Buttons.Advance (ACPI_Native_Event_Domain.Diagnostics_Quiet (Owner.all), Button_Work);
                ACPI_Native_Power_Entry.Advance (Owner.all, Step);
             end loop;
@@ -2005,9 +2030,16 @@ package body ACPI_Native_Instance is
       -- Receipt cleanup can establish the quiet boundary missing at early stop.
       if Owner /= null and then ACPI_Requests.Valid (Owner.all) and then not ACPI_Requests.Storage_Released (Owner.all) then
          declare Worked : Boolean;begin
+            for Turn in 1..Positive'Max(ACPI_Power_Watch_Protocol.Maximum_Watches,ACPI_Native_Battery_Reads.Maximum_Pending) loop
+               ACPI_Native_Battery_Reads.Advance(Owner.all,ACPI_Native_Event_Domain.Diagnostics_Quiet(Owner.all),False,Worked);
+               ACPI_Native_Power_Inventory.Advance(ACPI_Native_Event_Domain.Diagnostics_Quiet(Owner.all),Worked);
+            end loop;
             ACPI_Native_Power_Buttons.Advance (ACPI_Native_Event_Domain.Diagnostics_Quiet (Owner.all), Worked);
          end;
       end if;
+      -- A saved kernel reply must outlive an unsafe boundary. Never exit and
+      -- discard it when no safe stopping reply could be sent.
+      if not ACPI_Native_Power_Inventory.Quiet or not ACPI_Native_Battery_Reads.Quiet then Core_View:=One.Retained_Events;end if;
       One.Retire (Core_View,SCI_View,Retired);
       if Retired then
          Retired_Quiescent := True;

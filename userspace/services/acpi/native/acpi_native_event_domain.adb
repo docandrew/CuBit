@@ -5,10 +5,11 @@ with ACPI_Native_EC_Source;
 with ACPI_Native_GPE_Source;with ACPI_Native_GPE_Control;
 with ACPI_Native_Log;with ACPI_Native_Diagnostic_Output;
 with ACPI_Native_Power_Buttons;
+with ACPI_Native_Power_Inventory;
 with ACPI_Native_Power_Entry;
 with ACPI_Native_Button_Discovery;
 with ACPI_Native_Server.With_Notifications;
-with Interfaces;
+
 package body ACPI_Native_Event_Domain is
    package Q renames ACPI_Requests;package One renames ACPI_One_Service;
    package S renames ACPI_Native_EC_Source;
@@ -46,7 +47,7 @@ package body ACPI_Native_Event_Domain is
       and then One.Root.Fields.Control_Idle and then One.Root.Fields.EC_Commands.Quiescent);
    procedure Fail(Why:Failure) is
    begin
-      Last.Stage:=Failed;Last.Why:=Why;
+      Last.Stage:=Failed;Last.Why:=Why;ACPI_Native_Power_Inventory.Begin_Stop;
       ACPI_Native_Power_Buttons.Withdraw_Sources;
    end Fail;
    procedure Route_All(Server:Q.State;Routed:out Boolean) is
@@ -246,6 +247,30 @@ package body ACPI_Native_Event_Domain is
         or else (Last.EC_Armed and then S.Observe.Stage = S.Failed) then return; end if;
       Consumers.Read_Batteries (Server, Maximum_Age, Value);
    end Read_Batteries;
+   function Demand_Admission(Server:Q.State) return Boolean is
+     (not Working and then Last.Stage=Live and then Consumers_Active and then Captures_Healthy
+      and then Diagnostics_Quiet(Server) and then not Query_Pending
+      and then (not GPE_Active or else (not General.Runnable and then General.Observe.Stage=General.Live))
+      and then (not Last.EC_Armed or else S.Observe.Stage/=S.Failed));
+   procedure Read_Identity(Server:Q.State;Index:Natural;Expected:ACPI_Cached_Power_Values.Generation;
+      Current:out ACPI_Cached_Power_Values.Generation;Code:out ACPI_Power_Identity_Protocol.Result_Code;
+      Value:out ACPI_Source_Paths.Path) is
+   begin
+      Current:=0;Code:=ACPI_Power_Identity_Protocol.Not_Ready;Value:=ACPI_Source_Paths.Empty;
+      if not Demand_Admission(Server) then return;end if;
+      Consumers.Read_Identity(Server,Index,Expected,Current,Code,Value);
+   end Read_Identity;
+   procedure Preview_Battery_Refresh(Server:Q.State;Now:out Interfaces.Unsigned_64;Allowed:out Boolean) is
+   begin Now:=0;Allowed:=False;if not Demand_Admission(Server) then return;end if;
+      Consumers.Preview_Battery_Refresh(Server,Now,Allowed);end Preview_Battery_Refresh;
+   procedure Commit_Battery_Refresh(Server:Q.State;Now:Interfaces.Unsigned_64;
+      Ticket:out Interfaces.Unsigned_64;Accepted:out Boolean) is
+   begin Ticket:=0;Accepted:=False;if not Demand_Admission(Server) then return;end if;
+      Consumers.Commit_Battery_Refresh(Server,Now,Ticket,Accepted);
+      if Accepted then Consumer_Pending:=True;end if;
+   end Commit_Battery_Refresh;
+   function Battery_Refresh_Ready(Ticket:Interfaces.Unsigned_64) return Boolean is
+     (Consumers.Battery_Refresh_Ready(Ticket));
    procedure Publish_One(Server:Q.State;Published:out Boolean) is
       Fact:S.Query_Fact;Present:Boolean;
       Line:Consumers.Fact_Line;Length:Consumers.Fact_Length;
@@ -339,7 +364,7 @@ package body ACPI_Native_Event_Domain is
    end Advance;
    procedure Begin_Stop is
    begin
-      Last.Stage:=Stopping;ACPI_Native_Button_Discovery.Begin_Stop;
+      Last.Stage:=Stopping;ACPI_Native_Power_Inventory.Begin_Stop;ACPI_Native_Button_Discovery.Begin_Stop;
       if Source_Used then S.Stop;end if;
       if GPE_Used then General.Stop;end if;
       if Consumers_Active then Consumers.Begin_Stop;end if;

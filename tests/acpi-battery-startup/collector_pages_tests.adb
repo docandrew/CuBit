@@ -18,7 +18,6 @@ with ACPI_Battery;
 with ACPI_Battery_Observation;
 with ACPI_Battery_Cache;
 with ACPI_Battery_Cache.Observers;
-with ACPI_Power_Query_Protocol;
 procedure Collector_Pages_Tests is
    package C is new ACPI_Service_Core
      (Perform_Delay => AML_Delays.Unavailable_Provider, Namespace_Node_Capacity => 128,
@@ -95,9 +94,9 @@ procedure Collector_Pages_Tests is
    package Collector is new ACPI_Battery_Observation (C, F, D, S);
    package Store is new ACPI_Battery_Cache (C, F, D, S, Collector);
    package Pages is new Store.Observers;
-   package Protocol renames ACPI_Power_Query_Protocol;
+   package Protocol renames Pages;
    use type Collector.Outcome, Collector.Phase, Collector.Observation;
-   use type Protocol.Information_Source;
+   use type Protocol.Information_Kind;
    use type Interfaces.Unsigned_64;
    Report : Collector.Query_Report;
    View : Store.Samples.View;
@@ -109,7 +108,7 @@ procedure Collector_Pages_Tests is
       Check (Report.Status = Collector.Sampled or else Report.Value = Collector.Empty_Observation,
         "collector no partial bundle");
    end Query;
-   procedure Observe (Expected : Protocol.Information_Source) is
+   procedure Observe (Expected : Protocol.Information_Kind) is
       Source : Pages.Words;
    begin
       View := (others => <>); View.Status := Store.Samples.Available;
@@ -117,7 +116,7 @@ procedure Collector_Pages_Tests is
       Source := Pages.Header_View (View);
       Check (Source (2) = 2 and then Source (3) = 21, "new raw schema only");
       Source := Pages.Read_View (View, 1, 21, 0);
-      Check (Source (1) = 0 and then Source (2) = Protocol.Information_Source'Enum_Rep (Expected)
+      Check (Source (1) = 0 and then Source (2) = Protocol.Information_Kind'Enum_Rep (Expected)
         and then Source (3) = 0, "raw information source");
       for Page in Pages.Page loop
          if Page in Pages.BIX_Version | Pages.Cycles | Pages.Sampling_Max | Pages.Sampling_Min |
