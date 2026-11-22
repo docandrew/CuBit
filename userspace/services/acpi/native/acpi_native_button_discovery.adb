@@ -1,5 +1,5 @@
 pragma Ada_2022;
-with Interfaces;with System;
+with Interfaces;with System;with ACPI_Native_Discovery_Budget;
 with ACPI_Service;with ACPI_One_Service;with ACPI_Control_Method_Button;
 with ACPI_Requests.Power_Buttons;with ACPI_Native_Power_Buttons;
 with ACPI_Fallible_Heap;with ACPI_Backend_Kernel_Handles;with ACPI_Backend_Binding_Types;
@@ -16,7 +16,6 @@ package body ACPI_Native_Button_Discovery is
    Inventory : Run_Access;
    Attempted, Working, Stopped : Boolean := False;
    Discovery_Fuel : constant Positive := 100_000;
-   Discovery_Window_Microseconds : constant Interfaces.Unsigned_64 := 500_000;
    Minimum_Heap_Alignment : constant Interfaces.Unsigned_64 := 16;
    function Quiet return Boolean is
      (not Working and then (Inventory = null or else Buttons.Quiet (Inventory.all)));
@@ -42,8 +41,9 @@ package body ACPI_Native_Button_Discovery is
       begin Capacity := Positive'Max (1, Natural (C.Namespace_Node_Count (Service)));Completed := True;end Extent;
       package Metadata is new Q.With_Metadata_Continuation (Extent);
       Metadata_OK, Clock_OK : Boolean;
-      Now : B.Tick;
-      Deadline : Interfaces.Unsigned_64;
+      Deadline_OK:Boolean;
+      Now : B.Tick:=0;
+      Deadline : Interfaces.Unsigned_64:=0;
       Report : Buttons.Report;
       procedure Finish (Status : Outcome) is
       begin
@@ -54,7 +54,8 @@ package body ACPI_Native_Button_Discovery is
          ACPI_Native_Diagnostic_Output.Write
            ("acpi: stage power-button " &
              (if Status in Fixed_Selected | Control_Method_Selected then "ok " else "fail ") & Status'Image &
-             " slots=" & Capacity'Image & " bound=" & Report.Bound'Image & " fuel=" & Report.Charged'Image,
+             " slots=" & Capacity'Image & " bound=" & Report.Bound'Image & " fuel=" & Report.Charged'Image &
+             " window-us=" & ACPI_Native_Discovery_Budget.Window_Microseconds'Image & " began-us=" & Now'Image & " deadline-us=" & Deadline'Image,
             not Q.Notifications_Pending (Server) and then not Q.Retained_Results_Pending (Server)
               and then One.Runtime.Current = One.Runtime.Status.Idle and then One.Root.Fields.Control_Idle
               and then One.Root.Fields.EC_Commands.Quiescent,
@@ -66,6 +67,19 @@ package body ACPI_Native_Button_Discovery is
                " id=" & Report.Last_Binding.Identity.Outcome'Image &
                " exec=" & Report.Last_Binding.Identity.Execution'Image &
                " close=" & Report.Close_Result'Image, False);
+            declare
+               Command:constant One.Root.Fields.EC_Commands.Observation:=One.Root.Fields.EC_Commands.Observe;
+               Engine:constant One.Root.Fields.EC_Commands.T.Transaction_Observation:=One.Root.Fields.EC_Commands.Engine_Observation;
+            begin
+               -- Detached observations only, after the discovery attempt. Do
+               -- not reopen a failed owner or perform logger IPC here.
+               ACPI_Native_Diagnostic_Output.Write("acpi: stage power-button-ec owner=" & Command.Stage'Image &
+                 " why=" & Command.Why'Image & " recovery=" & Command.Recovery'Image & " effects=" & Command.Effects_Possible'Image &
+                 " engine=" & Engine.Status'Image & " phase=" & Engine.Stage'Image,False);
+               ACPI_Native_Diagnostic_Output.Write("acpi: stage power-button-ec-clock deadline-us=" & Engine.Deadline'Image &
+                 " began-us=" & Engine.Began'Image & " sample-us=" & Engine.Last_Sample'Image &
+                 " status=" & Engine.Status_Result'Image & " known=" & Engine.Status_Known'Image & " byte=" & Engine.Last_Status'Image,False);
+            end;
          end if;
       end Finish;
    begin
@@ -81,10 +95,8 @@ package body ACPI_Native_Button_Discovery is
       Working := True;Metadata.Advance (Server, Metadata_OK);
       if not Metadata_OK or Stopped then Finish ((if Stopped then Stopping else Not_Ready));return;end if;
       ACPI_Backend_Kernel_Handles.Read_Clock (Now, Clock_OK);
-      if not Clock_OK or else Interfaces.Unsigned_64 (Now) >= Interfaces.Unsigned_64'Last - Discovery_Window_Microseconds then
-         Finish (Clock_Unavailable);return;
-      end if;
-      Deadline := Interfaces.Unsigned_64 (Now) + Discovery_Window_Microseconds;
+      ACPI_Native_Discovery_Budget.Make_Deadline(Interfaces.Unsigned_64(Now),Clock_OK,Deadline,Deadline_OK);
+      if not Deadline_OK then Finish(Clock_Unavailable);return;end if;
       Inventory := Create (Capacity);
       if Inventory = null then Finish (Allocation_Refused);return;end if;
       Buttons.Discover (Server, Inventory.all, Discovery_Fuel, Deadline, Report);

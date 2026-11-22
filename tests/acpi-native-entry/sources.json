@@ -72,7 +72,7 @@
     "shared/platform",
     "userspace/lib/acpi-windows"
   ],
-  "selection_count": 249,
+  "selection_count": 251,
   "inputs": [
     {
       "path": "build-catalog.ccl",
@@ -4172,7 +4172,7 @@
     },
     {
       "path": "tests/acpi-native-entry/selections.txt",
-      "sha256": "73e803703742be85f829e42d7e9c5e4c7aa2e5b479534ba885584897821b9e9a"
+      "sha256": "04ad5aa1c317331e63920d0e9c7173c366f3c535e498fddfd9f949b2fcf8c1c8"
     },
     {
       "path": "userspace/ccl/catalogs/native-runtime-services.ccl",
@@ -10364,7 +10364,7 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_button_discovery.adb",
-      "sha256": "60f4e1f67f728595983dd1ca13b2b9ab2c9cebd008c3a6a2a7ff06474a6c9c85"
+      "sha256": "f9e43b3577b027b71d9abbef65cab26a8f8a22505a34f7d0d44e79f62fcc46bf"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_button_discovery.ads",
@@ -10396,11 +10396,11 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_consumers.adb",
-      "sha256": "9198418324b857567312e52926a3e262b3fe3697ef3e932b110785b13504836b"
+      "sha256": "03de2e1bc6e8de5dd9e043ab3fff5593615fe096f106eb0de5007b17bff40a9e"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_consumers.ads",
-      "sha256": "5d136359bc894c90d8a9ef90380ba20f5634c25408450cbad482daea10c6cbbd"
+      "sha256": "107830fe7342a34241e768981b9c551651f363e472af5e5529448160d5d278b3"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_diagnostic_output.adb",
@@ -11981,6 +11981,14 @@
     {
       "path": "shared/acpi/acpi_power_identity_protocol.ads",
       "sha256": "cc0c590ccd102f55489d335ab7eb7e88f7e5dd75dec2970ec454b0e552c04d38"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_discovery_budget.adb",
+      "sha256": "e0840412e205b4981ccffd817fe6c19148020520ea09c24b2e89ce80b1195704"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_discovery_budget.ads",
+      "sha256": "3eadf82b3e5502fd8395f347e8f7a4365cb03900f62b25d2d43848ab92fa052f"
     }
   ],
   "tools": {
@@ -12078,6 +12086,15 @@
       "acpi_native_event_domain.ads",
       "acpi_native_event_domain.adb",
       "acpi_native_endpoint.adb"
+    ],
+    "discovery-window": [
+      "acpi_native_discovery_budget.ads",
+      "acpi_native_discovery_budget.adb",
+      "acpi_native_button_discovery.adb",
+      "acpi_native_consumers.ads",
+      "acpi_native_consumers.adb",
+      "acpi_native_event_domain.adb",
+      "acpi_native_instance.adb"
     ]
   }
 }

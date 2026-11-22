@@ -3986,7 +3986,7 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_button_discovery.adb",
-      "sha256": "4f7cfcd30a3e31b53fafeaef751cc46c603112690e11581d6d8775413df9566e",
+      "sha256": "f9e43b3577b027b71d9abbef65cab26a8f8a22505a34f7d0d44e79f62fcc46bf",
       "kind": "ada",
       "boundary": false
     },
@@ -4010,13 +4010,13 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_consumers.adb",
-      "sha256": "9198418324b857567312e52926a3e262b3fe3697ef3e932b110785b13504836b",
+      "sha256": "03de2e1bc6e8de5dd9e043ab3fff5593615fe096f106eb0de5007b17bff40a9e",
       "kind": "ada",
       "boundary": false
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_consumers.ads",
-      "sha256": "5d136359bc894c90d8a9ef90380ba20f5634c25408450cbad482daea10c6cbbd",
+      "sha256": "107830fe7342a34241e768981b9c551651f363e472af5e5529448160d5d278b3",
       "kind": "ada",
       "boundary": false
     },

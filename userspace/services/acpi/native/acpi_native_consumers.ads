@@ -19,7 +19,7 @@ package ACPI_Native_Consumers is
       Text : String (1 .. 192) := [others => ' '];
       Last : Natural range 0 .. 192 := 0;
    end record;
-   type Diagnostic_Lines is array (Positive range 1 .. 4) of Diagnostic_Line;
+   type Diagnostic_Lines is array (Positive range 1 .. 6) of Diagnostic_Line;
    type Report is record
       Started, Stopping, Closed : Boolean := False;
       Why : Failure := None;

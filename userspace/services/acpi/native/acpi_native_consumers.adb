@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Native_Discovery_Budget;
 with ACPI_Service;
 with ACPI_Demand_Refresh;
 with ACPI_Source_Path_Reader;
@@ -80,7 +81,7 @@ package body ACPI_Native_Consumers is
    use type Sources.Cached.Sample;
    use type Collector.Outcome, Static_Info.Source_Kind;
    Fuel : constant Positive := 100_000;
-   Window : constant Status.Window_Allowance := 500_000;
+   Window : constant Status.Window_Allowance := ACPI_Native_Discovery_Budget.Window_Microseconds;
    package Demands is new ACPI_Demand_Refresh;
    Battery_Demand:Demands.State;
    Last : Report;
@@ -210,6 +211,15 @@ package body ACPI_Native_Consumers is
          " runtime=" & One.Runtime.Current'Image & " owner-guard=" & One.Runtime.Observation'Image);
       Copy (2, "acpi: sample evaluation method=" & Evaluation_Method & " failed=" & Evaluation_Failed'Image &
          " access=" & Evaluation_Access'Image & " execution=" & Evaluation_Result'Image & " charged=" & Evaluation_Charge'Image);
+      declare
+         Command:constant One.Root.Fields.EC_Commands.Observation:=One.Root.Fields.EC_Commands.Observe;
+         Engine:constant One.Root.Fields.EC_Commands.T.Transaction_Observation:=One.Root.Fields.EC_Commands.Engine_Observation;
+      begin
+         Copy(5,"acpi: sample ec owner=" & Command.Stage'Image & " why=" & Command.Why'Image &
+           " recovery=" & Command.Recovery'Image & " effects=" & Command.Effects_Possible'Image & " engine=" & Engine.Status'Image);
+         Copy(6,"acpi: sample ec clock deadline-us=" & Engine.Deadline'Image & " sample-us=" & Engine.Last_Sample'Image &
+           " status=" & Engine.Status_Result'Image & " known=" & Engine.Status_Known'Image & " byte=" & Engine.Last_Status'Image);
+      end;
       if F = Battery then
          declare D : constant BE.Collection_Diagnostic := BE.Collection_Report; begin
             Copy (3, "acpi: battery guard=" & D.Outcome'Image & " count=" & D.Count'Image & " charged=" & D.Charged'Image &

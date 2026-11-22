@@ -102,3 +102,21 @@ ordinary query window remains 500ms. `selection-no-clock` and
 shared/pruned/functioning ancestor cases remain in the runner at both AML
 widths. These are hosted observations, not physical timing or new proof.
 The runner invokes the absolute, hash-validated ACPICA/GPRbuild tools.
+
+
+`--real-buttons` selects the actual Native_Button_Discovery and actual
+Power_Buttons bridge, using the same real Core/runtime and a clock-only native
+backend fixture. It runs700ms,6s-expired-backend and Field_Indeterminate scenarios in
+both AML widths. Native event/sampling clock, physical EC IO, heap and power
+button notifications remain hosted boundaries. The ordinary mode retains its
+historical absent-button stand-in. The watch, parked battery-read transport and
+identity endpoint branches are explicit stand-ins in this domain suite; cached
+battery dispatch remains actual. Their separate actual-root/native SDK receipts
+are required for those interfaces. This suite cannot establish laptop timing,
+IRQ delivery or hardware acceptance.
+
+The timed identity callback explicitly models an EC-backed read becoming
+indeterminate after its admitted IO deadline; it does not classify a slow,
+completed, hardware-idle metadata computation as unsafe. The original
+runtime-expiry cases continue to verify that quiet completed work may close
+after a deadline, while incomplete/held IO still stops the owner.

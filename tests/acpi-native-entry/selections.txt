@@ -247,3 +247,5 @@ acpi_power_identity_protocol.ads
 acpi_native_power_identities.ads
 acpi_native_power_identities.adb
 acpi_requests-power_sources-with_local_events.ads
+acpi_native_discovery_budget.ads
+acpi_native_discovery_budget.adb
