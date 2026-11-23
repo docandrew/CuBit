@@ -45,43 +45,44 @@ package body Optical_Service is
       Deferred_Reply := CuBit.Handles.No_Reply;
    end Respond_Deferred;
 
-   procedure Poll (Progressed : out Boolean) is
-      Sender : Process_ID;
-      Request : Message;
+   function Busy return Boolean is (Pending);
+
+   procedure Complete (Progressed : out Boolean) is
       Response : Message;
-      Found, Done, Accepted : Boolean;
+      Done : Boolean;
       Result : USB_Optical.Status_Result;
       Copied : System.Address;
-      Owner : Process_ID;
    begin
       Progressed := False;
-      if Pending then
-         XHCI.Poll_Optical_Read (Done, Result, Progressed);
-         if Done then
-            if Result = USB_Optical.Command_Passed then
-               --  The controller never sees caller memory. Only a completely
-               --  validated data phase + CSW may be copied into the loan.
-               Copied := CuBit.String.memcpy
-                 (Current.Buffer, XHCI.Optical_Read_Buffer,
-                  System.Storage_Elements.Storage_Count (Bytes (Current.Item)));
-            end if;
-            Settle
-              (Current,
-               (if Result = USB_Optical.Command_Passed
-                then Bytes (Current.Item) else 0),
-               Response);
-            Respond_Deferred (Response);
-            Pending := False;
-            Progressed := True;
-         end if;
-      end if;
-
-      Poll_Service_Request (Sender, Request, Found);
-      if not Found then
+      if not Pending then
          return;
       end if;
-      Progressed := True;
-      Owner := Registered_Driver (DRIVER_FS);
+      XHCI.Poll_Optical_Read (Done, Result, Progressed);
+      if Done then
+         if Result = USB_Optical.Command_Passed then
+            --  The controller never sees caller memory. Only a completely
+            --  validated data phase + CSW may be copied into the loan.
+            Copied := CuBit.String.memcpy
+              (Current.Buffer, XHCI.Optical_Read_Buffer,
+               System.Storage_Elements.Storage_Count (Bytes (Current.Item)));
+         end if;
+         XHCI.Release_Optical_Read;
+         Settle
+           (Current,
+            (if Result = USB_Optical.Command_Passed
+             then Bytes (Current.Item) else 0),
+            Response);
+         Respond_Deferred (Response);
+         Pending := False;
+         Progressed := True;
+      end if;
+   end Complete;
+
+   procedure Serve (Sender : Process_ID; Request : Message) is
+      Response : Message;
+      Accepted : Boolean;
+      Owner : constant Process_ID := Registered_Driver (DRIVER_FS);
+   begin
       if Owner = No_Process or else Sender /= Owner then
          Respond (Sender, Status_Reply (False, 0));
          return;
@@ -98,11 +99,6 @@ package body Optical_Service is
                Respond (Sender, Status_Reply (False, 0));
                return;
             when Transfer =>
-               --  One read at a time.
-               if Pending then
-                  Respond (Sender, Status_Reply (False, 0));
-                  return;
-               end if;
                Admit (Sender, Decoded.Data, Current, Accepted);
                if not Accepted then
                   Respond (Sender, Status_Reply (False, 0));
@@ -132,5 +128,5 @@ package body Optical_Service is
          return;
       end if;
       Pending := True;
-   end Poll;
+   end Serve;
 end Optical_Service;

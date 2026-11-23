@@ -54,6 +54,12 @@
     (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@mem:0/work")
     # The toolchain, read-only: handed to gcc (its toolchain parameter).
     (filesystem [File_Right.Read] "@nvme:0/toolchain")
+    # USB sticks (FS-034): files, and fs.eject (it needs write access to
+    # the whole volume); by position until removable places have labels.
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@usb:0")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@usb:1")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@usb:2")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@usb:3")
     # bible.*: the Bible's translations (APP-005), read only.
     (filesystem [File_Right.Read] "@nvme:0/Assets/cubit-bible/")
     (filesystem [File_Right.Read] "@cd:0/Assets/cubit-bible/")

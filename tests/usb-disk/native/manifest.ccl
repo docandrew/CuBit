@@ -1,0 +1,14 @@
+# USB mass-storage disks (tests/usb-disk/native): files under the two USB
+# sticks the headless runner attaches, @usb:0 and @usb:1, and the boot
+# medium beside the first (@cd:0) only.
+(executable-manifest v1
+  (identity "com.cubit.usb-disk")
+  (version "0.1.0")
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@usb:0")
+  (filesystem-scope (rights read write create) "@usb:1")
+  # The boot medium: write and create are asked for, and must still fail.
+  (filesystem-scope (rights read write create) "@cd:0")
+  # Its diagnostics (cubit_debug_write, the libc's records: CuBit.Libc_Log).
+  (request-service logstore read-write logstore)
+  (optional logstore))

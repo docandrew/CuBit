@@ -617,6 +617,15 @@ begin
       Run ("(fs.list (fs.enter (Child here ""missing"")))");
       Check (Latest_Result (Placed) = "fs.list found nothing there: nothing is at " & Root & "/missing",
              "a missing directory says where it looked: " & Latest_Result (Placed));
+      --  FS-034: fs.eject names a whole volume; its refusals are typed
+      --  (the preview has no removable volumes).
+      Run ("(fs.eject (Place ""@usb:0"" """"))");
+      Check (Latest_Result (Placed) = "fs.eject found nothing there: no volume @usb:0 is attached " &
+             "(gone, or ejected already)", "eject of an absent stick says so: " & Latest_Result (Placed));
+      Run ("(fs.eject-closing (Place ""@usb:0"" ""photos""))");
+      Check (Latest_Result (Placed) = "fs.eject-closing rejected its argument: eject names a whole volume, " &
+             "not a folder in it. Instead: (fs.eject (Place root => ""@usb:0"" path => """"))",
+             "eject of a folder is refused: " & Latest_Result (Placed));
       Run (":ls");
       Draw (Placed, Canvas, Bounds);
       Save ("console-places");

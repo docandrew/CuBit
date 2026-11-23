@@ -41,6 +41,8 @@ ALLOW = {
     "tests/install-generations/": "install tests name the target disk",
     "images/": "image plans bind volumes",
     "tests/device-builds/": "device build plans",
+    "tests/usb-disk/native/": "the test writes the USB sticks it attaches",
+    "tests/usb-eject/": "the test plugs, writes and ejects named USB sticks",
 }
 
 

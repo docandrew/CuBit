@@ -7,6 +7,7 @@ with CuBit.Channel_Protocol;
 with CuBit.Channels;
 with CuBit.Memory_Grants;
 with CCL_Native_Bindings;
+with CuBit.Volume_Ejection;
 
 --  Places through the filesystem's request queue (docs/filesystem-data-
 --  plane.md): one queue and arena lent once, then a listing is a handful of
@@ -79,7 +80,8 @@ package body CCL_Places is
    --  One request through the queue, waiting for its answer.
    procedure Call
      (Operation : Unsigned_32; Handle, Length : Unsigned_64;
-      Status : out Unsigned_32; Value : out Unsigned_64; Options : Unsigned_32 := 0)
+      Status : out Unsigned_32; Value : out Unsigned_64; Options : Unsigned_32 := 0;
+      Position : Unsigned_64 := 0)
    is
       --  The rings are written and read only inside the proved Submit and
       --  Reap; the shared header words are volatile.
@@ -103,7 +105,7 @@ package body CCL_Places is
       Next_Tag := Next_Tag + 1;
       Q.Submit (Client, Requests, Next_Tag,
                 (Operation => Operation, Options => Options, Handle => Handle, Length => Length,
-                 others => <>));
+                 Position => Position, others => <>));
       Submitted := Unsigned_32 (Client.Requests.Produced);
       --  The count before the wake word: kick only a service that sleeps.
       Armed := Wake;
@@ -386,4 +388,44 @@ package body CCL_Places is
       end loop;
       Close_File (File);
    end Write_At;
+   procedure Eject
+     (Locator : String; Close_Open : Boolean; Outcome : out Eject_Outcome; Open : out Natural)
+   is
+      package VE renames CuBit.Volume_Ejection;
+      Status : Unsigned_32;
+      Value : Unsigned_64;
+      Answer : VE.Answer;
+      Valid : Boolean;
+   begin
+      Outcome := Service_Unavailable;
+      Open := 0;
+      if Locator'Length = 0 or else Locator'Length > ARENA_BYTES or else not Initialize then
+         return;
+      end if;
+      declare
+         Bytes : String (1 .. Locator'Length)
+           with Import, Address => To_Address (Integer_Address (Arena_Address));
+      begin
+         Bytes := Locator;
+      end;
+      Call (FQ.Queue_Eject, 0, ARENA_BYTES, Status, Value,
+            Options => VE.Policy_Code (if Close_Open then VE.Close_Open_Handles else VE.Refuse_If_Open),
+            Position => Locator'Length);
+      if Status /= REPLY_OK then
+         return;
+      end if;
+      VE.Decode (Value, Answer, Valid);
+      if not Valid then
+         return;
+      end if;
+      Open := Natural (Unsigned_32'Min (Answer.Open, Unsigned_32 (Integer'Last)));
+      Outcome := (case Answer.Result is
+                    when VE.Safe_To_Remove => Safe_To_Remove,
+                    when VE.Open_Handles => Open_Handles,
+                    when VE.Not_Removable => Not_Removable,
+                    when VE.Not_Attached => Not_Attached,
+                    when VE.Flush_Failed => Flush_Failed,
+                    when VE.Access_Denied => Access_Denied);
+   end Eject;
+
 end CCL_Places;

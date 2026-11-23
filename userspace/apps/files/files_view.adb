@@ -6,6 +6,8 @@ with CuBit.File_Access;
 with CuBit.Filesystem_Events;
 with CuBit.Filesystem_Places;
 with CuBit.Volume_Descriptions;
+with CuBit.Volume_Ejection;
+with Files_Ejections;
 with CuBit.UI.Drawers;
 with CuBit.UI.Popup_Menus;
 with CuBit.UI.Tables;
@@ -31,6 +33,7 @@ package body Files_View is
    use type Files_Order.Sort_Direction, Files_Order.Sort_Key, Files_Reader.Read_State;
    use type Files_Operations.Conflict_Policy, Files_Operations.Phase_Kind;
    use type CuBit.UI.Tables.Sort_Order;
+   use type Files_Ejections.Phase, CuBit.Volume_Ejection.Outcome;
    use type Controls.Pointer_Action;
    package DP renames CuBit.Directory_Paths;
    package FS renames CuBit.Filesystems;
@@ -80,7 +83,13 @@ package body Files_View is
    PLACES_BYTES : constant := CuBit.File_Access.Maximum_Entries * CuBit.File_Access.Wire_Entry_Bytes;
    VOLUME_BASE : constant := PLACES_BASE + PLACES_BYTES;
    VOLUME_BYTES : constant := DP.Maximum_Bytes;
-   ARENA_PAGES : constant := (VOLUME_BASE + VOLUME_BYTES + FQ.Page_Bytes - 1) / FQ.Page_Bytes;
+   --  Then the locator of a volume to eject (Queue_Eject, FS-034).
+   EJECT_BASE : constant := VOLUME_BASE + VOLUME_BYTES;
+   EJECT_BYTES : constant := DP.Maximum_Bytes;
+   ARENA_PAGES : constant := (EJECT_BASE + EJECT_BYTES + FQ.Page_Bytes - 1) / FQ.Page_Bytes;
+   --  Places are asked for again this often, so a stick plugged in or
+   --  pulled out shows up in the drawer (FS-034).
+   PLACES_REFRESH_US : constant := 2_000_000;
    --  Change records taken per pump, at most (the rest wait for the next).
    EVENTS_PER_PUMP : constant := 1_024;
    DIALOG_WIDTH : constant := 560;
@@ -237,6 +246,20 @@ package body Files_View is
    --  first is where a pane starts that has no folder of its own.
    Places_Slot : Slot_State;
    Places_Known : Boolean := False;
+   --  The drawer's first Listed_Places entries came from the service (the
+   --  rest are the platform's); they are replaced on each refresh.
+   Listed_Places : Natural := 0;
+   Places_Due_Us : Unsigned_64 := 0;
+   --  An Eject in flight (Queue_Eject) and the volume it names.
+   Eject_Slot : Slot_State;
+   Ejecting : String (1 .. DP.Maximum_Bytes) := [others => ' '];
+   Ejecting_Length : Natural range 0 .. DP.Maximum_Bytes := 0;
+   --  Where that Eject is (Files_Ejections): a listing taken before the
+   --  Eject finished may still name the stick after its answer.
+   Eject_Phase : Files_Ejections.Phase := Files_Ejections.Idle;
+   --  The service's places before a refresh, to notice a stick that left.
+   Gone_Sticks : array (1 .. MAXIMUM_PLACES) of DP.Path;
+   Gone_Count : Natural range 0 .. MAXIMUM_PLACES := 0;
    Has_First_Place : Boolean := False;
    First_Place : DP.Path;
    --  Free space of the active pane's volume (Queue_Describe_Volume).
@@ -322,7 +345,7 @@ package body Files_View is
       Cmd_Mark_Toggle, Cmd_Mark_All, Cmd_Unmark_All, Cmd_Invert, Cmd_New_Folder, Cmd_Refresh, Cmd_Bookmark,
       Cmd_Bookmark_Entry, Cmd_Sort_Name, Cmd_Sort_Extension, Cmd_Sort_Modified, Cmd_Sort_Size, Cmd_Up, Cmd_Drawer,
       Cmd_Column_Extension, Cmd_Column_Size, Cmd_Column_Modified, Cmd_Column_Changed, Cmd_Column_Kind,
-      Cmd_Column_Mode, Cmd_Column_Owner, Cmd_Copy_Names, Cmd_Copy_Paths);
+      Cmd_Column_Mode, Cmd_Column_Owner, Cmd_Copy_Names, Cmd_Copy_Paths, Cmd_Eject, Cmd_Eject_Closing);
    --  A clipboard copy chosen from the menu, for the platform.
    Pending_Clipboard : Clipboard_Request := No_Request;
    Menu : CuBit.UI.Popup_Menus.Model;
@@ -720,13 +743,14 @@ package body Files_View is
 
    procedure Insert_Place (State : in out View_State; At_Index : Positive; Caption, Path : String;
                            Picture : CuBit.UI.Icons.Icon);
+   procedure Rebuild_Shortcuts;
 
    function Picture_Of (Kind : Files_Places.Place_Kind) return CuBit.UI.Icons.Icon is
      (case Kind is
          when Files_Places.Live_Workspace => CuBit.UI.Icons.Folder,
          when Files_Places.Boot_Image => CuBit.UI.Icons.Archive_File,
          when Files_Places.NVMe_Volume | Files_Places.ATA_Volume | Files_Places.Optical_Disc
-            | Files_Places.Other_Volume => CuBit.UI.Icons.Drive);
+            | Files_Places.USB_Volume | Files_Places.Other_Volume => CuBit.UI.Icons.Drive);
 
    --  Pane Which starts at the first place (it had no folder, or the one it
    --  showed last cannot be opened); with no place at all it says so.
@@ -762,6 +786,20 @@ package body Files_View is
    begin
       Places_Known := True;
       Has_First_Place := False;
+      --  A refresh: the service's entries from last time go first. A USB
+      --  stick among them that is gone now, and that Files did not eject,
+      --  was pulled out (or ejected elsewhere): say what Eject is for.
+      if Listed_Places > 0 and then Listed_Places <= Place_Count then
+         for K in 1 .. Listed_Places loop
+            Gone_Sticks (K) := Places (K).Where;
+         end loop;
+         Gone_Count := Listed_Places;
+      end if;
+      if Listed_Places > 0 and then Listed_Places <= Place_Count then
+         Places (1 .. Place_Count - Listed_Places) := Places (Listed_Places + 1 .. Place_Count);
+         Place_Count := Place_Count - Listed_Places;
+      end if;
+      Listed_Places := 0;
       if Count > 0 then
          --  Copied, then checked: the service is not trusted.
          Files_Queue.Read_Arena (PLACES_BASE, Bytes);
@@ -792,6 +830,7 @@ package body Files_View is
                      Found := Found + 1;
                      Insert_Place (State, Found, Files_Places.Caption (Prefix), Prefix,
                                    Picture_Of (Files_Places.Kind_Of (Prefix)));
+                     Listed_Places := Natural'Min (Found, Place_Count);
                      if not Has_First_Place then
                         Has_First_Place := True;
                         First_Place := Where;
@@ -801,6 +840,43 @@ package body Files_View is
             end;
          end loop;
       end if;
+      Rebuild_Shortcuts;
+      for K in 1 .. Gone_Count loop
+         declare
+            Root : constant String := DP.Value (Gone_Sticks (K));
+            Still : Boolean := False;
+         begin
+            for J in 1 .. Listed_Places loop
+               Still := Still or else DP.Value (Places (J).Where) = Root;
+            end loop;
+            if Files_Places.Ejectable (Root) and then not Still
+              and then (Ejecting_Length = 0
+                        or else not Files_Ejections.Same_Root (Root, Ejecting (1 .. Ejecting_Length))
+                        or else Files_Ejections.Warn_Removed (Eject_Phase))
+            then
+               Say (Files_Places.Caption (Root) & " was removed. Use Eject before pulling a stick out, " &
+                    "or what was being written may be lost.");
+            end if;
+         end;
+      end loop;
+      Gone_Count := 0;
+      --  The stick Files ejected: gone from this listing, or back in it
+      --  after one showed it gone (plugged in again: a later removal of
+      --  it is news again).
+      if Ejecting_Length > 0 then
+         declare
+            Present : Boolean := False;
+         begin
+            for J in 1 .. Listed_Places loop
+               Present := Present
+                 or else Files_Ejections.Same_Root (DP.Value (Places (J).Where), Ejecting (1 .. Ejecting_Length));
+            end loop;
+            Eject_Phase := Files_Ejections.Listed (Eject_Phase, Present);
+            if Eject_Phase = Files_Ejections.Idle then
+               Ejecting_Length := 0;
+            end if;
+         end;
+      end if;
       for W in Side range 1 .. State.Count loop
          if State.Panes (W).Load = Not_Started then
             Start_At_First_Place (State, W);
@@ -808,6 +884,37 @@ package body Files_View is
       end loop;
       Dirty_All (State);
    end Take_Places;
+
+   --  The Eject's answer (CuBit.Volume_Ejection), said in the status line.
+   procedure Take_Eject (State : in out View_State; Answer : Files_Queue.Answer) is
+      package VE renames CuBit.Volume_Ejection;
+      Item : VE.Answer;
+      Valid : Boolean := False;
+      Name : constant String := Files_Places.Caption (Ejecting (1 .. Ejecting_Length) & "/");
+   begin
+      if Answer.Status = FS.REPLY_OK then
+         VE.Decode (Answer.Value, Item, Valid);
+      end if;
+      Eject_Phase := Files_Ejections.Answered
+        (Eject_Phase, Valid and then Item.Result = VE.Safe_To_Remove);
+      if not Valid then
+         Say ("The filesystem did not eject " & Name & ".");
+         return;
+      end if;
+      case Item.Result is
+         when VE.Safe_To_Remove =>
+            Say (Name & " is safe to remove.");
+            Places_Due_Us := 0;   --  out of the drawer now
+         when VE.Open_Handles =>
+            Say (Name & " was not ejected:" & Unsigned_32'Image (Item.Open) &
+                 " open file(s). Close them, or choose Eject, closing open files.");
+         when VE.Not_Removable => Say (Name & " cannot be ejected.");
+         when VE.Not_Attached => Say (Name & " is not attached.");
+         when VE.Flush_Failed => Say (Name & "'s changes could not be written. Do not remove it.");
+         when VE.Access_Denied => Say ("Files may not eject " & Name & ".");
+      end case;
+      Dirty_All (State);
+   end Take_Eject;
 
    --  The active pane's volume: free and total space, for the status line.
    procedure Take_Volume (Answer : Files_Queue.Answer) is
@@ -851,6 +958,11 @@ package body Files_View is
       if Volume_Slot.Busy and then Volume_Slot.Tag = Answer.Tag then
          Volume_Slot.Busy := False;
          Take_Volume (Answer);
+         return;
+      end if;
+      if Eject_Slot.Busy and then Eject_Slot.Tag = Answer.Tag then
+         Eject_Slot.Busy := False;
+         Take_Eject (State, Answer);
          return;
       end if;
       for Which in Side range 1 .. State.Count loop
@@ -1379,6 +1491,9 @@ package body Files_View is
       Places_Slot := (others => <>);
       Places_Known := False;
       Has_First_Place := False;
+      Listed_Places := 0;
+      Places_Due_Us := 0;
+      Eject_Slot := (others => <>);
       Volume_Slot := (others => <>);
       Place_Count := 0;
       Recent_Count := 0;
@@ -1470,6 +1585,16 @@ package body Files_View is
    begin
       Files_View.Now_Us := Now_Us;
       Changed := False;
+      --  The places again now and then: sticks come and go (FS-034).
+      if Places_Known and then not Places_Slot.Busy and then Now_Us >= Places_Due_Us then
+         declare
+            Sent : Boolean;
+         begin
+            Submit ((Operation => FQ.Queue_List_Places, Length => PLACES_BYTES, Arena_Offset => PLACES_BASE,
+                     others => <>), Places_Slot, 0, Sent);
+            Places_Due_Us := Now_Us + PLACES_REFRESH_US;
+         end;
+      end if;
       loop
          Files_Queue.Reap (Answer, Got);
          exit when not Got;
@@ -2135,6 +2260,14 @@ package body Files_View is
          PM.Add_Separator (Menu, PM.ROOT);
          PM.Add (Menu, PM.ROOT, "Bookmark this folder", Pos (Cmd_Bookmark), "Ctrl+D",
                  Has_Icon => True, Picture => IC.Favorites);
+         if Files_Places.Ejectable (Root_Of (P)) then
+            --  FS-034: a USB stick: make it safe to pull out.
+            PM.Add_Separator (Menu, PM.ROOT);
+            PM.Add (Menu, PM.ROOT, "Eject " & Files_Places.Caption (Root_Of (P)), Pos (Cmd_Eject), "",
+                    not Eject_Slot.Busy, Has_Icon => True, Picture => IC.Drive);
+            PM.Add (Menu, PM.ROOT, "Eject, closing open files", Pos (Cmd_Eject_Closing), "",
+                    not Eject_Slot.Busy);
+         end if;
          PM.Add (Menu, PM.ROOT, (if Drawer.Open then "Hide the drawer" else "Show the drawer"), Pos (Cmd_Drawer),
                  "Ctrl+B", Has_Icon => True, Picture => IC.Drawer);
       end if;
@@ -2142,12 +2275,62 @@ package body Files_View is
       Dirty (State, PM.Covered (Popup));
    end Open_Menu;
 
+   --  Eject the volume pane Which is on (FS-034): Files' own panes leave
+   --  it first (their folder handles would count as open files), then
+   --  Queue_Eject asks the service; Take_Eject says how it went.
+   procedure Start_Eject (State : in out View_State; Which : Side; Closing : Boolean) is
+      Root : constant String := Root_Of (State.Panes (Which).all);
+      Locator : constant String :=
+        (if Root'Length > 1 and then Root (Root'Last) = '/' then Root (Root'First .. Root'Last - 1) else Root);
+      Sent : Boolean;
+      Home : DP.Path;
+      Found : Boolean := False;
+   begin
+      if Eject_Slot.Busy or else Locator'Length = 0 or else Locator'Length > EJECT_BYTES then
+         return;
+      end if;
+      for K in 1 .. Place_Count loop
+         if not Files_Places.Ejectable (DP.Value (Places (K).Where)) then
+            Home := Places (K).Where;
+            Found := True;
+            exit;
+         end if;
+      end loop;
+      for W in Side range 1 .. State.Count loop
+         if Root_Of (State.Panes (W).all) = Root and then Found then
+            Go_To (State, W, Home, "");
+         end if;
+      end loop;
+      Ejecting (1 .. Locator'Length) := Locator;
+      Ejecting_Length := Locator'Length;
+      Eject_Phase := Files_Ejections.Started;
+      declare
+         Bytes : Files_Listing.Name_Bytes (1 .. Locator'Length);
+      begin
+         for K in Bytes'Range loop
+            Bytes (K) := Character'Pos (Locator (Locator'First + K - 1));
+         end loop;
+         Files_Queue.Write_Arena (EJECT_BASE, Bytes);
+      end;
+      Submit ((Operation => FQ.Queue_Eject,
+               Options => CuBit.Volume_Ejection.Policy_Code
+                            (if Closing then CuBit.Volume_Ejection.Close_Open_Handles
+                             else CuBit.Volume_Ejection.Refuse_If_Open),
+               Position => Locator'Length, Length => EJECT_BYTES, Arena_Offset => EJECT_BASE,
+               others => <>), Eject_Slot, 0, Sent);
+      if not Sent then
+         Eject_Phase := Files_Ejections.Answered (Eject_Phase, Safe => False);
+         Say ("Files could not ask to eject " & Files_Places.Caption (Root) & ".");
+      end if;
+   end Start_Eject;
+
    procedure Run_Command (State : in out View_State; Command : Menu_Command) is
       Which : constant Side := Menu_Side;
       P : Pane_State renames State.Panes (Which).all;
    begin
       case Command is
          when No_Menu_Command => null;
+         when Cmd_Eject | Cmd_Eject_Closing => Start_Eject (State, Which, Command = Cmd_Eject_Closing);
          when Cmd_Open => Open_Cursor_Entry (State, Which);
          when Cmd_View => Open_Viewer (State, Which);
          when Cmd_Open_Other =>

@@ -11,6 +11,7 @@ with CuBit.Filesystem_Events;
 with CuBit.Volume_Descriptions;
 with CuBit.File_Access;
 with CuBit.Filesystem_Places;
+with CuBit.Volume_Ejection;
 with GNAT.OS_Lib;
 
 package body Files_Mock_Service is
@@ -1244,6 +1245,23 @@ package body Files_Mock_Service is
                List_Places (R.Arena_Offset, R.Length, Status, Value);
             when FQ.Queue_Describe_Volume =>
                Describe_Volume (R, Status, Value);
+            when FQ.Queue_Eject =>
+               --  FS-034: a present granted volume named exactly ("@usb:0")
+               --  is no longer present (the service detached it).
+               declare
+                  package VE renames CuBit.Volume_Ejection;
+                  Locator : constant String := Arena_Text (R.Arena_Offset, R.Position);
+                  Result : VE.Outcome := VE.Not_Attached;
+               begin
+                  for V of Granted (1 .. Granted_Count) loop
+                     if V.Present and then Locator = "@" & V.Name (1 .. V.Length) then
+                        V.Present := False;
+                        Result := VE.Safe_To_Remove;
+                     end if;
+                  end loop;
+                  Status := REPLY_OK;
+                  Value := VE.Encode ((Result => Result, Open => 0));
+               end;
             when FQ.Queue_Copy =>
                Start_Copy (Item.Tag, R, Status);
                Value := 0;

@@ -71,6 +71,23 @@ package body SCSI with SPARK_Mode is
               Expected => Transfer_Length (Allocation));
    end Request_Sense;
 
+   --  MODE SENSE(6): DBD (byte 2, bit 3), PC and page code (byte 3),
+   --  allocation length (byte 5).
+   Disable_Block_Descriptors : constant Unsigned_8 := 16#08#;
+   Page_Byte                 : constant CDB_Index := 3;
+   Mode_Allocation           : constant CDB_Index := 5;
+
+   function Mode_Sense_6 (Allocation : Allocation_8) return Command_Block is
+      Data : CDB_Bytes := Start (Mode_Sense_6);
+   begin
+      Data (Flags_Byte) := Disable_Block_Descriptors;
+      Data (Page_Byte) := All_Pages;
+      Data (Mode_Allocation) := Allocation;
+      return (Operation => Mode_Sense_6, Size => CDB_6, Data => Data,
+              Direction => From_Device,
+              Expected => Transfer_Length (Allocation));
+   end Mode_Sense_6;
+
    function Read_Capacity_10 return Command_Block is
      ((Operation => Read_Capacity_10, Size => CDB_10,
        Data => Start (Read_Capacity_10), Direction => From_Device,
@@ -398,4 +415,26 @@ package body SCSI with SPARK_Mode is
       end loop;
       Valid := True;
    end Decode_Sense;
+
+   --  Mode parameter header (6): mode data length, medium type,
+   --  device-specific parameter, block descriptor length.
+   Mode_Device_Specific : constant := 2;
+   Mode_Descriptors     : constant := 3;
+
+   procedure Decode_Mode_Header_6
+     (Data : Bytes; Result : out Mode_Header; Valid : out Boolean) is
+   begin
+      Result := (others => <>);
+      Valid := False;
+      if Data'Length < Mode_Header_6_Bytes
+        or else Data (Data'First) < Mode_Header_6_Bytes - 1
+      then
+         return;
+      end if;
+      Result.Data_Length := Data (Data'First);
+      Result.Write_Protected :=
+        (Data (Data'First + Mode_Device_Specific) and Write_Protect_Bit) /= 0;
+      Result.Descriptor_Length := Data (Data'First + Mode_Descriptors);
+      Valid := True;
+   end Decode_Mode_Header_6;
 end SCSI;

@@ -29,10 +29,12 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Filesystem_Queues;
+with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Channels;
 with CuBit.Directory_Paths;
 with Cpio;
 with Ext2;
+with Fs_Volumes;
 with ISO_Records;
 with Shared_Objects;
 with Volume_List; use Volume_List;
@@ -53,6 +55,8 @@ package Fs_Server is
    procedure Register_Volumes (OK : out Boolean);
    --  devmgr attaches a block driver's endpoint (Fs_Attachments).
    procedure Attach_Storage (Sender : Process_ID; Msg : Message);
+   --  devmgr detaches a block device that went away (FS-034).
+   procedure Detach_Storage (Sender : Process_ID; Msg : Message);
    --  procmgr's root stop: commit and detach every volume (PWR-003).
    procedure Stop_Storage (Sender : Process_ID; Msg : Message);
    --  The service's Stop (CuBit.Messages.On_Stop): commit and detach what
@@ -157,6 +161,21 @@ private
    type FileTable is array (Handle_Slot) of FileEntry;
    files : FileTable;
 
+   --  FS-034: a handle the service closed because its volume went away
+   --  (removed or ejected), so that its owner's next use is answered
+   --  REPLY_VOLUME_GONE with the reason, not a bare error. Generation is
+   --  the closed handle's; a newer handle in the slot never matches.
+   type Gone_Mark is record
+      gone       : Boolean := False;
+      reason     : Volume_Gone_Reason := Volume_Removed;
+      generation : Codes.Generation := Codes.First_Generation;
+      ownerPID   : Process_ID := No_Process;
+   end record;
+   goneMarks : array (Handle_Slot) of Gone_Mark;
+   --  Parked (FQ.Queue_Park) and not used since: closed as far as its
+   --  client knows, so Eject does not count it as open (FS-034).
+   parkedIdle : array (Handle_Slot) of Boolean := [others => False];
+
    --  Directory and optical-file handles (slots below EXTENDED_HANDLES).
    type Extra_Entry is record
       directoryInode : Ext2.Inode; -- Directory enumeration snapshot only.
@@ -174,7 +193,7 @@ private
    Volumes : Volume_List.State;
    type Volume_Context is record
       Status : Admission_Result := Provider_Not_Ready;
-      Fs : Ext2.Filesystem;
+      Fs : Fs_Volumes.Store;   --  ext2/ext3 or FAT32
       Buffer : System.Address := System.Null_Address;
       Grant : CuBit.Memory_Grants.Grant_Reference;
    end record;

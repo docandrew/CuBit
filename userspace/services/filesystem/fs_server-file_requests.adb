@@ -12,6 +12,7 @@ with Fs_Server.Locks; use Fs_Server.Locks;
 with Fs_Server.Replies; use Fs_Server.Replies;
 with Fs_Server.Storage; use Fs_Server.Storage;
 with Fs_Server.Watches; use Fs_Server.Watches;
+with Fs_Volumes;
 
 package body Fs_Server.File_Requests is
 
@@ -132,7 +133,7 @@ package body Fs_Server.File_Requests is
                   return;
                end if;
             end;
-            Ext2.resolvePath
+            Fs_Volumes.resolvePath
               (Contexts (useVolume).Fs, pathStr (relStart .. pathStr'Last),
                inodeNum, pathStatus);
          elsif selection = Boot_Archive then
@@ -191,7 +192,7 @@ package body Fs_Server.File_Requests is
                begin
                   ensureVolume (V, admission);
                   if admission = Admitted then
-                     Ext2.resolvePath (Contexts (V).Fs, pathStr, inodeNum, pathStatus);
+                     Fs_Volumes.resolvePath (Contexts (V).Fs, pathStr, inodeNum, pathStatus);
                      if inodeNum /= 0 then
                         selectedKind := EXT2_FILESYSTEM;
                         useVolume := V;
@@ -299,7 +300,7 @@ package body Fs_Server.File_Requests is
                begin
                   --  Resolve parent directory (relative path only)
                   if dirEnd > 0 then
-                     Ext2.resolvePath
+                     Fs_Volumes.resolvePath
                        (Contexts (useVolume).Fs, relPath (fileStart .. dirEnd - 1),
                         dirInodeNum, pathStatus);
                   end if;
@@ -313,7 +314,7 @@ package body Fs_Server.File_Requests is
                      return;
                   end if;
 
-                  Ext2.createFile
+                  Fs_Volumes.createFile
                     (Contexts (useVolume).Fs, dirInodeNum,
                      relPath (nameFirst .. relPath'Last), inodeNum, createStatus);
                   if createStatus /= Ext2.Write_Complete then
@@ -338,7 +339,7 @@ package body Fs_Server.File_Requests is
       --  Resolve metadata with checked I/O, then join the shared object.
       --  Ownership, rights and cursor remain in the per-process handle.
       if selectedKind = EXT2_FILESYSTEM then
-         Ext2.readInode (Contexts (useVolume).Fs, inodeNum, objectInode, inodeStatus);
+         Fs_Volumes.readInode (Contexts (useVolume).Fs, inodeNum, objectInode, inodeStatus);
          if inodeStatus /= Ext2.Read_Complete then
             sendReply (sender, REPLY_IO_ERROR, 0);
             return;
@@ -389,7 +390,7 @@ package body Fs_Server.File_Requests is
 
          if (openFlags and OPEN_TRUNCATE) /= 0 then
             fileChanging ((useVolume, inodeNum), handle);
-            Ext2.truncateToEmpty
+            Fs_Volumes.truncateToEmpty
               (Contexts (useVolume).Fs, inodeNum, objectInode, truncateStatus);
             if truncateStatus /= Ext2.Truncate_Complete then
                --  Never leave old, possibly freed block mappings reachable.
@@ -508,8 +509,11 @@ package body Fs_Server.File_Requests is
       returned  : Boolean := False;
 
    begin
-      if msg.tag.length /= 4 or else handle < 0 then
+      if msg.tag.length /= 4 then
          sendReply (sender, REPLY_ERR, 0);
+         return;
+      elsif handle < 0 then
+         refuseHandle (sender, msg.words (0));
          return;
       end if;
 
@@ -565,7 +569,7 @@ package body Fs_Server.File_Requests is
                count);
             readStatus := Ext2.Read_Complete;
          when EXT2_FILESYSTEM =>
-            Ext2.readData
+            Fs_Volumes.readData
               (Contexts (files (handle).volume).Fs,
                currentInode,
                transferOffset,
@@ -611,8 +615,11 @@ package body Fs_Server.File_Requests is
       returned     : Boolean := False;
 
    begin
-      if msg.tag.length /= 4 or else handle < 0 then
+      if msg.tag.length /= 4 then
          sendReply (sender, REPLY_ERR, 0);
+         return;
+      elsif handle < 0 then
+         refuseHandle (sender, msg.words (0));
          return;
       end if;
 
@@ -671,7 +678,7 @@ package body Fs_Server.File_Requests is
                   done : Unsigned_64;
                begin
                   harvestBuffer (0 .. Natural (part) - 1) := source (0 .. Natural (part) - 1);
-                  Ext2.writeData
+                  Fs_Volumes.writeData
                     (Contexts (files (handle).volume).Fs,
                      files (handle).inodeNum,
                      currentInode,
@@ -802,7 +809,20 @@ package body Fs_Server.File_Requests is
         resolveHandle (msg.words (0), sender, FILE_OBJECT);
    begin
       if handle < 0 then
-         sendReply (sender, REPLY_ERR, 0);
+         --  A handle closed with its volume (FS-034) is closed already:
+         --  its close succeeds, once.
+         declare
+            label : Unsigned_32;
+            reason : Unsigned_64;
+         begin
+            goneAnswer (msg.words (0), sender, label, reason);
+            if label = REPLY_VOLUME_GONE then
+               goneMarks (Handle_Slot (Codes.Slot_Of (Codes.Handle_Word (msg.words (0))))) := (others => <>);
+               sendReply (sender, REPLY_OK, 0);
+            else
+               sendReply (sender, REPLY_ERR, 0);
+            end if;
+         end;
          return;
       end if;
 
@@ -849,6 +869,7 @@ package body Fs_Server.File_Requests is
             handleOpened (handle);
          end if;
          reportModified (handle);
+         parkedIdle (handle) := True;
          sendReply (sender, REPLY_OK, 0);
       end if;
    end handlePark;
@@ -861,9 +882,12 @@ package body Fs_Server.File_Requests is
       status : Ext2.Flush_Status;
    begin
       if msg.tag.length /= 1 or else msg.tag.protocol /= 0 or else
-        msg.tag.reserved /= 0 or else (handle < 0 and then directory < 0)
+        msg.tag.reserved /= 0
       then
          sendReply (sender, REPLY_ERR, 0);
+         return;
+      elsif handle < 0 and then directory < 0 then
+         refuseHandle (sender, msg.words (0));
          return;
       end if;
       if directory >= 0 then
@@ -875,7 +899,7 @@ package body Fs_Server.File_Requests is
             when CPIO_ARCHIVE | ISO_FILESYSTEM =>
                status := Ext2.Flush_Unsupported;
             when EXT2_FILESYSTEM =>
-               Ext2.Flush (Contexts (files (directory).volume).Fs, status);
+               Fs_Volumes.Flush (Contexts (files (directory).volume).Fs, status);
          end case;
          sendReply (sender, Labels.Flush_Label (status), 0);
          return;
@@ -890,7 +914,7 @@ package body Fs_Server.File_Requests is
          when CPIO_ARCHIVE | ISO_FILESYSTEM =>
             status := Ext2.Flush_Unsupported;
          when EXT2_FILESYSTEM =>
-            Ext2.Flush (Contexts (files (handle).volume).Fs, status);
+            Fs_Volumes.Flush (Contexts (files (handle).volume).Fs, status);
       end case;
       declare
          kept : Boolean;
@@ -929,7 +953,7 @@ package body Fs_Server.File_Requests is
          harvest (handle);
       end if;
       fileChanging ((files (handle).volume, files (handle).inodeNum), handle);
-      Ext2.resizeFile
+      Fs_Volumes.resizeFile
         (Contexts (files (handle).volume).Fs, files (handle).inodeNum,
          msg.words (1), updated, status);
       case status is
@@ -974,7 +998,7 @@ package body Fs_Server.File_Requests is
       label : Unsigned_32 := REPLY_OK;
    begin
       if handle < 0 then
-         sendReply (owner, REPLY_ERR, 0);
+         refuseHandle (owner, handleWord);
          return;
       elsif curArena = System.Null_Address or else
         curArenaBytes < DIRECTORY_INSPECTION_BYTES
@@ -996,7 +1020,7 @@ package body Fs_Server.File_Requests is
                   ino : Ext2.Inode;
                   inodeStatus : Ext2.Read_Status;
                begin
-                  Ext2.readInode
+                  Fs_Volumes.readInode
                     (Contexts (files (handle).volume).Fs, files (handle).inodeNum,
                      ino, inodeStatus);
                   if inodeStatus = Ext2.Read_Complete then

@@ -191,6 +191,26 @@ begin
       pragma Assert (not Done and Binding (Late, Nvme).Endpoint = 0);
       Attach (Late, Nvme, 41, Done);
       pragma Assert (Done and Binding (Late, Nvme).Endpoint = 41);
+      --  FS-034: a removable disk's endpoint is detached and the name is
+      --  attached again (a stick pulled out and plugged in again).
+      declare
+         Old : Unsigned_64;
+         Gone : Boolean;
+      begin
+         Detach (Late, Ata, Old, Gone);
+         pragma Assert (Gone and Old = 40 and Binding (Late, Ata).Endpoint = 0);
+         pragma Assert (Find (Late, "ata:0") = Ata and Name (Late, Ata) = "ata:0");
+         Detach (Late, Ata, Old, Gone);
+         pragma Assert (Gone and Old = 0);
+         Attach (Late, Ata, 41, Done);
+         pragma Assert (not Done, "another volume still uses endpoint 41");
+         Attach (Late, Ata, 42, Done);
+         pragma Assert (Done and Binding (Late, Ata).Endpoint = 42);
+         --  The system volume is never detached.
+         Choose_System (Late, Nvme, Development_Disk);
+         Detach (Late, Nvme, Old, Gone);
+         pragma Assert (not Gone and Old = 0 and Binding (Late, Nvme).Endpoint = 41);
+      end;
    end;
    Put_Line ("VOLUME-LIST-CHECK: PASS");
 end Main;

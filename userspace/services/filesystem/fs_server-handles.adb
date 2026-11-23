@@ -2,6 +2,8 @@ with Fs_Server.Delegations; use Fs_Server.Delegations;
 with Fs_Server.Watches; use Fs_Server.Watches;
 with Fs_Server.Copies; use Fs_Server.Copies;
 with Fs_Server.Locks; use Fs_Server.Locks;
+with Fs_Volumes;
+with Fs_Server.Replies; use Fs_Server.Replies;
 
 package body Fs_Server.Handles is
 
@@ -26,6 +28,7 @@ package body Fs_Server.Handles is
          for j in 0 .. EXTENDED_HANDLES - 1 loop
             if not files (j).active and then not files (j).retired then
                slot := j;
+               goneMarks (j) := (others => <>);
                handle := Unsigned_64 (Codes.Encode (Codes.Handle_Slot (j), files (j).generation));
                success := True;
                return;
@@ -38,6 +41,7 @@ package body Fs_Server.Handles is
                             else plainCursor + 1);
             if not files (i).active and then not files (i).retired then
                slot := i;
+               goneMarks (i) := (others => <>);
                handle := Unsigned_64 (Codes.Encode (Codes.Handle_Slot (i), files (i).generation));
                success := True;
                return;
@@ -72,6 +76,7 @@ package body Fs_Server.Handles is
          return -1;
       end if;
 
+      parkedIdle (slot) := False;   --  used again: open as far as Eject knows
       return slot;
    end resolveHandle;
 
@@ -125,6 +130,15 @@ package body Fs_Server.Handles is
       inodeVersions (i).version := versionClock;
    end bumpVersion;
 
+   procedure forgetVolumeVersions (volume : Volume_Index) is
+   begin
+      for item of inodeVersions loop
+         if item.used and then item.key.volume = volume then
+            item := (others => <>);
+         end if;
+      end loop;
+   end forgetVolumeVersions;
+
    procedure reclaimOrphan (key : Inode_Identity) is
       status : Ext2.Remove_Status;
    begin
@@ -135,7 +149,7 @@ package body Fs_Server.Handles is
          if orphan.number /= 0 and then orphan = key then
             orphan := NO_ORPHAN;
             orphanCount := orphanCount - 1;
-            Ext2.reclaimInode (Contexts (key.volume).Fs, key.number, status);
+            Fs_Volumes.reclaimInode (Contexts (key.volume).Fs, key.number, status);
             --  The number may name another file next: no cached page of
             --  this one may be taken for it.
             bumpVersion (key);
@@ -165,6 +179,7 @@ package body Fs_Server.Handles is
       end if;
       Open_Inodes.Detach (inodeObjects, Open_Inodes.Owner_Index (slot));
       files (slot).active := False;
+      parkedIdle (slot) := False;
       files (slot).ownerPID := No_Process;
       files (slot).openRights := 0;
       files (slot).offset := 0;
@@ -190,6 +205,46 @@ package body Fs_Server.Handles is
          end if;
       end loop;
    end releaseHandlesForOwner;
+
+   procedure closeForGone (slot : Handle_Slot; reason : Volume_Gone_Reason) is
+      mark : constant Gone_Mark :=
+        (gone => True, reason => reason, generation => files (slot).generation,
+         ownerPID => files (slot).ownerPID);
+   begin
+      releaseHandle (slot);
+      goneMarks (slot) := mark;
+   end closeForGone;
+
+   procedure goneAnswer
+     (handle : Unsigned_64; sender : Process_ID; label : out Unsigned_32; reason : out Unsigned_64)
+   is
+      word : constant Codes.Handle_Word := Codes.Handle_Word (handle);
+   begin
+      label := REPLY_ERR;
+      reason := 0;
+      if Codes.Valid_Slot_Code (word) then
+         declare
+            mark : Gone_Mark renames goneMarks (Handle_Slot (Codes.Slot_Of (word)));
+         begin
+            if mark.gone and then mark.generation = Codes.Generation_Of (word)
+              and then mark.ownerPID = sender and then sender /= No_Process
+            then
+               label := REPLY_VOLUME_GONE;
+               reason := Unsigned_64 (Volume_Gone_Reason'Enum_Rep (mark.reason));
+            end if;
+         end;
+      end if;
+   end goneAnswer;
+
+   procedure refuseHandle
+     (sender : Process_ID; handle : Unsigned_64; otherwise : Unsigned_32 := REPLY_ERR)
+   is
+      label : Unsigned_32;
+      reason : Unsigned_64;
+   begin
+      goneAnswer (handle, sender, label, reason);
+      sendReply (sender, (if label = REPLY_VOLUME_GONE then label else otherwise), reason);
+   end refuseHandle;
 
    procedure keepOrphan (volume : Volume_Index; target : Unsigned_32; holder : Natural) is
       current : Ext2.Inode :=

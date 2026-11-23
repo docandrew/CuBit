@@ -1,7 +1,8 @@
 with Interfaces; use Interfaces;
 
 --  Internal block-volume names and bindings, not client authority.
---  Append-only for one filesystem-service lifetime: no replacement or reuse.
+--  Names are append-only for one filesystem-service lifetime; a name's
+--  endpoint may be detached and attached again (FS-034: a removable disk).
 --  Generic over the endpoint type: natively CuBit.Handles.Endpoint
 --  (Volume_List), a number in the hosted tests.
 generic
@@ -86,12 +87,27 @@ package Volume_Lists with SPARK_Mode is
       Found : out Boolean)
      with Pre  => Path'Last < Positive'Last and then Result'First = 1,
           Post => Length <= Result'Length and then (if not Found then Length = 0);
-   --  Give a registered volume its driver's endpoint, once. Attached is
-   --  False when the volume already has one or another volume uses it.
+   --  Give a registered volume its driver's endpoint. Attached is False
+   --  when the volume already has one or another volume uses it.
    procedure Attach
      (List : in out State; Volume : Volume_Index; Endpoint : Endpoint_Type;
       Attached : out Boolean)
      with Pre => Volume <= Count (List);
+   --  FS-034: the volume's device went away (a stick pulled out or
+   --  ejected): its endpoint is given back (Old, for the caller to close)
+   --  and the name stays registered, free for the next Attach. The system
+   --  volume is never detached (Detached False).
+   procedure Detach
+     (List : in out State; Volume : Volume_Index; Old : out Endpoint_Type;
+      Detached : out Boolean)
+     with Pre  => Volume <= Count (List),
+          Post => Count (List) = Count (List'Old)
+                  and then System_Volume (List) = System_Volume (List'Old)
+                  and then (if Detached then Binding (List, Volume).Endpoint = No_Endpoint
+                                             and then Old = Binding (List'Old, Volume).Endpoint
+                                             and then Volume /= System_Volume (List)
+                                             and then Name (List, Volume) = Name (List'Old, Volume)
+                            else Old = No_Endpoint);
    --  The volume registered under Name, or No_Volume.
    function Find (List : State; Name : String) return Volume_Reference
      with Post => Find'Result <= Count (List);

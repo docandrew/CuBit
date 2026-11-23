@@ -47,9 +47,10 @@ package CuBit.Volume_Descriptions with Pure, SPARK_Mode is
    Name_At            : constant := 56;
    Record_Bytes       : constant := Name_At + Maximum_Name_Bytes;
 
-   type Volume_Kind is (Ext2, Ext3, ISO_9660, Boot_Archive);
+   --  FAT32 (FS-030): blocks are its clusters; it has no inodes.
+   type Volume_Kind is (Ext2, Ext3, ISO_9660, Boot_Archive, FAT32);
    Kind_Codes : constant array (Volume_Kind) of Unsigned_8 :=
-     [Ext2 => 1, Ext3 => 2, ISO_9660 => 3, Boot_Archive => 4];
+     [Ext2 => 1, Ext3 => 2, ISO_9660 => 3, Boot_Archive => 4, FAT32 => 5];
 
    --  Flags.
    Read_Only     : constant := 1;

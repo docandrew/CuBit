@@ -1,0 +1,17 @@
+# CuBit
+# Copyright (C) 2026 Jon Andrew
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# USB stick hot-plug and Eject (tests/usb-eject/native): the two sticks the
+# runner plugs in, @usb:0 and @usb:1, whole (Eject needs write access to
+# all of a volume), and the development disk only to be refused an eject.
+(executable-manifest v1
+  (identity "com.cubit.usb-eject")
+  (version "0.1.0")
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@usb:0")
+  (filesystem-scope (rights read write create) "@usb:1")
+  (filesystem-scope (rights read) "@nvme:0")
+  # Its diagnostics (cubit_debug_write, the libc's records: CuBit.Libc_Log).
+  (request-service logstore read-write logstore)
+  (optional logstore))

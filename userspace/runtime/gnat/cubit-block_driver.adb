@@ -29,9 +29,13 @@ package body CuBit.Block_Driver is
    procedure Finish (Item : Slot; Outcome : Work_Outcome);
    procedure Complete (Item : Slot);
    procedure Expire (Item : Slot);
-   procedure Identify (Sender : Process_ID; Item : Transfer_Request);
+   procedure Identify
+     (Sender : Process_ID; Item : Transfer_Request; Identity : CuBit.Device_Identities.Identity);
    procedure Begin_Work (Free : Slot; Sender : Process_ID; Work : Work_Order);
    procedure Take (Free : Slot; Sender : Process_ID; Request : Message);
+   procedure Take_As
+     (Free : Slot; Sender : Process_ID; Request : Message; State : Device_State;
+      Identity : CuBit.Device_Identities.Identity; Authority : Write_Authority);
    procedure Accept_Request (Free : Slot; Found : out Boolean);
 
    --  Counted, not flooded: the first, then each doubling.
@@ -98,7 +102,8 @@ package body CuBit.Block_Driver is
 
    --  OP_IDENTIFY_DEVICE: the identity record into the caller's grant at
    --  once (no device command), the rest of the block zero.
-   procedure Identify (Sender : Process_ID; Item : Transfer_Request) is
+   procedure Identify
+     (Sender : Process_ID; Item : Transfer_Request; Identity : CuBit.Device_Identities.Identity) is
       package DId renames CuBit.Device_Identities;
       Granted : Loan;
       Admitted : Boolean;
@@ -114,7 +119,7 @@ package body CuBit.Block_Driver is
            with Import, Address => Granted.Buffer;
       begin
          Block := [others => 0];
-         Block (1 .. DId.Record_Bytes) := DId.Encode (Device_Identity);
+         Block (1 .. DId.Record_Bytes) := DId.Encode (Identity);
       end;
       Settle (Granted, Bytes (Item), Response);
       Respond (Sender, Response);
@@ -153,20 +158,27 @@ package body CuBit.Block_Driver is
    --  Handles Request from Sender, using slot Free if it needs the device.
    procedure Take (Free : Slot; Sender : Process_ID; Request : Message) is
    begin
+      --  The device as this sender may use it: writes only through the
+      --  write grant's badge (the kernel stamps authorityTag).
+      Take_As (Free, Sender, Request, Device, Device_Identity,
+               (case Writes is
+                  when Write_Grant_Required => Authority_Of (Request.authorityTag),
+                  when Any_Client_Writes => Writes_Granted));
+   end Take;
+
+   --  Handles Request against State, as a sender with Authority sees it.
+   procedure Take_As
+     (Free : Slot; Sender : Process_ID; Request : Message; State : Device_State;
+      Identity : CuBit.Device_Identities.Identity; Authority : Write_Authority) is
+   begin
       declare
-         --  The device as this sender may use it: writes only through the
-         --  write grant's badge (the kernel stamps authorityTag).
-         Authority : constant Write_Authority :=
-           (case Writes is
-              when Write_Grant_Required => Authority_Of (Request.authorityTag),
-              when Any_Client_Writes => Writes_Granted);
-         View : constant Device_State := Granted_View (Device, Authority);
+         View : constant Device_State := Granted_View (State, Authority);
          Decoded : constant Decoded_Request := Decode (Request, View);
          Identity_Request : constant Identify_Request :=
            Decode_Identify (Request, View);
       begin
          if Identity_Request.Valid then
-            Identify (Sender, Identity_Request.Data);
+            Identify (Sender, Identity_Request.Data, Identity);
             return;
          end if;
          case Decoded.Kind is
@@ -196,7 +208,7 @@ package body CuBit.Block_Driver is
                end;
          end case;
       end;
-   end Take;
+   end Take_As;
 
    --  Takes one request into Free. Found: there was one.
    procedure Accept_Request (Free : Slot; Found : out Boolean) is
@@ -217,8 +229,7 @@ package body CuBit.Block_Driver is
       Take (Slot'First, Sender, Request);
    end Wait_And_Serve;
 
-   procedure Poll (Progressed : out Boolean) is
-      Found : Boolean;
+   procedure Collect_Finished (Progressed : out Boolean) is
    begin
       Progressed := False;
       for Item in Slot loop
@@ -233,6 +244,40 @@ package body CuBit.Block_Driver is
             end if;
          end if;
       end loop;
+   end Collect_Finished;
+
+   function Slot_Free return Boolean is
+     (for some Item of Requests => not Item.Busy);
+
+   procedure Serve (Sender : Process_ID; Request : Message) is
+   begin
+      for Item in Slot loop
+         if not Requests (Item).Busy then
+            Take (Item, Sender, Request);
+            return;
+         end if;
+      end loop;
+   end Serve;
+
+   procedure Serve_As
+     (Sender    : Process_ID;
+      Request   : Message;
+      State     : Device_State;
+      Identity  : CuBit.Device_Identities.Identity;
+      Authority : Write_Authority) is
+   begin
+      for Item in Slot loop
+         if not Requests (Item).Busy then
+            Take_As (Item, Sender, Request, State, Identity, Authority);
+            return;
+         end if;
+      end loop;
+   end Serve_As;
+
+   procedure Poll (Progressed : out Boolean) is
+      Found : Boolean;
+   begin
+      Collect_Finished (Progressed);
       for Item in Slot loop
          if not Requests (Item).Busy then
             Accept_Request (Item, Found);

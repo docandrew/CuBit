@@ -27,7 +27,7 @@ package body Files_Status with SPARK_Mode is
          when REPLY_CANCELLED => Cancelled,
          when REPLY_DEADLINE => Deadline_Passed,
          when REPLY_BUSY => Busy,
-         when REPLY_VOLUME_UNAVAILABLE => Volume_Unavailable,
+         when REPLY_VOLUME_UNAVAILABLE | REPLY_VOLUME_GONE => Volume_Unavailable,
          when others => Unexpected);
 
    function Severity_Of (Kind : Status_Kind) return Severity is

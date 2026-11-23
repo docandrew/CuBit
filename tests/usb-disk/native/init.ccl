@@ -1,0 +1,5 @@
+# tests/usb-disk/native (headless: usb-disk).
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "usb-disk.app" (priority 3))
+)

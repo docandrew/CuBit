@@ -284,5 +284,53 @@ begin
    Check (Error (Last), "flush refused without FEATURE_FLUSH");
    Instant := False;
 
+   --  14. A driver that routes requests itself (xhci: the boot medium and
+   --  a USB disk on one endpoint): Collect_Finished takes no new request,
+   --  Serve takes one already received; when the device goes away a
+   --  command in flight fails, Describe says no device and new transfers
+   --  are refused at once.
+   Driver.Start
+     ((Presence => Available, Blocks => Disk_Blocks,
+       Logical_Size => Block_Bytes, Physical_Size => Block_Bytes,
+       Max_Transfer => 8, Features => FEATURE_FLUSH or FEATURE_VOLATILE_CACHE,
+       Media => Removable_Media),
+      (Model => CuBit.Device_Identities.To_Text ("Fake Stick"),
+       Serial => CuBit.Device_Identities.To_Text ("")));
+   Push (Simple (OP_DESCRIBE_DEVICE));
+   Before := Answered;
+   Driver.Collect_Finished (Progressed);
+   Check (Answered = Before and then Waiting = 1 and then not Progressed,
+          "Collect_Finished takes no request");
+   Taken := Taken + 1;   --  the router received it
+   Check (Driver.Slot_Free, "a slot is free");
+   Driver.Serve (42, Queue (Taken).Request);
+   Check (Answered = Before + 1 and then Last.Response.tag.label = REPLY_OK,
+          "Serve answers a routed describe");
+   Buffers (6) := [others => 16#3C#];
+   Push (Transfer (OP_WRITE_BLOCKS, 30, 1, 6));
+   Taken := Taken + 1;
+   Before := Answered;
+   Driver.Serve (42, Queue (Taken).Request);
+   Check (Answered = Before and then Driver.Outstanding, "routed write in flight");
+   --  The stick is pulled: the driver learns it, then the command fails.
+   Driver.Start ((Presence => No_Device), CuBit.Device_Identities.No_Identity);
+   for S in Slot loop
+      if Posted (S) and then not Done (S) then
+         Done (S) := True;
+         Fail (S) := True;
+      end if;
+   end loop;
+   Driver.Collect_Finished (Progressed);
+   Check (Progressed and then Answered = Before + 1 and then Last.Saved and then Error (Last)
+          and then not Driver.Outstanding and then not Held (6),
+          "the command in flight fails and its grant returns");
+   Push (Simple (OP_DESCRIBE_DEVICE));
+   Push (Transfer (OP_READ_BLOCKS, 0, 1, 6));
+   Before := Posts;
+   Poll;
+   Check (Answers (Answered - 1).Response.tag.label = REPLY_NO_DEVICE and then Error (Last)
+          and then not Last.Saved and then Posts = Before,
+          "a gone device: describe says no device, a read is refused at once");
+
    Put_Line ("block-driver: PASS" & Natural'Image (Checks) & " checks");
 end Main;

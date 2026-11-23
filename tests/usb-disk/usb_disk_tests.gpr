@@ -1,0 +1,23 @@
+--  USB mass-storage disks (SELF-003 step 4): the Bulk-Only Transport codec,
+--  the SCSI disk decoders and the probe, as hosted tests and SPARK proof.
+--  USB_DISK_SRC / USB_DISK_OBJ let mutate.sh build a private copy.
+project USB_Disk_Tests is
+   Xhci := external ("USB_DISK_XHCI", "../../userspace/services/xhci");
+   Scsi := external ("USB_DISK_SCSI", "../../userspace/lib/scsi");
+   for Languages use ("Ada");
+   for Source_Dirs use (".", Xhci, Scsi);
+   for Source_Files use ("main.adb", "scsi.ads", "scsi.adb",
+      "scsi_disks.ads", "scsi_disks.adb",
+      "usb_bulk_only.ads", "usb_bulk_only.adb",
+      "usb_disk_probe.ads", "usb_disk_probe.adb");
+   for Object_Dir use external ("USB_DISK_OBJ", "build");
+   for Exec_Dir use external ("USB_DISK_OBJ", "build");
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end USB_Disk_Tests;

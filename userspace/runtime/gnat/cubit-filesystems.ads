@@ -114,6 +114,12 @@ is
    --  present (no driver attached it, or it offered none), as on a live
    --  image without an NVMe driver. Not an I/O error: nothing was tried.
    REPLY_VOLUME_UNAVAILABLE : constant Unsigned_32 := 16#F017#;
+   --  FS-034: the handle was on a volume that went away (a USB stick
+   --  pulled out, or ejected): the service closed it. words (0) says why
+   --  (Volume_Gone_Reason). A close of such a handle succeeds.
+   REPLY_VOLUME_GONE : constant Unsigned_32 := 16#F018#;
+   type Volume_Gone_Reason is (Volume_Removed, Volume_Ejected);
+   for Volume_Gone_Reason use (Volume_Removed => 1, Volume_Ejected => 2);
 
    MAXIMUM_PATH_BYTES : constant := CuBit.Directory_Paths.Maximum_Bytes;
    subtype Path_Byte_Count is Natural range 0 .. MAXIMUM_PATH_BYTES;

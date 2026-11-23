@@ -96,11 +96,16 @@ package CCL.Interfaces.Files with SPARK_Mode is
    MAXIMUM_EXCERPT : constant := 8_192;
    EXCERPT_FIELDS : constant := 3;
 
-   type Operation is (Home, Enter, Up, List, Read);
+   --  (fs.eject (Place root => "@usb:0" path => "")) makes a removable
+   --  volume safe to pull out (FS-034): its writes committed, it marked
+   --  clean and detached; the answer says so. It is refused (a typed
+   --  failure saying why) while files are open on it;
+   --  fs.eject-closing closes them first.
+   type Operation is (Home, Enter, Up, List, Read, Eject, Eject_Closing);
    function Name (Item : Operation) return String is
      (case Item is
          when Home => "home", when Enter => "enter", when Up => "up", when List => "list",
-         when Read => "read");
+         when Read => "read", when Eject => "eject", when Eject_Closing => "eject-closing");
    FIRST_BINDING : constant Unsigned_32 := CCL.Binding_Blocks.First (CCL.Binding_Blocks.Files);
    function Binding_Of (Item : Operation) return Unsigned_32 is
      (FIRST_BINDING + Operation'Pos (Item));

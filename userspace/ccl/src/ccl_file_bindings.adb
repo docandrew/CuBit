@@ -202,6 +202,65 @@ package body CCL_File_Bindings is
                   end if;
                end;
             end if;
+         when Files.Eject | Files.Eject_Closing =>
+            if Argument.Kind = CCL.Host_Values.Object_Value then
+               Views.Capture (Object, Contracts.Place, Argument.Object, Captured);
+            end if;
+            if Captured then
+               declare
+                  Root : constant String := Views.Text (Object, Views.Field (Object, Views.Root (Object), 1));
+                  Path : constant String := Views.Text (Object, Views.Field (Object, Views.Root (Object), 2));
+                  Closing : constant Boolean :=
+                    Files."=" (Files.Operation'Val (Binding - Files.FIRST_BINDING), Files.Eject_Closing);
+                  Outcome : CCL_Places.Eject_Outcome;
+                  Open : Natural;
+                  Step : CCL.Objects.Build_Result;
+                  use type CCL_Places.Eject_Outcome;
+               begin
+                  if Path'Length /= 0 or else Root'Length = 0 then
+                     Reply.Why := Failures.Failed
+                       (Failures.Invalid_Argument, "eject names a whole volume, not a folder in it",
+                        "(fs.eject (Place root => ""@usb:0"" path => """"))");
+                  else
+                     CCL_Places.Eject (Root, Closing, Outcome, Open);
+                     case Outcome is
+                        when CCL_Places.Safe_To_Remove =>
+                           Image := CCL.Objects.Empty (Contracts.Text);
+                           CCL.Objects.Append_Text
+                             (Image, Root & " is safe to remove: its files are written and it is detached" &
+                              (if Closing then " (open files were closed)" else ""), Step);
+                           Built := Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Contracts.Text);
+                        when CCL_Places.Open_Handles =>
+                           Reply.Why := Failures.Failed
+                             (Failures.Refused, Natural'Image (Open) & " file" & (if Open = 1 then " is" else "s are") &
+                              " open on " & Root & "; nothing was ejected",
+                              "close them, or (fs.eject-closing (Place root => """ & Root &
+                              """ path => """")) closes them first");
+                        when CCL_Places.Not_Removable =>
+                           Reply.Why := Failures.Failed
+                             (Failures.Refused, Root & " is not a removable volume");
+                        when CCL_Places.Not_Attached =>
+                           Reply.Why := Failures.Failed
+                             (Failures.Not_Found, "no volume " & Root & " is attached (gone, or ejected already)");
+                        when CCL_Places.Flush_Failed =>
+                           Reply.Why := Failures.Failed
+                             (Failures.Device_Error, Root & "'s writes could not be committed; it is still attached",
+                              "do not pull it out; try again");
+                        when CCL_Places.Access_Denied =>
+                           Reply.Why := Failures.Failed
+                             (Failures.Outside_Scope, "this program may not write all of " & Root,
+                              "the program's manifest must declare (filesystem-scope (rights read write) """ &
+                              Root & """)");
+                        when CCL_Places.Service_Unavailable =>
+                           Reply.Why := Failures.Failed
+                             (Failures.Unavailable, "the filesystem service did not answer the eject");
+                     end case;
+                     if Outcome /= CCL_Places.Safe_To_Remove then
+                        Built := False;
+                     end if;
+                  end if;
+               end;
+            end if;
          when Files.Read =>
             if Argument.Kind = CCL.Host_Values.Object_Value then
                Views.Capture (Object, Contracts.Excerpt, Argument.Object, Captured);

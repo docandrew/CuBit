@@ -68,6 +68,7 @@ package body Files_Places with SPARK_Mode is
                  elsif Name = ATA_DEVICE then ATA_Volume
                  elsif Name = OPTICAL_DEVICE then Optical_Disc
                  elsif Name = BOOT_ARCHIVE then Boot_Image
+                 elsif Name = USB_DEVICE then USB_Volume
                  else Other_Volume);
       end;
    end Kind_Of;
@@ -91,6 +92,7 @@ package body Files_Places with SPARK_Mode is
             when ATA_Volume => return "ATA disk" & (if Index'Length = 0 then "" else " " & Index);
             when Optical_Disc => return "Optical disc" & Suffix;
             when Boot_Image => return "Boot image";
+            when USB_Volume => return "USB stick" & Suffix;
             when Other_Volume => return Prefix;
          end case;
       end;

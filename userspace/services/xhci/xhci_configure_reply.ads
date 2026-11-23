@@ -9,7 +9,9 @@
 --  REPLY_OK with three words: the root port count, the connected port
 --  count, and what the controller enumerated, as Device_Bits. devmgr starts
 --  one xhci.drv per controller and logs each one's devices from it, and
---  attaches the optical volume to a controller that found USB storage.
+--  attaches the optical volume to a controller whose USB storage holds the
+--  boot medium (ISO 9660). USB disks are reported apart, as they come and
+--  go (CuBit.Disk_Presence, FS-034).
 ------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 

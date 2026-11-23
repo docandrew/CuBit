@@ -48,6 +48,7 @@ project Devmgr is
        "devmgr_phase_declarations.ads", "devmgr_phase_declarations.adb",
        --  How a HID offer (16#0252#) is decided, and its channel badges.
        "devmgr_hid_offers.ads", "devmgr_hid_offers.adb",
+       "devmgr_usb_disks.ads", "devmgr_usb_disks.adb",
        "hid_offer_payload.ads", "hid_offer_payload.adb",
        "i2c_channel_badges.ads", "i2c_channel_badges.adb",
        "gpio_channel_badges.ads", "gpio_channel_badges.adb",

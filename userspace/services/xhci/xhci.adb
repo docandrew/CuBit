@@ -29,10 +29,14 @@ with XHCI_Endpoint_Recovery;
 with XHCI_Topology;
 with USB_Hubs;
 with XHCI_Legacy;
+with USB_Bulk_Only;
+with USB_Disk_Probe;
+with Disk_Reports;
 
 package body XHCI is
 
    package R renames XHCI_Rings;
+   use type SCSI.Data_Direction;
    package PM renames XHCI_Port_Machine;
    package ER renames XHCI_Endpoint_Recovery;
    package CI renames XHCI_Controller_Identity;
@@ -600,7 +604,7 @@ package body XHCI is
    ---------------------------------------------------------------------------
    type Command_Owner is
      (No_Owner, Boot_Owner, Engine_Owner, Mouse_Owner, Keyboard_Owner,
-      Release_Owner, Orphan_Owner);
+      Storage_Owner, Release_Owner, Orphan_Owner);
    type Command_State is record
       Busy, Done : Boolean := False;
       Owner : Command_Owner := No_Owner;
@@ -1276,26 +1280,63 @@ package body XHCI is
    end Run_Recovery;
 
    ---------------------------------------------------------------------------
-   --  Bulk storage (the optical drive)
+   --  Bulk-only mass storage (BOT 1.0): every configured unit, and one
+   --  transaction at a time on the shared bulk buffers. Two owners use it:
+   --  the optical medium (the boot medium, USB_Optical, read only) and the
+   --  disk (USB_Bulk_Only, USB_Disk_Probe; read and write).
    ---------------------------------------------------------------------------
+   type Storage_Unit is record
+      Present          : Boolean := False;
+      In_DCI, Out_DCI  : Natural := 0;
+      In_Address, Out_Address : Unsigned_8 := 0;
+      Interface_Number : Unsigned_8 := 0;
+      Bulk_In, Bulk_Out : R.Producer := R.Fresh_Producer;
+      --  A transport fault left the pipes unusable until a reset recovery.
+      Broken           : Boolean := False;
+      --  GET MAX LUN's answer (boot) and whether a disk probe is due.
+      Last_LUN         : USB_Bulk_Only.Logical_Unit := 0;
+      Needs_Probe      : Boolean := False;
+   end record;
+   units : array (Device_Index) of Storage_Unit;
+
+   --  The optical medium's unit (the first unit with ISO 9660 at boot).
    storageSlot : Slot_Or_None := 0;
-   storageInDCI, storageOutDCI : Natural := 0;
-   storageInterface : Unsigned_8 := 0;
-   type Bulk_Phase is (Bulk_Idle, Command_Out, Data_In, Status_In, Bulk_Finished, Bulk_Faulted);
+   opticalSelected : Boolean := False;
+
+   type Bulk_Owner is (Optical_Owner, Disk_Owner);
+   type Bulk_Phase is
+     (Bulk_Idle, Command_Out, Data_In, Data_Out, Status_In, Bulk_Finished, Bulk_Faulted);
    bulkPhase : Bulk_Phase := Bulk_Idle;
-   bulkIn, bulkOut : R.Producer := R.Fresh_Producer;
+   bulkOwner : Bulk_Owner := Optical_Owner;
+   bulkSlot : Slot_Or_None := 0;
    bulkExpectedPointer : Unsigned_64 := 0;
    bulkExpectedLength : Unsigned_32 := 0;
    bulkDeadline : Unsigned_64 := 0;
+   bulkTimeout : Unsigned_64 := Bulk_Timeout_Ms;
    bulkTag : Unsigned_32 := 0;
-   bulkCommand : USB_Optical.Command;
+   --  The data stage: its length and direction.
+   bulkDataBytes : Unsigned_32 := 0;
+   bulkDataIn : Boolean := True;
    bulkReceived : Unsigned_32 := 0;
+   --  The optical owner's command and verdict.
+   bulkCommand : USB_Optical.Command;
    bulkResult : USB_Optical.Status_Result := USB_Optical.Invalid_Status;
+   --  The disk owner's verdict.
+   diskReport : USB_Bulk_Only.Status_Report;
    opticalLUN : USB_Optical.Logical_Unit := 0;
    opticalBlocks : Unsigned_64 := 0;
    storageFormat : USB_Optical.Sector_Format := USB_Optical.Sector_2048;
+   --  An optical read waiting for the bulk buffers.
+   opticalQueued : Boolean := False;
+   opticalQueuedFirst : Unsigned_32 := 0;
+   opticalQueuedCount : USB_Optical.Read_Block_Count := 1;
    CBW_BYTES : constant := 31;
    CSW_BYTES : constant := 13;
+   pragma Compile_Time_Error
+     (CBW_BYTES /= USB_Bulk_Only.CBW_Bytes or else CSW_BYTES /= USB_Bulk_Only.CSW_Bytes,
+      "the BOT wrapper sizes");
+   pragma Compile_Time_Error
+     (BULK_DATA_PAGES * PAGE_SIZE /= Disk_Buffer_Bytes, "the disk buffer is the bulk data pages");
    bulkData : USB_Optical.Bytes (1 .. 32768) with Import, Volatile,
      Address => To_Address (Integer_Address (DMA_VIRT_BASE + BULK_DATA_OFFSET));
    bulkCBW : USB_Optical.Command_Wrapper with Import, Volatile,
@@ -1303,132 +1344,787 @@ package body XHCI is
    bulkCSW : USB_Optical.Bytes (1 .. CSW_BYTES) with Import, Volatile,
      Address => To_Address (Integer_Address (DMA_VIRT_BASE + BULK_CSW_OFFSET));
 
+   --  No transaction holds the bulk buffers (a finished one's owner has
+   --  taken its result).
+   function Bulk_Free return Boolean is (bulkPhase = Bulk_Idle);
+   function Bulk_Active return Boolean is
+     (bulkPhase in Command_Out | Data_In | Data_Out | Status_In);
+
    procedure Queue_Bulk (Input : Boolean; Offset : Unsigned_64; Length : Unsigned_32) is
+      Unit : Storage_Unit renames units (bulkSlot);
       Ring : constant Unsigned_64 :=
-        Device_Offset (storageSlot, (if Input then BULK_IN_RING_OFFSET else BULK_OUT_RING_OFFSET));
+        Device_Offset (bulkSlot, (if Input then BULK_IN_RING_OFFSET else BULK_OUT_RING_OFFSET));
       Item : constant TRB :=
         (ParameterLo => Low (Phys (Offset)), ParameterHi => High (Phys (Offset)),
          Status => Length,
          Control => Type_Field (TRB_NORMAL) or TRB_IOC or (if Input then TRB_ISP else 0));
    begin
       bulkExpectedLength := Length;
-      bulkDeadline := PM.Plus (Now_Ms, Bulk_Timeout_Ms);
+      bulkDeadline := PM.Plus (Now_Ms, bulkTimeout);
       if Input then
-         Enqueue (Ring, bulkIn, Item, bulkExpectedPointer);
+         Enqueue (Ring, Unit.Bulk_In, Item, bulkExpectedPointer);
       else
-         Enqueue (Ring, bulkOut, Item, bulkExpectedPointer);
+         Enqueue (Ring, Unit.Bulk_Out, Item, bulkExpectedPointer);
       end if;
-      Ring_Doorbell (storageSlot, Unsigned_32 (if Input then storageInDCI else storageOutDCI));
+      Ring_Doorbell (bulkSlot, Unsigned_32 (if Input then Unit.In_DCI else Unit.Out_DCI));
    end Queue_Bulk;
 
-   procedure Begin_Bulk
-     (Item : USB_Optical.Command; LUN : USB_Optical.Logical_Unit; Accepted : out Boolean) is
+   --  Sends CBW on Slot's bulk-out pipe; the data and status stages follow.
+   procedure Begin_Transaction
+     (Owner : Bulk_Owner; Slot : Device_Index; CBW : USB_Optical.Command_Wrapper;
+      Data_Bytes : Unsigned_32; Data_In : Boolean; Timeout : Unsigned_64) is
    begin
-      Accepted := False;
-      if storageSlot = 0 or else
-         bulkPhase not in Bulk_Idle | Bulk_Finished or else bulkTag = Unsigned_32'Last
-      then return; end if;
-      bulkTag := bulkTag + 1;
-      bulkCommand := Item;
+      bulkOwner := Owner;
+      bulkSlot := Slot;
+      bulkDataBytes := Data_Bytes;
+      bulkDataIn := Data_In;
       bulkReceived := 0;
-      bulkResult := USB_Optical.Invalid_Status;
-      bulkCBW := USB_Optical.Encode (Item, bulkTag, LUN);
+      bulkTimeout := Timeout;
+      bulkCBW := CBW;
       bulkPhase := Command_Out;
       Queue_Bulk (False, BULK_CBW_OFFSET, CBW_BYTES);
+   end Begin_Transaction;
+
+   function Next_Tag return Unsigned_32 is
+   begin
+      bulkTag := (if bulkTag = Unsigned_32'Last then 1 else bulkTag + 1);
+      return bulkTag;
+   end Next_Tag;
+
+   --  The optical owner's command on Slot. Refused while another owner
+   --  holds the buffers or Slot's pipes are broken.
+   procedure Begin_Bulk
+     (Slot : Slot_Or_None; Item : USB_Optical.Command; LUN : USB_Optical.Logical_Unit;
+      Accepted : out Boolean) is
+      Tag : Unsigned_32;
+   begin
+      Accepted := False;
+      if Slot = 0 or else not units (Slot).Present or else units (Slot).Broken or else
+        not (Bulk_Free or else
+             (bulkOwner = Optical_Owner and then bulkPhase in Bulk_Finished | Bulk_Faulted))
+      then
+         return;
+      end if;
+      Tag := Next_Tag;
+      bulkCommand := Item;
+      bulkResult := USB_Optical.Invalid_Status;
+      Begin_Transaction (Optical_Owner, Slot, USB_Optical.Encode (Item, Tag, LUN),
+                         USB_Optical.Transfer_Bytes (Item), True, Bulk_Timeout_Ms);
       Accepted := True;
    end Begin_Bulk;
 
-   procedure Poll_Optical_Read
-     (Done : out Boolean; Result : out USB_Optical.Status_Result; Progressed : out Boolean)
-   is
+   --  The disk owner's SCSI command on Slot (the buffers must be free).
+   procedure Begin_Disk_Bulk
+     (Slot : Device_Index; Block : SCSI.Command_Block; LUN : USB_Bulk_Only.Logical_Unit;
+      Timeout : Unsigned_64) is
+      Tag : constant Unsigned_32 := Next_Tag;
+   begin
+      diskReport := (others => <>);
+      Begin_Transaction
+        (Disk_Owner, Slot, USB_Optical.Command_Wrapper (USB_Bulk_Only.Encode (Block, Tag, LUN)),
+         Block.Expected, Block.Direction /= SCSI.To_Device, Timeout);
+   end Begin_Disk_Bulk;
+
+   --  The transaction cannot go on: Slot's pipes need a reset recovery.
+   procedure Fault_Bulk (Code : Completion_Code; Why : String) is
+   begin
+      if bulkSlot /= 0 then
+         units (bulkSlot).Broken := True;
+      end if;
+      bulkPhase := Bulk_Faulted;
+      case bulkOwner is
+         when Optical_Owner =>
+            --  No caller memory is exposed to this DMA. Retain all private
+            --  DMA buffers and forbid further optical submissions.
+            opticalBlocks := 0;
+            bulkResult := USB_Optical.Reset_Recovery_Required;
+            Log ("storage transport quarantined cc=" & Code_Name (Code) & " " & Why, True);
+         when Disk_Owner =>
+            diskReport := (others => <>);
+            Log ("slot " & D (Natural (bulkSlot)) & " disk transport fault cc=" &
+                 Code_Name (Code) & " " & Why, True);
+      end case;
+   end Fault_Bulk;
+
+   --  Takes the current stage's completion, if it came, and moves on.
+   procedure Pump_Bulk (Progressed : out Boolean) is
       Item : TRB;
       Found : Boolean;
       Pointer : Unsigned_64;
       Residual, Actual : Unsigned_32;
-      Code : Completion_Code;
+      Code : Completion_Code := CC_INVALID;
       use type USB_Optical.Status_Result;
-      procedure Fault is
-      begin
-         --  No caller memory is exposed to this DMA. Retain all private DMA
-         --  buffers and forbid further submissions.
-         bulkPhase := Bulk_Faulted;
-         opticalBlocks := 0;
-         bulkResult := USB_Optical.Reset_Recovery_Required;
-         Log ("storage transport quarantined cc=" & Code_Name (Code), True);
-      end Fault;
+      use type USB_Bulk_Only.Status_Kind;
    begin
-      Done := False;
       Progressed := False;
-      Result := bulkResult;
-      Code := CC_INVALID;
-      if bulkPhase in Command_Out | Data_In | Status_In then
-         if storageSlot = 0 then
-            Fault;
-         else
-            XHCI_Completions.Take (mailboxStore.all, storageSlot,
-              (if bulkPhase = Command_Out then storageOutDCI else storageInDCI), Item, Found);
-            if not hotplugArmed then
-               Progressed := Collect_Event or else Found;
+      if not Bulk_Active then
+         return;
+      end if;
+      if bulkSlot = 0 or else not units (bulkSlot).Present then
+         Fault_Bulk (Code, "device gone");
+         Progressed := True;
+         return;
+      end if;
+      XHCI_Completions.Take (mailboxStore.all, bulkSlot,
+        (if bulkPhase in Command_Out | Data_Out then units (bulkSlot).Out_DCI
+         else units (bulkSlot).In_DCI), Item, Found);
+      if not hotplugArmed then
+         Progressed := Collect_Event or else Found;
+      else
+         Progressed := Found;
+      end if;
+      if not Found then
+         if Now_Ms >= bulkDeadline then
+            Log ("storage transfer timeout ms=" & D (bulkTimeout), True);
+            Fault_Bulk (Code, "timeout");
+            Progressed := True;
+         end if;
+         return;
+      end if;
+      Pointer := Unsigned_64 (Item.ParameterLo) or Shift_Left (Unsigned_64 (Item.ParameterHi), 32);
+      Residual := Residual_Of (Item.Status);
+      Code := Code_Of (Item.Status);
+      if Pointer /= bulkExpectedPointer or else (Item.Control and TRB_EVENT_DATA) /= 0
+        or else Residual > bulkExpectedLength
+        or else (Code /= CC_SUCCESS and then Code /= CC_SHORT_PACKET)
+      then
+         Fault_Bulk (Code, "stage " & Bulk_Phase'Image (bulkPhase));
+         return;
+      end if;
+      Actual := bulkExpectedLength - Residual;
+      case bulkPhase is
+         when Command_Out =>
+            if Actual /= CBW_BYTES then
+               Fault_Bulk (Code, "short cbw");
+            elsif bulkDataBytes = 0 then
+               bulkPhase := Status_In;
+               Queue_Bulk (True, BULK_CSW_OFFSET, CSW_BYTES);
+            elsif bulkDataIn then
+               bulkPhase := Data_In;
+               Queue_Bulk (True, BULK_DATA_OFFSET, bulkDataBytes);
             else
-               Progressed := Found;
+               bulkPhase := Data_Out;
+               Queue_Bulk (False, BULK_DATA_OFFSET, bulkDataBytes);
             end if;
-            if Found then
-               Pointer := Unsigned_64 (Item.ParameterLo) or Shift_Left (Unsigned_64 (Item.ParameterHi), 32);
-               Residual := Residual_Of (Item.Status);
-               Code := Code_Of (Item.Status);
-               if Pointer /= bulkExpectedPointer or else (Item.Control and TRB_EVENT_DATA) /= 0
-                 or else Residual > bulkExpectedLength
-                 or else (Code /= CC_SUCCESS and then Code /= CC_SHORT_PACKET)
-               then
-                  Fault;
-               else
-                  Actual := bulkExpectedLength - Residual;
-                  case bulkPhase is
-                     when Command_Out =>
-                        if Actual /= CBW_BYTES then Fault;
-                        elsif USB_Optical.Transfer_Bytes (bulkCommand) = 0 then
-                           bulkPhase := Status_In;
-                           Queue_Bulk (True, BULK_CSW_OFFSET, CSW_BYTES);
-                        else
-                           bulkPhase := Data_In;
-                           Queue_Bulk (True, BULK_DATA_OFFSET, USB_Optical.Transfer_Bytes (bulkCommand));
-                        end if;
-                     when Data_In =>
-                        bulkReceived := Actual;
-                        bulkPhase := Status_In;
-                        Queue_Bulk (True, BULK_CSW_OFFSET, CSW_BYTES);
-                     when Status_In =>
-                        if Actual /= CSW_BYTES then Fault;
-                        else
-                           declare
-                              Snapshot : constant USB_Optical.Bytes (1 .. CSW_BYTES) := bulkCSW;
-                           begin
-                              bulkResult := USB_Optical.Decode_Status
-                                (Snapshot, bulkTag, USB_Optical.Transfer_Bytes (bulkCommand), bulkReceived);
-                           end;
-                           if bulkResult in USB_Optical.Invalid_Status | USB_Optical.Reset_Recovery_Required then
-                              Fault;
-                           elsif opticalBlocks /= 0 and then bulkResult /= USB_Optical.Command_Passed then
-                              --  Once mounted, a failed READ invalidates the
-                              --  media session; never reuse cached extents
-                              --  against a replacement disc.
-                              Fault;
-                           else
-                              bulkPhase := Bulk_Finished;
-                           end if;
-                        end if;
-                     when others => null;
-                  end case;
-               end if;
-            elsif Now_Ms >= bulkDeadline then
-               Log ("storage transfer timeout ms=" & D (Bulk_Timeout_Ms), True);
-               Fault;
+         when Data_In | Data_Out =>
+            bulkReceived := Actual;
+            bulkPhase := Status_In;
+            Queue_Bulk (True, BULK_CSW_OFFSET, CSW_BYTES);
+         when Status_In =>
+            if Actual /= CSW_BYTES then
+               Fault_Bulk (Code, "short csw");
+               return;
             end if;
+            declare
+               Snapshot : constant USB_Optical.Bytes (1 .. CSW_BYTES) := bulkCSW;
+            begin
+               case bulkOwner is
+                  when Optical_Owner =>
+                     bulkResult := USB_Optical.Decode_Status
+                       (Snapshot, bulkTag, USB_Optical.Transfer_Bytes (bulkCommand), bulkReceived);
+                     if bulkResult in USB_Optical.Invalid_Status | USB_Optical.Reset_Recovery_Required then
+                        Fault_Bulk (Code, "csw");
+                     elsif opticalBlocks /= 0 and then bulkResult /= USB_Optical.Command_Passed then
+                        --  Once mounted, a failed READ invalidates the
+                        --  media session; never reuse cached extents
+                        --  against a replacement disc.
+                        Fault_Bulk (Code, "read failed");
+                     else
+                        bulkPhase := Bulk_Finished;
+                     end if;
+                  when Disk_Owner =>
+                     diskReport := USB_Bulk_Only.Decode_Status
+                       (SCSI.Bytes (Snapshot), bulkTag, bulkDataBytes, bulkReceived);
+                     if diskReport.Kind in USB_Bulk_Only.Phase_Error | USB_Bulk_Only.Invalid then
+                        Fault_Bulk (Code, "csw " & USB_Bulk_Only.Status_Kind'Image (diskReport.Kind));
+                     else
+                        bulkPhase := Bulk_Finished;
+                     end if;
+               end case;
+            end;
+         when others => null;
+      end case;
+   end Pump_Bulk;
+
+   --  The optical read buffer was copied out: the buffers are free.
+   procedure Release_Optical_Read is
+   begin
+      if bulkOwner = Optical_Owner and then bulkPhase in Bulk_Finished | Bulk_Faulted then
+         bulkPhase := Bulk_Idle;
+      end if;
+   end Release_Optical_Read;
+
+   procedure Poll_Optical_Read
+     (Done : out Boolean; Result : out USB_Optical.Status_Result; Progressed : out Boolean)
+   is
+      Accepted : Boolean;
+   begin
+      Pump_Bulk (Progressed);
+      if opticalQueued and then Bulk_Free then
+         opticalQueued := False;
+         Begin_Bulk (storageSlot,
+                     USB_Optical.Read_Request (opticalQueuedFirst, opticalQueuedCount, storageFormat),
+                     opticalLUN, Accepted);
+         if not Accepted then
+            bulkOwner := Optical_Owner;
+            bulkResult := USB_Optical.Reset_Recovery_Required;
+            bulkPhase := Bulk_Faulted;
+         end if;
+         Progressed := True;
+      end if;
+      Done := not opticalQueued and then bulkOwner = Optical_Owner
+        and then bulkPhase in Bulk_Finished | Bulk_Faulted;
+      Result := (if Done then bulkResult else USB_Optical.Invalid_Status);
+   end Poll_Optical_Read;
+
+   ---------------------------------------------------------------------------
+   --  The disk: probe, commands, sense, reset recovery (BOT 5.3.4)
+   ---------------------------------------------------------------------------
+   --  Linux's sd allows 30 s per command; a stick stalling on wear
+   --  levelling can take seconds. Probe commands get less: a unit that
+   --  does not answer INQUIRY in time is not served.
+   Disk_Command_Timeout_Ms : constant Unsigned_64 := 20_000;
+   Disk_Probe_Timeout_Ms   : constant Unsigned_64 := 5_000;
+   --  A whole probe (every LUN), however the unit answers.
+   Probe_Deadline_Ms       : constant Unsigned_64 := 15_000;
+
+   package Badge_Units renames CuBit.Block_Unit_Badges;
+
+   --  Each device slot's disk (FS-034: any number per controller, one per
+   --  USB device): its unit, state and LUN.
+   type Disk_Record is record
+      Unit : Badge_Units.Maybe_Unit := Badge_Units.No_Unit;
+      Status : Disk_Status;
+      LUN : USB_Bulk_Only.Logical_Unit := 0;
+      --  SYNCHRONIZE CACHE was refused: nothing to commit, flushes pass.
+      No_Cache_Command : Boolean := False;
+   end record;
+   disks : array (Device_Index) of Disk_Record;
+   --  The last unit given; units are never reused while the driver runs.
+   lastUnit : Badge_Units.Maybe_Unit := Badge_Units.No_Unit;
+
+   package Report_State is new Disk_Reports (Device_Index);
+   diskReports : Report_State.State;
+   --  The slot whose report Next_Report gave last (Report_Sent's).
+   reportSlot : Slot_Or_None := 0;
+
+   --  The slot serving Unit, or 0.
+   function Slot_Of (Unit : Badge_Units.Unit) return Slot_Or_None is
+   begin
+      for S in Device_Index loop
+         if disks (S).Unit = Unit then
+            return S;
+         end if;
+      end loop;
+      return 0;
+   end Slot_Of;
+
+   type Disk_Command_State is
+     (Cmd_Free, Cmd_Queued, Cmd_Running, Cmd_Sensing, Cmd_Recovering, Cmd_Finished);
+   type Disk_Command is record
+      State  : Disk_Command_State := Cmd_Free;
+      Slot   : Slot_Or_None := 0;   --  the disk's slot (0: its disk is gone)
+      Block  : SCSI.Command_Block;
+      Result : Disk_Result;
+   end record;
+   cmd : Disk_Command;
+
+   type Probe_State is record
+      Active    : Boolean := False;
+      Running   : Boolean := False;   --  a probe command holds the buffers
+      Slot      : Slot_Or_None := 0;
+      LUN       : USB_Bulk_Only.Logical_Unit := 0;
+      P         : USB_Disk_Probe.Probe;
+      Wait_Until, Started_At : Unsigned_64 := 0;
+   end record;
+   probe : Probe_State;
+
+   type Recovery_Step is
+     (Recovery_Idle, Reset_In, Stop_In, Dequeue_In, Reset_Out, Stop_Out, Dequeue_Out,
+      Mass_Reset, Clear_In, Clear_Out, Recovery_Succeeded);
+   type Recovery_State is record
+      Step    : Recovery_Step := Recovery_Idle;
+      Slot    : Slot_Or_None := 0;
+      Issued  : Boolean := False;
+      Control : Control_Transfer;
+   end record;
+   recovery : Recovery_State;
+
+   --  Slot's disk is gone for good (its unit is never served again); a
+   --  command in flight on it is answered at once, and devmgr is owed a
+   --  Gone report if it heard of the disk.
+   procedure Disk_Lost (Slot : Device_Index; Why : String) is
+   begin
+      if disks (Slot).Status.Presence = Disk_Ready then
+         disks (Slot).Status.Presence := Disk_Gone;
+         Report_State.Vanish (diskReports, Slot);
+         Log ("slot " & D (Natural (Slot)) & " disk gone (" & Why & ") unit=" &
+              D (Unsigned_64 (disks (Slot).Unit)) & " in-flight=" &
+              (if cmd.Slot = Slot then Disk_Command_State'Image (cmd.State) else "none"), True);
+      end if;
+      if cmd.Slot = Slot and then cmd.State in Cmd_Queued | Cmd_Running | Cmd_Sensing | Cmd_Recovering then
+         cmd.Result := (Outcome => Disk_Unavailable, Moved => 0, Sense => SCSI_Disks.No_Error);
+         cmd.State := Cmd_Finished;
+      end if;
+   end Disk_Lost;
+
+   --  Reset recovery of Slot's pipes (BOT 5.3.4): both bulk endpoints
+   --  stopped and their rings restarted past whatever was queued, then the
+   --  Bulk-Only Mass Storage Reset and CLEAR_FEATURE(ENDPOINT_HALT) on each.
+   procedure Start_Recovery (Slot : Device_Index) is
+   begin
+      recovery := (Step => Reset_In, Slot => Slot, Issued => False, Control => <>);
+      Log ("slot " & D (Natural (Slot)) & " storage reset recovery start");
+   end Start_Recovery;
+
+   function Recovering return Boolean is (recovery.Step /= Recovery_Idle);
+
+   procedure Drain_Unit (Slot : Device_Index) is
+      Item : TRB;
+      Found : Boolean;
+   begin
+      loop
+         XHCI_Completions.Take (mailboxStore.all, Slot, units (Slot).In_DCI, Item, Found);
+         exit when not Found;
+      end loop;
+      loop
+         XHCI_Completions.Take (mailboxStore.all, Slot, units (Slot).Out_DCI, Item, Found);
+         exit when not Found;
+      end loop;
+   end Drain_Unit;
+
+   procedure Finish_Recovery (OK : Boolean) is
+      Slot : constant Slot_Or_None := recovery.Slot;
+   begin
+      recovery.Step := Recovery_Idle;
+      if Slot /= 0 and then units (Slot).Present then
+         if OK then
+            Drain_Unit (Slot);
+            units (Slot).Broken := False;
+            Log ("slot " & D (Natural (Slot)) & " storage reset recovery ok");
+         else
+            Log ("slot " & D (Natural (Slot)) & " storage reset recovery failed", True);
          end if;
       end if;
-      Done := bulkPhase in Bulk_Finished | Bulk_Faulted;
-      Result := bulkResult;
-   end Poll_Optical_Read;
+      if Slot /= 0 and then not OK then
+         Disk_Lost (Slot, "recovery failed");
+      end if;
+   end Finish_Recovery;
+
+   procedure Run_Recovery_Step is
+      Slot : constant Slot_Or_None := recovery.Slot;
+      Code : Completion_Code;
+
+      function Endpoint_Command (Kind : TRB_Type; DCI : Natural) return TRB is
+        (if Kind = TRB_SET_TR_DEQUEUE then
+            Command_TRB (Kind, Slot,
+              R.Restart_Pointer
+                (Phys (Device_Offset (Slot, (if DCI = units (Slot).In_DCI then BULK_IN_RING_OFFSET
+                                             else BULK_OUT_RING_OFFSET))),
+                 (if DCI = units (Slot).In_DCI then units (Slot).Bulk_In else units (Slot).Bulk_Out)),
+              Endpoint_Field (Unsigned_32 (DCI)))
+         else Command_TRB (Kind, Slot, Extra => Endpoint_Field (Unsigned_32 (DCI))));
+
+      --  One endpoint command; Next once it completed with an acceptable code.
+      procedure Command_Step (Kind : TRB_Type; DCI : Natural; Next : Recovery_Step) is
+      begin
+         if not recovery.Issued then
+            if Command_Free then
+               Issue_Command (Endpoint_Command (Kind, DCI), Storage_Owner);
+               recovery.Issued := True;
+            end if;
+         elsif Command_Done_For (Storage_Owner) then
+            Code := command.Code;
+            Release_Command;
+            recovery.Issued := False;
+            --  Reset Endpoint on an endpoint that is not halted, and Stop
+            --  Endpoint on one that is not running, complete with Context
+            --  State Error (4.6.8, 4.6.9): the endpoint is stopped either way.
+            if Code = CC_SUCCESS or else
+              (Kind /= TRB_SET_TR_DEQUEUE and then Code = CC_CONTEXT_STATE_ERROR)
+            then
+               recovery.Step := Next;
+            else
+               Log ("slot " & D (Natural (Slot)) & " storage recovery step " &
+                    Recovery_Step'Image (recovery.Step) & " cc=" & Code_Name (Code), True);
+               Finish_Recovery (False);
+            end if;
+         end if;
+      end Command_Step;
+
+      procedure Control_Step
+        (Request_Type, Request : Unsigned_8; Value, Index : Unsigned_16; Next : Recovery_Step) is
+      begin
+         if not recovery.Issued then
+            if ep0State (Slot).Failed then
+               Finish_Recovery (False);
+            elsif not ep0State (Slot).Busy then
+               Start_Control (recovery.Control, Slot, Request_Type, Request, Value, Index, 0, 0);
+               recovery.Issued := True;
+            end if;
+         else
+            Poll_Control (recovery.Control);
+            if not recovery.Control.Active then
+               recovery.Issued := False;
+               if recovery.Control.Result = Control_OK then
+                  recovery.Step := Next;
+               else
+                  Log ("slot " & D (Natural (Slot)) & " storage recovery step " &
+                       Recovery_Step'Image (recovery.Step) & " cc=" &
+                       Code_Name (recovery.Control.Code), True);
+                  Finish_Recovery (False);
+               end if;
+            end if;
+         end if;
+      end Control_Step;
+   begin
+      if Slot = 0 or else not units (Slot).Present then
+         --  The device went away meanwhile.
+         recovery.Step := Recovery_Idle;
+         return;
+      end if;
+      case recovery.Step is
+         when Recovery_Idle => null;
+         when Reset_In    => Command_Step (TRB_RESET_ENDPOINT, units (Slot).In_DCI, Stop_In);
+         when Stop_In     => Command_Step (TRB_STOP_ENDPOINT, units (Slot).In_DCI, Dequeue_In);
+         when Dequeue_In  => Command_Step (TRB_SET_TR_DEQUEUE, units (Slot).In_DCI, Reset_Out);
+         when Reset_Out   => Command_Step (TRB_RESET_ENDPOINT, units (Slot).Out_DCI, Stop_Out);
+         when Stop_Out    => Command_Step (TRB_STOP_ENDPOINT, units (Slot).Out_DCI, Dequeue_Out);
+         when Dequeue_Out => Command_Step (TRB_SET_TR_DEQUEUE, units (Slot).Out_DCI, Mass_Reset);
+         when Mass_Reset  =>
+            Control_Step (TYPE_CLASS_INTERFACE_OUT, USB_Bulk_Only.Mass_Storage_Reset, 0,
+                          Unsigned_16 (units (Slot).Interface_Number), Clear_In);
+         when Clear_In    =>
+            Control_Step (TYPE_ENDPOINT_OUT, REQUEST_CLEAR_FEATURE, FEATURE_ENDPOINT_HALT,
+                          Unsigned_16 (units (Slot).In_Address), Clear_Out);
+         when Clear_Out   =>
+            Control_Step (TYPE_ENDPOINT_OUT, REQUEST_CLEAR_FEATURE, FEATURE_ENDPOINT_HALT,
+                          Unsigned_16 (units (Slot).Out_Address), Recovery_Succeeded);
+         when Recovery_Succeeded =>
+            Finish_Recovery (True);
+      end case;
+   end Run_Recovery_Step;
+
+   function Inquiry_Text (Item : SCSI.Inquiry_Data) return String is
+     (Item.Vendor & " " & Item.Product & " " & Item.Revision);
+
+   --  Starts probing Slot's LUN.
+   procedure Start_Probe (Slot : Device_Index; LUN : USB_Bulk_Only.Logical_Unit) is
+   begin
+      probe := (Active => True, Running => False, Slot => Slot, LUN => LUN,
+                P => USB_Disk_Probe.Start, Wait_Until => 0, Started_At => Now_Ms);
+      units (Slot).Needs_Probe := False;
+   end Start_Probe;
+
+   --  The probe of probe.Slot ended (its LUN's verdict).
+   procedure Finish_Probe is
+      use type USB_Disk_Probe.Step;
+      Slot : constant Slot_Or_None := probe.Slot;
+      P : USB_Disk_Probe.Probe renames probe.P;
+   begin
+      probe.Active := False;
+      if Slot = 0 or else not units (Slot).Present then
+         return;
+      end if;
+      if P.Current /= USB_Disk_Probe.Ready then
+         Log ("slot " & D (Natural (Slot)) & " storage lun=" & D (Natural (probe.LUN)) &
+              " not a disk: " & USB_Disk_Probe.Step'Image (P.Current) & " sense=" &
+              SCSI_Disks.Sense_Meaning'Image (P.Sense),
+              P.Current in USB_Disk_Probe.Failed);
+         if probe.LUN < units (Slot).Last_LUN then
+            Start_Probe (Slot, probe.LUN + 1);
+         end if;
+         return;
+      end if;
+      Log ("slot " & D (Natural (Slot)) & " disk ready lun=" & D (Natural (probe.LUN)) &
+           " blocks=" & D (P.Geometry.Blocks) & " block=" &
+           D (Unsigned_64 (SCSI_Disks.Bytes_Of (P.Geometry.Size))) &
+           " wp=" & (if P.Write_Protected then "1" else "0") &
+           (if P.Mode_Unknown then " (no mode sense)" else "") &
+           " removable=" & (if P.Removable then "1" else "0") &
+           " id=""" & Inquiry_Text (P.Identity) & """");
+      if disks (Slot).Status.Presence /= No_Disk then
+         --  One disk per USB device (its first ready LUN).
+         Log ("slot " & D (Natural (Slot)) & " lun=" & D (Natural (probe.LUN)) &
+              " not served: the device's disk is another LUN");
+         return;
+      elsif lastUnit = Badge_Units.Maximum_Unit then
+         Log ("slot " & D (Natural (Slot)) & " disk not served: CAPACITY units: every one of" &
+              " the driver's units was given (" & D (Unsigned_64 (Badge_Units.Maximum_Unit)) & ")", True);
+         return;
+      elsif Report_State.Has_Disk (diskReports, Slot) or else not Report_State.Valid (diskReports) then
+         return;   --  not reached: a slot's disk is cleared before reuse
+      end if;
+      lastUnit := lastUnit + 1;
+      disks (Slot) := (Unit => lastUnit, LUN => probe.LUN, No_Cache_Command => False,
+                       Status => (Presence => Disk_Ready, Geometry => P.Geometry,
+                                  Write_Protected => P.Write_Protected, Removable => P.Removable,
+                                  Identity => P.Identity));
+      Report_State.Appear (diskReports, Slot, lastUnit, P.Write_Protected);
+      --  The headless usb-disk tests' marker.
+      Trace ("usb disk ready slot=" & D (Natural (Slot)) & " unit=" & D (Unsigned_64 (lastUnit)));
+   end Finish_Probe;
+
+   --  The disk owner's finished transaction, for the probe.
+   procedure Take_Probe_Result is
+      Kind : USB_Bulk_Only.Status_Kind := USB_Bulk_Only.Invalid;
+      Moved : Natural := 0;
+      Faulted : constant Boolean := bulkPhase = Bulk_Faulted;
+      Was : constant USB_Disk_Probe.Step := probe.P.Current;
+      use type USB_Disk_Probe.Step;
+   begin
+      probe.Running := False;
+      if not Faulted then
+         Kind := diskReport.Kind;
+         Moved := Natural (Unsigned_32'Min (diskReport.Moved, USB_Disk_Probe.Largest_Probe_Bytes));
+      end if;
+      declare
+         Data : constant SCSI.Bytes (1 .. Moved) := SCSI.Bytes (bulkData (1 .. Moved));
+      begin
+         bulkPhase := Bulk_Idle;
+         USB_Disk_Probe.Advance (probe.P, Kind, Data);
+      end;
+      if Faulted and then probe.Slot /= 0 and then units (probe.Slot).Present then
+         Start_Recovery (probe.Slot);
+      end if;
+      if probe.P.Current = USB_Disk_Probe.Test_Ready and then Was = USB_Disk_Probe.Read_Sense then
+         probe.Wait_Until := PM.Plus (Now_Ms, USB_Disk_Probe.Ready_Retry_Ms);
+      end if;
+      if probe.P.Current in USB_Disk_Probe.Finished then
+         Finish_Probe;
+      end if;
+   end Take_Probe_Result;
+
+   --  The disk owner's finished transaction, for the served disk.
+   procedure Take_Command_Result is
+      Faulted : constant Boolean := bulkPhase = Bulk_Faulted;
+      Report : constant USB_Bulk_Only.Status_Report := diskReport;
+      use type USB_Bulk_Only.Status_Kind;
+      use type SCSI.Operation_Code;
+      use type SCSI_Disks.Sense_Meaning;
+   begin
+      bulkPhase := Bulk_Idle;
+      case cmd.State is
+         when Cmd_Running =>
+            if Faulted then
+               cmd.Result := (Outcome => Disk_Failed, Moved => 0, Sense => SCSI_Disks.Medium_Failure);
+               if cmd.Slot /= 0 and then units (cmd.Slot).Present then
+                  cmd.State := Cmd_Recovering;
+                  Start_Recovery (cmd.Slot);
+               else
+                  cmd.State := Cmd_Finished;
+               end if;
+            elsif Report.Kind = USB_Bulk_Only.Check_Condition then
+               --  Why: REQUEST SENSE (the unit keeps it for the next command).
+               cmd.State := Cmd_Sensing;
+               Begin_Disk_Bulk (cmd.Slot, SCSI.Request_Sense (SCSI.Fixed_Sense_Bytes), disks (cmd.Slot).LUN,
+                                Disk_Command_Timeout_Ms);
+            elsif USB_Bulk_Only.Complete (Report, cmd.Block.Expected) then
+               cmd.Result := (Outcome => Disk_Passed, Moved => Report.Moved, Sense => SCSI_Disks.No_Error);
+               cmd.State := Cmd_Finished;
+            else
+               --  Passed, but not all of it: a short transfer is a failure.
+               cmd.Result := (Outcome => Disk_Failed, Moved => 0, Sense => SCSI_Disks.Medium_Failure);
+               cmd.State := Cmd_Finished;
+            end if;
+         when Cmd_Sensing =>
+            declare
+               Sense : SCSI.Sense_Data;
+               Valid : Boolean := False;
+               Meaning : SCSI_Disks.Sense_Meaning := SCSI_Disks.Medium_Failure;
+            begin
+               if not Faulted and then Report.Kind = USB_Bulk_Only.Good then
+                  SCSI.Decode_Sense
+                    (SCSI.Bytes (bulkData (1 .. Natural (Unsigned_32'Min (Report.Moved, SCSI.Fixed_Sense_Bytes)))),
+                     Sense, Valid);
+                  if Valid then
+                     Meaning := SCSI_Disks.Meaning (Sense);
+                  end if;
+               end if;
+               cmd.Result := (Outcome => Disk_Failed, Moved => 0, Sense => Meaning);
+               cmd.State := Cmd_Finished;
+               case Meaning is
+                  when SCSI_Disks.Write_Protected =>
+                     if not disks (cmd.Slot).Status.Write_Protected then
+                        disks (cmd.Slot).Status.Write_Protected := True;
+                        Log ("slot " & D (Natural (cmd.Slot)) & " disk write protected (DATA PROTECT)");
+                     end if;
+                  when SCSI_Disks.Medium_Absent | SCSI_Disks.Medium_Changed =>
+                     Disk_Lost (cmd.Slot, SCSI_Disks.Sense_Meaning'Image (Meaning));
+                  when SCSI_Disks.Command_Refused =>
+                     if cmd.Block.Operation = SCSI.Synchronize_Cache_10 then
+                        --  SBC-3: a unit without a volatile cache need not
+                        --  implement SYNCHRONIZE CACHE; its completed
+                        --  writes are on the medium already.
+                        disks (cmd.Slot).No_Cache_Command := True;
+                        cmd.Result := (Outcome => Disk_Passed, Moved => 0, Sense => Meaning);
+                        Log ("slot " & D (Natural (cmd.Slot)) &
+                             " disk refuses SYNCHRONIZE CACHE: no cache to commit");
+                     end if;
+                  when others => null;
+               end case;
+               if Faulted and then cmd.Slot /= 0 and then units (cmd.Slot).Present then
+                  cmd.State := Cmd_Recovering;
+                  Start_Recovery (cmd.Slot);
+               end if;
+            end;
+         when others =>
+            --  Abandoned (Cancel_Disk_Command): nothing waits for it.
+            if Faulted and then cmd.Slot /= 0 and then units (cmd.Slot).Present then
+               Start_Recovery (cmd.Slot);
+            end if;
+      end case;
+   end Take_Command_Result;
+
+   --  Everything storage does without blocking; the boot path and Service
+   --  call it.
+   procedure Run_Storage (Progressed : out Boolean) is
+      Pumped : Boolean;
+   begin
+      Pump_Bulk (Pumped);
+      Progressed := Pumped;
+      if Recovering then
+         Run_Recovery_Step;
+         if not Recovering then
+            Progressed := True;
+            if cmd.State = Cmd_Recovering then
+               cmd.State := Cmd_Finished;
+            end if;
+         end if;
+         return;
+      end if;
+      if bulkOwner = Disk_Owner and then bulkPhase in Bulk_Finished | Bulk_Faulted then
+         if probe.Active and then probe.Running then
+            Take_Probe_Result;
+         else
+            Take_Command_Result;
+         end if;
+         Progressed := True;
+         if Recovering then
+            return;
+         end if;
+      end if;
+      if probe.Active and then not probe.Running
+        and then PM.Since (Now_Ms, probe.Started_At) >= Probe_Deadline_Ms
+      then
+         Log ("slot " & D (Natural (probe.Slot)) & " storage probe gave up after ms=" &
+              D (Probe_Deadline_Ms), True);
+         probe.Active := False;
+      end if;
+      if not Bulk_Free then
+         return;
+      end if;
+      if not probe.Active then
+         for S in 1 .. enabledSlots loop
+            if units (S).Present and then units (S).Needs_Probe then
+               Start_Probe (S, 0);
+               exit;
+            end if;
+         end loop;
+      end if;
+      if probe.Active and then not probe.Running and then Now_Ms >= probe.Wait_Until then
+         if units (probe.Slot).Broken then
+            Start_Recovery (probe.Slot);
+         else
+            probe.Running := True;
+            Begin_Disk_Bulk (probe.Slot, USB_Disk_Probe.Command (probe.P), probe.LUN,
+                             Disk_Probe_Timeout_Ms);
+         end if;
+         Progressed := True;
+      elsif cmd.State = Cmd_Queued then
+         if cmd.Slot = 0 or else disks (cmd.Slot).Status.Presence /= Disk_Ready then
+            cmd.Result := (Outcome => Disk_Unavailable, Moved => 0, Sense => SCSI_Disks.No_Error);
+            cmd.State := Cmd_Finished;
+         elsif units (cmd.Slot).Broken then
+            Start_Recovery (cmd.Slot);
+         else
+            cmd.State := Cmd_Running;
+            Begin_Disk_Bulk (cmd.Slot, cmd.Block, disks (cmd.Slot).LUN, Disk_Command_Timeout_Ms);
+         end if;
+         Progressed := True;
+      end if;
+   end Run_Storage;
+
+   function Disk (Unit : Badge_Units.Unit) return Disk_Status is
+      Slot : constant Slot_Or_None := Slot_Of (Unit);
+   begin
+      if Slot = 0 then
+         return (others => <>);
+      end if;
+      return disks (Slot).Status;
+   end Disk;
+
+   procedure Next_Report (Due : out Boolean; Report : out CuBit.Disk_Presence.Report) is
+   begin
+      Due := False;
+      Report := (others => <>);
+      reportSlot := 0;
+      if not Report_State.Valid (diskReports) then
+         return;
+      end if;
+      for S in Device_Index loop
+         Report_State.Next (diskReports, S, Due, Report);
+         if Due then
+            reportSlot := S;
+            return;
+         end if;
+      end loop;
+   end Next_Report;
+
+   procedure Report_Sent is
+   begin
+      if reportSlot /= 0 and then Report_State.Valid (diskReports) then
+         Report_State.Sent (diskReports, reportSlot);
+      end if;
+      reportSlot := 0;
+   end Report_Sent;
+   function Disk_Buffer return System.Address is
+     (To_Address (Integer_Address (DMA_VIRT_BASE + BULK_DATA_OFFSET)));
+   function Storage_Busy return Boolean is
+     (probe.Active or else Recovering
+      or else (for some S in 1 .. enabledSlots => units (S).Present and then units (S).Needs_Probe));
+   function Optical_Selected return Boolean is (opticalSelected);
+
+   procedure Start_Disk_Command (Unit : Badge_Units.Unit; Block : SCSI.Command_Block) is
+      use type SCSI.Operation_Code;
+      Slot : constant Slot_Or_None := Slot_Of (Unit);
+   begin
+      if Slot /= 0 and then disks (Slot).No_Cache_Command
+        and then Block.Operation = SCSI.Synchronize_Cache_10
+        and then disks (Slot).Status.Presence = Disk_Ready
+      then
+         cmd := (State => Cmd_Finished, Slot => Slot, Block => Block,
+                 Result => (Outcome => Disk_Passed, Moved => 0, Sense => SCSI_Disks.No_Error));
+         return;
+      end if;
+      --  A gone unit's command finishes Disk_Unavailable in Run_Storage.
+      cmd := (State => Cmd_Queued, Slot => Slot, Block => Block, Result => <>);
+   end Start_Disk_Command;
+
+   function Disk_Command_Done return Boolean is (cmd.State = Cmd_Finished);
+
+   function Disk_Command_Result return Disk_Result is
+      Result : constant Disk_Result := cmd.Result;
+   begin
+      cmd.State := Cmd_Free;
+      return Result;
+   end Disk_Command_Result;
+
+   procedure Cancel_Disk_Command is
+   begin
+      if cmd.State /= Cmd_Free then
+         if cmd.Slot /= 0 then
+            Disk_Lost (cmd.Slot, "a command outlived its deadline");
+         end if;
+         cmd.State := Cmd_Free;
+      end if;
+   end Cancel_Disk_Command;
+
+   function Storage_Deadline return Unsigned_64 is
+     (if Bulk_Active then bulkDeadline
+      elsif Recovering or else cmd.State = Cmd_Queued then PM.Plus (Now_Ms, 1)
+      elsif probe.Active then Unsigned_64'Max (probe.Wait_Until, Now_Ms)
+      else Unsigned_64'Last);
 
    ---------------------------------------------------------------------------
    --  Slot release (hotplug detach): Disable Slot (4.6.4) then forget it.
@@ -1448,13 +2144,34 @@ package body XHCI is
             pipes (K) := (others => <>);
          end if;
       end loop;
-      if storageSlot = Slot then
-         storageSlot := 0;
-         if bulkPhase in Command_Out | Data_In | Status_In then
-            bulkResult := USB_Optical.Reset_Recovery_Required;
+      if units (Slot).Present then
+         if bulkSlot = Slot and then Bulk_Active then
+            Fault_Bulk (CC_INVALID, "device gone");
          end if;
-         bulkPhase := Bulk_Faulted;
-         opticalBlocks := 0;
+         units (Slot) := (others => <>);
+         if storageSlot = Slot then
+            storageSlot := 0;
+            if bulkOwner = Optical_Owner then
+               bulkPhase := Bulk_Faulted;
+            end if;
+            opticalBlocks := 0;
+         end if;
+         if probe.Active and then probe.Slot = Slot then
+            probe := (others => <>);
+         end if;
+         if recovery.Step /= Recovery_Idle and then recovery.Slot = Slot then
+            if command.Busy and then command.Owner = Storage_Owner then
+               command.Owner := Orphan_Owner;
+            end if;
+            recovery := (others => <>);
+         end if;
+         Disk_Lost (Slot, "detached");
+         --  The slot may take a new device: its disk record starts over
+         --  (the unit is never given again; a Gone owed stays in reports).
+         if cmd.Slot = Slot then
+            cmd.Slot := 0;
+         end if;
+         disks (Slot) := (others => <>);
       end if;
    end Retire_Slot;
 
@@ -1605,18 +2322,15 @@ package body XHCI is
       Result := INIT_OK;
    end Enumerate_Hub;
 
-   procedure Configure_Storage
+   --  The input context adding Storage's bulk endpoints to Slot (4.6.6).
+   --  False: a transport this driver does not run (full speed, or packet
+   --  sizes the speed does not allow).
+   function Build_Storage_Configure
      (Slot : Device_Index; S : XHCI_Topology.Speed;
-      Configuration : USB_Configurations.Configuration; Result : out Init_Result)
+      Storage : USB_Configurations.Storage_Interface) return Boolean
    is
-      Storage : constant USB_Configurations.Storage_Interface := Configuration.Storage;
       In_DCI : constant Natural := Natural (Storage.Input.Address and USB_ENDPOINT_NUMBER_MASK) * 2 + 1;
       Out_DCI : constant Natural := Natural (Storage.Output.Address and USB_ENDPOINT_NUMBER_MASK) * 2;
-      Actual : Natural;
-      OK : Boolean;
-      Code : Completion_Code;
-      Ignore_Slot : Natural;
-      Done : Boolean;
       Super_Packet : constant := 1024;
       High_Packet : constant := 512;
       procedure Add_Endpoint (DCI : Natural; EP : USB_Configurations.Endpoint;
@@ -1637,28 +2351,54 @@ package body XHCI is
         Storage.Input.Packet_Bytes /= (if S = XHCI_Topology.High_Speed then High_Packet else Super_Packet)
         or else Storage.Output.Packet_Bytes /= Storage.Input.Packet_Bytes
       then
-         Result := INIT_CONFIGURE_FAILED; return;
+         return False;
       end if;
-      Control_Request (Slot, TYPE_DEVICE_OUT, REQUEST_SET_CONFIGURATION,
-                       Unsigned_16 (Configuration.Value), 0, 0, 0, Actual, OK);
-      if not OK then Result := INIT_CONFIGURE_FAILED; return; end if;
       Begin_Configure (Slot, Shift_Left (1, In_DCI) or Shift_Left (1, Out_DCI), Natural'Max (In_DCI, Out_DCI));
       Add_Endpoint (In_DCI, Storage.Input, EP_TYPE_BULK_IN, BULK_IN_RING_OFFSET);
       Add_Endpoint (Out_DCI, Storage.Output, EP_TYPE_BULK_OUT, BULK_OUT_RING_OFFSET);
-      bulkIn := R.Fresh_Producer;
-      bulkOut := R.Fresh_Producer;
+      return True;
+   end Build_Storage_Configure;
+
+   --  Slot's bulk endpoints are configured: a storage unit to probe.
+   procedure Commit_Storage (Slot : Device_Index; Storage : USB_Configurations.Storage_Interface) is
+   begin
+      units (Slot) :=
+        (Present => True,
+         In_DCI => Natural (Storage.Input.Address and USB_ENDPOINT_NUMBER_MASK) * 2 + 1,
+         Out_DCI => Natural (Storage.Output.Address and USB_ENDPOINT_NUMBER_MASK) * 2,
+         In_Address => Storage.Input.Address,
+         Out_Address => Storage.Output.Address,
+         Interface_Number => Storage.Number,
+         Bulk_In => R.Fresh_Producer,
+         Bulk_Out => R.Fresh_Producer,
+         Broken => False,
+         Last_LUN => 0,
+         Needs_Probe => False);
+      Log ("slot " & D (Natural (Slot)) & " storage ok if=" & D (Natural (Storage.Number)) &
+           " in=0x" & H8 (Storage.Input.Address) & " out=0x" & H8 (Storage.Output.Address));
+   end Commit_Storage;
+
+   procedure Configure_Storage
+     (Slot : Device_Index; S : XHCI_Topology.Speed;
+      Configuration : USB_Configurations.Configuration; Result : out Init_Result)
+   is
+      Actual : Natural;
+      OK : Boolean;
+      Code : Completion_Code;
+      Ignore_Slot : Natural;
+      Done : Boolean;
+   begin
+      Control_Request (Slot, TYPE_DEVICE_OUT, REQUEST_SET_CONFIGURATION,
+                       Unsigned_16 (Configuration.Value), 0, 0, 0, Actual, OK);
+      if not OK or else not Build_Storage_Configure (Slot, S, Configuration.Storage) then
+         Result := INIT_CONFIGURE_FAILED; return;
+      end if;
       Submit_Command (Input_Command (TRB_CONFIGURE_ENDPOINT, Slot), Code, Ignore_Slot, Done);
       if not Done or else Code /= CC_SUCCESS then
          Log ("slot " & D (Natural (Slot)) & " configure-ep fail cc=" & Code_Name (Code), True);
          Result := INIT_CONFIGURE_FAILED; return;
       end if;
-      storageSlot := Slot;
-      storageInDCI := In_DCI;
-      storageOutDCI := Out_DCI;
-      storageInterface := Storage.Number;
-      bulkPhase := Bulk_Idle;
-      Log ("slot " & D (Natural (Slot)) & " storage ok if=" & D (Natural (Storage.Number)) &
-           " in=0x" & H8 (Storage.Input.Address) & " out=0x" & H8 (Storage.Output.Address));
+      Commit_Storage (Slot, Configuration.Storage);
       Result := INIT_OK;
    end Configure_Storage;
 
@@ -1833,7 +2573,7 @@ package body XHCI is
       end if;
       Roles := USB_Device_Roles.Select_Roles
         (Configuration, Mouse_Free => pipes (Mouse_Pipe).Slot = 0,
-         Keyboard_Free => pipes (Keyboard_Pipe).Slot = 0, Storage_Free => storageSlot = 0);
+         Keyboard_Free => pipes (Keyboard_Pipe).Slot = 0, Storage_Free => True);
       Log ("slot " & D (Natural (Slot)) & " config ok len=" & D (Total) & " mouse-if=" &
            (if Configuration.Mouse.Present then "1" else "0") & " keyboard-if=" &
            (if Configuration.Keyboard.Present then "1" else "0") & " storage-if=" &
@@ -1860,6 +2600,10 @@ package body XHCI is
       end if;
    end Enumerate_Device;
 
+   --  Boot: every storage unit, in slot order, as the optical medium
+   --  first (its own read-only probe, unchanged since the optical-only
+   --  driver); the first with ISO 9660 content is the boot medium. Every
+   --  other unit is then probed as a disk (Probe_Disks).
    procedure Probe_Optical is
       Actual : Natural;
       OK, Valid : Boolean;
@@ -1868,36 +2612,37 @@ package body XHCI is
       Count : Unsigned_64 := 0;
       Capacity : USB_Optical.Capacity_Result;
       Format : USB_Optical.Sector_Format;
+      Unit : Slot_Or_None := 0;
       use type USB_Optical.Status_Result;
       use type USB_Optical.Capacity_Result;
-      function Run (Kind : USB_Optical.Probe_Kind; LUN : USB_Optical.Logical_Unit) return Boolean is
-         Accepted, Done, Progressed : Boolean;
+      function Wait return USB_Optical.Status_Result is
+         Done, Progressed : Boolean;
          Result : USB_Optical.Status_Result;
          Ignore : Unsigned_64;
       begin
-         Begin_Bulk (USB_Optical.Probe (Kind), LUN, Accepted);
-         if not Accepted then return False; end if;
          loop
             Poll_Optical_Read (Done, Result, Progressed);
             exit when Done;
             if not Progressed then Ignore := CuBit.Waits.Sleep_For (1); end if;
          end loop;
-         return Result = USB_Optical.Command_Passed;
+         return Result;
+      end Wait;
+      function Run (Kind : USB_Optical.Probe_Kind; LUN : USB_Optical.Logical_Unit) return Boolean is
+         Accepted : Boolean;
+      begin
+         Begin_Bulk (Unit, USB_Optical.Probe (Kind), LUN, Accepted);
+         if not Accepted then return False; end if;
+         return Wait = USB_Optical.Command_Passed;
       end Run;
       ISO_Primary_Sector : constant := 16;
       function Has_ISO (LUN : USB_Optical.Logical_Unit) return Boolean is
-         Accepted, Done, Progressed : Boolean;
+         Accepted : Boolean;
          Result : USB_Optical.Status_Result;
-         Ignore : Unsigned_64;
       begin
          if Count <= ISO_Primary_Sector then return False; end if;
-         Begin_Bulk (USB_Optical.Read_Request (ISO_Primary_Sector, 1, Format), LUN, Accepted);
+         Begin_Bulk (Unit, USB_Optical.Read_Request (ISO_Primary_Sector, 1, Format), LUN, Accepted);
          if not Accepted then return False; end if;
-         loop
-            Poll_Optical_Read (Done, Result, Progressed);
-            exit when Done;
-            if not Progressed then Ignore := CuBit.Waits.Sleep_For (1); end if;
-         end loop;
+         Result := Wait;
          --  Admission signature only ("CD001", version 1); the filesystem
          --  validates the descriptor with its hostile-input decoder.
          return Result = USB_Optical.Command_Passed and then
@@ -1906,73 +2651,118 @@ package body XHCI is
            bulkData (4) = Character'Pos ('0') and then bulkData (5) = Character'Pos ('0') and then
            bulkData (6) = Character'Pos ('1') and then bulkData (7) = 1;
       end Has_ISO;
-   begin
-      if storageSlot = 0 then return; end if;
-      Control_Request (storageSlot, TYPE_CLASS_INTERFACE_IN, BOT_GET_MAX_LUN, 0,
-                       Unsigned_16 (storageInterface), 1, Descriptor_Buffer (storageSlot), Actual, OK);
-      Outcome := (if OK then USB_Optical.Control_Success else USB_Optical.Control_Error);
-      if not OK and then lastControlCode = CC_STALL and then Recover_Control_Stall (storageSlot) then
-         Outcome := USB_Optical.Control_Stall;
-      end if;
-      declare
-         Data : USB_Optical.Bytes (1 .. Actual);
+      --  Unit's LUNs; True when one holds the boot medium.
+      function Probe_Unit return Boolean is
       begin
-         for I in Data'Range loop
-            Data (I) := deviceDMA (storageSlot).descriptorBytes (I - 1);
-         end loop;
-         USB_Optical.Decode_Max_LUN (Outcome, Data, Last_LUN, Valid);
-      end;
-      if not Valid then
-         Log ("slot " & D (Natural (storageSlot)) & " storage fail invalid LUN discovery", True);
-         return;
-      end if;
-      for LUN in USB_Optical.Logical_Unit range 0 .. Last_LUN loop
-         if Run (USB_Optical.Inquiry, LUN) then
-            declare
-               Inquiry : constant USB_Optical.Bytes (1 .. 36) := bulkData (1 .. 36);
-            begin
-               if USB_Optical.Is_Supported_Inquiry (Inquiry) then
-                  for Attempt in 1 .. 5 loop
-                     exit when Run (USB_Optical.Test_Unit_Ready, LUN);
-                     OK := Run (USB_Optical.Request_Sense, LUN);
-                  end loop;
-                  if Run (USB_Optical.Read_Capacity, LUN) then
-                     declare
-                        Response : constant USB_Optical.Bytes (1 .. 8) := bulkData (1 .. 8);
-                     begin
-                        USB_Optical.Decode_Capacity (Response, Count, Capacity, Format);
-                     end;
-                     if Capacity = USB_Optical.Capacity_Valid and then Has_ISO (LUN) then
-                        opticalLUN := LUN;
-                        opticalBlocks := Count;
-                        storageFormat := Format;
-                        Log ("slot " & D (Natural (storageSlot)) & " optical ok lun=" &
-                             D (Natural (LUN)) & " blocks=" & D (Count) & " sector=" &
-                             D (Natural (2048 / USB_Optical.Sectors_Per_Block (Format))));
-                        --  The live-boot regression's marker.
-                        Trace ("optical LUN=" & D (Natural (LUN)));
-                        return;
+         Control_Request (Unit, TYPE_CLASS_INTERFACE_IN, BOT_GET_MAX_LUN, 0,
+                          Unsigned_16 (units (Unit).Interface_Number), 1,
+                          Descriptor_Buffer (Unit), Actual, OK);
+         Outcome := (if OK then USB_Optical.Control_Success else USB_Optical.Control_Error);
+         if not OK and then lastControlCode = CC_STALL and then Recover_Control_Stall (Unit) then
+            Outcome := USB_Optical.Control_Stall;
+         end if;
+         declare
+            Data : USB_Optical.Bytes (1 .. Actual);
+         begin
+            for I in Data'Range loop
+               Data (I) := deviceDMA (Unit).descriptorBytes (I - 1);
+            end loop;
+            USB_Optical.Decode_Max_LUN (Outcome, Data, Last_LUN, Valid);
+         end;
+         if not Valid then
+            Log ("slot " & D (Natural (Unit)) & " storage fail invalid LUN discovery", True);
+            return False;
+         end if;
+         units (Unit).Last_LUN := Last_LUN;
+         for LUN in USB_Optical.Logical_Unit range 0 .. Last_LUN loop
+            if Run (USB_Optical.Inquiry, LUN) then
+               declare
+                  Inquiry : constant USB_Optical.Bytes (1 .. 36) := bulkData (1 .. 36);
+               begin
+                  if USB_Optical.Is_Supported_Inquiry (Inquiry) then
+                     for Attempt in 1 .. 5 loop
+                        exit when Run (USB_Optical.Test_Unit_Ready, LUN);
+                        OK := Run (USB_Optical.Request_Sense, LUN);
+                     end loop;
+                     if Run (USB_Optical.Read_Capacity, LUN) then
+                        declare
+                           Response : constant USB_Optical.Bytes (1 .. 8) := bulkData (1 .. 8);
+                        begin
+                           USB_Optical.Decode_Capacity (Response, Count, Capacity, Format);
+                        end;
+                        if Capacity = USB_Optical.Capacity_Valid and then Has_ISO (LUN) then
+                           opticalLUN := LUN;
+                           opticalBlocks := Count;
+                           storageFormat := Format;
+                           Log ("slot " & D (Natural (Unit)) & " optical ok lun=" &
+                                D (Natural (LUN)) & " blocks=" & D (Count) & " sector=" &
+                                D (Natural (2048 / USB_Optical.Sectors_Per_Block (Format))));
+                           --  The live-boot regression's marker.
+                           Trace ("optical LUN=" & D (Natural (LUN)));
+                           return True;
+                        end if;
                      end if;
                   end if;
-               end if;
-            end;
+               end;
+            end if;
+         end loop;
+         Log ("slot " & D (Natural (Unit)) & " optical fail no supported medium", True);
+         return False;
+      end Probe_Unit;
+   begin
+      for S in 1 .. enabledSlots loop
+         if units (S).Present then
+            Unit := S;
+            if not opticalSelected and then Probe_Unit then
+               storageSlot := S;
+               opticalSelected := True;
+            else
+               units (S).Needs_Probe := True;
+            end if;
+            Release_Optical_Read;
          end if;
       end loop;
-      Log ("slot " & D (Natural (storageSlot)) & " optical fail no supported medium", True);
    end Probe_Optical;
+
+   --  Boot: the disk probes Probe_Optical left, to their end (bounded by
+   --  Probe_Deadline_Ms each), before devmgr's configure reply.
+   procedure Probe_Disks is
+      Progressed : Boolean;
+      Ignore : Unsigned_64;
+   begin
+      while Storage_Busy loop
+         if Collect_Event then
+            null;
+         end if;
+         Poll_Command;
+         Run_Storage (Progressed);
+         if not Progressed then
+            Ignore := CuBit.Waits.Sleep_For (1);
+         end if;
+      end loop;
+   end Probe_Disks;
 
    function Optical_Block_Count return Unsigned_64 is (opticalBlocks);
    function Optical_Read_Buffer return System.Address is
      (To_Address (Integer_Address (DMA_VIRT_BASE + BULK_DATA_OFFSET)));
    function Optical_Deadline return Unsigned_64 is
-     (if bulkPhase in Command_Out | Data_In | Status_In then bulkDeadline else Unsigned_64'Last);
+     (if opticalQueued then PM.Plus (Now_Ms, 1)
+      elsif bulkOwner = Optical_Owner and then Bulk_Active then bulkDeadline
+      else Unsigned_64'Last);
    procedure Start_Optical_Read
      (First : Unsigned_32; Count : USB_Optical.Read_Block_Count; Accepted : out Boolean) is
    begin
       Accepted := False;
       if not USB_Optical.Read_Fits (First, Count, opticalBlocks) then return; end if;
       if First > Unsigned_32'Last / USB_Optical.Sectors_Per_Block (storageFormat) then return; end if;
-      Begin_Bulk (USB_Optical.Read_Request (First, Count, storageFormat), opticalLUN, Accepted);
+      Begin_Bulk (storageSlot, USB_Optical.Read_Request (First, Count, storageFormat), opticalLUN, Accepted);
+      if not Accepted and then storageSlot /= 0 and then not units (storageSlot).Broken then
+         --  The disk holds the bulk buffers: this read follows it.
+         opticalQueued := True;
+         opticalQueuedFirst := First;
+         opticalQueuedCount := Count;
+         Accepted := True;
+      end if;
    end Start_Optical_Read;
 
    ---------------------------------------------------------------------------
@@ -2336,7 +3126,9 @@ package body XHCI is
    function Device_Slot return Natural is (activeSlot);
    function Has_Keyboard return Boolean is (pipes (Keyboard_Pipe).Slot /= 0);
    function Has_Mouse return Boolean is (pipes (Mouse_Pipe).Slot /= 0);
-   function Has_Storage return Boolean is (storageSlot /= 0);
+   function Has_Storage return Boolean is (opticalSelected);
+   function Has_Disk return Boolean is
+     (for some S in Device_Index => disks (S).Status.Presence = Disk_Ready);
 
    procedure Start_Boot_Mouse_Transfers is
    begin
@@ -2715,16 +3507,16 @@ package body XHCI is
                   Engine_Done (False, "config fail malformed");
                   return;
                end if;
-               --  Hubs and storage are boot-time devices for now.
+               --  Hubs are boot-time devices for now.
                engine.Roles := USB_Device_Roles.Select_Roles
                  (engine.Configuration, Mouse_Free => pipes (Mouse_Pipe).Slot = 0,
-                  Keyboard_Free => pipes (Keyboard_Pipe).Slot = 0, Storage_Free => False);
+                  Keyboard_Free => pipes (Keyboard_Pipe).Slot = 0, Storage_Free => True);
                Log ("slot " & D (Natural (engine.Slot)) & " config ok len=" & D (engine.Total) &
                     " mouse-if=" & (if engine.Configuration.Mouse.Present then "1" else "0") &
                     " keyboard-if=" & (if engine.Configuration.Keyboard.Present then "1" else "0") &
                     " role=" & USB_Device_Roles.Role_Name (engine.Roles.Kind));
-               if engine.Roles.Kind /= USB_Device_Roles.HID_Role then
-                  Engine_Done (False, "config fail unsupported on hotplug (hub, storage or no free role)");
+               if engine.Roles.Kind not in USB_Device_Roles.HID_Role | USB_Device_Roles.Storage_Role then
+                  Engine_Done (False, "config fail unsupported on hotplug (hub or no free role)");
                   return;
                end if;
                Engine_Next (Engine_Set_Config);
@@ -2736,6 +3528,16 @@ package body XHCI is
             if Engine_Control_Finished then
                if not Engine_Control_OK then
                   Engine_Done (False, "set-config fail cc=" & Code_Name (engine.Control.Code));
+                  return;
+               end if;
+               if engine.Roles.Kind = USB_Device_Roles.Storage_Role then
+                  if not Build_Storage_Configure
+                    (engine.Slot, XHCI_Topology.Device_Speed (engine.Path), engine.Configuration.Storage)
+                  then
+                     Engine_Done (False, "storage fail unsupported speed or packet size");
+                     return;
+                  end if;
+                  Engine_Next (Engine_Configure);
                   return;
                end if;
                if engine.Roles.Mouse then
@@ -2756,6 +3558,14 @@ package body XHCI is
                Release_Command;
                if Code /= CC_SUCCESS then
                   Engine_Done (False, "configure-ep fail cc=" & Code_Name (Code));
+                  return;
+               end if;
+               if engine.Roles.Kind = USB_Device_Roles.Storage_Role then
+                  Commit_Storage (engine.Slot, engine.Configuration.Storage);
+                  --  Run_Storage probes it (USB_Disk_Probe, LUN 0 on
+                  --  hotplug), never as the boot medium.
+                  units (engine.Slot).Needs_Probe := True;
+                  Engine_Done (True, "role=storage");
                   return;
                end if;
                Engine_Next (if engine.Roles.Mouse then Engine_Protocol_Mouse else Engine_Protocol_Keyboard);
@@ -2968,6 +3778,7 @@ package body XHCI is
 
    procedure Service (Progressed : out Boolean) is
       Now : constant Unsigned_64 := Now_Ms;
+      Storage_Progress : Boolean := False;
       Consumed : Natural;
       Interrupted : constant Boolean := ehbPending;
       Before : constant Unsigned_64 := health.Events;
@@ -3015,6 +3826,7 @@ package body XHCI is
       end loop;
       Run_Port_Recovery;
       Run_Engine;
+      Run_Storage (Storage_Progress);
       for Port in 1 .. maxPorts loop
          if PM.Next_Deadline (ports (Port)) <= Now then
             Port_Step (Port, False);
@@ -3027,7 +3839,7 @@ package body XHCI is
          end if;
          healthDue := PM.Plus (Now, Health_Interval_Ms);
       end if;
-      Progressed := Consumed > 0 or else health.Events /= Before;
+      Progressed := Consumed > 0 or else health.Events /= Before or else Storage_Progress;
    end Service;
 
    function Interrupts_Trusted return Boolean is (interruptsTrusted);
@@ -3047,6 +3859,7 @@ package body XHCI is
          Deadline := Unsigned_64'Min (Deadline, command.Deadline);
       end if;
       Deadline := Unsigned_64'Min (Deadline, portRecoveryDue);
+      Deadline := Unsigned_64'Min (Deadline, Storage_Deadline);
       if engine.Step = Engine_Address_Recovery then
          Deadline := Unsigned_64'Min (Deadline, engine.Wait_Until);
       end if;
