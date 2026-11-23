@@ -136,6 +136,8 @@
         in {
           default = pkgs.mkShell {
             packages = with pkgs; [
+              # Pinned by flake.lock; native ACPI gates compile ASL fixtures.
+              acpica-tools
               alire
               # The test PKI (tests/tls/make-pki.sh) needs OpenSSL >= 3.4
               # (x509 -not_before/-not_after); pin it here, not the host's.

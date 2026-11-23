@@ -8271,15 +8271,21 @@ cpu-times-check: write to the CPU times page armed
         # Events: q35 declares two general-purpose event methods, so the
         # event stage serves CONSUMERS; the EC scan must find no EC with no
         # node errors (image 27: unrelated _STA failures were fatal).
+        expected_acpi_tables=8
+        expected_acpi_modules=2
+        if [ -n "${ACPI_CMOS_REACH_TABLE:-}" ]; then
+            expected_acpi_tables=9
+            expected_acpi_modules=3
+        fi
         required_markers="
 acpi: stage service-start ok one-service
 acpi: stage hardware-config ok memory=
 pool=1 pci=1
-acpi: stage snapshot ok tables= 8 bytes=
+acpi: stage snapshot ok tables= $expected_acpi_tables bytes=
 acpi: stage aml-startup ok FINISHED
 acpi: stage hardware ok registers=
 acpi: stage memory-bridge ok pool=1 cache=1 pci=1
-completed= 2
+completed= $expected_acpi_modules charged=
 acpi: stage sleep-registers ok 
 acpi: stage finish-startup ok setup=CLOSED
 acpi: stage runtime ok LOCAL_IDLE
@@ -8289,6 +8295,7 @@ acpi: stage registration ok STARTING
 acpi: bring-up reached registration (4/4) hardware=LOCAL
 acpi-metrics-check: metrics reply well formed PASS
 acpi-metrics-check: phase complete PASS
+acpi-metrics-check: tables captured= $expected_acpi_tables installed= $expected_acpi_tables
 acpi-metrics-check: every expected table installed PASS
 acpi-metrics-check: revision stable across reads PASS
 TEST: PASS acpi-metrics
