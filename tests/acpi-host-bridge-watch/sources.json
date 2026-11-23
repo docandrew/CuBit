@@ -916,11 +916,11 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_host_bridge_owners.adb",
-      "sha256": "85659abb33032ed00ce72dd4428c3c200179597b0b362ea8aa04682f496524e4"
+      "sha256": "dca8cd651ef21fa1f5e622c4dd93f64f512eb9f4627d53044b12ac2f82f4c54b"
     },
     {
       "path": "userspace/services/acpi/native/acpi_host_bridge_owners.ads",
-      "sha256": "07a4f3d3e7399208e8a3c219e0662ac885cada97ddadf281e690945aec132654"
+      "sha256": "e7b7bffe44dd8a5ad68e43cab30a9101f85c59f2c530ff159028b94f7d27e34a"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_endpoint.adb",

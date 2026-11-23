@@ -99,11 +99,11 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_host_bridge_owners.adb",
-      "sha256": "85659abb33032ed00ce72dd4428c3c200179597b0b362ea8aa04682f496524e4"
+      "sha256": "dca8cd651ef21fa1f5e622c4dd93f64f512eb9f4627d53044b12ac2f82f4c54b"
     },
     {
       "path": "userspace/services/acpi/native/acpi_host_bridge_owners.ads",
-      "sha256": "07a4f3d3e7399208e8a3c219e0662ac885cada97ddadf281e690945aec132654"
+      "sha256": "e7b7bffe44dd8a5ad68e43cab30a9101f85c59f2c530ff159028b94f7d27e34a"
     },
     {
       "path": "userspace/services/acpi/resource-consumer/acpi_host_bridge_projection.adb",
@@ -1137,7 +1137,7 @@
     },
     {
       "path": "helpers/owner_tests.adb",
-      "sha256": "172bcd5034f3336b04959344054b541591475f8a8707ee998b997e54954412c8"
+      "sha256": "4d9dd74d091afe54080f37e94160c56e94c9774210c3e28f8df90b355998f01a"
     },
     {
       "path": "helpers/root_test_support.adb",
@@ -1211,7 +1211,7 @@
     "native_maintenance_tests.adb"
   ],
   "expected": {
-    "owner_tests": 1606,
+    "owner_tests": 1784,
     "snapshot_tests": 2362654,
     "channel_tests": 537161,
     "boundary_tests": 523982,
@@ -1220,9 +1220,9 @@
     "retained_tests": 284,
     "native_maintenance_tests": 768
   },
-  "scope": "Actual host-bridge manager/scheduler/query/collector/codec/channel with actual Requests/Core; explicit modeled endpoint/events/module logging, IPC/grants/clock/heap boundary helpers. Excludes native Main/SCI/admission composition execution. Tests actual native maintenance callback by exact extraction with modeled hardware/passive/power boundaries; includes exclusive-window scheduling and publication quarantine. Native Main as a whole is not executed.",
+  "scope": "Actual host-bridge manager/scheduler/query/collector/codec/channel with actual Requests/Core; explicit modeled endpoint/events/module logging, IPC/grants/clock/heap boundary helpers. Excludes native Main/SCI/admission composition execution. Tests actual native maintenance callback by exact extraction with modeled hardware/passive/power boundaries; includes exclusive-window scheduling and publication quarantine. Native Main as a whole is not executed. Includes natural discovery timeout with an acknowledged producer and pending candidate, suspended metadata discovery, normal service without query replay, and real-stop retirement.",
   "native_extraction": {
     "path": "userspace/services/acpi/native/acpi_native_instance.adb",
-    "sha256": "e3f3f14e8353f7d971fa64067f5045084704591c30c1e9fb8f4ac288bb6f7af2"
+    "sha256": "4517600d64330100cadba5ad3cf6893f566056857d194b3d47eb8f37343c33e6"
   }
 }

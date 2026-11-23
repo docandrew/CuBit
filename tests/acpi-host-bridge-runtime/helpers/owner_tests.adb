@@ -41,7 +41,7 @@ procedure Owner_Tests is
       for X of Data loop Sum := Sum + X; end loop; Data (10) := 0 - Sum; return Data;
    end Image;
    procedure Scenario (Width : Integer_Width; Mode : Positive) is
-      Data : constant Bytes := Image (Width, Mode = 18);
+      Data : constant Bytes := Image (Width, Mode in 18 | 24);
       Owner : aliased Q.State (1, Data'Length, Data'Length, 1, 0,
         Value_Object_Capacity => 256, Value_Byte_Capacity => 2048, Value_Element_Capacity => 128);
       type Owner_Access is access all Q.State;
@@ -148,7 +148,22 @@ procedure Owner_Tests is
       elsif Mode = 3 then Check (Manager.Observe.Why = O.Clock_Failed, "initial missing clock"); Clock_OK := True;
       else Check (Manager.Blocks_AML, "capture excludes other AML"); end if;
       if Mode = 1 then Manager.Request_Stop;
-      elsif Mode = 5 then Us := 1000; Ms := 1000;
+      elsif Mode = 5 then
+         Us := 1000; Ms := 1000;
+         Advance;
+         Check (Manager.Observe.Stage = O.Suspended and not Manager.Blocks_AML,
+           "natural metadata deadline suspends discovery without global retirement");
+         Manager.Request_Stop;
+      elsif Mode = 25 then
+         Manager.Suspend_Discovery (O.Deadline_Expired);
+         Check (Manager.Observe.Stage = O.Suspended and not Manager.Blocks_AML,
+           "metadata-only suspension releases enumeration admission");
+         Check (not Manager.Observe.Stop_Requested and Manager.Observe.Had_Errors,
+           "suspension is explicit degradation, not global stop");
+         Advance;
+         Check (Normal_Turns > 0 and Begins = 0 and Evaluations = 0,
+           "suspended metadata scan serves normal work before a real stop");
+         Manager.Request_Stop;
       elsif Mode not in 2 | 3 then
          for Turn in 1 .. 100 loop
             Advance;
@@ -157,7 +172,7 @@ procedure Owner_Tests is
          Check (not Manager.Blocks_AML, "metadata claim released before queries");
          if Mode = 6 then
             Advance; Check (Manager.Blocks_AML, "query window excludes peers"); Manager.Request_Stop;
-         elsif Mode in 9 | 11 .. 16 | 18 .. 21 then
+         elsif Mode in 9 | 11 .. 16 | 18 .. 21 | 24 then
             for Turn in 1 .. 100 loop
                Advance;
                exit when Q.Retained_Results_Pending (Owner);
@@ -230,6 +245,38 @@ procedure Owner_Tests is
                      Check (Handled and Manager.Observe.Stop_Requested and Manager.Observe.Why = O.Transport_Ended,
                        "parked accepted-session end starts known cleanup");
                   else Manager.Request_Stop; end if;
+               elsif Mode = 24 then
+                  Check (Manager.Observe.Stage = O.Starting_Query
+                    and Manager.Observe.Held_Sessions = 1 and not Manager.Blocks_AML,
+                    "accepted first root with a remaining candidate matches laptop boundary");
+                  Us := 1000; Ms := 1000;
+                  Advance;
+                  Check (Manager.Observe.Stage = O.Suspended
+                    and Manager.Observe.Held_Sessions = 1
+                    and Manager.Observe.Why = O.Deadline_Expired
+                    and not Manager.Blocks_AML and not Manager.Observe.Stop_Requested,
+                    "discovery deadline keeps acknowledged producer and opens normal service");
+                  declare
+                     Queries : constant Natural := Evaluations;
+                     Opens : constant Natural := CuBit.Channels.Open_Calls;
+                     Normal_Before : constant Natural := Normal_Turns;
+                  begin
+                     Clock_OK := False;
+                     for Turn in 1 .. 3 loop Advance; end loop;
+                     Check (Normal_Turns = Normal_Before + 3
+                       and Evaluations = Queries and CuBit.Channels.Open_Calls = Opens
+                       and CuBit.Channels.Close_Calls = 0,
+                       "suspended publication serves normal work without replay or revocation");
+                     Scheduler.Maintain (Wake, Healthy);
+                     Check (Healthy and Wake = 9000
+                       and Manager.Wake_Deadline = CuBit.Messages.Wait_Forever,
+                       "expired discovery has no polling deadline or maintenance stop");
+                     Manager.Suspend_Discovery (O.Clock_Failed);
+                     Check (Manager.Observe.Why = O.Deadline_Expired,
+                       "suspension preserves the original failure");
+                     Clock_OK := True;
+                  end;
+                  Manager.Request_Stop;
                elsif Mode = 20 then
                   Check (Manager.Observe.Held_Sessions = 1 and Power_Turns = 0,
                     "saved power request begins while accepted bridge session still exists");
@@ -277,7 +324,7 @@ procedure Owner_Tests is
       Check (not Q.Retained_Results_Pending (Owner), "no retained AML left");
       Check (Normal_Turns > 0 or Mode in 1 .. 6 | 8 | 9 | 10 | 17, "normal work resumes at quiet boundaries");
       Check (Power_Turns = (if Mode = 20 then 1 else 0), "power callback runs only after actual bridge retirement");
-      if Mode in 9 | 11 .. 16 | 18 .. 21 then
+      if Mode in 9 | 11 .. 16 | 18 .. 21 | 24 then
          Check (Begins = (if Mode = 18 then 4 else 3) and Ends = Begins, "each actual window closes once");
          Check (CuBit.Channels.Open_Calls = (if Mode = 9 then 0 elsif Mode = 18 then 2 else 1), "one transport per identified root");
          if Mode = 18 then
@@ -295,5 +342,8 @@ procedure Owner_Tests is
    end Scenario;
 begin
    for Width in Integer_Width loop for Mode in 1 .. 21 loop Scenario (Width, Mode); end loop; end loop;
+   for Width in Integer_Width loop
+      Scenario (Width, 24); Scenario (Width, 25);
+   end loop;
    Ada.Text_IO.Put_Line ("Host bridge manager checks" & Checks'Image);
 end Owner_Tests;

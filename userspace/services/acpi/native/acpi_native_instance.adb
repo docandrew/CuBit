@@ -129,7 +129,7 @@ package body ACPI_Native_Instance is
      (L.State_Access, Bridge_Metadata_Ready, Bridge_Query_Ready, HB_Windows.Current,
       HB_Windows.Clock, HB_Windows.Begin_Window, HB_Windows.End_Window,
       One.Runtime.Evaluate_Named, Bridge_Correlation, HB.G.Canonical_Reasons);
-   use type HB.Phase;
+   use type HB.Phase, HB.Failure;
    procedure Maybe_Start_Bridges (Server : in out ACPI_Requests.State) is
       Us, Ms : Unsigned_64; Good : Boolean;
    begin
@@ -1089,6 +1089,7 @@ package body ACPI_Native_Instance is
          Until_Ms : Unsigned_64 := 0;
          Routes_Ready, Publication_Complete : Boolean := False;
          Publication_Reason : ACPI_Native_Server.Stop_Reason;
+         Stopped_At : Unsigned_64;
          procedure Advance_Publication (Server : in out ACPI_Requests.State;
             Outcome : out ACPI_Native_Server.Owner_Outcome) is
          begin
@@ -1145,9 +1146,25 @@ package body ACPI_Native_Instance is
          Publication_Loop.Serve (Owner.all, Publication_Reason);
          Completed := Publication_Complete
            and then Publication_Reason = ACPI_Native_Server.Owner_Work_Refused;
+         if not Completed then
+            if Publication_Reason = ACPI_Native_Server.Stop_Requested then
+               Reason := Publication_Reason;
+               Stop_Served := True;
+               return;
+            end if;
+            Stopped_At := CuBit.Monotonic.Milliseconds;
+            Bridges.Suspend_Discovery
+              ((if Stopped_At = CuBit.Messages.Wait_Forever then HB.Clock_Failed
+                elsif Stopped_At >= Until_Ms then HB.Deadline_Expired
+                else HB.Window_Refused));
+         end if;
          ACPI_Native_Diagnostic_Output.Write
-           ("acpi: stage host-bridge-before-events " & (if Completed then "ok " else "fail ") &
-            (if Completed then "BOUNDARY_CLOSED" else "PUBLICATION_STOPPED") &
+           ("acpi: stage host-bridge-before-events " & (if Completed then "ok " else "degraded ") &
+            (if Completed then "BOUNDARY_CLOSED" else "PUBLICATION_SUSPENDED") &
+            " stage=" & Bridges.Observe.Stage'Image &
+            " why=" & Bridges.Observe.Why'Image &
+            " loop=" & Publication_Reason'Image &
+            " aml-held=" & (if Bridges.Blocks_AML then "1" else "0") &
             " acknowledged=" & Bridges.Observe.Acknowledged'Image &
             " held=" & Bridges.Observe.Held_Sessions'Image, False);
       end Publish_Bridges_Before_Events;
@@ -1719,7 +1736,26 @@ package body ACPI_Native_Instance is
       declare Published : Boolean;
       begin
          Publish_Bridges_Before_Events (Published);
-         if not Published then return; end if;
+         if not Published then
+            if Stop_Served then return; end if;
+            if Bridges.Observe.Stage /= HB.Suspended
+              or else Bridges.Observe.Why /= HB.Deadline_Expired or else Bridges.Blocks_AML
+              or else One.Runtime.Current /= One.Runtime.Status.Idle
+              or else not ACPI_Native_Event_Domain.Diagnostics_Quiet (Owner.all)
+            then
+               -- An uncertain original owner is never reopened. Keep copied
+               -- service and acknowledged bridge sessions available instead
+               -- of entering global cleanup just because publication stopped.
+               Startup_Diagnostic_Checkpoint;
+               Close_SCI;
+               Enter_Phase (Phase_Trace.Serve);
+               Serve_Preserved_Bridges;
+               Leave_Phase (Phase_Trace.Serve, Serve_Phase_Result (Reason),
+                 Reason = ACPI_Native_Server.Stop_Requested);
+               Stop_Served := Reason = ACPI_Native_Server.Stop_Requested;
+               return;
+            end if;
+         end if;
       end;
       -- The SCI, once the namespace and device _INI are done: arm it, then
       -- serve. Not armed is a typed state; nothing polls instead.
