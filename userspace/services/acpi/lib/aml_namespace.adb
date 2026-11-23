@@ -48,6 +48,11 @@ package body AML_Namespace with SPARK_Mode is
    use type AML_References.Node_Position;
    use type AML_Decode.Bytes;
    use type AML_Objects.State, AML_Objects.Clone_Status;
+   -- Keep the old complete state as the prefix. GNAT 15.3 crashes lowering
+   -- direct Tree'Old.Values projections in checked postconditions.
+   function Same_Values (Tree, Prior : State) return Boolean is
+     (Tree.Values = Prior.Values) with Ghost;
+
    use type AML_Execute.Declaration_Status;
    use type AML_Execute.Execution_Status;
    subtype Code_Storage is AML_Decode.Bytes (1 .. Aggregate_Method_Capacity);
@@ -865,7 +870,7 @@ package body AML_Namespace with SPARK_Mode is
    procedure End_Method (Tree : in out State; Scope : Natural)
      with Pre => Valid_Context (Tree),
        Post => Valid_Context (Tree) and then Tree.Root_Value = Tree'Old.Root_Value
-         and then Tree.Values = Tree'Old.Values
+         and then Same_Values (Tree, Tree'Old)
          and then Last_Incarnation (Tree) = Last_Incarnation (Tree'Old)
          and then Tree.Used <= Tree'Old.Used and then Tree.Code_Used <= Tree'Old.Code_Used
          and then (if Scope > 0 and then Scope <= Tree'Old.Used
@@ -919,7 +924,7 @@ package body AML_Namespace with SPARK_Mode is
       for I in Kept_Code + 1 .. Tree.Code_Used loop
          pragma Loop_Invariant (Tree.Used = Tree'Loop_Entry.Used);
          pragma Loop_Invariant (Tree.Items = Tree'Loop_Entry.Items);
-         pragma Loop_Invariant (Tree.Values = Tree'Loop_Entry.Values);
+         pragma Loop_Invariant (Same_Values (Tree, Tree'Loop_Entry));
          pragma Loop_Invariant (Tree.Code_Used = Tree'Loop_Entry.Code_Used);
          Tree.Code (I) := 0;
       end loop;
@@ -1280,7 +1285,7 @@ package body AML_Namespace with SPARK_Mode is
       Code : AML_Decode.Bytes; Status : out AML_Execute.Declaration_Status;
       Module_Declaration : Boolean := False)
      with Pre => Valid_Context (Tree),
-       Post => Valid_Context (Tree) and then Tree.Values = Tree'Old.Values
+       Post => Valid_Context (Tree) and then Same_Values (Tree, Tree'Old)
          and then (if Status /= AML_Execute.Declared then Tree = Tree'Old
            else Tree.Used = Tree'Old.Used + 1 and then
              Tree.Items (Tree.Used).Owner = Lifetime_Owner and then Tree.Items (Tree.Used).Alive)
@@ -1338,7 +1343,7 @@ package body AML_Namespace with SPARK_Mode is
       Flags : AML_Decode.Byte; Width : AML_Decode.Integer_Width;
       Code : AML_Decode.Bytes; Status : out AML_Execute.Declaration_Status)
      with Pre => Valid_Context (Tree),
-       Post => Valid_Context (Tree) and then Tree.Values = Tree'Old.Values
+       Post => Valid_Context (Tree) and then Same_Values (Tree, Tree'Old)
          and then (if Status /= AML_Execute.Declared then Tree = Tree'Old
            else Tree.Used = Tree'Old.Used + 1 and then
              Tree.Items (Tree.Used).Owner = Scope and then Tree.Items (Tree.Used).Alive)
@@ -1588,7 +1593,7 @@ package body AML_Namespace with SPARK_Mode is
            and then Present (Tree, Bank_Register)
            and then Kind (Tree, Bank_Register) = Region_Field_Object
            and then not Tree.Items (Bank_Register).Initializing),
-       Post => Valid_Context (Tree) and then Tree.Values = Tree'Old.Values
+       Post => Valid_Context (Tree) and then Same_Values (Tree, Tree'Old)
          and then (if Status /= AML_Execute.Returned then Tree = Tree'Old)
    is
       use type AML_Decode.Byte;
@@ -1712,7 +1717,7 @@ package body AML_Namespace with SPARK_Mode is
       Status : out AML_Execute.Execution_Status;
       Module_Declaration : Boolean := False)
      with Pre => Valid_Context (Tree),
-       Post => Valid_Context (Tree) and then Tree.Values = Tree'Old.Values
+       Post => Valid_Context (Tree) and then Same_Values (Tree, Tree'Old)
          and then (if Status /= AML_Execute.Returned then Tree = Tree'Old)
    is
       use type AML_Decode.Byte;
@@ -1821,7 +1826,7 @@ package body AML_Namespace with SPARK_Mode is
       Flags : AML_Decode.Byte; Entries : AML_Decode.Bytes;
       Status : out AML_Execute.Execution_Status)
      with Pre => Valid_Context (Tree),
-       Post => Valid_Context (Tree) and then Tree.Values = Tree'Old.Values
+       Post => Valid_Context (Tree) and then Same_Values (Tree, Tree'Old)
          and then (if Status /= AML_Execute.Returned then Tree = Tree'Old)
    is
    begin
@@ -1858,6 +1863,14 @@ package body AML_Namespace with SPARK_Mode is
          Conversion_64 => AML_Coercions.From_Buffer (Prefix, AML_Decode.Bits_64), others => <>));
    end Materialize_Buffer_Literal;
 
+   function Preserved_Objects (Tree, Prior : State) return Boolean is
+     (AML_Objects.Live_Count (Tree.Values) >= AML_Objects.Live_Count (Prior.Values)
+      and then (for all J in 1 .. AML_Objects.Slot_Bound (Prior.Values) =>
+        (if AML_Objects.Is_Live (Prior.Values, J) then
+           AML_Objects.Kind (Tree.Values, J) = AML_Objects.Kind (Prior.Values, J)
+           and then AML_Objects.Length (Tree.Values, J) = AML_Objects.Length (Prior.Values, J))))
+     with Ghost;
+
    procedure Materialize_Literal_With_Owner
      (Tree : in out State; Owner : AML_Identity.Identity; Scope : Natural; Kind : AML_Execute.Literal_Kind; Width : AML_Decode.Integer_Width; Data : AML_Decode.Bytes;
          Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
@@ -1874,10 +1887,7 @@ package body AML_Namespace with SPARK_Mode is
                     when AML_Execute.String_Literal => 2,
                     when AML_Execute.Buffer_Literal => 3,
                     when AML_Execute.Package_Literal => 4))
-            and then AML_Objects.Live_Count (Tree.Values) >= AML_Objects.Live_Count (Tree'Old.Values)
-            and then (for all J in 1 .. AML_Objects.Slot_Bound (Tree'Old.Values) => (if AML_Objects.Is_Live (Tree'Old.Values, J) then
-              AML_Objects.Kind (Tree.Values, J) = AML_Objects.Kind (Tree'Old.Values, J)
-              and then AML_Objects.Length (Tree.Values, J) = AML_Objects.Length (Tree'Old.Values, J)))
+            and then Preserved_Objects (Tree, Tree'Old)
    is
       use type AML_Execute.Literal_Kind;
       use type AML_Objects.Allocation_Status;
