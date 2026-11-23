@@ -1760,6 +1760,7 @@ package body AML_Execute with SPARK_Mode is
          procedure Capture_Operand
            (Item : Datum; Lexical : Slot_Number; Identity : Scalar_Location;
             Role : Expression_Root; Captured : out Scalar_Location)
+           with Post => (if not Tracking or else Lexical /= 0 then Captured = 0)
          is
             Stored : Transport.Outcome;
             Location : constant Transport.Slot := Expression_Location (Call_Frame, Depth, Role);
@@ -5412,7 +5413,8 @@ package body AML_Execute with SPARK_Mode is
       procedure Reject_Completion
         (Environment : in out Context; Input : aliased No_Input; Token : Natural;
          Width : Integer_Width; Signature, OEM, Table_ID : Datum; Status : out Execution_Status)
-        with Pre => Context_Valid (Environment), Post => Context_Valid (Environment)
+        with Pre => Context_Valid (Environment),
+          Post => Context_Valid (Environment) and then Status = Unsupported
       is
          pragma Unmodified (Environment);
          pragma Unreferenced (Input, Token, Width, Signature, OEM, Table_ID);
@@ -5737,7 +5739,9 @@ package body AML_Execute with SPARK_Mode is
       procedure Execute_Declaration_Complete_Region
         (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease; Input : aliased No_Input;
          Token : AML_Declaration_Contexts.Region_Reservation; Width : AML_Decode.Integer_Width;
-         Signature, OEM, Table_ID : AML_Execute.Datum; Status : out AML_Execute.Execution_Status) is
+         Signature, OEM, Table_ID : AML_Execute.Datum; Status : out AML_Execute.Execution_Status)
+        with Post => Status in AML_Execute.Unsupported_Value | AML_Execute.Unsupported
+      is
          Node : constant Natural := AML_Declaration_Contexts.Node_Of (Token);
       begin
          Status := AML_Execute.Unsupported_Value;
@@ -6004,7 +6008,8 @@ package body AML_Execute with SPARK_Mode is
       procedure Reject_Completion
         (Environment : in out Context; Input : aliased No_Input; Token : Natural;
          Width : Integer_Width; Signature, OEM, Table_ID : Datum; Status : out Execution_Status)
-        with Pre => Context_Valid (Environment), Post => Context_Valid (Environment)
+        with Pre => Context_Valid (Environment),
+          Post => Context_Valid (Environment) and then Status = Unsupported
       is
          pragma Unmodified (Environment);
          pragma Unreferenced (Input, Token, Width, Signature, OEM, Table_ID);
@@ -6323,7 +6328,9 @@ package body AML_Execute with SPARK_Mode is
       procedure Execute_Declaration_Complete_Region
         (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease; Input : aliased No_Input;
          Token : AML_Declaration_Contexts.Region_Reservation; Width : AML_Decode.Integer_Width;
-         Signature, OEM, Table_ID : AML_Execute.Datum; Status : out AML_Execute.Execution_Status) is
+         Signature, OEM, Table_ID : AML_Execute.Datum; Status : out AML_Execute.Execution_Status)
+        with Post => Status in AML_Execute.Unsupported_Value | AML_Execute.Unsupported
+      is
          Node : constant Natural := AML_Declaration_Contexts.Node_Of (Token);
       begin
          Status := AML_Execute.Unsupported_Value;
