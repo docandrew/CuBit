@@ -18,3 +18,16 @@ timeout --kill-after=5s 1500s nix develop -c env TMPDIR=/home/doc/cubit-build-tm
 ```
 
 The wrapper takes the shared build lock nonblocking, runs the existing `acpi-one-service` test with4CPUs, a unique copied-disk/serial-log location and120s guest timeout, then checks the actual Boot_RTC→ledger transfer→procmgr receipt→guarded StatusD read trace. It prints its receipt directory. It does not build/stage services itself. A busy lock exits75 for a later retry. The parser's9/9 self-tests use synthetic log text and are not headless/native evidence. Existing power-sources/gpio-launch/acpi-shutdown gates remain coordinator controls.
+
+
+The expanded native gate also injects `cmos-reach.asl`: a read-only SystemCMOS
+Status D field evaluated by module AML. `run-headless.sh` holds the build lock,
+checks the pinned IASL hash and generates the SSDT at test time. The source and
+compiled-table hashes are recorded in `fixture.sha256`; no AML binary is shipped.
+
+After the candidate native services/image are staged, export
+`TMPDIR=/home/doc/cubit-build-tmp` before entering Nix, then run
+`bash tests/acpi-system-cmos/run-headless.sh kvm`. The 12-check parser requires
+the real guarded handler read and a distinct AML field-dispatch trace logged
+after its field scope closes. The direct handler probe cannot emit that AML
+trace. A handler-only log fails the expanded gate. Laptop evidence is separate.

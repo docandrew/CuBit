@@ -4159,6 +4159,15 @@ fi
 # Opt-in ordinary consumer refusal regression on the real shutdown profile.
 # Compile the supplied SSDT with the pinned IASL first; every run owns its
 # temporary QEMU disk as usual. No alternate ACPI service or power stand-in.
+# CMOS gate: a separately generated read-only SystemCMOS module-load field.
+if [ -n "${ACPI_CMOS_REACH_TABLE:-}" ]; then
+    if [ "$TEST_NAME" != "acpi-one-service" ] || [ ! -f "$ACPI_CMOS_REACH_TABLE" ]; then
+        echo "headless: ACPI_CMOS_REACH_TABLE requires acpi-one-service and a compiled fixture" >&2
+        exit 2
+    fi
+    TEST_DEVICE_ARGS+=(-acpitable "file=$ACPI_CMOS_REACH_TABLE")
+fi
+
 if [ -n "${ACPI_SHUTDOWN_REFUSAL_TABLE:-}" ]; then
     if [ "$TEST_NAME" != "acpi-shutdown" ] || [ ! -f "$ACPI_SHUTDOWN_REFUSAL_TABLE" ]; then
         echo "headless: ACPI_SHUTDOWN_REFUSAL_TABLE requires acpi-shutdown and a compiled fixture" >&2
