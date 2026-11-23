@@ -1,16 +1,37 @@
-# Hosted ACPICA runtime baseline
+# ACPICA runtime corpus baseline
 
-Named base `d6b80c3f178c249e7d01d03687196cfefff518c3`, 2026-11-23T02:28:22.192388-07:00.
+All **1,368 configurations completed in each lane (100%)** on the pinned342
+runtime entrypoints ×four modes. No compiler-negative exclusions were made.
 
-All **1,368/1,368 configurations completed (100%)**: **348 PASS (25.44%)**,32FAIL,130UNSUPPORTED,794BLOCKED,64TIMEOUT. These are342 runtime MAIN entrypoints ×four modes, not compiler-negative tests or all ACPI functionality.
+| Lane | PASS | FAIL | UNSUPPORTED | BLOCKED | TIMEOUT | Passing |
+|---|---:|---:|---:|---:|---:|---:|
+| Strict upstream configuration |402|32|184|688|62|**29.386%**|
+| Guarded6141expected diagnostic |530|56|352|336|94|**38.743%**|
 
-| Mode | PASS | FAIL | UNSUPPORTED | BLOCKED | TIMEOUT |
-|---|---:|---:|---:|---:|---:|
-|n32|89|8|32|197|16|
-|n64|85|8|34|199|16|
-|o32|89|8|31|198|16|
-|o64|85|8|33|200|16|
+Strict uses upstream install common flags and original collection settings.
+The pinned include graph maps225unconfigured leaves into existing aggregates;
+152configuration compiles required emitted upstream expected diagnostics.
+The6141lane performs a strict preflight and retries only the specific lone
+Device-without_HID/ADR lint, preserving every other diagnostic. Its384guarded
+compile retries include auxiliary modules. Every original source/assertion
+is unchanged. The strict line is never replaced by the compatibility line.
 
-84/342 entrypoints pass all four modes. Blocks:700compiler,72upstream skipped/blocked,18incomplete original report records,4nonstandard entry/report contracts. Typed execution refusals retain last opcode context, not a proven causal-operator diagnosis; some argument mismatches need harness entry adapters.
+97/342entrypoints pass every mode strictly;129/342do so in compatibility.
+Strict compiler blocks remain576; compatibility compiler blocks196. Other
+blocks are original skipped/blocked reports or missing harness report/entry
+adapters. Typed execution refusals are not all interpreter defects: providers
+and exception/async/entry adapters are still absent. Last opcode is passive
+context, not proven causality. Timeouts are work items, not justified limit
+increases. No ACPICA performance parity is claimed.
 
-Synthetic classification controls6/6PASS, excluded from these percentages.25transient launch errors were archived and repaired;1343other rows reused byte for byte. Full work list: `/home/doc/git/.acpi-proof-work/aslts-corpus-20261123-v1/CORPUS-RESULTS.csv`; aggregate `/home/doc/git/.acpi-proof-work/aslts-corpus-20261123-v1/census3/RESULT.json`; frozen receipts `/home/doc/git/.acpi-proof-work/aslts-corpus-20261123-v1/VALIDATION.json`. No production code edits, proof reruns, native or hardware execution.
+Strict runtime results:680reused by identical source/AML/runner hashes and
+wall limit,112freshly executed. Compatibility:1,132reused,40fresh. Explicit
+reuse pins the original case receipt and log; it is never called a fresh run.
+Older retained baselines:348/1,368(25.439%) before upstream install flags;
+354strict/478compatibility before aggregate settings. No proof reruns,
+production edits or native/hardware execution occurred for this harness.
+
+Full paired work list and immutable receipt hashes are in the packet's
+CORPUS-LANES.csv and LANES-VALIDATION.json receipts. Runtime source README
+places compiler-negative cases under src/compilation and states runtime
+collections should compile and execute; names alone never remove a case.

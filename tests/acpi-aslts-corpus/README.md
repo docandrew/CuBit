@@ -1,66 +1,74 @@
 # Pinned ACPICA runtime corpus
 
-This hosted census runs every 342 runtime `MAIN.asl` entrypoint in ACPICA
-232ff3f8ae1a4da11c709f61d9154482cfe8e6df in n32, n64, o32 and o64 modes:
-1,368 configurations. `upstream.json` pins all 1,430 ASLTS source inputs and
-the original archive digest. Supply an already extracted, unmodified source
-checkout; the runner verifies it and copies sources to disjoint mode trees.
-It never edits the supplied upstream sources or original assertions.
+This hosted census covers342runtime `MAIN.asl` entrypoints in ACPICA
+232ff3f8ae1a4da11c709f61d9154482cfe8e6df, each in n32/n64/o32/o64:
+1,368configurations. `upstream.json` pins all1,430ASLTS inputs. Supply the
+unmodified extracted tree; every source is verified. There is no download.
 
-From the repository's pinned Nix shell:
+Export TMPDIR before entering the pinned Nix development shell:
 
 ```sh
 export TMPDIR=/home/doc/cubit-build-tmp
 nix develop -c timeout --kill-after=5s 1500s bash tests/acpi-aslts-corpus/run.sh \
-  /path/to/pinned/acpica-source /path/to/private/results --wall-seconds 1200
+  /path/to/pinned/acpica /path/to/results/strict --wall-seconds 1200
 ```
 
-Run the same command to resume. Completed results are reused only when the
-manifest, orchestration code, compiler binary, runner binary and runtime
-wall limit match. `--rerun` explicitly replaces results; use a new output
-directory to retain an earlier baseline. Build reuse verifies source pins and
-binary digest. No production proofs are run by this hosted harness.
+The default strict lane uses upstream install/test-sequence common flags
+`-of -cr -vs`, four mode flags, and each collection's original Makefile flags.
+Where a standalone leaf has no Makefile, a pinned static include graph maps
+its own DECL.asl and RUN.asl into a configured aggregate. Only expected
+compiler diagnostics already declared by that aggregate **and actually
+emitted by this exact strict preflight** are applied. This avoids demanding
+absent diagnostics from a leaf split out of a larger aggregate. The map
+retains Makefile hashes and include evidence; unmapped leaves gain no flags.
+Generated AML header revision must match the32/64mode.
 
-Each upstream Makefile is queried with GNU make for ASLTS_ASLFLAGS,
-ADD_ASLFLAGS and ASLMOD/ASLMODADD. Commands follow upstream `compile_test_case`
-semantics (Makefile.def lines255–270), with `-p` solely selecting a private
-output prefix. Explicit upstream diagnostic suppressions and forced compile
-flags are retained and recorded, never invented. Auxiliary source modules are
-compiled but dynamic table loading still needs an admitted provider adapter.
-Where the pinned source has no local Makefile, compile MAIN with the global
-Makefile.def mode flags and no invented local overrides; record that contract
-explicitly. Missing entry/report adapters are reported BLOCKED after compilation.
+Upstream's own install target with IASL20260408 rejects some namespace
+fixtures with6141: Device lacks _HID/_ADR. A separately labelled compatibility
+lane, authorized in coordinator103000, retries only when the current strict
+compile's sole blocking error is precisely that Device6141lint. It adds
+`-vx6141` (an **expected diagnostic**, not blanket error suppression). Every
+other diagnostic remains effective; the strict result is retained separately.
 
-The actual ACPI_Service_Core stages and executes the table, initializes its
-members and invokes MN00. PASS requires MN00=0, ERRS=0, positive RMRC, every
-original RP0P status record reporting PASS, and no retained result handles.
-This is a single invocation per configuration, not a leak or repeat-run proof.
-FAIL records original assertion failures or a nonzero MN00 result. Original
-SKIPPED/BLOCKED records and missing entry/report contracts produce BLOCKED,
-never PASS. Compiler failures are BLOCKED with the tool command and available
-diagnostic codes. Typed execution refusals are UNSUPPORTED, recording the
-execution status and last passive opcode visit. That visit is diagnostic
-context, not proof of the causal instruction. Budget exhaustion or wall limits
-produce TIMEOUT. Harness crashes or malformed reports produce BLOCKED.
+```sh
+nix develop -c timeout --kill-after=5s 1500s bash tests/acpi-aslts-corpus/run.sh \
+  /path/to/pinned/acpica /path/to/results/compat --compat-6141 \
+  --source-cache /path/to/results/strict/source \
+  --runner /path/to/results/strict/build/bin/aslts_corpus_runner \
+  --reuse-runtime /path/to/results/strict/RESULT.json --wall-seconds 1200
+```
 
-The passive hook does not allocate or reenter the service. Host delays and
-finite event waits use real elapsed time; there are no asynchronous execution
-threads. This baseline supplies no hardware address-space, async, exception
-continuation or dynamic-table provider. An UNSUPPORTED result can therefore
-expose an absent harness adapter as well as an interpreter feature gap; read
-the typed execution status and retained log before prioritizing a fix.
+The shared source cache is read-only after initial creation and hash-checked.
+Keeping its absolute paths stable also preserves `__FILE__` expansion. Runtime
+reuse is explicit: source, AML and runner hashes plus timeout must match, and
+the previous case receipt/log is retained and pinned. It is reported as reuse,
+not a fresh execution. Default repeated commands resume completed case
+receipts only when their full input key matches. `--rerun` forces results;
+use a new output directory to retain an earlier baseline.
 
-Default limits are two workers, 12s runtime/case, 30s compiler/source, 15s
-Makefile query, 1,200s batch wall time, 128MiB process stack and explicit
-input-dependent service capacities (16MiB input ceiling). Capacities and
-fuel are hosted admission limits, not service completeness claims. All
-original source hashes, exact commands, AML hashes and logs are retained.
-`RESULT.json` contains every required row, including NOT_RUN. The final
-ASLTS line reports each outcome count, PASS/configurations completed, and
-configurations completed/full1,368. A green selected subset is not full
-corpus conformance.
+PASS requires actual Core MN00=0,ERRS=0,positive RMRC,every original RP0P
+record PASS,and no retained result handles. FAIL records assertion errors or
+nonzero MN00. Skipped/blocked original records, incomplete reports, missing
+entry adapters and compiler errors are BLOCKED. Typed execution refusals are
+UNSUPPORTED with execution status and last passive opcode/extension/position;
+that visit is context, not proof of the causal instruction. Argument mismatch
+can indicate a missing nonstandard entry adapter. Fuel/wall limits are
+TIMEOUT. Harness crashes cannot pass.
 
-`selftest.py --output ... --runner ... --iasl ...` runs six synthetic result
-classification controls. They are stored separately and excluded from corpus
-percentages. This harness makes no native, hardware, ACPICA performance parity
-or whole-interpreter SPARK proof claim.
+Each case retains commands, logs, source/AML hashes, strict preflights,
+expected-diagnostic evidence and any reused runtime receipt. `RESULT.json`
+contains every required row, including NOT_RUN; its summary reports status
+counts, PASS/completed,and completion/full1,368. Always publish **both strict
+and compatibility corpus lines**. No compiler-negative exclusions are inferred
+from names: upstream src/README puts those tests under src/compilation and
+states that runtime collections should compile and execute. The runtime grid
+keeps all342entrypoints unless their own metadata establishes another role.
+
+Limits: two workers,12s runtime/case,30s compiler invocation,15s make query,
+1,200s batch,128MiB stack,16MiB table input ceiling, explicit hosted capacities.
+The single-threaded runner uses real host delays and finite waits, with no
+hardware address-space, async, exception-continuation or dynamic-load adapter.
+This is release hosted coverage, not native/hardware integration, whole-service
+SPARK proof, leak freedom, or ACPICA performance parity. No proofs are run;
+accepted unchanged packages retain their receipts. Six separate synthetic
+classification controls are excluded from corpus percentages.

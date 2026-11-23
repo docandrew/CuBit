@@ -19,17 +19,28 @@ def summary(rows):
  c=collections.Counter(r['status'] for r in rows);done=len(rows)-c['NOT_RUN'];return dict(counts={s:c[s] for s in STATUSES},total=len(rows),completed=done,pass_percent_of_completed=round(100*c['PASS']/done,3) if done else 0,completion_percent=round(100*done/len(rows),3),pass_percent_of_full_grid=round(100*c['PASS']/len(rows),3))
 def line(s): return 'ASLTS '+' '.join(k+'='+str(v) for k,v in s['counts'].items())+' TOTAL='+str(s['total'])+' PASS_RATE='+str(s['pass_percent_of_completed'])+'% COMPLETION='+str(s['completion_percent'])+'%'
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--upstream',type=P,required=True);ap.add_argument('--output',type=P,required=True);ap.add_argument('--runner',type=P,required=True);ap.add_argument('--iasl',type=P,required=True);ap.add_argument('--jobs',type=int,choices=(1,2),default=2);ap.add_argument('--case-timeout',type=float,default=12);ap.add_argument('--wall-seconds',type=float,default=1200);ap.add_argument('--limit',type=int);ap.add_argument('--select',help='optional source regex for harness admission only');ap.add_argument('--rerun',action='store_true');a=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument('--upstream',type=P,required=True);ap.add_argument('--output',type=P,required=True);ap.add_argument('--runner',type=P,required=True);ap.add_argument('--iasl',type=P,required=True);ap.add_argument('--jobs',type=int,choices=(1,2),default=2);ap.add_argument('--case-timeout',type=float,default=12);ap.add_argument('--wall-seconds',type=float,default=1200);ap.add_argument('--limit',type=int);ap.add_argument('--select',help='optional source regex for harness admission only');ap.add_argument('--rerun',action='store_true');ap.add_argument('--compat-6141',action='store_true');ap.add_argument('--source-cache',type=P);ap.add_argument('--reuse-runtime',type=P,action='append',default=[]);a=ap.parse_args()
  a.upstream=a.upstream.resolve();a.output=a.output.resolve();a.runner=a.runner.resolve();a.iasl=a.iasl.resolve();a.output.mkdir(parents=True,exist_ok=True)
  catalog=json.loads((HERE/'sources.json').read_text());assert sha(a.iasl)==catalog['tools']['iasl']['sha256'],'pinned iasl drift'
- inventory=json.loads((HERE/'upstream.json').read_text());tools=dict(runner=dict(path=str(a.runner),sha256=sha(a.runner)),iasl=dict(path=str(a.iasl),sha256=sha(a.iasl)));key=hashlib.sha256(json.dumps(dict(inventory=sha(HERE/'upstream.json'),harness=sha(__file__),tools=tools,case_timeout=a.case_timeout),sort_keys=True).encode()).hexdigest()
+ aggregate_data=json.loads((HERE/'aggregate-flags.json').read_text());aggregate_map={r['source']:r for r in aggregate_data['rows']}
+ for entry in aggregate_data['aggregate_evidence']:
+  if sha(a.upstream/entry['makefile'])!=entry['makefile_sha256']:raise SystemExit('aggregate Makefile drift')
+ inventory=json.loads((HERE/'upstream.json').read_text());tools=dict(runner=dict(path=str(a.runner),sha256=sha(a.runner)),iasl=dict(path=str(a.iasl),sha256=sha(a.iasl)));key=hashlib.sha256(json.dumps(dict(inventory=sha(HERE/'upstream.json'),harness=sha(__file__),aggregate_map=sha(HERE/'aggregate-flags.json'),tools=tools,case_timeout=a.case_timeout,common_flags=['-of','-cr','-vs'],compat_6141=a.compat_6141,source_cache=str(a.source_cache.resolve()) if a.source_cache else None),sort_keys=True).encode()).hexdigest()
  sources=inventory['source_files'];sources={r['path']:r['sha256'] for r in sources} if isinstance(sources,list) else sources
  for p,h in sources.items():
   if sha(a.upstream/p)!=h: raise SystemExit('upstream source drift: '+p)
- save(a.output/'INPUTS.json',dict(cache_key=key,upstream_commit=inventory['commit'],source_files=len(sources),source_manifest_sha256=sha(HERE/'upstream.json'),tools=tools,case_timeout=a.case_timeout,profile='release -O1 -gnatp; hosted only',proofs='unchanged packages reused; no proof run'))
+ save(a.output/'INPUTS.json',dict(cache_key=key,upstream_commit=inventory['commit'],source_files=len(sources),source_manifest_sha256=sha(HERE/'upstream.json'),tools=tools,case_timeout=a.case_timeout,common_flags=['-of','-cr','-vs'],compat_6141=a.compat_6141,profile='release -O1 -gnatp; hosted only',proofs='unchanged packages reused; no proof run'))
+ runtime_candidates={}
+ for aggregate in a.reuse_runtime:
+  prior=json.loads(aggregate.read_text());inputs=json.loads((aggregate.parent/'INPUTS.json').read_text())
+  if inputs['tools']['runner']['sha256']!=tools['runner']['sha256'] or inputs['case_timeout']!=a.case_timeout:raise SystemExit('runtime reuse input mismatch: '+str(aggregate))
+  for candidate in prior['cases']:
+   if candidate.get('runtime') and candidate.get('aml_sha256') and candidate['status'] in STATUSES[:-1]:
+    runtime_candidates.setdefault(candidate['id'],[]).append(candidate)
  # Every mode has an independent tree, so compiler outputs cannot collide.
  for mode in inventory['modes']:
-  root=a.output/'source'/mode
+  root=(a.source_cache.resolve() if a.source_cache else a.output/'source')/mode
+  if a.source_cache and not (root/'.complete').is_file():raise SystemExit('incomplete source cache: '+str(root))
   if not (root/'.complete').exists():
    for p in sources:
     q=root/p;q.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(a.upstream/p,q)
@@ -46,7 +57,7 @@ def main():
     if old.get('cache_key')==key:row=old
    rows.append(row)
  def run_case(row):
-  row=dict(row);folder=P(row['receipt']).parent;root=a.output/'source'/row['mode'];source=root/row['source'];cwd=source.parent;makefile=cwd/'Makefile'
+  row=dict(row);folder=P(row['receipt']).parent;root=(a.source_cache.resolve() if a.source_cache else a.output/'source')/row['mode'];source=root/row['source'];cwd=source.parent;makefile=cwd/'Makefile'
   def finish(status,reason,**kw):
    row.update(status=status,reason=reason,**kw);save(row['receipt'],row);return row
   if makefile.exists():
@@ -54,18 +65,48 @@ def main():
    if q['timeout'] or q['returncode']!=0:return finish('BLOCKED','upstream Makefile variable query failed',make_query=q)
    vals=dict(re.findall(r'^(FLAGS|EXTRA|MODULES)=(.*)$',P(q['log']).read_text(),re.M));flags=shlex.split(vals.get('FLAGS','').replace('"',''));extra=shlex.split(vals.get('EXTRA',''));modules=shlex.split(vals.get('MODULES',''))
    if flags!=inventory['modes'][row['mode']] or not modules or modules[0]!='MAIN':return finish('BLOCKED','unrecognized upstream compiler contract',variables=vals,make_query=q)
-   row.update(compiler_contract='upstream compile_test_case Makefile variables',compiler_flags=flags,upstream_add_aslflags=extra,upstream_modules=modules,make_query=q,makefile_sha256=sha(makefile))
+   row.update(compiler_contract='upstream install mode/common flags plus per-collection Makefile variables',compiler_flags=flags,upstream_add_aslflags=extra,upstream_modules=modules,make_query=q,makefile_sha256=sha(makefile))
   else:
    flags=inventory['modes'][row['mode']];extra=[];modules=['MAIN']
    row.update(compiler_contract='global Makefile.def mode flags; no local Makefile/overrides in pinned source',compiler_flags=flags,upstream_add_aslflags=extra,upstream_modules=modules,makefile_sha256=None)
+  flags=flags+['-of','-cr','-vs'];row['compiler_flags']=flags;row['compile_lane']='6141_compatibility' if a.compat_6141 else 'strict_upstream_install'
   builds=[]
   for module in modules:
    path=cwd/(module+'.asl')
    if not path.is_file():return finish('BLOCKED','upstream auxiliary ASL source missing: '+module,compiles=builds)
+   applied_extra=list(extra)
    prefix=folder/module;r=command([str(a.iasl),*flags,*extra,'-p',str(prefix),str(path)],cwd,folder/(module+'-compile.log'),30);builds.append(r)
    if r['timeout']:return finish('TIMEOUT','iasl compiler wall limit',compiles=builds)
+   if r['returncode']!=0 and not makefile.exists() and row['source'] in aggregate_map:
+    mapped=aggregate_map[row['source']]
+    if mapped['source_sha256']!=row['source_sha256']:raise RuntimeError('aggregate source pin drift')
+    strict_codes=set(re.findall(r'Error\s+(\d+)',P(r['log']).read_text(errors='replace')))
+    expected=sorted(strict_codes & set(mapped['expected_diagnostic_codes']))
+    if expected:
+     row.setdefault('aggregate_expected_diagnostics',[]).append(dict(codes=expected,strict_preflight=r,preflight_log_sha256=sha(r['log']),upstream_evidence=mapped['aggregates'],scope='configured aggregate includes this leaf DECL and RUN; only emitted upstream expected diagnostics are selected'))
+     applied_extra+=sum((['-vx',code]for code in expected),[])
+     r=command([str(a.iasl),*flags,*applied_extra,'-p',str(prefix),str(path)],cwd,folder/(module+'-aggregate-compile.log'),30);builds.append(r)
+     if r['timeout']:return finish('TIMEOUT','iasl aggregate compiler wall limit',compiles=builds)
+   if a.compat_6141 and r['returncode']!=0:
+    strict_text=P(r['log']).read_text(errors='replace');error_lines=[line for line in strict_text.splitlines() if re.match(r'^Error\s+\d+',line)]
+    exact_lint=bool(error_lines) and set(re.findall(r'Error\s+(\d+)',strict_text))=={'6141'} and all(re.match(r'^Error\s+6141\s*-',line) and 'Device object requires a _HID or _ADR' in line for line in error_lines)
+    if exact_lint:
+     row.setdefault('expected_diagnostics',[]).append(dict(code=6141,meaning='Device object requires a _HID or _ADR',strict_preflight=r,preflight_log_sha256=sha(r['log']),scope='authorized103000expected-diagnostic lane; every other diagnostic remains effective'))
+     r=command([str(a.iasl),*flags,*applied_extra,'-vx','6141','-p',str(prefix),str(path)],cwd,folder/(module+'-compat-compile.log'),30);builds.append(r)
+     if r['timeout']:return finish('TIMEOUT','iasl compatibility compiler wall limit',compiles=builds)
    if r['returncode']!=0 or not prefix.with_suffix('.aml').is_file():return finish('BLOCKED','iasl compile failed; original flags retained',diagnostic_codes=sorted(set(re.findall(r'(?:Error|Warning)\s+(\d+)',P(r['log']).read_text(errors='replace')))),compiles=builds)
   aml=folder/'MAIN.aml';row.update(aml_sha256=sha(aml),compiles=builds)
+  row['aml_revision']=aml.read_bytes()[8]
+  if row['aml_revision']!=(1 if row['mode'].endswith('32')else 2):return finish('BLOCKED','compiler AML revision does not match mode')
+  for prior in runtime_candidates.get(row['id'],[]):
+   if prior['source_sha256']==row['source_sha256'] and prior['aml_sha256']==row['aml_sha256']:
+    receipt=P(prior['receipt']);log=P(prior['runtime']['log'])
+    if not receipt.is_file() or not log.is_file():raise RuntimeError('missing runtime reuse evidence')
+    if json.loads(receipt.read_text())!=prior:raise RuntimeError('runtime receipt drift')
+    row['runtime_reuse']=dict(receipt=str(receipt),receipt_sha256=sha(receipt),log_sha256=sha(log),reason='same source/AML/runner hashes and runtime timeout; explicitly reused, not freshly executed')
+    extra_result=dict(runtime=prior['runtime'])
+    if 'result' in prior:extra_result['result']=prior['result']
+    return finish(prior['status'],prior['reason'],**extra_result)
   r=command([str(a.runner),str(aml)],folder,folder/'runtime.log',a.case_timeout)
   if r['timeout']:return finish('TIMEOUT','hosted runner wall limit',runtime=r)
   records=[t[len('ASLTS_RESULT '):] for t in P(r['log']).read_text(errors='replace').splitlines() if t.startswith('ASLTS_RESULT ')]

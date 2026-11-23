@@ -1,5 +1,5 @@
 {
-  "base": "d6b80c3f178c249e7d01d03687196cfefff518c3",
+  "base": "bc98198556f0124a35563294eb446ed631fb4bf1",
   "inputs": {
     "shared/capabilities/capability_abi.adb": "f280df7b0e8291913387a6bd4607a7e18b3025d5cb512c07f102ad90b682af20",
     "shared/capabilities/capability_abi.ads": "3cb666bc1f49820880887dfb9d0598e4bd406dcb71576f52569998851d8cfaba",
