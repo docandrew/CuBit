@@ -239,12 +239,21 @@ is
             end if;
          end if;
       end loop;
-      if Item.Resource_Policies (Root_Ref).Mode /= CCL.Ownership.Unrestricted then
-         if Item.Resource_Policies (Root_Ref) /= Policy then Result := Resource_Policy_Conflict; return; end if;
-         Ref := Root_Ref; Result := Resource_Already_Published; return;
-      end if;
-      Item.Data_Types := Candidate;
-      Item.Resource_Policies (Root_Ref) := Policy;
+      declare
+         Existing : constant CCL.Resource_Policies.Description :=
+           CCL.Resource_Policies.Policy (Item.Resource_Policies, Root_Ref);
+         Policies : CCL.Resource_Policies.Policy_Table := Item.Resource_Policies;
+         Recorded : Boolean;
+      begin
+         if Existing.Mode /= CCL.Ownership.Unrestricted then
+            if Existing /= Policy then Result := Resource_Policy_Conflict; return; end if;
+            Ref := Root_Ref; Result := Resource_Already_Published; return;
+         end if;
+         CCL.Resource_Policies.Set_Policy (Policies, Root_Ref, Policy, Recorded);
+         if not Recorded then Result := Resource_Catalog_Full; return; end if;
+         Item.Data_Types := Candidate;
+         Item.Resource_Policies := Policies;
+      end;
       Ref := Root_Ref; Result := Resource_Published;
    end Publish_Resource;
 
@@ -284,7 +293,11 @@ is
 
    function Resource_Policy
      (Item : Interface_Catalog; Ref : CCL.Types.Type_Reference)
-      return CCL.Resource_Policies.Description is (Item.Resource_Policies (Ref));
+      return CCL.Resource_Policies.Description is
+     (CCL.Resource_Policies.Policy (Item.Resource_Policies, Ref));
+
+   function Resource_Policies (Item : Interface_Catalog) return CCL.Resource_Policies.Policy_Table is
+     (Item.Resource_Policies);
 
    procedure Layout_Resources
      (Item : Interface_Catalog; Roots : CCL.Resource_Policies.Selection;
@@ -555,9 +568,11 @@ is
    function Resource_Layout_Matches
      (Program : CCL.VM.Sized_Program; Catalog : Interface_Catalog) return Boolean
    is
-      Roots : CCL.Resource_Policies.Selection := [others => False];
-      Policies : CCL.Resource_Policies.Policy_Table := [others => (others => <>)];
-      Bindings : CCL.Resource_Policies.Binding_Map;
+      subtype Reference is CCL.Types.Type_Reference range 0 .. CCL.Types.Last (Program.Data_Types);
+      Roots : CCL.Resource_Policies.Selection (Reference) := [others => False];
+      Policies : CCL.Resource_Policies.Policy_Table;
+      Bindings : CCL.Resource_Policies.Binding_Map (Reference);
+      Recorded : Boolean;
       Definitions : CCL.Ownership.Type_Table;
       Count : CCL.Resource_Policies.Layout_Count;
       Result : CCL.Resource_Policies.Layout_Result;
@@ -570,6 +585,7 @@ is
             I : constant CCL.Ownership.Binding_Id := CCL.VM.Local_At (Position - 1);
          begin
             if Program.Local_Kinds (I) = CCL.VM.Resource_Value then
+               if Program.Local_Data_Types (I) not in Reference then return False; end if;
                Roots (Program.Local_Data_Types (I)) := True;
                Any_Resource := True;
             end if;
@@ -577,14 +593,17 @@ is
       end loop;
       for I in 0 .. Program.Imports_Length - 1 loop
          if Program.Imports (I).Argument = CCL.VM.Resource_Value then
+            if Program.Imports (I).Argument_Data_Type not in Reference then return False; end if;
             Roots (Program.Imports (I).Argument_Data_Type) := True;
             Any_Resource := True;
          end if;
          if Program.Imports (I).Result = CCL.VM.Resource_Value then
+            if Program.Imports (I).Result_Data_Type not in Reference then return False; end if;
             Roots (Program.Imports (I).Result_Data_Type) := True;
             Any_Resource := True;
          end if;
          if CCL.VM.Has_Receiver (Program.Imports (I)) then
+            if Program.Imports (I).Receiver_Data_Type not in Reference then return False; end if;
             Roots (Program.Imports (I).Receiver_Data_Type) := True;
             Any_Resource := True;
          end if;
@@ -592,13 +611,15 @@ is
       if not Any_Resource then return True; end if;
       -- Reconstruct policy in the program's nominal type order. Numeric type
       -- IDs in independently published catalog snapshots need not coincide.
-      for Ref in CCL.Types.Type_Reference loop
+      for Ref in Reference loop
          if CCL.Types.Known (Program.Data_Types, Ref) and then
            CCL.Types.Describe (Program.Data_Types, Ref).Form = CCL.Types.Resource
          then
             Expected := CCL.Types.Correspondence.Resolve (Program.Data_Types, Ref, Visible);
             if Expected /= CCL.Types.Invalid_Type then
-               Policies (Ref) := Catalog.Resource_Policies (Expected);
+               CCL.Resource_Policies.Set_Policy
+                 (Policies, Ref, CCL.Resource_Policies.Policy (Catalog.Resource_Policies, Expected), Recorded);
+               if not Recorded then return False; end if;
             end if;
          end if;
       end loop;
@@ -612,14 +633,17 @@ is
             I : constant CCL.Ownership.Binding_Id := CCL.VM.Local_At (Position - 1);
          begin
             if Program.Local_Kinds (I) = CCL.VM.Resource_Value then
-               if Program.Local_Types (I) /= Bindings (Program.Local_Data_Types (I)) then return False; end if;
+               if Program.Local_Data_Types (I) not in Reference or else
+                 Program.Local_Types (I) /= Bindings (Program.Local_Data_Types (I))
+               then return False; end if;
             elsif Program.Local_Types (I) /= 0 then return False;
             end if;
          end;
       end loop;
       for I in 0 .. Program.Imports_Length - 1 loop
          if Program.Imports (I).Result = CCL.VM.Resource_Value and then
-           Program.Imports (I).Result_Type_Tag /= Bindings (Program.Imports (I).Result_Data_Type)
+           (Program.Imports (I).Result_Data_Type not in Reference or else
+            Program.Imports (I).Result_Type_Tag /= Bindings (Program.Imports (I).Result_Data_Type))
          then return False; end if;
       end loop;
       return True;

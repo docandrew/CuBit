@@ -102,7 +102,7 @@ begin
       Full : T.Registry;
       Previous : T.Type_Reference := T.Unit_Type;
    begin
-      for I in 1 .. T.Maximum_Declarations loop
+      for I in 1 .. 300 loop  --  past the old fixed registry size (216)
          Definition := (Identifier => T.Named ("Type_" & Character'Val (Character'Pos ('A') + (I - 1) / 26) &
                            Character'Val (Character'Pos ('A') + (I - 1) mod 26)),
                         Form => T.Sum, Count => T.Maximum_Components, others => <>);

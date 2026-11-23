@@ -7,6 +7,7 @@ with CCL.Host_Values;
 with CCL.Objects;
 with CCL.Ownership;
 with CCL.Types;
+with CCL.Growing_Tables;
 
 package body CCL.Format with
    SPARK_Mode => On
@@ -23,6 +24,16 @@ is
    use type CBOR.Byte;
    package E renames CBOR.Encoding;
    package D renames CBOR.Decoding;
+
+   --  A data type's part that names a later type: a list of its owner
+   --  (CCL.Types.Complete_Self_List), completed once every type exists.
+   type Pending_Part is record
+      Owner : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+      Part : CCL.Types.Component_Index := 1;
+      List_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
+   end record;
+   package Pending_Tables is new CCL.Growing_Tables
+     (Element => Pending_Part, Ceiling => CCL.Types.Declaration_Ceiling * CCL.Types.Maximum_Components);
 
    subtype Wire_Buffer is CBOR.Byte_Array (1 .. MAX_MODULE_SIZE);
    type Digest_Words is array (Natural range 0 .. 3) of Unsigned_64;
@@ -540,6 +551,9 @@ is
       Position  : CBOR.SE_Offset := 1;
       Count     : Natural;
       Value     : Unsigned_64;
+      --  The program's last type once its data types are counted: a type
+      --  reference past it names nothing.
+      Types_Bound : CCL.Types.Registry_Bound := CCL.Types.Unit_Type;
 
       --  One head of the profile, or Malformed_Encoding. Indefinite
       --  lengths never pass: their counts exceed every bound below.
@@ -731,12 +745,18 @@ is
          end if;
       end Get_Kind;
 
+      --  A type reference of the program's (Types_Bound at most).
+      procedure Get_Type (Kind : out CCL.Types.Type_Reference)
+        with Post => Kind <= Types_Bound;
       procedure Get_Type (Kind : out CCL.Types.Type_Reference) is
+         Number : Natural;
       begin
          Kind := CCL.Types.Invalid_Type;
-         Get_Unsigned (Value, Unsigned_64 (CCL.Types.Type_Reference'Last));
+         --  A Natural in a small context: the bound is small.
+         Get_Natural (Number, Natural (Types_Bound));
+         Value := Unsigned_64 (Number);
          if Error = Format_Valid then
-            Kind := CCL.Types.Type_Reference (Value);
+            Kind := CCL.Types.Type_Reference (Number);
          end if;
       end Get_Type;
    begin
@@ -831,16 +851,13 @@ is
       --  Data types. A part naming a later type is a list of its own type
       --  (CCL.Types.Complete_Self_List): defined with a Unit placeholder
       --  first, completed once every definition exists.
-      Get_Array (Count, CCL.Types.Maximum_Declarations);
+      Get_Array (Count, CCL.Types.Declaration_Ceiling);
       if Error /= Format_Valid then return; end if;
+      Types_Bound := CCL.Types.Unit_Type + CCL.Types.Type_Reference (Count);
       declare
-         type Pending_Part is record
-            Owner : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
-            Part : CCL.Types.Component_Index := 1;
-            List_Type : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
-         end record;
-         Pending : array (1 .. CCL.Types.Maximum_Declarations) of Pending_Part;
-         Pending_Count : Natural range 0 .. CCL.Types.Maximum_Declarations := 0;
+         --  Parts naming a later type, as many as the program has.
+         Pending : Pending_Tables.Table;
+         Added : Boolean;
       begin
          for T in 1 .. Count loop
             declare
@@ -874,11 +891,10 @@ is
                   Get_Type (Item.Parts (P).Payload);
                   if Error /= Format_Valid then Error := Invalid_Type_Metadata; return; end if;
                   if Item.Parts (P).Payload >= Own then
-                     if Pending_Count = Pending'Last then
+                     Pending_Tables.Append (Pending, (Own, P, Item.Parts (P).Payload), Added);
+                     if not Added then
                         Error := Invalid_Type_Metadata; return;
                      end if;
-                     Pending_Count := Pending_Count + 1;
-                     Pending (Pending_Count) := (Own, P, Item.Parts (P).Payload);
                      Item.Parts (P).Payload := CCL.Types.Unit_Type;
                   end if;
                end loop;
@@ -899,13 +915,13 @@ is
                end if;
             end;
          end loop;
-         for P in 1 .. Pending_Count loop
+         for P in 1 .. Pending_Tables.Length (Pending) loop
             declare
                Completed : Boolean;
+               Part : constant Pending_Part := Pending_Tables.Get (Pending, P);
             begin
                CCL.Types.Complete_Self_List
-                 (Candidate.Data_Types, Pending (P).Owner, Pending (P).Part,
-                  Pending (P).List_Type, Completed);
+                 (Candidate.Data_Types, Part.Owner, Part.Part, Part.List_Type, Completed);
                if not Completed then Error := Invalid_Type_Metadata; return; end if;
             end;
          end loop;

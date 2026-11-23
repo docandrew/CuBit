@@ -6,7 +6,8 @@ package body CCL.Types.Correspondence with SPARK_Mode is
       --  Every published mapping is a valid target index (or Invalid_Type).
       --  The range itself carries that fact; no defensive return-time checks.
       subtype Target_Reference is Type_Reference range Invalid_Type .. Last (Target);
-      Mapping : array (Type_Reference) of Target_Reference := [others => Invalid_Type];
+      Mapping : array (Type_Reference range 0 .. Last (Source)) of Target_Reference :=
+        [others => Invalid_Type];
    begin
       if not Known (Source, Root) then return Invalid_Type; end if;
       if Root <= Unit_Type then return Root; end if;
@@ -29,6 +30,7 @@ package body CCL.Types.Correspondence with SPARK_Mode is
                   if Compatible then
                      for Part in 1 .. Original.Count loop
                         if not Same (Original.Parts (Part).Identifier, Other.Parts (Part).Identifier)
+                          or else Original.Parts (Part).Payload not in Mapping'Range
                           or else Mapping (Original.Parts (Part).Payload) = Invalid_Type
                           or else Mapping (Original.Parts (Part).Payload) /= Other.Parts (Part).Payload
                         then

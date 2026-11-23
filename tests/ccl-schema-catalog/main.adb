@@ -52,6 +52,7 @@ procedure Main is
    Empty_Types : Registry;
    Item : Schema_Catalog;
    Unbound, Found : Binding;
+   Counts : constant array (Positive range <>) of Natural := [0, 1, 2, 112, 113, Schema_Ceiling];
 begin
    Resolve (Item, No_Schema, Found); Check (not Is_Bound (Found));
    Resolve (Item, Key_Of (0), Found); Check (not Is_Bound (Found));
@@ -73,9 +74,10 @@ begin
       Bind (Types, Root, Key_Of (0), Unbound, Accepted);
       Check (not Accepted); Expect (Item, Unbound, Unbound_Contract);
    end;
-   -- Every schema-table capacity, including identity reuse when full. Shared
-   -- primitive types consume no nominal declaration slots.
-   for Count in 0 .. Maximum_Schemas loop
+   -- Schema tables around the old fixed size (112) and at the ceiling,
+   -- including identity reuse when full (the table grows from what is
+   -- published). Shared primitive types consume no nominal declaration slots.
+   for Count of Counts loop
       declare
          Table : Schema_Catalog;
       begin
@@ -92,7 +94,7 @@ begin
             Expect (Table, Contract_For (Empty_Types, Boolean_Type, Key_Of (I)), Identity_Conflict);
          end loop;
          Expect (Table, Contract_For (Empty_Types, Boolean_Type, Key_Of (Count + 1)),
-                 (if Count = Maximum_Schemas then Capacity_Exhausted else Published));
+                 (if Count = Schema_Ceiling then Capacity_Exhausted else Published));
       end;
    end loop;
    -- Local numbering and unrelated definitions are not schema identity.
@@ -132,20 +134,38 @@ begin
       Resolve (Table, Key_Of (0), Found);
       Value.Schema := Key_Of (0); Check (Validate (Value, Found));
    end;
-   -- A valid large closure can exhaust the shared type budget before the
-   -- schema table. Rejected publication leaves neither a key nor partial types.
+   -- A valid large closure can exhaust the shared type budget (the registry's
+   -- named ceiling) before the schema table. Rejected publication leaves
+   -- neither a key nor partial types. The closure is a chain of records each
+   -- holding a list of the one before, so its layout stays one record deep.
    declare
       Types, Extra : Registry;
       Root : Type_Reference := Integer_Type;
       Ref : Type_Reference;
+      List : Type_Reference := Invalid_Type;
       Defined_As : Definition_Result;
+      Listed : List_Result;
       Table : Schema_Catalog;
    begin
-      for I in 1 .. Maximum_Declarations loop
+      Define (Types, (Identifier => Name_Of (0), Form => Product, Count => 1,
+        Parts => [1 => (Named ("item"), Root), others => <>]), Root, Defined_As);
+      Check (Defined_As = Defined);
+      for I in 1 .. Declaration_Ceiling / 2 loop
          Define (Types, (Identifier => Name_Of (I), Form => Product, Count => 1,
-           Parts => [1 => (Named ("item"), Root), others => <>]), Ref, Defined_As);
+           Parts => [1 => (Named ("items"), (if I = 1 then Root else List)), others => <>]), Ref, Defined_As);
          Check (Defined_As = Defined); Root := Ref;
+         if I < Declaration_Ceiling / 2 then
+            Specialize_List (Types, Root, List, Listed); Check (Listed = List_Specialized);
+         end if;
       end loop;
+      Check (Last (Types) = Type_Reference'Last);
+      --  Full: the registry refuses one more, unchanged.
+      declare
+         Before : constant Registry := Types;
+      begin
+         Define (Types, (Identifier => Named ("Overflow"), Form => Product, others => <>), Ref, Defined_As);
+         Check (Defined_As = Registry_Full and Ref = Invalid_Type and Types = Before);
+      end;
       Expect (Table, Contract_For (Types, Root, Key_Of (0)), Published);
       Check (Length (Table) = 1 and then Last (Visible_Types (Table)) = Type_Reference'Last);
       Define (Extra, (Identifier => Named ("Extra"), Form => Product, others => <>), Ref, Defined_As);

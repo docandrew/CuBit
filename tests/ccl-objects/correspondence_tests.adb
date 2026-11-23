@@ -1,4 +1,5 @@
 with Ada.Text_IO;
+with GNAT.Source_Info;
 with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed;
 with CCL.Types; use CCL.Types;
@@ -10,10 +11,12 @@ procedure Correspondence_Tests is
    type Mutation is
      (None, Root_Name, Nested_Name, Field_Name, Field_Order, Choice_Order,
       Payload_Type, Shape_Change, Missing_Choice, Missing_Root, Unused_Padding);
-   procedure Check (Condition : Boolean) is
+   procedure Check (Condition : Boolean; Site : String := GNAT.Source_Info.Source_Location) is
    begin
-      pragma Assert (Condition);
       Checks := Checks + 1;
+      if not Condition then
+         raise Program_Error with Site & ": correspondence check" & Checks'Image;
+      end if;
    end Check;
    function Numbered (Prefix : String; Number : Natural) return Name is
      (Named (Prefix & Ada.Strings.Fixed.Trim (Number'Image, Both)));
@@ -23,10 +26,11 @@ procedure Correspondence_Tests is
       Define (Types, D, Ref, Status);
       Check (Status = Defined);
    end Add;
-   procedure Padding (Types : in out Registry; Count : Natural) is
+   --  Unused_First .. Unused_Count, after those already there.
+   procedure Padding (Types : in out Registry; Count : Natural; First : Positive := 1) is
       Ref : Type_Reference;
    begin
-      for I in 1 .. Count loop
+      for I in First .. Count loop
          Add (Types, (Identifier => Numbered ("Unused_", I), Form => Product, others => <>), Ref);
       end loop;
    end Padding;
@@ -63,17 +67,30 @@ procedure Correspondence_Tests is
       end if;
       Add (Types, D, Root);
    end Fixture;
+   --  Fillings and depths around the old fixed size (216) and the ceiling:
+   --  a registry grows from what is declared.
+   Old_Size : constant := 216;
+   Padded : Registry;
+   Filled : Natural := 0;
+   Extras : constant array (Positive range <>) of Natural :=
+     [0, 1, 2, Old_Size - 3, Old_Size - 2, Declaration_Ceiling - 3];
+   --  A chain of records is one cell deeper per level: at most a value's
+   --  cells (Maximum_Value_Cells) deep.
+   Depths : constant array (Positive range <>) of Positive :=
+     [1, 2, 3, Old_Size - 1, Old_Size, Old_Size + 1, Maximum_Value_Cells - 1];
 begin
-   for Extra in 0 .. Maximum_Declarations - 3 loop
+   for Extra of Extras loop
+      Padding (Padded, Extra, Filled + 1);
+      Filled := Extra;
       for Change in Mutation loop
          declare
-            Source, Target : Registry;
+            Source : Registry;
+            Target : Registry := Padded;
             Root, Expected : Type_Reference;
             A, B, Different_Key, Unbound : CCL.Objects.Binding;
             Good : Boolean;
          begin
             Fixture (Source, None, Root);
-            Padding (Target, Extra);
             Fixture (Target, Change, Expected);
             Check (Correspondence.Resolve (Source, Root, Target) =
               (if Change in None | Unused_Padding then Expected else Invalid_Type));
@@ -112,13 +129,13 @@ begin
       Check (Correspondence.Resolve (Source, Type_Reference'Last, Target) = Invalid_Type);
    end;
    --  Deep/shared graphs remain bounded by declarations, not traversal paths.
-   for Depth in 1 .. Maximum_Declarations loop
+   for Depth of Depths loop
       declare
          Source, Target : Registry;
          Root, Expected : Type_Reference := Unit_Type;
          D : Description;
       begin
-         Padding (Target, (if Depth = Maximum_Declarations then 0 else 1));
+         Padding (Target, 1);
          for I in 1 .. Depth loop
             D := (Identifier => Numbered ("Level_", I), Form => Product, Count => 1,
                   Parts => [1 => (Named ("child"), Root), others => <>]);

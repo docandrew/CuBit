@@ -38,7 +38,9 @@ package body CCL.Parameter_Signatures is
       Item : out Result)
    is
       Root : T.Type_Reference := T.Invalid_Type;
-      Order : array (1 .. T.Maximum_Declarations) of T.Type_Reference := [others => T.Invalid_Type];
+      --  Each declared type at most once.
+      Order : array (1 .. Natural (T.Last (Types) - T.Unit_Type)) of T.Type_Reference :=
+        [others => T.Invalid_Type];
       Ordered : Natural := 0;
 
       function Unit_Payload (Ref : T.Type_Reference) return Boolean is

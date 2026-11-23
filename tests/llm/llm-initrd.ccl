@@ -1,5 +1,5 @@
 # llm-mock regression: images/development-initrd.ccl with the settings of
-# tests/llm/system-llm-test.ccl (tls.hosts names the mock). Keep in sync.
+# tests/llm/system-llm-test.ccl (tls.hosts names the mock and net-fetch's fixture). Keep in sync.
 (system-image v1
   (catalog "cubit-native-v1")
   (layout bootstrap-only)

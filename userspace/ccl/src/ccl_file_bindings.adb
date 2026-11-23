@@ -179,7 +179,17 @@ package body CCL_File_Bindings is
                        (if Value > Unsigned_64 (Integer_64'Last) then Integer_64'Last else Integer_64 (Value)));
                begin
                   CCL_Places.List (Joined (Root, Path), Entries, Count, Total, Result);
-                  if Result = CCL_Places.Listed_All then
+                  if Result /= CCL_Places.Listed_All then
+                     Reply.Why := Listing_Failure (Result, Joined (Root, Path));
+                  elsif Total > Count then
+                     --  More entries than one result holds: refused, never
+                     --  a listing cut short (BUG-006).
+                     Reply.Why := Failures.Failed
+                       (Failures.Exhausted,
+                        "the listing of " & Joined (Root, Path) & " holds" & Natural'Image (Total) &
+                        " entries; one result holds at most" & Natural'Image (Files.MAXIMUM_LISTED),
+                        "list a directory with fewer entries");
+                  else
                      Image := CCL.Objects.Empty (Contracts.Listing);
                      Put (CCL.Objects.Sequence_Cell (Count));
                      for I in 1 .. Count loop
@@ -196,9 +206,9 @@ package body CCL_File_Bindings is
                         Put (Number (Unsigned_64 (Entries (I).Links)));
                      end loop;
                      Built := Step = CCL.Objects.Added and then CCL.Objects.Validate (Image, Contracts.Listing);
-                  end if;
-                  if not Built then
-                     Reply.Why := Listing_Failure (Result, Joined (Root, Path));
+                     if not Built then
+                        Reply.Why := Listing_Failure (Result, Joined (Root, Path));
+                     end if;
                   end if;
                end;
             end if;

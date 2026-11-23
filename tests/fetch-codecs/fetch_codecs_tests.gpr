@@ -1,0 +1,18 @@
+--  SELF-003 step 1: hosted tests and proofs of net.fetch's URL and HTTP/1.1
+--  response codecs (userspace/lib/fetch).
+project Fetch_Codecs_Tests is
+   for Source_Dirs use (".", "../../userspace/lib/fetch", "../../userspace/runtime/gnat");
+   for Source_Files use
+     ("main.adb", "fetch_urls.ads", "fetch_urls.adb", "http_responses.ads", "http_responses.adb",
+      "cubit.ads", "cubit-tls_scopes.ads", "cubit-tls_scopes.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe", "-I-");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Fetch_Codecs_Tests;

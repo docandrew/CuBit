@@ -21,6 +21,8 @@ with CCL_Agent_Bindings;
 with CCL_Process_Bindings;
 with CCL_Wifi_Bindings;
 with CCL_Program_Bindings;
+with CCL_Net_Bindings;
+with CCL_Git_Bindings;
 with CuBit.Failures;
 
 package body CCL_Host_Environment is
@@ -64,6 +66,8 @@ package body CCL_Host_Environment is
       if Success then CCL_Secrets_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Machine_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Metric_Bindings.Install (Catalog, Grants, Success); end if;
+      if Success then CCL_Net_Bindings.Install (Catalog, Grants, Success); end if;
+      if Success then CCL_Git_Bindings.Install (Catalog, Grants, Success); end if;
       if not Success then return; end if;
       CCL.Interfaces.Clock.Publish (Catalog, Error);
       Success := Error = CCL.Catalog.Catalog_Valid;
@@ -97,7 +101,8 @@ package body CCL_Host_Environment is
       CCL_Calc_Bindings.Handles (Binding) or else
       CCL_Install_Bindings.Handles (Binding) or else CCL_Llm_Bindings.Handles (Binding) or else
       CCL_Secrets_Bindings.Handles (Binding) or else CCL_Machine_Bindings.Handles (Binding) or else
-      CCL_Metric_Bindings.Handles (Binding) or else
+      CCL_Metric_Bindings.Handles (Binding) or else CCL_Net_Bindings.Handles (Binding) or else
+      CCL_Git_Bindings.Handles (Binding) or else
       CCL_Agent_Bindings.Handles (Binding));
 
    CLOCK_UNAVAILABLE : constant CuBit.Failures.Failure := CuBit.Failures.Failed
@@ -146,6 +151,20 @@ package body CCL_Host_Environment is
          CCL_Machine_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Metric_Bindings.Handles (Binding) then
          CCL_Metric_Bindings.Invoke (Binding, Argument, Reply);
+      elsif CCL_Net_Bindings.Handles (Binding) then
+         declare
+            Clock_Available : Boolean;
+            Now : constant Interfaces.Unsigned_64 := Monotonic_Ms (Clock_Available);
+         begin
+            CCL_Net_Bindings.Invoke (Binding, Argument, Now, Streams, Reply);
+         end;
+      elsif CCL_Git_Bindings.Handles (Binding) then
+         declare
+            Clock_Available : Boolean;
+            Now : constant Interfaces.Unsigned_64 := Monotonic_Ms (Clock_Available);
+         begin
+            CCL_Git_Bindings.Invoke (Binding, Argument, Now, Streams, Reply);
+         end;
       elsif CCL_Agent_Bindings.Handles (Binding) then
          declare
             Clock_Available : Boolean;
@@ -223,6 +242,12 @@ package body CCL_Host_Environment is
          Arrived := Arrived or else From_Programs;
          CCL_Llm_Bindings.Pump (Streams, From_Programs);
          Arrived := Arrived or else From_Programs;
+         if Available then
+            CCL_Net_Bindings.Pump (Streams, Now, From_Programs);
+            Arrived := Arrived or else From_Programs;
+            CCL_Git_Bindings.Pump (Streams, Now, From_Programs);
+            Arrived := Arrived or else From_Programs;
+         end if;
          --  Agent missions run their tools through this environment's own
          --  dispatch, each through its mission's granted view.
          declare
@@ -257,9 +282,21 @@ package body CCL_Host_Environment is
       Install_Due : constant Interfaces.Unsigned_64 :=
         (if Available then CCL_Install_Bindings.Next_Query_Delay (Now) else Interfaces.Unsigned_64'Last);
       use type Interfaces.Unsigned_64;
-      Waiting : constant Interfaces.Unsigned_64 :=
+      Llm_Waiting : constant Interfaces.Unsigned_64 :=
         (if CCL_Llm_Bindings.Running or else CCL_Agent_Bindings.Running
          then Interfaces.Unsigned_64'Min (Install_Due, CCL_Llm_Bindings.Poll_Ms) else Install_Due);
+      --  A running fetch or clone: its deadline, and its completions' pump
+      --  (each completion wakes the loop; the poll bounds the latency anyway).
+      Fetch_Waiting : constant Interfaces.Unsigned_64 :=
+        (if CCL_Net_Bindings.Running
+         then Interfaces.Unsigned_64'Min
+           (Llm_Waiting, Interfaces.Unsigned_64'Min (CCL_Net_Bindings.Next_Due, CCL_Llm_Bindings.Poll_Ms))
+         else Llm_Waiting);
+      Waiting : constant Interfaces.Unsigned_64 :=
+        (if CCL_Git_Bindings.Running
+         then Interfaces.Unsigned_64'Min
+           (Fetch_Waiting, Interfaces.Unsigned_64'Min (CCL_Git_Bindings.Next_Due, CCL_Llm_Bindings.Poll_Ms))
+         else Fetch_Waiting);
    begin
       if Due = Interfaces.Unsigned_64'Last or else not Available then
          return Waiting;

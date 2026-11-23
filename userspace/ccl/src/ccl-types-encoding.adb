@@ -67,11 +67,8 @@ package body CCL.Types.Encoding with SPARK_Mode is
       for I in Component_Index loop
          if I <= D.Count then
             Get_Name (Parts_Offset + (I - 1) * Part_Size, D.Parts (I).Identifier);
-            if Data (Parts_Offset + (I - 1) * Part_Size + Name_Size) > Unsigned_8 (Type_Reference'Last) then
-               Good := False;
-            else
-               D.Parts (I).Payload := Type_Reference (Data (Parts_Offset + (I - 1) * Part_Size + Name_Size));
-            end if;
+            --  A module-local reference: any byte names a reference.
+            D.Parts (I).Payload := Type_Reference (Data (Parts_Offset + (I - 1) * Part_Size + Name_Size));
          else
             for B in 0 .. Part_Size - 1 loop
                if Data (Parts_Offset + (I - 1) * Part_Size + B) /= 0 then Good := False; end if;

@@ -36,6 +36,9 @@
     # (secrets.set ...): stores a named secret through non-echoing entry;
     # no operation reads a value back.
     (service "secrets" "secrets")
+    # (net.fetch ...): HTTPS through tls.svc, to the hosts the tls scope
+    # below names (SELF-003); the console holds no network scope itself.
+    (service "tls" "tls")
     # (power-off), (halt): power.svc, as the console's own requester badge
     # (PWR-003; startup plan only).
     (service "power-console" "power")
@@ -43,8 +46,8 @@
     # Debug_Observe within the user session's debug envelope.
     (service "debug-session" "debug-session")]
   # Without these the console runs; lexicon.*, system.*, wifi.*, llm.*,
-  # secrets.* and machine.* say why not (machine.* is then absent).
-  optional => ["series" "lexicon" "installer" "network-stack" "wifi" "llm" "secrets" "power" "debug-session"]
+  # secrets.*, net.* and machine.* say why not (machine.* is then absent).
+  optional => ["series" "lexicon" "installer" "network-stack" "wifi" "llm" "secrets" "tls" "power" "debug-session"]
   scopes => [
     (config-all [File_Right.Read])
     # Every series, read only.
@@ -61,7 +64,11 @@
     # read only, the staging area alone, not the rest of @system/work.
     (filesystem [File_Right.Read] "@system/work/remote/out")
     # debug.*: targets' build-id debug files and sources, read only.
-    (filesystem [File_Right.Read] "@system/Debug/")]
+    (filesystem [File_Right.Read] "@system/Debug/")
+    # net.fetch: any host's HTTPS port, by name (tls.svc checks each one,
+    # redirects included). Installed only with network approval: a
+    # session launch, or (network approve-declared) in a startup plan.
+    (tls "*:443")]
   # Each becomes a CCL interface generated from its description: as.run,
   # ld.run, gcc.run (named by the last component), and their ports
   # (as.unix.stderr ...). The staging directory admits the programs built

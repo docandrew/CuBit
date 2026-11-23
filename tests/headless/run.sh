@@ -94,7 +94,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, exit-status, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, large-manifest, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, ui-latency, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, desktop-session, desktop-session-no-invtsc, display-latency, metrics-latency, metricsview, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, desktop-live-replace, console-run-staged, bench-build, nvme-timeout, nvme-stuck, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, exit-status, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, net-fetch, storage-grants, audio-grants, desktop-display, large-manifest, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, ui-latency, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, desktop-session, desktop-session-no-invtsc, display-latency, metrics-latency, metricsview, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, desktop-live-replace, console-run-staged, bench-build, nvme-timeout, nvme-stuck, or boot-timeline (--accel kvm --timeout 60)
   --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, ui-latency, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
@@ -364,7 +364,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|net-fetch|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -1301,6 +1301,15 @@ with open(sys.argv[1], "wb") as f:
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-llm-mock.ccl"
         LLM_MOCK_STATE="$(mktemp -d "${TMPDIR:-/tmp}/cubit-llm-mock.XXXXXX")"
         ;;
+    net-fetch)
+        # SELF-003 steps 1 and 2: (net.fetch ...), (archive.unpack ...) and
+        # (git.clone ...) in the console, through tls.svc to the host's
+        # HTTPS fixture (tests/net-fetch/server.py, git's smart HTTP by the
+        # host's git upload-pack), into @system/work. No internet.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-net-fetch.ccl"
+        NET_FETCH_STATE="$(mktemp -d "${TMPDIR:-/tmp}/cubit-net-fetch.XXXXXX")"
+        NET_FETCH_MANY_ENTRIES=1000
+        ;;
     llm-live)
         # Manual lane, like wget-https: the real api.anthropic.com. Needs the
         # host's internet and the user's key, typed into the console (with
@@ -1804,6 +1813,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "ccl-workspace" ] ||
        [ "$TEST_NAME" = "ccl-console" ] ||
        [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
+       [ "$TEST_NAME" = "net-fetch" ] ||
        [ "$TEST_NAME" = "lexicon" ] ||
        [ "$TEST_NAME" = "dictionary" ] ||
        [ "$TEST_NAME" = "bible" ] ||
@@ -1999,6 +2009,7 @@ if [ -n "$INIT_PROFILE" ]; then
        [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
        [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
        [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
+       [ "$TEST_NAME" = "net-fetch" ] ||
        [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] || [ "$TEST_NAME" = "bible" ] ||
        [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "metricsview" ] || [ "$TEST_NAME" = "debugger-gui" ] || [ "$TEST_NAME" = "debugger-gui-rs" ]; then
         if [ "$TEST_NAME" = "ccl-vm" ]; then
@@ -2021,6 +2032,32 @@ if [ -n "$INIT_PROFILE" ]; then
             CCL_IMAGES="ccl-console.app clock.svc desktop.svc display.svc logstore.svc tls.svc secrets.svc llm-test.svc:llm.svc"
             if [ "$TEST_NAME" = "agent-app" ]; then
                 CCL_IMAGES="agent.app clock.svc desktop.svc display.svc logstore.svc tls.svc secrets.svc llm-test.svc:llm.svc"
+            fi
+        elif [ "$TEST_NAME" = "net-fetch" ]; then
+            # ccl-console-fetch-test.app is ccl-console.app with only its tls
+            # scope replaced (the fixture's name and port); it is installed
+            # under the production name the startup plan starts.
+            CCL_IMAGES="ccl-console-fetch-test.app:ccl-console.app clock.svc desktop.svc display.svc logstore.svc tls.svc"
+            debugfs -w -R "mkdir work" "$TEMP_DISK" >/dev/null 2>&1
+            # BUG-006: work/many holds more entries than one fs.list result
+            # and than one directory-queue request (16 pages of 50), so the
+            # listing pages across requests and must be refused with its
+            # whole count, never listed cut short.
+            many_commands="$TEMP_DISK.many"
+            many_empty="$TEMP_DISK.empty"
+            : > "$many_empty"
+            {
+                echo "mkdir work/many"
+                for ((entry = 0; entry < NET_FETCH_MANY_ENTRIES; entry++)); do
+                    printf 'write %s work/many/entry-%04d\n' "$many_empty" "$entry"
+                done
+            } > "$many_commands"
+            debugfs -w -f "$many_commands" "$TEMP_DISK" >/dev/null 2>&1
+            rm -f "$many_commands" "$many_empty"
+            if [ "$(debugfs -R "ls work/many" "$TEMP_DISK" 2>/dev/null | grep -o 'entry-[0-9]*' | sort -u | wc -l)" \
+                 -ne "$NET_FETCH_MANY_ENTRIES" ]; then
+                echo "headless: failed to seed work/many" >&2
+                exit 1
             fi
         elif [ "$TEST_NAME" = "llm-live" ]; then
             CCL_IMAGES="ccl-console.app clock.svc desktop.svc display.svc logstore.svc timesync.svc tls.svc secrets.svc llm.svc"
@@ -3582,6 +3619,21 @@ SERVO_PAGES_EOF
             exit 1
         fi
     fi
+    if [ "$TEST_NAME" = "net-fetch" ]; then
+        # The test root is tls.svc's whole trust store: only the fixture's
+        # certificate verifies.
+        if ! bash "$ROOT_DIR/tests/net-fetch/make-pki.sh" >/dev/null; then
+            echo "headless: failed to make the fetch fixture's certificate" >&2
+            exit 1
+        fi
+        debugfs -w -R "mkdir tls" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "rm tls/roots.der" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $ROOT_DIR/tests/tls/build/pki/ca.der tls/roots.der" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install the fetch fixture's trust store" >&2
+            exit 1
+        fi
+    fi
     if [ "$TEST_NAME" = "tls-service" ]; then
         # The test root is the service's trust store for this run.
         debugfs -w -R "mkdir tls" "$TEMP_DISK" >/dev/null 2>&1
@@ -3917,8 +3969,10 @@ if [ "$TEST_NAME" = "tls-service" ]; then
         exit 1
     fi
 fi
-if [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ]; then
-    # Development initrd whose tls.hosts maps the mock's name to the host.
+if [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] ||
+   [ "$TEST_NAME" = "net-fetch" ]; then
+    # Development initrd whose tls.hosts maps the mock's (and the fetch
+    # fixture's) name to the host.
     if ! python3 "$ROOT_DIR/userspace/ccl/tools/ccl-image/realize.py" \
           "$ROOT_DIR/tests/llm/llm-initrd.ccl" \
           --import "cubit-signing-ca=$CUBIT_SIGNING/builder-ca.der" \
@@ -4040,6 +4094,7 @@ if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
    [ "$TEST_NAME" = "shutdown-console" ] ||
    [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
+       [ "$TEST_NAME" = "net-fetch" ] ||
    [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "metricsview" ] ||
    [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
    [ "$TEST_NAME" = "desktop-virtio-vga" ] || [ "$TEST_NAME" = "display-latency" ] ||
@@ -4229,6 +4284,7 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
    [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
+       [ "$TEST_NAME" = "net-fetch" ] ||
    [ "$TEST_NAME" = "lexicon" ] || [ "$TEST_NAME" = "dictionary" ] || [ "$TEST_NAME" = "bible" ] ||
    [ "$TEST_NAME" = "debugger-gui" ] || [ "$TEST_NAME" = "debugger-gui-rs" ] ||
    [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "scanout-repair" ] || [ "$TEST_NAME" = "metricsview" ] ||
@@ -5057,6 +5113,117 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             touch "$LLM_MOCK_STATE/stop"
             sleep 1
             fi
+        elif [ "$TEST_NAME" = "net-fetch" ]; then
+            # SELF-003 step 1: the console fetches from the HTTPS fixture
+            # (tests/net-fetch/server.py) into @system/work and unpacks.
+            fetch_ready=0
+            for ((attempt = 0; attempt < 300; attempt++)); do
+                if grep -aF "ccl-console: first frame presented" "$SERIAL_LOG" >/dev/null &&
+                   [ -f "$NET_FETCH_STATE/ready" ]; then
+                    fetch_ready=1
+                    break
+                fi
+                sleep 0.1
+            done
+            if [ "$fetch_ready" -ne 1 ]; then
+                echo "headless: the console or the fetch fixture did not start" >&2
+                exit 1
+            fi
+            send_text() {
+                python3 -I "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" "$1" 0.03
+            }
+            # Wait up to $3 tenths of a second for $2 lines with marker $1.
+            wait_count() {
+                local tries=0
+                while [ $tries -lt "$3" ]; do
+                    [ "$(grep -acF "$1" "$SERIAL_LOG")" -ge "$2" ] && return 0
+                    sleep 0.1
+                    tries=$((tries + 1))
+                done
+                echo "headless: fewer than $2 '$1' in time" >&2
+                return 1
+            }
+            pkg_hash="$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["/files/pkg.tar"])' \
+                "$NET_FETCH_STATE/hashes.json")"
+            zero_hash="$(printf '0%.0s' $(seq 64))"
+            base='https://fetch-test.cubit.internal:18496'
+            limits='max_bytes => 1000000 max_redirects => 2 deadline_ms => 60000'
+            sleep 0.5
+            send_text '(define w (Place root => "@system" path => "work"))'
+            sleep 1
+            # 1. Pinned, Content-Length: stored.
+            send_text "(define pkgf (net.fetch (Fetch_Request url => \"$base/files/pkg.tar\" into => w name => \"pkg.tar\" pin => (Fetch_Pin.Sha256 \"$pkg_hash\") existing => Fetch_Existing.Replace $limits)))"
+            send_text '(wait (net.reply pkgf))'
+            wait_count "Fetch_Outcome.Stored" 1 300 || exit 1
+            # 2. Unpacked into work/pkg (the archive's own pkg/ inside it); a
+            # file four directories down reads back.
+            send_text '(archive.unpack (Unpack_Request from => w name => "pkg.tar" into => w directory => "pkg" format => Archive_Format.Tar specials => Archive_Specials.Refuse max_entries => 100 max_bytes => 100000))'
+            wait_count "Unpack_Outcome.Unpacked" 1 300 || exit 1
+            send_text '(fs.read (Excerpt child => (Child place => (Place root => "@system" path => "work/pkg/pkg/sub/deep") name => "x.txt") offset => 0 length => 100))'
+            wait_count "NET-FETCH-DEEP-FILE" 1 100 || exit 1
+            # 3. A pin that does not match: refused, nothing kept.
+            send_text "(define badf (net.fetch (Fetch_Request url => \"$base/files/hello.txt\" into => w name => \"bad.txt\" pin => (Fetch_Pin.Sha256 \"$zero_hash\") existing => Fetch_Existing.Refuse $limits)))"
+            send_text '(wait (net.reply badf))'
+            wait_count "Fetch_Outcome.Digest_Mismatch" 1 300 || exit 1
+            # 4. A redirect to a chunked body, unpinned.
+            send_text "(define bigf (net.fetch (Fetch_Request url => \"$base/redirect/big\" into => w name => \"big.bin\" pin => Fetch_Pin.Unpinned existing => Fetch_Existing.Refuse $limits)))"
+            send_text '(wait (net.reply bigf))'
+            wait_count "Fetch_Outcome.Stored" 2 300 || exit 1
+            # 5. A place the console may not write: refused before any
+            # connection (the fixture must never see /files/never).
+            send_text "(net.fetch (Fetch_Request url => \"$base/files/never\" into => (Place root => \"@system\" path => \"Debug\") name => \"x\" pin => Fetch_Pin.Unpinned existing => Fetch_Existing.Refuse $limits))"
+            wait_count "outside this program's writable places" 1 100 || exit 1
+            # 6. An archive that escapes: fetched, then refused by unpack.
+            send_text "(define evilf (net.fetch (Fetch_Request url => \"$base/files/evil.tar\" into => w name => \"evil.tar\" pin => Fetch_Pin.Unpinned existing => Fetch_Existing.Refuse $limits)))"
+            send_text '(wait (net.reply evilf))'
+            wait_count "Fetch_Outcome.Stored" 3 300 || exit 1
+            send_text '(archive.unpack (Unpack_Request from => w name => "evil.tar" into => w directory => "evil" format => Archive_Format.Tar specials => Archive_Specials.Refuse max_entries => 100 max_bytes => 100000))'
+            wait_count "Unpack_Outcome.Refused" 1 300 || exit 1
+            # 7. A redirect loop past max_redirects, and a 404.
+            send_text "(define loopf (net.fetch (Fetch_Request url => \"$base/redirect/loop\" into => w name => \"loop\" pin => Fetch_Pin.Unpinned existing => Fetch_Existing.Refuse $limits)))"
+            send_text '(wait (net.reply loopf))'
+            wait_count "Fetch_Outcome.Too_Many_Redirects" 1 300 || exit 1
+            send_text "(define missf (net.fetch (Fetch_Request url => \"$base/missing\" into => w name => \"missing\" pin => Fetch_Pin.Unpinned existing => Fetch_Existing.Refuse $limits)))"
+            send_text '(wait (net.reply missf))'
+            wait_count "Fetch_Outcome.Http_Status" 1 300 || exit 1
+            # What the place holds now (checked after the run).
+            # 8. git.clone (SELF-003 step 2): a SHA-1 repository whose
+            # advertisement has the "# service=" preamble, the same one
+            # through a redirect, a SHA-256 repository (when the host's git
+            # makes one), a repository that is not there, and a target that
+            # exists. The clones are judged on the host after the run.
+            git_limits='max_refs => 100 max_objects => 10000 max_bytes => 10000000 max_redirects => 2 deadline_ms => 120000'
+            send_text "(define c1 (git.clone (Clone_Request url => \"$base/git/sha1.git\" into => w directory => \"clone1\" $git_limits)))"
+            send_text '(wait (git.reply c1))'
+            wait_count "Git_Outcome.Cloned" 1 600 || exit 1
+            send_text "(define c2 (git.clone (Clone_Request url => \"$base/git/moved.git\" into => w directory => \"clone2\" $git_limits)))"
+            send_text '(wait (git.reply c2))'
+            wait_count "Git_Outcome.Cloned" 2 600 || exit 1
+            git_clones=2
+            if python3 -I -c 'import json, sys; sys.exit(0 if "sha256.git" in json.load(open(sys.argv[1])) else 1)' \
+                "$NET_FETCH_STATE/repos.json"; then
+                send_text "(define c3 (git.clone (Clone_Request url => \"$base/git/sha256.git\" into => w directory => \"clone256\" $git_limits)))"
+                send_text '(wait (git.reply c3))'
+                wait_count "Git_Outcome.Cloned" 3 600 || exit 1
+                git_clones=3
+            fi
+            send_text "(define c4 (git.clone (Clone_Request url => \"$base/git/missing.git\" into => w directory => \"nothing\" $git_limits)))"
+            send_text '(wait (git.reply c4))'
+            wait_count "Git_Outcome.Http_Status" 1 300 || exit 1
+            send_text "(define c5 (git.clone (Clone_Request url => \"$base/git/sha1.git\" into => w directory => \"clone1\" $git_limits)))"
+            send_text '(wait (git.reply c5))'
+            wait_count "Git_Outcome.Exists" 1 300 || exit 1
+            printf '%s\n' "$git_clones" > "$NET_FETCH_STATE/clones"
+            # 9. BUG-006: a directory larger than one result is refused with
+            # its whole count.
+            send_text '(fs.list (Place root => "@system" path => "work/many"))'
+            wait_count "holds $NET_FETCH_MANY_ENTRIES entries; one result holds at most" 1 300 || exit 1
+            send_text '(fs.list w)'
+            wait_count "REPL completed: List<File_Metadata>" 1 100 || exit 1
+            sleep 1
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-net-fetch.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            touch "$NET_FETCH_STATE/stop"
+            sleep 1
         elif [ "$TEST_NAME" = "ccl-console" ]; then
             console_ready=0
             for ((attempt = 0; attempt < 150; attempt++)); do
@@ -6651,6 +6818,11 @@ if [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_
     python3 -I "$ROOT_DIR/tests/llm/mock_server.py" "$LLM_MOCK_STATE" "$TIMEOUT_SECONDS" \
         "$(case "$TEST_NAME" in agent-mock) echo agent ;; agent-app) echo agent-app ;; *) echo llm ;; esac)" \
         > "${SERIAL_LOG}.llm-mock.log" 2>&1 &
+    NETWORK_PEER_PID=$!
+fi
+if [ "$TEST_NAME" = "net-fetch" ]; then
+    python3 -I "$ROOT_DIR/tests/net-fetch/server.py" "$NET_FETCH_STATE" "$TIMEOUT_SECONDS" \
+        > "${SERIAL_LOG}.net-fetch.log" 2>&1 &
     NETWORK_PEER_PID=$!
 fi
 if [ "$TEST_NAME" = "servo" ]; then
@@ -9080,6 +9252,117 @@ Llm_Stop.Deadline
         NETWORK_PEER_PID=""
         rm -rf "$LLM_MOCK_STATE"
         if [ "$llm_failed" -ne 0 ]; then
+            exit 1
+        fi
+        ;;
+    net-fetch)
+        required_markers="
+ccl-console: first frame presented
+tls: channel 1 established with fetch-test.cubit.internal
+Fetch_Outcome.Stored
+Unpack_Outcome.Unpacked
+NET-FETCH-DEEP-FILE
+Fetch_Outcome.Digest_Mismatch
+outside this program's writable places
+Unpack_Outcome.Refused
+Unsafe_Path
+../evil.txt
+Fetch_Outcome.Too_Many_Redirects
+Fetch_Outcome.Http_Status
+Git_Outcome.Cloned
+Git_Outcome.Http_Status
+Git_Outcome.Exists
+one result holds at most
+"
+        fetch_failed=0
+        fetch_hash() {
+            python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' \
+                "$NET_FETCH_STATE/hashes.json" "$1"
+        }
+        # Each stored fetch's reply carries the body's SHA-256.
+        for fetched in /files/pkg.tar /files/big.bin /files/evil.tar; do
+            if ! grep -a "Fetch_Outcome.Stored" "$SERIAL_LOG" | grep -aF "$(fetch_hash "$fetched")" >/dev/null; then
+                echo "headless: no stored fetch carries the SHA-256 of $fetched" >&2
+                fetch_failed=1
+            fi
+        done
+        # The place, as the console listed it last (the reply whole: it is
+        # longer than one console line): the kept files and clones, and
+        # nothing of the refused fetches, the refused unpack or the refused
+        # clones.
+        fetch_listing="$(python3 -I "$ROOT_DIR/tests/headless/console-reply.py" "$SERIAL_LOG" \
+            "REPL completed: List<File_Metadata>")"
+        kept_clones="clone1 clone2"
+        if [ "$(cat "$NET_FETCH_STATE/clones" 2>/dev/null)" = 3 ]; then
+            kept_clones="$kept_clones clone256"
+        fi
+        for kept in pkg.tar big.bin evil.tar pkg many $kept_clones; do
+            if ! printf '%s' "$fetch_listing" | grep -aF "\"$kept\"" >/dev/null; then
+                echo "headless: @system/work lacks $kept" >&2
+                fetch_failed=1
+            fi
+        done
+        for leftover in bad.txt .bad.txt.partial .big.bin.partial loop .loop.partial missing .missing.partial \
+                        evil .evil.unpacking .pkg.unpacking evil.txt \
+                        nothing .nothing.cloning .clone1.cloning .clone2.cloning .clone256.cloning; do
+            if printf '%s' "$fetch_listing" | grep -aF "\"$leftover\"" >/dev/null; then
+                echo "headless: @system/work still holds $leftover" >&2
+                fetch_failed=1
+            fi
+        done
+        # The bytes on the guest's disk, read back on the host.
+        fetch_dump="$(mktemp -d "${TMPDIR:-/tmp}/cubit-net-fetch-dump.XXXXXX")"
+        for fetched in pkg.tar big.bin; do
+            debugfs -R "dump work/$fetched $fetch_dump/$fetched" "$TEMP_DISK" >/dev/null 2>&1
+            if [ "$(sha256sum "$fetch_dump/$fetched" 2>/dev/null | cut -d' ' -f1)" != "$(fetch_hash "/files/$fetched")" ]; then
+                echo "headless: work/$fetched on the disk is not the served body" >&2
+                fetch_failed=1
+            fi
+        done
+        debugfs -R "dump work/pkg/pkg/sub/deep/x.txt $fetch_dump/x.txt" "$TEMP_DISK" >/dev/null 2>&1
+        if [ "$(cat "$fetch_dump/x.txt" 2>/dev/null)" != "NET-FETCH-DEEP-FILE" ]; then
+            echo "headless: work/pkg/pkg/sub/deep/x.txt was not unpacked" >&2
+            fetch_failed=1
+        fi
+        for escaped in work/evil.txt evil.txt; do
+            if debugfs -R "stat $escaped" "$TEMP_DISK" 2>/dev/null | grep -q '^Inode:'; then
+                echo "headless: the archive escaped its directory: $escaped exists" >&2
+                fetch_failed=1
+            fi
+        done
+        # Each clone, read back from the disk, judged by the host's git
+        # against the repository served: fsck --strict, the commits, refs
+        # and tag, status, every file.
+        git_base='https://fetch-test.cubit.internal:18496/git'
+        clone_check() {
+            debugfs -R "rdump work/$1 $fetch_dump" "$TEMP_DISK" >/dev/null 2>&1
+            if ! python3 -I "$ROOT_DIR/tests/net-fetch/check_clone.py" "$fetch_dump/$1" \
+                "$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' \
+                   "$NET_FETCH_STATE/repos.json" "$2")" "$3" "$4" >&2; then
+                echo "headless: the clone work/$1 is not the repository $2" >&2
+                fetch_failed=1
+            fi
+        }
+        clone_check clone1 sha1.git sha1 "$git_base/sha1.git"
+        clone_check clone2 sha1.git sha1 "$git_base/moved.git"
+        if [ "$(cat "$NET_FETCH_STATE/clones" 2>/dev/null)" = 3 ]; then
+            clone_check clone256 sha256.git sha256 "$git_base/sha256.git"
+            if ! grep -a "Git_Outcome.Cloned" "$SERIAL_LOG" | grep -aF "Git_Format.Sha256" >/dev/null; then
+                echo "headless: no clone reported the SHA-256 object format" >&2
+                fetch_failed=1
+            fi
+        fi
+        rm -rf "$fetch_dump"
+        # The fixture saw each expected request, well formed, and nothing
+        # else (the fetch into a place the console may not write never
+        # connected).
+        if ! wait "$NETWORK_PEER_PID"; then
+            echo "headless: the fetch fixture's checks failed: ${SERIAL_LOG}.net-fetch.log" >&2
+            fetch_failed=1
+        fi
+        NETWORK_PEER_PID=""
+        rm -rf "$NET_FETCH_STATE"
+        if [ "$fetch_failed" -ne 0 ]; then
             exit 1
         fi
         ;;

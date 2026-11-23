@@ -27,7 +27,7 @@ package body CCL.Objects with SPARK_Mode is
       and then Describe (Types, Payload).Parts (1).Payload = Owner);
 
    function Storable (Types : Registry; Root : Type_Reference) return Boolean is
-      Allowed : array (Type_Reference) of Boolean := [others => False];
+      Allowed : array (Type_Reference range 0 .. Last (Types)) of Boolean := [others => False];
       D : Description;
    begin
       if not Known (Types, Root) then return False; end if;

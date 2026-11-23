@@ -160,7 +160,7 @@ begin
       Reject (Golden (1 .. 37) & [16#81#, 16#83#, 16#41#, Character'Pos ('X'), 1, 16#80#]);
    end;
    --  Largest metadata catalog/names/part counts: no fixed integer schema.
-   for Index in 1 .. T.Maximum_Declarations loop
+   for Index in 1 .. 300 loop  --  past the old fixed registry size (216)
       declare
          Definition : T.Description;
          Ref : T.Type_Reference;

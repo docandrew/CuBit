@@ -29,6 +29,9 @@ package CCL_Native_Bindings is
    function Installer        return CuBit.Handles.Endpoint;   --  "installer"
    --  llm.svc: (llm.ask ...) and its exchanges (CuBit.Llm_Protocol).
    function Llm              return CuBit.Handles.Endpoint;   --  "llm"
+   --  tls.svc: (net.fetch ...) (CuBit.TLS_Protocol); the hosts it may
+   --  reach are the program's TLS scope.
+   function Tls              return CuBit.Handles.Endpoint;   --  "tls"
    --  secrets.svc: (secrets.set ...) and friends (CuBit.Secrets_Protocol).
    function Secrets          return CuBit.Handles.Endpoint;   --  "secrets"
    --  power.svc, as a requester's badge (CuBit.Power_Requests): machine.*.

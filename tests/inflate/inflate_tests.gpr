@@ -1,0 +1,17 @@
+--  SELF-003 step 2: hosted tests and proofs of the inflater
+--  (userspace/lib/compress).
+project Inflate_Tests is
+   --  INFLATE_SOURCES: mutate.sh points it at its mutant copies.
+   for Source_Dirs use (".", external ("INFLATE_SOURCES", "../../userspace/lib/compress"));
+   for Source_Files use ("inflate_tool.adb", "inflate_streams.ads", "inflate_streams.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("inflate_tool.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Inflate_Tests;

@@ -1,0 +1,16 @@
+--  SELF-003 step 2: the inflater's test driver built as services build
+--  (-gnatp -O3: no run-time checks, the proof stands in for them).
+project Inflate_Fast is
+   --  INFLATE_SOURCES: mutate.sh points it at its mutant copies.
+   for Source_Dirs use (".", external ("INFLATE_SOURCES", "../../userspace/lib/compress"));
+   for Source_Files use ("inflate_tool.adb", "inflate_streams.ads", "inflate_streams.adb");
+   for Object_Dir use "build/fast-obj";
+   for Exec_Dir use "build";
+   for Main use ("inflate_tool.adb");
+   package Builder is
+      for Executable ("inflate_tool.adb") use "inflate_tool_fast";
+   end Builder;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O3", "-gnatp", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Inflate_Fast;

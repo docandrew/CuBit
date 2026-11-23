@@ -9,7 +9,7 @@ project Collections is
       "config_collections.ads", "config_collections.adb",
       "config_authority.ads", "cubit-process_ids.ads", "cubit-process_ids.adb", "config_authority.adb", "ccl-setting_secrets.ads",
       "config_worker_protocol.ads", "config_worker_protocol.adb",
-      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-growing_tables.ads", "ccl-growing_tables.adb", "ccl-objects.ads", "ccl-objects.adb",
       "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
       "cubit.ads", "cubit-config_inspection.ads", "cubit-config_inspection.adb");
    for Object_Dir use "build";

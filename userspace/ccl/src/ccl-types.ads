@@ -1,23 +1,20 @@
 with Interfaces;
+private with CCL.Growing_Tables;
 
 --  Nominal, bounded type descriptions. Products and sums refer only to
 --  previously published types, except a list of the declaring type itself
 --  (Complete_Self_List): no recursive layouts or other forward references.
 package CCL.Types with SPARK_Mode is
    Maximum_Name_Length : constant := 32;
-   --  64: the executable-manifest schema declares 49 types (CAP-002 added
-   --  the startup ones). Each declaration slot costs about 0.8 KiB in a
-   --  registry (name and 16 components); a precompiled manifest schema
-   --  would remove this pressure (follow-up).
-   --  Declared types one registry holds: every interface's (summed and
-   --  checked in CCL_Host_Environment) and a session's own. 176: the
-   --  front ends' interfaces declare 145 types with agent.* (AGENT-002),
-   --  fs.read, programs.* (Program_State, Program_Entry and its list),
-   --  logs.* retention and tallies (LOG-005) and machine.* (PWR-003); a
-   --  session keeps 24. 192 (stopgap, MET-002): metrics.* adds 14; 9 to
-   --  spare. 216 (stopgap, DBG-001): debug.* adds 20; 13 to spare. Drop
-   --  with registries sized by their input.
-   Maximum_Declarations : constant := 216;
+   --  Declared types one registry may hold: a named ceiling, not a size.
+   --  A registry's storage grows from what is declared (CCL.Growing_Tables,
+   --  on the heap), so an empty one costs nothing and one holding every
+   --  interface's types (about 230 in 2026-11) holds just those. Defining
+   --  past the ceiling, or when memory runs out, is refused with the
+   --  capacity results (Registry_Full, Import_Full, *_Registry_Full).
+   --  16384: Find is a linear scan, so filling a registry costs Ceiling ** 2
+   --  / 2 name comparisons (a second or so), and a full one about 17 MiB.
+   Declaration_Ceiling : constant := 16_384;
    Maximum_Components : constant := 16;
    --  Cells one value image holds (CCL.Objects.Image): as many as fit its
    --  16 KiB beside the header and the text (48 + 504 * 16 + 8192 bytes),
@@ -26,7 +23,7 @@ package CCL.Types with SPARK_Mode is
 
    type Builtin is (Invalid, Integer_Kind, Boolean_Kind, String_Kind,
                     Character_Kind, Handler_Kind, Unit_Kind);
-   type Type_Reference is range 0 .. Builtin'Pos (Unit_Kind) + Maximum_Declarations;
+   type Type_Reference is range 0 .. Builtin'Pos (Unit_Kind) + Declaration_Ceiling;
    Invalid_Type : constant Type_Reference := Type_Reference (Builtin'Pos (Invalid));
    Integer_Type : constant Type_Reference := Type_Reference (Builtin'Pos (Integer_Kind));
    Boolean_Type : constant Type_Reference := Type_Reference (Builtin'Pos (Boolean_Kind));
@@ -82,7 +79,8 @@ package CCL.Types with SPARK_Mode is
       Count : Component_Count := 0;
       Parts : Component_Array := [others => (others => <>)];
    end record;
-   type Registry is private;
+   --  Empty (the built-in types only) until something is defined.
+   type Registry is private with Default_Initial_Condition => Last (Registry) = Unit_Type;
    type Definition_Result is
      (Defined, Invalid_Name, Duplicate_Name, Invalid_Shape,
       Invalid_Reference, Layout_Too_Large, Registry_Full);
@@ -267,7 +265,9 @@ package CCL.Types with SPARK_Mode is
    No_Field_Default : constant Field_Default := (Kind => No_Default, Value => 0);
    --  Whether Default is a constant of the field's type (Payload).
    function Default_Fits (Item : Registry; Payload : Type_Reference; Default : Field_Default) return Boolean;
-   type Default_Result is (Default_Set, Not_A_Field, Default_Mismatch);
+   --  Default_Registry_Full: the registry's storage is shared and a private
+   --  copy could not be made (memory ran out).
+   type Default_Result is (Default_Set, Not_A_Field, Default_Mismatch, Default_Registry_Full);
    procedure Set_Default
      (Item : in out Registry; Ref : Type_Reference; Field : Component_Index;
       Default : Field_Default; Result : out Default_Result)
@@ -285,17 +285,21 @@ package CCL.Types with SPARK_Mode is
    with Global => null, Post =>
      (if Result /= Imported then Ref = Invalid_Type and Target = Target'Old);
 private
-   type Definition_Array is array (Declared_Type) of Description;
-   type Layout_Array is array (Declared_Type) of Cell_Count;
-   type Bound_Array is array (Declared_Type) of Bound;
    type Field_Defaults is array (Component_Index) of Field_Default;
-   type Default_Array is array (Declared_Type) of Field_Defaults;
-   type Registry is record
-      Used : Registry_Bound := Unit_Type;
-      Definitions : Definition_Array := [others => (others => <>)];
-      Layouts : Layout_Array := [others => 0];
-      Lows, Highs : Bound_Array := [others => 0];
-      Defaults : Default_Array := [others => [others => No_Field_Default]];
+   --  A declared type: its description, its layout in cells, a range's
+   --  bounds and its fields' defaults.
+   type Slot is record
+      Definition : Description;
+      Layout : Cell_Count := 0;
+      Low, High : Bound := 0;
+      Defaults : Field_Defaults := [others => No_Field_Default];
    end record;
-   function Last (Item : Registry) return Registry_Bound is (Item.Used);
+   package Slot_Tables is new CCL.Growing_Tables (Element => Slot, Ceiling => Declaration_Ceiling);
+   --  Declared type Ref is slot Ref - Unit_Type: the registry holds only
+   --  what has been declared, shared with its copies until one changes.
+   type Registry is record
+      Slots : Slot_Tables.Table;
+   end record;
+   function Last (Item : Registry) return Registry_Bound is
+     (Unit_Type + Type_Reference (Slot_Tables.Length (Item.Slots)));
 end CCL.Types;

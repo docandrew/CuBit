@@ -460,7 +460,8 @@ is
                   if Specialized not in CCL.Types.List_Specialized |
                     CCL.Types.List_Already_Specialized
                   then
-                     Diagnostic := Unsupported_List_Element;
+                     Diagnostic := (if CCL.Types."=" (Specialized, CCL.Types.List_Registry_Full) then Type_Registry_Full
+                                    else Unsupported_List_Element);
                   end if;
                end;
                return;
@@ -478,7 +479,8 @@ is
                   if Specialized not in CCL.Types.Stream_Specialized |
                     CCL.Types.Stream_Already_Specialized
                   then
-                     Diagnostic := Unsupported_Stream_Element;
+                     Diagnostic := (if CCL.Types."=" (Specialized, CCL.Types.Stream_Registry_Full) then Type_Registry_Full
+                                    else Unsupported_Stream_Element);
                   end if;
                end;
                return;
@@ -496,7 +498,8 @@ is
                   if Specialized not in CCL.Types.Stream_Specialized |
                     CCL.Types.Stream_Already_Specialized
                   then
-                     Diagnostic := Unsupported_Stream_Element;
+                     Diagnostic := (if CCL.Types."=" (Specialized, CCL.Types.Stream_Registry_Full) then Type_Registry_Full
+                                    else Unsupported_Stream_Element);
                   end if;
                end;
                return;
@@ -532,7 +535,8 @@ is
                if Specialized not in CCL.Types.Function_Specialized |
                  CCL.Types.Function_Already_Specialized
                then
-                  Diagnostic := Expected_Type_Name;
+                  Diagnostic := (if CCL.Types."=" (Specialized, CCL.Types.Function_Registry_Full) then Type_Registry_Full
+                                 else Expected_Type_Name);
                end if;
             end;
             return;
@@ -972,7 +976,8 @@ is
                if Specialized not in CCL.Types.List_Specialized |
                  CCL.Types.List_Already_Specialized
                then
-                  Diagnostic := Unsupported_List_Element; return;
+                  Diagnostic := (if CCL.Types."=" (Specialized, CCL.Types.List_Registry_Full) then Type_Registry_Full
+                                 else Unsupported_List_Element); return;
                end if;
                Add_Node ((Kind => List_Construct, Element_Count => 0,
                           Declared_Kind => List_Type, others => <>), Index);
@@ -991,7 +996,8 @@ is
                if Specialized not in CCL.Types.Stream_Specialized |
                  CCL.Types.Stream_Already_Specialized
                then
-                  Diagnostic := Unsupported_Stream_Element; return;
+                  Diagnostic := (if CCL.Types."=" (Specialized, CCL.Types.Stream_Registry_Full) then Type_Registry_Full
+                                 else Unsupported_Stream_Element); return;
                end if;
                Parse_Expression (Depth + 1, A);
                if Diagnostic /= No_Diagnostic then return; end if;
@@ -1019,7 +1025,8 @@ is
                if Specialized not in CCL.Types.Stream_Specialized |
                  CCL.Types.Stream_Already_Specialized
                then
-                  Diagnostic := Unsupported_Stream_Element; return;
+                  Diagnostic := (if CCL.Types."=" (Specialized, CCL.Types.Stream_Registry_Full) then Type_Registry_Full
+                                 else Unsupported_Stream_Element); return;
                end if;
                Parse_Expression (Depth + 1, A);
                if Diagnostic /= No_Diagnostic then return; end if;
@@ -1403,7 +1410,9 @@ is
                   CCL.Types.Define_Range
                     (Tree.Types, Definition.Identifier, Low, High, Defined_Type, Range_Status);
                   if Range_Status /= CCL.Types.Defined then
-                     Refuse_Type (Invalid_Type_Declaration, Start); return;
+                     Refuse_Type ((if CCL.Types."=" (Range_Status, CCL.Types.Registry_Full) then Type_Registry_Full
+                                   else Invalid_Type_Declaration), Start);
+                     return;
                   end if;
                   Add_Node
                     ((Kind => Type_Definition, Declared_Kind => Defined_Type,
@@ -1490,7 +1499,9 @@ is
             end loop;
             CCL.Types.Define (Tree.Types, Definition, Defined_Type, Definition_Status);
             if Definition_Status /= CCL.Types.Defined then
-               Refuse_Type (Invalid_Type_Declaration, Start); return;
+               Refuse_Type ((if CCL.Types."=" (Definition_Status, CCL.Types.Registry_Full) then Type_Registry_Full
+                             else Invalid_Type_Declaration), Start);
+               return;
             end if;
             for P in 1 .. Definition.Count loop
                if CCL.Types."/=" (Defaults (P).Kind, CCL.Types.No_Default) then
@@ -1499,7 +1510,9 @@ is
                   begin
                      CCL.Types.Set_Default (Tree.Types, Defined_Type, P, Defaults (P), Set);
                      if CCL.Types."/=" (Set, CCL.Types.Default_Set) then
-                        Refuse_Type (Invalid_Field_Default, Start); return;
+                        Refuse_Type ((if CCL.Types."=" (Set, CCL.Types.Default_Registry_Full)
+                                      then Type_Registry_Full else Invalid_Field_Default), Start);
+                        return;
                      end if;
                   end;
                end if;
@@ -1516,7 +1529,8 @@ is
                      if Specialized not in CCL.Types.List_Specialized |
                        CCL.Types.List_Already_Specialized
                      then
-                        Diagnostic := Unsupported_List_Element; return;
+                        Diagnostic := (if CCL.Types."=" (Specialized, CCL.Types.List_Registry_Full) then Type_Registry_Full
+                                       else Unsupported_List_Element); return;
                      end if;
                      CCL.Types.Complete_Self_List (Tree.Types, Defined_Type, P, List_Type, Completed);
                      if not Completed then
@@ -1850,7 +1864,8 @@ is
                   if Specialized not in CCL.Types.Function_Specialized |
                     CCL.Types.Function_Already_Specialized
                   then
-                     Diagnostic := Invalid_Type_Declaration;
+                     Diagnostic := (if CCL.Types."=" (Specialized, CCL.Types.Function_Registry_Full) then Type_Registry_Full
+                                    else Invalid_Type_Declaration);
                   end if;
                end;
             when Builtin_Form =>
@@ -2090,7 +2105,8 @@ is
                   if Specialized not in CCL.Types.List_Specialized |
                     CCL.Types.List_Already_Specialized
                   then
-                     Diagnostic := Unsupported_List_Element; return;
+                     Diagnostic := (if CCL.Types."=" (Specialized, CCL.Types.List_Registry_Full) then Type_Registry_Full
+                                    else Unsupported_List_Element); return;
                   end if;
                end;
                end if;
@@ -2664,7 +2680,6 @@ is
    is
       Outcome : Interpretation_Result;
    begin
-      Result.Resource_Policies := [others => (others => <>)];
       Check_Source (Source, Visible_Interfaces, Outcome, Result.Tree);
       Result.Status :=
         (case Outcome.Status is
@@ -2676,9 +2691,7 @@ is
       Result.Diagnostic_Subject := Outcome.Diagnostic_Subject;
       Result.Diagnostic_Expected := Outcome.Diagnostic_Expected;
       Result.Diagnostic_Found := Outcome.Diagnostic_Found;
-      for Ref in CCL.Types.Type_Reference loop
-         Result.Resource_Policies (Ref) := CCL.Catalog.Resource_Policy (Visible_Interfaces, Ref);
-      end loop;
+      Result.Resource_Policies := CCL.Catalog.Resource_Policies (Visible_Interfaces);
       Result.Source_Text := [others => ' '];
       Result.Source_Length := 0;
       if Source'Length <= Result.Source_Room then
