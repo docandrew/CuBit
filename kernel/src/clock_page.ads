@@ -9,14 +9,18 @@
 -- @description
 -- One frame, written only here, mapped read-only and non-executable into
 -- every process at Clock_Publication.Page_Address. The kernel keeps its own
--- copy of the conversion: Time.msTicks is that conversion sampled at CPU 0's
--- timer ticks, and READ_MONOTONIC_MICROSECONDS reads it directly, so the
+-- copy of the conversion: Time.msTicks is that conversion sampled at the
+-- time keeper's timer ticks (any CPU's once the page is shared, else CPU
+-- 0's), and READ_MONOTONIC_MICROSECONDS reads it directly, so the
 -- system calls and the page agree on one epoch.
 --
 -- User space gets the parameters only when the TSC is invariant (CPUID
 -- 8000_0007h EDX bit 8): only then does every CPU's counter advance at one
--- constant rate. Otherwise the page stays mapped but unpublished, user space
--- uses the system calls, and READ_MONOTONIC_MICROSECONDS keeps the HPET.
+-- constant rate. Invariant is not synchronized: a secondary CPU whose counter
+-- still disagrees with CPU 0's after TSC_ADJUST withdraws them again
+-- (TSC_Sync, Withdraw_Sharing). Otherwise the page stays mapped but
+-- unpublished, user space uses the system calls, and
+-- READ_MONOTONIC_MICROSECONDS keeps the HPET.
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;
 with Virtmem;
@@ -42,9 +46,21 @@ is
     -- User space has the parameters; READ_MONOTONIC_MICROSECONDS uses them.
     function Shared return Boolean;
 
+    ---------------------------------------------------------------------------
+    -- Withdraw_Sharing
+    -- Before the first process (a starting secondary CPU, or the BSP): the
+    -- CPUs' counters are not one clock after all (TSC_Sync's warp check).
+    -- The page goes back to unpublished, Shared becomes False for good, and
+    -- everything follows the path of a CPU without an invariant TSC: CPU 0
+    -- alone keeps msTicks, still on the kernel's conversion of its own
+    -- counter (Converting stays), user space reads the millisecond word, and
+    -- READ_MONOTONIC_MICROSECONDS the HPET. Nothing when not Shared.
+    ---------------------------------------------------------------------------
+    procedure Withdraw_Sharing;
+
     -- Publish msTicks in the page's millisecond word
-    -- (Clock_Publication.Milliseconds_Address): CPU 0, each tick that
-    -- advances it, and once at Publish.
+    -- (Clock_Publication.Milliseconds_Address): the time keeper's tick
+    -- (Time.clockTick) that advances it, and once at Publish.
     procedure Note_Milliseconds (Milliseconds : Unsigned_64);
 
     -- Nanoseconds at TSC value Counter. Requires Converting.

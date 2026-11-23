@@ -121,7 +121,8 @@ with CuBit.Log_Sources;
 with XHCI_DMA_Layout;
 with Contiguous_Memory;
 with XHCI_Capabilities;
-with XHCI_Configure_Reply;
+with XHCI_Legacy;
+with XHCI_Bring_Up_Report;
 with XHCI_Controller_Identity;
 with Intel_GPU_Probe;
 with Intel_GPU_Display_Pages;
@@ -1377,6 +1378,24 @@ procedure main is
    -- Returns new PID, or 0 on failure.
    ---------------------------------------------------------------------------
    Optical_Storage_Ready : Boolean := False;
+
+   --  An xHCI driver's bring-up report (XHCI_Bring_Up_Report), wherever
+   --  devmgr receives: True when From is an xhci.drv instance whose report
+   --  is pending and Msg is it (answered and acted on here).
+   function XHCI_Report (From : Process_ID; Msg : Message) return Boolean;
+   --  Before devmgr needs what USB storage may hold (a boot image missing
+   --  from the initrd, intel-gpu's firmware, procmgr's programs): receive
+   --  until every accepted xHCI controller has reported, answering what
+   --  arrives meanwhile as waitReady does, for at most
+   --  XHCI_Bring_Up_Wait_Ms. The controllers come up side by side while
+   --  devmgr starts everything else.
+   procedure Await_XHCI_Bring_Ups;
+   --  A ceiling, not an expected time: a controller enumerating several
+   --  devices that each run into a control-transfer timeout (5 s, as
+   --  Linux's USB_CTRL_GET_TIMEOUT). Past it boot goes on, and the
+   --  controller's devices attach when its report arrives.
+   XHCI_Bring_Up_Wait_Ms : constant := 10_000;
+
    Boot_Buffer : System.Address := System.Null_Address;
    Boot_Grant : CuBit.Memory_Grants.Grant_Reference;
    Boot_Granted : Boolean := False;
@@ -1478,6 +1497,9 @@ procedure main is
    begin
       idx := Cpio.findFile (cpioArchive, name);
       if idx >= cpioArchive.count then
+         --  Not in the initrd: it may be on the USB storage a controller
+         --  is still bringing up.
+         Await_XHCI_Bring_Ups;
          size := Read_Boot_Image (name);
          if size = 0 then
             debugPrint ("devmgr: boot image unavailable: " & name & LF);
@@ -1947,6 +1969,31 @@ procedure main is
    --  A request whose tag carries this flag accepts a capability in the reply.
    Accepting : constant IPC_Flags := (Accepts_Capability => True, others => False);
 
+   --  What devmgr's startup waits (waitReady, Await_XHCI_Bring_Ups) do
+   --  with a message that is not the one they wait for.
+   procedure Answer_Startup_Message (sender : Process_ID; msg : Message) is
+      ignore : Unsigned_64;
+   begin
+      if msg.tag.label = CuBit.Late_Introduction.Await_Request
+        and then msg.authorityTag = CuBit.Late_Introduction.Introducer_Tag
+      then
+         --  A child's introduction thread (the driver awaited may be the
+         --  one asking): never its ready message.
+         DL.Await (sender, msg);
+      elsif XHCI_Report (sender, msg) then
+         null;
+      elsif sender = Intel_Inspection_PID and then sender /= No_Process and then
+        msg.authorityTag = Intel_Ready_Tag
+      then
+         --  intel-gpu's runtime requests wait for the service loop: busy.
+         ignore := reply (sender,
+           (tag => (label => 16#F002#, length => 0,
+                    protocol => 0, ipc => <>, reserved => 0), authorityTag => 0, words => [others => 0]));
+      else
+         ignore := reply (sender, NULL_MESSAGE);
+      end if;
+   end Answer_Startup_Message;
+
    function waitReady (driverPID : Process_ID) return Boolean is
       sender : Process_ID;
       rdyMsg : Message;
@@ -1954,25 +2001,14 @@ procedure main is
    begin
       loop
          receive (sender, rdyMsg);
-         if rdyMsg.tag.label = CuBit.Late_Introduction.Await_Request
-           and then rdyMsg.authorityTag = CuBit.Late_Introduction.Introducer_Tag
+         if sender = driverPID and then not
+           (rdyMsg.tag.label = CuBit.Late_Introduction.Await_Request
+            and then rdyMsg.authorityTag = CuBit.Late_Introduction.Introducer_Tag)
          then
-            --  A child's introduction thread (the driver awaited may be the
-            --  one asking): never its ready message.
-            DL.Await (sender, rdyMsg);
-         elsif sender = driverPID then
             ignore := reply (sender, NULL_MESSAGE);
             return rdyMsg.tag.label = OP_READY;
-         elsif sender = Intel_Inspection_PID and then sender /= No_Process and then
-           rdyMsg.authorityTag = Intel_Ready_Tag
-         then
-            --  intel-gpu's runtime requests wait for the service loop: busy.
-            ignore := reply (sender,
-              (tag => (label => 16#F002#, length => 0,
-                       protocol => 0, ipc => <>, reserved => 0), authorityTag => 0, words => [others => 0]));
-         else
-            ignore := reply (sender, NULL_MESSAGE);
          end if;
+         Answer_Startup_Message (sender, rdyMsg);
       end loop;
    end waitReady;
 
@@ -2570,6 +2606,10 @@ procedure main is
       Child      : DL.Child := DL.No_Child;
       PID        : Process_ID := No_Process;
       Interrupts : Message_Function;
+      --  xhci.drv: configure accepted, its bring-up report still to come
+      --  (XHCI_Bring_Up_Report), and when devmgr sent the configuration.
+      Bring_Up_Pending : Boolean := False;
+      Configured_At    : Unsigned_64 := 0;
    end record;
    instances : array (Inventory_Index) of Driver_Instance;
 
@@ -4026,6 +4066,140 @@ procedure main is
    -- Setup xHCI: grant the driver only its precisely sized BAR and a bounded
    -- DMA arena, then send the physical configuration over a private endpoint.
    ---------------------------------------------------------------------------
+   --  Linux's quirk_usb_handoff_xhci order (drivers/usb/host/pci-quirks.c,
+   --  xHCI 1.2 section 4.22.1): take the controller from the firmware and
+   --  halt it before devmgr's first DMA grant for it, which ends its
+   --  pass-through in the kernel (Handoff_Contexts). Until then the
+   --  firmware's legacy-USB DMA reaches its own memory; once the controller
+   --  has its own domain the firmware no longer drives it. On the N150 the
+   --  handoff, done later by xhci.drv behind a translating IOMMU, held the
+   --  whole machine in SMM for ~10 s (image 34b, ms=9966).
+   --  On a timeout, as Linux: BIOS ownership cleared, SMIs off, logged.
+   XHCI_HANDOFF_WINDOW_BASE  : constant Unsigned_64 := 16#0000_6000_3000_0000#;
+   XHCI_HANDOFF_WINDOW_BYTES : constant Unsigned_64 := 16#10_0000#;   -- 256 pages, the BAR ceiling
+   XHCI_Handoff_Wait_Ms      : constant := 1_000;   -- Linux: 1 s for BIOS release
+   XHCI_Ready_Wait_Ms        : constant := 1_000;   -- Linux: 1 s for CNR to clear
+   XHCI_Halt_Wait_Ms         : constant := 16;      -- Linux: XHCI_MAX_HALT_USEC
+   XHCI_CAPLENGTH_MASK       : constant Unsigned_32 := 16#FF#;
+   XHCI_HCCPARAMS1_OFFSET    : constant Unsigned_64 := 16#10#;
+   XHCI_USBCMD_OFFSET        : constant Unsigned_64 := 0;
+   XHCI_USBSTS_OFFSET        : constant Unsigned_64 := 4;
+   XHCI_CMD_RUN              : constant Unsigned_32 := 16#0000_0001#;
+   XHCI_CMD_IRQS             : constant Unsigned_32 := 16#0000_040C#;   -- INTE, HSEE, EWE
+   XHCI_STS_HALTED           : constant Unsigned_32 := 16#0000_0001#;
+   XHCI_STS_NOT_READY        : constant Unsigned_32 := 16#0000_0800#;
+   XHCI_CAP_ID_MASK          : constant Unsigned_32 := 16#FF#;
+   XHCI_ABSENT_REGISTER      : constant Unsigned_32 := 16#FFFF_FFFF#;
+
+   procedure Early_XHCI_Handoff
+     (I : Inventory_Index; Phys, Pages : Unsigned_64; Name : String)
+   is
+      Window : constant Unsigned_64 :=
+        XHCI_HANDOFF_WINDOW_BASE + Unsigned_64 (I - Inventory_Index'First) * XHCI_HANDOFF_WINDOW_BYTES;
+      Mapped : constant Unsigned_64 := Pages * PAGE_BYTES;
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+      Mapping : Unsigned_64;
+
+      function Read32 (Offset : Unsigned_64) return Unsigned_32 is
+         Register : Unsigned_32 with Import, Volatile,
+           Address => To_Address (Integer_Address (Window + Offset));
+      begin
+         return Register;
+      end Read32;
+
+      procedure Write32 (Offset : Unsigned_64; Value : Unsigned_32) is
+         Register : Unsigned_32 with Import, Volatile,
+           Address => To_Address (Integer_Address (Window + Offset));
+      begin
+         Register := Value;
+      end Write32;
+
+      --  Until (Read32 (Offset) and Mask) = Expected, at most Limit_Ms.
+      function Wait_For (Offset : Unsigned_64; Mask, Expected : Unsigned_32;
+                         Limit_Ms : Unsigned_64; Waited : out Unsigned_64) return Boolean
+      is
+         Begun : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+      begin
+         loop
+            Waited := CuBit.Monotonic.Milliseconds - Begun;
+            if (Read32 (Offset) and Mask) = Expected then
+               return True;
+            elsif Waited >= Limit_Ms then
+               return False;
+            end if;
+            CuBit.Waits.Sleep_For (1);
+         end loop;
+      end Wait_For;
+
+      HCC, Header, Before : Unsigned_32 := 0;
+      Offset, Distance, Released_Ms, Ready_Ms, Halt_Ms : Unsigned_64 := 0;
+      Op : Unsigned_64;
+      Legacy : Unsigned_64 := 0;   --  the USBLEGSUP offset, 0: none
+      Firmware_Owned, Released, Ready, Halted : Boolean := False;
+   begin
+      if Pages = 0 or else Mapped > XHCI_HANDOFF_WINDOW_BYTES then
+         return;
+      end if;
+      Mapping := mapInto (myPID, Phys, Window, Pages, MAP_INTO_DEVICE,
+                          Root.Process_Root, Devmgr_Authority.Device_Region (Phys, Mapped));
+      if Mapping = reterr then
+         Warnings.Warn ("devmgr: " & Name & " firmware handoff skipped: register map refused");
+         return;
+      end if;
+      HCC := Read32 (XHCI_HCCPARAMS1_OFFSET);
+      Op := Unsigned_64 (Read32 (0) and XHCI_CAPLENGTH_MASK);
+      Offset := XHCI_Legacy.First_Offset (HCC);
+      for Entry_Number in 1 .. Natural (Mapped / 4) loop
+         exit when Offset = 0 or else not XHCI_Legacy.Fits (Offset, 8, Mapped);
+         Header := Read32 (Offset);
+         exit when Header = XHCI_ABSENT_REGISTER or else (Header and XHCI_CAP_ID_MASK) = 0;
+         if (Header and XHCI_CAP_ID_MASK) = XHCI_Legacy.LEGACY_ID then
+            Legacy := Offset;
+            exit;
+         end if;
+         Distance := XHCI_Legacy.Next_Distance (Header);
+         Offset := (if Distance = 0 then 0 else Offset + Distance);
+      end loop;
+      if Legacy /= 0 then
+         Before := Read32 (Legacy);
+         Firmware_Owned := (Before and XHCI_Legacy.BIOS_OWNED) /= 0;
+         if Firmware_Owned then
+            Write32 (Legacy, Before or XHCI_Legacy.OS_OWNED);
+            Released := Wait_For (Legacy, XHCI_Legacy.BIOS_OWNED, 0,
+                                  XHCI_Handoff_Wait_Ms, Released_Ms);
+            if not Released then
+               --  Linux: "xHCI BIOS handoff failed (BIOS bug ?)"; take it.
+               Write32 (Legacy, (Read32 (Legacy) and not XHCI_Legacy.BIOS_OWNED)
+                                or XHCI_Legacy.OS_OWNED);
+            end if;
+         end if;
+         Write32 (Legacy + 4, XHCI_Legacy.Disable_SMIs (Read32 (Legacy + 4)));
+      end if;
+      --  Halted, so no schedule of the firmware's runs once the domain is
+      --  the controller's own.
+      if XHCI_Legacy.Fits (Op, 8, Mapped) then
+         Ready := Wait_For (Op + XHCI_USBSTS_OFFSET, XHCI_STS_NOT_READY, 0,
+                            XHCI_Ready_Wait_Ms, Ready_Ms);
+         Write32 (Op + XHCI_USBCMD_OFFSET,
+                  Read32 (Op + XHCI_USBCMD_OFFSET) and not (XHCI_CMD_RUN or XHCI_CMD_IRQS));
+         Halted := Wait_For (Op + XHCI_USBSTS_OFFSET, XHCI_STS_HALTED, XHCI_STS_HALTED,
+                             XHCI_Halt_Wait_Ms, Halt_Ms);
+      end if;
+      Warnings.Inform
+        ("devmgr: " & Name & " firmware handoff " &
+         (if Legacy = 0 then "legacy=absent"
+          elsif not Firmware_Owned then "legacy=os-owned"
+          elsif Released then "legacy=released in" & Unsigned_64'Image (Released_Ms) & " ms"
+          else "legacy=TIMEOUT after" & Unsigned_64'Image (Released_Ms) &
+               " ms, firmware ownership cleared") &
+         (if Legacy /= 0 then "; SMIs off" else "") &
+         "; " & (if not Ready then "not ready after" & Unsigned_64'Image (Ready_Ms) & " ms"
+                 elsif Halted then "halted in" & Unsigned_64'Image (Halt_Ms) & " ms"
+                 else "did not halt in" & Unsigned_64'Image (Halt_Ms) & " ms") &
+         "; took" & Unsigned_64'Image (CuBit.Monotonic.Milliseconds - Started) &
+         " ms, before its first DMA grant");
+   end Early_XHCI_Handoff;
+
    procedure setupXHCI (I : Inventory_Index) is
       dev       : constant PCIDeviceInfo := inventory (I).location;
       child     : constant DL.Child := instances (I).Child;
@@ -4061,7 +4235,10 @@ procedure main is
         CAPABILITY_PROBE_BASE + Unsigned_64 (I - Inventory_Index'First) * PAGE_BYTES;
       OP_XHCI_CONFIGURE : constant Unsigned_32 := 16#0220#;
       Name : constant String := Instance_Text (I, "xhci.drv");
-      storage : Boolean := False;
+      --  A ceiling on devmgr's wait for the answer, which needs only the
+      --  message check (tests/xhci-bringup sees a few milliseconds).
+      XHCI_Configure_Answer_Ms : constant := 1_000;
+      Asked, Answered : Unsigned_64;
    begin
       if instances (I).PID = No_Process then
          return;
@@ -4156,6 +4333,9 @@ procedure main is
          end if;
          dmaLayout := XHCI_DMA_Layout.Plan (scratchpads, Fitting);
       end;
+      --  Before the first grant: the grant ends the controller's
+      --  pass-through (Early_XHCI_Handoff).
+      Early_XHCI_Handoff (I, bar0Phys, barPages, Name);
       dmaPhys := allocDeviceDma (instances (I).PID, Unsigned_64 (dmaLayout.Order), DMA_VIRT_BASE,
                            DL.Control (child), dev.bus, dev.slot, dev.func);
       if dmaPhys = reterr then
@@ -4202,31 +4382,23 @@ procedure main is
                (Vendor   => inventory (I).vendorID,
                 Device   => inventory (I).deviceID,
                 Revision => pciReadConfig8 (dev.bus, dev.slot, dev.func, PCI_REVISION_ID)))]);
-      replyTag := capCall (DL.Mailbox (child), cfgMsg, CuBit.Messages.Wait_Forever);
+      --  The driver answers once it has checked the message; its bring-up
+      --  follows, and its outcome is its report (XHCI_Report). devmgr never
+      --  waits on the hardware: the driver's threads call devmgr (its
+      --  report, its logstore introduction), so a call spanning the
+      --  bring-up held devmgr, and every driver calling it, for the
+      --  controller's whole enumeration (IPC DAG).
+      Asked := CuBit.Monotonic.Milliseconds;
+      replyTag := capCall (DL.Mailbox (child), cfgMsg,
+                           CuBit.Messages.Deadline_After (XHCI_Configure_Answer_Ms));
+      Answered := CuBit.Monotonic.Milliseconds;
+      --  How long devmgr itself waited on this driver, named by its
+      --  location: the boot regression (tests/xhci-bringup) bounds it.
+      Warnings.Inform ("devmgr: " & Name & " configure answered in" &
+        Unsigned_64'Image (Answered - Asked) & " ms");
       if replyTag.label = REPLY_OK then
-         --  The interrupter is enabled: unmask the entry and the function.
-         Open_Message_Interrupts (instances (I).Interrupts);
-         declare
-            package R renames XHCI_Configure_Reply;
-            Devices : constant Unsigned_64 :=
-              (if replyTag.length >= R.Reply_Words then cfgMsg.words (R.Devices_Word) else 0);
-         begin
-            --  What this controller enumerated, named by its location.
-            Warnings.Inform ("devmgr: " & Name & " started; root ports" &
-              Unsigned_64'Image (cfgMsg.words (R.Ports_Word)) & ", connected" &
-              Unsigned_64'Image (cfgMsg.words (R.Connected_Word)) & "; devices keyboard=" &
-              (if R.Has (Devices, R.Keyboard_Bit) then "1" else "0") & " mouse=" &
-              (if R.Has (Devices, R.Mouse_Bit) then "1" else "0") & " storage=" &
-              (if R.Has (Devices, R.Storage_Bit) then "1" else "0"));
-            storage := R.Has (Devices, R.Storage_Bit);
-         end;
-         --  Read-only optical block endpoint; no raw controller authority.
-         --  The filesystem has one optical volume (@cd:0): the first
-         --  controller with a USB storage device serves it.
-         if filesystemPID /= No_Process and then not Optical_Storage_Ready and then storage then
-            Optical_Storage_Ready :=
-              Attach_Storage (Fs_Attachments.Optical_Device, child, Ordinal_Of (I, "xhci.drv"));
-         end if;
+         instances (I).Bring_Up_Pending := True;
+         instances (I).Configured_At := Asked;
       else
          Warnings.Inform ("devmgr: " & Name & " rejected setup (no device or a fault; " &
                           "see its lines)");
@@ -4234,6 +4406,103 @@ procedure main is
          instances (I).PID := No_Process;
       end if;
    end setupXHCI;
+
+   function XHCI_Report (From : Process_ID; Msg : Message) return Boolean is
+      package R renames XHCI_Bring_Up_Report;
+      I : constant Natural := Instance_Of (From, "xhci.drv");
+      Ignore : Unsigned_64;
+   begin
+      if I = 0 or else not instances (I).Bring_Up_Pending
+        or else Msg.tag.label not in R.Ready_Label | R.Failed_Label
+      then
+         return False;
+      end if;
+      instances (I).Bring_Up_Pending := False;
+      --  Answered first: the driver then serves its devices, and the
+      --  filesystem's mount below reads through it.
+      Ignore := reply (From, NULL_MESSAGE);
+      declare
+         Name : constant String := Instance_Text (I, "xhci.drv");
+         Took : constant Unsigned_64 := CuBit.Monotonic.Milliseconds - instances (I).Configured_At;
+         Devices : constant Unsigned_64 := Msg.words (R.Devices_Word);
+      begin
+         if Msg.tag.label = R.Ready_Label and then Msg.tag.length >= R.Report_Words then
+            --  The interrupter is enabled: unmask the entry and the function.
+            Open_Message_Interrupts (instances (I).Interrupts);
+            --  What this controller enumerated, named by its location, and
+            --  how long its bring-up took from devmgr's configuration.
+            Warnings.Inform ("devmgr: " & Name & " started; root ports" &
+              Unsigned_64'Image (Msg.words (R.Ports_Word)) & ", connected" &
+              Unsigned_64'Image (Msg.words (R.Connected_Word)) & "; devices keyboard=" &
+              (if R.Has (Devices, R.Keyboard_Bit) then "1" else "0") & " mouse=" &
+              (if R.Has (Devices, R.Mouse_Bit) then "1" else "0") & " storage=" &
+              (if R.Has (Devices, R.Storage_Bit) then "1" else "0") & "; bring-up" &
+              Unsigned_64'Image (Took) & " ms");
+            --  Read-only optical block endpoint; no raw controller authority.
+            --  The filesystem has one optical volume (@cd:0): the first
+            --  controller with a USB storage device serves it.
+            if filesystemPID /= No_Process and then not Optical_Storage_Ready and then
+              R.Has (Devices, R.Storage_Bit)
+            then
+               Optical_Storage_Ready :=
+                 Attach_Storage (Fs_Attachments.Optical_Device, instances (I).Child,
+                                 Ordinal_Of (I, "xhci.drv"));
+            end if;
+         else
+            Warnings.Inform ("devmgr: " & Name & " rejected setup (no device or a fault; " &
+                             "see its lines); result" &
+                             Unsigned_64'Image (Msg.words (R.Failure_Word)) &
+                             " (XHCI.Init_Result position) after" & Unsigned_64'Image (Took) & " ms");
+            Close_Message_Interrupts (instances (I).Interrupts);
+            instances (I).PID := No_Process;
+         end if;
+      end;
+      return True;
+   end XHCI_Report;
+
+   --  The first Await_XHCI_Bring_Ups after a controller was accepted logs
+   --  devmgr's wait, also when every report came in before it (0 ms): one
+   --  line per boot (tests/xhci-bringup).
+   XHCI_Wait_Logged : Boolean := False;
+
+   procedure Await_XHCI_Bring_Ups is
+      Started : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
+      Deadline : constant Unsigned_64 := CuBit.Messages.Deadline_After (XHCI_Bring_Up_Wait_Ms);
+      Sender : Process_ID;
+      Msg : Message;
+      Received : Boolean;
+   begin
+      if not (for some I in 1 .. inventoryCount => instances (I).Bring_Up_Pending) then
+         if not XHCI_Wait_Logged
+           and then (for some I in 1 .. inventoryCount => instances (I).Configured_At /= 0)
+         then
+            XHCI_Wait_Logged := True;
+            Warnings.Inform ("devmgr: xHCI bring-ups reported; devmgr waited 0 ms");
+         end if;
+         return;
+      end if;
+      --  Each report taken (XHCI_Report) clears its controller's pending
+      --  mark, so the wait ends with the last report: Deadline matters only
+      --  when a controller never reports.
+      while (for some I in 1 .. inventoryCount => instances (I).Bring_Up_Pending) loop
+         receiveUntil (Deadline, Sender, Msg, Received);
+         if Received then
+            Answer_Startup_Message (Sender, Msg);
+         elsif CuBit.Monotonic.Milliseconds >= Deadline then
+            Warnings.Warn ("devmgr: an xHCI bring-up was not reported within" &
+              Natural'Image (XHCI_Bring_Up_Wait_Ms) & " ms; boot goes on, and its devices " &
+              "attach when it reports");
+            return;
+         end if;
+         --  Otherwise woken with nothing to take before Deadline: wait on.
+      end loop;
+      --  How long devmgr's boot waited on the bring-ups (tests/xhci-bringup).
+      if not XHCI_Wait_Logged then
+         XHCI_Wait_Logged := True;
+         Warnings.Inform ("devmgr: xHCI bring-ups reported; devmgr waited" &
+           Unsigned_64'Image (CuBit.Monotonic.Milliseconds - Started) & " ms");
+      end if;
+   end Await_XHCI_Bring_Ups;
 
    ---------------------------------------------------------------------------
    --  The generic PCI launch (HW-002, docs/device-matching.md "Generic PCI
@@ -8044,6 +8313,8 @@ begin
                --  driver recognizes configuration and admission by it.
                Intel_Broker := HC.Derive
                  (H.Badged (Intel_Mailbox, H.Read_Write, Intel_GPU_Boot.Broker_Tag));
+               --  Its firmware may be on USB storage (the live images' @cd:0).
+               Await_XHCI_Bring_Ups;
                Grant_Intel_Firmware (Intel_Child);
                --  The display executor registers as the GPU service so
                --  display.svc's (request-service gpu) reaches it, unless
@@ -8225,6 +8496,8 @@ begin
    -- Phase 5: Spawn procmgr
    -- Disk drivers already waited in Phase 2, no duplicate wait needed.
    -----------------------------------------------------------------------
+   --  procmgr's programs may be on USB storage (the live images' @cd:0).
+   Await_XHCI_Bring_Ups;
    procmgrChild := spawnFromBootStorage ("procmgr.svc", 5);
    procmgrPID := PID_Of (procmgrChild);
    if procmgrPID /= No_Process then
@@ -8410,6 +8683,8 @@ begin
             end if;
          end if;
       elsif Generic_Report (from, msg) then
+         null;
+      elsif XHCI_Report (from, msg) then
          null;
       elsif ACPI_Report (from, msg) then
          null;

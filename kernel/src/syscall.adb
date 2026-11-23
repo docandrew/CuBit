@@ -16,6 +16,7 @@ with Process.IPC;
 with Process.User_Memory;
 with Process.Map_Probe;
 with Debug_Register_Probe;
+with Clock_Stall_Probe;
 with Capabilities;
 with Process_Capabilities;
 with Spinlocks;
@@ -92,6 +93,10 @@ package body Syscall is
                     end if;
                     if Build.Debug_Register_Probe and then not probed then
                         Debug_Register_Probe.Handle_Request
+                          (PerCPUData.getCurrentPID, chunk (1 .. length), probed);
+                    end if;
+                    if Build.Clock_Stall_Probe and then not probed then
+                        Clock_Stall_Probe.Handle_Request
                           (PerCPUData.getCurrentPID, chunk (1 .. length), probed);
                     end if;
                     -- A process's text, not a kernel line: it stays out of

@@ -13,7 +13,9 @@ with InterruptNumbers;
 with IO_Page_Tables; use IO_Page_Tables;
 with IO_Page_Walk;
 with IOMMU_Domains;
+with Handoff_Contexts;
 with Mem_mgr;
+with Process.IPC;
 with Spinlocks;
 with TextIO; use TextIO;
 with Time;
@@ -132,6 +134,16 @@ package body DMA_Remapping with SPARK_Mode => Off is
     Config_Vendor           : constant := 16#00#;
     Config_Base_Class       : constant := 16#0B#;
     Config_Secondary_Bus    : constant := 16#19#;
+    Config_Prog_IF          : constant := 16#09#;
+    Config_Sub_Class        : constant := 16#0A#;
+    Config_Header_Type      : constant := 16#0E#;
+    Header_Layout_Mask      : constant Unsigned_8 := 16#7F#;
+    Header_Multi_Function   : constant Unsigned_8 := 16#80#;
+    Header_Bridge           : constant Unsigned_8 := 16#01#;
+    -- PCI class 0C.03.30: a USB xHCI controller.
+    Serial_Bus_Class        : constant Unsigned_8 := 16#0C#;
+    USB_Sub_Class           : constant Unsigned_8 := 16#03#;
+    XHCI_Prog_IF            : constant Unsigned_8 := 16#30#;
     Config_Subordinate_Bus  : constant := 16#1A#;
     Display_Class           : constant Unsigned_8 := 16#03#;
     Intel_Vendor_Low        : constant Unsigned_8 := 16#86#;   -- 8086h
@@ -142,6 +154,8 @@ package body DMA_Remapping with SPARK_Mode => Off is
     -- The domain ID of the GPU's pass-through entry: above every ledger
     -- domain, so no translated domain shares its IOTLB tag.
     Pass_Through_Domain     : constant Domain_ID := IOMMU_Domains.Maximum_Domains + 1;
+    -- Bridges below bridges the xHCI scan follows (Admit_XHCI_Controllers).
+    Bridge_Depth_Limit      : constant := 4;
 
     -- Every wait on a status bit has a deadline. One second matches the
     -- order of Linux's DMAR_OPERATION_TIMEOUT; hardware answers in
@@ -568,6 +582,9 @@ package body DMA_Remapping with SPARK_Mode => Off is
         end if;
     end Program_Context;
 
+    -- Ends Who's pass-through, if any, before its first domain's entry.
+    procedure End_Pass_Through (U : Unit_Index; Who : Requester_ID; OK : out Boolean);
+
     -- The domain of (U, Who), with its tables and context entry. Under Lock.
     procedure Ensure_Domain (U : Unit_Index; Who : Requester_ID;
                              D : out ID.Domain_Index; OK : out Boolean) is
@@ -600,6 +617,11 @@ package body DMA_Remapping with SPARK_Mode => Off is
             end if;
         end if;
         if not Domain_Programmed (D) then
+            End_Pass_Through (U, Who, OK);
+            if not OK then
+                println ("IOMMU: pass-through entry not retired");
+                return;
+            end if;
             Program_Context (U, Who, Context_Low (Domain_Roots (D)),
                              Context_High (Units (U).Width, Domain_ID (D)), OK);
             if not OK then
@@ -870,6 +892,123 @@ package body DMA_Remapping with SPARK_Mode => Off is
 
     -- Every RMRR endpoint on a ready unit: its domain, the range identity
     -- mapped.
+    -- xHCI controllers pass DMA through from boot until devmgr has taken
+    -- them from the firmware (Handoff_Contexts): the firmware's legacy-USB
+    -- DMA reaches its own memory instead of faulting while its SMI handler
+    -- holds the machine in SMM (image 34b: a 10 s handoff on 00:14.0).
+    Handoffs : Handoff_Contexts.Table := Handoff_Contexts.Empty;
+
+    function Is_XHCI (Bus : Bus_Number; Device : Device_Number; Func : Function_Number)
+      return Boolean is
+      (Config_Byte (Bus, Device, Func, Config_Base_Class) = Serial_Bus_Class
+       and then Config_Byte (Bus, Device, Func, Config_Sub_Class) = USB_Sub_Class
+       and then Config_Byte (Bus, Device, Func, Config_Prog_IF) = XHCI_Prog_IF);
+
+    procedure Pass_Through_Until_Handoff (Who : Requester_ID) is
+        U : constant Natural := Unit_For (Who);
+        OK, Admitted : Boolean;
+    begin
+        if U = 0 or else Units (U).State /= Ready then
+            return;
+        elsif not Units (U).Pass_Through then
+            println ("IOMMU: xHCI " & Location (Who) & " translated from boot: the unit lacks"
+                     & " pass-through (its firmware DMA faults until the handoff)");
+            return;
+        end if;
+        Handoff_Contexts.Admit (Handoffs, Handoff_Contexts.Requester (Who), Admitted);
+        if not Admitted then
+            return;
+        end if;
+        Program_Context
+          (U, Who, Pass_Through_Low,
+           Context_High ((if Supports (SAGAW_Field (Field (Units (U).CAP, CAP_SAGAW_Shift,
+                                                           CAP_SAGAW_Mask)), Width_48)
+                          then Width_48 else Width_39),
+                         Pass_Through_Domain), OK);
+        print ("IOMMU: xHCI " & Location (Who) & " passes DMA through until its firmware handoff");
+        print (" (at ");
+        print (Unsigned_64'Image (Time.msTicks));
+        println (if OK then " ms)" else " ms; context entry NOT installed)");
+    end Pass_Through_Until_Handoff;
+
+    -- Every xHCI function on bus 0 and the buses behind its bridges (the
+    -- firmware's numbering), before any unit translates.
+    procedure Admit_XHCI_Controllers is
+        procedure Scan (Bus : Bus_Number; Depth : Natural) is
+            Header : Unsigned_8;
+            Functions : Natural;
+        begin
+            for Device in Device_Number loop
+                if Config_Byte (Bus, Device, 0, Config_Vendor) /= No_Device
+                  or else Config_Byte (Bus, Device, 0, Config_Vendor + 1) /= No_Device
+                then
+                    Header := Config_Byte (Bus, Device, 0, Config_Header_Type);
+                    Functions := (if (Header and Header_Multi_Function) /= 0
+                                  then Natural (Function_Number'Last) + 1 else 1);
+                    for F in 0 .. Functions - 1 loop
+                        declare
+                            Func : constant Function_Number := Function_Number (F);
+                        begin
+                            if Config_Byte (Bus, Device, Func, Config_Vendor) /= No_Device
+                              or else Config_Byte (Bus, Device, Func, Config_Vendor + 1) /= No_Device
+                            then
+                                if Is_XHCI (Bus, Device, Func) then
+                                    Pass_Through_Until_Handoff (Requester (Bus, Device, Func));
+                                elsif (Config_Byte (Bus, Device, Func, Config_Header_Type)
+                                       and Header_Layout_Mask) = Header_Bridge
+                                  and then Depth < Bridge_Depth_Limit
+                                then
+                                    declare
+                                        Secondary : constant Unsigned_8 :=
+                                          Config_Byte (Bus, Device, Func, Config_Secondary_Bus);
+                                        Subordinate : constant Unsigned_8 :=
+                                          Config_Byte (Bus, Device, Func, Config_Subordinate_Bus);
+                                    begin
+                                        if Natural (Secondary) > Bus
+                                          and then Subordinate >= Secondary
+                                        then
+                                            for Behind in Natural (Secondary) .. Natural (Subordinate) loop
+                                                Scan (Bus_Number (Behind), Depth + 1);
+                                            end loop;
+                                        end if;
+                                    end;
+                                end if;
+                            end if;
+                        end;
+                    end loop;
+                end if;
+            end loop;
+        end Scan;
+    begin
+        Scan (0, 0);
+        Handoff_Contexts.Seal (Handoffs);
+    end Admit_XHCI_Controllers;
+
+    -- Who's first domain ends its pass-through for good (Handoff_Contexts):
+    -- the present pass-through entry is cleared and invalidated before the
+    -- domain's entry is written (Program_Context). Under Lock.
+    procedure End_Pass_Through (U : Unit_Index; Who : Requester_ID; OK : out Boolean) is
+        Was_Passing : Boolean;
+        Table : Unsigned_64;
+    begin
+        OK := True;
+        Handoff_Contexts.Switch (Handoffs, Handoff_Contexts.Requester (Who), Was_Passing);
+        if not Was_Passing then
+            return;
+        end if;
+        Context_Table (U, Bus_Of (Who), Table);
+        if Table /= 0 then
+            Write_Wide (Table, Context_Of (Who), 0, 0, Units (U).Coherent);
+            Invalidate_Context_Global (U, OK);
+            if OK then
+                Invalidate_IOTLB (U, 0, OK);
+            end if;
+        end if;
+        print ("IOMMU: xHCI " & Location (Who) & " leaves pass-through for its own domain (at ");
+        print (Unsigned_64'Image (Time.msTicks));
+        println (if OK then " ms)" else " ms; invalidation did not complete)");
+    end End_Pass_Through;
+
     procedure Map_Reserved_Regions is
         F : R.Facts renames acpi.dmarFacts;
     begin
@@ -935,8 +1074,31 @@ package body DMA_Remapping with SPARK_Mode => Off is
                                                      else " NOT mapped");
                                         end;
                                     end if;
+                                elsif Pass = 1 then
+                                    -- Every RMRR in the log, also one left
+                                    -- alone: what firmware DMA may still be
+                                    -- unmapped, and why.
+                                    print ("IOMMU: reserved region ");
+                                    print (Base);
+                                    print (" .. ");
+                                    print (F.Regions (G).Limit);
+                                    print (" for requester ");
+                                    print (if Found then Location (Who) else "(unresolved)");
+                                    println
+                                      (if not Found or else U = 0 then " skipped: no unit names it"
+                                       elsif Units (U).State /= Ready
+                                       then " skipped: its unit does not translate"
+                                       elsif F.Regions (G).Segment /= 0
+                                       then " skipped: PCI segment not 0"
+                                       else " skipped: outside the unit's address width or run size");
                                 end if;
                             end;
+                        elsif Pass = 1 then
+                            print ("IOMMU: reserved region ");
+                            print (Base);
+                            print (" .. ");
+                            print (F.Regions (G).Limit);
+                            println (" skipped: its scope is not a PCI endpoint");
                         end if;
                     end;
                 end loop;
@@ -1066,6 +1228,7 @@ package body DMA_Remapping with SPARK_Mode => Off is
             end loop;
             Resolve_Scopes;
             Pass_Through_Graphics;
+            Admit_XHCI_Controllers;
             Map_Reserved_Regions;
             for U in 1 .. Unit_Total loop
                 if Units (U).State = Ready then
@@ -1217,6 +1380,42 @@ package body DMA_Remapping with SPARK_Mode => Off is
     ---------------------------------------------------------------------------
     -- Faults
     ---------------------------------------------------------------------------
+    -- After a DMA fault's line: whether the address lies in a reserved
+    -- memory region (RMRR) the DMAR names; and the fault, short, for the
+    -- boot panel (Process.IPC.noteEvidence), where the log may be out of
+    -- reach.
+    procedure Note_Reserved_Region
+      (Who : Requester_ID; Address : Unsigned_64; Write : Boolean)
+    is
+        F : R.Facts renames acpi.dmarFacts;
+        Hex_Digits : constant String := "0123456789ABCDEF";
+        Text : String (1 .. 16);
+        Inside : Natural := 0;
+    begin
+        for I in Text'Range loop
+            Text (I) := Hex_Digits
+              (Natural (Shift_Right (Address, (16 - I) * 4) and 16#F#) + 1);
+        end loop;
+        for G in 1 .. F.Region_Total loop
+            if Inside = 0 and then Address >= F.Regions (G).Base
+              and then Address <= F.Regions (G).Limit
+            then
+                Inside := G;
+            end if;
+        end loop;
+        if Inside /= 0 then
+            print ("kernel: DMA fault address in reserved region ");
+            print (F.Regions (Inside).Base);
+            print (" .. ");
+            println (F.Regions (Inside).Limit);
+        else
+            println ("kernel: DMA fault address in no reserved region (RMRR) of the DMAR");
+        end if;
+        Process.IPC.noteEvidence
+          ("DMA fault " & Location (Who) & (if Write then " write " else " read ") &
+           "0x" & Text & (if Inside /= 0 then " in an RMRR" else " in no RMRR"));
+    end Note_Reserved_Region;
+
     procedure Drain_Unit (U : Unit_Index) is
         Status : constant Unsigned_32 := Read_32 (U, FSTS_Register);
         Index : Unsigned_64;
@@ -1257,6 +1456,9 @@ package body DMA_Remapping with SPARK_Mode => Off is
                            Code      => Field (High, Fault_Reason_Shift, Fault_Reason_Mask),
                            Write     => (High and Fault_Type_Read) = 0,
                            Unit      => Unsigned_64 (U));
+                        Note_Reserved_Region
+                          (Requester_ID (High and Fault_Source_Mask and 16#FFFF#),
+                           Low and Fault_Address_Mask, (High and Fault_Type_Read) = 0);
                     else
                         Suppressed := Suppressed + 1;
                     end if;

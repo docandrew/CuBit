@@ -23,7 +23,7 @@ with CuBit.Console_Route;
 with XHCI;
 with XHCI_Capabilities;
 with XHCI_DMA_Layout;
-with XHCI_Configure_Reply;
+with XHCI_Bring_Up_Report;
 with XHCI_Controller_Identity;
 with Optical_Service;
 with USB_Keyboards;
@@ -212,20 +212,39 @@ procedure main is
       end if;
    end Maybe_Print_Diagnostics;
 
-   procedure Reply_With
-     (label : Unsigned_32;
-      word0 : Unsigned_64 := 0;
-      word1 : Unsigned_64 := 0;
-      word2 : Unsigned_64 := 0)
-   is
+   --  devmgr's configure call answered: REPLY_OK accepted, REPLY_ERR
+   --  refused (XHCI_Bring_Up_Report).
+   procedure Reply_With (label : Unsigned_32) is
    begin
       ignore := reply
         (sender,
-         (tag => (label => label, length => XHCI_Configure_Reply.Reply_Words,
+         (tag => (label => label, length => 0, protocol => 0, ipc => <>, reserved => 0),
+          authorityTag => 0,
+          words => [others => 0]));
+   end Reply_With;
+
+   --  The bring-up's outcome to devmgr (XHCI_Bring_Up_Report), once. A
+   --  synchronous send: this call goes down the IPC DAG; devmgr answers it
+   --  before acting on it and calls nothing here meanwhile.
+   procedure Report_Bring_Up
+     (Label : Unsigned_32;
+      Word0 : Unsigned_64 := 0;
+      Word1 : Unsigned_64 := 0;
+      Word2 : Unsigned_64 := 0)
+   is
+      Tag : MessageTag;
+   begin
+      Tag := capSend
+        (Startup.Ready,
+         (tag => (label => Label, length => XHCI_Bring_Up_Report.Report_Words,
                   protocol => 0, ipc => <>, reserved => 0),
           authorityTag => 0,
-          words => [0 => word0, 1 => word1, 2 => word2, others => 0]));
-   end Reply_With;
+          words => [0 => Word0, 1 => Word1, 2 => Word2, others => 0]),
+         Wait_Forever);
+      if Tag /= NULL_TAG then
+         Boot_Log.Line ("xhci: " & Location & " stage report fail devmgr did not take it", True);
+      end if;
+   end Report_Bring_Up;
 
    function Earliest (A, B : Unsigned_64) return Unsigned_64 is (Unsigned_64'Min (A, B));
 
@@ -279,6 +298,12 @@ begin
          ignore := syscall (SYSCALL_EXIT);
          return;
    end case;
+   --  The message is well formed: accepted now. devmgr waits on nothing
+   --  but this check; the bring-up below (handoff, reset, settle,
+   --  enumeration, storage probe) follows the answer, and its outcome is
+   --  this driver's report (XHCI_Bring_Up_Report).
+   Reply_With (REPLY_OK);
+
    if interruptMode in XHCI.INTERRUPT_MSI | XHCI.INTERRUPT_MSIX and then
      not CuBit.Device_Interrupts.Block_Of (Startup.Events).Valid
    then
@@ -299,7 +324,8 @@ begin
       Boot_Log.Line ("xhci: " & Location & " bring-up failed " &
                      "result=" & Image (Unsigned_64 (XHCI.Init_Result'Pos (initResult))) &
                      " (XHCI.Init_Result position)", True);
-      Reply_With (REPLY_ERR, Unsigned_64 (XHCI.Init_Result'Pos (initResult)));
+      Report_Bring_Up (XHCI_Bring_Up_Report.Failed_Label,
+                       Unsigned_64 (XHCI.Init_Result'Pos (initResult)));
       --  Let logstore take the failure before the process ends.
       Boot_Log.Flush;
       ignore := syscall (SYSCALL_EXIT);
@@ -320,13 +346,13 @@ begin
                   Image (Unsigned_64 (XHCI.Connected_Port_Count)));
    Boot_Log.Line ("xhci: " & Location & " bring-up complete (" &
                   (if interruptEnabled then "interrupt-driven" else "polled") & ", hotplug armed)");
-   --  For MSI-X this reply tells devmgr the interrupter is ready, so it
+   --  For MSI-X this report tells devmgr the interrupter is ready, so it
    --  may unmask the table entry and the function.
-   Reply_With
-     (REPLY_OK,
+   Report_Bring_Up
+     (XHCI_Bring_Up_Report.Ready_Label,
       Unsigned_64 (XHCI.Port_Count),
       Unsigned_64 (XHCI.Connected_Port_Count),
-      XHCI_Configure_Reply.Device_Bits
+      XHCI_Bring_Up_Report.Device_Bits
         (Keyboard => XHCI.Has_Keyboard, Mouse => XHCI.Has_Mouse, Storage => XHCI.Has_Storage));
    keyboardPresent := XHCI.Has_Keyboard;
 

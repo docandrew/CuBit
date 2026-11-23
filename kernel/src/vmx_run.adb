@@ -9,6 +9,7 @@ with TextIO; use TextIO;
 with Virtmem;
 with Virtualization_Features;
 with Virtualization_Report;
+with VMX_CR_Access;
 with VMX_Layout; use VMX_Layout;
 with x86;
 
@@ -374,6 +375,20 @@ package body VMX_Run with SPARK_Mode => Off is
     ---------------------------------------------------------------------------
     Logged_Failures : Natural := 0;
 
+    -- An exit reason the monitor is not told about by name (it answers #UD),
+    -- logged so the next one is not a guess: image 33's AP died on one.
+    Logged_Unmodelled : Natural := 0;
+    procedure Note_Unmodelled (Reason, Qualification : Unsigned_64) is
+    begin
+        if Logged_Unmodelled < 8 then
+            Logged_Unmodelled := Logged_Unmodelled + 1;
+            print ("vm: VMX exit reason ");
+            printd (Reason);
+            print (" not modelled, qualification ");
+            printdln (Qualification);
+        end if;
+    end Note_Unmodelled;
+
     procedure Enter
       (State       : System.Address;
        VMCS        : System.Address;
@@ -402,6 +417,25 @@ package body VMX_Run with SPARK_Mode => Off is
         Failed : Unsigned_64;
         Reason, Qualification, RIP : Unsigned_64;
         Host_Table : Unsigned_64;
+
+        -- A guest register by its VMX number (0 RAX .. 15 R15). RAX and RSP
+        -- live in the state page; the rest in GPRs (VM_Objects' order:
+        -- rbx rcx rdx rsi rdi rbp r8 .. r15).
+        function Guest_Register (N : VMX_CR_Access.GPR_Number) return Unsigned_64 is
+            Word : constant := 8;
+        begin
+            case N is
+                when 0 => return Get64 (State, SVM_Layout.Guest_RAX);
+                when 1 => return Get64 (GPRs, 1 * Word);
+                when 2 => return Get64 (GPRs, 2 * Word);
+                when 3 => return Get64 (GPRs, 0 * Word);
+                when 4 => return Get64 (State, SVM_Layout.Guest_RSP);
+                when 5 => return Get64 (GPRs, 5 * Word);
+                when 6 => return Get64 (GPRs, 3 * Word);
+                when 7 => return Get64 (GPRs, 4 * Word);
+                when 8 .. 15 => return Get64 (GPRs, (6 + N - 8) * Word);
+            end case;
+        end Guest_Register;
     begin
         Store_Tables (GDT, IDT);
         VMPTRLD (VMCS_Phys);
@@ -625,6 +659,40 @@ package body VMX_Run with SPARK_Mode => Off is
                 when Reason_VMCALL => Code := Exit_VMMCALL;
                 when Reason_First_VMX_Instruction .. Reason_Last_VMX_Instruction
                    | Reason_INVEPT | Reason_INVVPID => Code := Exit_VMRUN;
+                when Reason_CR_Access =>
+                    -- A guest write to a bit VMX pins (CR0.NE, CR4.VMXE),
+                    -- decided as the processor would (VMX_CR_Access) and
+                    -- kept in the kernel: the guest's view is the state
+                    -- page's CR0/CR4, so the next entry loads it.
+                    declare
+                        package CR renames VMX_CR_Access;
+                        SVME : constant Unsigned_64 := Shift_Left (1, EFER_SVME_Bit);
+                        D : constant CR.Decision :=
+                          CR.Decide (Qualification     => Qualification,
+                                     Source            => Guest_Register (CR.Register_Of (Qualification)),
+                                     CR0               => Get64 (State, SVM_Layout.Guest_CR0),
+                                     CR4               => Get64 (State, SVM_Layout.Guest_CR4),
+                                     EFER              => Get64 (State, SVM_Layout.Guest_EFER) and not SVME,
+                                     CR4_Allowed       => CR4_Fixed1 and not CR.CR4_VMXE);
+                    begin
+                        case D.Outcome is
+                            when CR.Applied =>
+                                Put64 (State, SVM_Layout.Guest_CR0, D.CR0);
+                                Put64 (State, SVM_Layout.Guest_CR4, D.CR4);
+                                Put64 (State, SVM_Layout.Guest_EFER, D.EFER or SVME);
+                                Put64 (State, SVM_Layout.Guest_RIP, RIP + Read (Exit_Instruction_Length));
+                                if D.Flush then
+                                    INVVPID (VPID);    -- MOV to CR0/CR4 flushes as on hardware
+                                end if;
+                                Code := (if CR.Number_Of (Qualification) = 0 then Exit_Write_CR0 else Exit_Write_CR4);
+                                Put64 (State, Exit_Info_1, CR_Write_Applied);
+                            when CR.General_Protection =>
+                                Code := (if CR.Number_Of (Qualification) = 0 then Exit_Write_CR0 else Exit_Write_CR4);
+                                Put64 (State, Exit_Info_1, CR_Write_Refused);
+                            when CR.Not_Modelled =>
+                                Note_Unmodelled (Reason, Qualification);
+                        end case;
+                    end;
                 when Reason_DR_Access => Code := Exit_Read_DR0;
                 when Reason_IO =>
                     Code := Exit_IOIO;
@@ -659,7 +727,7 @@ package body VMX_Run with SPARK_Mode => Off is
                         print ("vm: VM entry or EPT failure, VMX exit reason ");
                         printdln (Reason);
                     end if;
-                when others => null;
+                when others => Note_Unmodelled (Reason, Qualification);
             end case;
             Put64 (State, Exit_Code, Code);
         end;

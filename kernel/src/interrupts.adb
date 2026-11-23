@@ -33,6 +33,7 @@ with Scheduler_Alarm;
 with TextIO; use TextIO;
 with Time;
 with Timer_Expiry_Probe;
+with Clock_Stall_Probe;
 with TLB_Shootdown;
 with Virtmem;
 
@@ -344,6 +345,8 @@ is
                     end;
                 end if;
                 if PerCPUData.getCPUNumber = 0 then
+                    -- Counted due or not (Time's report of a silent CPU 0).
+                    Time.Boot_CPU_Timer_Interrupts := Time.Boot_CPU_Timer_Interrupts + 1;
                     Boot_Diagnostics.Heartbeat;
                     TextIO.drainStalledConsole;
                 end if;
@@ -351,11 +354,15 @@ is
                    not Timer_Expiry_Probe.Handle_Interrupt
                 then
                     if not Build.OneShot_Scheduling or else intController /= APIC then
-                        Time.clockTick;
+                        if not (Build.Clock_Stall_Probe and then Clock_Stall_Probe.Skips_Clock_Work) then
+                            Time.clockTick;
+                        end if;
                     elsif Scheduler_Alarm.Interrupt_Due then
                         -- Rearm before any clock work can yield off this stack.
                         Scheduler_Alarm.Request_Earlier (1_000);
-                        Time.clockTick;
+                        if not (Build.Clock_Stall_Probe and then Clock_Stall_Probe.Skips_Clock_Work) then
+                            Time.clockTick;
+                        end if;
                     end if;
                 end if;
                 

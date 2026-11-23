@@ -29,11 +29,14 @@ with XHCI_Endpoint_Recovery;
 with XHCI_Topology;
 with USB_Hubs;
 with XHCI_Legacy;
+with XHCI_Boot_Settle;
 
 package body XHCI is
 
    package R renames XHCI_Rings;
    package PM renames XHCI_Port_Machine;
+   package Settle renames XHCI_Boot_Settle;
+   use type Settle.Verdict;
    package ER renames XHCI_Endpoint_Recovery;
    package CI renames XHCI_Controller_Identity;
    use type PM.Phase;
@@ -178,10 +181,9 @@ package body XHCI is
    Hub_Power_Good_Ms  : constant Natural := 100;
    Hub_Reset_Poll_Ms  : constant Unsigned_64 := 10;
    Hub_Reset_Polls    : constant := 50;
-   --  Bounded boot discovery window: devices attached before boot finish
-   --  reconnecting after HCRST (USB2 companions after a failed SuperSpeed
-   --  attempt). A device arriving later is handled as hotplug.
-   Boot_Settle_Ms     : constant Natural := 3_000;
+   --  The boot discovery window (XHCI_Boot_Settle): the ports are looked
+   --  at this often until they hold still. A device arriving later is
+   --  handled as hotplug.
    Boot_Settle_Step_Ms : constant Unsigned_64 := 10;
    Health_Interval_Ms : constant Unsigned_64 := 5_000;
    Quiet_Health_Interval_Ms : constant Unsigned_64 := 60_000;
@@ -1479,7 +1481,7 @@ package body XHCI is
    end Slots_Of;
 
    ---------------------------------------------------------------------------
-   --  Boot enumeration (bounded; before devmgr's configure reply)
+   --  Boot enumeration (bounded; before the bring-up report to devmgr)
    ---------------------------------------------------------------------------
    procedure Disable_Slot_Now (Slot : Device_Index) is
       Code : Completion_Code;
@@ -2115,6 +2117,8 @@ package body XHCI is
       Layout : constant Allocation := Plan (expectedScratchpads, expectedSlots);
       Halt_Ms, Reset_Ms, Ready_Ms, Run_Ms : Unsigned_64 := 0;
       Settle_Events : Natural := 0;
+      Settle_Ms : Unsigned_64 := 0;
+      Settle_End : Settle.Verdict := Settle.Keep_Waiting;
       Ignore : Unsigned_64;
       Quirk_Set : CI.Quirk_Set;
       Quirk_Text : String (1 .. 80) := [others => ' '];
@@ -2291,14 +2295,40 @@ package body XHCI is
              H32 (Read32 (runtimeBase + RT_INTR0, INTR_ERDP)) & " events=" & D (Natural (R.Event_Entries)) &
              " slots-enabled=" & D (Unsigned_64 (Read32 (operational, OP_CONFIG))));
 
-      --  Bounded boot discovery window (see Boot_Settle_Ms); the event ring
-      --  is drained so port-change events cannot fill it meanwhile.
-      for Step in 1 .. Boot_Settle_Ms / Natural (Boot_Settle_Step_Ms) loop
-         while Collect_Event loop
-            Settle_Events := Settle_Events + 1;
+      --  The boot discovery window (XHCI_Boot_Settle): until every root
+      --  port has held still for Settle.Quiet_Ms, at most Settle.Limit_Ms.
+      --  The event ring is drained so port-change events cannot fill it.
+      declare
+         Started : constant Unsigned_64 := Now_Ms;
+         Still_Since : Unsigned_64 := Started;
+         Seen : array (1 .. maxPorts) of Unsigned_32;
+         Status : Unsigned_32;
+         Any_Moving : Boolean;
+      begin
+         for Port in Seen'Range loop
+            Seen (Port) := Settle.Attachment (Read_Port (Port));
          end loop;
-         Ignore := CuBit.Waits.Sleep_For (Boot_Settle_Step_Ms);
-      end loop;
+         loop
+            while Collect_Event loop
+               Settle_Events := Settle_Events + 1;
+               Still_Since := Now_Ms;
+            end loop;
+            Any_Moving := False;
+            for Port in Seen'Range loop
+               Status := Read_Port (Port);
+               if Settle.Attachment (Status) /= Seen (Port) then
+                  Seen (Port) := Settle.Attachment (Status);
+                  Still_Since := Now_Ms;
+               end if;
+               Any_Moving := Any_Moving or else Settle.Moving (Status);
+            end loop;
+            Settle_End := Settle.Decide
+              (PM.Since (Now_Ms, Started), PM.Since (Now_Ms, Still_Since), Any_Moving);
+            exit when Settle_End /= Settle.Keep_Waiting;
+            Ignore := CuBit.Waits.Sleep_For (Boot_Settle_Step_Ms);
+         end loop;
+         Settle_Ms := PM.Since (Now_Ms, Started);
+      end;
       connectedPorts := 0;
       declare
          Empty_Ports : Natural := 0;
@@ -2312,7 +2342,8 @@ package body XHCI is
                Trace ("port " & D (Port) & " start " & Port_Text (Read_Port (Port)));
             end if;
          end loop;
-         Stage ("settle", True, "ms=" & D (Boot_Settle_Ms) & " events=" & D (Settle_Events) &
+         Stage ("settle", True, "ms=" & D (Settle_Ms) & " ended=" & Settle.Verdict_Name (Settle_End) &
+                " quiet-ms=" & D (Unsigned_64 (Settle.Quiet_Ms)) & " events=" & D (Settle_Events) &
                 " connected=" & D (connectedPorts) & " empty=" & D (Empty_Ports));
       end;
 

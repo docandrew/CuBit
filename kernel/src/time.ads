@@ -87,14 +87,23 @@ is
 
     ---------------------------------------------------------------------------
     -- clockTick
-    -- At timer interrupt intervals, this procedure will decrement the head of
-    -- the sleep list once per millisecond, and offer ready peers a scheduling
+    -- At timer interrupt intervals, this procedure expires due sleepers,
+    -- keeps the system's time when this CPU may (Timekeeping_Turns), and
+    -- offers ready peers a scheduling
     -- opportunity on turn exhaustion. Elapsed time comes from the calibrated
     -- TSC, not counting 250-us LAPIC interrupts, which may be delayed/coalesced.
     -- The wake-aware experiment can offer an earlier FIFO rotation when newly
     -- awakened work waits, without granting a priority boost.
     ---------------------------------------------------------------------------
     procedure clockTick with SPARK_Mode => On;
+
+    -- Timer interrupts CPU 0 took, due or not (Interrupts, CPU 0 only): the
+    -- silence report tells an undelivered timer from one set far ahead.
+    Boot_CPU_Timer_Interrupts : Unsigned_64 := 0 with Atomic;
+
+    -- How long CPU 0's timer has run no clock work while another CPU kept
+    -- the time (Timekeeping_Turns.Silence_Report_Ms or more), else 0.
+    function Boot_CPU_Silence_Ms return Unsigned_64 with SPARK_Mode => Off;
 
     -- BSP boot only, interrupts disabled, after masking the calibration PIT
     -- and before starting APs. Public time/sleep units remain milliseconds.

@@ -41,6 +41,17 @@ is
     -- words, for the MOV SS / POP SS debug-exception test
     -- (DEBUG_REGISTER_PROBE=1, headless --test mov-ss-debug). Tests only.
     Debug_Register_Probe : constant Boolean := SED_DEBUG_REGISTER_PROBE;
+    -- Clock-stall probe (Clock_Stall_Probe): on a process's console request
+    -- CPU 0's timer runs no clock work for a while, as on a CPU 0 that takes
+    -- no timer interrupt (CLOCK_STALL_PROBE=1, headless --test
+    -- clock-keeper). Tests only.
+    Clock_Stall_Probe : constant Boolean := SED_CLOCK_STALL_PROBE;
+    -- TSC skew probe (TSC_Sync): before its TSC_ADJUST step CPU 1 moves
+    -- its own counter ahead, as the N150's CPUs disagreed (image 37); the
+    -- step and the warp check must restore one clock, or withdraw it
+    -- (TSC_SKEW_PROBE=1, headless --test tsc-skew, tsc-skew-noadjust).
+    -- Tests only.
+    Test_TSC_Skew : constant Boolean := SED_TSC_SKEW_PROBE;
     -- Records the kernel log ring holds (Kernel_Log, LOG-004): at most
     -- Kernel_Log_Publication.Maximum_Records; a test build shrinks it to
     -- exercise overflow (KERNEL_LOG_RECORDS=64 make -C kernel world).

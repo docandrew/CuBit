@@ -41,7 +41,7 @@ def main(path):
             fail(f'match line without interrupt capabilities: {line}')
 
     # One instance started per controller, each reporting only its own
-    # devices (xhci's configure reply, logged by devmgr with the location).
+    # devices (xhci's bring-up report, logged by devmgr with the location).
     devices = {}
     for location in xhci_locations:
         found = re.findall(

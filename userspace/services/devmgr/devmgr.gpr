@@ -38,7 +38,7 @@ project Devmgr is
        "devmgr_host_bridge_consumer.ads", "devmgr_host_bridge_consumer.adb",
        "acpi_host_bridge_snapshot.ads", "acpi_host_bridge_snapshot.adb",
        "acpi_host_bridge_wire.ads",
-       "xhci_configure_reply.ads", "xhci_controller_identity.ads",
+       "xhci_bring_up_report.ads", "xhci_controller_identity.ads",
        "driver_manifests.ads", "driver_manifests.adb",
        --  Devices bound by their drivers' declared matches (HW-002).
        "devmgr_bindings.ads", "devmgr_bindings.adb", "devmgr_windows.ads",
@@ -136,7 +136,7 @@ project Devmgr is
        "intel_gpu_ggtt_access.ads", "intel_gpu_ggtt_access.adb",
        "intel_gpu_ggtt.ads", "intel_gpu_ggtt.adb",
        "xhci_dma_layout.ads", "xhci_dma_layout.adb",
-       "xhci_capabilities.ads", "xhci_capabilities.adb",
+       "xhci_capabilities.ads", "xhci_capabilities.adb", "xhci_legacy.ads",
        "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
        "ccl-checked_arithmetic.ads", "ccl-checked_arithmetic.adb",
        "ccl-execution_budgets.ads", "ccl-execution_budgets.adb",

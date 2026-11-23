@@ -1,0 +1,2 @@
+(Component name => "clock-keeper-check" kind => Kind.Application
+  source => (Source.Ada (Ada_Source)))
