@@ -708,7 +708,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",
-      "sha256": "abb5aafb784ad51c73e122c6f48d13254bdf58c9386def88f228f73b961e0db9"
+      "sha256": "7b168231aecd9408800bbe873d70b468c6f97671eb7fa5c8d0fe0adf543bef8b"
     },
     {
       "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",

@@ -68,3 +68,26 @@ by runtime buffer completion/conversion/definition arena copies; package
 replacement/refcount integration and broader copy retirement remain pending.
 Unchanged proofs are reused; the known namespace Global frontend crash still
 prevents an accepted new namespace proof. Native SDK checks remain semantic only.
+
+Runtime buffer completion, ToBuffer attachment and converted BufferField
+declaration now also mutate the current arena without full-store snapshots.
+Conversion still precedes declaration validation; completed effects remain on
+a later refusal. The wrapper test explicitly adopts partial-effect semantics
+under032000/144000, checking exact errors, arena validity, authenticated backing,
+namespace identity and rejected-name absence. Prompt disposal of the refused
+conversion temporary is explicitly deferred to reference-count integration;
+current tracing collects under quota pressure. This is not reclamation parity.
+
+The current field suite passes22/22mains(100%), with68,507checks/profile, and
+native-SDK namespace semantic checks pass4/4, producing0objects. All1,172unique
+runnable corpus configurations were freshly executed again. Strict passing is
+408/1,368(29.825%); compatibility is536/1,368(39.181%).
+Full-grid status changes versus the preceding candidate:0; PASS regressions:0.
+No source/assertion/compiler exclusions or runtime-limit increases were made.
+
+Busy-host identical-AML pairs:0062n64passes0.8658s versus acpiexec0.2147s;
+bfield remains a12s timeout versus0.966s. A six-second589-sample attribution
+profile puts memmove at26.02%self versus62.99%previously; it identifies remaining
+copy and root-publication costs, not a performance-parity result. Existing
+unchanged helper proofs are reused. The namespace Global frontend compiler
+blocker remains tracked; no new namespace/whole-service AoRTE proof is claimed.

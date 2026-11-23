@@ -4382,30 +4382,18 @@ package body Owned with SPARK_Mode is
    is
       Converted, Unused : AML_Execute.Datum;
       Field : Reference;
-      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
-      Snapshot_Copy : AML_Objects.Clone_Status;
-      procedure Execute_Value_Transaction is
-      begin
-         Status := AML_Execute.Unsupported_Value;
-         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
-         if Snapshot_Copy /= AML_Objects.Cloned then
-            Status := AML_Execute.Value_Limit; return;
-         end if;
-         -- Operand conversion precedes declaration name/duplicate validation.
-         To_Buffer_And_Attach (A, Width, Source,
-           (Kind => AML_Execute.Detached_Result), Converted, Unused, Status);
-         if Status /= AML_Execute.Returned then return; end if;
-         if Scope > A.Tree.Used then
-            Status := AML_Execute.Unknown_Name;
-         else
-            Define_Buffer_Field_For_Context (A, Node_ID (Scope), Node_ID (Lifetime_Owner), Path, Converted.Object.Source,
-              Bit_Offset, Bit_Length, Always_Buffer, Field, Status, Module_Declaration);
-         end if;
-         if Status /= AML_Execute.Returned then AML_Objects.Transfer (Prior_Values, A.Tree.Values); end if;
-      end Execute_Value_Transaction;
    begin
-      Execute_Value_Transaction;
-      AML_Objects.Discard (Prior_Values);
+      Status := AML_Execute.Unsupported_Value;
+      -- Operand conversion precedes declaration name/duplicate validation.
+      To_Buffer_And_Attach (A, Width, Source,
+        (Kind => AML_Execute.Detached_Result), Converted, Unused, Status);
+      if Status /= AML_Execute.Returned then return; end if;
+      if Scope > A.Tree.Used then
+         Status := AML_Execute.Unknown_Name;
+      else
+         Define_Buffer_Field_For_Context (A, Node_ID (Scope), Node_ID (Lifetime_Owner), Path, Converted.Object.Source,
+           Bit_Offset, Bit_Length, Always_Buffer, Field, Status, Module_Declaration);
+      end if;
    end Define_Buffer_Field_Value_For_Context;
    procedure Define_Buffer_Field_Value
      (A : in out Arena; Scope : Natural; Path : AML_Names.Name_Result;
@@ -6120,16 +6108,12 @@ package body Owned with SPARK_Mode is
       Source_ID : AML_Objects.Object_ID := 0;
       Existing_Buffer : Boolean := False;
       Size : Natural := 0;
-      Node : Node_ID := 0;
       Target_Reference : Reference := AML_References.No_Reference;
-      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
-      Snapshot_Copy : AML_Objects.Clone_Status;
-      Prior_Node : Entry_Record;
       ID : AML_Objects.Object_ID := 0;
       Allocated : AML_Objects.Allocation_Status;
       Located : Lookup_Result;
       Accepted : Boolean;
-      procedure Execute_Value_Transaction is
+      procedure Apply_Conversion is
       begin
          Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
@@ -6157,21 +6141,12 @@ package body Owned with SPARK_Mode is
                Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
                if Located.Status /= Found then Status := Unknown_Name; return; end if;
                if Located.Node = Root then return; end if;
-               Node := Located.Node;
-               Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
+               Make_Named_Reference (A, Natural (Located.Node), Target_Reference, Accepted);
                if not Accepted then return; end if;
             when Reference_Attachment =>
                if not Matches (A, Destination.Ref) then return; end if;
                Target_Reference := Destination.Ref;
-               if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
-                  Node := Node_ID (AML_References.Named_Node (Destination.Ref));
-               end if;
          end case;
-         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
-         if Snapshot_Copy /= AML_Objects.Cloned then
-            Status := AML_Execute.Value_Limit; return;
-         end if;
-         if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
          if Existing_Buffer then
             ID := Source_ID;
          else
@@ -6204,15 +6179,12 @@ package body Owned with SPARK_Mode is
             end case;
          end if;
          if Status /= Returned then
-            pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
-            AML_Objects.Transfer (Prior_Values, A.Tree.Values);
             Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
             Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          end if;
-      end Execute_Value_Transaction;
+      end Apply_Conversion;
    begin
-      Execute_Value_Transaction;
-      AML_Objects.Discard (Prior_Values);
+      Apply_Conversion;
    end To_Buffer_And_Attach;
    procedure Mid_And_Attach
      (A : in out Arena; Width : AML_Decode.Integer_Width;
@@ -6657,26 +6629,19 @@ package body Owned with SPARK_Mode is
          Complete_Name (A, Token, AML_References.No_Object_Handle, Status); return;
       end if;
       declare
-         Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
-         Store_Copy : AML_Objects.Clone_Status;
          ID : AML_Objects.Object_ID;
          Allocated : AML_Objects.Allocation_Status;
       begin
-         AML_Objects.Clone (A.Tree.Values, Candidate, Store_Copy);
-         if Store_Copy /= AML_Objects.Cloned then
-            Status := AML_Execute.Value_Limit; return;
-         end if;
          if Layout.Initializer_Length = 0 then
-            AML_Objects.New_Buffer (Candidate, Layout.Effective_Length,
+            AML_Objects.New_Buffer (A.Tree.Values, Layout.Effective_Length,
               AML_Decode.Bytes'(1 .. 0 => 0), ID, Allocated);
          else
-            AML_Objects.New_Buffer (Candidate, Layout.Effective_Length,
+            AML_Objects.New_Buffer (A.Tree.Values, Layout.Effective_Length,
               Initializer (Initializer'First + Layout.Initializer_Offset ..
                            Initializer'First + (Layout.Consumed - 1)), ID, Allocated);
          end if;
          if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
          -- One publication from the post-count arena; no pre-count state is restored.
-         AML_Objects.Transfer (Candidate, A.Tree.Values);
          A.Tree.Items (Node) := (A.Tree.Items (Node) with delta
            Object_Type => Buffer_Object, Object_Ref => ID, Initializing => False);
          Status := AML_Execute.Returned;

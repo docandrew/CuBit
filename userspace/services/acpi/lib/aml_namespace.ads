@@ -844,8 +844,7 @@ package Owned with SPARK_Mode is
       Width : AML_Decode.Integer_Width; Initializer : AML_Decode.Bytes;
       Count : AML_Data.Count_Result; Status : out AML_Execute.Execution_Status)
      with Pre => Valid (A), Post => Valid (A)
-       and then Generation (A) = Generation (A)'Old
-       and then (if Status /= AML_Execute.Returned then Snapshot (A) = Snapshot (A)'Old);
+       and then Generation (A) = Generation (A)'Old;
    function Abort_Frame (Tree, Prior : State; Node : Node_ID) return Boolean with Ghost;
    procedure Abort_Name
      (A : in out Arena; Token : Name_Reservation; Status : out AML_Execute.Execution_Status)
@@ -1083,8 +1082,8 @@ package Owned with SPARK_Mode is
      (Tree, Prior : State; Scope : Natural; Width : AML_Decode.Integer_Width;
       Source : AML_Execute.Datum; Offset, Bits : AML_Decode.Integer_Value;
       Always_Buffer : Boolean) return Boolean with Ghost;
-   -- Value-level declaration transaction. Existing Buffers retain identity;
-   -- Integer/String conversion and namespace insertion commit together.
+   -- Value-level declaration in place. Existing Buffers retain identity;
+   -- completed conversion effects remain if later namespace insertion fails.
    -- Collection, when required, occurs in the evaluator adapter before entry.
    procedure Define_Buffer_Field_Value
      (A : in out Arena; Scope : Natural; Path : AML_Names.Name_Result;
@@ -1097,8 +1096,7 @@ package Owned with SPARK_Mode is
          and then Methods_Used (A) = Methods_Used (A)'Old
          and then (if Status = AML_Execute.Returned then
            Buffer_Field_Value_Defined (Snapshot (A), Snapshot (A)'Old, Scope,
-             Width, Source, Bit_Offset, Bit_Length, Always_Buffer)
-          else Snapshot (A) = Snapshot (A)'Old);
+             Width, Source, Bit_Offset, Bit_Length, Always_Buffer));
    procedure Read_Buffer_Field
      (A : in out Arena; Field : Reference; Width : AML_Decode.Integer_Width;
       Value : out AML_Execute.Datum; Status : out AML_Execute.Execution_Status)
@@ -1168,8 +1166,7 @@ package Owned with SPARK_Mode is
          and then Invocation_Count (A) = Invocation_Count (A)'Old
          and then Last_Incarnation (Snapshot (A)) = Last_Incarnation (Snapshot (A)'Old)
          and then (if Status /= AML_Execute.Returned then
-           Snapshot (A) = Snapshot (A)'Old
-           and then Result_Value.Value_Kind = AML_Execute.Integer_Datum and then Result_Value.Number = 0
+           Result_Value.Value_Kind = AML_Execute.Integer_Datum and then Result_Value.Number = 0
            and then Cell_Value.Value_Kind = AML_Execute.Integer_Datum and then Cell_Value.Number = 0);
    -- Start and Count must already be width-normalized. Noncanonical raw
    -- ranges are rejected without mutation; Integer source is normalized here.
