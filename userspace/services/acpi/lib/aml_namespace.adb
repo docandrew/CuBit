@@ -7068,6 +7068,11 @@ package body Owned with SPARK_Mode is
         (IO : in out IO_Context; Domain : AML_Frame_Handles.Invocation_Domain;
          Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
          Outcome : in out AML_Global_Locks.Outcome) is null;
+      with procedure Context_Read
+        (E : in out Arena; IO : in out IO_Context; Ref : Reference;
+         Ticket : AML_Execute.Field_Context_Ticket;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status) is null;
    procedure Run_Context_Session (A : in out Arena; IO : in out IO_Context; Input : aliased AML_Table_Backing.State;
      Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural; Width : AML_Decode.Integer_Width; Scope : Node_ID;
      Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
@@ -7157,6 +7162,7 @@ package body Owned with SPARK_Mode is
          else Readers.Read_Field_At_Entry (E, Ref, Width, Value, Status); end if;
       end Read_Field_At_Entry;
       use type AML_Execute.Field_Context_Ticket;
+      use type AML_PCI_Bridge_Probe.Stage;
       function PCI_Region (E : Arena; Ref : Reference) return Node_ID is
          Field, Region : Node_ID;
       begin
@@ -7187,6 +7193,10 @@ package body Owned with SPARK_Mode is
          end loop;
          return Nearest_Device;
       end PCI_Lexical_Device;
+      function PCI_Path_Current (E : Arena; Item : PCI_Path_Cursor) return Boolean is
+        (if Item.Node = Root then Item.Stamp = 0 else
+          Item.Node <= E.Tree.Used and then E.Tree.Items (Item.Node).Alive
+          and then Item.Stamp /= 0 and then E.Tree.Items (Item.Node).Incarnation = Item.Stamp);
       function PCI_Work_Current (E : Arena; Work : PCI_Setup_Work) return Boolean is
         (Work.Active and then Named_Identity_Matches (E, Work.Field)
          and then Named_Identity_Matches (E, Work.Region)
@@ -7194,16 +7204,18 @@ package body Owned with SPARK_Mode is
          and then Named_Identity_Matches (E, Work.Device)
          and then (Work.Walk = AML_References.No_Reference or else Named_Identity_Matches (E, Work.Walk))
          and then (Work.Host = AML_References.No_Reference or else Named_Identity_Matches (E, Work.Host))
+         and then PCI_Path_Current (E, Work.Cursor)
+         and then PCI_Path_Current (E, Work.Search)
+         and then PCI_Path_Current (E, Work.Candidate)
          and then PCI_Region (E, Work.Field) = Node_ID (AML_References.Named_Node (Work.Region))
          and then PCI_Lexical_Device (E, Node_ID (AML_References.Named_Node (Work.Region))) =
            Node_ID (AML_References.Named_Node (Work.Device)));
       function PCI_Work_At (E : Arena; Ref : Reference;
          Ticket : AML_Execute.Field_Context_Ticket) return Node_ID is
+         N : constant Node_ID := PCI_Region (E, Ref);
       begin
-         for N in Node_ID range Root + 1 .. E.Tree.Used loop
-            if E.PCI_Work (N).Active and then E.PCI_Work (N).Ticket = Ticket
-              and then E.PCI_Work (N).Field = Ref then return N; end if;
-         end loop;
+         if N /= Root and then E.PCI_Work (N).Active
+           and then E.PCI_Work (N).Ticket = Ticket and then E.PCI_Work (N).Field = Ref then return N; end if;
          return Root;
       end PCI_Work_At;
       procedure PCI_Property
@@ -7328,67 +7340,138 @@ package body Owned with SPARK_Mode is
          E.PCI_Work (N).Walk := E.PCI_Work (N).Device;
          PCI_Request_Root (E, N, Step);
       end PCI_Begin;
+      function PCI_Read_Geometry (Work : PCI_Setup_Work) return AML_Field_Layout.Register_Geometry;
       procedure PCI_Advance
         (E : in out Arena; Ref : Reference; Ticket : AML_Execute.Field_Context_Ticket;
          Value : AML_Execute.Datum; Step : in out AML_Execute.Field_Context_Step) is
          N : constant Node_ID := PCI_Work_At (E, Ref, Ticket);
          Missing : Boolean;
-         Host_Node, Up : Node_ID;
-         Device, Func, Number : AML_Decode.Integer_Value;
+         Number, Slot, Func : AML_Decode.Integer_Value;
+         Up, Current : Node_ID;
       begin
          Step := (Phase => AML_Execute.Context_Failed, others => <>);
          if N = Root or else not PCI_Work_Current (E, E.PCI_Work (N)) then return; end if;
-         declare W : PCI_Setup_Work renames E.PCI_Work (N); begin
-         case W.Stage is
-            when PCI_Up => PCI_Up_One (E, N, Step); return;
-            when PCI_HID =>
-               if PCI_ID_Matches (E, Value) then W.Host := W.Walk;
-               else
-                  W.Stage := PCI_CID; Step.Phase := AML_Execute.Context_Value;
-                  PCI_Property (E, Node_ID (AML_References.Named_Node (W.Walk)), "_CID", Step.Property, Missing);
-                  return;
+         declare
+            W : PCI_Setup_Work renames E.PCI_Work (N);
+            procedure Ready is
+            begin W.Stage := PCI_Done; Step.Phase := AML_Execute.Context_Ready; end Ready;
+            procedure Search_Path is
+            begin
+               W.Search := (Node_ID (AML_References.Named_Node (W.Device)), AML_References.Incarnation (W.Device));
+               W.Candidate := (others => <>);
+               W.Stage := PCI_Path;
+               Step := (Phase => AML_Execute.Context_Value,
+                 Property => (AML_Execute.Integer_Binding, 0, AML_Decode.Ordinary_Integer), others => <>);
+            end Search_Path;
+            procedure Address_Current is
+            begin
+               W.Stage := PCI_ADR; Step.Phase := AML_Execute.Context_Value;
+               PCI_Property (E, W.Cursor.Node, "_ADR", Step.Property, Missing);
+               if Missing then
+                  -- A lexical Device without _ADR does not invent a PCI ID.
+                  if W.Cursor.Node = Node_ID (AML_References.Named_Node (W.Device)) then Ready; else Search_Path; end if;
                end if;
-            when PCI_CID =>
-               if PCI_CID_Matches (E, Value) then W.Host := W.Walk;
-               else PCI_Up_One (E, N, Step); return; end if;
-            when PCI_ADR | PCI_SEG | PCI_BBN =>
-               if Value.Value_Kind /= AML_Execute.Integer_Datum then return; end if;
-               Number := Value.Number mod 2 ** 16;
-               case W.Stage is
-                  when PCI_ADR =>
-                     Device := (Value.Number / 2 ** 16) mod 2 ** 16; Func := Number;
-                     if Device > AML_Decode.Integer_Value (ACPI_PCI_Config_Reads.Device_Number'Last)
-                       or else Func > AML_Decode.Integer_Value (ACPI_PCI_Config_Reads.Function_Number'Last) then return; end if;
-                     W.Location.Device := ACPI_PCI_Config_Reads.Device_Number (Device);
-                     W.Location.Func := ACPI_PCI_Config_Reads.Function_Number (Func);
-                     W.Stage := PCI_SEG;
-                  when PCI_SEG => W.Location.Segment := ACPI_PCI_Config_Reads.Segment_Number (Number); W.Stage := PCI_BBN;
-                  when PCI_BBN =>
+            end Address_Current;
+            procedure Read_Probe is
+            begin
+               W.Stage := PCI_Probe;
+               Step := (Phase => AML_Execute.Context_Read,
+                 Read_Geometry => PCI_Read_Geometry (W), others => <>);
+            end Read_Probe;
+            procedure Host_Found is
+            begin
+               W.Stage := PCI_SEG; Step.Phase := AML_Execute.Context_Value;
+               PCI_Property (E, Node_ID (AML_References.Named_Node (W.Host)), "_SEG", Step.Property, Missing);
+            end Host_Found;
+         begin
+            case W.Stage is
+               when PCI_Up => PCI_Up_One (E, N, Step);
+               when PCI_HID =>
+                  if PCI_ID_Matches (E, Value) then W.Host := W.Walk; Host_Found;
+                  else
+                     W.Stage := PCI_CID; Step.Phase := AML_Execute.Context_Value;
+                     PCI_Property (E, Node_ID (AML_References.Named_Node (W.Walk)), "_CID", Step.Property, Missing);
+                  end if;
+               when PCI_CID =>
+                  if PCI_CID_Matches (E, Value) then W.Host := W.Walk; Host_Found;
+                  else PCI_Up_One (E, N, Step); end if;
+               when PCI_SEG | PCI_BBN =>
+                  if Value.Value_Kind /= AML_Execute.Integer_Datum then return; end if;
+                  Number := Value.Number mod 2 ** 16;
+                  if W.Stage = PCI_SEG then
+                     W.Location.Segment := ACPI_PCI_Config_Reads.Segment_Number (Number);
+                     W.Stage := PCI_BBN; Step.Phase := AML_Execute.Context_Value;
+                     PCI_Property (E, Node_ID (AML_References.Named_Node (W.Host)), "_BBN", Step.Property, Missing);
+                  else
                      if Number > AML_Decode.Integer_Value (ACPI_PCI_Config_Reads.Bus_Number'Last) then return; end if;
-                     W.Location.Bus := ACPI_PCI_Config_Reads.Bus_Number (Number); W.Stage := PCI_Done;
-                  when others => null;
-               end case;
-               if W.Stage = PCI_Done then Step.Phase := AML_Execute.Context_Ready; return; end if;
-               Host_Node := (if W.Host = AML_References.No_Reference then Root else Node_ID (AML_References.Named_Node (W.Host)));
-               Step.Phase := AML_Execute.Context_Value;
-               PCI_Property (E, Host_Node, (if W.Stage = PCI_SEG then "_SEG" else "_BBN"), Step.Property, Missing);
-               return;
-            when others => return;
-         end case;
-         -- This slice does not silently guess the secondary bus of a bridge.
-         Host_Node := Node_ID (AML_References.Named_Node (W.Host));
-         Up := Node_ID (AML_References.Named_Node (W.Device));
-         if Up /= Host_Node then
-            Up := Parent (E.Tree.all, Up);
-            while Up /= Host_Node and then Up /= Root loop
-               if E.Tree.Items (Up).Object_Type = Device_Object then return; end if;
-               Up := Parent (E.Tree.all, Up);
-            end loop;
-         end if;
-         W.Stage := PCI_ADR; Step.Phase := AML_Execute.Context_Value;
-         PCI_Property (E, Node_ID (AML_References.Named_Node (W.Device)), "_ADR", Step.Property, Missing);
+                     W.Location.Bus := ACPI_PCI_Config_Reads.Bus_Number (Number);
+                     W.Follow_Bus := W.Location.Bus;
+                     W.Cursor := (Node_ID (AML_References.Named_Node (W.Host)), AML_References.Incarnation (W.Host));
+                     if W.Cursor.Node = Node_ID (AML_References.Named_Node (W.Device)) then Address_Current; else Search_Path; end if;
+                  end if;
+               when PCI_Path =>
+                  -- One charged parent hop per VM context step. No path array,
+                  -- namespace copy, synthetic Field or uncharged ancestry loop.
+                  Current := W.Search.Node;
+                  if W.Search = W.Cursor then
+                     if W.Candidate.Node = Root then return; end if;
+                     W.Cursor := W.Candidate; W.Search := (others => <>);
+                     W.Candidate := (others => <>); Address_Current;
+                  else
+                     if E.Tree.Items (Current).Object_Type = Device_Object then W.Candidate := W.Search; end if;
+                     Up := Parent (E.Tree.all, Current);
+                     if Up = Root or else Up > E.Tree.Used or else not E.Tree.Items (Up).Alive
+                       or else E.Tree.Items (Up).Incarnation = 0 then return; end if;
+                     W.Search := (Up, E.Tree.Items (Up).Incarnation);
+                     Step := (Phase => AML_Execute.Context_Value,
+                       Property => (AML_Execute.Integer_Binding, 0, AML_Decode.Ordinary_Integer), others => <>);
+                  end if;
+               when PCI_ADR =>
+                  if Value.Value_Kind /= AML_Execute.Integer_Datum then return; end if;
+                  Slot := (Value.Number / 2 ** 16) mod 2 ** 16;
+                  Func := Value.Number mod 2 ** 16;
+                  if Slot > AML_Decode.Integer_Value (ACPI_PCI_Config_Reads.Device_Number'Last)
+                    or else Func > AML_Decode.Integer_Value (ACPI_PCI_Config_Reads.Function_Number'Last) then return; end if;
+                  if W.Follow_Bridge then W.Location.Bus := W.Follow_Bus; end if;
+                  W.Location.Device := ACPI_PCI_Config_Reads.Device_Number (Slot);
+                  W.Location.Func := ACPI_PCI_Config_Reads.Function_Number (Func);
+                  if W.Cursor.Node = Node_ID (AML_References.Named_Node (W.Device)) then Ready;
+                  else
+                     AML_PCI_Bridge_Probe.Start (W.Probe, AML_PCI_Bridge_Probe.Byte (W.Location.Bus));
+                     Read_Probe;
+                  end if;
+               when PCI_Probe =>
+                  if Value.Value_Kind /= AML_Execute.Integer_Datum or else Value.Number > 255 then return; end if;
+                  AML_PCI_Bridge_Probe.Apply_Byte (W.Probe, AML_PCI_Bridge_Probe.Byte (Value.Number));
+                  if AML_PCI_Bridge_Probe.At_Stage (W.Probe) = AML_PCI_Bridge_Probe.Complete then
+                     W.Location.Bus := ACPI_PCI_Config_Reads.Bus_Number (AML_PCI_Bridge_Probe.Containing_Bus (W.Probe));
+                     W.Follow_Bus := ACPI_PCI_Config_Reads.Bus_Number (AML_PCI_Bridge_Probe.Downstream_Bus (W.Probe));
+                     W.Follow_Bridge := AML_PCI_Bridge_Probe.Is_Bridge (W.Probe); Search_Path;
+                  else Read_Probe; end if;
+               when PCI_Done => null;
+            end case;
          end;
       end PCI_Advance;
+      function PCI_Read_Geometry (Work : PCI_Setup_Work) return AML_Field_Layout.Register_Geometry is
+        ((Region => (Space => AML_Field_Layout.PCI_Config_Space, Base => 0, Length => 16#1A#,
+          PCI => (Known => True, Device => Work.Location)),
+          Byte_Offset => AML_Decode.Integer_Value (AML_PCI_Bridge_Probe.Offset (Work.Probe)),
+          Width => ACPI_FADT.Transactions.Byte_Access));
+      procedure PCI_Read
+        (E : in out Arena; Ref : Reference; Ticket : AML_Execute.Field_Context_Ticket;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status)
+      is
+         use type AML_Field_Layout.Register_Geometry;
+         N : constant Node_ID := PCI_Work_At (E, Ref, Ticket);
+      begin
+         Status := AML_Execute.Unsupported_Value;
+         if N = Root or else not PCI_Work_Current (E, E.PCI_Work (N))
+           or else E.PCI_Work (N).Stage /= PCI_Probe
+           or else AML_PCI_Bridge_Probe.At_Stage (E.PCI_Work (N).Probe) = AML_PCI_Bridge_Probe.Complete
+           or else Geometry /= PCI_Read_Geometry (E.PCI_Work (N)) then return; end if;
+         Context_Read (E, IO, Ref, Ticket, Geometry, Value, Status);
+      end PCI_Read;
       procedure PCI_Finish
         (E : in out Arena; Ref : Reference; Ticket : AML_Execute.Field_Context_Ticket; Completed : Boolean) is
       begin
@@ -9870,6 +9953,7 @@ package body Owned with SPARK_Mode is
          Handle_Module_Divide_Error => Recover_Module_Divide,
          Next_Runtime_Package_Field => Next_Runtime_Package_Field,
          Complete_Runtime_Package_Field => Complete_Runtime_Package_Field,
+         Read_Field_Context => PCI_Read,
          Begin_Field_Context => PCI_Begin, Advance_Field_Context => PCI_Advance,
          Finish_Field_Context => PCI_Finish,
          Profile_Enabled => Profile_Enabled, Observe_Profile => Observe_Profile,
@@ -9950,13 +10034,18 @@ package body Owned with SPARK_Mode is
         (IO : in out IO_Context; Domain : AML_Frame_Handles.Invocation_Domain;
          Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
          Outcome : in out AML_Global_Locks.Outcome) is null;
+      with procedure Context_Read
+        (E : in out Arena; IO : in out IO_Context; Ref : Reference;
+         Ticket : AML_Execute.Field_Context_Ticket;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status) is null;
    procedure Invoke_Context_With_Handoff (A : in out Arena; IO : in out IO_Context; Input : aliased AML_Table_Backing.State;
      Node : Node_ID; Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
      Budget : Natural; Result : out AML_Execute.Execution_Result);
    procedure Invoke_Context_With_Handoff (A : in out Arena; IO : in out IO_Context; Input : aliased AML_Table_Backing.State;
      Node : Node_ID; Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
      Budget : Natural; Result : out AML_Execute.Execution_Result) is
-      procedure Run is new Run_Context_Session (IO_Context, Field_Operation, Handoff, Before_Allocation, Global_Lock_Operation => Global_Lock_Operation);
+      procedure Run is new Run_Context_Session (IO_Context, Field_Operation, Handoff, Before_Allocation, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
       Definition : constant AML_Execute.Method_Definition := Read_Method (A.Tree.all, Node);
    begin
       if Frame_Pins.Count (A.Frame_Roots) /= 0 then
@@ -10017,6 +10106,11 @@ package body Owned with SPARK_Mode is
         (IO : in out IO_Context; Domain : AML_Frame_Handles.Invocation_Domain;
          Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
          Outcome : in out AML_Global_Locks.Outcome) is null;
+      with procedure Context_Read
+        (E : in out Arena; IO : in out IO_Context; Ref : Reference;
+         Ticket : AML_Execute.Field_Context_Ticket;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status) is null;
    procedure Run_Registered_Context_Session
      (A : in out Arena; IO : in out IO_Context; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
       Input : aliased AML_Table_Backing.State; Code : AML_Decode.Bytes;
@@ -10635,7 +10729,7 @@ package body Owned with SPARK_Mode is
          Prepare_Load => Prepare, Prepare_Source => Capture_Source, Copy_Load => Copy_Body,
          Begin_Load => Begin_Body, Finish_Load => Finish,
          Read_Table_Binding => Read_Registered_Table,
-         Complete_Table_Binding => Complete_Registered_Table, Global_Lock_Operation => Global_Lock_Operation);
+         Complete_Table_Binding => Complete_Registered_Table, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
    begin
       if not Sources_Admitted or else Frame_Pins.Count (A.Frame_Roots) /= 0 or else not Expected_Reservations
         or else (not Deferred_Readiness and then Pending_Members (A.Tree.all) /= 0)
@@ -10657,6 +10751,11 @@ package body Owned with SPARK_Mode is
         (IO : in out IO_Context; Domain : AML_Frame_Handles.Invocation_Domain;
          Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
          Outcome : in out AML_Global_Locks.Outcome) is null;
+      with procedure Context_Read
+        (E : in out Arena; IO : in out IO_Context; Ref : Reference;
+         Ticket : AML_Execute.Field_Context_Ticket;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status) is null;
    procedure Invoke_Registered_Context_With_Handoff
      (A : in out Arena; IO : in out IO_Context; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
       Input : aliased AML_Table_Backing.State; Node : Node_ID;
@@ -10668,7 +10767,7 @@ package body Owned with SPARK_Mode is
       Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
       Budget : Natural; Result : out AML_Execute.Execution_Result) is
       Definition : constant AML_Execute.Method_Definition := Read_Method (A.Tree.all, Node);
-      procedure Run is new Run_Registered_Context_Session (IO_Context, Field_Operation, Handoff, Before_Allocation, Global_Lock_Operation => Global_Lock_Operation);
+      procedure Run is new Run_Registered_Context_Session (IO_Context, Field_Operation, Handoff, Before_Allocation, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
    begin
       if not Definition.Exists then Result := (AML_Execute.Invalid_Method, 0); return; end if;
       if Natural (Definition.Flags and 7) /= Argument_Count then Result := (AML_Execute.Argument_Mismatch, 0); return; end if;
@@ -10690,6 +10789,11 @@ package body Owned with SPARK_Mode is
         (IO : in out IO_Context; Domain : AML_Frame_Handles.Invocation_Domain;
          Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
          Outcome : in out AML_Global_Locks.Outcome) is null;
+      with procedure Context_Read
+        (E : in out Arena; IO : in out IO_Context; Ref : Reference;
+         Ticket : AML_Execute.Field_Context_Ticket;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status) is null;
    procedure Invoke_Registered_Context_Retained
      (A : in out Arena; IO : in out IO_Context; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State; Input : aliased AML_Table_Backing.State;
       Node : Node_ID; Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
@@ -10728,7 +10832,7 @@ package body Owned with SPARK_Mode is
          if Pin_Status /= Pins.Ready then raise Program_Error with "retained result slot invariant"; end if;
          Captured := True;
       end Handoff;
-      procedure Run is new Invoke_Registered_Context_With_Handoff (IO_Context, Field_Operation, Handoff, Before_Allocation, Global_Lock_Operation => Global_Lock_Operation);
+      procedure Run is new Invoke_Registered_Context_With_Handoff (IO_Context, Field_Operation, Handoff, Before_Allocation, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
       Removed : Release_Status;
    begin
       Result_Root := No_Retained_Root;
@@ -10788,6 +10892,11 @@ package body Owned with SPARK_Mode is
         (IO : in out IO_Context; Domain : AML_Frame_Handles.Invocation_Domain;
          Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
          Outcome : in out AML_Global_Locks.Outcome) is null;
+      with procedure Context_Read
+        (E : in out Arena; IO : in out IO_Context; Ref : Reference;
+         Ticket : AML_Execute.Field_Context_Ticket;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status) is null;
    procedure Invoke_Context_Retained
      (A : in out Arena; IO : in out IO_Context; Input : aliased AML_Table_Backing.State;
       Node : Node_ID; Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
@@ -10826,7 +10935,7 @@ package body Owned with SPARK_Mode is
          if Pin_Status /= Pins.Ready then raise Program_Error with "retained result slot invariant"; end if;
          Captured := True;
       end Handoff;
-      procedure Run is new Invoke_Context_With_Handoff (IO_Context, Field_Operation, Handoff, Before_Allocation, Global_Lock_Operation => Global_Lock_Operation);
+      procedure Run is new Invoke_Context_With_Handoff (IO_Context, Field_Operation, Handoff, Before_Allocation, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
       Removed : Release_Status;
    begin
       Result_Root := No_Retained_Root;
@@ -11374,6 +11483,11 @@ package body Owned with SPARK_Mode is
         (IO : in out Module_IO; Domain : AML_Frame_Handles.Invocation_Domain;
          Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
          Outcome : in out AML_Global_Locks.Outcome) is null;
+      with procedure Context_Read
+        (E : in out Owned.Arena; IO : in out Module_IO; Ref : Reference;
+         Ticket : AML_Execute.Field_Context_Ticket;
+         Geometry : AML_Field_Layout.Register_Geometry;
+         Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status) is null;
    procedure Execute_Modules_With_Context (A : in out Arena; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
          Registered : Boolean; IO : in out Module_IO;
          Input : aliased AML_Table_Backing.State; Budget : Natural;
@@ -11472,8 +11586,8 @@ package body Owned with SPARK_Mode is
             procedure Ignore_Module_Result (E : in out Owned.Arena; Result : AML_Execute.Execution_Result) is
                pragma Unreferenced (E, Result);
             begin null; end Ignore_Module_Result;
-            procedure Run_Standalone is new Run_Context_Session (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before, Global_Lock_Operation => Global_Lock_Operation);
-            procedure Run_Registered is new Run_Registered_Context_Session (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before, Global_Lock_Operation => Global_Lock_Operation);
+            procedure Run_Standalone is new Run_Context_Session (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
+            procedure Run_Registered is new Run_Registered_Context_Session (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
             procedure Run (E : in out Owned.Arena; Backing : aliased AML_Table_Backing.State;
                Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
                Width : AML_Decode.Integer_Width; Scope : Node_ID; Args : AML_Execute.Value_Arguments;
@@ -14100,6 +14214,81 @@ package body Owned with SPARK_Mode is
          end if;
          Perform_Bound_Field (E,Context,Items,Ref,Width,For_Write,Value,Status);
       end Perform_Runtime_Field;
+      use type AML_Execute.Field_Context_Ticket;
+      procedure Read_PCI_Metadata
+        (E : in out Owned.Arena; Context : in out IO_Context; Ref : Reference;
+         Ticket : AML_Execute.Field_Context_Ticket; Geometry : AML_Field_Layout.Register_Geometry;
+         Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status)
+      is
+         Field, Region : Node_ID;
+         Target : AML_Field_Access.Target := AML_Field_Access.No_Target;
+         Actual : AML_Field_Layout.Register_Geometry;
+         Allowed, Opened : Boolean := False;
+         Closed : Boolean;
+         Reply : AML_Field_Access.Response;
+         Request : AML_Field_Access.Request;
+         procedure Read_Once is
+         begin
+            if E.Field_Uncertain.Present or else Pending (Context) then
+               Status := AML_Execute.Field_Indeterminate; return;
+            end if;
+            if not Named_Identity_Matches (E, Ref) then return; end if;
+            Field := Node_ID (AML_References.Named_Node (Ref));
+            if E.Tree.Items (Field).Object_Type /= Region_Field_Object then return; end if;
+            Region := E.Tree.Items (Field).Region_Field_Info.Region;
+            if Region = Root or else Region > E.Tree.Used
+              or else not E.PCI_Work (Region).Active or else E.PCI_Work (Region).Ticket /= Ticket
+              or else E.PCI_Work (Region).Field /= Ref or else E.PCI_Work (Region).Stage /= PCI_Probe
+              or else Geometry.Region.Space /= AML_Field_Layout.PCI_Config_Space
+              or else not Geometry.Region.PCI.Known
+              or else Geometry.Width /= ACPI_FADT.Transactions.Byte_Access
+              or else Geometry.Region.Base /= 0 or else Geometry.Region.Length /= 16#1A#
+              or else Geometry.Byte_Offset not in 16#0E# | 16#18# | 16#19# then return; end if;
+            if E.PCI_Work (Region).Metadata_Reads >= Maximum_Requests then
+               Status := AML_Execute.Value_Limit; return;
+            end if;
+            -- Geometry requests no authority. The existing owner resolves,
+            -- describes and authorizes a concrete read capability first.
+            Resolve_Module_Target (Context, Geometry, Target, Allowed);
+            if Pending (Context) then Status := AML_Execute.Field_Indeterminate; return; end if;
+            if not Allowed or else Target = AML_Field_Access.No_Target then return; end if;
+            Describe_Target (Context, Target, Actual, Allowed);
+            if not Allowed or else Actual /= Geometry then return; end if;
+            Authorize_Target (Context, Target, False, Allowed); if not Allowed then return; end if;
+            Begin_Field (Context, False, False, Allowed);
+            if not Allowed then
+               if Pending (Context) then Status := AML_Execute.Field_Indeterminate; end if;
+               return;
+            end if;
+            Opened := True;
+            Describe_Target (Context, Target, Actual, Allowed);
+            if not Allowed or else Actual /= Geometry then return; end if;
+            Authorize_Target (Context, Target, False, Allowed); if not Allowed then return; end if;
+            if Pending (Context) then Status := AML_Execute.Field_Indeterminate; return; end if;
+            Request := (Target, False, 0);
+            E.PCI_Work (Region).Metadata_Reads := E.PCI_Work (Region).Metadata_Reads + 1;
+            Dispatch (Context, Request, Reply);
+            case Reply.Status is
+               when AML_Field_Access.Denied | AML_Field_Access.Failed_Completed => null;
+               when AML_Field_Access.Indeterminate =>
+                  E.Field_Uncertain := (True, Reply.Provider, Request, Reply.Operation);
+                  E.Uncertain_Field := Ref; E.Uncertain_Region := E.PCI_Work (Region).Region;
+                  Status := AML_Execute.Field_Indeterminate;
+               when AML_Field_Access.Completed =>
+                  if Reply.Provider /= Target.Provider or else Reply.Value > 255 then return; end if;
+                  Value := (AML_Execute.Integer_Datum, Reply.Value, AML_Decode.Ordinary_Integer);
+                  Status := AML_Execute.Returned;
+            end case;
+         end Read_Once;
+      begin
+         Status := AML_Execute.Unsupported_Value;
+         Read_Once;
+         if Opened then
+            Closed := not E.Field_Uncertain.Present and then not Pending (Context);
+            End_Field (Context, Closed);
+            if not Closed then Status := AML_Execute.Field_Indeterminate; end if;
+         end if;
+      end Read_PCI_Metadata;
       procedure Seal_With_Tables
         (A : in out Arena; IO : in out IO_Context;
          Targets : Module_Target_Set; Count : Module_Target_Count;
@@ -14277,7 +14466,7 @@ package body Owned with SPARK_Mode is
          begin
             Perform_Resolved_Field (E,Context,Ref,Width,For_Write,Value,Status,Targets,Count,Provider_May_Have_Effects,Loads,Input);
          end Perform;
-         procedure Run is new Execute_Modules_With_Context (IO_Context, Perform, Keep_Tree, Global_Lock_Operation => Global_Lock_Operation);
+         procedure Run is new Execute_Modules_With_Context (IO_Context, Perform, Keep_Tree, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Read_PCI_Metadata);
       begin
          Report := (Outcome => Module_Rejected, Failure => AML_Execute.Field_Indeterminate, others => <>);
          Status := Invalid_Value;
@@ -14359,8 +14548,8 @@ package body Owned with SPARK_Mode is
                else Perform_Bound_Field (E,Context,Items,Ref,Width,For_Write,Value,Status);
                end if;
             end Perform;
-            procedure Run is new Invoke_Context_Retained (IO_Context, Perform, Collect_Before, Global_Lock_Operation => Global_Lock_Operation);
-            procedure Run_Registered is new Invoke_Registered_Context_Retained (IO_Context, Perform, Collect_Before, Global_Lock_Operation => Global_Lock_Operation);
+            procedure Run is new Invoke_Context_Retained (IO_Context, Perform, Collect_Before, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Read_PCI_Metadata);
+            procedure Run_Registered is new Invoke_Registered_Context_Retained (IO_Context, Perform, Collect_Before, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Read_PCI_Metadata);
          begin
             Outcome := (Status => AML_Execute.No_Return, Charged => 0);
             Status := Admission (A); if Status /= Available then return; end if;

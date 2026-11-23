@@ -2451,7 +2451,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_buffer_layouts.ads",
-      "sha256": "ef216dde7f2f44625ae544f3e31db4c92adc00aa6f0d7c32b6b8265467f4ebd5"
+      "sha256": "79cbdebdcfc9358fdc5c5cd05a49f92b8735c11e6d5c1721f704dfb73930f244"
     },
     {
       "path": "userspace/services/acpi/lib/aml_byte_sources.adb",
@@ -3555,6 +3555,14 @@
     {
       "path": "userspace/services/acpi/resource-data/acpi_resource_data.ads",
       "sha256": "704a461f20c90cbde9e15c34fc457373b2fed6d3e948d4706daa2ffe55ee8532"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_pci_bridge_probe.ads",
+      "sha256": "a382184cce945722a9f6cd661e5ba93e65ffb3a12b4d9dcb58db83355ad2223f"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_pci_bridge_probe.adb",
+      "sha256": "f8769e531d20445e5dcf31b55bcda4abd4dcfa8f8d42c8730681618a4f3c7b94"
     }
   ],
   "tests": [

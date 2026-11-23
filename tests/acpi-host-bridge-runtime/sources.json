@@ -343,7 +343,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_buffer_layouts.ads",
-      "sha256": "ef216dde7f2f44625ae544f3e31db4c92adc00aa6f0d7c32b6b8265467f4ebd5"
+      "sha256": "79cbdebdcfc9358fdc5c5cd05a49f92b8735c11e6d5c1721f704dfb73930f244"
     },
     {
       "path": "userspace/services/acpi/lib/aml_byte_sources.adb",
@@ -467,11 +467,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.adb",
-      "sha256": "ca39e9994a9f707d40d2520fbe1c832d41cbf1594cb3d83b5961ccc106b05919"
+      "sha256": "2acad8318b8679a546bc2ad3fb1667065664134d4a3d6d9c1a434595335a438a"
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.ads",
-      "sha256": "8743f699368a28d401e7b792cf33334ecb533c450f2d45e07c486226b0026462"
+      "sha256": "1e774966b15ce7348de7b5bc40d517e2f5aad8b128f45e74d12823067f6653a4"
     },
     {
       "path": "userspace/services/acpi/lib/aml_execution_limits.ads",
@@ -643,11 +643,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "113f33c8ab272890f64a10cbdd066e7e24f684ebdbc85efc278789afd99b0775"
+      "sha256": "41e70d3170f2eb4f5fa5a9761423393fed03bc7584dd3eb201ea8b8b28a5a127"
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",
-      "sha256": "819008011c3c901547429a149a05fcd9cee9b19a451a2cce8a5f609d816e6f2b"
+      "sha256": "b541f2dd6bba83221e63dc6a4e00a14ec01b3bdd45210b2f094e4f55bb213232"
     },
     {
       "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",
@@ -1036,6 +1036,14 @@
     {
       "path": "shared/firmware/firmware_tables.ads",
       "sha256": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_pci_bridge_probe.ads",
+      "sha256": "a382184cce945722a9f6cd661e5ba93e65ffb3a12b4d9dcb58db83355ad2223f"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_pci_bridge_probe.adb",
+      "sha256": "f8769e531d20445e5dcf31b55bcda4abd4dcfa8f8d42c8730681618a4f3c7b94"
     }
   ],
   "helpers": [

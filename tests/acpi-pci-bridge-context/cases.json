@@ -1,0 +1,197 @@
+[
+  {
+    "name": "flat",
+    "asl": "flat.asl",
+    "aml": "flat.aml",
+    "scenario": "normal",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "0",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "bridge",
+    "asl": "bridge.asl",
+    "aml": "bridge.aml",
+    "scenario": "normal",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "two-bridges",
+    "asl": "two-bridges.asl",
+    "aml": "two-bridges.aml",
+    "scenario": "normal",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "2",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "multifunction",
+    "asl": "multifunction.asl",
+    "aml": "multifunction.aml",
+    "scenario": "normal",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "129",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "cardbus",
+    "asl": "cardbus.asl",
+    "aml": "cardbus.aml",
+    "scenario": "normal",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "130",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "nonbridge",
+    "asl": "nonbridge.asl",
+    "aml": "nonbridge.aml",
+    "scenario": "normal",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "0",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "missing-adr",
+    "asl": "missing-adr.asl",
+    "aml": "missing-adr.aml",
+    "scenario": "normal",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "cid-root",
+    "asl": "cid-root.asl",
+    "aml": "cid-root.aml",
+    "scenario": "normal",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "invalid-slot",
+    "asl": "invalid-slot.asl",
+    "aml": "invalid-slot.aml",
+    "scenario": "invalid-slot",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "invalid-function",
+    "asl": "invalid-function.asl",
+    "aml": "invalid-function.aml",
+    "scenario": "invalid-function",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "bad-root-bus",
+    "asl": "bad-root-bus.asl",
+    "aml": "bad-root-bus.aml",
+    "scenario": "bad-root-bus",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "no-root-id",
+    "asl": "no-root-id.asl",
+    "aml": "no-root-id.aml",
+    "scenario": "no-root-id",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "metadata-limit-one",
+    "asl": "metadata-limit-one.asl",
+    "aml": "metadata-limit-one.aml",
+    "scenario": "request-one",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "metadata-limit-five",
+    "asl": "metadata-limit-five.asl",
+    "aml": "metadata-limit-five.aml",
+    "scenario": "request-five",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "2",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  },
+  {
+    "name": "dynamic-regions",
+    "asl": "dynamic-regions.asl",
+    "aml": "dynamic-regions.aml",
+    "scenario": "dynamic",
+    "env": {
+      "ACPI_BRIDGE_SYNTHETIC": "on",
+      "ACPI_BRIDGE_DEPTH": "1",
+      "ACPI_BRIDGE_HEADER": "1",
+      "ACPI_BRIDGE_ROOT_BUS": "11",
+      "ACPI_BRIDGE_SEGMENT": "7"
+    }
+  }
+]

@@ -38,6 +38,7 @@ with AML_Events;
 with AML_Byte_Sources;
 with AML_Data;
 with AML_Execute;
+with AML_PCI_Bridge_Probe;
 with AML_Execution_Limits;
 with AML_Table_Backing;
 with AML_Objects;
@@ -2225,11 +2226,22 @@ private
    subtype Mutex_Frame_Index is AML_Frame_Handles.Frame_Index range 1 .. AML_Frame_Handles.Max_Active_Frames;
    type Mutex_Frame_Array is array (Mutex_Frame_Index) of AML_Frame_Handles.Frame_Handle;
    type Mutex_Token_Array is array (Mutex_Frame_Index) of Mutex_Registry.Method_Token;
-   type PCI_Setup_Phase is (PCI_Up, PCI_HID, PCI_CID, PCI_ADR, PCI_SEG, PCI_BBN, PCI_Done);
+   type PCI_Setup_Phase is (PCI_Up, PCI_HID, PCI_CID, PCI_ADR, PCI_SEG, PCI_BBN, PCI_Done, PCI_Path, PCI_Probe);
+   -- Session-local metadata. Owner is supplied by the current work ticket;
+   -- the incarnation prevents a reused node slot from becoming a new path.
+   type PCI_Path_Cursor is record
+      Node : Node_ID := Root;
+      Stamp : AML_References.Node_Incarnation := 0;
+   end record;
    type PCI_Setup_Work is record
       Active : Boolean := False;
       Ticket : AML_Execute.Field_Context_Ticket := 0;
       Field, Region, Device, Walk, Host : Reference := AML_References.No_Reference;
+      Cursor, Search, Candidate : PCI_Path_Cursor;
+      Probe : AML_PCI_Bridge_Probe.State;
+      Metadata_Reads : AML_Execution_Limits.Field_Request_Count := 0;
+      Follow_Bridge : Boolean := False;
+      Follow_Bus : ACPI_PCI_Config_Reads.Bus_Number := 0;
       Stage : PCI_Setup_Phase := PCI_Up;
       Location : ACPI_PCI_Config_Reads.Location;
    end record;
