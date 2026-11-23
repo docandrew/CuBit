@@ -78,3 +78,32 @@ cases exercise repeated receive-credit replenishment. Exact command count,
 final STOP, repeated START for combined transfers, copied bytes, grant
 retirement and no replay are checked. This is a bounded hosted instance,
 not a claim about real FIFO depth or physical controller timing.
+
+## Reset IRQ order
+
+The actual reset owner confirms GPIO ARM before SET_POWER ON and RESET.
+Only the confirmed lease is accepted across those writes. Tests cover an
+ARM receipt followed by a matching event before the next owner Step; an
+unconfirmed or wrong lease is not retained. Reset-read completion precedes
+GPIO release, and serving input still follows read-before-ACK/unmask.
+Linux v6.12 i2c-hid informed the ordering behaviour; no source was copied.
+
+Current schema regeneration preserves the committed typed parameter decoder
+and descriptor bytes exactly; provenance records the current schema/tool.
+These are hosted tests with modeled kernel/MMIO/transport boundaries.
+
+## Confirmed reset acknowledgment timeout and Elan quirks
+
+After a confirmed successful RESET send, acknowledgment has its own finite
+1000ms deadline within the overall startup limit. Expiry records a warning
+and may continue only after the existing GPIO release is confirmed. An
+in-flight send or uncertain release remains owned: no cancellation, replay,
+new report command or readiness is inferred. Reset timeout, unresolved send,
+bogus reset frame, uncertain release, and live bogus input have dedicated
+actual-owner scenarios with explicit host boundaries.
+
+Generic devices receive SET_POWER ON after reset release. Elan04f3 skips
+that wake;0xffff input lengths are ignored as no data, with a one-time
+warning flag. Serving input still reads before GPIO ACK/unmask. Main logs
+copied startup phase/control/lease state before declining readiness. These
+behaviours reference Linux v6.12 i2c-hid facts; no source code was copied.

@@ -62,6 +62,7 @@ package body ACPI_Requests.Battery_Observations.With_Local_Events is
          if not Events_Healthy then Snapshot.Outcome:=Source_Unhealthy;return;end if;
          if Runtime_Current/=R.Active then Snapshot.Outcome:=Recovery_Required;return;end if;
          Metadata.Advance(Server,Described);if not Described then Snapshot.Outcome:=Descriptor_Failed;return;end if;
+         Remember_Device (Descriptor);
          Observe(Server,Device,Remaining,Admitted,Snapshot.Probe);
          if Snapshot.Probe.Charged>Remaining then Snapshot.Charged:=Budget;Snapshot.Outcome:=Provider_Contract_Error;return;end if;
          Remaining:=Remaining-Snapshot.Probe.Charged;Snapshot.Charged:=Budget-Remaining;
@@ -111,5 +112,9 @@ package body ACPI_Requests.Battery_Observations.With_Local_Events is
    procedure Route(Server:State;Routed:out Boolean) renames Owner.Route;
    procedure Advance(Server:in out State;Result:out Status.Outcome) renames Owner.Advance;
    function Read(Server:State;Now:Samples.Clock_Reading;Maximum_Age:Samples.Tick) return Samples.View renames Owner.Read;
+   function Owns_Context(Server:State) return Boolean renames Owner.Owns_Context;
+   procedure Request_Refresh(Server:State;At_Time:Samples.Clock_Reading;Accepted:out Boolean) renames Owner.Request_Refresh;
+   function Metadata_View(Server:State) return Samples.View renames Owner.Metadata_View;
+   function Metadata_Revision(Server:State) return Samples.Revision_Number renames Owner.Metadata_Revision;
    procedure Stop renames Owner.Stop;
 end ACPI_Requests.Battery_Observations.With_Local_Events;

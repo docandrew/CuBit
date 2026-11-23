@@ -19,7 +19,8 @@
   # Desktop launched: at least CuBit.UI.Recovery's 1500 ms.
   (start "power.svc" (priority 5)
     (arguments (Power_Parameters undeclared_grace_ms => 2000 storage_deadline_ms => 10000
-                                 driver_grace_ms => 1000 button => Button_Policy.Power_Off)))
+                                 driver_grace_ms => 1000 button => Button_Policy.Power_Off
+                                 reading_age_ms => 60000)))
   # BUG-001: a desktop that fails is started again (procmgr, growing delay).
   (start "desktop.svc" (priority 4) (restart on-failure))
   # The touchpad (SUP-001): devmgr starts the HID-over-I2C driver for each

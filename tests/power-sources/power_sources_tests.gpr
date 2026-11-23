@@ -1,0 +1,13 @@
+--  Hosted tests of PWR-004 slice 1. run.sh links the units into build/links
+--  (mutations.sh: POWER_LINKS, a mutant's copy, and its own POWER_OBJ).
+project Power_Sources_Tests is
+   Links := external ("POWER_LINKS", "build/links");
+   Obj := external ("POWER_OBJ", "build/tests");
+   for Source_Dirs use (".", "fixture", Links, "../../userspace/ccl/runtime-shared");
+   for Object_Dir use Obj;
+   for Exec_Dir use Obj;
+   for Main use ("power_sources_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwa", "-g", "-O1");
+   end Compiler;
+end Power_Sources_Tests;

@@ -68,7 +68,7 @@ package body GPIO_Native_Communities is
             B.Check (((Old xor Value) and not Plan.Selected.Interrupt_Mask) = 0, "neighbor enable bits preserved");
             B.Memory (Plan.Selected.Resource) (Offset) := Value;
          when I.Write_Configuration =>
-            B.Check (B.Ready_ACK and then Plan.Selected.Pad = G.Locate (160).Pad,
+            B.Check (B.Ready_ACK and then Plan.Selected.Pad = G.Locate (B.Target_Pin).Pad,
                "pad configuration only after startup Ready and runtime admission");
             B.Memory (Plan.Selected.Resource) (Offset) := Value;
       end case;

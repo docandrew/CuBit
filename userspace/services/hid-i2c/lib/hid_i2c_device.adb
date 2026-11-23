@@ -10,6 +10,7 @@ package body HID_I2C_Device with SPARK_Mode is
          return W.Word'Min (Bound, Retry);
       end if;
       if S.Info.At_Phase not in Cold | Serving | Stopped | Faulted then Bound := W.Word'Min (Bound, S.Deadline); end if;
+      if S.Info.At_Phase=Await_Reset then Bound:=W.Word'Min(Bound,S.Info.Reset_Ack_Until);end if;
       return Bound;
    end Wake_Deadline;
    procedure Take_Control (S : in out State; Reply : L.Reply) is
@@ -101,15 +102,25 @@ package body HID_I2C_Device with SPARK_Mode is
       if S.Info.Last_Control.Status /= L.Completed or else not S.Info.Reset_Still_Armed or else S.Info.Latch_Uncertain then
          Fail (S, Reset_Arm_Failed); return;
       end if;
-      Submit (S, Wire.Encode_Control (S.Info.Descriptor.Value.Command_Register, Wire.Reset), 0, Resetting, Now, Clock_Available);
+      -- Linux v6.12 i2c-hid behaviour reference (no code copied): IRQ is
+      -- enabled before SET_POWER/RESET. Keep this confirmed lease live through
+      -- both writes; an early authenticated event can remain pending locally.
+      Submit (S, Wire.Encode_Control (S.Info.Descriptor.Value.Command_Register, Wire.Power_On), 0, Power_On, Now, Clock_Available);
    end Finish_Arm;
+   procedure Fetch_Report_Descriptor (S : in out State; Now : W.Word; Clock_Available : Boolean) is
+   begin
+      Submit (S, Wire.Select_Register (S.Info.Descriptor.Value.Report_Register), S.Info.Descriptor.Value.Report_Length,
+         Fetch_Report, Now, Clock_Available);
+   end Fetch_Report_Descriptor;
    procedure Finish_Release (S : in out State; Now : W.Word; Clock_Available : Boolean) is
    begin
       if S.Info.Pending_Control /= L.No_Control then return; end if;
       if S.Info.Reset_Still_Armed or else S.Info.Latch_Uncertain then Fail (S, Reset_Release_Failed); return; end if;
       S.Info.Completed := 4;
-      Submit (S, Wire.Select_Register (S.Info.Descriptor.Value.Report_Register), S.Info.Descriptor.Value.Report_Length,
-         Fetch_Report, Now, Clock_Available);
+      -- Known GPIO release precedes any next bus command. Linux's Elan
+      -- NO_WAKEUP_AFTER_RESET quirk suppresses this second SET_POWER ON.
+      if HID_Reset_Policy.Elan(S.Info.Descriptor.Value.Vendor_ID) then Fetch_Report_Descriptor(S,Now,Clock_Available);
+      else Submit(S,Wire.Encode_Control(S.Info.Descriptor.Value.Command_Register,Wire.Power_On),0,Post_Reset_Power_On,Now,Clock_Available);end if;
    end Finish_Release;
    procedure Start (S : in out State; Sender : CuBit.Process_IDs.Process_ID;
       Descriptor_Register : D.Register_Number; Deadline : W.Millisecond;
@@ -142,6 +153,13 @@ package body HID_I2C_Device with SPARK_Mode is
       if S.Info.At_Phase = Arming_Reset then Finish_Arm (S, Now, Clock_Available); return; end if;
       if S.Info.At_Phase = Releasing_Reset then Finish_Release (S, Now, Clock_Available); return; end if;
       if S.Info.At_Phase = Await_Reset then
+         -- Await_Reset is entered only after successful RESET completion and
+         -- acknowledgement of the bus result. No in-flight transfer is erased.
+         if Now>=S.Info.Reset_Ack_Until then
+            S.Info.Reset_Ack_Timed_Out:=True;S.Interrupt_Pending:=False;
+            S.Info.At_Phase:=Releasing_Reset;Release_Latch(S);
+            Finish_Release(S,Now,Clock_Available);return;
+         end if;
          if S.Interrupt_Pending then
             S.Interrupt_Pending := False;
             Submit (S, [], S.Info.Descriptor.Value.Maximum_Input, Read_Reset, Now, Clock_Available);
@@ -172,15 +190,25 @@ package body HID_I2C_Device with SPARK_Mode is
                Fail (S, Capacity_Refused); return;
             end if;
             S.Info.Completed := 1;
-            Submit (S, Wire.Encode_Control (S.Info.Descriptor.Value.Command_Register, Wire.Power_On), 0, Power_On, Now, Clock_Available);
-         when Power_On =>
-            S.Info.Completed := 2;
             S.Info.At_Phase := Arming_Reset; S.Release_Attempted := False;
             S.Info.Pending_Control := L.Arming;
             Begin_Arm_Reset (S.Deadline, Reply); Take_Control (S, Reply);
             Finish_Arm (S, Now, Clock_Available);
-         when Resetting => S.Info.Completed := 3; S.Info.At_Phase := Await_Reset;
+         when Power_On =>
+            S.Info.Completed := 2;
+            -- Submit enters Resetting before Bus.Start can write RESET:
+            -- acceptance of the confirmed IRQ lease is already armed.
+            Submit (S, Wire.Encode_Control (S.Info.Descriptor.Value.Command_Register, Wire.Reset), 0, Resetting, Now, Clock_Available);
+         when Resetting =>
+            S.Info.Completed := 3;
+            HID_Reset_Policy.Ack_Deadline(Now,S.Deadline,S.Info.Reset_Ack_Until,OK);
+            if not OK then Fail(S,Deadline_Expired);return;end if;
+            S.Info.At_Phase := Await_Reset;
+         when Post_Reset_Power_On => Fetch_Report_Descriptor(S,Now,Clock_Available);
          when Read_Reset =>
+            if Length>=2 and then HID_Reset_Policy.Bogus_IRQ(S.Info.Descriptor.Value.Vendor_ID,S.Scratch(1),S.Scratch(2))then
+               S.Info.Bogus_IRQ_Ignored:=True;S.Info.At_Phase:=Await_Reset;return;
+            end if;
             S.Info.Last_Frame := Wire.Inspect_Input (S.Scratch (1 .. Length), S.Info.Descriptor.Value.Maximum_Input, True);
             if S.Info.Last_Frame.Status /= Wire.Reset_Completed then Fail (S, Reset_Not_Acknowledged); return; end if;
             S.Info.At_Phase := Releasing_Reset; Release_Latch (S);
@@ -190,13 +218,22 @@ package body HID_I2C_Device with SPARK_Mode is
             if not Compiled then Fail (S, Report_Layout_Refused); return; end if;
             S.Info.Completed := Stage_Count'Last; S.Info.At_Phase := Serving;
          when Read_Input =>
+            if Length>=2 and then HID_Reset_Policy.Bogus_IRQ(S.Info.Descriptor.Value.Vendor_ID,S.Scratch(1),S.Scratch(2))then
+               S.Info.Bogus_IRQ_Ignored:=True;S.Info.At_Phase:=Serving;return;
+            end if;
             S.Info.Last_Frame := Wire.Inspect_Input (S.Scratch (1 .. Length), S.Info.Descriptor.Value.Maximum_Input, False);
             case S.Info.Last_Frame.Status is
                when Wire.Input_Report =>
+                  S.Info.Consecutive_Spurious_Resets := 0;
                   Deliver_Input (S.Scratch (1 + Wire.Payload_Offset .. Natural (S.Info.Last_Frame.Declared_Length)));
                   if S.Info.Input_Packets < W.Word'Last then S.Info.Input_Packets := S.Info.Input_Packets + 1; end if;
                when Wire.Empty_Frame => null;
-               when Wire.Unexpected_Reset => Fail (S, Unexpected_Device_Reset); return;
+               when Wire.Unexpected_Reset =>
+                  -- An unsolicited zero-length frame is a duplicate completion,
+                  -- not a request to reset or arm the GPIO latch again.
+                  HID_Reset_Policy.Unsolicited_Reset
+                    (S.Info.Consecutive_Spurious_Resets, S.Info.Spurious_Reset_Reports, OK);
+                  if not OK then Fail (S, Unexpected_Device_Reset); return; end if;
                when others => Input_Lost;
             end case;
             S.Info.At_Phase := Serving;
@@ -206,8 +243,13 @@ package body HID_I2C_Device with SPARK_Mode is
    procedure Reset_Interrupt (S : in out State; Ticket : W.Word; Result : out Interrupt_Result) is
    begin
       Result := Unrelated;
+      -- Native pump may receive a confirmed ARM completion and an event in
+      -- the same turn before Step. Consume only that existing control receipt;
+      -- never adopt a ticket from an event or latch an unconfirmed lease.
+      if S.Info.At_Phase = Arming_Reset then Poll_Control (S); end if;
       if Ticket = 0 or else Ticket /= S.Info.Reset_Ticket or else not S.Info.Reset_Still_Armed or else
-        S.Info.At_Phase not in Resetting | Await_Reset then return; end if;
+        S.Info.Pending_Control /= L.No_Control or else S.Info.Last_Control.Status /= L.Completed or else
+        S.Info.Latch_Uncertain or else S.Info.At_Phase not in Arming_Reset | Power_On | Resetting | Await_Reset then return; end if;
       S.Interrupt_Pending := True; Result := Latched;
    end Reset_Interrupt;
    procedure Request_Input (S : in out State; Deadline : W.Millisecond;

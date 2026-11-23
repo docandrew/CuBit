@@ -2329,6 +2329,11 @@ package body AML_Execute with SPARK_Mode is
                   pragma Loop_Variant (Decreases => Budget - Charged);
                   if Charged = Budget then Status := Budget_Exceeded; return; end if;
                   Charged := Charged + 1;
+                  if Step.Phase = Context_Read then
+                     Property := (Integer_Datum, 0, Ordinary_Integer);
+                     Status := Unsupported_Value;
+                     Read_Field_Context (Environment, Ref, Ticket, Step.Read_Geometry, Property, Status);
+                  else
                   case Step.Property.Status is
                      when Integer_Binding =>
                         Property := (Integer_Datum, Step.Property.Value, Step.Property.Origin);
@@ -2345,6 +2350,7 @@ package body AML_Execute with SPARK_Mode is
                           Step.Property.Failure else Unsupported_Value);
                      when Missing_Binding => Status := Unknown_Name;
                   end case;
+                  end if;
                   if Status /= Returned then return; end if;
                   Publish_Live ([Property]);
                   Step := (Phase => Context_Failed, others => <>);

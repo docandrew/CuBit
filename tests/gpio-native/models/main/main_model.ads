@@ -12,13 +12,14 @@ package Main_Model is
    package W renames GPIO_Control_Wire;
    package P renames CuBit.Process_IDs;
    package U renames Ada.Strings.Unbounded;
-   type Scenario is (Happy, Runtime_Write_Unknown, No_Parent, Wrong_Parent_Vector, Initial_ACK_Refused, Invalid_Launcher, Wrong_Launcher_Kind, Unreadable_Launcher, Zero_Launcher_ID, Clock_Loss, Map_Refused, Role_Refused,
+   type Scenario is (Happy, Pad_Reset_Wait, Runtime_Write_Unknown, No_Parent, Wrong_Parent_Vector, Initial_ACK_Refused, Invalid_Launcher, Wrong_Launcher_Kind, Unreadable_Launcher, Zero_Launcher_ID, Clock_Loss, Map_Refused, Role_Refused,
       Readiness_Refused, Early_Stop, Parking_Unknown, Wait_Failure, Stop_During_Admission, Missing_Community, Missing_Configuration, Wrong_Controller, Invalid_Launch_Path, Wrong_Window_Count, Late_Window_Mismatch, Late_Read_Only, Overlapping_Community, Unaligned_Community, Zero_Launch_Epoch);
    Current : Scenario := Happy;
    Driver_ID : constant P.Process_ID := P.From_Word (16#F123_4567_0000_0011#);
    Launcher_ID : constant P.Process_ID := P.From_Word (16#F234_5678_0000_0022#);
    Client_ID : constant P.Process_ID := P.From_Word (16#F345_6789_0000_0033#);
-   Badge : constant W.Word := 16#4750_1000_0001_00A0#; -- GPv1 pin160 level low
+   function Target_Pin return G.ACPI_Pin;
+   Badge : W.Word := 16#4750_1000_0001_00A0#; -- GPv1 pin160 level low
    Clock : Interfaces.Unsigned_64 := 1;
    type Register_Array is array (Natural range 0 .. 2047) of I.Word;
    type Register_Bank is array (G.Memory_Resource_Ordinal) of Register_Array;
@@ -34,6 +35,7 @@ package Main_Model is
    Request_Stage : Natural := 0;
    Parent_ACKs, Event_Unavailable : Natural := 0;
    IRQ_Queued : Boolean := False;
+   Arm_Snapshot_Time,Wait_Snapshot_Time : Interfaces.Unsigned_64:=0;
    Runtime_Snapshots, Runtime_Lines, Reads_At_Fault, Writes_At_Fault, Post_Fault_Waits : Natural := 0;
    Logs : U.Unbounded_String;
    Test_Complete : exception;

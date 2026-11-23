@@ -13,10 +13,14 @@
 --  "mixer-control" startup handle); Wired and Wifi follow netmgr's and
 --  wifi.svc's reports (Desktop_Network_Model: Wifi only while a Wi-Fi
 --  adapter is bound, Wired only while an Ethernet interface exists).
---  Bluetooth, Battery and Power_Profile (KERN-004, LAP-001) and
---  Brightness are typed here so they slot in when their services exist;
---  until then they stay hidden. Wired and Wifi are drawn as glyphs (link,
---  signal bars), not icons. Screen_Capture (who is acting, REMOTE-001) is
+--  Battery follows power.svc's power sources (PWR-004, Desktop's
+--  "power-sources" startup handle; Desktop_Power_Refresh): shown while a
+--  battery exists, drawn as a glyph with its charge, a charging mark and a
+--  low mark (Desktop_Battery_Glyph), named in words (Desktop_Power_Text).
+--  Bluetooth, Power_Profile (KERN-004, LAP-001) and Brightness are typed
+--  here so they slot in when their services exist; until then they stay
+--  hidden. Wired and Wifi are drawn as glyphs (link, signal bars), not
+--  icons. Screen_Capture (who is acting, REMOTE-001) is
 --  shown for a few seconds after the remote session took a frame through
 --  Desktop's display-capture endpoint (Desktop_Capture_Policy.Mark_Ms); a
 --  glyph too (a screen with a recording dot).
@@ -51,7 +55,7 @@ package Desktop_Status_Items with SPARK_Mode, Pure is
          when Volume        => (if Muted then "Volume (muted)" else "Volume"));
 
    --  Drawn as a glyph rather than an icon.
-   function Glyph (Of_Item : Item) return Boolean is (Of_Item in Screen_Capture | Wired | Wifi);
+   function Glyph (Of_Item : Item) return Boolean is (Of_Item in Screen_Capture | Wired | Wifi | Battery);
 
    --  How many items Shown holds.
    function Count (Shown : Presence) return Natural

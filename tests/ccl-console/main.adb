@@ -21,6 +21,9 @@ with CCL_Wifi_Bindings;
 with Ada.Directories;
 with Ada.Environment_Variables;
 with CCL.Interfaces.Console;
+with CCL.Interfaces.Power;
+with CCL.Objects;
+with CuBit.Power_Sources;
 with CuBit.UI;
 
 procedure Main is
@@ -648,6 +651,37 @@ begin
       end loop;
       Draw (Placed, Canvas, Bounds);
       Save ("console-hint");
+   end;
+
+   --  power.* (PWR-004): its types check and publish into a catalog, and
+   --  a snapshot of two sources (an adapter, a battery) is a valid
+   --  List<Power_Source> within one result. (The preview has no power.svc,
+   --  so the console does not publish it here; the native one does.)
+   declare
+      package PS renames CuBit.Power_Sources;
+      Power_Catalog : CCL.Catalog.Interface_Catalog;
+      Error : CCL.Catalog.Catalog_Error;
+      Bound : CCL.Interfaces.Power.Contracts;
+      Accepted, Built : Boolean;
+      Sources : PS.Source_Array := [others => (others => <>)];
+      Image : CCL.Objects.Image;
+      use type CCL.Catalog.Catalog_Error;
+   begin
+      CCL.Interfaces.Power.Define_Types (Bound, Accepted);
+      Check (Accepted, "power.*: TYPE_SOURCE checks and binds");
+      CCL.Interfaces.Power.Publish (Power_Catalog, Error);
+      Check (Error = CCL.Catalog.Catalog_Valid, "power.*: publishes (" & Error'Image & ")");
+      Sources (1) := (Kind => PS.AC_Adapter, State => PS.Online, Fresh => PS.Fresh, others => <>);
+      Sources (2) := (Kind => PS.Internal_Battery, State => PS.Charging, Fresh => PS.Stale,
+                      Charge => (True, 740), Left => (PS.To_Full, 3_744),
+                      Energy_Now => PS.Known_Quantity (37_000), Condition => (Low => PS.Clear, others => PS.Unknown),
+                      others => <>);
+      if Accepted then
+         CCL.Interfaces.Power.Sources_Value (Bound.Sources, Sources, 2, Image, Built);
+         Check (Built, "power.sources: two sources make a valid List<Power_Source>");
+         CCL.Interfaces.Power.Sources_Value (Bound.Sources, Sources, CCL.Interfaces.Power.MAXIMUM_LISTED, Image, Built);
+         Check (Built, "power.sources: MAXIMUM_LISTED sources fit one result");
+      end if;
    end;
 
    Ada.Text_IO.Put_Line

@@ -13,6 +13,8 @@ package GPIO_Native_Log is
    procedure Runtime_Detail (Details : String);
    -- Detached, compiled diagnostic fields only. Main calls this bounded group
    -- once after copying owner observations, before requesting shutdown.
+   procedure Pad_Detail (Details : String);
+   -- Bounded copied pad snapshots, separate from retained fault diagnostics.
    procedure Summary;
    procedure Disable (Reason : String);
    function Hex (Key : String; Value : Interfaces.Unsigned_64) return String;

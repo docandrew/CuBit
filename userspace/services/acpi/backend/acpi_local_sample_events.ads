@@ -64,6 +64,22 @@ package ACPI_Local_Sample_Events is
    function Read (Server : ACPI_Requests.State; Now : Samples.Clock_Reading;
       Maximum_Age : Samples.Tick) return Samples.View
      with Pre => ACPI_Requests.Valid(Server);
+   -- Internal binding/revision metadata at the publication's OWN timestamp.
+   -- No current-time freshness is asserted: never forward its measurements as
+   -- a live read. Native identity capture uses descriptors only, outside callbacks.
+   function Metadata_View(Server:ACPI_Requests.State) return Samples.View with Pre=>ACPI_Requests.Valid(Server);
+   -- Current completed cache revision only; no clock, AML or payload read.
+   -- Zero when context, receipt, sample phase or owner readiness excludes it.
+   function Metadata_Revision(Server:ACPI_Requests.State) return Samples.Revision_Number
+     with Pre=>ACPI_Requests.Valid(Server);
+   function Owns_Context(Server:ACPI_Requests.State) return Boolean
+     with Pre=>ACPI_Requests.Valid(Server);
+   -- Trusted process-local demand, never a wire timestamp. At_Time must be
+   -- a reading of the SAME clock/epoch as Read_Clock. Copies metadata only;
+   -- collection still runs through Advance's original event/receipt barriers.
+   -- A suspended or stopped family is never restarted by a reader.
+   procedure Request_Refresh(Server:ACPI_Requests.State;At_Time:Samples.Clock_Reading;Accepted:out Boolean)
+     with Pre=>ACPI_Requests.Valid(Server);
    -- Closes this consumer only; no cancellation, result release, provider
    -- close or backing retirement. Native Main separately stops the shared owner.
    procedure Stop;

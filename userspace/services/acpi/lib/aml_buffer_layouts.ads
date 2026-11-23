@@ -38,8 +38,7 @@ package AML_Buffer_Layouts with SPARK_Mode, Pure is
    -- literal integer count, never call Read or With_Count.
    function Literal_Layout_Matches
      (Data : AML_Decode.Bytes; Width : AML_Decode.Integer_Width;
-      Layout : Layout_Result) return Boolean with Ghost,
-        Annotate => (GNATprove, Inline_For_Proof);
+      Layout : Layout_Result) return Boolean with Ghost;
    function Read (Data : AML_Decode.Bytes; Width : AML_Decode.Integer_Width)
       return Layout_Result
      with Post => (if Read'Result.Kind = AML_Decode.Accepted then

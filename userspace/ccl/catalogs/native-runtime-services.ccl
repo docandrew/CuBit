@@ -76,6 +76,9 @@
   # a process by identity, decided by the session's debug envelope (never
   # secrets.svc, the trusted path, procmgr or devmgr).
   (service debug-session 48 read-write (client Process_Manager))
+  # PWR-004: power.svc's power sources, read only (CuBit.Power_Sources):
+  # procmgr badges power.svc's endpoint Observer_Tag, startup plan only.
+  (service power-sources 49 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)

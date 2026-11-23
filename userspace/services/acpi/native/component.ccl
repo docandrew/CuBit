@@ -1,6 +1,8 @@
 (Component name => "acpi" kind => (Kind.Service Launcher.Process_Manager)
   source => (Source.Ada (Ada_Source
     language => Ada_Language.Ada_2022
+    # Keep runtime checks until the complete reached-unit AoRTE proof is closed.
+    checks => Checks.Enabled
     sources => ["shared/platform" "userspace/ccl/src"
                 "userspace/services/acpi"
                 "userspace/services/acpi/lib"

@@ -1,0 +1,206 @@
+pragma Ada_2022;
+with Ada.Command_Line;
+with Ada.Exceptions;
+with Ada.Real_Time;
+with Ada.Streams.Stream_IO;
+with Ada.Strings.Fixed;
+with Ada.Text_IO;
+with ACPI_Service_Core;
+with AML_Decode;
+with AML_Delays;
+with AML_Events;
+with AML_Execute;
+with AML_Profile_Events;
+with Firmware_Tables;
+procedure ASLTS_Corpus_Runner is
+   package Streams renames Ada.Streams.Stream_IO;
+   use type Streams.Count, Ada.Streams.Stream_Element_Offset;
+   use type Ada.Real_Time.Time, Ada.Real_Time.Time_Span;
+   use type AML_Decode.Integer_Value, AML_Execute.Execution_Status;
+   Started : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
+   Host_Window_Seconds : constant := 60;
+   Fuel : constant Natural := 5_000_000;
+   Maximum_Table_Bytes : constant := 16 * 1024 * 1024;
+   Last_Event : AML_Profile_Events.Event;
+   Event_Count : Natural := 0;
+   procedure Profile (Item : AML_Profile_Events.Event) is
+   begin
+      if Item.Kind in AML_Profile_Events.Statement_Visit | AML_Profile_Events.Operand_Visit then
+         Last_Event := Item;
+         if Event_Count < Natural'Last then Event_Count := Event_Count + 1; end if;
+      end if;
+   end Profile;
+   procedure Clock (Value : out AML_Decode.Integer_Value; Available : out Boolean) is
+      Elapsed : constant Ada.Real_Time.Time_Span := Ada.Real_Time.Clock - Started;
+   begin
+      Available := Elapsed >= Ada.Real_Time.Time_Span_Zero and then Elapsed < Ada.Real_Time.Seconds (Host_Window_Seconds);
+      Value := (if Available then AML_Decode.Integer_Value (Elapsed / Ada.Real_Time.Microseconds (1)) else 0);
+   end Clock;
+   procedure Delay_AML (Item : AML_Delays.Request; Result : out AML_Delays.Outcome) is
+      Now : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
+      Span : constant Ada.Real_Time.Time_Span :=
+        (case Item.Kind is when AML_Delays.Sleep_Delay => Ada.Real_Time.Milliseconds (Integer (Item.Milliseconds)),
+                          when AML_Delays.Stall_Delay => Ada.Real_Time.Microseconds (Integer (Item.Microseconds)));
+   begin
+      Result := AML_Delays.Failed;
+      if Now + Span >= Started + Ada.Real_Time.Seconds (Host_Window_Seconds) then return; end if;
+      delay until Now + Span; Result := AML_Delays.Completed;
+   end Delay_AML;
+   procedure Wait_Event (Milliseconds : AML_Events.Timeout; Outcome : out AML_Events.Timeout_Outcome) is
+      Until_Time : constant Ada.Real_Time.Time := Ada.Real_Time.Clock + Ada.Real_Time.Milliseconds (Integer (Milliseconds));
+   begin
+      Outcome := AML_Events.Unavailable;
+      if Until_Time >= Started + Ada.Real_Time.Seconds (Host_Window_Seconds) then return; end if;
+      delay until Until_Time; Outcome := AML_Events.Elapsed;
+   end Wait_Event;
+   function Read_Input return Firmware_Tables.Bytes is
+      File : Streams.File_Type;
+   begin
+      if Ada.Command_Line.Argument_Count /= 1 then raise Program_Error with "one AML table argument required"; end if;
+      Streams.Open (File, Streams.In_File, Ada.Command_Line.Argument (1));
+      declare Size : constant Streams.Count := Streams.Size (File); begin
+         if Size < 36 or else Size > Maximum_Table_Bytes then raise Program_Error with "table size outside harness bound"; end if;
+         declare Raw : Ada.Streams.Stream_Element_Array (1 .. Ada.Streams.Stream_Element_Offset (Size));
+            Last : Ada.Streams.Stream_Element_Offset; Data : Firmware_Tables.Bytes (1 .. Natural (Size));
+         begin
+            Streams.Read (File, Raw, Last); Streams.Close (File);
+            if Last /= Raw'Last then raise Program_Error with "short input"; end if;
+            for I in Data'Range loop Data (I) := Firmware_Tables.Byte (Raw (Ada.Streams.Stream_Element_Offset (I))); end loop;
+            return Data;
+         end;
+      end;
+   end Read_Input;
+   Table : constant Firmware_Tables.Bytes := Read_Input;
+   -- Storage follows admitted input size, with named, explicit hosted ceilings.
+   Nodes : constant Positive := Positive'Min (1_000_000, Table'Length + 512);
+   Objects : constant Positive := Positive'Min (262_144, Table'Length * 4 + 8192);
+   Bytes : constant Positive := Positive'Min (64 * 1024 * 1024, Table'Length * 32 + 65_536);
+   Elements : constant Positive := Positive'Min (4 * 1024 * 1024, Table'Length * 8 + 8192);
+   package C is new ACPI_Service_Core
+     (Perform_Delay => Delay_AML, Read_Microseconds => Clock,
+      Namespace_Node_Capacity => Nodes, Aggregate_Method_Capacity => Table'Length + 65_536,
+      Retained_Result_Capacity => 64, Wait_Event_Timeout => Wait_Event,
+      Block_Capacity => 256, Profile_Enabled => True, Observe_Profile => Profile);
+   package V renames C.Values; package N renames C.Namespace;
+   use type C.Stage_Status, C.Freeze_Status, V.Access_Status, V.Module_Outcome;
+   use type V.Value_Handle, V.Value_Kind;
+   type Service_Access is access C.State;
+   Owner : constant Service_Access := new C.State
+     (1, Table'Length, Table'Length, 1, Value_Object_Capacity => Objects,
+      Value_Byte_Capacity => Bytes, Value_Element_Capacity => Elements);
+   Stage : C.Stage_Status; Frozen : C.Freeze_Status; Access_Result : V.Access_Status;
+   Execution : C.Execution_Report; Members : N.Initialization_Report;
+   Node : N.Node_ID; Result : AML_Execute.Execution_Result;
+   Errors, Records, Passed_Records, Skipped_Records, Blocked_Records : AML_Decode.Integer_Value := 0;
+   Finalized : Boolean := False;
+   function Escape (Text : String) return String is
+      Copy : String := Text;
+   begin
+      for I in Copy'Range loop
+         if Copy (I) = '"' or else Copy (I) = '\' or else Character'Pos (Copy (I)) < 32 then Copy (I) := ' '; end if;
+      end loop;
+      return Copy;
+   end Escape;
+   procedure Emit (Status, Reason : String; Execution_Status : AML_Execute.Execution_Status := AML_Execute.No_Return) is
+      M : constant C.Metrics := C.Observe (Owner.all);
+   begin
+      Finalized := True;
+      Ada.Text_IO.Put_Line ("ASLTS_RESULT {""status"":""" & Status & """,""reason"":""" & Escape (Reason) &
+        """,""execution"":""" & Execution_Status'Image & """,""assertions_failed"":" & Errors'Image &
+        ",""records"":" & Records'Image & ",""passed_records"":" & Passed_Records'Image &
+        ",""skipped_records"":" & Skipped_Records'Image & ",""blocked_records"":" & Blocked_Records'Image &
+        ",""last_observed_opcode"":" & Natural (Last_Event.Opcode)'Image &
+        ",""last_observed_extension"":" & Natural (Last_Event.Extension)'Image &
+        ",""has_extension"":" & (if Last_Event.Has_Extension then "true" else "false") &
+        ",""last_observed_position"":" & Natural (Last_Event.Position)'Image &
+        ",""profile_visits"":" & Event_Count'Image & ",""value_objects"":" & M.Value_Objects'Image &
+        ",""value_bytes"":" & M.Value_Bytes'Image & ",""package_elements"":" & M.Package_Elements'Image & "}");
+   end Emit;
+   procedure Execution_Failure (At_Phase : String; Status : AML_Execute.Execution_Status) is
+   begin
+      if Status = AML_Execute.Budget_Exceeded then Emit ("TIMEOUT", At_Phase & " fuel limit", Status);
+      else Emit ("UNSUPPORTED", At_Phase & " typed execution refusal; opcode is last passive visit, not a causal proof", Status); end if;
+   end Execution_Failure;
+   function Find (Name : String) return N.Node_ID is
+      Found : N.Node_ID;
+   begin C.Find_Child (Owner.all, N.Root, Name, Found, Access_Result); return Found; end Find;
+   procedure Integer_Observation (Name : String; Value : out AML_Decode.Integer_Value; OK : out Boolean) is
+      Item : V.Result;
+   begin
+      Value := 0; OK := False; Node := Find (Name);
+      if Access_Result /= V.Available or else Node = N.Root then return; end if;
+      C.Observe_Named_Value (Owner.all, Node, Item, Access_Result);
+      OK := Access_Result = V.Available and then Item.Status = AML_Execute.Returned;
+      if OK then Value := Item.Number; end if;
+   end Integer_Observation;
+   procedure Check_Records (OK : out Boolean) is
+      Item : V.Result; Parent, Child : V.Value_Handle := V.No_Value;
+      Description : V.Value_Description; Released : V.Access_Status;
+      Count_Limit : constant := 65_536;
+      procedure Drop (Handle : in out V.Value_Handle) is
+      begin if Handle /= V.No_Value then C.Release_Result (Owner.all, Handle, Released); Handle := V.No_Value; end if; end Drop;
+   begin
+      OK := False; Node := Find ("RP0P");
+      if Access_Result /= V.Available or else Node = N.Root or else Records = 0 or else Records > Count_Limit then return; end if;
+      C.Observe_Named_Value (Owner.all, Node, Item, Access_Result);
+      if Access_Result /= V.Available or else Item.Status /= AML_Execute.Object_Returned then return; end if;
+      Parent := Item.Handle; C.Describe_Result (Owner.all, Parent, Description, Access_Result);
+      if Access_Result /= V.Available or else Description.Kind /= V.Package_Description
+        or else AML_Decode.Integer_Value (Description.Length) < Records then Drop (Parent); return; end if;
+      for Index in 0 .. Natural (Records) - 1 loop
+         C.Read_Result_Element (Owner.all, Parent, Index, Child, Access_Result);
+         if Access_Result /= V.Available then Drop (Child); Drop (Parent); return; end if;
+         C.Describe_Result (Owner.all, Child, Description, Access_Result);
+         if Access_Result /= V.Available or else Description.Kind /= V.String_Description or else Description.Length not in 1 .. 4096 then
+            Drop (Child); Drop (Parent); return;
+         end if;
+         declare Data : AML_Decode.Bytes (1 .. Description.Length); Copied : Natural; Text : String (Data'Range); begin
+            C.Read_Result_Bytes (Owner.all, Child, 0, Data, Copied, Access_Result);
+            if Access_Result /= V.Available or else Copied /= Data'Length then Drop (Child); Drop (Parent); return; end if;
+            for I in Data'Range loop Text (I) := Character'Val (Data (I)); end loop;
+            if Ada.Strings.Fixed.Index (Text, ":STST:") /= 1 then Drop (Child); Drop (Parent); return; end if;
+            if Ada.Strings.Fixed.Index (Text, ":PASS:") > 0 then Passed_Records := Passed_Records + 1;
+            elsif Ada.Strings.Fixed.Index (Text, ":SKIPPED:") > 0 then Skipped_Records := Skipped_Records + 1;
+            elsif Ada.Strings.Fixed.Index (Text, ":BLOCKED:") > 0 then Blocked_Records := Blocked_Records + 1;
+            elsif Ada.Strings.Fixed.Index (Text, ":FAIL:") = 0 then Drop (Child); Drop (Parent); return; end if;
+         end;
+         Drop (Child);
+      end loop;
+      Drop (Parent); OK := C.Retained_Results (Owner.all) = 0;
+   exception when others => Drop (Child); Drop (Parent); raise;
+   end Check_Records;
+   Known, Complete : Boolean;
+begin
+   C.Stage_Table (Owner.all, 1, C.DSDT, Table, Stage);
+   if Stage /= C.Staged then Emit ("UNSUPPORTED", "stage " & Stage'Image); return; end if;
+   C.Freeze_Catalog (Owner.all, Frozen);
+   if Frozen /= C.Catalog_Frozen_OK then Emit ("BLOCKED", "harness freeze " & Frozen'Image); return; end if;
+   C.Execute_Frozen (Owner.all, Fuel, Execution, Access_Result);
+   if Access_Result /= V.Available or else Execution.Modules.Outcome /= V.Modules_Completed then
+      Execution_Failure ("module", Execution.Modules.Failure); return;
+   end if;
+   C.Initialize_Members (Owner.all, Members, Access_Result);
+   if Access_Result /= V.Available then Emit ("UNSUPPORTED", "member initialization " & Access_Result'Image); return; end if;
+   Node := Find ("MN00");
+   if Access_Result /= V.Available or else Node = N.Root then Emit ("BLOCKED", "harness has no admitted nonstandard entry/report contract"); return; end if;
+   C.Invoke_Scalar (Owner.all, Node, [others => 0], 0, Fuel, Result);
+   if Access_Result /= V.Available or else Result.Status /= AML_Execute.Returned then
+      Execution_Failure ("MN00", Result.Status); return;
+   end if;
+   Integer_Observation ("ERRS", Errors, Known);
+   if not Known then Emit ("BLOCKED", "harness report contract missing ERRS"); return; end if;
+   if Errors /= 0 or else Result.Value /= 0 then Emit ("FAIL", "original assertion errors or MN00 return", Result.Status); return; end if;
+   Integer_Observation ("RMRC", Records, Known);
+   if not Known then Emit ("BLOCKED", "harness report contract missing RMRC"); return; end if;
+   Check_Records (Complete);
+   if not Complete then Emit ("BLOCKED", "harness cannot establish complete original status records");
+   elsif Skipped_Records /= 0 or else Blocked_Records /= 0 then Emit ("BLOCKED", "upstream skipped/blocked records retained");
+   elsif Passed_Records /= Records then Emit ("FAIL", "original non-PASS records");
+   else Emit ("PASS", "original MN00/ERRS zero and all status records PASS", Result.Status); end if;
+exception
+   when E : others =>
+      if not Finalized then
+         Ada.Text_IO.Put_Line ("ASLTS_RESULT {""status"":""BLOCKED"",""reason"":""harness exception " &
+           Escape (Ada.Exceptions.Exception_Name (E) & " " & Ada.Exceptions.Exception_Message (E)) & """,""assertions_failed"":null}");
+      end if;
+end ASLTS_Corpus_Runner;

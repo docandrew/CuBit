@@ -1,0 +1,7 @@
+project Proof is
+   for Source_Dirs use ("../../userspace/services/acpi/lib", "../../shared/firmware", "../../shared/acpi");
+   for Object_Dir use external ("ACPI_COPY_PROOF_OBJECTS");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Proof;

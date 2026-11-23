@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/native/acpi_native_discovery_budget.adb",
+      "sha256": "e0840412e205b4981ccffd817fe6c19148020520ea09c24b2e89ce80b1195704"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_discovery_budget.ads",
+      "sha256": "3eadf82b3e5502fd8395f347e8f7a4365cb03900f62b25d2d43848ab92fa052f"
+    },
+    {
+      "path": "tests/acpi-native-discovery-budget/budget_tests.adb",
+      "sha256": "cccf19b941dc9450ab8c0a039766da1f1e318d0239fa0ed330d0ff70f8cf3773"
+    }
+  ],
+  "tools": {
+    "gprbuild": {
+      "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+      "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+    }
+  }
+}

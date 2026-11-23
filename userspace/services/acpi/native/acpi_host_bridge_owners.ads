@@ -14,7 +14,8 @@ package ACPI_Host_Bridge_Owners is
    package W renames B.W;
    type Window_Result is (Opened, Quiet_Refusal, Uncertain);
    type Phase is (Fresh, Capturing, Starting_Query, Copying_Query,
-      Waiting_Open, Waiting_Receipt, Retiring, Holding, Stopping, Finished, Retained);
+      Waiting_Open, Waiting_Receipt, Retiring, Holding, Stopping, Finished, Retained,
+      Suspended);
    type Failure is (None, Invalid_Setup, Metadata_Refused, Enumeration_Incomplete,
       Allocation_Refused, Clock_Failed, Deadline_Expired, Correlation_Refused,
       Window_Refused, Wrong_Owner, Query_Uncertain, Transport_Uncertain,
@@ -68,6 +69,12 @@ package ACPI_Host_Bridge_Owners is
       procedure Note_Event (Item : CuBit.Control_Events.Event; Ends : out Boolean);
       procedure Prepare_Wait (Armed : out Boolean);
       procedure Disarm;
+      -- End this discovery attempt without revoking acknowledged sessions.
+      -- At a metadata-only boundary, ordinary AML may continue. An active
+      -- query or transport is retained with its original ownership instead.
+      -- No retry, new deadline, I/O or grant release occurs here. A real stop
+      -- still retires the known suspended work and its acknowledged sessions.
+      procedure Suspend_Discovery (Why : Failure);
       procedure Request_Stop;
       function Wake_Deadline return W.Word;
       -- This owner's obligations only, not all ACPI/hardware quiescence.

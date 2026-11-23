@@ -151,6 +151,10 @@ with CuBit.Launch_Arguments;
 with CuBit.Launch_Grants;
 with Desktop_Status_Refresh;
 with Desktop_Network_Refresh;
+with Desktop_Power_Refresh;
+with Desktop_Power_Text;
+with Desktop_Battery_Glyph;
+with CuBit.Power_Sources;
 with Desktop_Network_Model;
 with Desktop_Network_Rows;
 with Desktop_Address_Editor;
@@ -1022,6 +1026,9 @@ procedure main is
    pointerSurfaceId : Unsigned_64 := 0;
    launchMenuOpen : Boolean := False;
    masterAudio : CuBit.Audio_Control.State;
+   --  The Battery item (PWR-004): power.svc's summary while it answers.
+   powerSummary : CuBit.Power_Sources.Summary;
+   powerHave : Boolean := False;
    --  The integrated Deskbar (docs/development-backlog.md UI-027): the
    --  panel above the status button, the notification centre, one app's
    --  window list, and keyboard focus on the taskbar.
@@ -2858,11 +2865,15 @@ procedure main is
    --  Battery, Power_Profile and Brightness have no service yet.
    --  Wired and Wi-Fi: while netmgr reports an Ethernet interface, and
    --  while a Wi-Fi adapter is bound to wifi.svc (Desktop_Network_Model).
-   --  Battery stays hidden until an ACPI battery source exists.
+   --  Battery: while power.svc (Desktop's "power-sources" handle) reports
+   --  a battery (Desktop_Power_Refresh, PWR-004).
    --  Screen_Capture: for Desktop_Capture_Policy.Mark_Ms after each
    --  display-capture copy (who is acting: the remote session).
+   function batteryShown return Boolean is (powerHave and then Desktop_Power_Text.Shown (powerSummary));
+
    function statusShown return DSI.Presence is
      ([DSI.Volume => masterAudio.Available,
+       DSI.Battery => batteryShown,
        DSI.Wired => DNM.Wired_Present (netHave, netReport),
        DSI.Wifi => DNM.Wifi_Present (wifiHave, wifiReport),
        DSI.Screen_Capture => Desktop_Capture.Marked,
@@ -3046,7 +3057,7 @@ procedure main is
      (Desktop_Capture_Policy."/=" (Desktop_Capture.Session, Desktop_Capture_Policy.No_Session));
 
    function panelFixedHeight return Natural is
-     (Desktop_Status_Panel.Height (netLayout, 0, systemShown, remoteShown) - DBS.Panel_Row);
+     (Desktop_Status_Panel.Height (netLayout, 0, systemShown, remoteShown, batteryShown) - DBS.Panel_Row);
 
    --  The newest notifications, as many as fit above the taskbar.
    function panelNoteRows return Natural is
@@ -3059,7 +3070,7 @@ procedure main is
    end panelNoteRows;
 
    function panelHeight return Natural is
-     (Desktop_Status_Panel.Height (netLayout, panelNoteRows, systemShown, remoteShown));
+     (Desktop_Status_Panel.Height (netLayout, panelNoteRows, systemShown, remoteShown, batteryShown));
 
    --  Panel and toast share the right edge and width.
    function deskbarPopupRect (height : Natural) return Rect is
@@ -3781,6 +3792,8 @@ procedure main is
          Desktop_Status_Refresh.Collect (completion, requestSequence);
       elsif Desktop_Network_Refresh.Matches (completion.token) then
          Desktop_Network_Refresh.Collect (completion, requestSequence);
+      elsif Desktop_Power_Refresh.Matches (completion.token) then
+         Desktop_Power_Refresh.Collect (completion, nowMs, requestSequence);
       elsif Desktop_GPU_Wake.Matches (completion.token) then
          Desktop_GPU_Wake.Collect (completion, nowMs);
       elsif outputWatchToken /= 0 and then completion.token = outputWatchToken then
@@ -6881,6 +6894,33 @@ procedure main is
       fillRect (x + (S - Dot_Size) / 2, y + Inset + (Screen_H - Dot_Size) / 2, Dot_Size, Dot_Size, Dot);
    end drawCaptureGlyph;
 
+   --  The battery (PWR-004, Desktop_Battery_Glyph): an outline and its
+   --  terminal, filled as far as the charge goes (Track when unknown; the
+   --  alarm colour while low); a bolt cut into the fill while charging, an
+   --  exclamation mark while low. Drawn, never blinking; the item's name
+   --  says the same in words.
+   procedure drawBatteryGlyph (x, y : Natural; Ink, Faint, Alarm, Cut : Unsigned_32) is
+      package BG renames Desktop_Battery_Glyph;
+      fill : constant Natural := Desktop_Power_Text.Fill_Width (powerSummary.Charge, BG.Fill_Width);
+      low : constant Boolean := Desktop_Power_Text.Low_Mark (powerSummary);
+   begin
+      strokeRect (x + BG.Body_X, y + BG.Body_Y, BG.Body_W, BG.Body_H, Ink, Ink);
+      fillRect (x + BG.Terminal_X, y + BG.Terminal_Y, BG.Terminal_W, BG.Terminal_H, Ink);
+      if not powerSummary.Charge.Known then
+         fillRect (x + BG.Fill_X, y + BG.Fill_Y, BG.Fill_Width, BG.Fill_H, Faint);
+      elsif fill > 0 then
+         fillRect (x + BG.Fill_X, y + BG.Fill_Y, fill, BG.Fill_H, (if low then Alarm else Ink));
+      end if;
+      if Desktop_Power_Text.Mains_Mark (powerSummary) then
+         for P in BG.Bolt_Index loop
+            fillRect (x + BG.Bolt (P).X, y + BG.Bolt (P).Y, BG.Bolt (P).W, BG.Bolt (P).H, Cut);
+         end loop;
+      elsif low then
+         fillRect (x + BG.Mark_X, y + BG.Mark_Y, BG.Mark_W, BG.Mark_H, Ink);
+         fillRect (x + BG.Mark_X, y + BG.Dot_Y, BG.Mark_W, BG.Dot_H, Ink);
+      end if;
+   end drawBatteryGlyph;
+
    --  The status button: unread notifications, the load bars, the shown
    --  status items and the clock. It opens the Deskbar panel.
    procedure drawStatusButton is
@@ -6923,6 +6963,7 @@ procedure main is
                when DSI.Wired => drawWiredGlyph (x, glyphY, wiredUp, C.Active_Text, C.Muted);
                when DSI.Wifi  => drawSignalGlyph (x, glyphY, wifiBars, C.Active_Text, C.Track);
                when DSI.Screen_Capture => drawCaptureGlyph (x, glyphY, C.Active_Text, C.Badge);
+               when DSI.Battery => drawBatteryGlyph (x, glyphY, C.Active_Text, C.Track, C.Badge, C.Status);
                when others    => drawIconIn (DSI.Icon (I, masterAudio.Muted), r, x - r.x, C.Status);
             end case;
             x := x + Desktop_Icons.ICON_SIZE + DBS.Status_Item_Gap;
@@ -6976,7 +7017,9 @@ procedure main is
        Remote_Paired => Desktop_Capture_Policy."=" (Desktop_Capture.Session, Desktop_Capture_Policy.Paired),
        Remote_Peer => SP.To_Short (Desktop_Capture.Peer),
        Capture_Allowed => Desktop_Capture.Allowed,
-       Replacement_Allowed => Desktop_Status_Refresh.Replacement_Shown));
+       Replacement_Allowed => Desktop_Status_Refresh.Replacement_Shown,
+       Power_Shown => batteryShown,
+       Power_Row => SP.To_Row (Desktop_Power_Text.Row_Text (powerSummary))));
 
    --  Render the panel (the toolkit's pass), reporting what the user did.
    procedure renderPanel (acts : in out SP.Action_List) is
@@ -7333,6 +7376,8 @@ procedure main is
       SP.Opened;
       --  An open list asks for the newest scan at once.
       scanDueMs := 0;
+      --  And the power sources are read again (query on read, PWR-004).
+      Desktop_Power_Refresh.Read_Now (requestSequence);
       --  Opening the panel shows every notification: none is unread now.
       DN.Mark_Read (notifications);
       damage := unionRect (damage, unionRect (oldStatus, statusRect));
@@ -12178,6 +12223,40 @@ procedure main is
       end;
    end refreshNetwork;
 
+   --  The Battery item (PWR-004): the first read and the watch kept
+   --  submitted (Desktop_Power_Refresh); a changed summary redraws the
+   --  status button and the open panel, and is one log line (headless tests
+   --  read it). Nothing here waits or polls.
+   procedure refreshPower (now : Unsigned_64) is
+      summary : CuBit.Power_Sources.Summary;
+      have, fresh : Boolean;
+      oldStatus : constant Rect := statusRect;
+      oldPanel : constant Rect := (if deskbarPanelOpen then panelRect else (others => 0));
+      due : Unsigned_64;
+   begin
+      Desktop_Power_Refresh.Start (now, requestSequence);
+      Desktop_Power_Refresh.Take (summary, have, fresh);
+      if fresh then
+         powerSummary := summary;
+         powerHave := have;
+         debugPrint ("desktop: status battery " &
+                     (if not have then "hidden (no power.svc answer)"
+                      elsif not Desktop_Power_Text.Shown (summary) then "hidden (no battery)"
+                      else "shown: " & Desktop_Power_Text.Tooltip (summary) &
+                           (if Desktop_Power_Text.Mains_Mark (summary) then " [bolt]" else "") &
+                           (if Desktop_Power_Text.Low_Mark (summary) then " [low mark]" else "")) & LF);
+         scheduleRedrawRect (unionRect (oldStatus, statusRect));
+         if deskbarPanelOpen then
+            panelDirty := True;
+            scheduleRedrawRect (unionRect (oldPanel, panelRect));
+         end if;
+      end if;
+      due := Desktop_Power_Refresh.Next_Due;
+      if due /= 0 and then (trayDueMs = 0 or else due < trayDueMs) then
+         trayDueMs := due;
+      end if;
+   end refreshPower;
+
    --  The clock and volume arrive as completions (Desktop_Status_Refresh):
    --  this only applies fresh replies and submits the next reads when due.
    procedure refreshStatus is
@@ -12260,6 +12339,7 @@ procedure main is
       end;
       refreshLoad (now);
       refreshNetwork (now);
+      refreshPower (now);
       if now = Unsigned_64'Last or else now < statusDueMs then return; end if;
       statusDueMs := (if now < Unsigned_64'Last - Status_Interval_Ms
                       then now + Status_Interval_Ms else Unsigned_64'Last - 1);
@@ -12709,7 +12789,12 @@ procedure main is
                return DT.Button_Text (T.Button, store.Surfaces (T.Slot).maximized, maximizeAvailable (store.Surfaces (T.Slot)));
             end if;
             return "";
-         when DT.Status_Icon => return DSI.Name (T.Item, masterAudio.Muted);
+         when DT.Status_Icon =>
+            --  The battery's name says its charge and state (not colour alone).
+            if DSI."=" (T.Item, DSI.Battery) then
+               return Desktop_Power_Text.Tooltip (powerSummary);
+            end if;
+            return DSI.Name (T.Item, masterAudio.Muted);
          when DT.Unread_Count =>
             return countText (unread) & (if unread = 1 then " unread notification" else " unread notifications");
          when DT.Status_Button => return "Notifications and status";

@@ -3,13 +3,24 @@
 # (acpi-power: button watch and S5). It asks procmgr for the root stop,
 # then acpi.svc for S5, or halts. Graces and button policy are typed
 # parameters: nothing is defaulted.
+# PWR-004: also the power-source aggregator. It watches the AC adapter and
+# the batteries through acpi.svc's observer endpoint (acpi-observer: the
+# power-source watch, the pages, their identities), reads them when acpi.svc
+# says they changed, and serves them read only to its power-sources badge's
+# holders. acpi-observer is optional: started before acpi.svc, power.svc is
+# introduced to it late (CuBit.Introductions).
+# reading_age_ms: how old acpi.svc's sample may be and still be Fresh; a
+# reader's Read_Now asks acpi.svc to sample an older battery again (at most
+# once a second); an older one is shown as the last reading (Stale).
 (type Stop_Grace (range 1 600000))
 (type Button_Policy (enum Power_Off Halt Ignore))
+(type Reading_Age (range 1 3600000))
 (type Power_Parameters (record
   (undeclared_grace_ms Stop_Grace)
   (storage_deadline_ms Stop_Grace)
   (driver_grace_ms Stop_Grace)
-  (button Button_Policy)))
+  (button Button_Policy)
+  (reading_age_ms Reading_Age)))
 (Executable_Manifest
   identity => "com.cubit.power"
   version => "0.1.0"
@@ -17,6 +28,10 @@
     (service "logstore" "logstore")
     (notification "power" Notify_Access.Manage "registration")
     (service "process-manager" "process-manager")
-    (service "acpi-power" "acpi")]
-  optional => ["logstore" "acpi"]
+    (service "acpi-power" "acpi")
+    # PWR-004: the AC adapter's and batteries' cached samples, their
+    # identities and the power-source watch, as any ACPI observer has them
+    # (ACPI_Protocol.Observer_Tag).
+    (service "acpi" "acpi-observer")]
+  optional => ["logstore" "acpi" "acpi-observer"]
   parameters => (Parameter_Signature.Declared "Power_Parameters"))

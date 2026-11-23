@@ -60,6 +60,35 @@ package body ACPI_Local_Sample_Events is
       end if;
       return Cached_Read(Data,Server,Now,Maximum_Age);
    end Read;
+   function Metadata_View(Server:Q.State) return Samples.View is Same:Boolean;
+   begin
+      Metadata.Advance(Server,Same);
+      if not Same or else not Started or else State/=Ready or else Working or else Needed
+        or else Runtime_Current/=R.Idle or else Q.Notifications_Pending(Server) then return (Value=>Empty_Sample,others=><>);end if;
+      return Cached_Read(Data,Server,Collection_Time,0);
+   end Metadata_View;
+   function Metadata_Revision(Server:Q.State) return Samples.Revision_Number is
+      Same:Boolean;
+   begin
+      Metadata.Advance(Server,Same);
+      if not Same or else not Started or else State/=Ready or else Working or else Needed
+        or else Runtime_Current/=R.Idle or else Q.Notifications_Pending(Server) then return 0;end if;
+      return Cached_Read(Data,Server,(False,0),0).Revision;
+   end Metadata_Revision;
+   function Owns_Context(Server:Q.State) return Boolean is Same:Boolean;
+   begin Metadata.Advance(Server,Same);return Same;end Owns_Context;
+   procedure Request_Refresh(Server:Q.State;At_Time:Samples.Clock_Reading;Accepted:out Boolean) is
+      Same:Boolean;
+   begin
+      Accepted:=False;
+      if Working or else State/=Ready or else not Started or else Runtime_Current/=R.Idle
+        or else Q.Notifications_Pending(Server) or else Q.Retained_Results_Pending(Server)
+        or else not At_Time.Available or else (Have_Clock and then At_Time.Value<Last_Clock) then return;end if;
+      Metadata.Advance(Server,Same);if not Same then return;end if;
+      -- Preserve the most recent observed clock so regression between request
+      -- admission and collection is rejected BEFORE opening a new event window.
+      Last_Clock:=At_Time.Value;Have_Clock:=True;Needed:=True;Accepted:=True;
+   end Request_Refresh;
    procedure Advance (Server : in out Q.State; Result : out Status.Outcome) is
       Same,Available,Healthy,Published,Isolatable : Boolean;
       Now : Samples.Tick;

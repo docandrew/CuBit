@@ -14,6 +14,7 @@
   (start "shutdown-stubborn.app" (priority 3) (stop-grace-ms 500))
   (start "power.svc" (priority 5)
     (arguments (Power_Parameters undeclared_grace_ms => 300 storage_deadline_ms => 10000
-                                 driver_grace_ms => 1000 button => Button_Policy.Ignore)))
+                                 driver_grace_ms => 1000 button => Button_Policy.Ignore
+                                 reading_age_ms => 60000)))
   (start "ccl-console.app" (priority 3))
 )

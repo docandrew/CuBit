@@ -9,6 +9,7 @@
 --  and startup ordering. Replaces the kernel-side policy in modules.adb.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with ACPI_CMOS_Handover_Protocol;
 with CuBit.Waits;
 with Devmgr_Children;
 with Devmgr_PCI_Broker;
@@ -274,6 +275,10 @@ procedure main is
    package Ledgers renames Devmgr_Authority.Ledgers;
    use type Ledgers.Port_Store.Growth_Status;
    Port_Claims : Ledgers.Port_Ledger;
+   package CMOS_Wire renames ACPI_CMOS_Handover_Protocol;
+   CMOS_History : Boot_RTC.Handover_History;
+   CMOS_Claimed, CMOS_Offered, CMOS_Bootstrap_Open : Boolean := False;
+
 
    --  A ledger or record store that could not grow: named, with the
    --  demand and the capacity kept.
@@ -1947,6 +1952,8 @@ procedure main is
    --  A request whose tag carries this flag accepts a capability in the reply.
    Accepting : constant IPC_Flags := (Accepts_Capability => True, others => False);
 
+   procedure Give_Boot_CMOS (From : Process_ID);
+
    function waitReady (driverPID : Process_ID) return Boolean is
       sender : Process_ID;
       rdyMsg : Message;
@@ -1960,6 +1967,14 @@ procedure main is
             --  A child's introduction thread (the driver awaited may be the
             --  one asking): never its ready message.
             DL.Await (sender, rdyMsg);
+         elsif CMOS_Bootstrap_Open and then driverPID = procmgrPID
+           and then sender = procmgrPID and then procmgrPID /= No_Process
+           and then rdyMsg.tag = (label => CMOS_Wire.Request_Label,
+             length => CMOS_Wire.Request_Words, protocol => 0, ipc => Accepting, reserved => 0)
+         then
+            -- Bootstrap receive/reply only. No outbound procmgr call is
+            -- possible here; its startup plan and driver launches start later.
+            Give_Boot_CMOS (sender);
          elsif sender = driverPID then
             ignore := reply (sender, NULL_MESSAGE);
             return rdyMsg.tag.label = OP_READY;
@@ -2815,6 +2830,30 @@ procedure main is
    --  procmgr asks for one ACPI I/O window for a program its startup plan
    --  approved (CuBit.ACPI_Window_Exchange): claimed for ACPI for the rest
    --  of the boot, never ports a driver, devmgr or the kernel holds.
+   procedure Give_Boot_CMOS (From : Process_ID) is
+   begin
+      if not CMOS_Bootstrap_Open or else From /= procmgrPID
+        or else not CMOS_Claimed or else CMOS_Offered
+        or else not CMOS_History.Selector_Completed or else not CMOS_History.Legacy_Validated
+      then Refuse (From, Answered => False); return; end if;
+      -- Latch before carriage: even an unaccepted/unknown reply is not replayed.
+      CMOS_Offered := True;
+      declare
+         Frame : constant CMOS_Wire.Words := CMOS_Wire.Encode
+           ((CMOS_Wire.Legacy_64, CMOS_History.NMI_Disabled));
+         Delivery : constant IPC.Reply_Result := IPC.Reply_With
+           (From, (tag => (label => CMOS_Wire.Reply_Label,
+                     length => CMOS_Wire.Reply_Words, protocol => 0, ipc => <>, reserved => 0),
+                   authorityTag => 0, words => [Frame (0), Frame (1), Frame (2), Frame (3)]),
+            H.Narrowed (Root.IO_Ports_Root, Read_Write_Grant, CMOS_Wire.First_Port, 2));
+      begin
+         case Delivery.Outcome is
+            when IPC.Transferred => debugPrint ("devmgr: cmos bootstrap grant sent ports70/71" & LF);
+            when others => debugPrint ("devmgr: cmos bootstrap grant not accepted" & LF);
+         end case;
+      end;
+   end Give_Boot_CMOS;
+
    procedure Give_ACPI_Window (From : Process_ID; Msg : Message) is
       package AX renames CuBit.ACPI_Window_Exchange;
       First : constant Unsigned_64 := Msg.words (AX.First_Word);
@@ -7753,7 +7792,18 @@ begin
                         Valid : Boolean;
                         Key : constant String := "clock.boot-sample";
                      begin
-                        Boot_RTC.Read (Root.IO_Ports_Root, UTC, Mono, Valid);
+                        Boot_RTC.Read (Root.IO_Ports_Root, UTC, Mono, Valid, CMOS_History);
+                        if CMOS_History.Selector_Completed and then CMOS_History.Legacy_Validated then
+                           declare
+                              Result : Devmgr_Port_Claims.CMOS_Handover_Result;
+                              use type Devmgr_Port_Claims.CMOS_Handover_Result;
+                           begin
+                              Ledgers.Handover_CMOS (Port_Claims, Extended => False, Intel_Aliases => False, Result => Result);
+                              CMOS_Claimed := Result in Devmgr_Port_Claims.Transferred | Devmgr_Port_Claims.Already_Held;
+                              debugPrint ("devmgr: cmos ledger handover " & Result'Image &
+                                " nmi-disabled=" & CMOS_History.NMI_Disabled'Image & LF);
+                           end;
+                        end if;
                         declare
                            Value : constant String :=
                              (if Valid then UTC'Image & Mono'Image else "unavailable");
@@ -8329,9 +8379,11 @@ begin
       assignCPU (procmgrChild, "procmgr.svc");
       if DL.Start (procmgrChild) then
          debugPrint ("devmgr: procmgr started" & LF);
+         CMOS_Bootstrap_Open := True;
          if not waitReady (procmgrPID) then
             procmgrPID := No_Process;
          end if;
+         CMOS_Bootstrap_Open := False;
       else
          procmgrPID := No_Process;
       end if;

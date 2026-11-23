@@ -147,6 +147,7 @@ package body ACPI_Native_Regions is
    IO_Space : constant C.Namespace.Region_Space_ID := 1;
    PCI_Space : constant C.Namespace.Region_Space_ID := 2;
    EC_Space : constant C.Namespace.Region_Space_ID := 3;
+   CMOS_Space : constant C.Namespace.Region_Space_ID := 5;
    Table_Space : constant C.Namespace.Region_Space_ID := 126;
    Connect_Code : constant := 1;
    Notice_Argument_Count : constant Natural := 2;
@@ -160,6 +161,7 @@ package body ACPI_Native_Regions is
          -- This announces a handler, never authority to each claimed address:
          -- every actual datum still requires its exact native admission.
          when Memory_Space|IO_Space|PCI_Space|Table_Space=>return True;
+         when CMOS_Space=>return Root.Fields.CMOS_Handler_Available;
          when EC_Space=>return Root.Fields.EC_Handler_Available
             and then Root.Hardware.Observe.Lock_Ready;
          when others=>return False;

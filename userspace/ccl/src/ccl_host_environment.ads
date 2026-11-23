@@ -22,6 +22,7 @@ with CCL.Interfaces.Console;
 with CCL.Interfaces.Llm;
 with CCL.Interfaces.Secrets;
 with CCL.Interfaces.Machine;
+with CCL.Interfaces.Power;
 with CCL.Interfaces.Agent;
 with CCL.Interfaces.Metrics;
 with CCL_Execution;
@@ -53,7 +54,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Programs.DIRECTORY_INTERFACES +
      CCL.Interfaces.Console.PUBLISHED_INTERFACES +
      CCL.Interfaces.Llm.PUBLISHED_INTERFACES + CCL.Interfaces.Secrets.PUBLISHED_INTERFACES +
-     CCL.Interfaces.Machine.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Machine.PUBLISHED_INTERFACES + CCL.Interfaces.Power.PUBLISHED_INTERFACES +
      CCL.Interfaces.Agent.PUBLISHED_INTERFACES +
      CCL.Interfaces.Metrics.PUBLISHED_INTERFACES;
    MOST_SCHEMAS : constant :=
@@ -70,7 +71,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Programs.DIRECTORY_SCHEMAS +
      CCL.Interfaces.Console.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Llm.PUBLISHED_SCHEMAS + CCL.Interfaces.Secrets.PUBLISHED_SCHEMAS +
-     CCL.Interfaces.Machine.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Machine.PUBLISHED_SCHEMAS + CCL.Interfaces.Power.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Agent.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Metrics.PUBLISHED_SCHEMAS;
    MOST_TYPES : constant :=
@@ -87,7 +88,7 @@ package CCL_Host_Environment is
      CCL.Interfaces.Programs.DIRECTORY_TYPES +
      CCL.Interfaces.Console.PUBLISHED_TYPES +
      CCL.Interfaces.Llm.PUBLISHED_TYPES + CCL.Interfaces.Secrets.PUBLISHED_TYPES +
-     CCL.Interfaces.Machine.PUBLISHED_TYPES +
+     CCL.Interfaces.Machine.PUBLISHED_TYPES + CCL.Interfaces.Power.PUBLISHED_TYPES +
      CCL.Interfaces.Agent.PUBLISHED_TYPES +
      CCL.Interfaces.Metrics.PUBLISHED_TYPES;
    --  Room a session keeps in its copy of the registry for its own type

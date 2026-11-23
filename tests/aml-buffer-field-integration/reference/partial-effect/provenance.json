@@ -1,0 +1,84 @@
+{
+  "acpica_commit": "232ff3f8ae1a4da11c709f61d9154482cfe8e6df",
+  "tools": {
+    "iasl": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/iasl",
+      "sha256": "1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb"
+    },
+    "acpiexec": {
+      "path": "/nix/store/72fphm0m9k2f8zd066ayxkqi44ia9ql5-acpica-tools-20260408/bin/acpiexec",
+      "sha256": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe"
+    }
+  },
+  "cases": [
+    {
+      "named": false,
+      "generic": false,
+      "source": "named0-generic0.asl",
+      "source_sha256": "baa3758e46cd4b6f3b5f0e88aecfd219617a8d2e509ed67ec8d48483577ede5c",
+      "recorded_log": "named0-generic0.log",
+      "log_sha256": "25befa861ab56e572214b1a8869f031f4ce23f33cae0f1e5768dd76b977b6f0b",
+      "expected": {
+        "TEST": 0,
+        "READ_bytes": [
+          66,
+          66
+        ]
+      },
+      "diagnostic": "AE_NOT_FOUND for missing package member; method still returns normally."
+    },
+    {
+      "named": false,
+      "generic": true,
+      "source": "named0-generic1.asl",
+      "source_sha256": "895028d69c7eb53183ef7aaf6399436e5ce34ffb22e5ad48809a3baac2503bdd",
+      "recorded_log": "named0-generic1.log",
+      "log_sha256": "04809b20d4cf1f4e66c3b5b7a7b4601469ced56f776faad5d31b34730eb78790",
+      "expected": {
+        "TEST": 0,
+        "READ_bytes": [
+          66,
+          66
+        ]
+      },
+      "diagnostic": "AE_NOT_FOUND for missing package member; method still returns normally."
+    },
+    {
+      "named": true,
+      "generic": false,
+      "source": "named1-generic0.asl",
+      "source_sha256": "9d61aa21e3edddd25ca0f0882f2df673670446bcc9f4911ec7f875803874947a",
+      "recorded_log": "named1-generic0.log",
+      "log_sha256": "67004806bfdf2107a8207afefcf5728bb77488682b903a371acac423e81cdc36",
+      "expected": {
+        "TEST": 0,
+        "READ_bytes": [
+          66,
+          66
+        ]
+      },
+      "diagnostic": "AE_NOT_FOUND for missing package member; method still returns normally."
+    },
+    {
+      "named": true,
+      "generic": true,
+      "source": "named1-generic1.asl",
+      "source_sha256": "817e8082bb73131f846041ad432d908d322bec13da11c4d748251de2b2287681",
+      "recorded_log": "named1-generic1.log",
+      "log_sha256": "f647541278839233e6fc71575a5874e22be43bb8a86e679a321bd6641c8d5d05",
+      "expected": {
+        "TEST": 0,
+        "READ_bytes": [
+          66,
+          66
+        ]
+      },
+      "diagnostic": "AE_NOT_FOUND for missing package member; method still returns normally."
+    }
+  ],
+  "commands": [
+    "iasl -p OUTPUT SOURCE.asl",
+    "acpiexec -dr -b \"execute TEST;execute READ\" OUTPUT.aml"
+  ],
+  "scope": "Reference behavior for a missing package member and an earlier field write. No ACPICA malloc-failure injection or claim that synthetic CuBit quotas reproduce its OOM cleanup."
+}

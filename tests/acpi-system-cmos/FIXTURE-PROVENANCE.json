@@ -1,0 +1,14 @@
+{
+  "base": "6e5ff642241e47688f8ddc2c6b6332a76bed33fd",
+  "rtc_original": {
+    "source": "tests/boot-rtc/main.adb",
+    "sha256": "09f30a65c8f767dbd4761156e03dd57e296a9850a0fef9c6bef57d3cca9a06fe",
+    "edit": "Top-level Main renamed RTC_Original_Tests; assertions/data unchanged."
+  },
+  "port_model": "Modeled capability syscalls/wait/monotonic/log for the actual Boot_RTC body; no native runtime replacement.",
+  "mux_fixture": {
+    "source": "/home/doc/git/cubit/tests/acpi-cmos-fields/fixture/integration/mux_tests.adb",
+    "sha256": "78561dfceabfadc9a215c0301024ac4507ad636d47fdf6378df361c64e9ee7b1",
+    "scope": "Prior hosted test fixture reused and adapted; not a claimed production/base input."
+  }
+}

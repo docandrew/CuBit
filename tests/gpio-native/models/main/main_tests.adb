@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with Ada.Text_IO;
+with Interfaces;
 with Ada.Strings.Fixed;
 with Main;
 with Main_Model;
@@ -8,6 +9,7 @@ procedure Main_Tests is
    package B renames Main_Model;
    package G renames B.G;
    package W renames GPIO_Control_Wire;
+   use type Interfaces.Unsigned_64;
    use type B.Scenario, B.I.Word, W.Completion_Status;
    Quarantined : Boolean := False;
    function Has (Text : String) return Boolean is
@@ -43,13 +45,18 @@ begin
       B.Check (Quarantined and B.Decline_Reports = 1 and B.Ready_Reports = 0 and B.Control_Answers = 0,
          "inconsistent/refused parent retains resources for supervision without serving events");
       B.Check (B.Parent_ACKs = (if B.Current = B.Initial_ACK_Refused then 1 else 0), "refused ACK is never retried");
-   elsif B.Current in B.Happy | B.Stop_During_Admission then
+   elsif B.Current in B.Happy | B.Pad_Reset_Wait | B.Stop_During_Admission then
       B.Check (not Quarantined and then B.Role_Attempts = 1 and then B.Ready_Reports = 1 and then B.Decline_Reports = 0,
          "actual Main reports Ready after parking/registration then terminates cleanly");
       B.Check (B.Sink_Closes = 1 and then not B.Saved and then B.Sink_Closed, "actual owner drain closes sink and consumes saved reply");
-      if B.Current in B.Happy then
+      if B.Current in B.Happy | B.Pad_Reset_Wait then
          B.Check (B.Saved_Answers = 2 and then B.Control_Answers = 2 and then B.Event_Deliveries = 1 and then B.Request_Stage = 6,
             "actual Main drives admit/arm/IRQ/event/ACK/retire/shutdown through actual stateful owners");
+         if B.Current=B.Pad_Reset_Wait then
+            B.Check(Has("stage=parked pad= 136") and Has("stage=first-arm pad= 136") and Has("stage=first-arm+250ms pad= 136"),"three bounded actual Main snapshots for admitted pad136");
+            B.Check(B.Wait_Snapshot_Time>=B.Arm_Snapshot_Time+250 and then B.Wait_Snapshot_Time<B.Arm_Snapshot_Time+1_000,"diagnostic wake is250ms inside finite1s reset wait, not microsecond units");
+            B.Check(Has("HOST_OWNER attempted=TRUE status=ACCESS_OK") and Has("PAD_CONFIGURATION attempted=TRUE status=ACCESS_OK") and Has("GROUP_STATUS attempted=TRUE status=ACCESS_OK") and Has("GROUP_ENABLE attempted=TRUE status=ACCESS_OK"),"raw ownership routing status and enable readings copied before logging");
+         end if;
          B.Check (B.Parent_ACKs = 2 and Has ("parent line armed vector="), "initial quiet ACK plus actual IRQ ACK recorded");
       else
          B.Check (B.Saved_Answers = 1 and then B.Last_Admin = W.Refused and then B.Control_Answers = 0,

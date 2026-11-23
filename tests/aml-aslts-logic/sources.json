@@ -363,7 +363,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_buffer_layouts.ads",
-      "sha256": "ef216dde7f2f44625ae544f3e31db4c92adc00aa6f0d7c32b6b8265467f4ebd5"
+      "sha256": "79cbdebdcfc9358fdc5c5cd05a49f92b8735c11e6d5c1721f704dfb73930f244"
     },
     {
       "path": "userspace/services/acpi/lib/aml_byte_sources.adb",
@@ -443,7 +443,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_decode.ads",
-      "sha256": "3f312c98587da55cabbd1a800b8dd4634a7adbc502e95e1fbbac11ac91567bfa"
+      "sha256": "9042edfa8df14222b65fa0aae1b85e6d21b7c8a11bc7182e5412a850377a57f4"
     },
     {
       "path": "userspace/services/acpi/lib/aml_definition_loads.adb",
@@ -667,11 +667,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-      "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+      "sha256": "692bf7f4dae7517867b9f49990ff61080ba10c770e3e85aadf01c24c493fc272"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-      "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+      "sha256": "02d5cb2242316e1791fbd4afcd75512ce175330daf6dac9222a7ecaabc5d040b"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -988,6 +988,14 @@
       "path": "userspace/services/acpi/resource-data/acpi_resource_data.ads",
       "sha256": "704a461f20c90cbde9e15c34fc457373b2fed6d3e948d4706daa2ffe55ee8532",
       "kind": "ada"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_pci_bridge_probe.ads",
+      "sha256": "a382184cce945722a9f6cd661e5ba93e65ffb3a12b4d9dcb58db83355ad2223f"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_pci_bridge_probe.adb",
+      "sha256": "f8769e531d20445e5dcf31b55bcda4abd4dcfa8f8d42c8730681618a4f3c7b94"
     }
   ],
   "listings": {

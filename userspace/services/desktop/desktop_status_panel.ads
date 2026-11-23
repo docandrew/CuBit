@@ -6,7 +6,8 @@
 --  The Deskbar panel (UI-027) drawn by the native toolkit (CuBit.UI): the
 --  clock, Remote access (while a remote session holds Desktop's
 --  display-capture endpoint: who is paired and the "Allow screen capture"
---  switch, REMOTE-001), Quick settings (volume slider and mute, do not disturb), the
+--  switch, REMOTE-001), Quick settings (volume slider and mute, do not disturb),
+--  Power (while there is a battery: its charge, state and runtime, PWR-004), the
 --  Network section (wired and Wi-Fi rows, the inline passphrase field, the
 --  addressing editor) and the notification history, rendered into a
 --  pixel buffer Desktop owns and presents as a retained layer.
@@ -52,6 +53,14 @@ package Desktop_Status_Panel is
    function To_Short (S : String) return Short_Text;
    function Image (T : Short_Text) return String is (T.Data (1 .. T.Length));
 
+   --  A longer fact: the battery's row (Desktop_Power_Text.Row_Text).
+   type Row_Text is record
+      Data   : String (1 .. 96) := [others => ' '];
+      Length : Natural range 0 .. 96 := 0;
+   end record;
+   function To_Row (S : String) return Row_Text;
+   function Image (T : Row_Text) return String is (T.Data (1 .. T.Length));
+
    type View is record
       Clock      : String (1 .. 5) := "--:--";
       Date       : Short_Text;
@@ -83,10 +92,14 @@ package Desktop_Status_Panel is
       --  built on this machine; Desktop_Status_Refresh), shown in the
       --  Remote access section: its own state, not the capture switch's.
       Replacement_Allowed : Boolean := False;
+      --  The Power section (PWR-004): shown while power.svc reports a
+      --  battery; its row says charge, state and runtime in words.
+      Power_Shown : Boolean := False;
+      Power_Row   : Row_Text;
    end record;
 
    --  The panel's height for this content.
-   function Height (Net : DNR.Layout; Note_Rows : Natural; System_Shown, Remote_Shown : Boolean)
+   function Height (Net : DNR.Layout; Note_Rows : Natural; System_Shown, Remote_Shown, Power_Shown : Boolean)
      return Natural;
 
    ---------------------------------------------------------------------------

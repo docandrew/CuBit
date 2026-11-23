@@ -1,3 +1,7 @@
+with ACPI_CMOS_Handover_Protocol;
+with ACPI_CMOS_Manifest_Windows;
+with CCL.Resource_Sections;
+with CCL.Setting_Codecs.ACPI_Firmware_Profile;
 ------------------------------------------------------------------------------
 --  CuBit
 --  Copyright (C) 2026 Jon Andrew
@@ -137,6 +141,7 @@ with Supervision_Edges;
 with Shutdown_Sequences;
 with CuBit.System_Stops;
 with CuBit.Power_Requests;
+with CuBit.Power_Sources;
 with CuBit.Debug_Protocol;
 with CuBit.Power_Event_Exchange;
 with CCL.Device_Sections;
@@ -304,6 +309,15 @@ procedure main is
    --  (docs/ccl-launch-parameters.md), as written; empty for every other
    --  launch (OP_LAUNCH), which cannot give typed parameters.
    pendingParameters : CCL.Configurations.Value_Text;
+   package CMOS_Wire renames ACPI_CMOS_Handover_Protocol;
+   package CMOS_Windows renames ACPI_CMOS_Manifest_Windows;
+   use type CMOS_Windows.Selection_Status, CMOS_Windows.Window_Kind;
+   package CMOS_Profile_Codec renames CCL.Setting_Codecs.ACPI_Firmware_Profile;
+   CMOS_Boot_Ports : H.IO_Ports := H.No_IO_Ports;
+   CMOS_Boot_Receipt : CMOS_Wire.Receipt;
+   CMOS_Boot_Valid : Boolean := False;
+   CMOS_Recipient : Process_ID := No_Process;
+
    --  The block a child is given: that payload, then its startup table
    --  (CuBit.Launch_Envelopes).
    launchEnvelope : CuBit.Launch_Envelopes.Block
@@ -1449,7 +1463,7 @@ procedure main is
    --  startup table (.cubit.startup, CuBit.Startup_Tables) and the
    --  parameters of its requests (.cubit.caps). Declared entry i is request
    --  i; the requests of resource kinds (devices, DMA, scheduling) are in
-   --  .cubit.resources, which procmgr never grants from.
+   --  .cubit.resources are decoded separately for typed named ACPI windows.
    ---------------------------------------------------------------------------
    --  pid now holds an endpoint for a service role with manifest rights
    --  Kept (bit 0 Read, bit 1 Write): a child it launches may ask for that
@@ -1520,6 +1534,7 @@ procedure main is
       Declared   : ST.Table := ST.Empty_Table;
       Caps       : Caps_Array;
       Caps_Count : ST.Entry_Count := 0;
+      CMOS_Declaration : CMOS_Windows.Declaration;
       --  Declared entry i's request in Caps; 0 for a resource kind.
       Request_Of : Request_Map := [others => 0];
    end record;
@@ -1620,7 +1635,7 @@ procedure main is
                      use type ST.Decode_Result;
                   begin
                      ST.Decode (Copy, View.Declared, Outcome);
-                     if Outcome /= ST.Decoded then
+                     if Outcome /= ST.Decoded or else not ST.Declaration (View.Declared) then
                         reading := Startup_Table_Invalid;
                         return;
                      end if;
@@ -1683,6 +1698,30 @@ procedure main is
             reading := Requests_Disagree;
          end if;
       end;
+      -- CMOS is a typed device resource, never a fabricated .caps request.
+      -- Copy each canonical section once, after ordinary request-map validation.
+      if reading = Manifest_Read and then Startup_Found then
+         declare
+            package RS renames CCL.Resource_Sections;
+            package DS renames CCL.Device_Sections;
+            Resource_At, Device_At : Unsigned_64;
+            Resource_Length, Device_Length : Natural;
+         begin
+            findSection (elfSize, RS.MAGIC, RS.MAX_SECTION_BYTES, Resource_At, Resource_Length);
+            findSection (elfSize, DS.MAGIC, DS.MAX_SECTION_BYTES, Device_At, Device_Length);
+            declare
+               Resource_Source : constant RS.Byte_Array (1 .. Resource_Length)
+                 with Import, Address => imageBuf + Storage_Offset (Resource_At);
+               Device_Source : constant DS.Byte_Array (1 .. Device_Length)
+                 with Import, Address => imageBuf + Storage_Offset (Device_At);
+               Resource_Copy : constant RS.Byte_Array := Resource_Source;
+               Device_Copy : constant DS.Byte_Array := Device_Source;
+            begin
+               View.CMOS_Declaration := CMOS_Windows.Inspect
+                 (View.Declared, Resource_Copy, Device_Copy);
+            end;
+         end;
+      end if;
    end readManifest;
 
    ---------------------------------------------------------------------------
@@ -1836,8 +1875,10 @@ procedure main is
       elsif Role = CuBit.Display_Capture.Service_Role then DRIVER_DESKTOP
       --  PWR-003: power.svc's requesters, and power.svc's own endpoint to
       --  acpi.svc's power-button watch and S5.
+      --  PWR-004: power.svc's read-only power-source observers.
       elsif Role = CuBit.Power_Requests.Desktop_Role
-        or else Role = CuBit.Power_Requests.Console_Role then CuBit.Power_Requests.Service_Role
+        or else Role = CuBit.Power_Requests.Console_Role
+        or else Role = CuBit.Power_Sources.Observer_Role then CuBit.Power_Requests.Service_Role
       elsif Role = CuBit.Power_Event_Exchange.Service_Role then DRIVER_ACPI
       else Role);
 
@@ -1917,6 +1958,7 @@ procedure main is
            or else Role = CuBit.Display_Capture.Service_Role
            or else Role = CuBit.Power_Requests.Desktop_Role
            or else Role = CuBit.Power_Requests.Console_Role
+           or else Role = CuBit.Power_Sources.Observer_Role
            or else Role = CuBit.Power_Event_Exchange.Service_Role
            or else Role = ACPI_PCI_Window_Exchange.Service_Role
          then
@@ -3485,6 +3527,22 @@ procedure main is
       --  AHA.IO_Label (ACPI_Binding, K).
       ACPI_Window_Words : array (AHA.IO_Window_Number) of Unsigned_64 := [others => ST.No_Handle];
       ACPI_Window_Total : Natural range 0 .. AHA.Maximum_IO_Windows := 0;
+      CMOS_Window : CMOS_Windows.Selection;
+      function Declares_ACPI_Hardware return Boolean is
+      begin
+         for I in 1 .. View.Declared.Count loop
+            if View.Declared.Entries (I).Kind = ST.ACPI_Hardware
+              and then View.Request_Of (I) > 0
+            then
+               declare R : constant Caps_Request := View.Caps (View.Request_Of (I)); begin
+                  if R.Kind = AHA.Manifest_Request and then R.Param0 = 0 and then R.Param1 = 0
+                    and then Manifest_Rights (Unsigned_64 (R.Rights)) = H.Read_Write
+                  then return True; end if;
+               end;
+            end if;
+         end loop;
+         return False;
+      end Declares_ACPI_Hardware;
       --  Then its firmware-memory windows, ascending by address, appended
       --  as AHA.Memory_Label (ACPI_Binding, K).
       ACPI_Memory_Words : array (AHA.Memory_Window_Number) of Unsigned_64 := [others => ST.No_Handle];
@@ -3668,7 +3726,10 @@ procedure main is
          --  PWR-003: shutdown requesters (Desktop's, the console's badge
          --  on power.svc) only from the trusted startup plan; acpi.svc's
          --  power badge (button watch, S5) only for its power manager.
-         if Role = CuBit.Power_Requests.Desktop_Role or else Role = CuBit.Power_Requests.Console_Role then
+         --  PWR-004: the power-source observers (read only) likewise.
+         if Role = CuBit.Power_Requests.Desktop_Role or else Role = CuBit.Power_Requests.Console_Role
+           or else Role = CuBit.Power_Sources.Observer_Role
+         then
             return not systemStartup;
          elsif Role = CuBit.Power_Event_Exchange.Service_Role then
             return not (systemStartup and then pkgId (1 .. pkgIdLen) = "com.cubit.power");
@@ -3782,6 +3843,8 @@ procedure main is
             Issued_Tag := CuBit.Power_Requests.Desktop_Tag;
          elsif Role = CuBit.Power_Requests.Console_Role then
             Issued_Tag := CuBit.Power_Requests.Console_Tag;
+         elsif Role = CuBit.Power_Sources.Observer_Role then
+            Issued_Tag := CuBit.Power_Sources.Observer_Tag;
          elsif Role = CuBit.Power_Event_Exchange.Service_Role then
             Issued_Tag := CuBit.Power_Event_Exchange.Authority_Tag;
          elsif isACPI then
@@ -4185,6 +4248,38 @@ procedure main is
       --  devmgr refuses (another holder has a port of it) is left out, never
       --  narrowed or widened. The declared entry holds the first window's
       --  handle; the windows are appended after the table is built.
+      procedure Mint_ACPI_Resource_Window
+        (Index : ST.Entry_Index; Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
+      is
+         use type H.ABI.Kind;
+         Actual : constant HIPC.Description :=
+           (if CMOS_Boot_Valid then HIPC.Describe (CMOS_Boot_Ports)
+            else (Current => False, Why => H.ABI.Invalid_Handle));
+      begin
+         Handle := ST.No_Handle; Outcome := SB.Refused_By_Policy;
+         if CMOS_Window.Status /= CMOS_Windows.Admitted or else CMOS_Window.Binding /= Index
+           or else not CMOS_Boot_Valid
+           or else (CMOS_Recipient /= No_Process and then CMOS_Recipient /= newPID)
+         then return; end if;
+         case CMOS_Window.Kind is
+            when CMOS_Windows.System_CMOS_Window =>
+               if not Actual.Current or else Actual.Kind /= H.ABI.IO_Ports
+                 or else Actual.Object /= CMOS_Wire.First_Port
+                 or else Actual.Parameter /= Unsigned_64 (CMOS_Window.Ports)
+                 or else Actual.Parameter /= CMOS_Wire.Port_Count (CMOS_Boot_Receipt.Device)
+                 or else Actual.Held /= Read_Write_Grant
+               then return; end if;
+               -- The selected named lane belongs to ACPI_Hardware approval,
+               -- not to the ordinary SystemIO/FADT register-window list.
+               Install (Copy (CMOS_Boot_Ports, H.Read_Write), Handle, Outcome);
+               if Outcome = SB.Granted then
+                  CMOS_Recipient := newPID;
+                  debugPrint ("procmgr: ACPI CMOS window installed for " & name & LF);
+               end if;
+            when CMOS_Windows.No_Window => null;
+         end case;
+      end Mint_ACPI_Resource_Window;
+
       procedure Mint_ACPI_Hardware
         (R : Caps_Request; Index : ST.Entry_Index; Item : ST.Startup_Entry;
          Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
@@ -4538,10 +4633,16 @@ procedure main is
             Into.Logged := True;
             return;
          end if;
-         --  procmgr hands out no device, port, interrupt or scheduling
-         --  authority; a DMA region is devmgr's to allocate.
+         --  A device-resource entry is supplied only by an admitted typed
+         --  ACPI window. Other resources, including DMA, remain devmgr-owned.
          if View.Request_Of (Index) = 0 then
-            Outcome := (if Item.Kind = ST.DMA then SB.Not_Available else SB.Refused_By_Policy);
+            if Item.Kind = ST.IO_Ports and then CMOS_Window.Binding = Index
+              and then CMOS_Window.Status = CMOS_Windows.Admitted
+            then
+               Mint_ACPI_Resource_Window (Index, Handle, Outcome);
+            else
+               Outcome := (if Item.Kind = ST.DMA then SB.Not_Available else SB.Refused_By_Policy);
+            end if;
             return;
          end if;
          R := View.Caps (View.Request_Of (Index));
@@ -4770,6 +4871,16 @@ procedure main is
          return No_Process;
       end if;
 
+      -- Select the typed CMOS named window under the same manifest request
+      -- and trusted startup approval as the ACPI_Hardware grant. Ordering of
+      -- manifest entries cannot turn an unapproved resource into authority.
+      CMOS_Window := CMOS_Windows.Select_Window
+        (View.CMOS_Declaration,
+         Approved => systemStartup and then approveACPIHardware and then Declares_ACPI_Hardware,
+         Receipt_Known => CMOS_Boot_Valid,
+         Recipient_Available => CMOS_Recipient = No_Process or else CMOS_Recipient = newPID,
+         Receipt => CMOS_Boot_Receipt);
+
       --  The launch block's payload: launch arguments, and a program with a
       --  description (its ports and descriptor map) gets it attached, so it
       --  learns its ports at start; it gets a block with just its name when
@@ -4924,6 +5035,32 @@ procedure main is
                                     Checked.Message (1 .. Checked.Message_Length) & LF);
                         Failure := LA.Parameters_Rejected;
                      else
+                        if PS.Root_Of (Descriptor) = "ACPI_Firmware_Profile" then
+                           declare
+                              Profile : CMOS_Profile_Codec.ACPI_Firmware_Profile_Value;
+                              Decoded : Boolean;
+                           begin
+                              CMOS_Profile_Codec.Decode (Checked.Canonical (1 .. Checked.Length), Profile, Decoded);
+                              if not Decoded then
+                                 Failure := LA.Parameters_Rejected; Stop_Suspended_Child; return No_Process;
+                              end if;
+                              Profile := CMOS_Profile_Codec.Bind_CMOS
+                                (Profile,
+                                 (case CMOS_Boot_Receipt.Device is
+                                    when CMOS_Wire.Unidentified => CMOS_Profile_Codec.No_CMOS,
+                                    when CMOS_Wire.Legacy_64 => CMOS_Profile_Codec.PC_AT_64,
+                                    when CMOS_Wire.Intel_128 => CMOS_Profile_Codec.Intel_128,
+                                    when CMOS_Wire.Intel_256 => CMOS_Profile_Codec.Intel_256),
+                                 Known => CMOS_Boot_Valid,
+                                 NMI_Disabled => CMOS_Boot_Receipt.NMI_Disabled,
+                                 Approved => CMOS_Window.Status = CMOS_Windows.Admitted);
+                              CCL.Typed_Values.Check (PS.Signature_Of (Descriptor), PS.Root_Of (Descriptor),
+                                CMOS_Profile_Codec.Encode (Profile), Checked);
+                              if not Checked.Success then
+                                 Failure := LA.Parameters_Rejected; Stop_Suspended_Child; return No_Process;
+                              end if;
+                           end;
+                        end if;
                         PV.Encode (PS.Identity_Of (Descriptor), Checked.Canonical (1 .. Checked.Length),
                                    Parameter_Section, Parameter_Length, Accepted);
                         if not Accepted then
@@ -8565,6 +8702,9 @@ procedure main is
       Word : constant Unsigned_64 := To_Word (Exited);
       At_Edge : Natural;
    begin
+      -- Called only after the kernel child-exit receipt is validated below.
+      -- A live recipient or an unconfirmed stop never releases this binding.
+      if CMOS_Recipient = Exited then CMOS_Recipient := No_Process; end if;
       if Edges = null or else Edge_Length = 0 then
          return;
       end if;
@@ -9248,6 +9388,41 @@ begin
       ignore : Unsigned_64;
    begin
       ignore := registerDriver (DRIVER_PROCMGR, PH.Registration);
+   end;
+
+   -- Cache CMOS at the bootstrap rendezvous, before OP_READY/startPlan.
+   -- devmgr is receiving here, not synchronously launching a child through us.
+   -- No later ACPI or driver launch makes this handover request.
+   declare
+      Request : Message := NULL_MESSAGE;
+      Received : HIPC.Carried;
+      Tag : MessageTag;
+      use type H.ABI.Kind;
+   begin
+      Request.tag := (label => CMOS_Wire.Request_Label, length => CMOS_Wire.Request_Words,
+        protocol => 0, ipc => <>, reserved => 0);
+      Tag := HIPC.Call_Accepting (PH.Ready, Request, Deadline_After (1_000), Received);
+      declare
+         Taken : constant HIPC.Accepted_IO_Ports := HIPC.Accept_IO_Ports (Received);
+         Actual : constant HIPC.Description :=
+           (if Taken.OK then HIPC.Describe (Taken.Value) else (Current => False, Why => H.ABI.Invalid_Handle));
+         Frame : constant CMOS_Wire.Decoded := CMOS_Wire.Decode
+           ([Request.words (0), Request.words (1), Request.words (2), Request.words (3)]);
+      begin
+         -- Retain every received handle until process teardown, even on bad
+         -- metadata. Invalid carriage is never installed or used for access.
+         if Taken.OK then CMOS_Boot_Ports := Taken.Value; end if;
+         if Tag.label = CMOS_Wire.Reply_Label and then Tag.length = CMOS_Wire.Reply_Words
+           and then Tag.protocol = 0 and then Frame.Valid and then Actual.Current
+           and then Actual.Kind = H.ABI.IO_Ports and then Actual.Object = CMOS_Wire.First_Port
+           and then Actual.Parameter = CMOS_Wire.Port_Count (Frame.Value.Device)
+           and then Actual.Held = Read_Write_Grant
+         then
+            CMOS_Boot_Receipt := Frame.Value; CMOS_Boot_Valid := True;
+            debugPrint ("procmgr: cmos bootstrap receipt cached" & LF);
+         else debugPrint ("procmgr: optional cmos handover unavailable" & LF);
+         end if;
+      end;
    end;
 
    --  Signal devmgr that we are ready

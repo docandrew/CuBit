@@ -1,5 +1,4 @@
 with Interfaces;
-with ACPI_Power_Query_Protocol;
 generic
 package ACPI_Battery_Cache.Observers with SPARK_Mode is
    -- Service-owner adapter for read-only CCL integer observations. The native
@@ -14,7 +13,9 @@ package ACPI_Battery_Cache.Observers with SPARK_Mode is
       Acquisition_Failed => 3, Too_Old => 4, Clock_Unknown => 5,
       Clock_Regressed => 6, Counter_Exhausted => 7, Stale => 8,
       Bad_Page => 9, Bad_Offset => 10, Not_Applicable => 14);
-   Schema_Version : constant Word := Word (ACPI_Power_Query_Protocol.Battery_Schema_Version);
+   type Information_Kind is (Unavailable, BIX, BIF);
+   for Information_Kind use (Unavailable=>0,BIX=>1,BIF=>2);
+   Schema_Version : constant Word := 2;
    type Page is (Units, BIX_Version, Dynamic_State, Rate, Remaining, Voltage,
       Design, Last_Full, Design_Voltage, Cycles, Sampling_Max, Sampling_Min,
       Capacity_Thresholds, Accuracy, Averaging, Granularity, Swap,

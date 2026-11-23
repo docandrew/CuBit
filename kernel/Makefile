@@ -2519,6 +2519,13 @@ shutdown-test: ccl-build user_runtime ccl-manifest
 	cp ../tests/shutdown/cooperative/build/shutdown-cooperative.app isodir/boot/shutdown-cooperative.app
 	cp ../tests/shutdown/stubborn/build/shutdown-stubborn.app isodir/boot/shutdown-stubborn.app
 
+# PWR-004 slice 1 (headless power-sources): the TEST STAND-IN for acpi.svc's
+# AC adapter and battery observer pages (tests/power-sources/standin). Test-only.
+.PHONY : power-sources-test
+power-sources-test: ccl-build user_runtime ccl-manifest
+	$(CCL_BUILD) ../tests/power-sources/standin/component.ccl
+	cp ../tests/power-sources/standin/build/power-standin.app isodir/boot/power-standin.app
+
 # Start_Child (SUP-001): the headless supervision test's supervisor and
 # the child it starts with typed parameters. Test-only.
 .PHONY : supervision-test

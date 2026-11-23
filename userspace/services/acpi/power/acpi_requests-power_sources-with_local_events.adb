@@ -45,5 +45,7 @@ package body ACPI_Requests.Power_Sources.With_Local_Events is
    procedure Route (Server : State; Routed : out Boolean) renames Owner.Route;
    procedure Advance (Server : in out State; Result : out Status.Outcome) renames Owner.Advance;
    function Read (Server : State; Now : Samples.Clock_Reading; Maximum_Age : Samples.Tick) return Samples.View renames Owner.Read;
+   function Metadata_View(Server:State) return Samples.View renames Owner.Metadata_View;
+   function Metadata_Revision(Server:State) return Samples.Revision_Number renames Owner.Metadata_Revision;
    procedure Stop renames Owner.Stop;
 end ACPI_Requests.Power_Sources.With_Local_Events;

@@ -29,6 +29,7 @@ package body CCL_Native_Bindings is
    Llm_Entry              : constant CuBit.Handles.Endpoint := Named ("llm");
    Secrets_Entry          : constant CuBit.Handles.Endpoint := Named ("secrets");
    Power_Entry            : constant CuBit.Handles.Endpoint := Named ("power");
+   Power_Sources_Entry    : constant CuBit.Handles.Endpoint := Named ("power-sources");
    Debug_Session_Entry    : constant CuBit.Handles.Endpoint := Named ("debug-session");
 
    function Clock            return CuBit.Handles.Endpoint is (Clock_Entry);
@@ -47,5 +48,6 @@ package body CCL_Native_Bindings is
    function Llm              return CuBit.Handles.Endpoint is (Llm_Entry);
    function Secrets          return CuBit.Handles.Endpoint is (Secrets_Entry);
    function Power            return CuBit.Handles.Endpoint is (Power_Entry);
+   function Power_Sources    return CuBit.Handles.Endpoint is (Power_Sources_Entry);
    function Debug_Session    return CuBit.Handles.Endpoint is (Debug_Session_Entry);
 end CCL_Native_Bindings;

@@ -309,7 +309,7 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-session|desktop-session-no-invtsc|desktop-protocol|files|text|calculator|ui-latency|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart|desktop-reap|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel)
+        desktop-display|desktop-session|desktop-session-no-invtsc|desktop-protocol|files|text|calculator|ui-latency|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart|desktop-reap|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|power-sources)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         shutdown|acpi-shutdown)
             TIMEOUT_SECONDS=$SHUTDOWN_TIMEOUT_SECONDS ;;
@@ -364,7 +364,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|power-sources)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -1230,6 +1230,13 @@ with open(sys.argv[1], "wb") as f:
         # console's own requester badge on power.svc; the same stop, with
         # the Desktop session, ending in S5 through the stand-in.
         INIT_PROFILE="$ROOT_DIR/tests/shutdown/init-console.ccl"
+        ;;
+    power-sources)
+        # PWR-004 slice 1: the battery and AC adapter through power.svc to
+        # Desktop's Battery item and the console's (power.sources). QEMU has
+        # no ACPI battery: a TEST STAND-IN serves acpi.svc's AC and battery
+        # pages with acpi.svc's own codecs (tests/power-sources/standin).
+        INIT_PROFILE="$ROOT_DIR/tests/power-sources/init.ccl"
         ;;
     shutdown-desktop|shutdown-desktop-cancel)
         # PWR-003: Shut Down... in Desktop's Apps menu, by keyboard, then the
@@ -3156,6 +3163,20 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
+    if [ "$TEST_NAME" = "power-sources" ]; then
+        if ! make -C "$KERNEL_DIR" power-sources-test power >/dev/null; then
+            echo "headless: failed to build power.svc and the power-sources stand-in" >&2
+            exit 1
+        fi
+        for POWER_IMAGE in power.svc power-standin.app ccl-console.app desktop.svc; do
+            debugfs -w -R "rm $POWER_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$POWER_IMAGE $POWER_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $POWER_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
     if [ "$TEST_NAME" = "acpi-shutdown" ] || [ "$TEST_NAME" = "shutdown" ] || [ "$TEST_NAME" = "shutdown-console" ] || [ "$TEST_NAME" = "shutdown-text" ] ||
        [ "$TEST_NAME" = "shutdown-desktop" ] || [ "$TEST_NAME" = "shutdown-desktop-cancel" ]; then
         if ! make -C "$KERNEL_DIR" shutdown-test power >/dev/null; then
@@ -4038,7 +4059,7 @@ if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
    [ "$TEST_NAME" = "config-tree" ] ||
    [ "$TEST_NAME" = "display-grants-virtio-vga" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
-   [ "$TEST_NAME" = "shutdown-console" ] ||
+   [ "$TEST_NAME" = "shutdown-console" ] || [ "$TEST_NAME" = "power-sources" ] ||
    [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
    [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "metricsview" ] ||
    [ "$TEST_NAME" = "ccl-workbench-virtio-vga" ] ||
@@ -4159,6 +4180,15 @@ fi
 # Opt-in ordinary consumer refusal regression on the real shutdown profile.
 # Compile the supplied SSDT with the pinned IASL first; every run owns its
 # temporary QEMU disk as usual. No alternate ACPI service or power stand-in.
+# CMOS gate: a separately generated read-only SystemCMOS module-load field.
+if [ -n "${ACPI_CMOS_REACH_TABLE:-}" ]; then
+    if [ "$TEST_NAME" != "acpi-one-service" ] || [ ! -f "$ACPI_CMOS_REACH_TABLE" ]; then
+        echo "headless: ACPI_CMOS_REACH_TABLE requires acpi-one-service and a compiled fixture" >&2
+        exit 2
+    fi
+    TEST_DEVICE_ARGS+=(-acpitable "file=$ACPI_CMOS_REACH_TABLE")
+fi
+
 if [ -n "${ACPI_SHUTDOWN_REFUSAL_TABLE:-}" ]; then
     if [ "$TEST_NAME" != "acpi-shutdown" ] || [ ! -f "$ACPI_SHUTDOWN_REFUSAL_TABLE" ]; then
         echo "headless: ACPI_SHUTDOWN_REFUSAL_TABLE requires acpi-shutdown and a compiled fixture" >&2
@@ -6255,6 +6285,62 @@ if [ "$TEST_NAME" = "acpi-hardware" ] || [ "$TEST_NAME" = "acpi-sci" ]; then
     INPUT_INJECTOR_PID=$!
 fi
 
+# PWR-004 power-sources: nothing is typed until Desktop has shown the
+# discharging battery AND then the charging one: both reach it by acpi.svc's
+# watch alone (the stand-in's first publication, then its Notify), with no
+# read asked for. Then, once the battery's sample is older than power.svc's
+# reading_age_ms, (power.sources) is typed at the console: power.svc asks
+# the stand-in for a demand read, so the console lists the freshly sampled
+# battery, and Desktop's kept watch is answered with it. Then QEMU is quit.
+if [ "$TEST_NAME" = "power-sources" ]; then
+    if ! command -v nc >/dev/null 2>&1; then
+        echo "headless: power-sources requires nc" >&2
+        exit 127
+    fi
+    MONITOR_SOCKET="$(qemu_socket monitor)"
+    rm -f "$MONITOR_SOCKET"
+    MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
+    POWER_READY=("ccl-console: first frame presented" "power: ready"
+                 "desktop: status battery shown: Battery 73%, discharging, 3 h 39 min left"
+                 "desktop: status battery shown: Battery 74%, charging, 1 h 2 min to full [bolt]")
+    POWER_LISTED=("ccl-console: REPL completed: List<Power_Source>:"
+                  "power-standin: demand read 1: the battery sampled again")
+    (
+        wait_for() {
+            local ready=0 attempt marker
+            for ((attempt = 0; attempt < TIMEOUT_SECONDS * 10; attempt++)); do
+                ready=1
+                for marker in "$@"; do
+                    if ! grep -aqF "$marker" "$SERIAL_LOG" 2>/dev/null; then
+                        ready=0
+                    fi
+                done
+                if [ "$ready" -eq 1 ] && [ -S "$MONITOR_SOCKET" ]; then
+                    return 0
+                fi
+                sleep 0.1
+            done
+            return 1
+        }
+        if ! wait_for "${POWER_READY[@]}"; then
+            echo "headless: power-sources: the battery item and the console did not come up" >&2
+            exit 1
+        fi
+        # Older than reading_age_ms (2 s, tests/power-sources/init.ccl).
+        sleep 3
+        python3 -I "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" '(power.sources)' 0.05
+        wait_for "${POWER_LISTED[@]}" || true
+        # The battery alone: the whole listing is longer than one log
+        # record (512 bytes), this one starts its own.
+        python3 -I "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" '(at (power.sources) 2)' 0.05
+        wait_for "ccl-console: REPL completed: Power_Source:" || true
+        sleep 1
+        printf 'quit\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+        exit 0
+    ) &
+    INPUT_INJECTOR_PID=$!
+fi
+
 # PWR-003 shutdown tests: one request once everything runs and power.svc
 # watches. shutdown: QEMU's power button (system_powerdown) once the
 # stand-in kept power.svc's watch and both fixtures run. shutdown-console:
@@ -7595,6 +7681,49 @@ procmgr: supervisor com.cubit.test.supervision-check pid
             exit 1
         fi
         ;;
+    power-sources)
+        # The order the logstore mirror gives program lines is not theirs:
+        # each line is checked on its own, and the Desktop states by count.
+        # Identities: \_SB_.ADP1 and \_SB_.PCI0.LPCB.EC0_.BAT0 (the stand-in's).
+        required_markers="
+power-standin: registered (STAND-IN for acpi.svc's power sources)
+power: acpi.svc is not running yet: its power sources are watched when procmgr introduces it
+power: introduced to acpi.svc's observer endpoint
+power: acpi.svc does not take the power-source watch yet (UNAVAILABLE)
+power-standin: ready: the first publication (an adapter offline, a battery discharging)
+power: acpi.svc serves its power sources (watch generation
+power: sources generation 2: 2 sources, 1 batteries, DISCHARGING, runs on BATTERY, charge 730/1000, FRESH (watched,
+power: source ADP1 AC_ADAPTER OFFLINE FRESH
+power: source BAT0 INTERNAL_BATTERY DISCHARGING charge 730/1000 left TO_EMPTY 13140 s energy 36500 mWh of 50000 mWh rate 10000 mW low CLEAR FRESH
+power-standin: the adapter is plugged in (Notify ADP1 and BAT0, 16#80#)
+power: sources generation 3: 2 sources, 1 batteries, CHARGING, runs on MAINS, charge 740/1000, FRESH (watched,
+power: source BAT0 INTERNAL_BATTERY CHARGING charge 740/1000 left TO_FULL 3744 s energy 37000 mWh of 50000 mWh rate 12500 mW low CLEAR FRESH
+desktop: status battery shown: Battery 73%, discharging, 3 h 39 min left
+desktop: status battery shown: Battery 74%, charging, 1 h 2 min to full [bolt]
+power-standin: demand read 1: the battery sampled again (_BST), 37100 mWh
+power: source BAT0 INTERNAL_BATTERY CHARGING charge 742/1000 left TO_FULL 3715 s energy 37100 mWh of 50000 mWh rate 12500 mW low CLEAR FRESH
+ccl-console: REPL completed: List<Power_Source>: [(Power_Source \"ADP1\" Power_Kind.AC_Adapter Power_State.Online
+ccl-console: REPL completed: Power_Source: (Power_Source \"BAT0\" Power_Kind.Internal_Battery Power_State.Charging Power_Freshness.Fresh (Power_Quantity.Known 742) (Power_Runtime.To_Full 3715) (Power_Quantity.Known 37100) (Power_Quantity.Known 50000) (Power_Quantity.Known 57000) (Power_Quantity.Known 12500) (Power_Quantity.Known 12100) (Power_Conditions Power_Flag.Clear Power_Flag.Unknown
+"
+        # Shown before anything was read is fine (none yet); hidden after a
+        # battery was shown is not.
+        if ! awk '/desktop: status battery shown/ { shown = 1 }
+                  /desktop: status battery hidden/ && shown { bad = 1 }
+                  END { exit bad }' "$SERIAL_LOG"; then
+            echo "headless: power-sources: Desktop hid the Battery item while a battery existed" >&2
+            exit 1
+        fi
+        # No polling: no page was read between the first reading and the
+        # Notify, five seconds later (the stand-in measures it).
+        if ! grep -aoE "no page was read for [0-9]+ ms before it" "$SERIAL_LOG" |
+             awk '{ quiet = $6 } END { exit !(quiet >= 4000) }'; then
+            echo "headless: power-sources: pages were read before the Notify without a reason (polling?)" >&2
+            exit 1
+        fi
+        # The charging state reached Desktop before anything asked for a
+        # read: the injector types (power.sources) only after Desktop's
+        # charging line (POWER_READY), and nothing else asks.
+        ;;
     shutdown-desktop-cancel)
         required_markers="
 power: ready
@@ -7612,6 +7741,15 @@ desktop: shut down: cancelled; nothing sent
         bash "$ROOT_DIR/tests/headless/check-acpi-shutdown.sh" "$SERIAL_LOG" "$qemu_status" || exit 1
         if [ -n "${ACPI_SHUTDOWN_REFUSAL_TABLE:-}" ]; then
             python3 -I "$ROOT_DIR/tests/headless/check-acpi-consumer-refusal.py" "$SERIAL_LOG" || exit 1
+            # PWR-004: power.svc's watch is served by the actual acpi.svc and
+            # the fixture's adapter reaches it, named by its namespace path.
+            for marker in "power: acpi.svc serves its power sources (watch generation" \
+                          "power: source AC00 AC_ADAPTER ONLINE FRESH"; do
+                if ! grep -aqF "$marker" "$SERIAL_LOG"; then
+                    echo "headless: acpi-shutdown: power.svc did not get acpi.svc's power sources: $marker" >&2
+                    exit 1
+                fi
+            done
         fi
         # No driver forced, none slow, nothing after the drivers' report
         # before it; S5 may cut the console's tail (LOG-009).
@@ -8262,15 +8400,21 @@ cpu-times-check: write to the CPU times page armed
         # Events: q35 declares two general-purpose event methods, so the
         # event stage serves CONSUMERS; the EC scan must find no EC with no
         # node errors (image 27: unrelated _STA failures were fatal).
+        expected_acpi_tables=8
+        expected_acpi_modules=2
+        if [ -n "${ACPI_CMOS_REACH_TABLE:-}" ]; then
+            expected_acpi_tables=9
+            expected_acpi_modules=3
+        fi
         required_markers="
 acpi: stage service-start ok one-service
 acpi: stage hardware-config ok memory=
 pool=1 pci=1
-acpi: stage snapshot ok tables= 8 bytes=
+acpi: stage snapshot ok tables= $expected_acpi_tables bytes=
 acpi: stage aml-startup ok FINISHED
 acpi: stage hardware ok registers=
 acpi: stage memory-bridge ok pool=1 cache=1 pci=1
-completed= 2
+completed= $expected_acpi_modules charged=
 acpi: stage sleep-registers ok 
 acpi: stage finish-startup ok setup=CLOSED
 acpi: stage runtime ok LOCAL_IDLE
@@ -8280,6 +8424,7 @@ acpi: stage registration ok STARTING
 acpi: bring-up reached registration (4/4) hardware=LOCAL
 acpi-metrics-check: metrics reply well formed PASS
 acpi-metrics-check: phase complete PASS
+acpi-metrics-check: tables captured= $expected_acpi_tables installed= $expected_acpi_tables
 acpi-metrics-check: every expected table installed PASS
 acpi-metrics-check: revision stable across reads PASS
 TEST: PASS acpi-metrics

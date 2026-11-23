@@ -34,7 +34,7 @@ package Devmgr_Port_Claims with Pure, SPARK_Mode is
 
    Port_Space : constant := 65_536;
 
-   type Holder is (Kernel, Device_Manager, Driver, ACPI);
+   type Holder is (Kernel, Device_Manager, Driver, ACPI, Reserved);
 
    --  Whose driver claim it is: the driver's full process identity word
    --  (KERN-003); No_Owner for the kernel's, devmgr's and ACPI's claims.
@@ -75,13 +75,19 @@ package Devmgr_Port_Claims with Pure, SPARK_Mode is
      (Claims : in out Claim_Array; Count : in out Natural;
       First, Ports : Unsigned_64; By : Holder; Owner : Owner_Word;
       Result : out Take_Result)
-   with Pre  => By /= Kernel and then Claims'First = 1 and then Count <= Claims'Last
+   with Pre  => By not in Kernel | Reserved and then Claims'First = 1 and then Count <= Claims'Last
                 and then (Owner = No_Owner) = (By /= Driver),
         Post => Count <= Claims'Last
                 and then Count >= Count'Old
                 and then (for all K in 1 .. Count'Old => Claims (K) = Claims'Old (K))
                 and then (if Result /= Granted then Count = Count'Old)
                 and then (if Result = Needs_Room then Count'Old = Claims'Last)
+                and then
+                (if Result = Granted then
+                   Valid_Range (First, Ports) and then
+                   (for all K in 1 .. Count'Old =>
+                     (if Claims'Old (K).By = Reserved then
+                       not Overlaps (Claims'Old (K), Unsigned_32 (First), Unsigned_32 (First + Ports)))))
                 and then
                 --  An ACPI claim never overlaps another holder's range, and a
                 --  granted claim of another holder never overlaps an ACPI one.
@@ -95,6 +101,47 @@ package Devmgr_Port_Claims with Pure, SPARK_Mode is
                                Claims (K) = (First => Unsigned_32 (First),
                                              Ends  => Unsigned_32 (First + Ports),
                                              By    => By, Owner => Owner)));
+
+   type CMOS_Handover_Result is
+     (Transferred, Already_Held, Handover_Refused, Handover_Needs_Room);
+   -- Reserve70..73 always. A validated Intel alias profile additionally
+   -- reserves74..77. Only70/71 (or70..73 for an enabled extension) is
+   -- grantable; a Reserved claim is denied even to direct ACPI requests.
+   procedure Handover_CMOS
+     (Claims : in out Claim_Array; Count : in out Natural;
+      Extended, Intel_Aliases : Boolean; Result : out CMOS_Handover_Result)
+     with Pre => Claims'First = 1 and then Count <= Claims'Last,
+       Post => Count <= Claims'Last
+         and then (if Result in Handover_Refused | Handover_Needs_Room then
+           Count = Count'Old and then Claims = Claims'Old)
+         and then (if Result = Already_Held then
+           Count = Count'Old and then Claims = Claims'Old)
+         and then (if Result in Transferred | Already_Held then
+           (for some K in 1 .. Count =>
+             Claims (K) = (First => 16#70#, Ends => (if Extended then 16#74# else 16#72#),
+                            By => ACPI, Owner => No_Owner))
+           and then (if not Extended or else Intel_Aliases then
+             (for some K in 1 .. Count =>
+               Claims (K) = (First => (if Extended then 16#74# else 16#72#),
+                 Ends => (if Intel_Aliases then 16#78# else 16#74#),
+                 By => Reserved, Owner => No_Owner)))
+           and then (for all K in 1 .. Count =>
+             (if Overlaps (Claims (K), 16#70#, (if Intel_Aliases then 16#78# else 16#74#)) then
+                Claims (K).Owner = No_Owner
+                and then ((Claims (K).By = ACPI and then Claims (K).First = 16#70#
+                  and then Claims (K).Ends = (if Extended then 16#74# else 16#72#))
+                or else (Claims (K).By = Reserved
+                  and then Claims (K).First = (if Extended then 16#74# else 16#72#)
+                  and then Claims (K).Ends = (if Intel_Aliases then 16#78# else 16#74#))))))
+         and then (if Result = Transferred then
+           Count = Count'Old + (if not Extended or else Intel_Aliases then 1 else 0)
+           and then (for some K in 1 .. Count'Old =>
+             Claims'Old (K) = (First => 16#70#, Ends => 16#72#,
+                                By => Device_Manager, Owner => No_Owner)
+             and then Claims (K) = (First => 16#70#, Ends => (if Extended then 16#74# else 16#72#),
+                                     By => ACPI, Owner => No_Owner)
+             and then (for all J in 1 .. Count'Old =>
+               (if J /= K then Claims (J) = Claims'Old (J)))));
 
    --  The driver Owner exited: its claims are given back. Every other claim
    --  (the kernel's, devmgr's, every ACPI window, other drivers') stays.

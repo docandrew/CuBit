@@ -1,5 +1,8 @@
 with Endpoint_Test_Boundary;
 package body ACPI_Native_Power_Buttons is
+   procedure Configure_Control_Method(Available:Boolean) is begin Control_Configured:=Available;end;
+   procedure Control_Method_Press is begin Offered_Presses:=Offered_Presses+1;end;
+   procedure Withdraw_Control_Method is begin Control_Configured:=False;end;
    procedure Configure_Fixed (Available : Boolean) is
    begin Configured := Available; end Configure_Fixed;
    procedure Fixed_Press is

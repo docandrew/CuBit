@@ -27,6 +27,7 @@ with CuBit.Handles.Lines;
 with Interrupt_Line_ABI;
 with Launch_Configuration;
 with GPIO_Startup_Readiness;
+with GPIO_Pad_Diagnostics;
 procedure GPIO_Main_Entry is
    package M renames CuBit.Messages;
    package PID renames CuBit.Process_IDs;
@@ -107,6 +108,61 @@ procedure GPIO_Main_Entry is
    use type IRQ.Phase;
    Caps : constant Resources.Authorities :=
      [Startup.Community0, Startup.Community1, Startup.Community4, Startup.Community5];
+   package Pad_Diagnostics is new GPIO_Pad_Diagnostics (GPIO_Native_Communities.Read);
+   Diagnostic_Plan : G.Plan_Result;
+   Diagnostic_Armed, Diagnostic_Wait_Done : Boolean := False;
+   Diagnostic_Due, Diagnostic_Until : I.Tick := 0;
+   use type G.Outcome, G.Plan_Result, Driver.Controller.Pin_ID, Driver.Controller.Engine.Phase;
+   procedure Snapshot_Pad (Stage : String) is
+      C : constant Driver.Controller.Summary := Driver.Controller.Observe;
+      Values : Pad_Diagnostics.Snapshot;
+   begin
+      if Diagnostic_Plan.Status /= G.Ready or else C.Active /= Driver.Controller.No_Pin or else
+         C.Faulted or else Stop_Latched or else Hold_Resources then return; end if;
+      Pad_Diagnostics.Capture (Diagnostic_Plan, True, Values);
+      -- Copy all four reads before any logger IPC. These are observations,
+      -- never ownership/configuration acceptance and never W1C/enable writes.
+      Log.Pad_Detail ("pad-snapshot stage=" & Stage & " pad=" & Diagnostic_Plan.Selected.Pad'Image &
+         " pin=209 resource=" & Diagnostic_Plan.Selected.Resource'Image &
+         Log.Hex ("bit-mask",Interfaces.Unsigned_64 (Diagnostic_Plan.Selected.Interrupt_Mask)));
+      for K in Pad_Diagnostics.Register_Kind loop
+         Log.Pad_Detail ("pad-snapshot " & K'Image &
+            " attempted=" & Values (K).Attempted'Image & " status=" & Values (K).Status'Image &
+            Log.Hex ("raw", Interfaces.Unsigned_64 (Values (K).Value)));
+      end loop;
+   end Snapshot_Pad;
+   procedure Observe_Diagnostic_Arm is
+      C : constant Driver.Controller.Summary := Driver.Controller.Observe;
+      Sample : I.Tick;
+      Available : Boolean;
+   begin
+      if Diagnostic_Plan.Status /= G.Ready or else Diagnostic_Wait_Done or else
+         C.Faulted or else Stop_Latched or else Hold_Resources then return; end if;
+      if not Diagnostic_Armed and then C.Active=Driver.Controller.No_Pin then
+         for Pin in Driver.Controller.Pin_ID range 1 .. Driver.Controller.Pin_ID (C.Registered) loop
+            declare P : constant Driver.Controller.Pin_Observation := Driver.Controller.Observe_Pin (Pin); begin
+               if P.Present and then P.Plan=Diagnostic_Plan and then
+                  P.Report.At_Phase in Driver.Controller.Engine.Listening | Driver.Controller.Engine.Event_Ready then
+                  Diagnostic_Armed:=True;
+                  Snapshot_Pad ("first-arm");
+                  GPIO_Native_Clock.Read (Sample, Available);
+                  if Available and then Sample<Time.Finite_Time'Last then
+                     -- GPIO native ticks and ABI wait deadlines are milliseconds.
+                     Diagnostic_Due:=Time.After (Sample,250);
+                     Diagnostic_Until:=Time.After (Sample,1_000);
+                  else Diagnostic_Wait_Done:=True;end if;
+                  exit;
+               end if;
+            end;
+         end loop;
+      elsif Diagnostic_Armed then
+         GPIO_Native_Clock.Read (Sample, Available);
+         if not Available or else Sample>=Diagnostic_Until then Diagnostic_Wait_Done:=True;
+         elsif Sample>=Diagnostic_Due and then C.Active=Driver.Controller.No_Pin then
+            Diagnostic_Wait_Done:=True;Snapshot_Pad ("first-arm+250ms");
+         end if;
+      end if;
+   end Observe_Diagnostic_Arm;
    procedure Report_Runtime_Fault is
       -- Copy every observation before logging or stop handling. None of these
       -- accessors samples a clock, touches MMIO, retries an operation or drops
@@ -116,7 +172,6 @@ procedure GPIO_Main_Entry is
       A : constant Driver.Admin.Report := Driver.Admin.Observe (State);
       Q : constant IRQ.Report := IRQ.Observe (IRQ_State);
       Clock : constant GPIO_Native_Clock.Outcome := GPIO_Native_Clock.Last_Outcome;
-      use type Driver.Controller.Pin_ID;
       Pin : constant Driver.Controller.Pin_ID :=
         (if C.Last_Fault /= Driver.Controller.No_Pin then C.Last_Fault
          elsif A.Binding_ID /= Driver.Registry.No_Channel then Driver.Controller.Pin_ID (A.Binding_ID)
@@ -293,7 +348,15 @@ begin
    if not Accepted then Log.Stage (Log.Pin_Setup, False, "parking-not-started"); Decline (True);
    else
       loop
-         Startup_Queues;
+         if Startup_Parked then
+         declare Admission : GPIO_Native_Communities.T.Pin_Admission;begin
+            -- CuBit's ACPI GPIO pin209 maps to physical pad136 in this
+            -- supported controller profile; admission uses the frozen map.
+            GPIO_Native_Communities.Admit_Pin (209,Admission,Diagnostic_Plan);
+            Snapshot_Pad ("parked");
+         end;
+      end if;
+      Startup_Queues;
          for N in 1 .. Positive (Raw.work.steps) loop
             Parking.Step (Parking_State);
             exit when Parking.Observe (Parking_State).At_Phase in Parking.Ready | Parking.Failed | Parking.Cancelled;
@@ -312,6 +375,14 @@ begin
             Log.Hex ("firmware", Interfaces.Unsigned_64 (Result.Firmware_Owned)) &
             Log.Hex ("absent", Interfaces.Unsigned_64 (Result.Unmapped)) & " nomap-untouched=6");
       end;
+      if Startup_Parked then
+         declare Admission : GPIO_Native_Communities.T.Pin_Admission;begin
+            -- CuBit's ACPI GPIO pin209 maps to physical pad136 in this
+            -- supported controller profile; admission uses the frozen map.
+            GPIO_Native_Communities.Admit_Pin (209,Admission,Diagnostic_Plan);
+            Snapshot_Pad ("parked");
+         end;
+      end if;
       Startup_Queues;
       if not Startup_Parked or else Driver.Registry.Observe.Stopping or else
          Driver.Admin.Observe (State).At_Phase = Driver.Admin.Quarantined then Decline (True);
@@ -357,6 +428,7 @@ begin
          Hold_Resources := True; Request_Stop;
       end if;
       if Driver.Registry.Observe.Stopping then Request_Stop; end if;
+      Observe_Diagnostic_Arm;
       exit when Driver.Registry.Terminal and then Driver.Registry.Quiescent and then Driver.Admin.Quiescent (State)
          and then not IRQ.Observe (IRQ_State).Parent_Held and then not Native.Requests_Held and then not Hold_Resources;
       if Hold_Resources then Wait ((Time.Relative_Delay, Time.Duration (Raw.timing.progress)));
@@ -364,6 +436,9 @@ begin
          GPIO_Native_Clock.Read (Now, Clock_OK);
          if not Clock_OK or else Now >= Time.Finite_Time'Last then Hold_Resources := True; Request_Stop;
          else Wait ((Time.Until_Time, Time.After (Now, I.Tick (Raw.timing.progress)))); end if;
+      elsif Diagnostic_Armed and then not Diagnostic_Wait_Done then
+         -- One bounded diagnostic wake, not an interrupt/polling fallback.
+         Wait ((Time.Until_Time, Time.Finite_Time (Diagnostic_Due)));
       else Wait ((Kind => Time.Activity)); end if;
    end loop;
 end GPIO_Main_Entry;

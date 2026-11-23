@@ -11,5 +11,6 @@
   (start "shutdown-stubborn.app" (priority 3) (stop-grace-ms 500))
   (start "power.svc" (priority 5)
     (arguments (Power_Parameters undeclared_grace_ms => 300 storage_deadline_ms => 10000
-      driver_grace_ms => 1000 button => Button_Policy.Power_Off)))
+      driver_grace_ms => 1000 button => Button_Policy.Power_Off
+      reading_age_ms => 60000)))
 )

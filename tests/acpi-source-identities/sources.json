@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "userspace/services/acpi/power/acpi_source_paths.ads",
+      "sha256": "a1ffdb54e740be3a1a53db6da106cb4280ae469394d6b714e1402a7d6b5f0243"
+    },
+    {
+      "path": "userspace/services/acpi/power/acpi_source_paths.adb",
+      "sha256": "eab47c1c835acf65966f84ef1dbcd109eaf71610d82419d25849de09268d8605"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_power_identities.ads",
+      "sha256": "9ad1c038935c8b229f6fbc532eba1b357c696d6914b388050500f5c5c5fdaa2a"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_power_identities.adb",
+      "sha256": "b90136b27f8b890a6987149e23f85764cbf2b342a74fa991c9023770ffe57eb7"
+    },
+    {
+      "path": "userspace/services/acpi/power/acpi_cached_power_values.ads",
+      "sha256": "c2f134099b6524a3427aafaa0e2cf313adceec6074d01ca0ec51ae196fa75cd2"
+    },
+    {
+      "path": "userspace/services/acpi/power/acpi_observation_values.ads",
+      "sha256": "7760f50ff72db3a27bbf69a49384af677e83f67a025d45d79be52c3c452725b1"
+    },
+    {
+      "path": "shared/acpi/acpi_protocol.ads",
+      "sha256": "ce40736ea2bb6a09747b1e52ff0063d4f1e321cc6bd67b90ac67a4fa0e1e2d6c"
+    },
+    {
+      "path": "shared/acpi/acpi_power_identity_protocol.ads",
+      "sha256": "cc0c590ccd102f55489d335ab7eb7e88f7e5dd75dec2970ec454b0e552c04d38"
+    },
+    {
+      "path": "tests/acpi-source-identities/models/cubit.ads",
+      "sha256": "6a3f0b27b91935d939c20d290422ebfb6e2e7447d6f9f04f7373ad5cb9c728f2"
+    },
+    {
+      "path": "tests/acpi-source-identities/models/acpi_native_event_domain.adb",
+      "sha256": "2d5f791b3d85c1969b9b91f0ead47020cb5d6ea6d16f951f083218004caf0968"
+    },
+    {
+      "path": "tests/acpi-source-identities/models/acpi_endpoint.ads",
+      "sha256": "88afd8fd2377a372cb5083b2a9462e4257334b613441f68a95d069e08dab80a3"
+    },
+    {
+      "path": "tests/acpi-source-identities/models/cubit-messages.adb",
+      "sha256": "3896e5141945341dd2d7f7f09c0b443569a660fe2be9a5d18ee792637f644a82"
+    },
+    {
+      "path": "tests/acpi-source-identities/models/acpi_endpoint.adb",
+      "sha256": "34ccc53cdd95ff5a06159bfb2a851371b74ae6e9ee6849afbf1e3ad5ee160163"
+    },
+    {
+      "path": "tests/acpi-source-identities/models/acpi_requests.ads",
+      "sha256": "cbd3c6b25634084c8977a73166276a57cdca15d61429ef0c9e1cffaaa61be621"
+    },
+    {
+      "path": "tests/acpi-source-identities/models/cubit-messages.ads",
+      "sha256": "8d23058349b7cee0b43d238e4c42dd96a84224f394d6b0703c2ede4b1c7107ec"
+    },
+    {
+      "path": "tests/acpi-source-identities/models/acpi_native_event_domain.ads",
+      "sha256": "35b9cc536691935c4fb7d422029e07ef87f2121d382dc3995a4fd2c8999ce098"
+    },
+    {
+      "path": "tests/acpi-source-identities/models/identity_test_control.ads",
+      "sha256": "1df81de758b548d3840724463312b293fcf69bffcb4b36afc3065e0826630a06"
+    },
+    {
+      "path": "tests/acpi-source-identities/identity_tests.adb",
+      "sha256": "80dd28cd25492b0a7b8bdb335045c3115fce2a30fc5d492b6c84d62769862b43"
+    }
+  ],
+  "tools": {
+    "gprbuild": {
+      "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+      "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+    }
+  },
+  "scope": "Actual full-width path packing and native identity endpoint; owner metadata/request/endpoint encoding are explicit models; actual namespace reader covered in joined Core separately.",
+  "supplementary_inputs": [
+    {
+      "path": "tests/acpi-source-identities/identities.asl",
+      "sha256": "a523131ecf5a5f20ecf3414d0f3a7b58e08ce6ac1df0d4c5d6a318d1cf27161d"
+    },
+    {
+      "path": "tests/acpi-source-identities/joined/identity_events.adb",
+      "sha256": "d116843ad35475f6d5882e793250a9976eb34c4435a539da083fad3a0f3de5e6"
+    },
+    {
+      "path": "tests/acpi-source-identities/joined/identity_events.ads",
+      "sha256": "588702f5fa5a8cb5386439041d1c5d3e4564a3c9bc614738d041bb232517ad24"
+    },
+    {
+      "path": "tests/acpi-source-identities/README.md",
+      "sha256": "aedebab6b73d17d2c5eb0fea2941bc87951c2c06ebdf307fce7fbca62d567f2d"
+    }
+  ]
+}
