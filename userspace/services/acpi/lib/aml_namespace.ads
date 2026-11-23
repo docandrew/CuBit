@@ -1055,8 +1055,7 @@ package Owned with SPARK_Mode is
      with Pre => Valid (A),
      Post => Valid (A) and then Generation (A) = Generation (A)'Old
        and then Node_Count (A) = Node_Count (A)'Old
-       and then Methods_Used (A) = Methods_Used (A)'Old
-       and then (if Status /= AML_Execute.Returned then Snapshot (A) = Snapshot (A)'Old);
+       and then Methods_Used (A) = Methods_Used (A)'Old;
    -- Leaf field APIs: authenticated backing retained by namespace edge.
    -- No GC or AML callbacks occur here. Generic CreateField always reads Buffer.
    function Buffer_Field_Defined (Tree, Prior : State; Node : Node_ID;
@@ -1232,7 +1231,8 @@ package Owned with SPARK_Mode is
            Snapshot (A) = Snapshot (A)'Old and then Copy.Value_Kind = AML_Execute.Integer_Datum
            and then Copy.Number = 0);
    -- Copy only an object owned by this arena incarnation. Numeric IDs from
-   -- snapshots do not authorize a copy. Allocation failure publishes nothing.
+   -- snapshots do not authorize a copy. Failure publishes no result; fresh
+   -- temporary objects remain valid until their owning roots are released.
    procedure Clone_Source
      (A : in out Arena; Source : AML_References.Object_Handle;
       Copy : out AML_References.Object_Handle;
@@ -1241,13 +1241,13 @@ package Owned with SPARK_Mode is
      Post => Valid (A) and then Generation (A) = Generation (A)'Old
        and then Status in AML_Execute.Returned | AML_Execute.Unsupported_Value
          | AML_Execute.Value_Limit
+       and then AML_Objects.Extends (Model (A), Model (A)'Old)
+       and then Node_Count (A) = Node_Count (A)'Old
+       and then Methods_Used (A) = Methods_Used (A)'Old
        and then (if Status = AML_Execute.Returned then
          Has_Source (A, Copy) and then Has_Source (A, Source)
          and then not AML_Objects.Is_Live (Model (A)'Old, AML_References.Source (Copy))
-         and then AML_Objects.Extends (Model (A), Model (A)'Old)
-         and then Node_Count (A) = Node_Count (A)'Old
-         and then Methods_Used (A) = Methods_Used (A)'Old
-       else Snapshot (A) = Snapshot (A)'Old and then not Has_Source (A, Copy));
+       else not Has_Source (A, Copy));
    -- NAME package leaves are read-only value bindings, never Store authority.
    function Name_Member_Matches (A : Arena; R : Reference) return Boolean with Pre => Valid (A);
    procedure Resolve_Name_Member (A : Arena; R : Reference; Value : out AML_Execute.Datum;

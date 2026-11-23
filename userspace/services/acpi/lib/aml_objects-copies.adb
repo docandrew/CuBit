@@ -173,168 +173,228 @@ package body AML_Objects.Copies with SPARK_Mode is
      (Store : in out State; Source : Object_ID;
       Target : out Object_ID; Status : out Allocation_Status; Witness : out Copy_Witness)
    is
-      -- Independent value scratch, initialized through an unconstrained
-      -- constructor so code generation can use the growable secondary stack.
-      -- No backing pointer is hidden in State; scope retirement stays automatic.
-      Candidate : State := Empty_Like (Store);
-      Snapshot_Status : AML_Objects.Clone_Status;
+      Prior : constant State := Store with Ghost;
       subtype Work_Item is Copy_Link;
       Work : Link_Array renames Witness.Links;
       Used : Object_ID renames Witness.Used;
-      Next : Positive := 1;
       Root, Child : Object_ID;
-      Current : Work_Item;
-      Original_Child : Object_ID;
       function Matching (Original, Copy : Object_ID) return Boolean is
-        (Is_Live (Store, Original)
-         and then not Is_Live (Store, Copy) and then Is_Live (Candidate, Copy)
-         and then Kind (Candidate, Copy) = Kind (Store, Original)
-         and then Length (Candidate, Copy) = Length (Store, Original)
-         and then (if Kind (Store, Original) = Package_Object then
-           Candidate.Objects (Copy).First >= Store.Elements_Used)
-         and then (if Kind (Store, Original) in Byte_Kind then
-           Candidate.Objects (Copy).First >= Store.Bytes_Used)
-         and then (if Kind (Store, Original) = Event_Object then Event_Units (Candidate, Copy) = 0)
-         and then (if Kind (Store, Original) = Integer_Object then
-           Integer_Data (Candidate, Copy) = Integer_Data (Store, Original)
-           and then Origin_Of (Candidate, Copy) = Origin_Of (Store, Original))
-         and then (if Kind (Store, Original) = Reference_Object then
-           Reference_Data (Candidate, Copy) = Reference_Data (Store, Original))
-         and then (if Kind (Store, Original) = Metadata_Object then
-           Metadata_Data (Candidate, Copy) = Metadata_Data (Store, Original))
-         and then (if Kind (Store, Original) = Metadata_Snapshot_Object then
-           Metadata_Snapshot_Data (Candidate, Copy) = Metadata_Snapshot_Data (Store, Original))
-         and then (if Kind (Store, Original) in Byte_Kind then
-           Byte_Data (Candidate, Copy) = Byte_Data (Store, Original)))
-        with Ghost, Pre => Valid (Store) and then Valid (Candidate);
-      procedure Allocate (Original : Object_ID; Copy : out Object_ID)
-      with Pre => Valid (Store) and then Valid (Candidate)
-          and then Is_Live (Store, Original)
-          and then Extends (Candidate, Store)
-          and then (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy)),
-        Post => Valid (Candidate) and then Extends (Candidate, Candidate'Old)
-          and then Extends (Candidate, Store)
-          and then (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy))
-          and then (for all J in 1 .. Slot_Bound (Candidate'Old) => (if Is_Live (Candidate'Old, J) then
-            Candidate.Objects (J) = Candidate'Old.Objects (J)
-            and then (if Kind (Candidate'Old, J) in Byte_Kind then
-              Byte_Data (Candidate, J) = Byte_Data (Candidate'Old, J))))
-          and then (if Status = Allocated then
-            Fresh_Allocation (Candidate, Candidate'Old, Copy)
-            and then Live_Count (Candidate) = Live_Count (Candidate'Old) + 1
-            and then Is_Live (Candidate, Copy) and then Matching (Original, Copy)
-           else Copy = 0 and then Candidate = Candidate'Old)
-      is
+        (Header_Matches (Store, Prior, Original, Copy)
+         and then (if Kind (Prior, Original) = Package_Object then
+           Store.Objects (Copy).First >= Prior.Elements_Used)
+         and then (if Kind (Prior, Original) in Byte_Kind then
+           Store.Objects (Copy).First >= Prior.Bytes_Used))
+        with Ghost, Pre => Valid (Store) and then Valid (Prior);
+      -- Establish the few per-kind shape facts before hiding the unchanged
+      -- global validity definition from the mutator proof contexts.
+      procedure Source_Shape (Original : Object_ID)
+        with Ghost, Pre => Valid (Store) and then Is_Live (Store, Original),
+          Post => (case Kind (Store, Original) is
+            when Package_Object => Length (Store, Original) <= Store.Element_Capacity,
+            when String_Object | Buffer_Object => Length (Store, Original) <= Store.Byte_Capacity,
+            when others => Length (Store, Original) = 0);
+      procedure Source_Shape (Original : Object_ID) is
+      begin
+         Observe_Valid_Object_Layout (Store, Original);
+      end Source_Shape;
+
+      procedure Copy_Integer_Object (Original : Object_ID; Copy : out Object_ID)
+        with Pre => Valid (Store) and then Is_Live (Store, Original)
+            and then Kind (Store, Original) = Integer_Object,
+          Post => Valid (Store) and then Extends (Store, Store'Old)
+            and then (if Status = Allocated then
+              Fresh_Allocation (Store, Store'Old, Copy)
+              and then Kind (Store, Copy) = Integer_Object
+              and then Length (Store, Copy) = 0
+              and then Integer_Data (Store, Copy) = Integer_Data (Store'Old, Original)
+              and then Origin_Of (Store, Copy) = Origin_Of (Store'Old, Original)
+             else Copy = No_Object and then Store = Store'Old);
+      procedure Copy_Integer_Object (Original : Object_ID; Copy : out Object_ID) is
+      begin
+         New_Integer (Store, Integer_Data (Store, Original), Copy, Status,
+           Origin_Of (Store, Original));
+      end Copy_Integer_Object;
+
+      procedure Copy_Byte_Object (Original : Object_ID; Copy : out Object_ID)
+        with Pre => Valid (Store) and then Is_Live (Store, Original)
+            and then Kind (Store, Original) in Byte_Kind,
+          Post => Valid (Store) and then Extends (Store, Store'Old)
+            and then (if Status = Allocated then
+              Fresh_Allocation (Store, Store'Old, Copy)
+              and then Kind (Store, Copy) = Kind (Store'Old, Original)
+              and then Byte_Data (Store, Copy) = Byte_Data (Store'Old, Original)
+              and then Length (Store, Copy) = Length (Store'Old, Original)
+             else Copy = No_Object and then Store = Store'Old);
+      procedure Copy_Byte_Object (Original : Object_ID; Copy : out Object_ID) is
+      begin
+         New_Bytes (Store, Kind (Store, Original), Byte_Data (Store, Original), Copy, Status);
+      end Copy_Byte_Object;
+
+      procedure Copy_Package_Header (Original : Object_ID; Copy : out Object_ID)
+        with Pre => Valid (Store) and then Is_Live (Store, Original)
+            and then Kind (Store, Original) = Package_Object,
+          Post => Valid (Store) and then Extends (Store, Store'Old)
+            and then (if Status = Allocated then
+              Fresh_Allocation (Store, Store'Old, Copy)
+              and then Kind (Store, Copy) = Package_Object
+              and then Length (Store, Copy) = Length (Store'Old, Original)
+              and then (for all I in 1 .. Length (Store, Copy) =>
+                Element (Store, Copy, I - 1) = No_Object)
+             else Copy = No_Object and then Store = Store'Old);
+      procedure Copy_Package_Header (Original : Object_ID; Copy : out Object_ID) is
+      begin
+         New_Package (Store, Length (Store, Original), Copy, Status);
+      end Copy_Package_Header;
+
+      procedure Copy_Typed_Leaf (Original : Object_ID; Copy : out Object_ID)
+        with Pre => Valid (Store) and then Is_Live (Store, Original)
+            and then Kind (Store, Original) not in Integer_Object | Byte_Kind | Package_Object
+            and then Length (Store, Original) = 0,
+          Post => Valid (Store) and then Extends (Store, Store'Old)
+            and then (if Status = Allocated then
+              Fresh_Allocation (Store, Store'Old, Copy)
+              and then Header_Matches (Store, Store'Old, Original, Copy)
+             else Copy = No_Object and then Store = Store'Old);
+      procedure Copy_Typed_Leaf (Original : Object_ID; Copy : out Object_ID) is
       begin
          case Kind (Store, Original) is
-            when Mutex_Object =>
-               Copy := No_Object; Status := Unsupported_Copy;
-            when Event_Object =>
-               New_Event (Candidate, Copy, Status);
-            when Integer_Object =>
-               New_Integer (Candidate, Integer_Data (Store, Original), Copy, Status, Origin_Of (Store, Original));
-            when Reference_Object =>
-               New_Reference (Candidate, Reference_Data (Store, Original), Copy, Status);
-            when Metadata_Object =>
-               New_Metadata (Candidate, Metadata_Data (Store, Original), Copy, Status);
+            when Mutex_Object => Copy := No_Object; Status := Unsupported_Copy;
+            when Event_Object => New_Event (Store, Copy, Status);
+            when Reference_Object => New_Reference (Store, Reference_Data (Store, Original), Copy, Status);
+            when Metadata_Object => New_Metadata (Store, Metadata_Data (Store, Original), Copy, Status);
             when Metadata_Snapshot_Object =>
-               New_Metadata_Snapshot (Candidate, Metadata_Snapshot_Data (Store, Original), Copy, Status);
-            when String_Object | Buffer_Object =>
-               New_Bytes (Candidate, Kind (Store, Original), Byte_Data (Store, Original), Copy, Status);
-            when Package_Object =>
-               New_Package (Candidate, Length (Store, Original), Copy, Status);
+               New_Metadata_Snapshot (Store, Metadata_Snapshot_Data (Store, Original), Copy, Status);
+            when Integer_Object | String_Object | Buffer_Object | Package_Object =>
+               Copy := No_Object; Status := Unsupported_Copy;
+         end case;
+      end Copy_Typed_Leaf;
+
+      procedure Allocate (Original : Object_ID; Copy : out Object_ID)
+      with Pre => Valid (Store) and then Is_Live (Prior, Original)
+          and then Extends (Store, Prior)
+          and then (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy)),
+        Post => Valid (Store) and then Extends (Store, Store'Old)
+          and then Extends (Store, Prior)
+          and then (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy))
+          and then (if Status = Allocated then
+            Fresh_Allocation (Store, Store'Old, Copy)
+            and then Live_Count (Store) = Live_Count (Store'Old) + 1
+            and then Is_Live (Store, Copy) and then Matching (Original, Copy)
+           else Copy = No_Object and then Store = Store'Old)
+      is
+      begin
+         Source_Shape (Original);
+         case Kind (Store, Original) is
+            when Integer_Object => Copy_Integer_Object (Original, Copy);
+            when String_Object | Buffer_Object => Copy_Byte_Object (Original, Copy);
+            when Package_Object => Copy_Package_Header (Original, Copy);
+            when others => Copy_Typed_Leaf (Original, Copy);
          end case;
       end Allocate;
       procedure Link_Child (Parent : Object_ID; Index : Natural; Value : Object_ID)
-      with Pre => Valid (Store) and then Valid (Candidate)
-          and then Extends (Candidate, Store)
-          and then not Is_Live (Store, Parent) and then Is_Live (Candidate, Parent)
-          and then Kind (Candidate, Parent) = Package_Object
-          and then Index < Length (Candidate, Parent)
-          and then (Value = No_Object or else Is_Live (Candidate, Value))
-          and then Candidate.Objects (Parent).First >= Store.Elements_Used
+      with Pre => Valid (Store) and then Extends (Store, Prior)
+          and then not Is_Live (Prior, Parent) and then Is_Live (Store, Parent)
+          and then Kind (Store, Parent) = Package_Object
+          and then Index < Length (Store, Parent)
+          and then (Value = No_Object or else Is_Live (Store, Value))
+          and then Store.Objects (Parent).First >= Prior.Elements_Used
           and then (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy)),
-        Post => Valid (Candidate) and then Extends (Candidate, Store)
-          and then Live_Count (Candidate) = Live_Count (Candidate'Old)
+        Post => Valid (Store) and then Extends (Store, Prior)
+          and then Live_Count (Store) = Live_Count (Store'Old)
           and then (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy))
       is
       begin
-         Set_Element (Candidate, Parent, Index, Value);
+         Set_Element (Store, Parent, Index, Value);
       end Link_Child;
       procedure Enqueue (Original, Copy, Parent : Object_ID; Slot : Natural)
-      with Pre => Valid (Store) and then Valid (Candidate)
+      with Pre => Valid (Store)
           and then Used >= 1 and then Used < Store.Object_Capacity
           and then Parent in 1 .. Used and then Slot < Store.Element_Capacity
           and then Matching (Original, Copy)
           and then (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy)),
         Post => Used = Used'Old + 1
-          and then Work (Used) = Copy_Link'(Original => Original, Copy => Copy, Parent => Parent, Slot => Slot, Bytes_After => Candidate.Bytes_Used, Elements_After => Candidate.Elements_Used)
+          and then Work (Used) = Copy_Link'(Original => Original, Copy => Copy, Parent => Parent, Slot => Slot, Bytes_After => Store.Bytes_Used, Elements_After => Store.Elements_Used)
           and then (for all J in 1 .. Used'Old => Work (J) = Work'Old (J))
           and then (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy))
       is
       begin
          Used := Used + 1;
-         Work (Used) := Copy_Link'(Original => Original, Copy => Copy, Parent => Parent, Slot => Slot, Bytes_After => Candidate.Bytes_Used, Elements_After => Candidate.Elements_Used);
+         Work (Used) := Copy_Link'(Original => Original, Copy => Copy, Parent => Parent, Slot => Slot, Bytes_After => Store.Bytes_Used, Elements_After => Store.Elements_Used);
       end Enqueue;
+      procedure Traverse_Copy
+        with Pre => Valid (Store) and then Extends (Store, Prior)
+            and then Status = Allocated and then Used >= 1
+            and then Witness.Object_Capacity = Store.Object_Capacity
+            and then Live_Count (Store) >= Live_Count (Prior)
+            and then Used = Live_Count (Store) - Live_Count (Prior)
+            and then Work (1).Original = Source and then Work (1).Copy = Root
+            and then Is_Live (Store, Root) and then not Is_Live (Prior, Root)
+            and then (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy)),
+          Post => Valid (Store) and then Extends (Store, Prior)
+            and then (if Status = Allocated then
+              Valid_Witness (Store, Prior, Source, Root, Witness));
+      procedure Traverse_Copy is
+         Next : Positive := 1;
+         Current : Work_Item;
+         Original_Child : Object_ID;
+      begin
+         while Next <= Used loop
+            pragma Loop_Variant (Decreases => Store.Object_Capacity + 1 - Next);
+            pragma Loop_Invariant (Valid (Store));
+            pragma Loop_Invariant (Extends (Store, Prior));
+            pragma Loop_Invariant (Used >= 1 and then Live_Count (Store) >= Live_Count (Prior) and then Used = Live_Count (Store) - Live_Count (Prior));
+            pragma Loop_Invariant (Next <= Used + 1);
+            pragma Loop_Invariant (Is_Live (Store, Root) and then not Is_Live (Prior, Root));
+            pragma Loop_Invariant (Work (1).Original = Source and then Work (1).Copy = Root);
+            pragma Loop_Invariant
+              (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy));
+            Current := Work (Next);
+            if Kind (Store, Current.Original) = Package_Object then
+               for I in 1 .. Length (Store, Current.Original) loop
+                  pragma Loop_Invariant (Valid (Store));
+                  pragma Loop_Invariant (Extends (Store, Prior));
+                  pragma Loop_Invariant (Used >= 1 and then Live_Count (Store) >= Live_Count (Prior) and then Used = Live_Count (Store) - Live_Count (Prior));
+                  pragma Loop_Invariant (Next <= Used);
+                  pragma Loop_Invariant (Current = Work (Next));
+                  pragma Loop_Invariant (Is_Live (Store, Root) and then not Is_Live (Prior, Root));
+                  pragma Loop_Invariant (Work (1).Original = Source and then Work (1).Copy = Root);
+                  pragma Loop_Invariant (Matching (Current.Original, Current.Copy));
+                  pragma Loop_Invariant
+                    (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy));
+                  Original_Child := Element (Store, Current.Original, I - 1);
+                  if Original_Child /= No_Object then
+                     if Used = Store.Object_Capacity then
+                        Status := Object_Limit; return;
+                     end if;
+                     Allocate (Original_Child, Child);
+                     if Status /= Allocated then return; end if;
+                     Enqueue (Original_Child, Child, Next, I - 1);
+                     Link_Child (Current.Copy, I - 1, Child);
+                  end if;
+                  pragma Assert
+                    (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy));
+               end loop;
+            end if;
+            pragma Assert
+              (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy));
+            Next := Next + 1;
+         end loop;
+      end Traverse_Copy;
    begin
       Witness := Empty_Witness (Witness.Object_Capacity);
       Target := No_Object;
       if Witness.Object_Capacity /= Store.Object_Capacity then
          Status := Invalid_Copy_Workspace; return;
       end if;
-      AML_Objects.Clone (Store, Candidate, Snapshot_Status);
-      if Snapshot_Status /= AML_Objects.Cloned then Status := Storage_Unavailable; return; end if;
       Allocate (Source, Root);
       if Status /= Allocated then return; end if;
       Used := 1;
       Work (1) := (Original => Source, Copy => Root, Parent => 0, Slot => 0,
-                   Bytes_After => Candidate.Bytes_Used, Elements_After => Candidate.Elements_Used);
-      while Next <= Used loop
-         pragma Loop_Variant (Decreases => Store.Object_Capacity + 1 - Next);
-         pragma Loop_Invariant (Valid (Candidate));
-         pragma Loop_Invariant (Extends (Candidate, Store));
-         pragma Loop_Invariant (Used >= 1 and then Live_Count (Candidate) = Live_Count (Store) + Used);
-         pragma Loop_Invariant (Next <= Used + 1);
-         pragma Loop_Invariant (Is_Live (Candidate, Root) and then not Is_Live (Store, Root));
-         pragma Loop_Invariant (Work (1).Original = Source and then Work (1).Copy = Root);
-         pragma Loop_Invariant
-           (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy));
-         Current := Work (Next);
-         if Kind (Store, Current.Original) = Package_Object then
-            for I in 1 .. Length (Store, Current.Original) loop
-               pragma Loop_Invariant (Valid (Candidate));
-               pragma Loop_Invariant (Extends (Candidate, Store));
-               pragma Loop_Invariant (Used >= 1 and then Live_Count (Candidate) = Live_Count (Store) + Used);
-               pragma Loop_Invariant (Next <= Used);
-               pragma Loop_Invariant (Current = Work (Next));
-               pragma Loop_Invariant (Is_Live (Candidate, Root) and then not Is_Live (Store, Root));
-               pragma Loop_Invariant (Work (1).Original = Source and then Work (1).Copy = Root);
-               pragma Loop_Invariant (Matching (Current.Original, Current.Copy));
-               pragma Loop_Invariant
-                 (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy));
-               Original_Child := Element (Store, Current.Original, I - 1);
-               if Original_Child /= No_Object then
-                  Allocate (Original_Child, Child);
-                  if Status /= Allocated then return; end if;
-                  if Used = Store.Object_Capacity then
-                     Status := Object_Limit;
-                     return;
-                  end if;
-                  Enqueue (Original_Child, Child, Next, I - 1);
-                  Link_Child (Current.Copy, I - 1, Child);
-               end if;
-               pragma Assert
-                 (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy));
-            end loop;
-         end if;
-         pragma Assert
-           (for all J in 1 .. Used => Matching (Work (J).Original, Work (J).Copy));
-         Next := Next + 1;
-      end loop;
-      -- State owns inline value arrays, so this publication is an independent
-      -- value copy. Candidate then leaves scope; clearing it would add a dead
-      -- write rather than release a separately allocated backing owner.
-      Store := Candidate;
+                   Bytes_After => Store.Bytes_Used, Elements_After => Store.Elements_Used);
+      Traverse_Copy;
+      if Status /= Allocated then return; end if;
+      -- Publish only the completed value tree. Earlier allocations stay valid
+      -- on refusal; their reclamation belongs to the owning caller, not rollback.
       Target := Root;
       Status := Allocated;
    end Clone;

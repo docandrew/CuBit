@@ -5631,53 +5631,46 @@ package body Owned with SPARK_Mode is
             end;
          end if;
       elsif AML_References.Kind (R) = AML_References.Package_Slot then
-         -- Step two retires this legacy compound-only machinery. Primitive
-         -- stores never construct a candidate arena or copy witness.
+         -- Copy the new compound value before replacing the authenticated
+         -- package edge. No full-arena snapshot or copyback is involved.
          declare
-            Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
-            Store_Copy : AML_Objects.Clone_Status;
             ID : AML_Objects.Object_ID;
             Allocated : AML_Objects.Allocation_Status;
             Stored : AML_Objects.Package_References.Result_Status;
             Witness : AML_Objects.Copies.Copy_Witness := AML_Objects.Copies.Empty_Witness (A.Object_Capacity);
             procedure Apply_Compound_Store is
             begin
-               AML_Objects.Clone (A.Tree.Values, Candidate, Store_Copy);
-               if Store_Copy /= AML_Objects.Cloned then
-                  Status := AML_Execute.Value_Limit; return;
-               end if;
                case Item.Value_Kind is
                   when AML_Execute.Integer_Datum =>
-                     AML_Objects.New_Integer (Candidate, Item.Number, ID, Allocated, Item.Origin);
+                     AML_Objects.New_Integer (A.Tree.Values, Item.Number, ID, Allocated, Item.Origin);
                   when AML_Execute.Metadata_Datum =>
                      if not Metadata_Matches (A, Item.Metadata) then return; end if;
                      case Item.Metadata.Mode is
                         when AML_Execute.Live_Namespace =>
-                           AML_Objects.New_Metadata (Candidate, Item.Metadata.Namespace_Identity, ID, Allocated);
+                           AML_Objects.New_Metadata (A.Tree.Values, Item.Metadata.Namespace_Identity, ID, Allocated);
                         when AML_Execute.Captured_Namespace =>
-                           AML_Objects.New_Metadata_Snapshot (Candidate,
+                           AML_Objects.New_Metadata_Snapshot (A.Tree.Values,
                              AML_Objects.Metadata_Snapshot_Data (A.Tree.Values,
                                AML_References.Source (Item.Metadata.Snapshot_Source)), ID, Allocated);
                      end case;
                   when AML_Execute.Reference_Datum =>
                      if not AML_References.Well_Formed (Item.Ref) then return; end if;
-                     AML_Objects.New_Reference (Candidate, Item.Ref, ID, Allocated);
+                     AML_Objects.New_Reference (A.Tree.Values, Item.Ref, ID, Allocated);
                   when AML_Execute.Object_Datum =>
                      if not Has_Source (A, Item.Object.Source)
                        or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
                      then return; end if;
                      AML_Objects.Copies.Clone
-                       (Candidate, AML_References.Source (Item.Object.Source), ID, Allocated, Witness);
+                       (A.Tree.Values, AML_References.Source (Item.Object.Source), ID, Allocated, Witness);
                end case;
                if Allocated = AML_Objects.Unsupported_Copy then return; end if;
                if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
-               AML_Objects.Package_References.Write (Candidate, AML_References.Package_Item (R), ID, Stored);
+               AML_Objects.Package_References.Write (A.Tree.Values, AML_References.Package_Item (R), ID, Stored);
                if Stored /= AML_Objects.Package_References.Ready then return; end if;
-               AML_Objects.Transfer (Candidate, A.Tree.Values); Status := AML_Execute.Returned;
+               Status := AML_Execute.Returned;
             end Apply_Compound_Store;
          begin
             Apply_Compound_Store;
-            AML_Objects.Discard (Candidate);
          end;
       end if;
    end Store_Reference_Value;

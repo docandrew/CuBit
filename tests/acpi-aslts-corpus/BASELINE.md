@@ -91,3 +91,39 @@ profile puts memmove at26.02%self versus62.99%previously; it identifies remainin
 copy and root-publication costs, not a performance-parity result. Existing
 unchanged helper proofs are reused. The namespace Global frontend compiler
 blocker remains tracked; no new namespace/whole-service AoRTE proof is claimed.
+
+The next bounded step retires full-arena snapshots from independent value
+copying and compound package-slot replacement. Each copied occurrence is
+allocated directly into the current arena; only a completed tree is published.
+A typed refusal can retain valid unpublished allocations and earlier namespace
+effects. Prompt disposal of those temporaries is deferred to reference-count
+integration, not implemented by this packet.
+
+The integer validity predicate now requires zero backing offset and size,
+matching the constructors and other kinds without backing storage. A private
+negative test injects size 1 and checks rejection. Some unchanged expression
+completions move to the parent's private specification for proof visibility;
+copying is split into small helpers without changing its operational algorithm.
+
+Current final guarded tests: 676/676 checks (100%) in checked and optimized
+profiles, both with runtime checks enabled. The combined namespace checked
+regressions pass 2/2 mains, 32,960 checks (100%). SDK semantic checks of the
+combined parent, copier and namespace pass 12/12 plus component/manifest 2/2,
+producing zero native objects; neither profile uses -gnatp. The production ACPI
+component explicitly sets Checks.Enabled. The exact per-subprogram proof
+closure and open safety/flow/functional obligations are recorded in
+../acpi-package-copies/PROOF_STATUS.md. No full copier, namespace or service
+AoRTE closure is claimed. Previously closed evidence is retained until a
+relevant source or dependency edit.
+
+The last complete operational copier-prototype census freshly executed all
+1,172 unique runnable configurations; every one of the 2,736 lane statuses
+matched its predecessor: strict 408/1,368 (29.825%), compatibility 536/1,368
+(39.181%). That frozen operational binary precedes the proof-visibility/helper
+refactor and strengthened invariant in this packet; it is not described as a
+fresh complete census of the final exact sources. Original compiler admissions,
+assertions, timeouts, unsupported cases, skipped records and denominators remain
+unchanged. The separate SSDT adapter prototype is not part of this packet.
+No native or laptop validation of this copier packet or performance parity is
+claimed. Zero-count deletion, bounded destruction, free-range reuse and the
+post-top-level live-count metric remain upcoming reference-count work.

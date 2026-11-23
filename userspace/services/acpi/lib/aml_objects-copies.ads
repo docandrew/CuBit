@@ -22,7 +22,8 @@ package AML_Objects.Copies with SPARK_Mode, Pure is
    -- referent identity or captured descriptor. No target is read, copied, authenticated or dereferenced.
    -- A cyclic graph cannot fit a finite tree: allocation limits reject it.
    -- Mutex copying is unsupported, including Mutex leaves inside packages.
-   -- Failure is transactional, including all backing storage and counters.
+   -- Failure leaves a valid arena and no published result. Completed fresh
+   -- allocations remain; the owning caller must release their creator roots.
    procedure Clone
      (Store : in out State; Source : Object_ID;
       Target : out Object_ID; Status : out Allocation_Status; Witness : out Copy_Witness)
@@ -46,7 +47,7 @@ package AML_Objects.Copies with SPARK_Mode, Pure is
            Metadata_Snapshot_Data (Store, Target) = Metadata_Snapshot_Data (Store'Old, Source))
          and then (if Kind (Store'Old, Source) in Byte_Kind then
            Byte_Data (Store, Target) = Byte_Data (Store'Old, Source))
-       else Store = Store'Old and then Target = No_Object);
+       else Target = No_Object);
 private
    type Copy_Link is record
       Original, Copy, Parent : Object_ID := 0;

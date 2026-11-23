@@ -767,11 +767,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-      "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+      "sha256": "692bf7f4dae7517867b9f49990ff61080ba10c770e3e85aadf01c24c493fc272"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-      "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+      "sha256": "02d5cb2242316e1791fbd4afcd75512ce175330daf6dac9222a7ecaabc5d040b"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",

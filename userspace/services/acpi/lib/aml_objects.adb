@@ -40,38 +40,6 @@ package body AML_Objects with SPARK_Mode is
      ((Objects => Store.Live_Used, Bytes => Store.Bytes_Used, Elements => Store.Elements_Used));
    function Byte_Count (Store : State) return Natural is (Store.Bytes_Used);
    function Element_Count (Store : State) return Natural is (Store.Elements_Used);
-   function Extends (Store, Prior : State) return Boolean is
-     (Same_Capacities (Store, Prior) and then Store.Generation_Limit = Prior.Generation_Limit
-      and then Store.Used >= Prior.Used and then Store.Live_Used >= Prior.Live_Used
-      and then Store.Bytes_Used >= Prior.Bytes_Used and then Store.Elements_Used >= Prior.Elements_Used
-      and then (for all I in 1 .. Store.Object_Capacity =>
-        Store.Objects (I).Stamp >= Prior.Objects (I).Stamp
-        and then (if Prior.Objects (I).Occupied then Store.Objects (I) = Prior.Objects (I)))
-      and then Store.Bytes (1 .. Prior.Bytes_Used) = Prior.Bytes (1 .. Prior.Bytes_Used)
-      and then Store.Elements (1 .. Prior.Elements_Used) = Prior.Elements (1 .. Prior.Elements_Used));
-   function Fresh_Allocation (Store, Prior : State; ID : Object_ID) return Boolean is
-     (Same_Capacities (Store, Prior) and then Is_Live (Store, ID) and then not Is_Live (Prior, ID)
-      and then Prior.Objects (ID).Stamp < Prior.Generation_Limit
-      and then Store.Objects (ID).Stamp = Prior.Objects (ID).Stamp + 1
-      and then Store.Generation_Limit = Prior.Generation_Limit
-      and then Store.Live_Used = Prior.Live_Used + 1
-      and then Store.Used = Object_ID'Max (Prior.Used, ID)
-      and then Extends (Store, Prior)
-      and then (for all I in 1 .. Store.Object_Capacity => (if I /= ID then Store.Objects (I) = Prior.Objects (I)))
-      and then (case Store.Objects (ID).Tag is
-        when Integer_Object | Reference_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object =>
-          Store.Bytes_Used = Prior.Bytes_Used and then Store.Elements_Used = Prior.Elements_Used
-          and then Store.Objects (ID).First = 0 and then Store.Objects (ID).Size = 0,
-        when String_Object | Buffer_Object =>
-          Store.Objects (ID).First = Prior.Bytes_Used
-          and then Store.Objects (ID).Size <= Store.Byte_Capacity - Prior.Bytes_Used
-          and then Store.Bytes_Used = Prior.Bytes_Used + Store.Objects (ID).Size
-          and then Store.Elements_Used = Prior.Elements_Used,
-        when Package_Object =>
-          Store.Objects (ID).First = Prior.Elements_Used
-          and then Store.Objects (ID).Size <= Store.Element_Capacity - Prior.Elements_Used
-          and then Store.Elements_Used = Prior.Elements_Used + Store.Objects (ID).Size
-          and then Store.Bytes_Used = Prior.Bytes_Used));
    type Occupancy_Array is array (Positive range <>) of Boolean;
    function Equal_Occupancy (Left, Right : Occupancy_Array) return Boolean is
      (Left'First = Right'First and then Left'Last = Right'Last
@@ -114,7 +82,7 @@ package body AML_Objects with SPARK_Mode is
           and then (if Item.Tag /= Metadata_Snapshot_Object then Item.Snapshot =
             AML_Metadata_Kinds.Snapshot_Description'(Object_Type => AML_Metadata_Kinds.Device_Metadata))
           and then (case Item.Tag is
-            when Integer_Object => True,
+            when Integer_Object => Item.First = 0 and then Item.Size = 0,
             when Mutex_Object => Item.First = 0 and then Item.Size = 0
               and then Item.Value <= AML_Decode.Integer_Value (AML_Mutexes.Canonical_Flags_Last),
             when Event_Object => Item.First = 0 and then Item.Size = 0 and then Item.Value <= Max_Event_Units,
@@ -321,8 +289,6 @@ package body AML_Objects with SPARK_Mode is
    function Empty_Like (Store : State) return State is
      (Empty (Incarnation_Limit (Store), Store.Object_Capacity, Store.Byte_Capacity, Store.Element_Capacity));
 
-   function Kind (Store : State; ID : Object_ID) return Object_Kind is (Store.Objects (ID).Tag);
-   function Length (Store : State; ID : Object_ID) return Natural is (Store.Objects (ID).Size);
    function Origin_Of (Store : State; ID : Object_ID) return AML_Decode.Integer_Origin is
      (Store.Objects (ID).Origin);
    function Integer_Data (Store : State; ID : Object_ID) return AML_Decode.Integer_Value is
@@ -360,8 +326,6 @@ package body AML_Objects with SPARK_Mode is
         Objects => (Prior.Objects with delta ID =>
           Object_Record'(Occupied => True, Stamp => Prior.Objects (ID).Stamp + 1,
                          Tag => Metadata_Snapshot_Object, Snapshot => Value, others => <>))));
-   function Byte_Data (Store : State; ID : Object_ID) return AML_Decode.Bytes is
-     (Store.Bytes (Store.Objects (ID).First + 1 .. Store.Objects (ID).First + Store.Objects (ID).Size));
    function Element (Store : State; ID : Object_ID; Index : Natural) return Object_ID is
      (Store.Elements (Store.Objects (ID).First + Index + 1));
    function Integer_Updated
@@ -828,4 +792,8 @@ package body AML_Objects with SPARK_Mode is
    begin
       Store.Elements (Store.Objects (ID).First + Index + 1) := Value;
    end Set_Element;
+   procedure Observe_Valid_Object_Layout (Store : State; ID : Object_ID) is
+   begin
+      null;
+   end Observe_Valid_Object_Layout;
 end AML_Objects;
