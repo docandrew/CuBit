@@ -35,7 +35,7 @@ procedure Field_Wrapper_Tests is
       return AML_Names.Read_Name (B);
    end Path;
    procedure Clock (Value : out Integer_Value; Available : out Boolean) is
-      Before : State;
+      Before : State := Empty;
       V, Copy, Bad : Datum;
       Ref : Reference;
       Found : Lookup_Result;

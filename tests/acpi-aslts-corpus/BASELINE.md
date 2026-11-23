@@ -44,3 +44,27 @@ are not all interpreter defects. Last opcode is passive context, not proven
 causality. Timeouts remain work items without raised limits. Older retained
 baselines include 348/1,368 (25.439%) before upstream install flags and
 354 strict/478 compatibility before aggregate settings.
+
+The following compound-store cleanup preserves both complete corpus lines above:
+named string/buffer payloads and BufferField reads/writes operate in the current
+arena, without full-arena clone/copyback on those paths. All 1,172 runnable
+configurations were freshly executed again; every one of the 2,736 lane statuses
+is identical to the preceding direct-integer/byte-store baseline.
+
+The field regression group passes 11/11 mains per profile (22/22,100%), with
+60,167 assertions/profile. Test upkeep repairs five unconstrained-type
+declarations in three mains and forces real quota retries in legacy liveness fixtures.
+The historically named rollback test explicitly changes semantics under the
+user's 032000 decision: it checks a valid partial state and a visible earlier
+field write, rather than whole-store rollback. Four pinned ACPICA references
+record the corresponding missing-member behavior. Synthetic CuBit quota failure
+is separate from ACPICA malloc-failure behavior. All original failures and
+control comparisons are retained in packet receipts.
+
+A busy-host diagnostic pair keeps 0062 passing in 1.1674s versus acpiexec0.2166s;
+bfield still times out at12s, and indexed decrement takes11.6387s versus0.1663s.
+These samples do not establish parity. The remaining bfield sample is dominated
+by runtime buffer completion/conversion/definition arena copies; package
+replacement/refcount integration and broader copy retirement remain pending.
+Unchanged proofs are reused; the known namespace Global frontend crash still
+prevents an accepted new namespace proof. Native SDK checks remain semantic only.

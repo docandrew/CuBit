@@ -4430,34 +4430,24 @@ package body Owned with SPARK_Mode is
       Value : out AML_Execute.Datum; Status : out AML_Execute.Execution_Status)
    is
       Extracted : Field_Result;
-      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
-      Snapshot_Copy : AML_Objects.Clone_Status;
-      procedure Execute_Value_Transaction is
-      begin
-         Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-         Status := AML_Execute.Unsupported_Value;
-         if not Buffer_Field_Matches (A, Field) then return; end if;
-         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
-         if Snapshot_Copy /= AML_Objects.Cloned then
-            Status := AML_Execute.Value_Limit; return;
-         end if;
-         Extract_Buffer_Field (A.Tree.all, A.Token,
-           Node_ID (AML_References.Named_Node (Field)), Width, Extracted, Status);
-         if Status /= AML_Execute.Returned then return; end if;
-         case Extracted.Kind is
-            when Scalar_Field => Value.Number := Extracted.Number;
-            when Buffer_Field =>
-               Read_Source (A, AML_References.Bind_Object (A.Token,
-                 AML_Objects.Address_Of (A.Tree.Values, Extracted.Object)), Value, Status);
-               if Status /= AML_Execute.Returned then
-                  AML_Objects.Transfer (Prior_Values, A.Tree.Values);
-                  Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-               end if;
-         end case;
-      end Execute_Value_Transaction;
    begin
-      Execute_Value_Transaction;
-      AML_Objects.Discard (Prior_Values);
+      Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+      Status := AML_Execute.Unsupported_Value;
+      if not Buffer_Field_Matches (A, Field) then return; end if;
+      -- Scalar extraction is read-only. Buffer extraction preflights its
+      -- allocation; a later refusal retains a valid state without rollback.
+      Extract_Buffer_Field (A.Tree.all, A.Token,
+        Node_ID (AML_References.Named_Node (Field)), Width, Extracted, Status);
+      if Status /= AML_Execute.Returned then return; end if;
+      case Extracted.Kind is
+         when Scalar_Field => Value.Number := Extracted.Number;
+         when Buffer_Field =>
+            Read_Source (A, AML_References.Bind_Object (A.Token,
+              AML_Objects.Address_Of (A.Tree.Values, Extracted.Object)), Value, Status);
+            if Status /= AML_Execute.Returned then
+               Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+            end if;
+      end case;
    end Read_Buffer_Field;
    procedure Write_Buffer_Field
      (A : in out Arena; Field : Reference; Width : AML_Decode.Integer_Width;
@@ -4502,23 +4492,18 @@ package body Owned with SPARK_Mode is
             First : constant Natural := Natural (Info.Offset);
             Bits : constant Positive := Positive (Info.Bits);
             Data : AML_Decode.Bytes := AML_Objects.Byte_Data (A.Tree.Values, ID);
-            Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
-            Store_Copy : AML_Objects.Clone_Status;
             Stored : AML_Objects.Buffer_Update_Status;
          begin
-            AML_Objects.Clone (A.Tree.Values, Candidate, Store_Copy);
-            if Store_Copy /= AML_Objects.Cloned then
-               Status := AML_Execute.Value_Limit; return;
-            end if;
-            -- Read every source bit from the unchanged arena; stage all writes.
+            -- Read source bits before updating the target. This payload-sized
+            -- scratch preserves overlapping source/target bit semantics.
             for K in 0 .. Bits - 1 loop
                declare J : constant Positive := Data'First + (First + K) / Field_Byte_Bits; begin
                   Data (J) := AML_Buffer_Bits.Replace_Bit (Data (J), (First + K) mod Field_Byte_Bits, Source_Bit (K));
                end;
             end loop;
-            AML_Objects.Store_Buffer (Candidate, ID, Data, Stored);
+            AML_Objects.Store_Buffer (A.Tree.Values, ID, Data, Stored);
             if Stored /= AML_Objects.Buffer_Updated then Status := AML_Execute.Value_Limit; return; end if;
-            AML_Objects.Transfer (Candidate, A.Tree.Values); Status := AML_Execute.Returned;
+            Status := AML_Execute.Returned;
          end;
       end;
    end Write_Buffer_Field;
@@ -5510,17 +5495,13 @@ package body Owned with SPARK_Mode is
           or else AML_Objects.Length (A.Tree.Values, Target) = 0)
         and then Count > AML_Objects.Max_Bytes - AML_Objects.Byte_Count (A.Tree.Values)
       then Status := AML_Execute.Value_Limit; return; end if;
+      -- Conversion uses bounded payload scratch; the authenticated target
+      -- is updated in place without a full-arena candidate or copyback.
       declare
-         Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
-         Store_Copy : AML_Objects.Clone_Status;
          Data : AML_Decode.Bytes (1 .. Count) := [others => 0];
          B : AML_Decode.Byte;
          N : AML_Decode.Integer_Value := Number;
       begin
-         AML_Objects.Clone (A.Tree.Values, Candidate, Store_Copy);
-         if Store_Copy /= AML_Objects.Cloned then
-            Status := AML_Execute.Value_Limit; return;
-         end if;
          if Target_Kind = AML_Objects.String_Object then
             if Source_Kind = AML_Objects.Integer_Object then
                for I in reverse Data'Range loop Data (I) := Hex (AML_Decode.Byte (N mod 16)); N := N / 16; end loop;
@@ -5542,13 +5523,12 @@ package body Owned with SPARK_Mode is
             for I in 1 .. AML_Objects.Length (A.Tree.Values, Source) loop Data (I) := AML_Objects.Stored_Byte (A.Tree.Values, Source, I - 1); end loop;
          end if;
          if Target_Kind = AML_Objects.String_Object then
-            AML_Objects.Replace_String (Candidate, Target, Data, String_Status);
+            AML_Objects.Replace_String (A.Tree.Values, Target, Data, String_Status);
             if String_Status /= AML_Objects.String_Updated then Status := AML_Execute.Value_Limit; return; end if;
          else
-            AML_Objects.Store_Buffer (Candidate, Target, Data, Buffer_Status);
+            AML_Objects.Store_Buffer (A.Tree.Values, Target, Data, Buffer_Status);
             if Buffer_Status /= AML_Objects.Buffer_Updated then Status := AML_Execute.Value_Limit; return; end if;
          end if;
-         AML_Objects.Transfer (Candidate, A.Tree.Values);
       end;
       Status := AML_Execute.Returned;
    end Store_Named_Direct;

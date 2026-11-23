@@ -1106,16 +1106,14 @@ package Owned with SPARK_Mode is
        Post => Valid (A) and then Generation (A) = Generation (A)'Old
          and then Buffer_Field_Read_Frame (Snapshot (A), Snapshot (A)'Old)
          and then (if Status /= AML_Execute.Returned then
-           Snapshot (A) = Snapshot (A)'Old
-           and then Value.Value_Kind = AML_Execute.Integer_Datum and then Value.Number = 0);
+           Value.Value_Kind = AML_Execute.Integer_Datum and then Value.Number = 0);
    procedure Write_Buffer_Field
      (A : in out Arena; Field : Reference; Width : AML_Decode.Integer_Width;
       Item : AML_Execute.Datum; Status : out AML_Execute.Execution_Status)
      with Pre => Valid (A),
        Post => Valid (A) and then Generation (A) = Generation (A)'Old
          and then (if Status = AML_Execute.Returned then
-           Buffer_Field_Write_Frame (Snapshot (A), Snapshot (A)'Old, Field)
-          else Snapshot (A) = Snapshot (A)'Old);
+           Buffer_Field_Write_Frame (Snapshot (A), Snapshot (A)'Old, Field));
 
    procedure Store_Reference_Value
      (A : in out Arena; R : Reference; Width : AML_Decode.Integer_Width;

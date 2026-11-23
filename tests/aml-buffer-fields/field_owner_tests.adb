@@ -30,7 +30,7 @@ procedure Field_Owner_Tests is
    Running : Boolean := False;
    Reuse_Only : Boolean := False;
    Last_Field : Reference;
-   Keep : Object_Root_Set;
+   Keep : Object_Root_Set (1 .. AML_Objects.Max_Objects);
    Workspace : Root_Workspace;
    Trace : Root_Trace_Status;
    Source : Datum;
@@ -58,7 +58,7 @@ procedure Field_Owner_Tests is
       Sizes : constant array (1 .. 8) of Integer_Value := [1,8,16,32,64,1,9,72];
       V : Datum;
       Ref : Reference;
-      Before : State;
+      Before : State := Empty;
       OK : Boolean;
       ID : AML_Objects.Object_ID;
       Alloc : AML_Objects.Allocation_Status;
@@ -185,7 +185,7 @@ procedure Field_Owner_Tests is
          Scratch : AML_Objects.Reclamation.Workspace;
          Sweep_Status : AML_Objects.Reclamation.Reclaim_Status;
          Sweep_Owner : AML_Identity.Identity;
-         Keep_Copy : AML_Objects.Reclamation.Keep_Set;
+         Keep_Copy : AML_Objects.Reclamation.Keep_Set (1 .. Store.Object_Capacity);
          Previous : constant AML_Objects.Usage := AML_Objects.Usage_Of(Store);
       begin
          AML_Identity.Issuer.Issue(Sweep_Owner,OK);Check(OK);
