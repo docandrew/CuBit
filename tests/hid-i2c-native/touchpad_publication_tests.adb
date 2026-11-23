@@ -120,8 +120,19 @@ procedure Touchpad_Publication_Tests is
    procedure Clock (Value : out GW.Word; Available : out Boolean) is
    begin Value := Cached_Now; Available := Cached_Available; end Clock;
    package Reset is new HID_GPIO_Reset.Bridge (Controls, GPIO_Server, 20, Next_Token, Clock);
+   Observed_Descriptors : Natural := 0;
+   Observed_Length : Natural := 0;
+   Observed_Data : D.Bytes (0 .. 511) := [others => 0];
+   procedure Observe_Descriptor (Data : D.Bytes) is
+   begin
+      Check (Data'Length <= Observed_Data'Length);
+      Observed_Descriptors := Observed_Descriptors + 1;
+      Observed_Length := Data'Length;
+      for I in Data'Range loop Observed_Data (I - Data'First) := Data (I); end loop;
+   end Observe_Descriptor;
    package App is new HID_I2C_Touchpad (C, 512, 32, 0, 5, 2, 8, 16, 32, 64, 8, Next_Token,
-      Reset.Begin_Arm_Reset, Reset.Poll_Arm_Reset, Reset.Begin_Release_Reset, Reset.Poll_Release_Reset);
+      Reset.Begin_Arm_Reset, Reset.Poll_Arm_Reset, Reset.Begin_Release_Reset, Reset.Poll_Release_Reset,
+      Observe_Report_Data => Observe_Descriptor);
    package Live is new App.GPIO_Input (Controls, GPIO_Server, 50, 100, 20);
    Badge : constant GW.Word := GPIO_Channel_Badges.Canonical ((160, GPIO_Channel_Badges.Level_Triggered, GPIO_Channel_Badges.Active_Low));
    package Native is new HID_Touchpad_Native (Reset, App, Live, Badge);
@@ -298,6 +309,27 @@ procedure Touchpad_Publication_Tests is
       if Duplicate then Item (16#05#, 13); Item (16#09#, 5); Item (16#A1#, 1); End_Collection; end if;
       Header (4) := D.Byte (Used mod 256); Header (5) := D.Byte (Used / 256);
    end Build;
+   procedure Check_Descriptor_Metadata is
+      use type App.Schema.Status;
+      use type App.Schema.Collection, App.Schema.Byte, App.Schema.Bit_Count;
+      use type App.Admission_Report;
+      Before : constant App.Admission_Report := App.Admission;
+      Layout : constant App.Schema.Result := App.Report_Layout;
+      Mouse : constant App.Schema.Collection := App.Report_Collection (1);
+      Pad : constant App.Schema.Collection := App.Report_Collection (2);
+   begin
+      Check (Observed_Descriptors = 1 and Observed_Length = Used);
+      Check (Observed_Data (0 .. Used - 1) = Descriptor (0 .. Used - 1));
+      Check (Layout.Outcome = App.Schema.Decoded and Layout.Collections_Required = 3);
+      Check (Mouse.Parent = 0 and Mouse.Kind = 1 and Mouse.Usage = 16#0001_0002#);
+      Check (Pad.Parent = 0 and Pad.Kind = 1 and Pad.Usage = 16#000D_0005#);
+      Check (App.Report_Collection (3).Parent = 2);
+      Check (Layout.Present (App.Schema.Input, 7) and Layout.Bits (App.Schema.Input, 7) = 80);
+      Check (not Layout.Present (App.Schema.Feature, 7));
+      Check (App.Report_Collection (0) = (others => <>));
+      Check (App.Report_Collection (Natural'Last) = (others => <>));
+      Check (App.Admission = Before);
+   end Check_Descriptor_Metadata;
    procedure Packet (X, Y : Natural; Buttons : D.Byte := 1) is
    begin
       Output_Page (0 .. 31) := [others => 0];
@@ -393,6 +425,7 @@ begin
          end if;
          GPIO_Complete(Ack_Point+1);Check(App.Observe.At_Phase=App.Device.Fetch_Report and not App.Observe.Reset_Still_Armed);
          App_Complete(Descriptor(0..Used-1),Ack_Point+10);Check(App.Ready and App.Observe.Reset_Ack_Timed_Out and App.Observe.Reason=App.Device.None);
+         Check_Descriptor_Metadata;
          Finish_Special(Ack_Point+11);
       end;
       Ada.Text_IO.Put_Line("HID touchpad publication checks"&Checks'Image);return;
@@ -403,6 +436,7 @@ begin
    else Check(App.Observe.At_Phase=App.Device.Post_Reset_Power_On);App_Complete([],55);end if;
    App_Complete (Descriptor (0 .. Used - 1), 60);
    Check (App.Ready and then App.Admission.Outcome = App.Source_Configured and then App.Admission.Touchpad = 2);
+   Check_Descriptor_Metadata;
    Payload (0); Check (App.Head.Recover and then App.Head.Observed_Ms = 60);
    Check (Native.Wake_Deadline (60, 5000, True) = 61);
    Check (Native.Wake_Deadline (60, 5000, False) = 5000);

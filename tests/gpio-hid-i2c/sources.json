@@ -351,11 +351,11 @@
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_touchpad.adb",
-      "sha256": "cf4c644deb17fbe0095c9000532336ab9fcc3f71875613bc242b17bfe08e30d5"
+      "sha256": "c737778996e624cd86afeca1270f9b884a5d97fcf9230812f0fe347f4a5dc8b2"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_touchpad.ads",
-      "sha256": "02bb1263bd92a4c02484cd2fde7e50834a5fcbce4feeded9fb8b234e33500c1f"
+      "sha256": "3460de920e7e3da881aaaa42ec6b44157f599df61a622b85f9af3a00f40603e1"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_input_source.adb",

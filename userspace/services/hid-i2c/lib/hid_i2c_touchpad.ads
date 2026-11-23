@@ -27,6 +27,10 @@ generic
    with procedure Begin_Release_Reset (Ticket : I2C_Transfer_Wire.Word;
       Deadline : I2C_Transfer_Wire.Millisecond; Reply : out GPIO_Lease_Control.Reply);
    with procedure Poll_Release_Reset (Reply : out GPIO_Lease_Control.Reply);
+   -- Passive diagnostic copy, after the I2C read has been acknowledged. The
+   -- observer must return normally, never reenter this instance or affect
+   -- parser/configuration policy. It receives bytes, not device authority.
+   with procedure Observe_Report_Data (Data : HID_I2C_Descriptors.Bytes) is null;
 package HID_I2C_Touchpad with SPARK_Mode is
    package W renames I2C_Transfer_Wire;
    package L renames GPIO_Lease_Control;
@@ -70,6 +74,9 @@ package HID_I2C_Touchpad with SPARK_Mode is
       Clock_Available : Boolean; Result : out Start_Result);
    function Observe return Device.Report;
    function Admission return Admission_Report;
+   function Report_Layout return Schema.Result;
+   -- Only a Decoded layout is usable. Other indexes return an empty record.
+   function Report_Collection (Index : Natural) return Schema.Collection;
    function Input_Observation return Source.Report;
    function Ready return Boolean;
    function Quiescent return Boolean;

@@ -4,6 +4,7 @@ with CuBit.Log_Records;
 with CuBit.Messages;
 with CuBit.Process_IDs;
 with HID_Log_Lifetime;
+with HID_Descriptor_Hex;
 package body HID_Native_Log is
    package P renames CuBit.Process_IDs;
    package IPC renames CuBit.Handles.IPC;
@@ -16,6 +17,7 @@ package body HID_Native_Log is
    Success, Failure : array (Bringup_Stage) of Boolean := [others => False];
    Repeats : Interfaces.Unsigned_64 := 0;
    Notices : array(Notice_Kind)of Boolean := [others=>False];
+   Descriptor_Seen : Boolean := False;
    Completed : Natural range 0 .. Bringup_Stage'Pos (Bringup_Stage'Last) + 1 := 0;
    Last_Reached : Bringup_Stage := Identify;
    function Name (Item : Bringup_Stage) return String is
@@ -67,6 +69,39 @@ package body HID_Native_Log is
    end Notice;
    procedure Startup_Detail (Details : String) is
    begin Line("startup "&Details,True);end Startup_Detail;
+   procedure Descriptor_Data (Data : HID_I2C_Descriptors.Bytes) is
+      Offset : Natural := 0;
+   begin
+      if Descriptor_Seen then return; end if;
+      Descriptor_Seen := True;
+      Line ("report-descriptor" & Hex ("bytes", Interfaces.Unsigned_64 (Data'Length)));
+      -- The device owner admits at most 4096 bytes. Keep this diagnostic total
+      -- even for a direct internal call with an impossible larger input.
+      if Data'Length > HID_Descriptor_Hex.Maximum_Bytes then
+         Line ("report-descriptor omitted LENGTH_REFUSED", True); return;
+      end if;
+      while Offset < Data'Length loop
+         declare
+            Length : constant Positive := Positive'Min
+              (HID_Descriptor_Hex.Bytes_Per_Line, Data'Length - Offset);
+         begin
+            Line ("report-descriptor" & Hex ("offset", Interfaces.Unsigned_64 (Offset))
+              & " hex=" & HID_Descriptor_Hex.Chunk (Data, Offset));
+            Offset := Offset + Length;
+         end;
+      end loop;
+   end Descriptor_Data;
+   procedure Descriptor_Collection
+     (Index : Natural; Kind, Page, Usage : Interfaces.Unsigned_64) is
+   begin
+      Line ("report-collection" & Hex ("index", Interfaces.Unsigned_64 (Index))
+        & Hex ("kind", Kind) & Hex ("page", Page) & Hex ("usage", Usage));
+   end Descriptor_Collection;
+   procedure Descriptor_Report (Kind : String; ID, Bits : Natural) is
+   begin
+      Line ("report-id kind=" & Kind & Hex ("id", Interfaces.Unsigned_64 (ID))
+        & Hex ("bits", Interfaces.Unsigned_64 (Bits)));
+   end Descriptor_Report;
    function Hex (Key : String; Value : Interfaces.Unsigned_64) return String is
       Alphabet : constant String := "0123456789abcdef";
       Radix : constant Interfaces.Unsigned_64 := 16;

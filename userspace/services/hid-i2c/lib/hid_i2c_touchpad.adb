@@ -22,6 +22,7 @@ package body HID_I2C_Touchpad with SPARK_Mode is
    begin
       Accepted := False; Info := (others => <>);
       if W.Word (Data'Length) /= W.Word (Descriptor.Report_Length) then Info.Outcome := Parser_Refused; return; end if;
+      Observe_Report_Data (Data);
       Schema.Parse (Schema.Bytes (Data), Fields, Usages, Collections, Layout);
       Info.Parser := Layout.Outcome; Info.At_Byte := Layout.At_Byte;
       Info.Fields_Required := Layout.Fields_Required; Info.Usages_Required := Layout.Usages_Required;
@@ -70,6 +71,12 @@ package body HID_I2C_Touchpad with SPARK_Mode is
    end Start;
    function Observe return Device.Report is (Device.Observe (Core));
    function Admission return Admission_Report is (Info);
+   function Report_Layout return Schema.Result is (Layout);
+   function Report_Collection (Index : Natural) return Schema.Collection is
+     (if Layout.Outcome = Schema.Decoded and then Index > 0
+        and then Index in Collections'Range
+        and then Index <= Natural (Layout.Collections_Required)
+      then Collections (Index) else (others => <>));
    function Input_Observation return Source.Report is (Input_Info);
    function Ready return Boolean is (Device.Ready (Core) and then Source.Ready (Signal));
    function Quiescent return Boolean is (Device.Quiescent (Core));

@@ -2,6 +2,7 @@ pragma Ada_2022;
 with Interfaces;
 with CuBit.Logging;
 with CuBit.Control_Events;
+with HID_I2C_Descriptors;
 generic
    Target : CuBit.Logging.Logstore_Handles.Optional_Endpoint;
 package HID_Native_Log is
@@ -17,6 +18,10 @@ package HID_Native_Log is
    type Notice_Kind is (Reset_Ack_Timeout, Elan_Bogus_IRQ);
    procedure Notice (Item : Notice_Kind);
    procedure Startup_Detail (Details : String);
+   procedure Descriptor_Data (Data : HID_I2C_Descriptors.Bytes);
+   procedure Descriptor_Collection
+     (Index : Natural; Kind, Page, Usage : Interfaces.Unsigned_64);
+   procedure Descriptor_Report (Kind : String; ID, Bits : Natural);
    -- Copied compiled enum/numeric observations before readiness decline.
    procedure Summary;
    procedure Grant_Notice (Item : CuBit.Control_Events.Event);

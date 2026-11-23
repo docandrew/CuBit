@@ -66,16 +66,17 @@ procedure Main is
    GPIO_Identity : constant P.Process_ID := GPIO_Peer;
    package Reset is new HID_GPIO_Reset.Bridge
      (GPIO.Controls, GPIO_Identity, HID_GPIO_Reset.Cleanup_Milliseconds (Raw.timing.cleanup), Next_Token, Clock.Cached_Time);
+   package Log is new HID_Native_Log (Startup.Logstore);
    package App is new HID_I2C_Touchpad
      (Memory.Client, Report_Bytes, Input_Bytes, Output_Bytes, Contacts, Slots,
       Global_Depth, Collection_Depth, Fields, Usages, Collections, Next_Token,
-      Reset.Begin_Arm_Reset, Reset.Poll_Arm_Reset, Reset.Begin_Release_Reset, Reset.Poll_Release_Reset);
+      Reset.Begin_Arm_Reset, Reset.Poll_Arm_Reset, Reset.Begin_Release_Reset, Reset.Poll_Release_Reset,
+      Observe_Report_Data => Log.Descriptor_Data);
    package Live is new App.GPIO_Input
      (GPIO.Controls, GPIO_Identity, HID_GPIO_Input.Window (Raw.timing.control),
       HID_GPIO_Input.Window (Raw.timing.read), HID_GPIO_Input.Window (Raw.timing.cleanup));
    package Native is new HID_Touchpad_Native (Reset, App, Live, GPIO_Badge);
    package Publication is new HID_Touchpad_Native_Publication (App, Startup.Mouse_Events, Output_Burst);
-   package Log is new HID_Native_Log (Startup.Logstore);
    procedure Grant_Notice (Item : CuBit.Control_Events.Event) is
    begin Memory.Grant_Notice (Item); Log.Grant_Notice (Item); end Grant_Notice;
    package Events is new HID_Native_System_Events (Grant_Notice);
@@ -87,6 +88,7 @@ procedure Main is
    package Launch is new HID_Launch_Adapter (App);
    use type Launch.Status, App.Start_Result, App.Admission_Status, D.Decode_Status;
    use type App.Source.Reports.Coordinate_Status;
+   use type App.Schema.Status, App.Schema.Count, App.Schema.Word;
    use type Startup_Policy.Choice, Memory.Client.Close_Result, Pump.Wait_Kind;
    Settings : constant Launch.Result := Launch.Translate (Raw);
    Readiness : Startup_Policy.State;
@@ -100,6 +102,7 @@ procedure Main is
    Activity : CuBit.Messages.Activity_Result;
    Closed : Memory.Client.Close_Result := Memory.Client.Still_Owned;
    Channel_Wait_Ready : Boolean := False;
+   Descriptor_Layout_Reported : Boolean := False;
    function Coordinate_Details return String is
       Geometry : constant App.Source.Reports.Coordinate_Report := App.Admission.Binding.Coordinates;
    begin
@@ -184,6 +187,26 @@ begin
             Log.Hex ("product", W.Word (App.Observe.Descriptor.Value.Product_ID)) &
             Log.Hex ("firmware", W.Word (App.Observe.Descriptor.Value.Firmware_Version)) &
             Log.Hex ("report-bytes", W.Word (App.Observe.Descriptor.Value.Report_Length)));
+      end if;
+      if not Descriptor_Layout_Reported and then App.Admission.Parser = App.Schema.Decoded then
+         Descriptor_Layout_Reported := True;
+         declare Layout : constant App.Schema.Result := App.Report_Layout; begin
+            for Index in 1 .. Natural (Layout.Collections_Required) loop
+               declare Item : constant App.Schema.Collection := App.Report_Collection (Index); begin
+                  if Item.Parent = 0 then
+                     Log.Descriptor_Collection (Index, W.Word (Item.Kind),
+                       W.Word (Item.Usage / 2 ** 16), W.Word (Item.Usage mod 2 ** 16));
+                  end if;
+               end;
+            end loop;
+            for Kind in App.Schema.Report_Kind loop
+               for ID in App.Schema.Report_ID loop
+                  if Layout.Present (Kind, ID) then
+                     Log.Descriptor_Report (Kind'Image, Natural (ID), Natural (Layout.Bits (Kind, ID)));
+                  end if;
+               end loop;
+            end loop;
+         end;
       end if;
       if App.Admission.Outcome = App.Source_Configured then
          Log.Stage (Log.Reset, True, Log.Confirmed);
