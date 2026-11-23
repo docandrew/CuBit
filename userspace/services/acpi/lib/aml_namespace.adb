@@ -3944,38 +3944,32 @@ package body Owned with SPARK_Mode is
    end Write_Element;
 
    procedure Store_Integer (A : in out Arena; R : Reference;
-     Value : AML_Decode.Integer_Value; Status : out AML_Execute.Execution_Status)
+     Value : AML_Decode.Integer_Value; Status : out AML_Execute.Execution_Status;
+     Origin : AML_Decode.Integer_Origin := AML_Decode.Ordinary_Integer)
    is
-      Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
-      Copied : AML_Objects.Clone_Status;
       ID : AML_Objects.Object_ID;
       Allocated : AML_Objects.Allocation_Status;
       Stored : AML_Objects.Package_References.Result_Status;
       OK : Boolean;
-      procedure Execute_Value_Transaction is
-      begin
-         Status := AML_Execute.Unsupported_Value;
-         if not Matches (A, R) then return; end if;
-         if AML_References.Kind (R) = AML_References.Byte_Slot then
-            Write (A, R, AML_Decode.Byte (Value mod 256), OK);
-            if OK then Status := AML_Execute.Returned; end if;
-         elsif AML_References.Kind (R) = AML_References.Package_Slot then
-            AML_Objects.Clone (A.Tree.Values, Candidate, Copied);
-            if Copied /= AML_Objects.Cloned then Status := AML_Execute.Value_Limit; return; end if;
-            AML_Objects.New_Integer (Candidate, Value, ID, Allocated);
-            if Allocated /= AML_Objects.Allocated then
-               Status := AML_Execute.Value_Limit; return;
-            end if;
-            AML_Objects.Package_References.Write
-              (Candidate, AML_References.Package_Item (R), ID, Stored);
-            if Stored /= AML_Objects.Package_References.Ready then return; end if;
-            AML_Objects.Transfer (Candidate, A.Tree.Values);
+   begin
+      Status := AML_Execute.Unsupported_Value;
+      if not Matches (A, R) then return; end if;
+      if AML_References.Kind (R) = AML_References.Byte_Slot then
+         Write (A, R, AML_Decode.Byte (Value mod 256), OK);
+         if OK then Status := AML_Execute.Returned; end if;
+      elsif AML_References.Kind (R) = AML_References.Package_Slot then
+         -- Allocate the integer directly in the current arena, then install
+         -- it. A later failure leaves a valid partial state, never a rollback.
+         AML_Objects.New_Integer (A.Tree.Values, Value, ID, Allocated, Origin);
+         if Allocated /= AML_Objects.Allocated then
+            Status := AML_Execute.Value_Limit; return;
+         end if;
+         AML_Objects.Package_References.Write
+           (A.Tree.Values, AML_References.Package_Item (R), ID, Stored);
+         if Stored = AML_Objects.Package_References.Ready then
             Status := AML_Execute.Returned;
          end if;
-      end Execute_Value_Transaction;
-   begin
-      Execute_Value_Transaction;
-      AML_Objects.Discard (Candidate);
+      end if;
    end Store_Integer;
 
    function Metadata_Matches (A : Arena; Item : AML_Execute.Metadata_Value) return Boolean is
@@ -5564,150 +5558,160 @@ package body Owned with SPARK_Mode is
       Item : AML_Execute.Datum; Status : out AML_Execute.Execution_Status;
       Mode : AML_Execute.Reference_Store_Mode := AML_Execute.Direct_Target)
    is
-      Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
-      Store_Copy : AML_Objects.Clone_Status;
-      ID : AML_Objects.Object_ID;
-      Allocated : AML_Objects.Allocation_Status;
-      Stored : AML_Objects.Package_References.Result_Status;
-      Witness : AML_Objects.Copies.Copy_Witness := AML_Objects.Copies.Empty_Witness (A.Object_Capacity);
-      procedure Execute_Value_Transaction is
-      begin
-         Status := AML_Execute.Unsupported_Value;
-         if not Matches (A, R) then
-            -- A method has no ordinary value-arena object. A current named
-            -- cell can still receive a replacement after its calls retire.
-            if AML_References.Kind (R) /= AML_References.Named_Cell
-              or else not Named_Identity_Matches (A, R) then return; end if;
-            declare
-               Destination_Node : constant Node_ID := Node_ID (AML_References.Named_Node (R));
-            begin
-               if Destination_Node = Root
-                 or else A.Tree.Items (Destination_Node).Object_Type /= Method_Object
-                 or else A.Tree.Items (Destination_Node).Active_Calls /= 0
-               then return; end if;
-            end;
-         end if;
-         -- Hardware/Buffer Field targets keep their original write policy.
-         if Buffer_Field_Matches (A, R) then
-            Write_Buffer_Field (A, R, Width, Item, Status); return;
-         end if;
-         if AML_References.Kind (R) = AML_References.Named_Cell then
-            declare
-               Node : constant Node_ID := Node_ID (AML_References.Named_Node (R));
-               Path : constant AML_Names.Name_Result :=
-                 (Kind => AML_Names.Accepted, Rooted => False, Parents => 0, Count => 1,
-                  Parts => [1 => A.Tree.Items (Node).Part, others => "____"],
-                  Consumed => AML_Names.Segment'Length);
-            begin
-               if Mode = AML_Execute.Explicit_Result_Target then
-                  if A.Tree.Items (Node).Object_Type not in
-                    Integer_Object | String_Object | Buffer_Object | Uninitialized_Name_Object
-                  then return; end if;
-                  if Item.Value_Kind /= AML_Execute.Integer_Datum then
-                     if Item.Value_Kind /= AML_Execute.Object_Datum
-                       or else not Has_Source (A, Item.Object.Source)
-                       or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
-                       or else AML_Objects.Kind (A.Tree.Values, Item.Object.ID) not in AML_Objects.Buffer_Object | AML_Objects.String_Object
-                     then return; end if;
-                  end if;
-               end if;
-               if (Mode = AML_Execute.Direct_Target
-                   and then A.Tree.Items (Node).Object_Type in Integer_Object | String_Object | Buffer_Object | Package_Object)
-                 or else (Mode = AML_Execute.Argument_Indirect_Target
-                   and then A.Tree.Items (Node).Object_Type = Package_Object)
-               then
-                  Store_Named_Direct (A, Node, Width, Item, Status);
-               elsif Mode = AML_Execute.Explicit_Result_Target
-                 and then Item.Value_Kind = AML_Execute.Object_Datum
-                 and then ((A.Tree.Items (Node).Object_Type = Buffer_Object
-                   and then AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.Buffer_Object)
-                   or else (A.Tree.Items (Node).Object_Type = String_Object
-                     and then AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.String_Object))
-               then
-                  Store_Named_Direct (A, Node, Width, Item, Status);
-               elsif Mode = AML_Execute.Explicit_Result_Target
-                 and then A.Tree.Items (Node).Object_Type = Integer_Object
-                 and then Item.Value_Kind = AML_Execute.Integer_Datum
-               then
-                  -- exstoren: matching integer types copy only Value, retaining
-                  -- the destination object. Differing explicit types attach anew.
-                  Set_Integer (A.Tree.all, Node, AML_Integers.Normalize (Item.Number, Width));
-                  Status := AML_Execute.Returned;
-               elsif Mode = AML_Execute.Explicit_Result_Target
-                 and then Item.Value_Kind = AML_Execute.Object_Datum
-               then
-                  -- exstoren: differing fixed-target primitive types attach the
-                  -- authenticated source object, preserving result/target aliases.
-                  -- Matching types were copied above; Arg/CopyObject stay separate.
-                  A.Tree.Items (Node) := (A.Tree.Items (Node) with delta
-                    Object_Type => (if AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.String_Object
-                      then String_Object else Buffer_Object),
-                    Object_Ref => Item.Object.ID);
-                  Status := AML_Execute.Returned;
-               else
-                  Replace_Value (A, Natural (A.Tree.Items (Node).Up), Path, Width, Item, Status);
-               end if;
-            end;
-         elsif AML_References.Kind (R) = AML_References.Byte_Slot then
-            if Item.Value_Kind = AML_Execute.Integer_Datum then
-               Store_Integer (A, R, AML_Integers.Normalize (Item.Number, Width), Status);
-            elsif Item.Value_Kind = AML_Execute.Object_Datum then
-               if not Has_Source (A, Item.Object.Source)
-                 or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
-               then return; end if;
-               declare
-                  Source_ID : constant AML_Objects.Object_ID := AML_References.Source (Item.Object.Source);
-               begin
-                  if AML_Objects.Kind (A.Tree.Values, Source_ID) not in AML_Objects.String_Object | AML_Objects.Buffer_Object then return; end if;
-                  if AML_Objects.Length (A.Tree.Values, Source_ID) = 0 then
-                     if AML_Objects.Kind (A.Tree.Values, Source_ID) = AML_Objects.Buffer_Object then
-                        Status := AML_Execute.Empty_Buffer; return;
-                     end if;
-                     Store_Integer (A, R, 0, Status);
-                  else
-                     Store_Integer (A, R, AML_Decode.Integer_Value
-                       (AML_Objects.Stored_Byte (A.Tree.Values, Source_ID, 0)), Status);
-                  end if;
-               end;
-            end if;
-         elsif AML_References.Kind (R) = AML_References.Package_Slot then
-            AML_Objects.Clone (A.Tree.Values, Candidate, Store_Copy);
-            if Store_Copy /= AML_Objects.Cloned then
-               Status := AML_Execute.Value_Limit; return;
-            end if;
-            case Item.Value_Kind is
-               when AML_Execute.Integer_Datum =>
-                  AML_Objects.New_Integer (Candidate, Item.Number, ID, Allocated, Item.Origin);
-               when AML_Execute.Metadata_Datum =>
-                  if not Metadata_Matches (A, Item.Metadata) then return; end if;
-                  case Item.Metadata.Mode is
-                     when AML_Execute.Live_Namespace =>
-                        AML_Objects.New_Metadata (Candidate, Item.Metadata.Namespace_Identity, ID, Allocated);
-                     when AML_Execute.Captured_Namespace =>
-                        AML_Objects.New_Metadata_Snapshot (Candidate,
-                          AML_Objects.Metadata_Snapshot_Data (A.Tree.Values,
-                            AML_References.Source (Item.Metadata.Snapshot_Source)), ID, Allocated);
-                  end case;
-               when AML_Execute.Reference_Datum =>
-                  if not AML_References.Well_Formed (Item.Ref) then return; end if;
-                  AML_Objects.New_Reference (Candidate, Item.Ref, ID, Allocated);
-               when AML_Execute.Object_Datum =>
-                  if not Has_Source (A, Item.Object.Source)
-                    or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
-                  then return; end if;
-                  AML_Objects.Copies.Clone
-                    (Candidate, AML_References.Source (Item.Object.Source), ID, Allocated, Witness);
-            end case;
-            if Allocated = AML_Objects.Unsupported_Copy then return; end if;
-            if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
-            AML_Objects.Package_References.Write (Candidate, AML_References.Package_Item (R), ID, Stored);
-            if Stored /= AML_Objects.Package_References.Ready then return; end if;
-            AML_Objects.Transfer (Candidate, A.Tree.Values); Status := AML_Execute.Returned;
-         end if;
-      end Execute_Value_Transaction;
    begin
-      Execute_Value_Transaction;
-      AML_Objects.Discard (Candidate);
+      Status := AML_Execute.Unsupported_Value;
+      if not Matches (A, R) then
+         -- A method has no ordinary value-arena object. A current named
+         -- cell can still receive a replacement after its calls retire.
+         if AML_References.Kind (R) /= AML_References.Named_Cell
+           or else not Named_Identity_Matches (A, R) then return; end if;
+         declare
+            Destination_Node : constant Node_ID := Node_ID (AML_References.Named_Node (R));
+         begin
+            if Destination_Node = Root
+              or else A.Tree.Items (Destination_Node).Object_Type /= Method_Object
+              or else A.Tree.Items (Destination_Node).Active_Calls /= 0
+            then return; end if;
+         end;
+      end if;
+      if AML_References.Kind (R) = AML_References.Package_Slot
+        and then Item.Value_Kind = AML_Execute.Integer_Datum
+      then
+         Store_Integer (A, R, Item.Number, Status, Item.Origin); return;
+      end if;
+      -- Hardware/Buffer Field targets keep their original write policy.
+      if Buffer_Field_Matches (A, R) then
+         Write_Buffer_Field (A, R, Width, Item, Status); return;
+      end if;
+      if AML_References.Kind (R) = AML_References.Named_Cell then
+         declare
+            Node : constant Node_ID := Node_ID (AML_References.Named_Node (R));
+            Path : constant AML_Names.Name_Result :=
+              (Kind => AML_Names.Accepted, Rooted => False, Parents => 0, Count => 1,
+               Parts => [1 => A.Tree.Items (Node).Part, others => "____"],
+               Consumed => AML_Names.Segment'Length);
+         begin
+            if Mode = AML_Execute.Explicit_Result_Target then
+               if A.Tree.Items (Node).Object_Type not in
+                 Integer_Object | String_Object | Buffer_Object | Uninitialized_Name_Object
+               then return; end if;
+               if Item.Value_Kind /= AML_Execute.Integer_Datum then
+                  if Item.Value_Kind /= AML_Execute.Object_Datum
+                    or else not Has_Source (A, Item.Object.Source)
+                    or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
+                    or else AML_Objects.Kind (A.Tree.Values, Item.Object.ID) not in AML_Objects.Buffer_Object | AML_Objects.String_Object
+                  then return; end if;
+               end if;
+            end if;
+            if (Mode = AML_Execute.Direct_Target
+                and then A.Tree.Items (Node).Object_Type in Integer_Object | String_Object | Buffer_Object | Package_Object)
+              or else (Mode = AML_Execute.Argument_Indirect_Target
+                and then A.Tree.Items (Node).Object_Type = Package_Object)
+            then
+               Store_Named_Direct (A, Node, Width, Item, Status);
+            elsif Mode = AML_Execute.Explicit_Result_Target
+              and then Item.Value_Kind = AML_Execute.Object_Datum
+              and then ((A.Tree.Items (Node).Object_Type = Buffer_Object
+                and then AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.Buffer_Object)
+                or else (A.Tree.Items (Node).Object_Type = String_Object
+                  and then AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.String_Object))
+            then
+               Store_Named_Direct (A, Node, Width, Item, Status);
+            elsif Mode = AML_Execute.Explicit_Result_Target
+              and then A.Tree.Items (Node).Object_Type = Integer_Object
+              and then Item.Value_Kind = AML_Execute.Integer_Datum
+            then
+               -- exstoren: matching integer types copy only Value, retaining
+               -- the destination object. Differing explicit types attach anew.
+               Set_Integer (A.Tree.all, Node, AML_Integers.Normalize (Item.Number, Width));
+               Status := AML_Execute.Returned;
+            elsif Mode = AML_Execute.Explicit_Result_Target
+              and then Item.Value_Kind = AML_Execute.Object_Datum
+            then
+               -- exstoren: differing fixed-target primitive types attach the
+               -- authenticated source object, preserving result/target aliases.
+               -- Matching types were copied above; Arg/CopyObject stay separate.
+               A.Tree.Items (Node) := (A.Tree.Items (Node) with delta
+                 Object_Type => (if AML_Objects.Kind (A.Tree.Values, Item.Object.ID) = AML_Objects.String_Object
+                   then String_Object else Buffer_Object),
+                 Object_Ref => Item.Object.ID);
+               Status := AML_Execute.Returned;
+            else
+               Replace_Value (A, Natural (A.Tree.Items (Node).Up), Path, Width, Item, Status);
+            end if;
+         end;
+      elsif AML_References.Kind (R) = AML_References.Byte_Slot then
+         if Item.Value_Kind = AML_Execute.Integer_Datum then
+            Store_Integer (A, R, AML_Integers.Normalize (Item.Number, Width), Status);
+         elsif Item.Value_Kind = AML_Execute.Object_Datum then
+            if not Has_Source (A, Item.Object.Source)
+              or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
+            then return; end if;
+            declare
+               Source_ID : constant AML_Objects.Object_ID := AML_References.Source (Item.Object.Source);
+            begin
+               if AML_Objects.Kind (A.Tree.Values, Source_ID) not in AML_Objects.String_Object | AML_Objects.Buffer_Object then return; end if;
+               if AML_Objects.Length (A.Tree.Values, Source_ID) = 0 then
+                  if AML_Objects.Kind (A.Tree.Values, Source_ID) = AML_Objects.Buffer_Object then
+                     Status := AML_Execute.Empty_Buffer; return;
+                  end if;
+                  Store_Integer (A, R, 0, Status);
+               else
+                  Store_Integer (A, R, AML_Decode.Integer_Value
+                    (AML_Objects.Stored_Byte (A.Tree.Values, Source_ID, 0)), Status);
+               end if;
+            end;
+         end if;
+      elsif AML_References.Kind (R) = AML_References.Package_Slot then
+         -- Step two retires this legacy compound-only machinery. Primitive
+         -- stores never construct a candidate arena or copy witness.
+         declare
+            Candidate : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+            Store_Copy : AML_Objects.Clone_Status;
+            ID : AML_Objects.Object_ID;
+            Allocated : AML_Objects.Allocation_Status;
+            Stored : AML_Objects.Package_References.Result_Status;
+            Witness : AML_Objects.Copies.Copy_Witness := AML_Objects.Copies.Empty_Witness (A.Object_Capacity);
+            procedure Apply_Compound_Store is
+            begin
+               AML_Objects.Clone (A.Tree.Values, Candidate, Store_Copy);
+               if Store_Copy /= AML_Objects.Cloned then
+                  Status := AML_Execute.Value_Limit; return;
+               end if;
+               case Item.Value_Kind is
+                  when AML_Execute.Integer_Datum =>
+                     AML_Objects.New_Integer (Candidate, Item.Number, ID, Allocated, Item.Origin);
+                  when AML_Execute.Metadata_Datum =>
+                     if not Metadata_Matches (A, Item.Metadata) then return; end if;
+                     case Item.Metadata.Mode is
+                        when AML_Execute.Live_Namespace =>
+                           AML_Objects.New_Metadata (Candidate, Item.Metadata.Namespace_Identity, ID, Allocated);
+                        when AML_Execute.Captured_Namespace =>
+                           AML_Objects.New_Metadata_Snapshot (Candidate,
+                             AML_Objects.Metadata_Snapshot_Data (A.Tree.Values,
+                               AML_References.Source (Item.Metadata.Snapshot_Source)), ID, Allocated);
+                     end case;
+                  when AML_Execute.Reference_Datum =>
+                     if not AML_References.Well_Formed (Item.Ref) then return; end if;
+                     AML_Objects.New_Reference (Candidate, Item.Ref, ID, Allocated);
+                  when AML_Execute.Object_Datum =>
+                     if not Has_Source (A, Item.Object.Source)
+                       or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
+                     then return; end if;
+                     AML_Objects.Copies.Clone
+                       (Candidate, AML_References.Source (Item.Object.Source), ID, Allocated, Witness);
+               end case;
+               if Allocated = AML_Objects.Unsupported_Copy then return; end if;
+               if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
+               AML_Objects.Package_References.Write (Candidate, AML_References.Package_Item (R), ID, Stored);
+               if Stored /= AML_Objects.Package_References.Ready then return; end if;
+               AML_Objects.Transfer (Candidate, A.Tree.Values); Status := AML_Execute.Returned;
+            end Apply_Compound_Store;
+         begin
+            Apply_Compound_Store;
+            AML_Objects.Discard (Candidate);
+         end;
+      end if;
    end Store_Reference_Value;
    procedure Copy_And_Attach
      (A : in out Arena; Destination : AML_Execute.Copy_Destination;

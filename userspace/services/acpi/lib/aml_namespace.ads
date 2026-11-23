@@ -775,18 +775,19 @@ package Owned with SPARK_Mode is
    -- integer object; byte slots receive the low byte. Other source kinds are
    -- handled separately; this is not a complete AML Store entry point.
    procedure Store_Integer (A : in out Arena; R : Reference;
-     Value : AML_Decode.Integer_Value; Status : out AML_Execute.Execution_Status)
+     Value : AML_Decode.Integer_Value; Status : out AML_Execute.Execution_Status;
+     Origin : AML_Decode.Integer_Origin := AML_Decode.Ordinary_Integer)
      with Pre => Valid (A),
      Post => Valid (A) and then Generation (A) = Generation (A)'Old
        and then Status in AML_Execute.Returned | AML_Execute.Unsupported_Value | AML_Execute.Value_Limit
-       and then (if Status /= AML_Execute.Returned then Model (A) = Model (A)'Old
-         else Matches (A, R) and then
+       and then (if Status = AML_Execute.Returned then Matches (A, R) and then
            (if AML_References.Kind (R) = AML_References.Byte_Slot then
               Byte_At (A, R) = AML_Decode.Byte (Value mod 256)
             else AML_References.Kind (R) = AML_References.Package_Slot
               and then Element_At (A, R) > 0
               and then AML_Objects.Kind (Model (A), Element_At (A, R)) = AML_Objects.Integer_Object
-              and then AML_Objects.Integer_Data (Model (A), Element_At (A, R)) = Value));
+              and then AML_Objects.Integer_Data (Model (A), Element_At (A, R)) = Value
+              and then AML_Objects.Origin_Of (Model (A), Element_At (A, R)) = Origin));
 
    -- Semantic Snapshot excludes issuance metadata, which is explicitly
    -- observed here and never rolled back while this arena identity is live.
@@ -1121,8 +1122,13 @@ package Owned with SPARK_Mode is
       Item : AML_Execute.Datum; Status : out AML_Execute.Execution_Status;
       Mode : AML_Execute.Reference_Store_Mode := AML_Execute.Direct_Target)
      with Pre => Valid (A),
+       -- Failed stores retain a valid state; no rollback/snapshot equality.
        Post => Valid (A) and then Generation (A) = Generation (A)'Old
-         and then (if Status /= AML_Execute.Returned then Snapshot (A) = Snapshot (A)'Old);
+         and then (if Status = AML_Execute.Returned
+           and then AML_References.Kind (R) = AML_References.Byte_Slot
+           and then Item.Value_Kind = AML_Execute.Integer_Datum
+         then Matches (A, R)
+           and then Byte_At (A, R) = AML_Decode.Byte (Item.Number mod 256));
    -- Structural resource-template composition only; no hardware authority.
    procedure Concatenate_Resources_And_Attach
      (A : in out Arena; Width : AML_Decode.Integer_Width;
