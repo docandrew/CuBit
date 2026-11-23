@@ -1639,11 +1639,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_layout.adb",
-      "sha256": "6ac801fea1eaf6485c11ff36fb8c00258864bcac5d46b6f81bb5dedd822ebefe"
+      "sha256": "0a1b5440214dec4e3255dc8a14f31b445cb479762bbcffff254cf5d167863df3"
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_layout.ads",
-      "sha256": "b61f9c324bc2ea6a18f0dadcc0f4c59569d473d3a1767964d936f114d36f23ee"
+      "sha256": "288e94e64f9aef05e0c7b0a5dadd6fa2f7077327d1a22c8b17ac6d7c2a538de4"
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_notes.ads",
@@ -1651,11 +1651,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_plans.adb",
-      "sha256": "e746d07c81e9b6d2dec781f3a95ba3e2d8568aabd85788959547aa0c3cb37852"
+      "sha256": "7745d238fb168ff46f4870dde43dbe171a95726bf6c461eee5fff9045c8a8830"
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_plans.ads",
-      "sha256": "1e22c20c6cfd41374003a94d37cac7ff876847ac86e648b503c70c70926fa240"
+      "sha256": "e9fc03b56a7bfcc35beda021afb8c00573fe6322c8fe218f23db5a5a3718aead"
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_targets.ads",
@@ -1879,7 +1879,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_register_views.ads",
-      "sha256": "add5cbe1beabab4f95d40263d53f6423ec267bbd87b4fa013cfe93d5b6faafce"
+      "sha256": "663a96b5210824ddf43277388bcf7db4d43c05d11be8ae7c621d80b111d94eba"
     },
     {
       "path": "userspace/services/acpi/lib/aml_resource_templates.adb",

@@ -3,7 +3,7 @@ with AML_Decode;
 with AML_Field_Datums;
 with AML_Field_Layout;
 package AML_Field_Plans with SPARK_Mode, Pure is
-   use type AML_Decode.Integer_Value;
+   use type AML_Decode.Integer_Value, AML_Decode.Byte;
    use type AML_Field_Datums.Datum_Index;
    Maximum_Datums : constant Positive := 9;
    Maximum_Bits : constant AML_Decode.Integer_Value := 64;
@@ -14,7 +14,9 @@ package AML_Field_Plans with SPARK_Mode, Pure is
    -- Geometry only. Every datum still requires a separate trusted named target.
    -- NoLock ordinary Memory/IO, explicitly routed PCI config, and bounded byte-access EmbeddedControl fields
    -- through64bits. Each EC datum names a logical cell, never an IO port.
-   -- Memory/IO AnyAcc uses byte datums; EC requires explicit ByteAcc.
+   -- Memory/IO AnyAcc uses byte datums; EC/SystemCMOS require explicit ByteAcc.
+   -- SystemCMOS is byte-only within0..255; its provider separately enforces
+   -- the validated device profile, protected bytes and exact port grants.
    -- Lock is default-closed; optional Memory read planning requires an
    -- independently installed whole-field guard and backend NVS authority.
    function Valid (Item : Plan) return Boolean;
@@ -43,6 +45,8 @@ private
    end record;
    function Valid (Item : Plan) return Boolean is
      (Item.Ready
+      and then (if Item.Geometry.Region.Space = AML_Field_Layout.System_CMOS_Space then
+        Item.Geometry.Effective_Access = 1 and then (Item.Geometry.Flags and 16#0F#) = 1)
       and then Item.Geometry.Bit_Length in 1 .. Maximum_Bits
       and then Item.Number in Datum_Position
       and then AML_Field_Datums.Valid (Item.Datums)

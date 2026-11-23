@@ -21,7 +21,7 @@ package body AML_Field_Layout with SPARK_Mode is
    begin
       if Field.Form /= Ordinary_Field or else Field.Has_Connection
         or else Field.Region /= Register.Region
-        or else Field.Region.Space not in Memory_Space | IO_Space | PCI_Config_Space | Embedded_Control_Space
+        or else Field.Region.Space not in Memory_Space | IO_Space | PCI_Config_Space | Embedded_Control_Space | System_CMOS_Space
         or else not Domain_Valid (Field.Region)
         or else Field.Region.Length = 0
         or else (Register.Width = ACPI_FADT.Transactions.Qword_Access
@@ -33,6 +33,13 @@ package body AML_Field_Layout with SPARK_Mode is
          or else (Field.Flags and Access_Mask) /= Byte_Access_Code
          or else Field.Region.Base > EC_Last_Cell
          or else Field.Region.Length - 1 > EC_Last_Cell - Field.Region.Base)
+      then return False; end if;
+      if Field.Region.Space = System_CMOS_Space and then
+        (Register.Width /= ACPI_FADT.Transactions.Byte_Access
+         or else Field.Effective_Access /= Byte_Access_Code
+         or else (Field.Flags and Access_Mask) /= Byte_Access_Code
+         or else Field.Region.Base > CMOS_Last_Cell
+         or else Field.Region.Length - 1 > CMOS_Last_Cell - Field.Region.Base)
       then return False; end if;
       if (Field.Flags and Reserved_Mask) /= 0
         or else ((Field.Flags and Lock_Mask) /= 0 and then

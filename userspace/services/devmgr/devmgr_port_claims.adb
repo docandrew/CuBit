@@ -46,6 +46,9 @@ package body Devmgr_Port_Claims with SPARK_Mode is
       Ends := Unsigned_32 (First + Ports);
       Wanted := (First => Low, Ends => Ends, By => By, Owner => Owner);
       for K in 1 .. Count loop
+         if Claims (K).By = Reserved and then Overlaps (Claims (K), Low, Ends) then
+            return; -- Reserved aliases can never be granted, to any holder.
+         end if;
          if Overlaps (Claims (K), Low, Ends) then
             if (By = ACPI) /= (Claims (K).By = ACPI) then
                return;        --  another holder's ports
@@ -58,6 +61,9 @@ package body Devmgr_Port_Claims with SPARK_Mode is
          if Claims (K) = Wanted then
             Same := True;
          end if;
+         pragma Loop_Invariant
+           (for all J in 1 .. K =>
+             (if Claims (J).By = Reserved then not Overlaps (Claims (J), Low, Ends)));
          pragma Loop_Invariant
            (for all J in 1 .. K =>
               (if (By = ACPI) /= (Claims (J).By = ACPI)
@@ -74,6 +80,55 @@ package body Devmgr_Port_Claims with SPARK_Mode is
          Result := Needs_Room;
       end if;
    end Take;
+
+   procedure Handover_CMOS
+     (Claims : in out Claim_Array; Count : in out Natural;
+      Extended, Intel_Aliases : Boolean; Result : out CMOS_Handover_Result)
+   is
+      Grant_End : constant Unsigned_32 := (if Extended then 16#74# else 16#72#);
+      Reserve_End : constant Unsigned_32 := (if Intel_Aliases then 16#78# else 16#74#);
+      Need_Reservation : constant Boolean := Grant_End < Reserve_End;
+      Wanted : constant Claim := (16#70#, Grant_End, ACPI, No_Owner);
+      Alias_Claim : constant Claim := (Grant_End, Reserve_End, Reserved, No_Owner);
+      Seed : constant Claim := (16#70#, 16#72#, Device_Manager, No_Owner);
+      Candidate, Alias_At : Natural := 0;
+   begin
+      Result := Handover_Refused;
+      for K in 1 .. Count loop
+         if Claims (K) = Seed or else Claims (K) = Wanted then
+            if Candidate /= 0 then return; end if;
+            Candidate := K;
+         elsif Need_Reservation and then Claims (K) = Alias_Claim then
+            if Alias_At /= 0 then return; end if;
+            Alias_At := K;
+         elsif Overlaps (Claims (K), 16#70#, Reserve_End) then
+            return;
+         end if;
+         pragma Loop_Invariant (Candidate <= K and Alias_At <= K);
+         pragma Loop_Invariant
+           (if Candidate /= 0 then Claims (Candidate) = Seed or else Claims (Candidate) = Wanted);
+         pragma Loop_Invariant
+           (if Alias_At /= 0 then Need_Reservation and then Claims (Alias_At) = Alias_Claim);
+         pragma Loop_Invariant
+           (for all J in 1 .. K =>
+             (if J /= Candidate and then J /= Alias_At then
+               not Overlaps (Claims (J), 16#70#, Reserve_End)));
+      end loop;
+      if Candidate = 0 then return; end if;
+      if Claims (Candidate) = Wanted then
+         if Need_Reservation and then Alias_At = 0 then return; end if;
+         Result := Already_Held; return;
+      end if;
+      if Alias_At /= 0 then return; end if;
+      if Need_Reservation and then Count = Claims'Last then
+         Result := Handover_Needs_Room; return;
+      end if;
+      Claims (Candidate) := Wanted;
+      if Need_Reservation then
+         Count := Count + 1; Claims (Count) := Alias_Claim;
+      end if;
+      Result := Transferred;
+   end Handover_CMOS;
 
    procedure Release_Owner
      (Claims : in out Claim_Array; Count : in out Natural; Owner : Owner_Word)

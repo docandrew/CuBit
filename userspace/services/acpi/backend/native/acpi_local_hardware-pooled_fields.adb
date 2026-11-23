@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with CuBit.Messages;
+with ACPI_FADT.Transactions;
 with AML_Decode;
 with ACPI_NVS_Write_Policy;
 with ACPI_Backend_Memory_Access;
@@ -362,14 +363,51 @@ package body ACPI_Local_Hardware.Pooled_Fields is
       if not Runtime_Claimed or else not Runtime_Ready (Service) or else not Runtime_Idle then return; end if;
       Evaluation.Invoke_With_Arguments (Cache.all,Service,IO,Node,Args,Argument_Count,Budget,Result,Status);
    end Runtime_Invoke_Values;
+   function CMOS_Handler_Available return Boolean is
+     (Mux.CMOS_Available (IO) and then ACPI_Native_CMOS_Ports.Available);
+   procedure CMOS_Transfer (Plan : ACPI_CMOS_Transactions.Transfer;
+      Value : out ACPI_CMOS_Transactions.I.Byte; Outcome : out ACPI_CMOS_Transactions.Completion) is
+   begin
+      Value := 0; Outcome := ACPI_CMOS_Transactions.Refused;
+      if not Check_Field_Access (Plan.For_Write) then return; end if;
+      ACPI_Native_CMOS_Ports.Transfer_Byte (Plan, Value, Outcome);
+   end CMOS_Transfer;
    procedure Begin_Startup (Symbol : AML_Field_Access.Endpoint_ID; Accepted : out Boolean) is
+      CMOS_Ready : Boolean;
+
    begin
       Accepted := False;
       if Field_State /= Owner_Fresh or else Attempted then return; end if;
       Field_State := Owner_Failed;
       if not ACPI_Local_Hardware.Admitting then return; end if;
+      ACPI_Native_CMOS_Ports.Initialize (Facts.Century, CMOS_Ready);
       Mux.Initialize (IO,Symbol,Accepted);
-      if Accepted then Field_State := Owner_Ready; end if;
+      if Accepted then
+         Field_State := Owner_Ready;
+         if CMOS_Ready and then Mux.CMOS_Available (IO) then
+            -- One bounded, read-only startup diagnostic through the actual
+            -- handler and retained field scope. Status D has no read-to-clear
+            -- interrupt side effect. Never bypass the mux or raw-access ports.
+            declare
+               Target : AML_Field_Access.Target;
+               Reply : AML_Field_Access.Response;
+               Selected, Begun, Ended : Boolean := False;
+            begin
+               Mux.Select_Target (IO,
+                 ((AML_Field_Layout.System_CMOS_Space,0,64,(Known => False)),
+                  16#0D#,ACPI_FADT.Transactions.Byte_Access),False,Target,Selected);
+               if Selected then Begin_Field (IO,False,False,Begun); end if;
+               if Begun then
+                  Mux.Dispatch (IO,(Target,False,0),Reply);
+                  Ended := True; End_Field (IO,Ended);
+                  CuBit.Messages.debugPrint ("acpi: cmos-handler probe status=" & Reply.Status'Image &
+                    " byte=" & Reply.Value'Image & " scope-ended=" & Ended'Image & ASCII.LF);
+               else
+                  CuBit.Messages.debugPrint ("acpi: cmos-handler probe unavailable selected=" & Selected'Image & ASCII.LF);
+               end if;
+            end;
+         end if;
+      end if;
    end Begin_Startup;
    procedure Execute_Module_Startup (Service : in out Core.State; Budget : Natural;
       Result : out Core.Execution_Report; Status : out Core.Values.Access_Status) is

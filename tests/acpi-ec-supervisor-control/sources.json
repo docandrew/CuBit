@@ -263,7 +263,7 @@
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_instance.adb",
-      "sha256": "4517600d64330100cadba5ad3cf6893f566056857d194b3d47eb8f37343c33e6"
+      "sha256": "f95099c144928e9f87b47d6cce489f4041539ff0eb5a96227220e0fdee0124b8"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_instance.ads",

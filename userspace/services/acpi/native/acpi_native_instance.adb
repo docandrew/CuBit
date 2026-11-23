@@ -1,3 +1,6 @@
+with Parameters;
+with ACPI_Native_CMOS_Ports;
+with ACPI_CMOS_Profiles;
 with ACPI_Native_Server.With_Passive_Queries;
 with ACPI_Native_Server.With_Host_Bridges;
 with ACPI_Host_Bridge_Owners;
@@ -1518,6 +1521,25 @@ package body ACPI_Native_Instance is
       end if;
       ACPI_Native_Log.Info ("acpi: stage registration ok STARTING requests=QUEUED");
       ACPI_Native_Firmware_Profile.Log_Selected;
+      declare
+         Found : constant CuBit.Handles.Startup.Optional_IO_Ports :=
+           CuBit.Handles.Startup.Optional_IO_Ports_Named ("cmos");
+         Profile : ACPI_CMOS_Profiles.Profile;
+      begin
+         case Parameters.Value.cmos_profile is
+            when Parameters.No_CMOS => Profile := (ACPI_CMOS_Profiles.Unknown_Device, False);
+            when Parameters.PC_AT_64 => Profile := (ACPI_CMOS_Profiles.PC_AT_64, False);
+            when Parameters.Intel_128 => Profile := (ACPI_CMOS_Profiles.Intel_Compatible, False);
+            when Parameters.Intel_256 => Profile := (ACPI_CMOS_Profiles.Intel_Compatible, True);
+         end case;
+         if Found.Present then
+            ACPI_Native_CMOS_Ports.Capture (Found.Value, Profile,
+              Parameters.Value.cmos_known, Parameters.Value.cmos_nmi_disabled);
+         else
+            ACPI_Native_CMOS_Ports.Capture (CuBit.Handles.No_IO_Ports, Profile, False, False);
+         end if;
+      end;
+
       ACPI_Clock_Source.Read (Clock, Available);
       if not Available or else L.R.Tick (Clock) > L.R.Tick'Last - Startup_Timeout_Microseconds then
          ACPI_Native_Log.Warning ("acpi: stage snapshot fail CLOCK_UNAVAILABLE");

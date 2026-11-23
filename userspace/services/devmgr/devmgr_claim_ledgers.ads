@@ -48,7 +48,11 @@ package Devmgr_Claim_Ledgers is
    procedure Take
      (L : in out Port_Ledger; First, Ports : Unsigned_64; By : PC.Holder;
       Owner : PC.Owner_Word; Granted : out Boolean; Report : out Capacity_Report)
-   with Pre => By /= PC.Kernel and then (Owner = PC.No_Owner) = (By /= PC.Driver);
+   with Pre => By not in PC.Kernel | PC.Reserved and then (Owner = PC.No_Owner) = (By /= PC.Driver);
+
+   procedure Handover_CMOS
+     (L : in out Port_Ledger; Extended, Intel_Aliases : Boolean;
+      Result : out PC.CMOS_Handover_Result);
 
    --  The driver Owner exited: its claims are given back (Released of them).
    procedure Release_Owner (L : in out Port_Ledger; Owner : PC.Owner_Word; Released : out Natural)

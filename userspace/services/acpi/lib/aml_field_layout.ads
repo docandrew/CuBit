@@ -12,6 +12,8 @@ package AML_Field_Layout with SPARK_Mode, Pure is
    IO_Space : constant AML_Decode.Byte := 1;
    PCI_Config_Space : constant AML_Decode.Byte := 2;
    Embedded_Control_Space : constant AML_Decode.Byte := 3;
+   System_CMOS_Space : constant AML_Decode.Byte := 5;
+   CMOS_Last_Cell : constant AML_Decode.Integer_Value := 255;
    EC_Last_Cell : constant AML_Decode.Integer_Value := 255;
    IO_Last_Address : constant AML_Decode.Integer_Value := 16#FFFF#;
    type Field_Form is (Ordinary_Field, Bank_Field, Index_Field);
@@ -47,7 +49,7 @@ package AML_Field_Layout with SPARK_Mode, Pure is
          Field.Form = Ordinary_Field and then not Field.Has_Connection
          and then Field.Region = Register.Region
          and then Field.Region.Length /= 0
-         and then Field.Region.Space in Memory_Space | IO_Space | PCI_Config_Space | Embedded_Control_Space
+         and then Field.Region.Space in Memory_Space | IO_Space | PCI_Config_Space | Embedded_Control_Space | System_CMOS_Space
          and then Domain_Valid (Field.Region)
          and then (if Register.Width = ACPI_FADT.Transactions.Qword_Access
            then Field.Region.Space = Memory_Space)
@@ -55,6 +57,12 @@ package AML_Field_Layout with SPARK_Mode, Pure is
            Register.Width = ACPI_FADT.Transactions.Byte_Access
            and then Field.Region.Base <= EC_Last_Cell
            and then Field.Region.Length - 1 <= EC_Last_Cell - Field.Region.Base)
+         and then (if Field.Region.Space = System_CMOS_Space then
+           Register.Width = ACPI_FADT.Transactions.Byte_Access
+           and then Field.Effective_Access = 1
+           and then (Field.Flags and 16#0F#) = 1
+           and then Field.Region.Base <= CMOS_Last_Cell
+           and then Field.Region.Length - 1 <= CMOS_Last_Cell - Field.Region.Base)
          and then Field.Bit_Offset mod Bits_Per_Byte = 0
          and then Field.Bit_Offset / Bits_Per_Byte = Register.Byte_Offset
          and then Field.Bit_Length = AML_Decode.Integer_Value
