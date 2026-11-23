@@ -251,3 +251,4 @@ acpi_native_discovery_budget.ads
 acpi_native_discovery_budget.adb
 acpi_host_bridge_owners.ads
 acpi_host_bridge_owners.adb
+aml_namespace.ads

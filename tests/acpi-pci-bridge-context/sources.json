@@ -2672,7 +2672,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_decode.ads",
-      "sha256": "3f312c98587da55cabbd1a800b8dd4634a7adbc502e95e1fbbac11ac91567bfa"
+      "sha256": "9042edfa8df14222b65fa0aae1b85e6d21b7c8a11bc7182e5412a850377a57f4"
     },
     {
       "path": "userspace/services/acpi/lib/aml_definition_loads.adb",
@@ -2900,7 +2900,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "8a19a504a87610591efeb7d974dcacd929177ba7b582df2a4d9229398fc15fac"
+      "sha256": "918ee390b8ba7f6f27643594aee8f057f9c72387dccc8028da80173180da6316"
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",

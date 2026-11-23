@@ -72,7 +72,7 @@
     "shared/platform",
     "userspace/lib/acpi-windows"
   ],
-  "selection_count": 253,
+  "selection_count": 254,
   "inputs": [
     {
       "path": "build-catalog.ccl",
@@ -4172,7 +4172,7 @@
     },
     {
       "path": "tests/acpi-native-entry/selections.txt",
-      "sha256": "130220b4ee394870dccdcf34a15c44fd5f94a0838dc0a9ced64819ad88d8b2cc"
+      "sha256": "60e61ed524e56174f74428b1368d3b8f2a1656851cb245b28637aa4de8b1f368"
     },
     {
       "path": "userspace/ccl/catalogs/native-runtime-services.ccl",
@@ -9740,7 +9740,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_decode.ads",
-      "sha256": "3f312c98587da55cabbd1a800b8dd4634a7adbc502e95e1fbbac11ac91567bfa"
+      "sha256": "9042edfa8df14222b65fa0aae1b85e6d21b7c8a11bc7182e5412a850377a57f4"
     },
     {
       "path": "userspace/services/acpi/lib/aml_definition_loads.adb",
@@ -9968,7 +9968,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "8a19a504a87610591efeb7d974dcacd929177ba7b582df2a4d9229398fc15fac"
+      "sha256": "918ee390b8ba7f6f27643594aee8f057f9c72387dccc8028da80173180da6316"
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -12164,6 +12164,13 @@
       "acpi_host_bridge_owners.ads",
       "acpi_host_bridge_owners.adb",
       "acpi_native_instance.adb"
+    ],
+    "package-in-place": [
+      "aml_namespace.ads",
+      "aml_namespace.adb",
+      "acpi_service_core.adb",
+      "acpi_native_instance.adb",
+      "main.adb"
     ]
   }
 }

@@ -9598,11 +9598,12 @@ package body Owned with SPARK_Mode is
          Retry.Run (Outcome);
       end Complete_Runtime_Package_Field;
       procedure Bind_Live_Builder_Members
-        (E : Arena; Candidate : in out State; First : Natural;
+        (E : in out Arena; Changed : in out Boolean; First : Natural;
          Owner : AML_Identity.Identity;
          Width : AML_Decode.Integer_Width; Self_Node : Node_ID;
          Allow_Reference : Boolean; Status : out AML_Execute.Execution_Status)
       is
+         Candidate : State renames E.Tree.all;
       begin
          Status := AML_Execute.Unsupported_Value;
          for I in First .. Pending.Count (Builder_Journal) loop
@@ -9628,13 +9629,19 @@ package body Owned with SPARK_Mode is
                   if Leaf = AML_Objects.No_Object or else not AML_Objects.Is_Live (Candidate.Values, Leaf) then return; end if;
                else
                Located := Resolve_Object (Candidate, Member.Scope, Member.Path);
-               if Located.Status /= Found then return; end if;
-               if Located.Node = Root or else Kind (Candidate, Located.Node) = Metadata_Value_Object
+               if Located.Status = Not_Found then
+                  -- ACPICA keeps an unresolved package member uninitialized;
+                  -- an absent name does not abort the enclosing method.
+                  Leaf := AML_Objects.No_Object;
+               elsif Located.Status /= Found then
+                  return;
+               elsif Located.Node = Root or else Kind (Candidate, Located.Node) = Metadata_Value_Object
                     or else Package_Metadata_Kind (Kind (Candidate, Located.Node)) then
                   if Owner = AML_Identity.No_Identity then return; end if;
                   AML_Objects.New_Metadata (Candidate.Values,
                     Metadata_Identity_At (Candidate, Owner, Located.Node), Leaf, Allocated);
                   if Allocated /= AML_Objects.Allocated then Status := AML_Execute.Value_Limit; return; end if;
+                  Changed := True;
                elsif Self_Node /= Root and then Located.Node = Self_Node then
                   if Owner = AML_Identity.No_Identity then return; end if;
                   -- The runtime self path defers NAME resolution: the node is
@@ -9646,6 +9653,7 @@ package body Owned with SPARK_Mode is
                   if Allocated /= AML_Objects.Allocated then
                      Status := AML_Execute.Value_Limit; return;
                   end if;
+                  Changed := True;
                elsif Candidate.Items (Located.Node).Object_Type = Buffer_Field_Object then
                   Extract_Buffer_Field (Candidate, Owner, Located.Node, Width, Extracted, Status);
                   if Status /= AML_Execute.Returned then return; end if;
@@ -9657,7 +9665,10 @@ package body Owned with SPARK_Mode is
                         if Allocated /= AML_Objects.Allocated then
                            Status := AML_Execute.Value_Limit; return;
                         end if;
-                     when Buffer_Field => Leaf := Extracted.Object;
+                        Changed := True;
+                     when Buffer_Field =>
+                        Leaf := Extracted.Object;
+                        Changed := True;
                   end case;
                elsif Candidate.Items (Located.Node).Object_Type in
                  Integer_Object | String_Object | Buffer_Object | Package_Object
@@ -9668,6 +9679,7 @@ package body Owned with SPARK_Mode is
                end if;
                end if;
                AML_Objects.Set_Element (Candidate.Values, Member.Package_ID, Member.Element, Leaf);
+               Changed := True;
             end;
          end loop;
          Status := AML_Execute.Returned;
@@ -9677,6 +9689,9 @@ package body Owned with SPARK_Mode is
          Token : in out Runtime_Package_Token; Binding : out AML_Execute.Binding_Result)
       is
          Boundary_Reached : Boolean := False;
+         -- Completion retains effects on failure. Never replay a partially
+         -- completed member sequence through the capacity-retry adapter.
+         Changed : Boolean := False;
          procedure Attempt (Collect_Before : Boolean) is
             procedure Allocation_Boundary
               (Owner : in out Arena; Extra : Root_Values; Gate : out Allocation_Hook_Status) is
@@ -9710,25 +9725,25 @@ package body Owned with SPARK_Mode is
             Allocation_Boundary (E, [Root_Value], Gate);
             if Gate /= Allocation_Allowed or else not Builder_Matches (E, Lease, Token) then return; end if;
             declare
-               Snapshot : Namespace_Snapshot_Owner := null;
                Committed : Boolean := False;
-               procedure Commit_Snapshot (Candidate : in out State) is
+               procedure Complete_In_Place is
+                  Candidate : State renames E.Tree.all;
                   Group : constant Builder_Group := Builder_Groups (Group_Depth);
                   Self_Node : Node_ID := Root;
                   Replaced_Name : Boolean := False;
                begin
                   if Group.Name /= Execute_Declaration_No_Name then
                      if Group.Name.Owner /= Lease or else not Reservation_Matches (E, Group.Name.Original) then return; end if;
+                     Changed := True;
                      Self_Node := Node_ID (AML_References.Named_Node (Group.Name.Original.Ref));
                      Replaced_Name := Candidate.Items (Self_Node).Object_Type /= Uninitialized_Name_Object;
-                     if Replaced_Name then
-                        -- Count evaluation may have replaced the reserved name.
-                        -- Complete its initialization without overwriting that value.
-                        Candidate.Items (Self_Node).Initializing := False;
-                     else
+                     if not Replaced_Name then
                         Candidate.Items (Self_Node) := (Candidate.Items (Self_Node) with delta
-                          Object_Type => Package_Object, Object_Ref => ID, Initializing => False);
+                          Object_Type => Package_Object, Object_Ref => ID);
                      end if;
+                     -- Keep the reservation live through fallible member work.
+                     -- Abort can then retire the method-local name on failure;
+                     -- completed object/member effects are not rolled back.
                   end if;
                   if Replaced_Name then
                      -- The constructed subtree is discarded. Its deferred members
@@ -9742,28 +9757,28 @@ package body Owned with SPARK_Mode is
                              or else AML_References.Source (Pending_Authorities (I).Destination) /= M.Package_ID then return; end if;
                            Pending.Append (Candidate.Journal, M.Package_ID, M.Element, M.Scope, M.Path, Added);
                            if Added /= Pending.Appended then Binding := (AML_Execute.Failed_Binding, AML_Execute.Value_Limit); return; end if;
+                           Changed := True;
                         end;
                      end loop;
                   else
-                     Bind_Live_Builder_Members (E, Candidate, Group.Checkpoint + 1,
+                     Bind_Live_Builder_Members (E, Changed, Group.Checkpoint + 1,
                        E.Token, Group.Width, Self_Node, Self_Node = Root, Status);
                      if Status /= AML_Execute.Returned then Binding := (AML_Execute.Failed_Binding, Status); return; end if;
                   end if;
-                  E.Tree.all := Candidate;
+                  if Self_Node /= Root then
+                     -- Count evaluation may have replaced this name. Complete
+                     -- initialization without overwriting the replacement.
+                     Candidate.Items (Self_Node).Initializing := False;
+                  end if;
                   Restore_Builder_Journal (Group.Checkpoint);
                   Builder_Groups (Group_Depth) := (others => <>);
                   Group_Depth := Group_Depth - 1;
       Committed := True;
-               end Commit_Snapshot;
+               end Complete_In_Place;
             begin
-               -- Copy only after count effects and collection have completed.
-               Snapshot := Clone_Namespace_Snapshot (E.Tree.all);
-               if Snapshot = null then
-                  Binding := (AML_Execute.Failed_Binding, AML_Execute.Value_Limit);
-                  return;
-               end if;
-               Commit_Snapshot (Snapshot.all);
-               Free_Namespace_Snapshot (Snapshot);
+               -- Count effects and any collection precede these writes.
+               -- No full-State copy or rollback: completed effects stay live.
+               Complete_In_Place;
                if not Committed then return; end if;
 
             end;
@@ -9779,7 +9794,7 @@ package body Owned with SPARK_Mode is
          Token := No_Runtime_Package;
          end Attempt;
          function Capacity_Refused return Boolean is
-           (Boundary_Reached and then Binding.Status = AML_Execute.Failed_Binding and then Binding.Failure = AML_Execute.Value_Limit);
+           (Boundary_Reached and then not Changed and then Binding.Status = AML_Execute.Failed_Binding and then Binding.Failure = AML_Execute.Value_Limit);
          package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
          Outcome : Retry.Report;
       begin
