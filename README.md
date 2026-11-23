@@ -35,13 +35,32 @@ Alire), GRUB and image tools, and QEMU.
 
         nix develop
 
-4. **Build and boot the desktop.**
+   **Every command below runs inside this shell.** The first `nix develop`
+   downloads the toolchain and takes a while; later ones start in seconds.
+   Next time, run `cd CuBit && nix develop` again, and repeat the `export`
+   from step 4. To run one command without entering the shell, use
+   `nix develop -c <command>`, for example `nix develop -c make -C kernel world`.
+
+4. **Make a development signing key.** CuBit runs only signed programs, so
+   the build signs everything it puts on an image. Make a key for this
+   machine once; it lives outside the repository, in
+   `~/.config/cubit/signing`. Then name it for the headless tests, which never
+   fall back to a default key:
+
+        make -C kernel signing-key
+        export CUBIT_SIGNING=~/.config/cubit/signing
+
+   The key is made once per machine. The `export` lasts only for this shell;
+   to make it permanent, add it to your shell's startup file.
+
+5. **Build and boot the desktop.**
 
         make -C kernel world
         make -C kernel run-desktop
 
    The first build takes a while: it builds the Ada toolchain and a native Mesa
-   (the desktop's renderer). Allow plenty of disk space; the Mesa build
+   (the desktop's renderer). It took about 25 minutes from a fresh clone on a
+   16-core machine (2026-11-23). Allow plenty of disk space; the Mesa build
    directory alone grows to several gigabytes. Later builds are incremental.
 
 `run-desktop` boots a 4-CPU, 2 GiB q35 machine in a GTK window, with an NVMe
@@ -86,9 +105,13 @@ Automated tests
 Headless tests boot QEMU without a window and check the serial log for pass
 markers, for example:
 
-    tests/headless/run.sh --test processes --accel kvm
-    tests/headless/run.sh --test desktop-protocol --accel kvm
+    tests/headless/run.sh --test multi-instance --accel kvm
+    tests/headless/run.sh --test acpi-shutdown --accel kvm
     tests/headless/run.sh --help          # the full list
+
+They need `CUBIT_SIGNING` (step 4) and run inside the development shell. A
+few tests have known failures that are being tracked; if one fails, check the
+serial log it names before assuming your setup is wrong.
 
 The live image has its own runner, which drives the real desktop through USB
 input (here behind an emulated USB hub):

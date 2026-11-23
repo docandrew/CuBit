@@ -20,5 +20,12 @@ if [ ! -f "$prepared/ready" ]; then
 fi
 export __CARGO_TESTS_ONLY_SRC_ROOT="$prepared/library"
 export RUSTC_BOOTSTRAP=1
+# -Zbuild-std builds run --offline, so std's own crates (hashbrown, dlmalloc,
+# moto-rt, ...) must already be in Cargo's cache. A fresh CARGO_HOME has none:
+# fetch them once, from the toolchain's pinned Cargo.lock (the patched copy's
+# lock differs and its tree is partial, so fetch from the pristine source).
+if ! cargo fetch --locked --offline --manifest-path "$rust_source/Cargo.toml" >/dev/null 2>&1; then
+    cargo fetch --locked --quiet --manifest-path "$rust_source/Cargo.toml"
+fi
 export CUBIT_RUST_TARGET="$std_dir/x86_64-unknown-cubit.json"
 exec "$@"
