@@ -214,6 +214,17 @@
               export C_INCLUDE_PATH="${pkgs.SDL2.dev}/include''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
               export LIBRARY_PATH="${pkgs.SDL2}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
               export LD_LIBRARY_PATH="${pkgs.SDL2}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              # NixOS has no /usr/lib, so Alire's prebuilt GNAT (gnat_native,
+              # pinned in kernel/alire.toml) finds no C library to link with
+              # ("cannot find Scrt1.o", "-lc"). Point it at Nix's glibc: start
+              # files and libraries from glibc.out, the empty librt/libpthread/
+              # libdl stubs from glibc.static, headers from glibc.dev. Only on
+              # NixOS: elsewhere the host's glibc links and loads the programs.
+              # The programs run through nix-ld, as Alire's toolchain does.
+              if [ -e /etc/NIXOS ]; then
+                export LIBRARY_PATH="${pkgs.glibc.out}/lib:${pkgs.glibc.static}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
+                export C_INCLUDE_PATH="''${C_INCLUDE_PATH:+$C_INCLUDE_PATH:}${pkgs.glibc.dev}/include"
+              fi
               echo "CuBit development shell"
               echo "  Build:  make -C kernel world"
               echo "  Test:   tests/headless/run.sh --test desktop-display"
