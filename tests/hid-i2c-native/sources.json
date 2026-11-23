@@ -28,7 +28,7 @@
     },
     {
       "path": "tests/hid-i2c-native/calibration_tests.adb",
-      "sha256": "a34cf806258727be13d0cbd623bf7223f9fbef2cdc2f2f1e56603cb5b56ffe74",
+      "sha256": "510d427420b3e33b0360d1ac95faf76decf3e2ca75458128693dee8dd4d655af",
       "kind": "test"
     },
     {
@@ -88,7 +88,7 @@
     },
     {
       "path": "tests/hid-i2c-native/touchpad_publication_tests.adb",
-      "sha256": "887a8c79521e993e6a2f952e78fe59a6ce269c321b05c07053f5d0e4af71d89a",
+      "sha256": "2836b92785843f03de3e84535b04badc01c8145d6e679e5ed2b4c9c454d39acc",
       "kind": "test"
     },
     {
@@ -193,27 +193,27 @@
     },
     {
       "path": "userspace/lib/hid/hid_touchpad_contact.ads",
-      "sha256": "305d95b7ba60d8de2f1e52fcae447646ff35b44c665ce7e2525b52189111e652",
+      "sha256": "ea254e0763dd8dd3184ad0b7c39d6d920c81517bb9bb8cd17cc13b7ee9867a66",
       "kind": "production"
     },
     {
       "path": "userspace/lib/hid/hid_touchpad_pointer.adb",
-      "sha256": "7ae0c9b6165535fb733af2f1c8bb5208c00e6385db4dac0df3415486f5b4d4e2",
+      "sha256": "5ff5064b6593575bf8b05296f706db3c3627100a5ea7fd33c064655b538ac0d7",
       "kind": "production"
     },
     {
       "path": "userspace/lib/hid/hid_touchpad_pointer.ads",
-      "sha256": "2df50b0c569964b997cdfa2e0e654ba60ac321b95e52f7a136d93fec9df73cc2",
+      "sha256": "3f9385472f97f5429538e8ab9fe36bd31ceadf9fd5dacf87ba679ca1cdb098ed",
       "kind": "production"
     },
     {
       "path": "userspace/lib/hid/hid_touchpad_reports.adb",
-      "sha256": "a9613d3c2686c068494d9d996f27d9c8e6bcd8c736320d6b4aa2208cbe07fca2",
+      "sha256": "3c6a449c6cce2f6f9394b1625a99a2eda6570b9f2948fbad00a2fd47a2a4d0b0",
       "kind": "production"
     },
     {
       "path": "userspace/lib/hid/hid_touchpad_reports.ads",
-      "sha256": "6d391222c75125e569457339713c19e1bf0c1172bec42e83e71368247dd35094",
+      "sha256": "32abb3923e56853a73351c050f40aa9190d6a574e912359455a3528502996a14",
       "kind": "production"
     },
     {
@@ -433,12 +433,12 @@
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_gpio_input.adb",
-      "sha256": "676f80d43d18ea8bca36d230caa41a33f8ade17723b5c01666935837beaae7cc",
+      "sha256": "c4c18d29c4df1af7142b2e86fc55b0f09817f9fc73461a963e5d192104430f4b",
       "kind": "production"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_gpio_input.ads",
-      "sha256": "f3481cc75f47f22f2cde1b4c486a6bb27b5bd13fe67ee7fb57a52d2f106e6db6",
+      "sha256": "f1dc3ead620df078ccf3a79554d7017de99973eecd329232d2ad7c143acb92c7",
       "kind": "production"
     },
     {
@@ -483,22 +483,22 @@
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_touchpad.adb",
-      "sha256": "c737778996e624cd86afeca1270f9b884a5d97fcf9230812f0fe347f4a5dc8b2",
+      "sha256": "763e31be4ab0e7e8e45eb4183569007c84f8183816c04532048f335e32ca4227",
       "kind": "production"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_touchpad.ads",
-      "sha256": "3460de920e7e3da881aaaa42ec6b44157f599df61a622b85f9af3a00f40603e1",
+      "sha256": "cbd5d5a7706133f8c74421fc08a1ee6a12f22baaca5ff0fe6cddb34e30279b6e",
       "kind": "production"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_input_source.adb",
-      "sha256": "a765d0398a3a7124695191fc45160e19cdbd20bbf5be73c5411f5dfa08015b28",
+      "sha256": "bc70d547b45180d8aa610dadae8467e259aed3e6ca564b4cfa65d01cb43e14b3",
       "kind": "production"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_input_source.ads",
-      "sha256": "2a4c01337f7697bb569e3b2865a9aadbd024ae0bcd92fb28eafd3c5929432be7",
+      "sha256": "a01eee33bdb525df624e44cb3113532145fc3bbe293ff9611fe70de5cdb3bc43",
       "kind": "production"
     },
     {
@@ -785,6 +785,46 @@
       "path": "tests/hid-i2c-native/descriptor_hex_tests.adb",
       "sha256": "33d797b7be97af7325da77f91f4f84f27f1d55fee9ded311f9f500b79873bd5d",
       "kind": "test"
+    },
+    {
+      "path": "userspace/lib/hid/hid_motion_fragments.ads",
+      "sha256": "6fd3f106f109860ca1820e32e29997b011f22f302862b756a73301e1f9613317",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/hid/hid_motion_fragments.adb",
+      "sha256": "2b0d8c6fa673c69bc5a289c1edd9bafba4b95822b52ad2ec10b2c0c81714c949",
+      "kind": "production"
+    },
+    {
+      "path": "tests/hid-i2c-native/motion_fragments_tests.adb",
+      "sha256": "b622f9c657425d57497c3d0c023e6c3b664fec5a7ffe6d277842d4eb32323f4f",
+      "kind": "test"
+    },
+    {
+      "path": "userspace/lib/hid/hid_axis_resolution.ads",
+      "sha256": "6d52e386c78cf24e9fce03f2394e3f1a1eb61118ea25e60ec850b5f47b01eaae",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/hid/hid_axis_resolution.adb",
+      "sha256": "0859c5083c0f467d34c7d18b066e0da9451d510575ef14fec628586eff40a96a",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/hid/hid_axis_motion.ads",
+      "sha256": "8b7d1ed7b447923aefa00f4e2d2081e6ec957c9a18f00666ce1862f851c76f42",
+      "kind": "production"
+    },
+    {
+      "path": "userspace/lib/hid/hid_axis_motion.adb",
+      "sha256": "7916c05e37f339e8c490ee435e513bce6cb7b50fa787500cb32936053395e0bc",
+      "kind": "production"
+    },
+    {
+      "path": "tests/hid-i2c-native/axis_resolution_tests.adb",
+      "sha256": "4fb31367e6470c7a650fe168866f2962ce2c163455d7f4a4cbc00b0e37caffe4",
+      "kind": "test"
     }
   ],
   "tests": [
@@ -868,6 +908,31 @@
       "id": "descriptor_hex",
       "main": "descriptor_hex_tests",
       "prefix": "Descriptor hex checks"
+    },
+    {
+      "id": "motion_fragments",
+      "main": "motion_fragments_tests",
+      "prefix": "Motion fragments checks"
+    },
+    {
+      "id": "wide-motion",
+      "main": "touchpad_publication_tests",
+      "args": [
+        "wide-motion"
+      ],
+      "prefix": "HID touchpad publication checks"
+    },
+    {
+      "id": "wide-backpressure",
+      "main": "touchpad_publication_tests",
+      "args": [
+        "wide-backpressure"
+      ],
+      "prefix": "HID touchpad publication checks"
+    },
+    {
+      "main": "axis_resolution_tests",
+      "prefix": "Axis resolution checks"
     }
   ],
   "proof_inputs": [

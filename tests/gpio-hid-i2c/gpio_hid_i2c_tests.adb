@@ -363,8 +363,9 @@ begin
    Settings.Binding_Budget := 0; App.Start (Server, 16#20#, Settings, 1000, 1, True, Started);
    Check (Started = App.Invalid_Budget and then Opens = 0);
    Settings.Binding_Budget := 100_000; Settings.X_Gain := (1, 1);
+   Settings.X_Range := (0, 0);
    App.Start (Server, 16#20#, Settings, 1000, 1, True, Started); Check (Started = App.Invalid_Calibration and then Opens = 0);
-   Settings.X_Gain := (1, 4); Settings.Coordinates := App.Source.Report_Bounds;
+   Settings.X_Gain := (1, 4); Settings.X_Range := (0, 4095); Settings.Coordinates := App.Source.Report_Bounds;
    Settings.X_Range := (0, 0); Settings.Y_Range := (0, 0);
    App.Start (Server, 16#20#, Settings, 1000, 1, True, Started);
    Check (Started = App.Started and then not App.Ready and then Input_Page (0 .. 1) = [16#20#, 0]);

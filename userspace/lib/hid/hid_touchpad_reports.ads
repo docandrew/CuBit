@@ -48,7 +48,9 @@ package HID_Touchpad_Reports with SPARK_Mode is
    type Coordinate_Status is (Coordinates_Unavailable, Uniform_Coordinates, Inconsistent_Coordinates);
    type Coordinate_Report (Outcome : Coordinate_Status := Coordinates_Unavailable) is record
       case Outcome is
-         when Uniform_Coordinates => Bounds : Contacts.Coordinate_Bounds;
+         when Uniform_Coordinates =>
+            Bounds : Contacts.Coordinate_Bounds;
+            Measurements : Contacts.Coordinate_Measurements;
          when others => null;
       end case;
    end record;

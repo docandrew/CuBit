@@ -1,6 +1,8 @@
 pragma Ada_2022;
 with Interfaces;
 with Pointer_Pending;
+with HID_Motion_Fragments;
+with HID_Axis_Resolution;
 generic
    Maximum_Contacts : Positive;
    type Contact is private;
@@ -16,8 +18,8 @@ package HID_Touchpad_Pointer with SPARK_Mode is
    type Axis_Range is record
       Minimum, Maximum : Coordinate := 0;
    end record;
-   type Gain_Numerator is range 1 .. 2 ** 16 - 1;
-   type Gain_Denominator is range 1 .. 2 ** 31 - 1;
+   subtype Gain_Numerator is HID_Axis_Resolution.Numerator;
+   subtype Gain_Denominator is HID_Axis_Resolution.Denominator;
    type Gain is record
       Numerator : Gain_Numerator := 1;
       Denominator : Gain_Denominator := 1;
@@ -31,21 +33,23 @@ package HID_Touchpad_Pointer with SPARK_Mode is
    type Decision is record
       Outcome : Status := Policy_Not_Configured;
       Emit : Boolean := False;
-      Data : Pointer_Pending.Report;
+      Data : HID_Motion_Fragments.Frame;
    end record;
    type State is limited private;
    function Ready (S : State) return Boolean;
    function Tracking (S : State) return Boolean;
    function Primary (S : State) return Interfaces.Unsigned_32 with Pre => Tracking (S);
+   -- Every legal 32-bit HID logical range fits this named malformed-input bound.
+   Maximum_Axis_Span : constant := 2 ** 32 - 1;
    function Admissible (Range_Value : Axis_Range; Scale : Gain) return Boolean;
    procedure Configure
      (S : in out State; X_Range, Y_Range : Axis_Range;
       X_Gain, Y_Gain : Gain; X_Direction, Y_Direction : Direction;
       Confidence : Confidence_Policy; Result : out Decision);
    -- Explicit policy; no hardware range, orientation, sensitivity or confidence
-   -- default is admitted implicitly. The worst full-axis displacement, including
-   -- fractional carry, must fit one relative-pointer report; other scales are
-   -- refused rather than clipped. Reconfiguration releases held buttons.
+   -- default is admitted implicitly. Logical spans must fit Maximum_Axis_Span;
+   -- completed motion is wide and must be fragmented without loss before wire
+   -- publication. Reconfiguration releases held buttons.
    procedure Rebase (S : in out State);
    function Current_Buttons (S : State) return Pointer_Pending.Button_State;
    procedure Reset (S : in out State; Result : out Decision);
@@ -61,7 +65,7 @@ package HID_Touchpad_Pointer with SPARK_Mode is
    -- button bits explicitly. Enqueue every Emit result even on reset/error.
    -- Getter functions must be pure/deterministic. No IPC/publication occurs.
 private
-   type Motion_Math is range -(2 ** 62) .. 2 ** 62 - 1;
+   subtype Motion_Math is HID_Motion_Fragments.Motion;
    type State is limited record
       Configured, Has_Primary : Boolean := False;
       ID : Interfaces.Unsigned_32 := 0;

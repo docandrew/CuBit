@@ -79,6 +79,7 @@ package body HID_I2C_Touchpad with SPARK_Mode is
       then Collections (Index) else (others => <>));
    function Input_Observation return Source.Report is (Input_Info);
    function Ready return Boolean is (Device.Ready (Core) and then Source.Ready (Signal));
+   function Input_Ready return Boolean is (Source.Input_Ready (Signal));
    function Quiescent return Boolean is (Device.Quiescent (Core));
    function Count return Input_Pending.Count_Type is (Source.Count (Signal));
    function Head return Input_Pending.Item is (Source.Head (Signal));
@@ -94,7 +95,12 @@ package body HID_I2C_Touchpad with SPARK_Mode is
    begin Device.Reset_Interrupt (Core, Ticket, Result); end Reset_Interrupt;
    procedure Request_Input (Deadline : W.Millisecond; Now : W.Word; Clock_Available : Boolean;
       Result : out Device.Request_Result) is
-   begin Current_Time := Now; Device.Request_Input (Core, Deadline, Now, Clock_Available, Result); end Request_Input;
+   begin
+      Result := Device.Busy;
+      if not Input_Ready then return; end if;
+      Current_Time := Now;
+      Device.Request_Input (Core, Deadline, Now, Clock_Available, Result);
+   end Request_Input;
    procedure Request_Stop (Now : W.Word) is
    begin Current_Time := Now; Device.Request_Stop (Core); end Request_Stop;
    procedure Close (Result : out Bus.Close_Result) is

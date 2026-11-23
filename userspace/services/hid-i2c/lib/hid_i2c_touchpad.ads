@@ -79,6 +79,7 @@ package HID_I2C_Touchpad with SPARK_Mode is
    function Report_Collection (Index : Natural) return Schema.Collection;
    function Input_Observation return Source.Report;
    function Ready return Boolean;
+   function Input_Ready return Boolean;
    function Quiescent return Boolean;
    function Count return Input_Pending.Count_Type;
    function Head return Input_Pending.Item with Pre => Count > 0;
@@ -97,7 +98,7 @@ package HID_I2C_Touchpad with SPARK_Mode is
       Control_Window, Read_Window, Cleanup_Window : HID_GPIO_Input.Window;
    package GPIO_Input is
       package Owner is new HID_GPIO_Input.Owner
-        (Controls, Device, Expected_Sender, Control_Window, Read_Window, Cleanup_Window, Next_Token);
+        (Controls, Device, Expected_Sender, Control_Window, Read_Window, Cleanup_Window, Next_Token, Input_Ready);
       procedure Start (Now : W.Word; Clock_Available : Boolean; Result : out Owner.Start_Result);
       procedure Step (Now : W.Word; Clock_Available : Boolean);
       procedure Receive_Control (Token : W.Word; Sender : CuBit.Process_IDs.Process_ID;

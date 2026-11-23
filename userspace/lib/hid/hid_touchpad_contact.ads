@@ -27,6 +27,16 @@ package HID_Touchpad_Contact with SPARK_Mode is
    type Coordinate_Bounds is record
       X_Minimum, X_Maximum, Y_Minimum, Y_Maximum : Schema.Numeric_Value := 0;
    end record;
+   type Axis_Measurement is record
+      Minimum, Maximum : Schema.Numeric_Value := 0;
+      Unit : Schema.Word := 0;
+      Exponent : Integer range -8 .. 7 := 0;
+   end record;
+   type Coordinate_Measurements is record
+      X, Y : Axis_Measurement;
+   end record;
+   function Measurements (Item : Contact_Layout) return Coordinate_Measurements
+      with Pre => Ready (Item);
    function Coordinates (Item : Contact_Layout) return Coordinate_Bounds
       with Pre => Ready (Item);
    procedure Compile
@@ -66,4 +76,9 @@ private
    function Coordinates (Item : Contact_Layout) return Coordinate_Bounds is
      ((Item.Parts (X_Part).Field.Logical_Minimum, Item.Parts (X_Part).Field.Logical_Maximum,
        Item.Parts (Y_Part).Field.Logical_Minimum, Item.Parts (Y_Part).Field.Logical_Maximum));
+   function Measurements (Item : Contact_Layout) return Coordinate_Measurements is
+     (((Item.Parts (X_Part).Field.Physical_Minimum, Item.Parts (X_Part).Field.Physical_Maximum,
+        Item.Parts (X_Part).Field.Unit, Item.Parts (X_Part).Field.Unit_Exponent),
+       (Item.Parts (Y_Part).Field.Physical_Minimum, Item.Parts (Y_Part).Field.Physical_Maximum,
+        Item.Parts (Y_Part).Field.Unit, Item.Parts (Y_Part).Field.Unit_Exponent)));
 end HID_Touchpad_Contact;

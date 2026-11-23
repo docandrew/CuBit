@@ -5,12 +5,14 @@ with HID_I2C_Device;
 with CuBit.Process_IDs;
 package HID_GPIO_Input with SPARK_Mode is
    subtype Window is GPIO_Control_Wire.Millisecond range 1 .. GPIO_Control_Wire.Millisecond'Last;
+   function No_Backpressure return Boolean is (True);
    generic
       with package Controls is new GPIO_Client_Controls (<>);
       with package Device is new HID_I2C_Device (<>);
       Expected_Sender : CuBit.Process_IDs.Process_ID;
       Control_Window, Read_Window, Cleanup_Window : Window;
       with procedure Next_Token (Token : out GPIO_Control_Wire.Word; Available : out Boolean);
+      with function Input_Ready return Boolean is No_Backpressure;
    package Owner is
       package W renames GPIO_Control_Wire;
       type Phase is (Cold, Arming, Armed, Reading, Acknowledging, Releasing, Stopped, Unresolved);
