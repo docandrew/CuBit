@@ -11,8 +11,10 @@ out=$(mktemp -d "$TMPDIR/acpi-cmos-headless-XXXXXXXX")
 printf 'CMOS headless receipts: %s\n' "$out"
 cd "$root"
 # Generate the read-only fixture from source under the held build lock.
-iasl=$(command -v iasl)
-# acpica-tools comes from the flake-pinned dev shell; retain its binary guard.
+iasl=$(nix build --inputs-from "$root" nixpkgs#acpica-tools --no-link --print-out-paths | head -1)/bin/iasl
+# acpica-tools from the flake-pinned nixpkgs, as the GCC port takes its sources,
+# not the dev shell: adding it to the shell changed the device-build toolchain
+# identity (image 40h). Its binary guard stays.
 printf '%s  %s\n' 1c6a21c90ff6f846e27a98dbb3106362c706f67db8ceca21ccd81ab76a7d9dcb "$iasl" | sha256sum --check --status
 timeout --kill-after=2s 30s "$iasl" -p "$out/cmos-reach" "$here/cmos-reach.asl" >"$out/iasl.log" 2>&1
 sha256sum "$here/cmos-reach.asl" "$out/cmos-reach.aml" >"$out/fixture.sha256"
