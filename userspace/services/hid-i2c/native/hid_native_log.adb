@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with HID_Reset_Policy;
 with CuBit.Handles.IPC;
 with CuBit.Log_Records;
 with CuBit.Messages;
@@ -65,6 +66,7 @@ package body HID_Native_Log is
       if Notices(Item)then return;end if;Notices(Item):=True;
       Line((case Item is
          when Reset_Ack_Timeout=>"reset ack not observed within1000ms; continue only after confirmed GPIO release",
+         when Spurious_Reset_Report=>"unsolicited reset completion ignored; consecutive ceiling" & HID_Reset_Policy.Maximum_Spurious_Resets'Image,
          when Elan_Bogus_IRQ=>"Elan IRQ length0xffff ignored as no data"),True);
    end Notice;
    procedure Startup_Detail (Details : String) is

@@ -5,6 +5,7 @@ with HID_I2C_Descriptors;
 with HID_I2C_Wire;
 with HID_I2C_Buffered_Client;
 with CuBit.Process_IDs;
+with HID_Reset_Policy;
 generic
    with package Bus is new HID_I2C_Buffered_Client (<>);
    Maximum_Report, Maximum_Input, Output_Capacity : HID_I2C_Descriptors.Byte_Count;
@@ -51,7 +52,8 @@ package HID_I2C_Device with SPARK_Mode is
       Last_Control : L.Reply;
       Reset_Ack_Until : W.Word := 0;
       Reset_Ack_Timed_Out, Bogus_IRQ_Ignored : Boolean := False;
-      Input_Packets : W.Word := 0;
+      Input_Packets, Spurious_Reset_Reports : W.Word := 0;
+      Consecutive_Spurious_Resets : HID_Reset_Policy.Spurious_Reset_Count := 0;
    end record;
    type Request_Result is (Accepted, Not_Ready, Busy);
    type Interrupt_Result is (Latched, Unrelated);

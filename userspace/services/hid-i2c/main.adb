@@ -181,6 +181,7 @@ begin
       Clock.Cached_Time (Now, Available);
       if App.Observe.Reset_Ack_Timed_Out then Log.Notice(Log.Reset_Ack_Timeout);end if;
       if App.Observe.Bogus_IRQ_Ignored then Log.Notice(Log.Elan_Bogus_IRQ);end if;
+      if App.Observe.Spurious_Reset_Reports > 0 then Log.Notice(Log.Spurious_Reset_Report);end if;
       if App.Observe.Descriptor.Status = D.Decoded then
          Log.Stage (Log.Descriptor, True, Log.Confirmed,
             Log.Hex ("vendor", W.Word (App.Observe.Descriptor.Value.Vendor_ID)) &

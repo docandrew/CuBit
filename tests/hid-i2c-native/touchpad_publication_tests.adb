@@ -6,6 +6,7 @@ with Parameters;
 with HID_Launch_Adapter;
 with GPIO_Lease_Control;
 with HID_GPIO_Reset;
+with HID_Reset_Policy;
 with HID_Touchpad_Native;
 with HID_Touchpad_Pump;
 with HID_Touchpad_Native_Wait;
@@ -624,20 +625,24 @@ begin
    Current_Consumer := Consumer_Two; Flush (102, False); Payload (0);
    Check (Published.Consumer_Changed and then Published.Consumer_Identity = Consumer_Two and then App.Head.Recover and then App.Head.Observed_Ms = 102);
    Saved := App.Head; Check_Wire (Saved); Flush (102, True); Check (App.Count = 0);
-   Read_Event (110); App_Complete ([0, 0], 111);
+   for N in 1 .. HID_Reset_Policy.Maximum_Spurious_Resets loop
+      Read_Event (W.Word(110 + 2*N)); App_Complete ([0, 0], W.Word(111 + 2*N)); GPIO_Complete (W.Word(111 + 2*N));
+      Check (App.Ready and then Live.Ready and then App.Observe.Consecutive_Spurious_Resets = N);
+   end loop;
+   Read_Event (128); App_Complete ([0, 0], 129);
    Check (not App.Ready and then App.Observe.Reason = App.Device.Unexpected_Device_Reset and then App.Quiescent);
    Check (not Live.Ready and then not Live.Quiescent and then GPIO_Request.Kind = GW.Release_Pin);
-   GPIO_Complete (112); Check (Live.Quiescent and then Live.Control_Token = 0);
+   GPIO_Complete (130); Check (Live.Quiescent and then Live.Control_Token = 0);
    Payload (0); App.Close (Closed); Check (Closed = C.Closed and then not Session_Open);
    Check (not Native.Drained);
-   Current_Consumer := P.No_Process; Flush (112, True);
+   Current_Consumer := P.No_Process; Flush (130, True);
    Check (Published.No_Consumer and then not Native.Drained);
    Current_Consumer := Consumer_One;
-   Saved := App.Head; Flush (112, False);
+   Saved := App.Head; Flush (130, False);
    Check (Published.Blocked and then not Native.Drained);
-   Saved := App.Head; Flush (112, False);
+   Saved := App.Head; Flush (130, False);
    Check (Published.Blocked and then not Native.Drained and then App.Head = Saved);
-   Flush (112, True); Check_Wire (Saved); Check (App.Count = 0 and then Native.Drained);
+   Flush (130, True); Check_Wire (Saved); Check (App.Count = 0 and then Native.Drained);
    Build (True);
    declare Config : constant Ambiguous.Configuration := (5, 100_000, (0, 4095), (0, 4095), (1, 4), (1, 4),
       Ambiguous.Source.Pointer.As_Reported, Ambiguous.Source.Pointer.Reversed, Ambiguous.Source.Pointer.Require_Confident,
@@ -679,7 +684,7 @@ begin
       Too_Small.Close (Small_Closed); Check (Small_Closed = C_Small.Closed);
    end;
    Check (not Session_Open and then Submit_Calls > 0 and then Opens = 4 and then Close_Calls = 4);
-   Check (GPIO_Calls = 10 and then Publication_Attempts > 0);
+   Check (GPIO_Calls = 10 + HID_Reset_Policy.Maximum_Spurious_Resets and then Publication_Attempts > 0);
    -- The actual parser/device/GPIO composition is now stopped. Exercise fair
    -- queue scheduling without replacing its lifecycle with a policy mock.
    Pump_Time := 120; Completion_Queued := 3; Event_Queued := 3; Request_Queued := 3;

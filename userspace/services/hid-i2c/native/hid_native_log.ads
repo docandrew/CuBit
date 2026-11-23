@@ -15,7 +15,7 @@ package HID_Native_Log is
       Operation_Refused, Effects_Uncertain, Cleanup_Pending);
    procedure Stage (Item : Bringup_Stage; OK : Boolean; Why : Reason;
       Details : String := "");
-   type Notice_Kind is (Reset_Ack_Timeout, Elan_Bogus_IRQ);
+   type Notice_Kind is (Reset_Ack_Timeout, Elan_Bogus_IRQ, Spurious_Reset_Report);
    procedure Notice (Item : Notice_Kind);
    procedure Startup_Detail (Details : String);
    procedure Descriptor_Data (Data : HID_I2C_Descriptors.Bytes);

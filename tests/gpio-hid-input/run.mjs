@@ -41,7 +41,7 @@ if(process.env.TMPDIR!=='/home/doc/cubit-build-tmp')throw Error('Set TMPDIR befo
 const compiler=fs.realpathSync(process.env.PATH.split(':').map(d=>d+'/gprbuild').find(fs.existsSync));
 if(!compiler.startsWith('/nix/store/'))throw Error('Use the Nix development environment');
 pins[compiler]=sha(compiler);
-const out=fs.mkdtempSync(process.env.TMPDIR+'/gpio-hid-input-'),commands=[],counts={};
+const out=process.env.CUBIT_HID_TEST_OUTPUT?path.resolve(process.env.CUBIT_HID_TEST_OUTPUT):fs.mkdtempSync(process.env.TMPDIR+'/gpio-hid-input-'),commands=[],counts={};if(process.env.CUBIT_HID_TEST_OUTPUT)fs.mkdirSync(out);
 console.log(out);fs.mkdirSync(out+'/source');
 for(const[name,file]of files){fs.copyFileSync(file,out+'/source/'+name);pins[out+'/source/'+name]=sha(file);}
 fs.writeFileSync(out+'/inputs.json',JSON.stringify(pins,null,2)+'\n');

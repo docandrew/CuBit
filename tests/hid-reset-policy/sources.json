@@ -7,11 +7,11 @@
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_reset_policy.ads",
-      "sha256": "eea0e060f366bb7cb7c5aa63f58958a01809642dd751aec72ca2a8c583243c8f"
+      "sha256": "511396f0e34e3ebf00a259de47ee2794da962e0844e2e94b778e82fa5a6c1c7a"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_reset_policy.adb",
-      "sha256": "fa34a36aa942533e23cad6cbe6a1a385b8114fa2990691130c136e23b219703c"
+      "sha256": "a4c76beedd7488854a0bff8b1adb453145a80d25ef45805b60f277e9e9c1137d"
     }
   ],
   "tools": {

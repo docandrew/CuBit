@@ -88,7 +88,7 @@
     },
     {
       "path": "tests/hid-i2c-native/touchpad_publication_tests.adb",
-      "sha256": "2836b92785843f03de3e84535b04badc01c8145d6e679e5ed2b4c9c454d39acc",
+      "sha256": "ad93e00015a6ee249f3ecbfaec2d7ccf1b286d5cb430526513e99bd24d91d734",
       "kind": "test"
     },
     {
@@ -473,12 +473,12 @@
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_device.adb",
-      "sha256": "98b21aaa2d64852e00b50e6189b79366c44837c83a1611fd005c3f3dfec26d0f",
+      "sha256": "28ddb479e7a54d29562324ac618c50e0f14fd295d97bc6130131728a84f10538",
       "kind": "production"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_i2c_device.ads",
-      "sha256": "dd831f5d5deafe1175c2efa382e928fb519b0601ad7f583cee80f3c0c4e6a4d5",
+      "sha256": "c0ef12af05d236f059a6487f40457d647b9240449f1751631ce3b3473076590d",
       "kind": "production"
     },
     {
@@ -763,12 +763,12 @@
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_reset_policy.ads",
-      "sha256": "eea0e060f366bb7cb7c5aa63f58958a01809642dd751aec72ca2a8c583243c8f",
+      "sha256": "511396f0e34e3ebf00a259de47ee2794da962e0844e2e94b778e82fa5a6c1c7a",
       "kind": "production"
     },
     {
       "path": "userspace/services/hid-i2c/lib/hid_reset_policy.adb",
-      "sha256": "fa34a36aa942533e23cad6cbe6a1a385b8114fa2990691130c136e23b219703c",
+      "sha256": "a4c76beedd7488854a0bff8b1adb453145a80d25ef45805b60f277e9e9c1137d",
       "kind": "production"
     },
     {

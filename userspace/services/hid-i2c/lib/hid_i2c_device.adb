@@ -1,5 +1,4 @@
 pragma Ada_2022;
-with HID_Reset_Policy;
 package body HID_I2C_Device with SPARK_Mode is
    use type W.Word, D.Decode_Status, D.Capacity_Status;
    use type Bus.Setup_Result, Bus.Start_Result, Bus.Close_Result, Wire.Frame_Status, L.Completion_Status;
@@ -225,10 +224,16 @@ package body HID_I2C_Device with SPARK_Mode is
             S.Info.Last_Frame := Wire.Inspect_Input (S.Scratch (1 .. Length), S.Info.Descriptor.Value.Maximum_Input, False);
             case S.Info.Last_Frame.Status is
                when Wire.Input_Report =>
+                  S.Info.Consecutive_Spurious_Resets := 0;
                   Deliver_Input (S.Scratch (1 + Wire.Payload_Offset .. Natural (S.Info.Last_Frame.Declared_Length)));
                   if S.Info.Input_Packets < W.Word'Last then S.Info.Input_Packets := S.Info.Input_Packets + 1; end if;
                when Wire.Empty_Frame => null;
-               when Wire.Unexpected_Reset => Fail (S, Unexpected_Device_Reset); return;
+               when Wire.Unexpected_Reset =>
+                  -- An unsolicited zero-length frame is a duplicate completion,
+                  -- not a request to reset or arm the GPIO latch again.
+                  HID_Reset_Policy.Unsolicited_Reset
+                    (S.Info.Consecutive_Spurious_Resets, S.Info.Spurious_Reset_Reports, OK);
+                  if not OK then Fail (S, Unexpected_Device_Reset); return; end if;
                when others => Input_Lost;
             end case;
             S.Info.At_Phase := Serving;

@@ -8,6 +8,17 @@ package HID_Reset_Policy with SPARK_Mode, Pure is
    subtype Byte is Interfaces.Unsigned_8;
    use type Word, Vendor, Byte;
    Ack_Window : constant Word := 1_000;
+   -- Serving may see a duplicate reset completion after the confirmed reset.
+   -- Accept a bounded consecutive burst; a real input report starts a new burst.
+   Maximum_Spurious_Resets : constant Positive := 8;
+   subtype Spurious_Reset_Count is Natural range 0 .. Maximum_Spurious_Resets;
+   procedure Unsolicited_Reset
+     (Consecutive : in out Spurious_Reset_Count; Total : in out Word;
+      Tolerated : out Boolean)
+     with Global => null,
+       Post => Tolerated = (Consecutive'Old < Maximum_Spurious_Resets)
+         and then Total = (if Total'Old = Word'Last then Word'Last else Total'Old + 1)
+         and then Consecutive = (if Tolerated then Consecutive'Old + 1 else Consecutive'Old);
    function Elan (ID : Vendor) return Boolean is (ID=16#04F3#);
    function Bogus_IRQ (ID : Vendor; Low, High : Byte) return Boolean is
      (Elan(ID) and then Low=16#FF# and then High=16#FF#);

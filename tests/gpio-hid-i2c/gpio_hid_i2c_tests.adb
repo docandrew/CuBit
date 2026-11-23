@@ -11,6 +11,7 @@ with DW_I2C_Transfer;
 with I2C_Channel_Wire;
 with GNAT.Source_Info;
 with HID_GPIO_Reset;
+with HID_Reset_Policy;
 with HID_Touchpad_Native;
 with HID_Touchpad_Pump;
 with HID_Touchpad_Native_Wait;
@@ -304,7 +305,12 @@ procedure GPIO_HID_I2C_Tests is
    begin
       Used := 0;
       -- Decoy top-level mouse first: the real touchpad root is ordinal two.
-      Item (16#05#, 1); Item (16#09#, 2); Item (16#A1#, 1); End_Collection;
+      Item (16#05#, 1); Item (16#09#, 2); Item (16#A1#, 1); Item (16#85#, 1);
+      Item (16#05#, 9); Item (16#19#, 1); Item (16#29#, 8);
+      Item (16#15#, 0); Item (16#25#, 1); Item (16#75#, 1); Item (16#95#, 8); Item (16#81#, 2);
+      Item (16#05#, 1); Item (16#16#, 16#8000#, 2); Item (16#26#, 16#7FFF#, 2);
+      Item (16#75#, 16); Item (16#95#, 2); Item (16#09#, 16#30#); Item (16#09#, 16#31#); Item (16#81#, 6);
+      Item (16#75#, 8); Item (16#95#, 3); Item (16#81#, 3); End_Collection;
       Item (16#05#, 13); Item (16#09#, 5); Item (16#A1#, 1); Item (16#85#, 7);
       Item (16#09#, 16#22#); Item (16#A1#, 2);
       Item (16#15#, 0); Item (16#25#, 1); Item (16#09#, 16#47#); Item (16#09#, 16#42#);
@@ -357,6 +363,25 @@ procedure GPIO_HID_I2C_Tests is
    begin Check (App.Count > 0); Check (App.Head.Payload = Pointer_Pending.Encode ((Buttons, X, Y, 0, 0))); end Payload;
 begin
    Check (Ada.Command_Line.Argument_Count = 0 or else Early_Mode or else Abort_Mode);
+   declare
+      Consecutive : HID_Reset_Policy.Spurious_Reset_Count;
+      Total : W.Word;
+      Tolerated : Boolean;
+   begin
+      for Count in HID_Reset_Policy.Spurious_Reset_Count loop
+         Consecutive := Count; Total := W.Word(Count);
+         HID_Reset_Policy.Unsolicited_Reset(Consecutive,Total,Tolerated);
+         Check(Tolerated = (Count < HID_Reset_Policy.Maximum_Spurious_Resets));
+         Check(Total = W.Word(Count)+1);
+         Check(Consecutive = (if Tolerated then Count+1 else Count));
+      end loop;
+      Consecutive := 0; Total := W.Word'Last;
+      HID_Reset_Policy.Unsolicited_Reset(Consecutive,Total,Tolerated);
+      Check(Tolerated and then Consecutive=1 and then Total=W.Word'Last);
+      Consecutive := HID_Reset_Policy.Maximum_Spurious_Resets;
+      HID_Reset_Policy.Unsolicited_Reset(Consecutive,Total,Tolerated);
+      Check(not Tolerated and then Consecutive=HID_Reset_Policy.Maximum_Spurious_Resets and then Total=W.Word'Last);
+   end;
    Bus.Initialize;
    GPIO_HID_Server_Model.Initialize;
    Build;
@@ -402,11 +427,21 @@ begin
    Check (Native.Wake_Deadline (61, 5000, False) = 111);
    GPIO_Complete (62);
    Check (Live.Ready and then Live.Control_Token = 0);
+   -- A duplicate reset completion after serving must preserve readiness and
+   -- the pointer source; the ordinary touch report below must still publish.
+   Read_Event (64); App_Complete ([0, 0], 65); GPIO_Complete (65);
+   Check (App.Ready and then Live.Ready and then App.Count = 0);
+   Check (App.Observe.Spurious_Reset_Reports = 1 and then App.Observe.Consecutive_Spurious_Resets = 1);
+   Check (App.Observe.Reason = App.Device.None);
+   -- Valid Mouse ID1/64-bit input is cleanly ignored by the precision path.
+   Read_Event (66); App_Complete ([11, 0, 1, 1, 4, 0, 8, 0, 0, 0, 0], 67); GPIO_Complete (67);
+   Check (App.Ready and then Live.Ready and then App.Input_Observation.Outcome = App.Source.Report_Ignored and then App.Count = 0);
+   Check (App.Observe.Spurious_Reset_Reports = 1 and then App.Observe.Consecutive_Spurious_Resets = 0);
    Read_Event (70);
    if Abort_Mode then Bus.Inject_Transfer_Abort; end if;
    Packet (100, 200);
    declare Data : constant D.Bytes := Output_Page (0 .. 31); begin App_Complete (Data, 71, False); end;
-   Check (App.Count = 0 and then GPIO_Request.Kind = GW.Arm);
+   Check (App.Count = 0 and then Live.Observe.At_Phase = Live.Owner.Reading);
    if not Abort_Mode then Answer_Ready := True; App_Step (72, True); end if;
    if Abort_Mode then
       Check (not App.Ready and not App.Quiescent and not Live.Quiescent);
@@ -453,23 +488,34 @@ begin
    Current_Consumer := Consumer_Two; Flush (102, False); Payload (0);
    Check (Published.Consumer_Changed and then Published.Consumer_Identity = Consumer_Two and then App.Head.Recover and then App.Head.Observed_Ms = 102);
    Saved := App.Head; Check_Wire (Saved); Flush (102, True); Check (App.Count = 0);
-   Read_Event (110); App_Complete ([0, 0], 111);
+   -- The named ceiling bounds a repeated spurious burst without replay or
+   -- extra ARM/reset calls. Fault only on the first excess frame.
+   for N in 1 .. HID_Reset_Policy.Maximum_Spurious_Resets loop
+      Read_Event (W.Word(110 + 2*N)); App_Complete ([0, 0], W.Word(111 + 2*N));
+      GPIO_Complete (W.Word(111 + 2*N));
+      Check (App.Ready and then Live.Ready and then App.Count = 0);
+      Check (App.Observe.Consecutive_Spurious_Resets = N and then App.Observe.Spurious_Reset_Reports = W.Word(N+1));
+      Check (App.Observe.Reason = App.Device.None);
+   end loop;
+   Read_Event (128); App_Complete ([0, 0], 129);
    Check (not App.Ready and then App.Observe.Reason = App.Device.Unexpected_Device_Reset and then App.Quiescent);
+   Check (App.Observe.Consecutive_Spurious_Resets = HID_Reset_Policy.Maximum_Spurious_Resets
+     and then App.Observe.Spurious_Reset_Reports = W.Word(HID_Reset_Policy.Maximum_Spurious_Resets+2));
    Check (not Live.Ready and then not Live.Quiescent and then GPIO_Request.Kind = GW.Release_Pin);
-   GPIO_Complete (112); Check (Live.Quiescent and then Live.Control_Token = 0);
+   GPIO_Complete (130); Check (Live.Quiescent and then Live.Control_Token = 0);
    Payload (0); App.Close (Closed); Check (Closed = C.Closed and then not Session_Open);
    Check (not Native.Drained);
-   Current_Consumer := P.No_Process; Flush (112, True);
+   Current_Consumer := P.No_Process; Flush (130, True);
    Check (Published.No_Consumer and then not Native.Drained);
    Current_Consumer := Consumer_One;
-   Saved := App.Head; Flush (112, False);
+   Saved := App.Head; Flush (130, False);
    Check (Published.Blocked and then not Native.Drained);
-   Saved := App.Head; Flush (112, False);
+   Saved := App.Head; Flush (130, False);
    Check (Published.Blocked and then not Native.Drained and then App.Head = Saved);
-   Flush (112, True); Check_Wire (Saved); Check (App.Count = 0 and then Native.Drained);
+   Flush (130, True); Check_Wire (Saved); Check (App.Count = 0 and then Native.Drained);
    Check (Early_Injected = Early_Mode and then Early_Consumed = Early_Mode);
    Check (GPIO_HID_Server_Model.Quiescent and then GPIO_HID_Server_Model.Masked);
-   Check (GPIO_HID_Server_Model.Arm_Count = 2 and then GPIO_HID_Server_Model.Release_Count = 2 and then GPIO_HID_Server_Model.Ack_Count = 6);
+   Check (GPIO_HID_Server_Model.Arm_Count = 2 and then GPIO_HID_Server_Model.Release_Count = 2 and then GPIO_HID_Server_Model.Ack_Count = 8 + HID_Reset_Policy.Maximum_Spurious_Resets);
    Build (True);
    declare Config : constant Ambiguous.Configuration := (5, 100_000, (0, 4095), (0, 4095), (1, 4), (1, 4),
       Ambiguous.Source.Pointer.As_Reported, Ambiguous.Source.Pointer.Reversed, Ambiguous.Source.Pointer.Require_Confident,
@@ -511,7 +557,7 @@ begin
       Too_Small.Close (Small_Closed); Check (Small_Closed = C_Small.Closed);
    end;
    Check (not Session_Open and then Submit_Calls > 0 and then Opens = 4 and then Close_Calls = 4);
-   Check (GPIO_Calls = 10 and then Publication_Attempts > 0);
+   Check (GPIO_Calls = 12 + HID_Reset_Policy.Maximum_Spurious_Resets and then Publication_Attempts > 0);
    Check (Bus.Transactions = Submit_Calls);
    -- The actual parser/device/GPIO composition is now stopped. Exercise fair
    -- queue scheduling without replacing its lifecycle with a policy mock.
