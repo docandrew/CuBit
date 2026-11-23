@@ -2339,7 +2339,7 @@
     },
     {
       "path": "userspace/services/acpi/backend/acpi_local_cmos_provider.adb",
-      "sha256": "1383bd9f41b906d889649cbba9890c6b9111f4f83a4d630eca41eb4c0669e7d1",
+      "sha256": "99d5ef9871d8f1d7b69c4a0b7254a332419d66197e26b693fdd8a1ce69eac0da",
       "lane": "common"
     },
     {
@@ -6214,7 +6214,7 @@
     },
     {
       "path": "tests/acpi-system-cmos/cmos_provider_tests.adb",
-      "sha256": "c6ed2c797d85a6a705affc24c30ab6706a16e8a5fffbfd22abf578a16d51553d",
+      "sha256": "97243997eeb99e3c270f3d29f38a760352d5ad2fda062c228cd99d9c49990acd",
       "lane": "tests"
     },
     {

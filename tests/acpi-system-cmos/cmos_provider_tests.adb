@@ -91,6 +91,21 @@ begin
                      Driver.Dispatch (IO, (Stale, False, 0), Reply);
                      Check (Reply.Status = A.Denied and Calls = 0);
                   end if;
+                  -- Native resolution occurs before Begin_Field. Selecting
+                  -- Status D needs no active scope and causes no transfer.
+                  Allowed := False; Before := Calls;
+                  Driver.Select_Target (IO, Geometry (13), False, Target, Good);
+                  Check (Good and Calls = Before);
+                  Driver.Authorize (IO, Target, False, Good);
+                  Check (not Good and Calls = Before);
+                  Driver.Dispatch (IO, (Target, False, 0), Reply);
+                  Check (Reply.Status = A.Denied and Calls = Before);
+                  Allowed := True;
+                  Driver.Authorize (IO, Target, False, Good);
+                  Check (Good and Calls = Before);
+                  Current_Request := (Target, False, 0);
+                  Driver.Dispatch (IO, Current_Request, Reply);
+                  Check (Reply.Status = A.Completed and Calls = Before + 1);
                   for Cell in I.Byte loop
                      Driver.Select_Target (IO, Geometry (Cell), False, Target, Good);
                      Check (Good = (Natural (Cell) <= Maximum));

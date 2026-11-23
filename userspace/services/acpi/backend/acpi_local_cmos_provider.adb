@@ -92,8 +92,10 @@ package body ACPI_Local_CMOS_Provider with SPARK_Mode is
       if not Is_Ready (IO) or else Geometry.Region.Space /= CMOS_Space
         or else Geometry.Region.PCI.Known
         or else Geometry.Width /= ACPI_FADT.Transactions.Byte_Access
-        or else not Access_Allowed (For_Write)
       then return; end if;
+      -- Selection authenticates and describes a target before the caller
+      -- opens its field scope. Authorize/Dispatch enforce Access_Allowed
+      -- immediately before physical I/O; selection performs no I/O.
       declare
          Decision : constant I.Decision := I.Resolve
            (Geometry.Region.Base, Geometry.Region.Length, Geometry.Byte_Offset,

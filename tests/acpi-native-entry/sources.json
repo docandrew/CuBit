@@ -12016,7 +12016,7 @@
     },
     {
       "path": "userspace/services/acpi/backend/acpi_local_cmos_provider.adb",
-      "sha256": "1383bd9f41b906d889649cbba9890c6b9111f4f83a4d630eca41eb4c0669e7d1"
+      "sha256": "99d5ef9871d8f1d7b69c4a0b7254a332419d66197e26b693fdd8a1ce69eac0da"
     },
     {
       "path": "userspace/services/acpi/backend/acpi_local_field_mux-with_ec-with_cmos.ads",
