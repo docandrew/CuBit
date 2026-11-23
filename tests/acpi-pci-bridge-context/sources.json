@@ -4532,11 +4532,11 @@
     },
     {
       "path": "userspace/services/acpi/region-init/acpi_region_initialization.adb",
-      "sha256": "1e9e037d52bb2171afae0ed339d399ad3cd7ecbdf027ef0b03b8843cfe83f814"
+      "sha256": "538ac5505e248ad0195264d5c8adfd1211aa94cf84afa0bfe8e73257f4a00b37"
     },
     {
       "path": "userspace/services/acpi/region-init/acpi_region_initialization.ads",
-      "sha256": "c0ff6057d9cd576129a323a95f152bc9d0f09b240b845b1ff3a1b6462d21e2c7"
+      "sha256": "7f221fa209b80748e7adf1ca6d16c0d74f54a24192df5014fb6e21ae881d0098"
     },
     {
       "path": "userspace/services/acpi/region-init/orphans/acpi_region_initialization-orphans.adb",
