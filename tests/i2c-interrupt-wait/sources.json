@@ -78,12 +78,12 @@
     },
     {
       "path": "userspace/services/i2c-dw/owner/dw_i2c_owner.ads",
-      "sha256": "a4965adc95e64abefed774772ac1d12132aeb5f9650ddc2d480879a9e5a07376",
+      "sha256": "79d55bbb764d466fb3dcf8a87633e6b709fa425754b71459bbfc38434ba6a753",
       "kind": "production"
     },
     {
       "path": "userspace/services/i2c-dw/owner/dw_i2c_owner.adb",
-      "sha256": "3503a3d71e2aefd80d3ac820b7eb0bd9a99d1c7b2ce6310b99a2f9d552c18b2a",
+      "sha256": "673e9adce710ed06bc431e935116ce4a2001a77fc697bff559a9665bbf63c674",
       "kind": "production"
     },
     {

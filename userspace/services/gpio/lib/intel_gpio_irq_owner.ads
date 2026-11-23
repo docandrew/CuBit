@@ -28,6 +28,7 @@ package Intel_GPIO_IRQ_Owner with SPARK_Mode is
       Failed_At : Phase := Cold;
       Reason : Failure := None;
       Event_Pending : Boolean := False;
+      Status_Hits, Status_Acks : I.Tick := 0;
       Event : I.Ticket := I.No_Ticket;
       Last_Read : I.Read_ID := I.Pad_Owner;
       Last_Write : I.Write_ID := I.Write_Enable;

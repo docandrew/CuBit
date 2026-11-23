@@ -53,11 +53,19 @@ package body HID_Input_Source with SPARK_Mode is
       S.Motion_Pending := False;
       S.Motion := (others => <>);
       if Preserve_Buttons then
-         Pointer.Rebase (S.Policy); Snapshot.Buttons := Pointer.Current_Buttons (S.Policy);
-      else Pointer.Reset (S.Policy, Decision);
+         Pointer.Rebase (S.Policy); Snapshot.Buttons := (if S.Mouse_Mode then S.Mouse_Buttons else Pointer.Current_Buttons (S.Policy));
+      else Pointer.Reset (S.Policy, Decision); S.Mouse_Buttons := 0;
       end if;
       Pointer_Pending.Reset (S.Queue); Retain (S, Snapshot, Observed_Ms, Info); Info.Recovery := True;
    end Recover_Output;
+   procedure Feed_Relative (S : in out State; Data : Pointer_Pending.Report;
+      Observed_Ms : Input_Pending.Word; Info : out Report) is
+   begin
+      Info := (others => <>);
+      if not Ready (S) or else S.Motion_Pending then Info.Outcome := Source_Not_Ready; return; end if;
+      S.Mouse_Mode := True; S.Mouse_Buttons := Data.Buttons;
+      Retain (S, Data, Observed_Ms, Info); Info.Outcome := Input_Updated;
+   end Feed_Relative;
    procedure Reset (S : in out State; Observed_Ms : Input_Pending.Word; Info : out Report) is
    begin
       Info := (others => <>); Reports.Reset (S.Raw); Recover_Output (S, Observed_Ms, False, Info); Info.Outcome := Source_Reset;

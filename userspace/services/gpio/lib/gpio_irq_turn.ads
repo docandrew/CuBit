@@ -23,6 +23,7 @@ package GPIO_IRQ_Turn with SPARK_Mode is
       Reason : Failure := None;
       Deadline, Wake_At : Word := 0;
       Needs_Progress, Parent_Held : Boolean := False;
+      Parent_Notices : Word := 0;
    end record;
    type State is private;
    procedure Note (S : in out State; Authenticated_Parent : Boolean);

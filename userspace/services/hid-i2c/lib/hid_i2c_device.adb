@@ -1,7 +1,10 @@
 pragma Ada_2022;
 package body HID_I2C_Device with SPARK_Mode is
-   use type W.Word, D.Decode_Status, D.Capacity_Status;
+   use type W.Word, W.Count, D.Decode_Status, D.Capacity_Status, D.Byte_Count;
+   use type T.Reason;
    use type Bus.Setup_Result, Bus.Start_Result, Bus.Close_Result, Wire.Frame_Status, L.Completion_Status;
+   procedure Count (Value : in out W.Word) is
+   begin if Value < W.Word'Last then Value := Value + 1; end if; end Count;
    function Wake_Deadline (S : State; Now, Otherwise : W.Word) return W.Word is
       Retry : constant W.Word := (if Now = W.Word'Last then Now else Now + 1);
       Bound : W.Word := Otherwise;
@@ -96,6 +99,18 @@ package body HID_I2C_Device with SPARK_Mode is
          Fail (S, Submit_Refused);
       end if;
    end Submit;
+   procedure Advance_Features (S : in out State; Now : W.Word; Clock_Available : Boolean) is
+   begin
+      if S.Feature_Index <= 3 then
+         S.Active_Feature := Feature_Command (S.Feature_Index);
+         if S.Active_Feature.Length > 0 then
+            Submit (S, S.Active_Feature.Data (1 .. S.Active_Feature.Length), 0, Set_Feature, Now, Clock_Available);
+            if S.Info.At_Phase = Set_Feature then S.Info.Features_Submitted := S.Info.Features_Submitted + 1; end if;
+            return;
+         end if;
+      end if;
+      S.Info.Completed := Stage_Count'Last; S.Info.At_Phase := Serving;
+   end Advance_Features;
    procedure Finish_Arm (S : in out State; Now : W.Word; Clock_Available : Boolean) is
    begin
       if S.Info.Pending_Control /= L.No_Control then return; end if;
@@ -168,7 +183,23 @@ package body HID_I2C_Device with SPARK_Mode is
       end if;
       if Bus.Observe (S.Client).At_Phase /= T.Finished then return; end if;
       S.Info.Last_Transfer := Bus.Observe (S.Client);
-      if not Bus.Succeeded (S.Client) then Fail (S, Transfer_Failed); return; end if;
+      if not Bus.Succeeded (S.Client) then
+         -- Only an authenticated, completely retired, effect-free refusal can
+         -- fall back. Lost/uncertain bus ownership still takes the existing drain.
+         if Previous_Phase = Set_Feature and then S.Info.Last_Transfer.Outcome = T.Transfer_Refused
+           and then S.Info.Last_Transfer.Have_Completion
+           and then S.Info.Last_Transfer.Completion.Status in W.Admission_Refused | W.Busy
+           and then not S.Info.Last_Transfer.Completion.Effects_Possible
+           and then not S.Info.Last_Transfer.Completion.Hardware_Succeeded
+           and then S.Info.Last_Transfer.Completion.Ticket = 0
+           and then S.Info.Last_Transfer.Completion.Requested_Writes = 0
+           and then S.Info.Last_Transfer.Completion.Delivered_Reads = 0
+         then
+            Bus.Acknowledge (S.Client); S.Info.Features_Refused := S.Info.Features_Refused + 1;
+            S.Feature_Index := S.Feature_Index + 1; Advance_Features (S, Now, Clock_Available);
+         else Fail (S, Transfer_Failed); end if;
+         return;
+      end if;
       case Previous_Phase is
          when Fetch_HID => Length := D.Descriptor_Bytes;
          when Read_Reset | Read_Input => Length := Natural (S.Info.Descriptor.Value.Maximum_Input);
@@ -216,8 +247,15 @@ package body HID_I2C_Device with SPARK_Mode is
          when Fetch_Report =>
             Compile_Report (S.Info.Descriptor.Value, S.Scratch (1 .. Length), Compiled);
             if not Compiled then Fail (S, Report_Layout_Refused); return; end if;
-            S.Info.Completed := Stage_Count'Last; S.Info.At_Phase := Serving;
+            Advance_Features (S, Now, Clock_Available);
+         when Set_Feature =>
+            S.Info.Features_Applied := S.Info.Features_Applied + 1;
+            S.Info.Mode_Applied := S.Info.Mode_Applied or S.Active_Feature.Mode;
+            S.Info.Surface_Applied := S.Info.Surface_Applied or S.Active_Feature.Surface;
+            S.Info.Buttons_Applied := S.Info.Buttons_Applied or S.Active_Feature.Buttons;
+            S.Feature_Index := S.Feature_Index + 1; Advance_Features (S, Now, Clock_Available);
          when Read_Input =>
+            Count (S.Info.Input_Completions);
             if Length>=2 and then HID_Reset_Policy.Bogus_IRQ(S.Info.Descriptor.Value.Vendor_ID,S.Scratch(1),S.Scratch(2))then
                S.Info.Bogus_IRQ_Ignored:=True;S.Info.At_Phase:=Serving;return;
             end if;
@@ -225,16 +263,24 @@ package body HID_I2C_Device with SPARK_Mode is
             case S.Info.Last_Frame.Status is
                when Wire.Input_Report =>
                   S.Info.Consecutive_Spurious_Resets := 0;
+                  if S.Info.Last_Frame.Payload_Length > 0 then
+                     case S.Scratch (1 + Wire.Payload_Offset) is
+                        when 16#01# => Count (S.Info.Mouse_Reports);
+                        when 16#54# => Count (S.Info.Touchpad_Reports);
+                        when 16#5C# => Count (S.Info.Vendor_Reports);
+                        when others => Count (S.Info.Other_Reports);
+                     end case;
+                  end if;
                   Deliver_Input (S.Scratch (1 + Wire.Payload_Offset .. Natural (S.Info.Last_Frame.Declared_Length)));
                   if S.Info.Input_Packets < W.Word'Last then S.Info.Input_Packets := S.Info.Input_Packets + 1; end if;
-               when Wire.Empty_Frame => null;
+               when Wire.Empty_Frame => Count (S.Info.Empty_Frames);
                when Wire.Unexpected_Reset =>
                   -- An unsolicited zero-length frame is a duplicate completion,
                   -- not a request to reset or arm the GPIO latch again.
                   HID_Reset_Policy.Unsolicited_Reset
                     (S.Info.Consecutive_Spurious_Resets, S.Info.Spurious_Reset_Reports, OK);
                   if not OK then Fail (S, Unexpected_Device_Reset); return; end if;
-               when others => Input_Lost;
+               when others => Count (S.Info.Invalid_Frames); Input_Lost;
             end case;
             S.Info.At_Phase := Serving;
          when others => Fail (S, Transfer_Failed);
@@ -259,7 +305,7 @@ package body HID_I2C_Device with SPARK_Mode is
       Result := Not_Ready; if not Ready (S) then return; end if;
       S.Deadline := Deadline;
       Submit (S, [], S.Info.Descriptor.Value.Maximum_Input, Read_Input, Now, Clock_Available);
-      if S.Info.At_Phase = Read_Input then Result := Accepted; end if;
+      if S.Info.At_Phase = Read_Input then Count (S.Info.Input_Reads); Result := Accepted; end if;
    end Request_Input;
    procedure Request_Stop (S : in out State) is
    begin

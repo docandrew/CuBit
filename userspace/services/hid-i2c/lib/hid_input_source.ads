@@ -71,6 +71,8 @@ package HID_Input_Source with SPARK_Mode is
       Observed_Ms : Input_Pending.Word; Charged : out Bindings.Work_Count;
       Info : out Configure_Report; Coordinates : Coordinate_Policy);
    procedure Feed (S : in out State; Data : Schema.Bytes; Observed_Ms : Input_Pending.Word; Info : out Report);
+   procedure Feed_Relative (S : in out State; Data : Pointer_Pending.Report;
+      Observed_Ms : Input_Pending.Word; Info : out Report);
    procedure Reset (S : in out State; Observed_Ms : Input_Pending.Word; Info : out Report);
    procedure Consumer_Changed (S : in out State; Observed_Ms : Input_Pending.Word; Info : out Report);
    -- Native owner peeks Head, tries a nonblocking publication, and acknowledges
@@ -91,6 +93,8 @@ private
       Motion_At : Input_Pending.Word := Input_Pending.Word'Last;
       Motion_Pending : Boolean := False;
       Buttons : Button_Map := [others => Ignore];
+      Mouse_Mode : Boolean := False;
+      Mouse_Buttons : Pointer_Pending.Button_State := 0;
    end record;
    function Ready (S : State) return Boolean is (Reports.Ready (S.Raw) and then Pointer.Ready (S.Policy));
    function Tracking (S : State) return Boolean is (Pointer.Tracking (S.Policy));

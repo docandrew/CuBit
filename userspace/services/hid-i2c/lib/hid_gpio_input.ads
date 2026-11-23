@@ -23,6 +23,7 @@ package HID_GPIO_Input with SPARK_Mode is
          At_Phase : Phase := Cold;
          Reason : Failure := None;
          Lease, Generation, Last_Acknowledged : W.Word := 0;
+         Interrupts_Taken : W.Word := 0;
          Buffered_Lease, Buffered_Generation : W.Word := 0;
          Stopping, Release_Attempted : Boolean := False;
          Control : Controls.Report;

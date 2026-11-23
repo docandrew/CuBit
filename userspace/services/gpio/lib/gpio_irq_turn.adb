@@ -12,6 +12,7 @@ package body GPIO_IRQ_Turn with SPARK_Mode is
    procedure Note (S : in out State; Authenticated_Parent : Boolean) is
    begin
       if not Authenticated_Parent or else S.View.At_Phase = Faulted then return; end if;
+      if S.View.Parent_Notices < Word'Last then S.View.Parent_Notices := S.View.Parent_Notices + 1; end if;
       S.View.Parent_Held := True; S.View.Needs_Progress := True;
       case S.View.At_Phase is
          when Idle => S.View.At_Phase := Sweep_Pending;

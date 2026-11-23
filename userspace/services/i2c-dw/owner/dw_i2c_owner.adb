@@ -50,6 +50,7 @@ package body DW_I2C_Owner with SPARK_Mode is
       S.Info.At_Phase := Faulted; S.Info.Waiting_For_Hardware := False;
       S.Read_Buffer := [others => 0];
       if S.Request_Active then
+         if not S.Info.Completion_Pending and then S.Info.Errors < T.Tick'Last then S.Info.Errors := S.Info.Errors + 1; end if;
          S.Info.Completion_Pending := True;
          S.Info.Completion_Data.Successful := False;
          S.Info.Completion_Data.Reason := Why;
@@ -416,6 +417,7 @@ package body DW_I2C_Owner with SPARK_Mode is
       S.Deadline := Deadline; S.Last_Time := Now; S.Remaining := Step_Budget;
       S.Sequence := S.Sequence + 1; ID := S.Sequence;
       S.Info.Completion_Data := (ID, False, None, S.Writes, S.Reads, False);
+      if S.Info.Transfers < T.Tick'Last then S.Info.Transfers := S.Info.Transfers + 1; end if;
       S.Request_Active := True; S.Info.At_Phase := Prepare_Configuration; Result := Accepted;
    end Admit_Request;
    procedure Submit

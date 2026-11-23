@@ -242,6 +242,7 @@ begin
          else
             if Now >= Next_Health then
                I2C_Log.Note ("health phase=" & C.Phase'Image (Device.Observe.At_Phase) &
+                  " transfers=" & Device.Observe.Transfers'Image & " errors=" & Device.Observe.Errors'Image &
                   " requests=" & Requests_Seen'Image & " events=" & Events_Seen'Image &
                   " irq=" & IRQ_Notices'Image & " ignored-irq=" & IRQ_Ignored'Image);
                Next_Health := (if Now < Interfaces.Unsigned_64'Last - Health_Milliseconds

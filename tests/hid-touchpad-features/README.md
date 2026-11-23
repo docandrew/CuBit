@@ -1,0 +1,3 @@
+Checked hosted tests for descriptor-driven PTP feature commands and Mouse fallback.
+
+Run `python3 tests/hid-touchpad-features/run.py --output /absolute/private/directory` inside the pinned Nix shell. Both profiles retain Ada runtime checks; checked also enables assertions and overflow checks. The only warning exception is the existing Input_Pending cosmetic aggregate-obsolescence warning. The fixture is the 679-byte report descriptor captured from image40j, not hardware authority. Tests check Input Mode, Surface/Button Switch bytes, all report-ID encodings, signed Mouse motion, buttons and malformed packets. New helper proof receipts are separate from functional tests.

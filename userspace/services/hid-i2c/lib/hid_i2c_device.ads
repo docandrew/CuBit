@@ -6,6 +6,7 @@ with HID_I2C_Wire;
 with HID_I2C_Buffered_Client;
 with CuBit.Process_IDs;
 with HID_Reset_Policy;
+with HID_Feature_Commands;
 generic
    with package Bus is new HID_I2C_Buffered_Client (<>);
    Maximum_Report, Maximum_Input, Output_Capacity : HID_I2C_Descriptors.Byte_Count;
@@ -23,6 +24,8 @@ generic
       Data : HID_I2C_Descriptors.Bytes; Accepted : out Boolean);
    with procedure Deliver_Input (Data : HID_I2C_Descriptors.Bytes);
    with procedure Input_Lost;
+   with function Feature_Command (Index : Positive) return HID_Feature_Commands.Command
+     is HID_Feature_Commands.None;
 package HID_I2C_Device with SPARK_Mode is
    package W renames I2C_Transfer_Wire;
    package L renames GPIO_Lease_Control;
@@ -31,7 +34,7 @@ package HID_I2C_Device with SPARK_Mode is
    package T renames Bus.Transactions;
    use type T.Phase, L.Operation;
    type Phase is (Cold, Fetch_HID, Power_On, Arming_Reset, Resetting, Await_Reset,
-      Read_Reset, Releasing_Reset, Post_Reset_Power_On, Fetch_Report, Serving, Read_Input, Draining, Stopped, Faulted);
+      Read_Reset, Releasing_Reset, Post_Reset_Power_On, Fetch_Report, Set_Feature, Serving, Read_Input, Draining, Stopped, Faulted);
    type Failure is (None, Requested_Stop, Buffer_Setup_Failed, Clock_Unavailable,
       Clock_Reversed, Deadline_Expired, Token_Unavailable, Submit_Refused,
       Transfer_Failed, Read_Refused, Descriptor_Refused, Capacity_Refused,
@@ -53,6 +56,10 @@ package HID_I2C_Device with SPARK_Mode is
       Reset_Ack_Until : W.Word := 0;
       Reset_Ack_Timed_Out, Bogus_IRQ_Ignored : Boolean := False;
       Input_Packets, Spurious_Reset_Reports : W.Word := 0;
+      Input_Reads, Input_Completions, Empty_Frames, Invalid_Frames : W.Word := 0;
+      Features_Submitted, Features_Applied, Features_Refused : Natural range 0 .. 3 := 0;
+      Mode_Applied, Surface_Applied, Buttons_Applied : Boolean := False;
+      Mouse_Reports, Touchpad_Reports, Vendor_Reports, Other_Reports : W.Word := 0;
       Consecutive_Spurious_Resets : HID_Reset_Policy.Spurious_Reset_Count := 0;
    end record;
    type Request_Result is (Accepted, Not_Ready, Busy);
@@ -86,6 +93,8 @@ private
       Client : Bus.State;
       Info : Report;
       Scratch : D.Bytes (1 .. Scratch_Length) := [others => 0];
+      Feature_Index : Positive range 1 .. 4 := 1;
+      Active_Feature : HID_Feature_Commands.Command;
       Deadline : W.Millisecond := 0;
       Previous : W.Word := 0;
       Have_Clock, Interrupt_Pending, Release_Attempted, Loss_Reported : Boolean := False;

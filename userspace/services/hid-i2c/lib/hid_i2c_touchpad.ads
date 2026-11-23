@@ -13,6 +13,9 @@ with HID_Input_Bindings;
 with HID_Input_Values;
 with HID_Touchpad_Contact;
 with HID_Report_Metadata;
+with HID_Touchpad_Features;
+with HID_Feature_Commands;
+with HID_Mouse_Fallback;
 with HID_Input_Source;
 with Input_Pending;
 with CuBit.Process_IDs;
@@ -42,6 +45,9 @@ package HID_I2C_Touchpad with SPARK_Mode is
    package Contacts is new HID_Touchpad_Contact (Schema, Names, Bindings, Values);
    package Metadata is new HID_Report_Metadata (Schema, Names, Bindings, Values);
    package Source is new HID_Input_Source (Maximum_Contacts, Maximum_Slots, Schema, Names, Bindings, Values, Contacts, Metadata);
+   package Mouse is new HID_Mouse_Fallback (Schema, Names, Values);
+   function Mouse_Fallback_Active return Boolean;
+   package Features is new HID_Touchpad_Features (Schema, Names);
    type Configuration is record
       Contact_Limit : Source.Reports.Frames.Contact_Limit;
       Binding_Budget : Bindings.Work_Count;
@@ -65,9 +71,11 @@ package HID_I2C_Touchpad with SPARK_Mode is
    procedure Compile_Report (Descriptor : D.Descriptor; Data : D.Bytes; Accepted : out Boolean);
    procedure Deliver_Input (Data : D.Bytes);
    procedure Input_Lost;
+   function Feature_Command (Index : Positive) return HID_Feature_Commands.Command;
+   function Feature_Plan return Features.Plan;
    -- Internal callback adapters for this one process-owned device instance.
    package Device is new HID_I2C_Device (Bus, Maximum_Report, Maximum_Input, Output_Capacity,
-      Next_Token, Begin_Arm_Reset, Poll_Arm_Reset, Begin_Release_Reset, Poll_Release_Reset, Compile_Report, Deliver_Input, Input_Lost);
+      Next_Token, Begin_Arm_Reset, Poll_Arm_Reset, Begin_Release_Reset, Poll_Release_Reset, Compile_Report, Deliver_Input, Input_Lost, Feature_Command);
    type Start_Result is (Started, Busy, Invalid_Calibration, Invalid_Budget, Device_Not_Ready);
    procedure Start (Sender : CuBit.Process_IDs.Process_ID; Descriptor_Register : D.Register_Number;
       Settings : Configuration; Deadline : W.Millisecond; Now : W.Word;
@@ -78,6 +86,7 @@ package HID_I2C_Touchpad with SPARK_Mode is
    -- Only a Decoded layout is usable. Other indexes return an empty record.
    function Report_Collection (Index : Natural) return Schema.Collection;
    function Input_Observation return Source.Report;
+   function Parse_Refusals return W.Word;
    function Ready return Boolean;
    function Input_Ready return Boolean;
    function Quiescent return Boolean;

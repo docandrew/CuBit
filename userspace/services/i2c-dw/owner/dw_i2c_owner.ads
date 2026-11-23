@@ -72,6 +72,7 @@ package DW_I2C_Owner with SPARK_Mode is
       Failed_At : Phase := Cold;
       Reason : Failure := None;
       Completion_Pending : Boolean := False;
+      Transfers, Errors : T.Tick := 0;
       Completion_Data : Completion;
       Reset : L.Report;
       Configuration : C.Report;

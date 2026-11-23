@@ -102,6 +102,9 @@ procedure Main is
    Activity : CuBit.Messages.Activity_Result;
    Closed : Memory.Client.Close_Result := Memory.Client.Still_Owned;
    Channel_Wait_Ready : Boolean := False;
+   Health_Interval : constant W.Word := 5_000;
+   Next_Health, Published_Events : W.Word := 0;
+   Feature_Path_Logged : Boolean := False;
    Descriptor_Layout_Reported : Boolean := False;
    function Coordinate_Details return String is
       Geometry : constant App.Source.Reports.Coordinate_Report := App.Admission.Binding.Coordinates;
@@ -179,6 +182,19 @@ begin
          else Pump.No_Startup_Deadline);
       begin Pump.Turn (Dispatch_Limit, Progress); end;
       Clock.Cached_Time (Now, Available);
+      if W.Word (Progress.Publication.Accepted) > W.Word'Last - Published_Events then Published_Events := W.Word'Last;
+      else Published_Events := Published_Events + W.Word (Progress.Publication.Accepted); end if;
+      if Available and then Now >= Next_Health and then App.Observe.At_Phase in App.Device.Serving | App.Device.Read_Input then
+         declare R : constant App.Device.Report := App.Observe; G : constant Live.Owner.Report := Live.Observe; begin
+            Log.Startup_Detail ("health" & Log.Hex ("irq-taken", G.Interrupts_Taken) &
+              Log.Hex ("input-reads", R.Input_Reads) & Log.Hex ("input-completed", R.Input_Completions) &
+              Log.Hex ("zero-length", R.Spurious_Reset_Reports) & Log.Hex ("mouse-01", R.Mouse_Reports) &
+              Log.Hex ("touchpad-54", R.Touchpad_Reports) & Log.Hex ("vendor-5c", R.Vendor_Reports) &
+              Log.Hex ("other", R.Other_Reports) & Log.Hex ("parse-refused", App.Parse_Refusals) &
+              Log.Hex ("invalid-frame", R.Invalid_Frames) & Log.Hex ("pointer-published", Published_Events));
+         end;
+         Next_Health := (if Now < W.Word'Last - Health_Interval then Now + Health_Interval else W.Word'Last);
+      end if;
       if App.Observe.Reset_Ack_Timed_Out then Log.Notice(Log.Reset_Ack_Timeout);end if;
       if App.Observe.Bogus_IRQ_Ignored then Log.Notice(Log.Elan_Bogus_IRQ);end if;
       if App.Observe.Spurious_Reset_Reports > 0 then Log.Notice(Log.Spurious_Reset_Report);end if;
@@ -217,7 +233,18 @@ begin
             " source=" & App.Source.Configure_Status'Image (App.Admission.Binding.Outcome) &
             " scale=" & App.Source.Pointer.Status'Image (App.Admission.Binding.Policy) & Coordinate_Details);
       end if;
-      if Progress.Ready then Log.Stage (Log.Serving_Pin, True, Log.Confirmed); end if;
+      if Progress.Ready then
+         Log.Stage (Log.Serving_Pin, True, Log.Confirmed);
+         if not Feature_Path_Logged then
+            Feature_Path_Logged := True;
+            Log.Startup_Detail ("input-path=" &
+              (if App.Mouse_Fallback_Active then "MOUSE-FALLBACK" elsif App.Observe.Mode_Applied then "TOUCHPAD" else "TOUCHPAD-NO-MODE") &
+              " mode-advertised=" & App.Feature_Plan.Mode_Advertised'Image &
+              " mode-applied=" & App.Observe.Mode_Applied'Image &
+              " surface-applied=" & App.Observe.Surface_Applied'Image & " buttons-applied=" & App.Observe.Buttons_Applied'Image &
+              " feature-applied=" & App.Observe.Features_Applied'Image & " feature-refused=" & App.Observe.Features_Refused'Image);
+         end if;
+      end if;
       if Startup_Policy.Selected (Readiness) = Startup_Policy.No_Report then
          declare Can_Report : constant Boolean := Available and then
             Launch.Deadline (Now, Raw.timing.control).Available;
@@ -262,6 +289,9 @@ begin
                   if Retry.Available then Limit := W.Word'Min (Limit, Retry.Limit);
                   else Relative_Retry := True; end if;
                end;
+            end if;
+            if App.Observe.At_Phase in App.Device.Serving | App.Device.Read_Input then
+               Limit := W.Word'Min (Limit, Next_Health);
             end if;
             Progress.Deadline := Limit;
             Progress.Wait_For := (if Limit <= Now then Pump.Immediate

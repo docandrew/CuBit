@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with Pointer_Pending;
 package body HID_I2C_Touchpad with SPARK_Mode is
    use type W.Word, Schema.Word, Schema.Byte, Schema.Count, Schema.Status;
    use type Bindings.Work_Count, Source.Configure_Status, Device.Phase, Device.Request_Result;
@@ -13,7 +14,16 @@ package body HID_I2C_Touchpad with SPARK_Mode is
    Current_Time : W.Word := W.Word'Last;
    Info : Admission_Report;
    Input_Info : Source.Report;
+   Refusals : W.Word := 0;
+   function Parse_Refusals return W.Word is (Refusals);
    Layout : Schema.Result;
+   Selected_Features : Features.Plan;
+   Mouse_Plan : Mouse.Model;
+   function Mouse_Fallback_Active return Boolean is
+     (Mouse_Plan.Ready and then not Device.Observe (Core).Mode_Applied);
+   function Feature_Plan return Features.Plan is (Selected_Features);
+   function Feature_Command (Index : Positive) return HID_Feature_Commands.Command is
+     (if Index <= Selected_Features.Count then Selected_Features.Commands (Index) else (others => <>));
    Fields : Schema.Field_Table (1 .. Maximum_Fields);
    Usages : Schema.Usage_Table (1 .. Maximum_Usages);
    Collections : Schema.Collection_Table (1 .. Maximum_Collections);
@@ -45,10 +55,25 @@ package body HID_I2C_Touchpad with SPARK_Mode is
          Active_Settings.Confidence, Active_Settings.Buttons, Current_Time, Info.Binding_Charge, Info.Binding,
          Active_Settings.Coordinates);
       if Info.Binding.Outcome /= Source.Source_Configured then Info.Outcome := Source_Refused; return; end if;
+      Features.Build (Layout, Fields, Usages, Descriptor.Command_Register, Descriptor.Data_Register, Selected_Features);
+      Mouse.Compile (Layout, Fields, Usages, Collections, Mouse_Plan);
       Info.Outcome := Source_Configured; Accepted := True;
    end Compile_Report;
    procedure Deliver_Input (Data : D.Bytes) is
-   begin Source.Feed (Signal, Schema.Bytes (Data), Current_Time, Input_Info); end Deliver_Input;
+      Matched, Accepted : Boolean;
+      Relative : Pointer_Pending.Report;
+   begin
+      if Mouse_Fallback_Active then
+         Mouse.Decode (Mouse_Plan, Layout, Schema.Bytes (Data), Matched, Accepted, Relative);
+         if Accepted then Source.Feed_Relative (Signal, Relative, Current_Time, Input_Info);
+         elsif Matched then
+            Source.Reset (Signal, Current_Time, Input_Info); Input_Info.Outcome := Source.Input_Rejected;
+         else Input_Info := (Outcome => Source.Report_Ignored, others => <>); end if;
+      else Source.Feed (Signal, Schema.Bytes (Data), Current_Time, Input_Info); end if;
+      if Input_Info.Outcome in Source.Input_Rejected | Source.Source_Not_Ready then
+         if Refusals < W.Word'Last then Refusals := Refusals + 1; end if;
+      end if;
+   end Deliver_Input;
    procedure Input_Lost is
    begin Source.Reset (Signal, Current_Time, Input_Info); end Input_Lost;
    procedure Start (Sender : CuBit.Process_IDs.Process_ID; Descriptor_Register : D.Register_Number;

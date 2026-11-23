@@ -42,6 +42,11 @@ procedure GPIO_HID_I2C_Tests is
      and then Ada.Command_Line.Argument (1) = "early-event";
    Abort_Mode : constant Boolean := Ada.Command_Line.Argument_Count = 1
      and then Ada.Command_Line.Argument (1) = "input-abort";
+   Feature_Success : constant Boolean := Ada.Command_Line.Argument_Count = 1 and then Ada.Command_Line.Argument(1) = "feature-success";
+   Feature_Refused : constant Boolean := Ada.Command_Line.Argument_Count = 1 and then Ada.Command_Line.Argument(1) = "feature-refused";
+   Mouse_Mode : constant Boolean := Ada.Command_Line.Argument_Count = 1 and then Ada.Command_Line.Argument(1) = "mouse-fallback";
+   Feature_Unsafe : constant Boolean := Ada.Command_Line.Argument_Count = 1 and then Ada.Command_Line.Argument(1) = "feature-uncertain";
+   New_Mode : constant Boolean := Feature_Success or else Feature_Refused or else Mouse_Mode or else Feature_Unsafe;
    Early_Injected, Early_Consumed : Boolean := False;
    Last_Request : I2C_Channel_Wire.Request;
    Last_Token : W.Word := 0;
@@ -308,9 +313,11 @@ procedure GPIO_HID_I2C_Tests is
       Item (16#05#, 1); Item (16#09#, 2); Item (16#A1#, 1); Item (16#85#, 1);
       Item (16#05#, 9); Item (16#19#, 1); Item (16#29#, 8);
       Item (16#15#, 0); Item (16#25#, 1); Item (16#75#, 1); Item (16#95#, 8); Item (16#81#, 2);
-      Item (16#05#, 1); Item (16#16#, 16#8000#, 2); Item (16#26#, 16#7FFF#, 2);
-      Item (16#75#, 16); Item (16#95#, 2); Item (16#09#, 16#30#); Item (16#09#, 16#31#); Item (16#81#, 6);
-      Item (16#75#, 8); Item (16#95#, 3); Item (16#81#, 3); End_Collection;
+      Item (16#05#, 1);
+      if New_Mode then Item (16#15#, 16#81#); Item (16#25#, 16#7F#); Item (16#75#, 8);
+      else Item (16#16#, 16#8000#, 2); Item (16#26#, 16#7FFF#, 2); Item (16#75#, 16); end if;
+      Item (16#95#, 2); Item (16#09#, 16#30#); Item (16#09#, 16#31#); Item (16#81#, 6);
+      Item (16#75#, 8); Item (16#95#, (if New_Mode then 5 else 3)); Item (16#81#, 3); End_Collection;
       Item (16#05#, 13); Item (16#09#, 5); Item (16#A1#, 1); Item (16#85#, 7);
       Item (16#09#, 16#22#); Item (16#A1#, 2);
       Item (16#15#, 0); Item (16#25#, 1); Item (16#09#, 16#47#); Item (16#09#, 16#42#);
@@ -325,6 +332,12 @@ procedure GPIO_HID_I2C_Tests is
       Item (16#05#, 9); Item (16#09#, 1); Item (16#09#, 2); Item (16#09#, 3); Item (16#25#, 1);
       Item (16#75#, 1); Item (16#95#, 3); Item (16#81#, 2); Item (16#95#, 5); Item (16#81#, 3); End_Collection;
       if Duplicate then Item (16#05#, 13); Item (16#09#, 5); Item (16#A1#, 1); End_Collection; end if;
+      if Feature_Success or else Feature_Refused or else Feature_Unsafe then
+         Item(16#05#,13);Item(16#09#,14);Item(16#A1#,1);Item(16#85#,3);
+         Item(16#09#,16#52#);Item(16#15#,0);Item(16#25#,10);Item(16#75#,16);Item(16#95#,1);Item(16#B1#,2);
+         Item(16#85#,5);Item(16#09#,16#57#);Item(16#09#,16#58#);Item(16#25#,1);Item(16#75#,1);Item(16#95#,2);Item(16#B1#,2);
+         Item(16#95#,14);Item(16#B1#,3);End_Collection;
+      end if;
       Header (4) := D.Byte (Used mod 256); Header (5) := D.Byte (Used / 256);
    end Build;
    procedure Packet (X, Y : Natural; Buttons : D.Byte := 1) is
@@ -342,13 +355,19 @@ procedure GPIO_HID_I2C_Tests is
       FIFO : constant D.Bytes := Data;
       Token : W.Word;
       Available : Boolean;
+      Clean_Refusal : constant Boolean := (Feature_Refused or else Feature_Unsafe) and then App.Observe.At_Phase = App.Device.Set_Feature
+         and then App.Observe.Features_Submitted = 1;
    begin
       Check (W.Word (Data'Length) <= W.Word (Last_Request.Read_Count));
       if Last_Request.Read_Count > 0 then Output_Page (0 .. Natural (Last_Request.Read_Count) - 1) := [others => 16#EE#]; end if;
+      if Clean_Refusal then Bus.Inject_Admission_Refusal (Feature_Unsafe); end if;
       Bus.Serve (Now, FIFO, Token, Queued_Answer, Available);
       Check (Token = Last_Token);
       if Abort_Mode and then Now = 71 then
          Check (not Available and Bus.Faulted); Answer_Ready := False;
+      elsif Clean_Refusal then
+         Check (Available and then Queued_Answer.Status = W.Admission_Refused and then Queued_Answer.Effects_Possible = Feature_Unsafe);
+         Answer_Ready := Publish_Now;
       else
          Check (Available and Queued_Answer.Status = W.Completed and Queued_Answer.Hardware_Succeeded);
          Answer_Ready := Publish_Now;
@@ -362,7 +381,7 @@ procedure GPIO_HID_I2C_Tests is
    procedure Payload (Buttons : Pointer_Pending.Button_State; X, Y : Pointer_Pending.Displacement := 0) is
    begin Check (App.Count > 0); Check (App.Head.Payload = Pointer_Pending.Encode ((Buttons, X, Y, 0, 0))); end Payload;
 begin
-   Check (Ada.Command_Line.Argument_Count = 0 or else Early_Mode or else Abort_Mode);
+   Check (Ada.Command_Line.Argument_Count = 0 or else Early_Mode or else Abort_Mode or else New_Mode);
    declare
       Consecutive : HID_Reset_Policy.Spurious_Reset_Count;
       Total : W.Word;
@@ -405,6 +424,25 @@ begin
    App_Complete ([0, 0], 50); Check (App.Observe.At_Phase = App.Device.Releasing_Reset); GPIO_Complete (51);
    Check(App.Observe.At_Phase=App.Device.Post_Reset_Power_On);App_Complete([],55);
    App_Complete (Descriptor (0 .. Used - 1), 60);
+   if Feature_Success or else Feature_Refused or else Feature_Unsafe then
+      Check (not App.Ready and then App.Observe.At_Phase = App.Device.Set_Feature);
+      Check (Input_Page(0..10)=[16#30#,0,16#33#,3,16#32#,0,5,0,3,3,0]);
+      App_Complete([],60);
+      if Feature_Unsafe then
+         Check (not App.Ready and then App.Observe.Reason=App.Device.Transfer_Failed);
+         App_Step(60,True);
+         Check (App.Quiescent and then not App.Observe.Mode_Applied and then App.Observe.Features_Applied=0);
+         Check (App.Observe.Features_Submitted=1 and then App.Observe.Input_Reads=0);
+         App.Close(Closed);Check(Closed=C.Closed);
+         Ada.Text_IO.Put_Line ("GPIO HID I2C interop checks" & Natural'Image (Checks + GPIO_HID_Server_Model.Checks + Bus.Checks));
+         return;
+      end if;
+      Check (not App.Ready and then App.Observe.At_Phase = App.Device.Set_Feature);
+      Check (Input_Page(0..10)=[16#30#,0,16#35#,3,16#32#,0,5,0,5,3,0]);
+      App_Complete([],60);
+      Check (App.Observe.Mode_Applied = Feature_Success and then App.Observe.Surface_Applied and then App.Observe.Buttons_Applied);
+      Check (App.Observe.Features_Submitted=2 and then App.Observe.Features_Refused=(if Feature_Refused then 1 else 0));
+   end if;
    Check (App.Ready and then App.Admission.Outcome = App.Source_Configured and then App.Admission.Touchpad = 2);
    Payload (0); Check (App.Head.Recover and then App.Head.Observed_Ms = 60);
    Check (Native.Wake_Deadline (60, 5000, True) = 61);
@@ -433,6 +471,27 @@ begin
    Check (App.Ready and then Live.Ready and then App.Count = 0);
    Check (App.Observe.Spurious_Reset_Reports = 1 and then App.Observe.Consecutive_Spurious_Resets = 1);
    Check (App.Observe.Reason = App.Device.None);
+   if New_Mode then
+      Check (App.Mouse_Fallback_Active = (not Feature_Success));
+      Check (App.Observe.Input_Reads = 1 and then App.Observe.Input_Completions = 1);
+      Read_Event(66);App_Complete([11,0,1,1,4,8,0,0,0,0,0],67);GPIO_Complete(67);
+      Check (App.Observe.Mouse_Reports=1 and then App.Observe.Input_Reads=2 and then App.Observe.Input_Completions=2);
+      if Feature_Success then
+         Check (App.Input_Observation.Outcome=App.Source.Report_Ignored and then App.Count=0);
+         Read_Event(70);Packet(100,200);declare Data:constant D.Bytes:=Output_Page(0..31);begin App_Complete(Data,71);end;GPIO_Complete(71);
+         Check (App.Count>0 and then App.Input_Observation.Outcome/=App.Source.Report_Ignored);
+      else
+         Payload(1,4,-8);Flush(68,True);Check(Published.Accepted=1 and then App.Count=0);
+         Read_Event(70);Packet(100,200);declare Data:constant D.Bytes:=Output_Page(0..31);begin App_Complete(Data,71);end;GPIO_Complete(71);
+         Check (App.Input_Observation.Outcome=App.Source.Report_Ignored and then App.Count=0);
+         Read_Event(72);App_Complete([11,0,1,0,0,0,0,0,0,0,0],73);GPIO_Complete(73);
+         Payload(0);Flush(74,True);Check(Published.Accepted=1);
+      end if;
+      Check (Live.Ready and then App.Ready and then App.Parse_Refusals=0);
+      Check (Live.Observe.Interrupts_Taken=App.Observe.Input_Reads);
+      Ada.Text_IO.Put_Line ("GPIO HID I2C interop checks" & Natural'Image (Checks + GPIO_HID_Server_Model.Checks + Bus.Checks));
+      return;
+   end if;
    -- Valid Mouse ID1/64-bit input is cleanly ignored by the precision path.
    Read_Event (66); App_Complete ([11, 0, 1, 1, 4, 0, 8, 0, 0, 0, 0], 67); GPIO_Complete (67);
    Check (App.Ready and then Live.Ready and then App.Input_Observation.Outcome = App.Source.Report_Ignored and then App.Count = 0);

@@ -60,7 +60,7 @@ for(const profile of ['checked','release']){
   const flags=['-gnat2022','-gnatwa','-gnatwe','-gnatwJ',...(profile==='checked'?['-gnata','-gnato','-O2']:['-gnatp','-O3'])];
   fs.writeFileSync(out+'/'+profile+'.gpr',`project ${profile} is\n for Source_Dirs use ("source");\n for Main use ("gpio_hid_i2c_tests.adb");\n for Object_Dir use "${profile}/obj";\n for Exec_Dir use "${profile}/bin";\n package Compiler is\n for Default_Switches ("Ada") use (${flags.map(f=>JSON.stringify(f)).join(',')});\n end Compiler;\nend ${profile};\n`);
   run(profile+'-build',[compiler,'-p','-j1','-P',out+'/'+profile+'.gpr'],180);counts[profile]={};
-  for(const scenario of ['ordered','early-event','input-abort']){
+  for(const scenario of ['ordered','early-event','input-abort','feature-success','feature-refused','mouse-fallback','feature-uncertain']){
     const log=run(profile+'-'+scenario,[out+'/'+profile+'/bin/gpio_hid_i2c_tests',...(scenario==='ordered'?[]:[scenario])],30);
     const match=/^GPIO HID I2C interop checks\s+(\d+)\s*$/.exec(log);
     if(!match)throw Error('Unexpected test output');counts[profile][scenario]=Number(match[1]);

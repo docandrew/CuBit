@@ -10,6 +10,7 @@ package I2C_HID_Channel_Model is
    procedure Serve (Now : W.Word; Input_Data : HID_I2C_Descriptors.Bytes;
       Token : out W.Word; Completion : out W.Completion; Available : out Boolean);
    procedure Inject_Transfer_Abort;
+   procedure Inject_Admission_Refusal (Effects_Possible : Boolean := False);
    function Faulted return Boolean;
    function Controller_May_Be_Enabled return Boolean;
    function Register_Accesses return Natural;

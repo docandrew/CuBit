@@ -192,10 +192,14 @@ package body Intel_GPIO_IRQ_Owner with SPARK_Mode is
             else S.Rearming := False; S.Info.At_Phase := Listening;
             end if;
          when Poll_Status =>
+            if (Value and Mask) /= 0 and then S.Info.Status_Hits < I.Tick'Last then
+               S.Info.Status_Hits := S.Info.Status_Hits + 1;
+            end if;
             S.Info.At_Phase := (if (Value and Mask) = 0 then Listening else Event_Mask_Read);
          when Event_Mask_Read => S.Desired_Enable := Value and not Mask; S.Info.At_Phase := Event_Mask_Write;
          when Event_Mask_Write => S.Info.At_Phase := Event_Mask_Confirm;
          when Acknowledge =>
+            if S.Info.Status_Acks < I.Tick'Last then S.Info.Status_Acks := S.Info.Status_Acks + 1; end if;
             S.Info.Event := S.Info.Event + 1; S.Info.Event_Pending := True; S.Info.At_Phase := Event_Ready;
          when others => null;
       end case;

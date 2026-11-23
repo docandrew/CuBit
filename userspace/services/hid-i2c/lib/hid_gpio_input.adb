@@ -99,6 +99,7 @@ package body HID_GPIO_Input with SPARK_Mode is
             if Value.Lease = S.Info.Buffered_Lease and then Value.Generation <= S.Info.Buffered_Generation then Result := Duplicate; return; end if;
          end if;
          S.Info.Buffered_Lease := Value.Lease; S.Info.Buffered_Generation := Value.Generation; Result := Buffered;
+         if S.Info.Interrupts_Taken < W.Word'Last then S.Info.Interrupts_Taken := S.Info.Interrupts_Taken + 1; end if;
       end Receive_Event;
       procedure Complete_Control (S : in out State; D : in out Device.State; Now : W.Word; Available : Boolean) is
          Info : constant Controls.Report := Controls.Observe (S.Client);

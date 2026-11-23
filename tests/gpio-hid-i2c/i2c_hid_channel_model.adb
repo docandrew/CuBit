@@ -103,7 +103,7 @@ package body I2C_HID_Channel_Model is
    Parameters : constant O.Startup :=
      (P.Intel_Vendor, P.Alder_Lake_N_I2C1, 16#1234_5678_9000#, 4096, 4096, 4096, 4096);
    Device : O.State;
-   Queued : Boolean := False;
+   Queued, Refuse_Next, Refusal_Effects : Boolean := False;
    Request : I2C_Channel_Wire.Request;
    Saved_Token : W.Word := 0;
    Completed_Transactions : Natural := 0;
@@ -140,6 +140,13 @@ package body I2C_HID_Channel_Model is
       Queued := False; Current_Time := T.Tick (Now); FIFO_Data := [others => 0];
       if Input_Data'Length > 0 then FIFO_Data (0 .. Input_Data'Length - 1) := Input_Data; end if;
       Commands := 0; Cursor := 0; Command_Log := [others => 0];
+      if Refuse_Next then
+         Refuse_Next := False; Available := True;
+         Completion := (W.Admission_Refused, 0, False, Refusal_Effects, 0, 0);
+         Check (O.Observe (Device).At_Phase = O.Available and then not O.Observe (Device).Controller_May_Be_Enabled,
+           "clean admission refusal performs no controller transfer");
+         return;
+      end if;
       O.Submit_Borrowed (Device, 16#15#, 400_000, T.Count (Request.Write_Count), T.Count (Request.Read_Count),
          T.Tick (Request.Limit), 4096, ID, Admission);
       Check (Admission = O.Accepted, "borrowed owner admitted");
@@ -167,6 +174,8 @@ package body I2C_HID_Channel_Model is
          W.Count (Result.Write_Count), W.Count (Result.Read_Count));
       Available := True; Completed_Transactions := Completed_Transactions + 1;
    end Serve;
+   procedure Inject_Admission_Refusal (Effects_Possible : Boolean := False) is
+   begin Refuse_Next := True; Refusal_Effects := Effects_Possible; end Inject_Admission_Refusal;
    procedure Inject_Transfer_Abort is
    begin Inject_Abort := True; end Inject_Transfer_Abort;
    function Faulted return Boolean is (O.Observe (Device).At_Phase = O.Faulted);

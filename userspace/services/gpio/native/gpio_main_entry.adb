@@ -80,6 +80,8 @@ procedure GPIO_Main_Entry is
    Clock_OK, Accepted, Resources_OK, Ready_OK, Found : Boolean;
    Wait_Result : M.Activity_Result;
    Parent_Present : Boolean := False;
+   Parent_Acks, Next_Health : Interfaces.Unsigned_64 := 0;
+   Health_Interval : constant Interfaces.Unsigned_64 := 5_000;
    Parent_Vector : LA.Line_Vector := LA.First_Vector;
    package Sweep is new GPIO_IRQ_Sweep (Driver.Registry, Native.Hold_Requests, Native.Requests_Held);
    Sweep_State : Sweep.State;
@@ -100,6 +102,7 @@ procedure GPIO_Main_Entry is
       if Parent_Present and then Parent_Authority.Present then
          Acknowledged := CuBit.Handles.Lines.Acknowledge (Parent_Authority.Value, Parent_Vector).Accepted;
       end if;
+      if Acknowledged and then Parent_Acks < Interfaces.Unsigned_64'Last then Parent_Acks := Parent_Acks + 1; end if;
       Sweep.Finish (Sweep_State, Acknowledged);
    end IRQ_ACK;
    package IRQ is new GPIO_IRQ_Turn (IRQ_Clock, IRQ_Start, IRQ_Advance, IRQ_Inspect, IRQ_ACK,
@@ -131,6 +134,27 @@ procedure GPIO_Main_Entry is
             Log.Hex ("raw", Interfaces.Unsigned_64 (Values (K).Value)));
       end loop;
    end Snapshot_Pad;
+   procedure Observe_Health is
+      Sample : I.Tick;
+      Available : Boolean;
+      Hits, Acks : I.Tick := 0;
+      C : constant Driver.Controller.Summary := Driver.Controller.Observe;
+   begin
+      GPIO_Native_Clock.Read (Sample, Available);
+      if not Available or else Interfaces.Unsigned_64 (Sample) < Next_Health then return; end if;
+      for Pin in Driver.Controller.Pin_ID range 1 .. Driver.Controller.Pin_ID (C.Registered) loop
+         declare P : constant Driver.Controller.Pin_Observation := Driver.Controller.Observe_Pin (Pin); begin
+            if P.Present and then P.Plan = Diagnostic_Plan then
+               Hits := P.Report.Status_Hits; Acks := P.Report.Status_Acks; exit;
+            end if;
+         end;
+      end loop;
+      Log.Pad_Detail ("health pad=136" &
+        Log.Hex ("parent-irqs", IRQ.Observe (IRQ_State).Parent_Notices) & Log.Hex ("parent-acks", Parent_Acks) &
+        Log.Hex ("gpi-is-hits", Interfaces.Unsigned_64 (Hits)) & Log.Hex ("gpi-is-acks", Interfaces.Unsigned_64 (Acks)));
+      Next_Health := (if Interfaces.Unsigned_64 (Sample) < Interfaces.Unsigned_64 (Time.Finite_Time'Last) - Health_Interval
+        then Interfaces.Unsigned_64 (Sample) + Health_Interval else Interfaces.Unsigned_64 (Time.Finite_Time'Last));
+   end Observe_Health;
    procedure Observe_Diagnostic_Arm is
       C : constant Driver.Controller.Summary := Driver.Controller.Observe;
       Sample : I.Tick;
@@ -429,6 +453,7 @@ begin
       end if;
       if Driver.Registry.Observe.Stopping then Request_Stop; end if;
       Observe_Diagnostic_Arm;
+      Observe_Health;
       exit when Driver.Registry.Terminal and then Driver.Registry.Quiescent and then Driver.Admin.Quiescent (State)
          and then not IRQ.Observe (IRQ_State).Parent_Held and then not Native.Requests_Held and then not Hold_Resources;
       if Hold_Resources then Wait ((Time.Relative_Delay, Time.Duration (Raw.timing.progress)));
@@ -438,7 +463,8 @@ begin
          else Wait ((Time.Until_Time, Time.After (Now, I.Tick (Raw.timing.progress)))); end if;
       elsif Diagnostic_Armed and then not Diagnostic_Wait_Done then
          -- One bounded diagnostic wake, not an interrupt/polling fallback.
-         Wait ((Time.Until_Time, Time.Finite_Time (Diagnostic_Due)));
+         Wait ((Time.Until_Time, Time.Finite_Time (Interfaces.Unsigned_64'Min (Interfaces.Unsigned_64 (Diagnostic_Due), Next_Health))));
+      elsif Next_Health > 0 then Wait ((Time.Until_Time, Time.Finite_Time (Next_Health)));
       else Wait ((Kind => Time.Activity)); end if;
    end loop;
 end GPIO_Main_Entry;
