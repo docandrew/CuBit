@@ -1,0 +1,10 @@
+--  SPARK proof of Neon Blast's proved units (tests/neon-blast/prove.sh):
+--  the typed keys (UI-049 prototype) and the seeded generator.
+project Prove is
+   for Source_Dirs use ("../../userspace/apps/neon-blast");
+   for Source_Files use ("neon_keys.ads", "neon_keys.adb", "neon_random.ads", "neon_random.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Prove;

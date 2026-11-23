@@ -85,6 +85,11 @@
   (setting "desktop.launch.80-settings"
     (Launch_Entry label => "Settings" action => Launch_Action.Settings icon => (Launch_Icon "Settings") category => App_Category.System
       color => (App_Color.RGB (RGB_Color red => 61 green => 124 blue => 201))))
+  # Neon Blast (APP-008): the musical vaporwave arena shooter. It shows
+  # the Games category icon until its own icon is approved.
+  (setting "desktop.launch.22-neon-blast"
+    (Launch_Entry label => "Neon Blast" action => (Launch_Action.Program "neon-blast.app") icon => (Launch_Icon "Category_Games") category => App_Category.Games single_instance => true
+      color => (App_Color.RGB (RGB_Color red => 255 green => 43 blue => 214))))
   (setting "desktop.launch.90-teapots"
     (Launch_Entry label => "Teapots" action => (Launch_Action.Program "teapots.app") icon => (Launch_Icon "Teapots") category => App_Category.Media
       color => (App_Color.RGB (RGB_Color red => 207 green => 76 blue => 156))))

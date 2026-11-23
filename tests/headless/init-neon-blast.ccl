@@ -1,0 +1,10 @@
+# Neon Blast (APP-008) headless profile: the desktop and the game, played
+# through QEMU's PS/2 keyboard and mouse (tests/neon-blast/headless_drive.py).
+# mixer.svc and hda.drv start by device presence (QEMU's intel-hda).
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "clock.svc" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "neon-blast.app" (priority 3))
+)

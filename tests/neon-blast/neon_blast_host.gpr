@@ -1,0 +1,35 @@
+--  Linux-hosted Neon Blast checks (tests/neon-blast/run.sh): the game's
+--  portable units (simulation, composer, synthesizer, software renderer)
+--  built for the host. Not a CuBit result.
+project Neon_Blast_Host is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/apps/neon-blast");
+   for Excluded_Source_Files use ("main.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   type Build_Mode is ("checked", "release");
+   for Main use ("neon_audio_host.adb", "neon_replay_host.adb", "neon_keys_tests.adb");
+   --  The same float semantics as the native build: no fused multiply-add,
+   --  so hashes match across hosts and CuBit.
+   Game_Switches := ("-O2", "-gnat2022", "-gnatwa", "-gnatwJ", "-g", "-ffp-contract=off");
+   --  NEON_HOST_BUILD=release: the native app's flags (-O3, no run-time
+   --  checks) for timings; the default keeps assertions on.
+   Mode : Build_Mode := external ("NEON_HOST_BUILD", "checked");
+   case Mode is
+      when "release" =>
+         for Object_Dir use "build/obj-release";
+         for Exec_Dir use "build/release";
+      when others =>
+         null;
+   end case;
+   package Compiler is
+      case Mode is
+         when "release" =>
+            for Default_Switches ("Ada") use
+              ("-O3", "-gnatp", "-gnat2022", "-gnatwa", "-gnatwJ", "-g", "-ffp-contract=off",
+               "-fno-tree-vrp", "-march=x86-64-v3");
+         when others =>
+            for Default_Switches ("Ada") use Game_Switches & ("-gnata");
+      end case;
+   end Compiler;
+end Neon_Blast_Host;

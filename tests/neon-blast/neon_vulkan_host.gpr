@@ -1,0 +1,25 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+--  Linux-hosted Neon Blast Vulkan path (tests/neon-blast/run.sh --vulkan):
+--  the GPU canvas widget's host device (lavapipe) and the game's Vulkan
+--  renderer. Not a CuBit or Intel hardware result.
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Neon_Vulkan_Host is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "host", "../gpu-canvas/host", "../gpu-canvas/build/source",
+                        "../../userspace/apps/neon-blast",
+                        "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display");
+   for Excluded_Source_Files use ("main.adb", "neon_audio_host.adb", "neon_replay_host.adb",
+                                  "wave_files.adb", "wave_files.ads");
+   for Object_Dir use "build/vk-obj";
+   for Exec_Dir use "build";
+   for Main use ("neon_vulkan_host.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatwJ", "-gnata", "-g", "-ffp-contract=off");
+   end Compiler;
+   package Linker is
+      for Default_Switches ("Ada") use
+        ("build/gpu_canvas_vk.o", "build/neon_vk.o", "build/gpu_canvas_host.o", "-lvulkan", "-lm");
+   end Linker;
+end Neon_Vulkan_Host;

@@ -1,0 +1,52 @@
+--  CuBit Neon Blast (native). Compiled and bound by gprbuild; linked by
+--  tools/build_neon_blast.py against libc and the verified Mesa (ANV)
+--  bundle, like Teapots.
+with "../../lib/ui/fonts_native.gpr";
+with "../../lib/ui/toolkit_flags.gpr";
+project Neon_Blast is
+   for Languages use ("Ada");
+   for Object_Dir use "build";
+   for Source_Dirs use (".", "build/generated", "../../lib/ui", "../../lib/ui/gpu-native",
+                        "../../lib/theme", "../../lib/compositor", "../../lib/display",
+                        "../../mesa", "../../allocator/src");
+   for Main use ("main.adb");
+   for Runtime ("Ada") use "../../runtime";
+   for Library_Dir use "";
+
+   package Builder is
+      for Executable ("main.adb") use "neon-blast.app";
+      for Default_Switches ("Ada") use ("-g", "-gnatwa", "-gnatw.X", "-s", "-v", "-nostdlib");
+   end Builder;
+
+   package Compiler extends Toolkit_Flags.Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer", "-mno-red-zone", "-fno-pic");
+      --  The game's portable units: no fused multiply-add, so a replay's
+      --  frame and audio hashes match the Linux-hosted run
+      --  (tests/neon-blast); -O3 for the renderer's and synthesizer's
+      --  loops. Run-time checks stay on until the units are proved.
+      Game := ("-O3", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer", "-mno-red-zone",
+               "-fno-pic", "-fno-tree-vrp", "-ffp-contract=off");
+      for Switches ("neon_math.adb") use Game;
+      for Switches ("neon_random.adb") use Game;
+      for Switches ("neon_keys.adb") use Game;
+      for Switches ("neon_composer.adb") use Game;
+      for Switches ("neon_dsp.adb") use Game;
+      for Switches ("neon_synth.adb") use Game;
+      for Switches ("neon_sim.adb") use Game;
+      for Switches ("neon_game.adb") use Game;
+      for Switches ("neon_scene.adb") use Game;
+      for Switches ("neon_font.adb") use Game;
+      for Switches ("neon_soft.adb") use Game;
+      for Switches ("neon_autopilot.adb") use Game;
+      for Switches ("neon_replay.adb") use Game;
+      --  Proved (tests/gpu-canvas/run.sh --prove, level 2): no run-time checks.
+      Proved := ("-O3", "-gnatp", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
+                 "-mno-red-zone", "-fno-pic", "-fno-tree-vrp");
+      for Switches ("gpu_canvas_slots.adb") use Proved;
+   end Compiler;
+
+   package Binder is
+      for Default_Switches ("Ada") use ("-d_C");
+   end Binder;
+end Neon_Blast;

@@ -1,0 +1,15 @@
+# Neon Blast (userspace/apps/neon-blast, APP-008): a musical vaporwave arena
+# shooter. Its window and input come from the desktop; its soundtrack goes
+# to the mixer through the stream ring the mixer lends; it renders with
+# Vulkan on a GPU canvas when the launch has a render session, otherwise
+# in software. Mixer and render are optional: without audio hardware the
+# game plays silently, without a GPU it draws on the CPU. No files, no
+# network, no other service.
+(executable-manifest v1
+  (identity "com.cubit.neon-blast")
+  (version "0.1.0")
+  (request-render-optional read-write render)
+  # One "started" record (CuBit.Logging.Announce) and its stats lines.
+  (request-service logstore read-write logstore)
+  (request-service desktop read-write desktop)
+  (request-service-optional mixer read-write mixer))

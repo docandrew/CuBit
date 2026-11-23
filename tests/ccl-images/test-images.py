@@ -110,6 +110,7 @@ class Images(unittest.TestCase):
                     apps = {row[5].removeprefix("apps/") for row in rows if row[5].startswith("apps/")}
                     self.assertEqual(apps, (stage1 | stage2 | {"sameboy.app", "sameboy/00.gb", "doom1.wad", "config-storage.svc", "cubitshell.app",
                                                             "intel-gpu.drv", "firmware/intel/tgl_guc_70.bin", "teapots.app",
+                                                            "neon-blast.app",
                                                             "boot-logs.app", "logs.app", "ccl-console.app", "gpu-viewer.app",
                                                             "calculator.app", "lexicon.svc", "dictionary.app", "bible.app",
                                                             # The agent path (AGENT-002).

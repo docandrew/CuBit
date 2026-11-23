@@ -364,7 +364,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -1430,6 +1430,11 @@ with open(sys.argv[1], "wb") as f:
     calculator)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-calculator.ccl"
         ;;
+    neon-blast)
+        # Neon Blast (APP-008): the game on the desktop, its soundtrack
+        # through mixer.svc and QEMU's HDA into a WAV (tests/neon-blast).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-neon-blast.ccl"
+        ;;
     display-latency)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-latency.ccl"
         # CUBIT_DISPLAY_LATENCY_ANIMATION=1: a window animating every refresh
@@ -1746,6 +1751,16 @@ if [ -n "$INIT_PROFILE" ]; then
             debugfs -w -R "rm $benchmark_image" "$TEMP_DISK" >/dev/null 2>&1
             debugfs -w -R "write $KERNEL_DIR/isodir/boot/$benchmark_image $benchmark_image" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
+    fi
+    if [ "$TEST_NAME" = "neon-blast" ]; then
+        # An image-only program (like Teapots): staged onto this run's disk.
+        if [ ! -f "$KERNEL_DIR/isodir/boot/neon-blast.app" ]; then
+            echo "headless: build neon-blast first (make -C kernel neon-blast)" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm neon-blast.app" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $KERNEL_DIR/isodir/boot/neon-blast.app neon-blast.app" \
+            "$TEMP_DISK" >/dev/null 2>&1 || exit 1
     fi
     if [ "$TEST_NAME" = "desktop-doom" ]; then
         DOOM_IMAGE="$KERNEL_DIR/isodir/boot/doom.elf"
@@ -4213,7 +4228,7 @@ if [ "$TEST_NAME" = "usb-hotplug" ]; then
         -device qemu-xhci,id=xhcib
         -device usb-mouse,bus=xhcib.0,port=1,id=bootmouse)
 fi
-if [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "bench-audio" ]; then
+if [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "bench-audio" ] || [ "$TEST_NAME" = "neon-blast" ]; then
     TEMP_AUDIO="$(mktemp "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-audio.XXXXXX.wav")"
     AUDIO_ARGS=(-audiodev "wav,id=snd0,path=$TEMP_AUDIO")
 fi
@@ -4233,6 +4248,7 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
    [ "$TEST_NAME" = "debugger-gui" ] || [ "$TEST_NAME" = "debugger-gui-rs" ] ||
    [ "$TEST_NAME" = "logs" ] || [ "$TEST_NAME" = "scanout-repair" ] || [ "$TEST_NAME" = "metricsview" ] ||
    [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "boot-timeline" ] ||
+   [ "$TEST_NAME" = "neon-blast" ] ||
    { [ "$TEST_NAME" = "servo" ] && [ -n "${SERVO_DESKTOP:-}" ]; }; then
     if ! command -v nc >/dev/null 2>&1; then
         echo "headless: desktop input regression requires nc" >&2
@@ -4270,6 +4286,13 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             exit 1
         fi
 
+        if [ "$TEST_NAME" = "neon-blast" ]; then
+            # Play by keyboard and mouse through QEMU's PS/2 devices, take
+            # screenshots, then watch the attract demo (tests/neon-blast).
+            python3 -I "$ROOT_DIR/tests/neon-blast/headless_drive.py" "$MONITOR_SOCKET" \
+              "$SERIAL_LOG" "${NEON_BLAST_SHOTS:-${SERIAL_LOG%.log}-neon}" "$TEMP_AUDIO"
+            exit $?
+        fi
         if [ "$TEST_NAME" = "boot-timeline" ]; then
             # One key as soon as the PS/2 driver serves its consumer: the
             # timeline's First_Input_Accepted is when Desktop takes it.
@@ -10136,6 +10159,15 @@ UI-PROBE: keys keys=
 UI-PROBE: closed
 "
         ;;
+    neon-blast)
+        required_markers="
+neon-blast: starting
+neon-blast: audio stream open (48 kHz stereo, lent ring) after
+neon-blast: first frame painted (software)
+neon-blast: stats path=software
+mixer: HDA period IRQ active
+"
+        ;;
     calculator)
         required_markers="
 calculator: starting
@@ -10779,6 +10811,12 @@ if [ "$IOMMU_CHECK" != none ] && ! python3 -I "$ROOT_DIR/tests/headless/check-io
     exit 1
 fi
 
+if [ "$TEST_NAME" = "neon-blast" ]; then
+    # The soundtrack QEMU's HDA wrote: present, continuous, at a sane level.
+    if ! python3 -I "$ROOT_DIR/tests/neon-blast/check_wav.py" "$TEMP_AUDIO"; then
+        exit 1
+    fi
+fi
 if [ "$TEST_NAME" = "desktop-doom" ]; then
     if [ "${CUBIT_DOOM_MULTIAPP:-0}" = 1 ] &&
        [ "$(grep -Ec 'desktop: ptr hit-down [0-9]+ [0-9]+ 6$' "$SERIAL_LOG")" -lt 1 ]; then

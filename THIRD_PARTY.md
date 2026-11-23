@@ -80,3 +80,24 @@ they showed us.
   2014), for why process memory leaves the kernel's map.
 - The **Intel, AMD, ACPI, xHCI, NVMe, UFS, PCI and HID** specifications,
   which come first wherever they say enough.
+
+### Neon Blast's sound
+
+Neon Blast (`userspace/apps/neon-blast`) synthesizes its soundtrack with our
+own Ada code. These are the designs it follows:
+
+- **Freeverb** by Jezar at Dreampoint, released into the public domain in
+  June 2000. The game's reverb (`neon_dsp`) is Freeverb's design: eight
+  lowpass-feedback combs and four allpasses per channel, with Freeverb's
+  delay tunings and stereo spread, scaled from 44.1 kHz to 48 kHz.
+- **Vadim Zavalishin, "The Art of VA Filter Design"** (Native Instruments,
+  2012), for the topology-preserving state-variable filter.
+- **John Chowning, "The Synthesis of Complex Audio Spectra by Means of
+  Frequency Modulation"** (Journal of the Audio Engineering Society, 1973),
+  for the two-operator FM of the electric piano and the bells.
+- **Vesa Valimaki and Antti Huovilainen, "Antialiasing Oscillators in
+  Subtractive Synthesis"** (IEEE Signal Processing Magazine, 2007), for the
+  polynomial band-limited step (polyBLEP) of the saw and pulse oscillators.
+- **Melissa O'Neill, "PCG: A Family of Simple Fast Space-Efficient
+  Statistically Good Algorithms for Random Number Generation"** (2014), for
+  the seeded generator behind the composer and the game.

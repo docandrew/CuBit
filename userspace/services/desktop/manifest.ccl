@@ -79,7 +79,7 @@
     (Launch "boot-logs.app") (Launch "metricsview.app") (Launch "agent.app") (Launch "doom.elf")
     (Launch "devices.app") (Launch "cubitshell.app") (Launch "files.app") (Launch "text.app")
     (Launch "calculator.app") (Launch "dictionary.app") (Launch "bible.app")
-    (Launch "sameboy.app") (Launch "config-inspector.app") (Launch "teapots.app")
+    (Launch "sameboy.app") (Launch "config-inspector.app") (Launch "teapots.app") (Launch "neon-blast.app")
     (Launch "debugger.app")]
   # LAT-002's display-latency samples and the frame-time series
   # (Desktop_Metrics, CuBit.Metrics), into metrics.svc's store (MET-002).

@@ -74,6 +74,7 @@
   (file optical "doom" "apps/doom.elf")
   (file optical "sameboy" "apps/sameboy.app")
   (file optical "teapots" "apps/teapots.app")
+  (file optical "neon-blast" "apps/neon-blast.app")
   (file optical "text" "apps/text.app")
   (file optical "calculator" "apps/calculator.app")
   # VMM-001 slice 1: the monitor app with the pinned Linux guest.

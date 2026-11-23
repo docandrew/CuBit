@@ -1793,6 +1793,14 @@ bench-spread: ccl-build user_runtime ccl-manifest
 teapots: libc user_runtime ccl-manifest ui-fonts-native
 	bash ../userspace/mesa/build.sh
 
+# Neon Blast (userspace/apps/neon-blast, APP-008): the musical vaporwave
+# arena shooter, Vulkan on a GPU canvas with a software fallback, linked
+# against the same combined Mesa (ANV) bundle as Teapots (whose build
+# stages the Mesa notices the images carry).
+.PHONY: neon-blast
+neon-blast: libc user_runtime ccl-manifest ui-fonts-native
+	python3 ../tools/build_neon_blast.py
+
 # CuBit libc (userspace/libc): musl over CuBit system calls, and its checks.
 
 .PHONY : libc libc-check cxx-check
@@ -3243,7 +3251,7 @@ test-programs: $(TEST_PROGRAMS)
 # pack. world builds them too, so a world pass means every image binary
 # compiled and links; the image targets name the same phony targets, so one
 # make invocation builds each once.
-IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer teapots gpio i2c-dw hid-i2c acpi-native
+IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer teapots neon-blast gpio i2c-dw hid-i2c acpi-native
 
 # CAP-002: capabilities are named by handles, never numbers. Runs first in
 # world; --self-test shows it rejecting each forbidden form.
