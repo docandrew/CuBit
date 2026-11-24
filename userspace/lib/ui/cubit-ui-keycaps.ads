@@ -82,6 +82,17 @@ package CuBit.UI.Keycaps is
    function Modifiers_Width (Set : Keys.Modifier_Set) return Natural;
    procedure Draw_Modifiers (C : Canvas; X, Y : Natural; Set : Keys.Modifier_Set; Colors : Theme);
 
+   --  Always-visible keycaps (buttons, button bar cells, dialog buttons,
+   --  menu items, the status line) show only while this is True: the one
+   --  decision point a later appearance setting ("Hide key shortcuts",
+   --  default shown) switches. Tooltips, held-modifier reveals and the
+   --  controls' accessibility data (Controls.Shortcut) always carry the
+   --  shortcut, whatever it says.
+   function Persistent_Shown return Boolean is (True);
+   --  A chord as an always-visible hint: Item, or No_Chord while hidden.
+   function Persistent (Item : Keys.Chord) return Keys.Chord is
+     (if Persistent_Shown then Item else Keys.No_Chord);
+
    --  The ink a tone draws in on the theme (border and label).
    function Ink (Colors : Theme; Shade : Tone; Style : Look) return Color;
 end CuBit.UI.Keycaps;

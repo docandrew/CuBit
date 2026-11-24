@@ -12,6 +12,7 @@ with CuBit.UI.Keycaps;
 with CuBit.UI.Modifier_Reveal;
 with CuBit.UI.Popup_Menus;
 with CuBit.UI.Standard_Keys;
+with CuBit.UI.Status_Lines;
 with CuBit.UI.Tables;
 with CuBit.UI.Tooltips;
 with CuBit.UI.Widgets;
@@ -2552,10 +2553,6 @@ package body Files_View is
    end Cycle;
 
    function Now_Ms return Unsigned_64 is (Now_Us / MICROSECONDS_PER_MILLISECOND);
-   --  "Esc: cancel   ": a command's key and what it does, for status
-   --  lines; nothing when the command has no chord.
-   function Says (Map : Maps.Keymap; Item : Command; Text : String) return String is
-     (if Keys.Is_Chord (Maps.Hint (Map, Item)) then Key_Text (Map, Item) & ": " & Text & "   " else "");
    function Context_Map return Maps.Keymap is
      (if Prompt /= No_Prompt then Prompt_Map elsif Viewing then Viewer_Map else Panes_Map);
    --  The key bar shows the panes' keys, or the viewer's while it is open.
@@ -3536,7 +3533,7 @@ package body Files_View is
       end if;
       --  The prompt's choices are toolkit buttons with their keycaps
       --  (UI-051): "OK [Enter]", "Cancel [Esc]", "Skip [S]".
-      Bars.Clear (Dialog_Bar, DIALOG_FIRST, Bars.Plain_Style, Bars.Align_Right, Bars.Keycap_After);
+      Bars.Clear (Dialog_Bar, DIALOG_FIRST, Bars.Plain_Style, Bars.Align_Right);
       if Prompt = Ask_Conflict then
          Bars.Add_Command (Dialog_Bar, Skip_Existing);
          Bars.Add_Command (Dialog_Bar, Overwrite_Existing);
@@ -3553,7 +3550,7 @@ package body Files_View is
                     Colors, UI.pointer, Revealed_Now, Now_Ms);
       end;
       if Prompt in Confirm_Copy | Confirm_Move then
-         Bars.Clear (Policy_Bar, POLICY_FIRST, Bars.Plain_Style, Bars.Align_Left, Bars.Keycap_After);
+         Bars.Clear (Policy_Bar, POLICY_FIRST, Bars.Plain_Style, Bars.Align_Left);
          Bars.Add_Command (Policy_Bar, Skip_Existing);
          Bars.Add_Command (Policy_Bar, Overwrite_Existing);
          Bars.Add_Command (Policy_Bar, Keep_Both);
@@ -3751,14 +3748,11 @@ package body Files_View is
               & (if Files_Filter.Active (P.Filter) then "filter """ & Files_Filter.Query (P.Filter) & """"
                    & (if Files_Filter.Complete (P.Filter) then "" else " ...") & "   "
                  else "")
-              & (if Message_Length > 0 then Message (1 .. Message_Length)
-                 elsif Viewing then
-                   Says (Viewer_Map, Close_Viewer, "close") & Says (Viewer_Map, Viewer_Text_Or_Hex, "text/hex")
-                   & Says (Viewer_Map, Viewer_Page_Down, "scroll")
-                 else
-                   Says (Panes_Map, Next_Pane, "other pane") & Says (Panes_Map, Open_Entry, "open")
-                   & Says (Panes_Map, Erase_Or_Parent, "up") & Says (Panes_Map, Mark_And_Next, "mark")
-                   & "type to filter   " & Says (Panes_Map, View, "view") & Says (Panes_Map, Toggle_Overlay, "timing"));
+              & (if Message_Length > 0 then Message (1 .. Message_Length) else "");
+            --  The key hints (UI-051): keycaps from the keymaps, so a
+            --  remap shows here too; lowest priority last.
+            Hints : CuBit.UI.Status_Lines.Line;
+            package SL renames CuBit.UI.Status_Lines;
             Root : constant String := Root_Of (P);
             Right_Text : constant String :=
               Volume_Text (Root) & (if Volume_Text (Root)'Length > 0 then "   " else "")
@@ -3768,6 +3762,24 @@ package body Files_View is
               & (if Rule.Direction = Files_Order.Ascending then " up" else " down")
               & (if Files_Order.Busy (P.Order, P.Listing) then " (sorting)" else "");
          begin
+            SL.Clear (Hints);
+            if Files_Operations.Busy then
+               SL.Add_Hint (Hints, Maps.Hint (Panes_Map, Clear_Or_Cancel), "cancel");
+            elsif Message_Length > 0 then
+               null;
+            elsif Viewing then
+               SL.Add_Hint (Hints, Maps.Hint (Viewer_Map, Close_Viewer), "close");
+               SL.Add_Hint (Hints, Maps.Hint (Viewer_Map, Viewer_Text_Or_Hex), "text or hex");
+               SL.Add_Hint (Hints, Maps.Hint (Viewer_Map, Viewer_Page_Down), "scroll");
+            else
+               SL.Add_Hint (Hints, Maps.Hint (Panes_Map, Next_Pane), "other pane");
+               SL.Add_Hint (Hints, Maps.Hint (Panes_Map, Open_Entry), "open");
+               SL.Add_Hint (Hints, Maps.Hint (Panes_Map, Erase_Or_Parent), "up");
+               SL.Add_Hint (Hints, Maps.Hint (Panes_Map, Mark_And_Next), "mark");
+               SL.Add_Text (Hints, "type to filter");
+               SL.Add_Hint (Hints, Maps.Hint (Panes_Map, View), "view");
+               SL.Add_Hint (Hints, Maps.Hint (Panes_Map, Toggle_Overlay), "timing");
+            end if;
             if Files_Operations.Busy then
                declare
                   use Files_Operations;
@@ -3780,20 +3792,19 @@ package body Files_View is
                               when Rename_Operation => "Renaming"));
                   Text : constant String :=
                     Verb & Natural'Image (Items_Done) & " /" & Natural'Image (Items_Total) & " items, "
-                    & Size_Text (Bytes_Done) & " / " & Size_Text (Bytes_Total) & "   " & Current & "   "
-                    & Says (Panes_Map, Clear_Or_Cancel, "cancel");
+                    & Size_Text (Bytes_Done) & " / " & Size_Text (Bytes_Total) & "   " & Current;
                   Bar : constant Rect :=
                     (Status.x + (if Status.w > PROGRESS_WIDTH + MARGIN then Status.w - PROGRESS_WIDTH - MARGIN else 0),
                      Status.y + 4, Natural'Min (PROGRESS_WIDTH, Status.w), STATUS_HEIGHT - 8);
                begin
-                  Draw_Status_Bar (C, Status, Colors, Text, "");
+                  SL.Draw (C, Status, Colors, Text, Hints, "");
                   Draw_Progress_Bar
                     (C, Bar, Colors, 0, 100,
                      Files_Plan.Percent ((if Bytes_Total > 0 then Bytes_Done else Unsigned_64 (Items_Done)),
                                    (if Bytes_Total > 0 then Bytes_Total else Unsigned_64 (Items_Total))));
                end;
             else
-               Draw_Status_Parts (C, Status, Colors, Left_Text, Right_Text);
+               SL.Draw (C, Status, Colors, Left_Text, Hints, Right_Text);
             end if;
          end;
       end if;

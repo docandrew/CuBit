@@ -18,9 +18,9 @@ package body CuBit.UI.Button_Bars is
 
    procedure Clear
      (B : out Bar; First_ID : Controls.Control_ID; Style : Bar_Style := Key_Bar_Style;
-      Align : Alignment := Align_Left; Side : Keycap_Side := Keycap_Before) is
+      Align : Alignment := Align_Left) is
    begin
-      B := (First_ID => First_ID, Style => Style, Align => Align, Side => Side, others => <>);
+      B := (First_ID => First_ID, Style => Style, Align => Align, others => <>);
    end Clear;
 
    procedure Append (B : in out Bar; Item : Button) is
@@ -113,12 +113,16 @@ package body CuBit.UI.Button_Bars is
    function Shows_Keycap (B : Bar; Map : Commands.Keymap; K : Button_Index; Revealed : Keys.Modifier_Set)
      return Boolean is
      (K <= B.Count and then B.Buttons (K).Look = Caption_With_Keycap
-      and then Keys.Is_Chord (Shown_Chord (B, Map, K, Revealed)));
+      and then Keys.Is_Chord (Caps.Persistent (Shown_Chord (B, Map, K, Revealed))));
 
    --  A caption button's width for a caption and a cap of Cap pixels.
    function Caption_Width (Text : String; Cap : Natural) return Natural is
      (2 * BUTTON_INSET + Cap
       + (if Text'Length > 0 then (if Cap > 0 then CAPTION_GAP else 0) + UI_Text_Width (Text) else 0));
+
+   --  A key's cap in its cell, unless always-visible keycaps are hidden.
+   function Key_Cap_Width (Item : Keys.Key) return Natural is
+     (if Caps.Persistent_Shown then Caps.Key_Width (Item) else 0);
 
    function Needed_Width (B : Bar; Map : Commands.Keymap; K : Button_Index; Revealed : Keys.Modifier_Set)
      return Natural
@@ -133,10 +137,11 @@ package body CuBit.UI.Button_Bars is
          --  at the start of the bar) and keeps its plain width where the
          --  layer's caption fits in it.
          return Natural'Max
-           (Caption_Width (Shown_Caption (B, Map, K, Keys.No_Modifiers), Caps.Key_Width (B.Buttons (K).Key)),
-            Caption_Width (Shown_Caption (B, Map, K, Revealed), Caps.Key_Width (B.Buttons (K).Key)));
+           (Caption_Width (Shown_Caption (B, Map, K, Keys.No_Modifiers), Key_Cap_Width (B.Buttons (K).Key)),
+            Caption_Width (Shown_Caption (B, Map, K, Revealed), Key_Cap_Width (B.Buttons (K).Key)));
       else
-         return Caption_Width (Shown_Caption (B, Map, K, Revealed), Caps.Width (Shown_Chord (B, Map, K, Revealed)));
+         return Caption_Width (Shown_Caption (B, Map, K, Revealed),
+                               Caps.Width (Caps.Persistent (Shown_Chord (B, Map, K, Revealed))));
       end if;
    end Needed_Width;
 
@@ -279,7 +284,7 @@ package body CuBit.UI.Button_Bars is
                   Text : constant String := (if Found then Caption (Item) else "");
                   Key_Only : constant Boolean := B.Buttons (K).From = Key_Source;
                   Cap : constant Natural :=
-                    (if Key_Only then Caps.Key_Width (B.Buttons (K).Key) else Caps.Width (Chord));
+                    (if Key_Only then Key_Cap_Width (B.Buttons (K).Key) else Caps.Width (Caps.Persistent (Chord)));
                   Cap_Y : constant Natural := Box.y + (if Box.h > Caps.Height then (Box.h - Caps.Height) / 2 else 0);
                   Text_Y : constant Natural := Box.y + (if Box.h > UI_Text_Height then (Box.h - UI_Text_Height) / 2 else 0);
                   Text_X, Cap_X : Natural;
@@ -291,14 +296,14 @@ package body CuBit.UI.Button_Bars is
                     (Inner, Box, Colors,
                      (if not Is_Live then Button_Disabled elsif Pressed then Button_Pressed
                       elsif On then Button_Active elsif Hot then Button_Hot else Button_Normal));
-                  if B.Side = Keycap_Before then
-                     Cap_X := Box.x + BUTTON_INSET;
-                     Text_X := Cap_X + Cap + (if Cap > 0 then CAPTION_GAP else 0);
-                  else
-                     Text_X := Box.x + BUTTON_INSET;
-                     Cap_X := Text_X + UI_Text_Width (Text) + (if Text'Length > 0 then CAPTION_GAP else 0);
-                  end if;
-                  if Key_Only then
+                  --  "Copy [F5]": the caption, then the keycap at the right
+                  --  end (a cell wider than its caption keeps the caps
+                  --  lined up at its right edge).
+                  Text_X := Box.x + BUTTON_INSET;
+                  Cap_X := (if Box.w > BUTTON_INSET + Cap then Box.x + Box.w - BUTTON_INSET - Cap else Box.x);
+                  if Cap = 0 then
+                     null;
+                  elsif Key_Only then
                      Caps.Draw_Key (Inner, Cap_X, Cap_Y, B.Buttons (K).Key, Colors,
                                     (if Found then Shade (Item) else Caps.Neutral), Look);
                   elsif Cap > 0 then

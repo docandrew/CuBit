@@ -329,7 +329,7 @@ package body CuBit.UI.Menus is
          if not Definition.Items (I).Separator then
             Widest := Natural'Max
               (Widest, UI_Text_Width (Value (Definition.Items (I).Caption)) +
-                 CuBit.UI.Keycaps.Width (Definition.Items (I).Hint));
+                 CuBit.UI.Keycaps.Width (CuBit.UI.Keycaps.Persistent (Definition.Items (I).Hint)));
          end if;
       end loop;
       return Widest + CAPTION_ROOM + 2 * POPUP_PADDING;
@@ -471,7 +471,7 @@ package body CuBit.UI.Menus is
                         end loop;
                      end if;
                      declare
-                        SW : constant Natural := CuBit.UI.Keycaps.Width (It.Hint);
+                        SW : constant Natural := CuBit.UI.Keycaps.Width (CuBit.UI.Keycaps.Persistent (It.Hint));
                         Caption_Width : constant Natural :=
                           (if R.w > SW + CAPTION_ROOM then R.w - SW - CAPTION_ROOM else 0);
                         Caption : constant String := Fit_UI_Text (Value (It.Caption), Caption_Width);

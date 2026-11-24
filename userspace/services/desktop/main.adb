@@ -187,6 +187,11 @@ with Desktop_GPU_Power_Settings;
 with Client_Popup_Layout;
 with Client_Tooltip_Policy;
 with Desktop_Tooltips;
+with Desktop_Super_Keys;
+with CuBit.UI.Keys;
+with CuBit.UI.Keycaps;
+with CuBit.UI.Keycap_Renderer;
+with CuBit.UI.Modifier_Reveal;
 with CCL.Interfaces.Desktop_Launch;
 with CuBit.Appearance;
 with CuBit.Settings;
@@ -323,12 +328,9 @@ procedure main is
    KEY_SPACE          : constant Unsigned_8 := 16#39#;
    --  Super+N opens the Deskbar panel; Super+T puts keyboard focus on the
    --  taskbar.
-   KEY_DESKBAR_N      : constant Unsigned_8 := 16#31#;
-   KEY_TASKBAR_T      : constant Unsigned_8 := 16#14#;
    KEY_LEFT_SUPER     : constant Unsigned_8 := 16#5B#;
    KEY_RIGHT_SUPER    : constant Unsigned_8 := 16#5C#;
    --  Super+V opens the clipboard manager.
-   KEY_CLIPBOARD_V    : constant Unsigned_8 := 16#2F#;
    KEY_EXTENDED_PREFIX : constant Unsigned_8 := 16#E0#;
    --  Set-1 multimedia keys (after the extended prefix).
    KEY_MUTE           : constant Unsigned_8 := 16#20#;
@@ -2823,6 +2825,33 @@ procedure main is
    function toastShown return Boolean;
    --  The tooltip, drawn over everything (defined with its targets).
    procedure drawTooltip;
+   --  Holding Super: the environment's keycaps over Desktop's controls.
+   procedure drawSuperHints;
+   function superHintsShown return Boolean;
+
+   package SK renames Desktop_Super_Keys;
+   package UIK renames CuBit.UI.Keys;
+   package MR renames CuBit.UI.Modifier_Reveal;
+   superKeys : SK.Map.Keymap;
+   superKeysLoaded : Boolean := False;
+   superReveal : MR.State;
+   superShown : Boolean := False;
+   SUPER_ONLY : constant UIK.Modifier_Set := [UIK.Super => True, others => False];
+   --  Gap between a hint and the control under it.
+   SUPER_HINT_GAP : constant := CuBit.UI_Metrics.Space_S;
+
+   procedure loadSuperKeys is
+      refused : Natural;
+   begin
+      if not superKeysLoaded then
+         SK.Map.Load (superKeys, SK.Defaults, refused);
+         superKeysLoaded := True;
+         if refused > 0 then
+            debugPrint ("desktop: " & Decimal (Unsigned_64 (refused)) & " Super keys conflict" & LF);
+         end if;
+      end if;
+   end loadSuperKeys;
+
 
    --  The Deskbar's task buttons (Desktop_Task_Groups): one per app, in
    --  the order its first window opened, whatever the stacking.
@@ -6086,7 +6115,7 @@ procedure main is
    begin
       if isEmpty (r) or else launchMenuOpen or else deskbarPanelOpen or else
          groupListOpen or else clipboardMenuOpen or else toastShown or else TTP.Showing (tipState) or else
-         not backBufferReady or else backBufferAddr = System.Null_Address
+         superHintsShown or else not backBufferReady or else backBufferAddr = System.Null_Address
       then
          return False;
       end if;
@@ -7466,6 +7495,7 @@ procedure main is
       drawShutdownDialog;
       drawToast;
       drawTooltip;
+      drawSuperHints;
       Desktop_Path_Timing.Leave;
       if Timed then noteTiming (Shell_Overlays, Started); end if;
    end drawDesktopShell;
@@ -7976,6 +8006,7 @@ procedure main is
       drawClipboardMenu;
       drawToast;
       drawTooltip;
+      drawSuperHints;
       if textSceneRetry then drawCurrentScene; end if;
       clipEnabled := False;
       drawCursorOverlay;
@@ -12801,9 +12832,10 @@ procedure main is
       end case;
    end tipText;
 
-   --  The shortcut a tip shows: the status button opens with Super+N.
+   --  The shortcut a tip shows: the status button's (Super+N), from the
+   --  environment's keymap.
    function tipHint (T : DT.Target) return String is
-     (if T.Kind = DT.Status_Button then "Super+N" else "");
+     (if T.Kind = DT.Status_Button then UIK.Image (SK.Map.Hint (superKeys, SK.Deskbar_Panel)) else "");
 
    --  Where the showing tip goes: below the pointer (or the focused
    --  control), else above it, on screen (Client_Popup_Layout.Place_Tip).
@@ -12914,6 +12946,106 @@ procedure main is
          end if;
       end;
    end drawTooltip;
+
+   ---------------------------------------------------------------------------
+   --  The environment's keys (UI-052): Super chords from Desktop_Super_Keys'
+   --  keymap; holding Super shows their keycaps over the controls they work
+   --  (CuBit.UI.Modifier_Reveal: after the hold delay, gone on release or a
+   --  chord, so a quick tap still opens the Apps menu).
+   ---------------------------------------------------------------------------
+   --  Desktop draws its hints with its own fill and text (its output may be
+   --  a GPU scene), through the toolkit's one keycap renderer.
+   procedure hintFill (S : Boolean; R : CuBit.UI.Rect; Ink : CuBit.UI.Color) is
+      pragma Unreferenced (S);
+   begin
+      fillRect (R.x, R.y, R.w, R.h, Unsigned_32 (Ink));
+   end hintFill;
+   function hintLabelWidth (Text : String) return Natural is (uiTextWidth (Text, CuBit.Fonts.Sans_Semibold));
+   function hintLabelHeight return Natural is (CuBit.Fonts.Line_Height);
+   procedure hintLabelText (S : Boolean; X, Y : Natural; Text : String; Ink : CuBit.UI.Color) is
+      pragma Unreferenced (S);
+   begin
+      drawUIText (X, Y, Text, Unsigned_32 (Ink), 0, transparent => True, face => CuBit.Fonts.Sans_Semibold);
+   end hintLabelText;
+   function hintCaptionWidth (Text : String) return Natural is (uiTextWidth (Text));
+   procedure hintCaptionText (S : Boolean; X, Y : Natural; Text : String; Ink : CuBit.UI.Color) is
+      pragma Unreferenced (S);
+   begin
+      drawUIText (X, Y, Text, Unsigned_32 (Ink), 0, transparent => True);
+   end hintCaptionText;
+   package Hints is new CuBit.UI.Keycap_Renderer
+     (Boolean, hintFill, hintLabelWidth, hintLabelHeight, hintLabelText, hintCaptionWidth, hintLabelHeight,
+      hintCaptionText);
+
+   --  Where each command's hint goes: centred over its control, just above
+   --  the Deskbar (empty when the control is not shown).
+   function superAnchor (Item : SK.Command) return Rect is
+     (if not shellSurfaceVisible then (others => 0)
+      else (case Item is
+               when SK.Deskbar_Panel => statusRect,
+               when SK.Taskbar_Focus =>
+                 (taskAreaLeft, taskbarY, (if taskAreaRight > taskAreaLeft then taskAreaRight - taskAreaLeft else 0),
+                  TASKBAR_H),
+               when SK.Clipboard_History =>
+                 --  Its manager opens centred over the Deskbar.
+                 (primaryBounds.x + primaryBounds.w / 2, taskbarY, 1, TASKBAR_H)));
+
+   function superHintRect (Item : SK.Command) return Rect is
+      anchor : constant Rect := superAnchor (Item);
+      chord : constant UIK.Chord := SK.Map.Hint (superKeys, Item);
+      w : constant Natural := Hints.Label_Width (SK.Caption (Item), chord);
+      h : constant Natural := Hints.Label_Height;
+      centre : constant Natural := anchor.x + anchor.w / 2;
+      x : Natural := (if centre > w / 2 then centre - w / 2 else 0);
+   begin
+      if isEmpty (anchor) or else not UIK.Is_Chord (chord) or else anchor.y < h + SUPER_HINT_GAP then
+         return (others => 0);
+      end if;
+      if x + w > primaryBounds.x + primaryBounds.w then
+         x := (if primaryBounds.x + primaryBounds.w > w then primaryBounds.x + primaryBounds.w - w else 0);
+      end if;
+      return clampRect ((x, anchor.y - h - SUPER_HINT_GAP, w, h));
+   end superHintRect;
+
+   function superHintsShown return Boolean is (superShown);
+
+   procedure damageSuperHints is
+   begin
+      for Item in SK.Command loop
+         if not isEmpty (superHintRect (Item)) then
+            scheduleRedrawRect (inflateRect (superHintRect (Item), 2));
+         end if;
+      end loop;
+   end damageSuperHints;
+
+   --  After a Super key event or the hold delay: show or hide the hints.
+   procedure noteSuperReveal (now : Unsigned_64) is
+      shown : constant Boolean := MR.Is_Revealed (superReveal, now);
+   begin
+      if shown /= superShown then
+         superShown := shown;
+         damageSuperHints;
+         debugPrint ("desktop: super hints " & (if shown then "shown" else "hidden") & LF);
+      end if;
+   end noteSuperReveal;
+
+   procedure drawSuperHints is
+      colors : constant CuBit.UI.Theme := CuBit.UI.Current_Theme;
+   begin
+      if not superShown then
+         return;
+      end if;
+      for Item in SK.Command loop
+         declare
+            r : constant Rect := superHintRect (Item);
+         begin
+            if not isEmpty (r) then
+               Hints.Draw_Label (True, r.x, r.y, SK.Caption (Item), SK.Map.Hint (superKeys, Item), colors,
+                                 CuBit.UI.Keycaps.Accent);
+            end if;
+         end;
+      end loop;
+   end drawSuperHints;
 
    procedure damageChromeButton
       (id : Unsigned_64; button : Pointer_Action; damage : in out Rect)
@@ -13631,6 +13763,7 @@ procedure main is
       code     : constant Unsigned_8 := raw and 16#7F#;
       damage   : Rect := cursorRect;
    begin
+      loadSuperKeys;
       if not release then
          dismissTip;
       end if;
@@ -13653,6 +13786,9 @@ procedure main is
             --  Super is a modifier. Its press arms the Apps menu; the
             --  release opens it unless Super was part of a chord. A held
             --  Super's device repeats never get here (Key_Repeat).
+            MR.Key_Event (superReveal, UIK.Super_Key, not release,
+                          (if release then UIK.No_Modifiers else SUPER_ONLY), nowMs);
+            noteSuperReveal (nowMs);
             if not release then
                desktopSuperChord := False;
                desktopSuperDown := True;
@@ -13681,19 +13817,35 @@ procedure main is
             --  the focused app never sees half of it.
             if not release then
                desktopSuperChord := True;
-               if code = KEY_CLIPBOARD_V and then shellSurfaceVisible then
-                  toggleClipboardMenu (damage);
-                  scheduleRedrawRect (inflateRect (damage, 2));
-               elsif code = KEY_DESKBAR_N and then shellSurfaceVisible then
-                  closeClipboardMenu (damage);
-                  leaveTaskbarFocus (damage);
-                  toggleDeskbarPanel (damage);
-                  scheduleRedrawRect (inflateRect (damage, 2));
-               elsif code = KEY_TASKBAR_T and then shellSurfaceVisible then
-                  closeClipboardMenu (damage);
-                  enterTaskbarFocus (damage);
-                  scheduleRedrawRect (inflateRect (damage, 2));
-               end if;
+               --  A chord hides the hints until Super is released.
+               MR.Key_Event (superReveal, UIK.Key_Of (Unsigned_64 (code)), True, SUPER_ONLY, nowMs);
+               noteSuperReveal (nowMs);
+               declare
+                  chord : constant UIK.Chord :=
+                    (Modifiers => [UIK.Super => True,
+                                   UIK.Shift => (modifierState and KEYMOD_SHIFT) /= 0,
+                                   UIK.Ctrl => (modifierState and KEYMOD_CTRL) /= 0,
+                                   UIK.Alt => (modifierState and KEYMOD_ALT) /= 0],
+                     Pressed => UIK.Key_Of (Unsigned_64 (code)));
+                  found : Boolean;
+                  item : SK.Command;
+               begin
+                  SK.Map.Find (superKeys, chord, found, item);
+                  if found and then shellSurfaceVisible then
+                     case item is
+                        when SK.Clipboard_History =>
+                           toggleClipboardMenu (damage);
+                        when SK.Deskbar_Panel =>
+                           closeClipboardMenu (damage);
+                           leaveTaskbarFocus (damage);
+                           toggleDeskbarPanel (damage);
+                        when SK.Taskbar_Focus =>
+                           closeClipboardMenu (damage);
+                           enterTaskbarFocus (damage);
+                     end case;
+                     scheduleRedrawRect (inflateRect (damage, 2));
+                  end if;
+               end;
             end if;
          when KR.Clipboard_Manager =>
             --  The manager owns the keyboard while open (both edges).
@@ -16072,7 +16224,9 @@ begin
          phaseMark (Phase_Retire);
          recordTransferWork;
          expireInputWaiters;
+         loadSuperKeys;
          tickTip (nowMs);
+         noteSuperReveal (nowMs);
          --  Secrets are wiped at their deadline, not only on the next paste.
          if Desktop_Clipboard.Next_Deadline (Unsigned_64'Last) /= Unsigned_64'Last
            and then Desktop_Clipboard.Expire (nowMs) and then clipboardMenuOpen
@@ -16121,6 +16275,7 @@ begin
               DN.Toast_Due (notifications) = DN.Never and then
               not Desktop_Capture.Marked and then
               TTP.Next_Deadline (tipState) = TTP.NEVER and then
+              MR.Next_Deadline (superReveal) = MR.NEVER and then
               modeTrial.Current = Desktop_Mode_Trial.Idle and then
               not KR.Armed (keyRepeat) and then
               not renderingPending and then
@@ -16179,6 +16334,10 @@ begin
                   if TTP.Next_Deadline (tipState) /= TTP.NEVER and then
                     (nextDueMs = 0 or else TTP.Next_Deadline (tipState) < nextDueMs)
                   then nextDueMs := TTP.Next_Deadline (tipState); end if;
+                  --  Holding Super: when its hints show (Modifier_Reveal).
+                  if MR.Next_Deadline (superReveal) /= MR.NEVER and then
+                    (nextDueMs = 0 or else MR.Next_Deadline (superReveal) < nextDueMs)
+                  then nextDueMs := MR.Next_Deadline (superReveal); end if;
                   --  "Keep this display mode?": its countdown and deadline.
                   if modeTrial.Current = Desktop_Mode_Trial.Asking then
                      declare

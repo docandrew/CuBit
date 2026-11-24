@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with CuBit.UI.Keycaps;
+with CuBit.UI.Keys;
 with CuBit.UI_Metrics;
 
 package body Dash_Commands is

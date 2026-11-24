@@ -82,7 +82,7 @@ package body CuBit.UI.Popup_Menus is
             Height := Height + Height_Of (Row);
             Width := Natural'Max
               (Width, ICON_COLUMN + UI_Text_Width (Row.Caption (1 .. Row.Caption_Length))
-                 + (if CuBit.UI.Keys.Is_Chord (Row.Hint)
+                 + (if CuBit.UI.Keys.Is_Chord (CuBit.UI.Keycaps.Persistent (Row.Hint))
                     then ACCELERATOR_GAP + CuBit.UI.Keycaps.Width (Row.Hint) else 0)
                  + ARROW_COLUMN + 2 * FRAME);
          end;
@@ -238,7 +238,7 @@ package body CuBit.UI.Popup_Menus is
                      end if;
                      Draw_UI_Text_Transparent
                        (Clipped, Line.x + ICON_COLUMN, Text_Y, Row.Caption (1 .. Row.Caption_Length), Ink);
-                     if CuBit.UI.Keys.Is_Chord (Row.Hint) then
+                     if CuBit.UI.Keys.Is_Chord (CuBit.UI.Keycaps.Persistent (Row.Hint)) then
                         CuBit.UI.Keycaps.Draw
                           (Clipped, Line.x + Line.w - ARROW_COLUMN - CuBit.UI.Keycaps.Width (Row.Hint),
                            Line.y + (if Line.h > CuBit.UI.Keycaps.Height

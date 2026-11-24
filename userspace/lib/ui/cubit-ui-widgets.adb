@@ -546,7 +546,8 @@ package body CuBit.UI.Widgets is
 
    function Button_Width (label : String; hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord) return Natural is
      (2 * CuBit.UI.BUTTON_TEXT_INSET + CuBit.UI.UI_Text_Width (label)
-      + (if CuBit.UI.Keys.Is_Chord (hint) then HINT_GAP + CuBit.UI.Keycaps.Width (hint) else 0));
+      + (if CuBit.UI.Keys.Is_Chord (CuBit.UI.Keycaps.Persistent (hint)) then HINT_GAP + CuBit.UI.Keycaps.Width (hint)
+         else 0));
 
    procedure Button
       (c : CuBit.UI.Canvas;
@@ -597,7 +598,7 @@ package body CuBit.UI.Widgets is
             bounds.y + (bounds.h - Natural'Min
               (bounds.h, CuBit.UI.UI_Text_Height)) / 2,
             label, colors.muted, colors.face);
-      elsif CuBit.UI.Keys.Is_Chord (hint) then
+      elsif CuBit.UI.Keys.Is_Chord (CuBit.UI.Keycaps.Persistent (hint)) then
          --  The label and its keycaps, centred together.
          declare
             capW : constant Natural := CuBit.UI.Keycaps.Width (hint);

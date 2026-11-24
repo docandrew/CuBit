@@ -23,7 +23,9 @@ with CuBit.UI.Keys;
 with CuBit.UI.Menus;
 with CuBit.UI.Modifier_Reveal;
 with CuBit.UI.Popup_Menus;
+with CuBit.UI.Status_Lines;
 with CuBit.UI.Tooltips;
+with Desktop_Super_Keys;
 
 procedure Keys_Tests is
    package Keys renames CuBit.UI.Keys;
@@ -162,6 +164,30 @@ procedure Keys_Tests is
       Check (Refused = 1, "one of two remaps conflicts and is refused");
       Check (Map_Of.Hint (Map, Save) = Keys.Ctrl + Keys.Shift + Keys.S, "the other applied");
    end Keymap;
+
+   --  Desktop's environment keymap: its defaults load, an app chord is
+   --  refused there, and holding Super past the delay reveals its hints.
+   procedure Desktop_Layer is
+      package SK renames Desktop_Super_Keys;
+      use type SK.Map.Bind_Result, SK.Command;
+      E : SK.Map.Keymap;
+      R : SK.Map.Bind_Result;
+      Found : Boolean;
+      Item : SK.Command;
+   begin
+      SK.Map.Load (E, SK.Defaults, Refused);
+      Check (Refused = 0, "Desktop's Super keys load");
+      SK.Map.Find (E, Keys.Super + Keys.N, Found, Item);
+      Check (Found and then Item = SK.Deskbar_Panel, "Super+N dispatches the Deskbar panel");
+      Check (SK.Map.Hint (E, SK.Taskbar_Focus) = Keys.Super + Keys.T, "Super+T is the taskbar's hint");
+      SK.Map.Bind (E, Keys.Ctrl + Keys.N, SK.Deskbar_Panel, R);
+      Check (R = SK.Map.Other_Layer, "the environment can't take an app's Ctrl+N");
+      SK.Map.Remap (E, SK.Deskbar_Panel, Keys.Super + Keys.N, Keys.Super + Keys.B, R);
+      SK.Map.Find (E, Keys.Super + Keys.B, Found, Item);
+      Check (R = SK.Map.Bound and then Found and then Item = SK.Deskbar_Panel
+             and then SK.Map.Hint (E, SK.Deskbar_Panel) = Keys.Super + Keys.B,
+             "a remap moves the Deskbar panel's dispatch and hint together");
+   end Desktop_Layer;
 
    procedure Environment is
       package Env is new CuBit.UI.Keymaps (Command, Keys.Environment_Layer);
@@ -381,6 +407,22 @@ procedure Keys_Tests is
                 "the Ctrl layer wraps: cell" & K'Image & " stays on screen");
       end loop;
 
+      --  A status line of keycap hints drops whole hints from the end.
+      declare
+         package SL renames CuBit.UI.Status_Lines;
+         L : SL.Line;
+      begin
+         SL.Clear (L);
+         SL.Add_Hint (L, +Keys.Tab, "other pane");
+         SL.Add_Hint (L, +Keys.Enter, "open");
+         SL.Add_Hint (L, Keys.No_Chord, "unbound: left out");
+         SL.Add_Text (L, "type to filter");
+         Check (SL.Count (L) = 3, "an unbound command's hint is left out");
+         Check (SL.Shown ((0, 0, 2000, 25), "", L, "by name") = 3, "a wide line shows every hint");
+         Check (SL.Shown ((0, 0, 260, 25), "", L, "by name") in 1 .. 2,
+                "a narrow one drops whole hints from the end:" & SL.Shown ((0, 0, 260, 25), "", L, "by name")'Image);
+         Check (SL.Shown ((0, 0, 40, 25), "", L, "") = 0, "too narrow for one: none, nothing cut");
+      end;
       --  Status lines drop whole hints, never cut one.
       declare
          Line : constant String := "Tab: other pane   Enter: open   Backspace: up";
@@ -494,6 +536,7 @@ begin
    Decoding;
    Keymap;
    Environment;
+   Desktop_Layer;
    Reveal;
    Bar_Tests;
    Band_And_Layers;

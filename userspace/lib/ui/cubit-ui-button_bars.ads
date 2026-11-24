@@ -69,7 +69,6 @@ package CuBit.UI.Button_Bars is
    MAXIMUM_BUTTONS : constant := Layout.MAXIMUM_BUTTONS;
 
    type Face is (Caption_With_Keycap, Icon_Only);
-   type Keycap_Side is (Keycap_Before, Keycap_After);
    type Alignment is (Align_Left, Align_Right);
    --  Key_Bar_Style: a panel with a rule above (a function-key bar);
    --  Toolbar_Style: the toolbar face, separators between clusters;
@@ -92,9 +91,11 @@ package CuBit.UI.Button_Bars is
    type Bar is private;
    --  A bar's buttons take the control IDs First_ID .. First_ID +
    --  MAXIMUM_BUTTONS - 1.
+   --  A captioned button reads "Copy [F5]": the caption on the left, the
+   --  keycap on the right, as in menus (user, 2026-11-23).
    procedure Clear
      (B : out Bar; First_ID : Controls.Control_ID; Style : Bar_Style := Key_Bar_Style;
-      Align : Alignment := Align_Left; Side : Keycap_Side := Keycap_Before);
+      Align : Alignment := Align_Left);
    procedure Add_Command
      (B : in out Bar; Item : Command; Look : Face := Caption_With_Keycap; Starts_Cluster : Boolean := False);
    procedure Add_Key (B : in out Bar; Item : Keys.Key; Starts_Cluster : Boolean := False);
@@ -178,7 +179,6 @@ private
       First_ID : Controls.Control_ID := Controls.NO_CONTROL;
       Style : Bar_Style := Key_Bar_Style;
       Align : Alignment := Align_Left;
-      Side : Keycap_Side := Keycap_Before;
       --  The last Draw: where each button went, the bar, its rows and the
       --  layer it showed.
       Areas : Rect_Table := [others => (others => 0)];

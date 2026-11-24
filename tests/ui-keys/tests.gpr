@@ -5,7 +5,7 @@ with "../../userspace/lib/ui/fonts_host.gpr";
 project Tests is
    for Source_Dirs use (".", "../../userspace/lib/ui", "../../userspace/lib/theme",
                         "../../userspace/ccl/tools/ccl-ui-preview/host",
-                        "../../userspace/lib/compositor", "../../userspace/lib/display");
+                        "../../userspace/lib/compositor", "../../userspace/lib/display", "build/source");
    for Excluded_Source_Files use ("keymap_instance.ads");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";

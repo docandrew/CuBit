@@ -1,6 +1,7 @@
 with CuBit.Filesystems;
 with Ada.Directories;
 with Ada.Text_IO;
+with CuBit.Appearance;
 with CuBit.UI;
 with CuBit.UI.Controls;
 with CuBit.UI.Icons;
@@ -840,6 +841,15 @@ package body Files_View_Tests is
                       "narrow: " & F'Image & " inside the window");
             end loop;
             Save_PPM (Narrow, "build/files-keys-narrow.ppm");
+            --  The same in the dark scheme (screenshots for review).
+            CuBit.UI.Set_Color_Scheme (CuBit.Appearance.Alloy_Dark);
+            Handle (View.all, (Kind => Resize, X => NARROW_WIDTH, Y => HEIGHT, others => <>), Map.all, Redraw);
+            Render (View.all, Canvas (Narrow), Bounds (Narrow), UI.all, Map.all);
+            Save_PPM (Narrow, "build/files-keys-narrow-dark.ppm");
+            Handle (View.all, (Kind => Resize, X => WIDTH, Y => HEIGHT, others => <>), Map.all, Redraw);
+            Frame;
+            Save_PPM (Screen, "build/files-keys-dark.ppm");
+            CuBit.UI.Set_Color_Scheme (CuBit.Appearance.Alloy_Light);
 
             Handle (View.all, (Kind => Resize, X => WIDTH, Y => HEIGHT, others => <>), Map.all, Redraw);
             Frame;

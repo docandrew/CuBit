@@ -7,6 +7,12 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
+# Desktop's environment keymap (its Super chords), tested beside the toolkit's.
+mkdir -p "$here/build/source"
+for unit in desktop_super_keys.ads desktop_super_keys.adb; do
+  cmp -s "$root/userspace/services/desktop/$unit" "$here/build/source/$unit" ||
+    cp "$root/userspace/services/desktop/$unit" "$here/build/source/"
+done
 cd "$root/kernel"
 case "${1:-}" in
   --prove)
