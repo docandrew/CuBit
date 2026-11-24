@@ -6018,13 +6018,18 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             # toolbar's keycaps, Super the Desktop's hints. sendkey's hold
             # time keeps the key down while the screen is captured.
             # (nc -q 1 itself lingers a second after sending.)
+            # The key is pressed and released through QMP (qmp-key.py):
+            # QEMU's sendkey hold time would queue another hold of delay
+            # behind the release, and every later key would reach the
+            # guest that late (BUG-007: each screenshot one step behind).
             files_hold_shot() {
-                printf 'sendkey %s %s\n' "$1" 10000 | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+                python3 -I "$ROOT_DIR/tests/headless/qmp-key.py" "$QMP_SOCKET" down "$1"
                 sleep 2.0
                 printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-$2.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
                 sleep 2.5
                 printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-$2-later.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
-                sleep 4.0
+                python3 -I "$ROOT_DIR/tests/headless/qmp-key.py" "$QMP_SOCKET" up "$1"
+                sleep 0.5
             }
             # The order is FILES_HOLD_ORDER's (default: Super, Alt, Ctrl).
             for files_hold in ${FILES_HOLD_ORDER:-meta_l alt ctrl}; do
