@@ -32,6 +32,14 @@ KERN014_PROBE ?= 0
 # Debug-register probe (DBG-001, src/debug_register_probe.ads): test kernels
 # only, for headless --test mov-ss-debug. Off by default.
 DEBUG_REGISTER_PROBE ?= 0
+# Clock-stall probe (src/clock_stall_probe.ads): test kernels only, for
+# headless --test clock-keeper (CPU 0 runs no timer work for a while). Off by
+# default.
+CLOCK_STALL_PROBE ?= 0
+# TSC skew probe (src/tsc_sync.adb): test kernels only, for headless --test
+# tsc-skew and tsc-skew-noadjust (CPU 1's counter moved before its TSC_ADJUST
+# step and warp check). Off by default.
+TSC_SKEW_PROBE ?= 0
 # Records in the kernel log ring (LOG-004, src/kernel_log.ads): at most
 # Kernel_Log_Publication.Maximum_Records (4096). Tests shrink it to overflow
 # the ring before logstore starts (tests/kernel-log-ring/run.sh); src/build.ads
@@ -147,6 +155,8 @@ build/libcubit.a:
 		-e 's/SED_SMAP_ENTRY_PROBE/$(if $(filter 1,$(SMAP_ENTRY_PROBE)),True,False)/' \
 		-e 's/SED_KERN014_PROBE/$(if $(filter 1,$(KERN014_PROBE)),True,False)/' \
 		-e 's/SED_DEBUG_REGISTER_PROBE/$(if $(filter 1,$(DEBUG_REGISTER_PROBE)),True,False)/' \
+		-e 's/SED_CLOCK_STALL_PROBE/$(if $(filter 1,$(CLOCK_STALL_PROBE)),True,False)/' \
+		-e 's/SED_TSC_SKEW_PROBE/$(if $(filter 1,$(TSC_SKEW_PROBE)),True,False)/' \
 		-e 's/SED_KERNEL_LOG_RECORDS/$(KERNEL_LOG_RECORDS)/' \
 		-e 's/SED_SRC_HASH/$(SRC_HASH)/' src/build.pre > src/build.ads
 
@@ -1911,6 +1921,14 @@ mov-ss-check: ccl-build user_runtime ccl-manifest
 	$(CCL_BUILD) ../userspace/apps/mov-ss-check/component.ccl
 	cp ../userspace/apps/mov-ss-check/build/mov-ss-check.app isodir/boot/mov-ss-check.app
 
+# Timekeeping check (headless clock-keeper): deadlines and msTicks keep going
+# while CPU 0 runs no timer work, with a kernel built CLOCK_STALL_PROBE=1.
+.PHONY : clock-keeper-check
+clock-keeper-check: ccl-build user_runtime ccl-manifest
+	mkdir -p ../userspace/apps/clock-keeper-check/build
+	$(CCL_BUILD) ../userspace/apps/clock-keeper-check/component.ccl
+	cp ../userspace/apps/clock-keeper-check/build/clock-keeper-check.app isodir/boot/clock-keeper-check.app
+
 # Out-of-memory reclaim check (headless oom-reclaim): teardown allocates nothing.
 .PHONY : oom-check
 oom-check: ccl-build user_runtime ccl-manifest
@@ -3275,7 +3293,7 @@ check-declarations:
 test-console-shipped: world
 	python3 ../tests/test-console/check-shipped.py
 
-world: check-declarations test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check readiness-writer futex-share secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check font-masks trap-flag-check nmi-check direction-flag-check alignment-flag-check kernel-map-probe mov-ss-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview tlb-tags ccl-sign
+world: check-declarations test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check readiness-writer futex-share secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check font-masks trap-flag-check nmi-check direction-flag-check alignment-flag-check kernel-map-probe mov-ss-check clock-keeper-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview tlb-tags ccl-sign
 	$(SIGN_PROGRAMS)
 
 .PHONY : headless-test

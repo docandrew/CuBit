@@ -1125,7 +1125,8 @@ package body Process.IPC is
 
     --  The watch (reportStuckCalls): per thread, its CPU and dispatch
     --  counts at the previous report, when it was last dispatched, and how
-    --  many reports in a row it was hot. Touched only by CPU 0's timer.
+    --  many reports in a row it was hot. Touched only by the timer of the
+    --  CPU keeping time (Time.clockTick's keeper, one at a time).
     type Watch_Sample is record
         residency : Unsigned_64 := 0;
         dispatches : Unsigned_64 := 0;
@@ -1140,6 +1141,31 @@ package body Process.IPC is
     Watch_Hot_Reports : constant := 2;
     Watched_Names : constant array (1 .. 3) of String (1 .. 9) :=
       ("desktop.s", "display.s", "intel-gpu");
+
+    --  noteEvidence's rows, newest last, under evidenceLock.
+    evidenceLock  : Spinlocks.Spinlock;
+    evidenceText  : array (1 .. Evidence_Rows) of Boot_Diagnostics.Stuck_Line :=
+      (others => (others => ' '));
+    evidenceCount : Natural range 0 .. Evidence_Rows := 0;
+    evidenceAtMs  : Unsigned_64 := 0;
+
+    procedure noteEvidence (text : String) is
+        row : Boot_Diagnostics.Stuck_Line := (others => ' ');
+        used : constant Natural := Natural'Min (text'Length, row'Length);
+    begin
+        row (1 .. used) := text (text'First .. text'First + used - 1);
+        Spinlocks.enterCriticalSection (evidenceLock);
+        if evidenceCount = Evidence_Rows then
+            for i in 1 .. Evidence_Rows - 1 loop
+                evidenceText (i) := evidenceText (i + 1);
+            end loop;
+        else
+            evidenceCount := evidenceCount + 1;
+        end if;
+        evidenceText (evidenceCount) := row;
+        evidenceAtMs := Time.msTicks;
+        Spinlocks.exitCriticalSection (evidenceLock);
+    end noteEvidence;
 
     procedure reportStuckCalls (nowMs : Unsigned_64) is
         lines : Boot_Diagnostics.Stuck_Lines :=
@@ -1225,7 +1251,31 @@ package body Process.IPC is
              when SUSPENDED            => "susp",
              when FUTEXWAITING         => "futex",
              when VMHALTED             => "guest-halted");
+        silenceMs : constant Unsigned_64 := Time.Boot_CPU_Silence_Ms;
     begin
+        --  The latest kernel verdicts (noteEvidence), while recent.
+        Spinlocks.enterCriticalSection (evidenceLock);
+        if evidenceCount > 0 and then nowMs >= evidenceAtMs
+          and then nowMs - evidenceAtMs < Evidence_Show_Ms
+        then
+            for i in 1 .. evidenceCount loop
+                count := count + 1;
+                lines (count) := evidenceText (i);
+            end loop;
+        end if;
+        Spinlocks.exitCriticalSection (evidenceLock);
+        --  CPU 0 taking no timer work while another CPU keeps the time
+        --  (Time.clockTick): on screen too, where the log may be out of reach.
+        if silenceMs > 0 then
+            declare
+                last : Natural := 0;
+            begin
+                count := count + 1;
+                add (lines (count), last, "CPU 0 ran no timer work for ");
+                addNumber (lines (count), last, silenceMs / 1_000);
+                add (lines (count), last, "s");
+            end;
+        end if;
         for tid in ThreadID range 1 .. ThreadID'Last loop
             exit when count = Boot_Diagnostics.Stuck_Rows;
             if Thread_Table.Present (Natural (tid)) then

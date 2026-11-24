@@ -90,4 +90,15 @@ package body Scheduler_Alarm is
       end if;
       return False;
    end Interrupt_Due;
+
+   procedure Peek (CPU : Natural; Active : out Boolean; Deadline : out Unsigned_64) is
+   begin
+      if CPU not in States'Range then
+         Active := False;
+         Deadline := 0;
+         return;
+      end if;
+      Active := Alarm.View (States (CPU).Slot).Active;
+      Deadline := Alarm.View (States (CPU).Slot).Deadline;
+   end Peek;
 end Scheduler_Alarm;

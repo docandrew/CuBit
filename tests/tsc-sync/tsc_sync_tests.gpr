@@ -1,0 +1,14 @@
+--  Hosted test and proof of the TSC agreement rules: what each CPU's
+--  IA32_TSC_ADJUST becomes, the warp check's verdict, and whether the clock
+--  stays shared (kernel/src/tsc_sync_rules.ads).
+project TSC_Sync_Tests is
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("main.adb", "tsc_sync_rules.ads", "tsc_sync_rules.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+end TSC_Sync_Tests;

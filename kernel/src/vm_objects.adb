@@ -374,6 +374,16 @@ package body VM_Objects with SPARK_Mode => Off is
         Has_Error : Boolean := False;
     end record;
 
+    -- Exit kinds for the 5 s evidence line (image 34b: a VMX vCPU exiting
+    -- ~1,800 times a second while the guest made no progress).
+    type Exit_Bucket is (B_Host_Interrupt, B_Window, B_Halt, B_Port, B_MSR, B_Nested_Fault,
+                         B_CPUID, B_CR_Write, B_Exception, B_Other);
+    type Exit_Counts is array (Exit_Bucket) of Unsigned_64;
+    Bucket_Names : constant array (Exit_Bucket) of String (1 .. 4) :=
+      [B_Host_Interrupt => "intr", B_Window => "wind", B_Halt => "halt", B_Port => "port",
+       B_MSR => "msr ", B_Nested_Fault => "npf ", B_CPUID => "cpid", B_CR_Write => "cr  ",
+       B_Exception => "exc ", B_Other => "othr"];
+
     type VCPU_Record is record
         Used        : Boolean := False;
         Generation  : Caps.Generation := 1;
@@ -410,6 +420,8 @@ package body VM_Objects with SPARK_Mode => Off is
         Window_Guest    : Unsigned_64 := 0;      -- TSC ticks
         Window_Longest  : Unsigned_64 := 0;      -- TSC ticks
         Long_Reported   : Unsigned_64 := 0;      -- msTicks of the last long-entry line
+        Window_Kinds    : Exit_Counts := [others => 0];  -- exits by kind this window
+        Window_Last_Code, Window_Last_Info_1, Window_Last_Info_2 : Unsigned_64 := 0;
     end record;
 
     -- One guest entry longer than this is reported at once (at most one
@@ -973,7 +985,7 @@ package body VM_Objects with SPARK_Mode => Off is
                Halted => Process.NO_THREAD, Halt_Deadline => VM_ABI.Forever,
                Pending => (others => <>), Kicked => False, Next_RIP => 0,
                Have_Next_RIP => False, Entries => 0, Flushes => 0, Forwarded => 0,
-               Spec_Ctrl => (others => 0), Spec_Writes_Passed => False, Fault_GP => False,
+               Spec_Ctrl => (others => 0), Spec_Writes_Passed => False, Fault_GP => False, Window_Kinds => [others => 0],
                others => 0);
             VMs (V).VCPU_Count := VMs (V).VCPU_Count + 1;
             VMs (V).VCPUs (VMs (V).VCPU_Count) := Slot;
@@ -1121,7 +1133,7 @@ package body VM_Objects with SPARK_Mode => Off is
     -- One guest entry's evidence (Run, interrupts disabled): the time it
     -- spent in the guest and why it left. Kernel log lines only, so the
     -- laptop's logstore keeps them (no serial needed).
-    procedure Note_Entry (X : VCPU_Index; Spent, Code : Unsigned_64) is
+    procedure Note_Entry (X : VCPU_Index; Spent, Code, Info_1, Info_2 : Unsigned_64) is
         -- Time.tscPerDuration is TSC ticks per microsecond (Time.Duration).
         Per_Us : constant Unsigned_64 := Unsigned_64'Max (Time.tscPerDuration, 1);
         Per_Ms : constant Unsigned_64 := Per_Us * 1000;
@@ -1135,6 +1147,26 @@ package body VM_Objects with SPARK_Mode => Off is
         if Code = Exit_INTR or else Code = Exit_NMI or else Code = Exit_SMI then
             C.Window_Host := C.Window_Host + 1;
         end if;
+        declare
+            B : constant Exit_Bucket :=
+              (if Code = Exit_INTR or else Code = Exit_NMI or else Code = Exit_SMI then B_Host_Interrupt
+               elsif Code = Exit_VINTR then B_Window
+               elsif Code = Exit_HLT then B_Halt
+               elsif Code = Exit_IOIO then B_Port
+               elsif Code = Exit_MSR then B_MSR
+               elsif Code = Exit_NPF then B_Nested_Fault
+               elsif Code = Exit_CPUID then B_CPUID
+               elsif Code = Exit_Write_CR0 or else Code = Exit_Write_CR4 then B_CR_Write
+               elsif Code in Exit_Exception_Base .. Exit_Last_Exception then B_Exception
+               else B_Other);
+        begin
+            C.Window_Kinds (B) := C.Window_Kinds (B) + 1;
+            if B /= B_Host_Interrupt then
+                C.Window_Last_Code := Code;
+                C.Window_Last_Info_1 := Info_1;
+                C.Window_Last_Info_2 := Info_2;
+            end if;
+        end;
         C.Window_Guest := C.Window_Guest + Spent;
         C.Window_Longest := Unsigned_64'Max (C.Window_Longest, Spent);
         if Spent / Per_Ms >= Long_Entry_Ms and then Now - C.Long_Reported >= 1_000 then
@@ -1150,7 +1182,17 @@ package body VM_Objects with SPARK_Mode => Off is
             print (", host-interrupt exits "); printd (C.Window_Host);
             print (", in guest "); printd (C.Window_Guest / Per_Ms);
             print (" ms, longest entry "); printd (C.Window_Longest / Per_Us);
-            print (" us, forwarded total "); printdln (C.Forwarded);
+            print (" us, forwarded total "); printd (C.Forwarded);
+            print ("; exits");
+            for K in Exit_Bucket loop
+                if C.Window_Kinds (K) /= 0 then
+                    print (" "); print (Bucket_Names (K)); print ("="); printd (C.Window_Kinds (K));
+                end if;
+            end loop;
+            print ("; last code "); print (C.Window_Last_Code);
+            print (" info1 "); print (C.Window_Last_Info_1);
+            print (" info2 "); println (C.Window_Last_Info_2);
+            C.Window_Kinds := [others => 0];
             C.Window_Start := Now;
             C.Window_Entries := 0; C.Window_Host := 0;
             C.Window_Guest := 0; C.Window_Longest := 0;
@@ -1437,7 +1479,8 @@ package body VM_Objects with SPARK_Mode => Off is
                              VCPUs (X).Spec_Ctrl'Address);
             end if;
             VCPUs (X).Running_CPU := -1;
-            Note_Entry (X, x86.rdtsc - Entry_TSC, Get64 (B, Exit_Code));
+            Note_Entry (X, x86.rdtsc - Entry_TSC, Get64 (B, Exit_Code),
+                        Get64 (B, Exit_Info_1), Get64 (B, Exit_Info_2));
             x86.xsave (VCPUs (X).FPU);
             Process.restoreUserCPUState (Me);
             -- Host interrupts and NMIs that caused the exit are taken here
@@ -1459,6 +1502,12 @@ package body VM_Objects with SPARK_Mode => Off is
               and then (VCPUs (X).GPRs (GPR_RCX) and Low_Half) = Spec.IA32_SPEC_CTRL
             then
                 Guest_Spec_Ctrl_Write (X);              -- SPEC_CTRL: kernel-decided
+            elsif Code = Exit_Write_CR0 or else Code = Exit_Write_CR4 then
+                -- K7: a write to a CR bit VMX pins, decided in VMX_Run
+                -- (VMX_CR_Access); a refused one is #GP(0).
+                if Info_1 = CR_Write_Refused then
+                    VCPUs (X).Fault_GP := True;
+                end if;
             else
                 Done := True;
                 VCPUs (X).Forwarded := VCPUs (X).Forwarded + 1;

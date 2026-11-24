@@ -1,0 +1,8 @@
+# Headless clock-keeper test: clock-keeper-check asks a probe kernel
+# (CLOCK_STALL_PROBE=1) to keep CPU 0's timer from its clock work, then times
+# a receive deadline, a futex deadline and msTicks meanwhile: the other CPUs
+# keep the system's time (Time.clockTick, Timekeeping_Turns).
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "clock-keeper-check.app" (priority 3))
+)

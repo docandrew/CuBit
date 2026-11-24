@@ -1,3 +1,4 @@
+with Interfaces;
 package Scheduler_Alarm is
    subtype Delay_Microseconds is Positive range 1 .. 1_000;
    -- CPU-local hardware adapter. Call with interrupts disabled. An earlier
@@ -6,4 +7,7 @@ package Scheduler_Alarm is
    -- Consume due software state before yielding. Early/stale hardware vectors
    -- rearm the remainder and cannot rotate an unrelated running context.
    function Interrupt_Due return Boolean;
+   -- Diagnostics only (Time.clockTick's report of a silent CPU 0): CPU's
+   -- slot as last written, read without its owner's interrupts masked.
+   procedure Peek (CPU : Natural; Active : out Boolean; Deadline : out Interfaces.Unsigned_64);
 end Scheduler_Alarm;

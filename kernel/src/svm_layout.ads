@@ -141,6 +141,12 @@ is
     Vector_General_Protection : constant Word_Bit := 13; -- #GP
 
     -- Exit codes (uapi/asm/svm.h SVM_EXIT_*).
+    Exit_Write_CR0    : constant Unsigned_64 := 16#010#;
+    Exit_Write_CR4    : constant Unsigned_64 := 16#014#;
+    -- EXITINFO1 of a CR write exit as VMX_Run reports it: SVM intercepts no
+    -- CR (VM_Objects), so these come only from VMX, decided already.
+    CR_Write_Applied  : constant Unsigned_64 := 0;
+    CR_Write_Refused  : constant Unsigned_64 := 1;   -- #GP(0) to inject
     Exit_Read_DR0     : constant Unsigned_64 := 16#020#;
     Exit_Write_DR7    : constant Unsigned_64 := 16#037#;
     Exit_Exception_Base : constant Unsigned_64 := 16#040#;

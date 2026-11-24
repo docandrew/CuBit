@@ -38,6 +38,8 @@ NETWORK_AUTHORITY_TIMEOUT_SECONDS=100
 NET_LINK_TIMEOUT_SECONDS=150
 # vm-linux boots the guest twice (one vCPU, then two), each bounded at 60 s.
 VM_LINUX_TIMEOUT_SECONDS=240
+# tsc-*: CPU 0's 10 s clock report (Time.noteTSC) must come three times.
+TSC_SYNC_TIMEOUT_SECONDS=60
 BENCH_LATENCY_TIMEOUT_SECONDS=300
 # PERF-010 bench-build: two apps, cold, warm and edited, on CuBit.
 BENCH_BUILD_TIMEOUT_SECONDS=2400
@@ -94,7 +96,7 @@ Mesa native tests: --test softpipe, opengl, buffer, mesa-window, mesa-sync, mesa
 
 Options:
   --build              Run make world before booting QEMU
-  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, exit-status, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, large-manifest, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, ui-latency, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, desktop-session, desktop-session-no-invtsc, display-latency, metrics-latency, metricsview, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, desktop-live-replace, console-run-staged, bench-build, nvme-timeout, nvme-stuck, or boot-timeline (--accel kvm --timeout 60)
+  --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, exit-status, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, llm-mock, agent-mock, agent-app, llm-live, storage-grants, audio-grants, desktop-display, large-manifest, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, ui-latency, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, desktop-session, desktop-session-no-invtsc, display-latency, metrics-latency, metricsview, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, remote-screenshot, device-build, service-switch, service-switch-reboot, desktop-live-replace, console-run-staged, bench-build, nvme-timeout, nvme-stuck, tsc-sync, tsc-skew, tsc-skew-noadjust, or boot-timeline (--accel kvm --timeout 60)
   --test NAME          Test to run: boot-shell-nvme, boot-memory-8g, boot-memory-16g, boot-memory-32g, boot-large-module, async-ipc, bench-ipc, ccl-vm, ccl-workbench, ccl-workbench-virtio-vga, ccl-workspace, ccl-console, logs, ccl-remote, ccl-remote-session, capability-security, network-authority, bench-net, bench-fs, bench-cualloc, threads, futex, secondary-stacks, ada-runtime, clock, avx, wifi-crypto, rust-std, libc, processes, control-events, binutils, gcc, gnat, ccl-build-native, servo, bench-spread, timesync, tls-probe, tls-service, wget-https, storage-grants, audio-grants, desktop-display, desktop-protocol, display-grants, display-grants-virtio-vga, input-stream, devices, managed-ui, files, text, calculator, ui-latency, lexicon, dictionary, bible, clipboard, key-repeat, desktop-doom, desktop-virtio-vga, desktop-vm, virtio-gpu, virtio-vga-primary, launch-failure, fs-coherence-CASE, startup-health, firmware-snapshot, acpi-hardware, acpi-pci-config, acpi-firmware-data, or boot-timeline (--accel kvm --timeout 60)
   --timeout SECONDS    QEMU runtime before timeout is treated as success
                        (default 25; 180 for desktop tests, see DESKTOP_TIMEOUT_SECONDS)
@@ -319,6 +321,8 @@ if [ -z "$TIMEOUT_SECONDS" ]; then
             TIMEOUT_SECONDS=$NET_LINK_TIMEOUT_SECONDS ;;
         vm-linux)
             TIMEOUT_SECONDS=$VM_LINUX_TIMEOUT_SECONDS ;;
+        tsc-sync|tsc-skew|tsc-skew-noadjust)
+            TIMEOUT_SECONDS=$TSC_SYNC_TIMEOUT_SECONDS ;;
         vm-desktop)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         bench-latency)
@@ -364,7 +368,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|power-sources)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|power-sources|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -1063,6 +1067,20 @@ with open(sys.argv[1], "wb") as f:
             *) QEMU_CPU_MODEL="$QEMU_CPU_MODEL,+invtsc" ;;
         esac
         ;;
+    clock-keeper)
+        # The system's time without CPU 0 (Time.clockTick, Timekeeping_Turns):
+        # a probe kernel keeps CPU 0's timer from its clock work on
+        # clock-keeper-check's request; deadlines and msTicks must go on.
+        # Run with CLOCK_STALL_PROBE=1 in the environment (this script's own
+        # kernel rebuild for the init profile reads it), after
+        # make -C kernel world CLOCK_STALL_PROBE=1 clock-keeper-check. Other
+        # CPUs keep time only with one clock (+invtsc, KVM).
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-clock-keeper.ccl"
+        case "$QEMU_CPU_MODEL" in
+            *invtsc*) ;;
+            *) QEMU_CPU_MODEL="$QEMU_CPU_MODEL,+invtsc" ;;
+        esac
+        ;;
     cpu-times)
         # The per-CPU times publication (KERN-002). The check sleeps and
         # spins by the clock publication, which needs +invtsc (KVM).
@@ -1119,6 +1137,30 @@ with open(sys.argv[1], "wb") as f:
     virt-report-none)
         # The same report on a CPU with neither VMX nor SVM.
         QEMU_CPU_MODEL="$QEMU_CPU_MODEL,-vmx,-svm"
+        ;;
+    tsc-sync|tsc-skew)
+        # One clock on every CPU (TSC_Sync): each secondary CPU's
+        # TSC_ADJUST is set to CPU 0's and a warp check runs against CPU 0
+        # (4 CPUs, +invtsc so the clock page is shared, +tsc-adjust; KVM).
+        # tsc-skew needs a kernel built TSC_SKEW_PROBE=1 (make -C kernel
+        # world TSC_SKEW_PROBE=1): CPU 1 moves its counter 2**30 ticks ahead
+        # first, which also moves its TSC_ADJUST; the step must restore one
+        # clock and the check agree.
+        if [ "$QEMU_ACCEL" != kvm ]; then
+            echo "headless: $TEST_NAME needs --accel kvm (the vCPUs' TSCs)" >&2
+            exit 2
+        fi
+        QEMU_CPU_MODEL="$QEMU_CPU_MODEL,+invtsc,+tsc-adjust"
+        ;;
+    tsc-skew-noadjust)
+        # The same probe kernel on a CPU without TSC_ADJUST: nothing can
+        # move CPU 1 back, the check sees it ahead, and the clock becomes
+        # CPU 0's alone; the system still starts.
+        if [ "$QEMU_ACCEL" != kvm ]; then
+            echo "headless: $TEST_NAME needs --accel kvm (the vCPUs' TSCs)" >&2
+            exit 2
+        fi
+        QEMU_CPU_MODEL="$QEMU_CPU_MODEL,+invtsc,-tsc-adjust"
         ;;
     cpu-refusal)
         # A CPU without x86-64-v3 (Westmere: no AVX) is refused at boot with
@@ -1419,6 +1461,12 @@ with open(sys.argv[1], "wb") as f:
     usb-slots)
         # LIM-001: more USB devices than the old fixed 8 device slots; the
         # slot count comes from HCSPARAMS1 MaxSlots (tests/usb-slots).
+        INIT_PROFILE="$ROOT_DIR/tests/multi-instance/init.ccl"
+        ;;
+    xhci-bringup)
+        # The IdeaPad's boot stall: two xHCI controllers, devmgr never waits
+        # on their USB bring-up, and each finishes within a bound
+        # (tests/xhci-bringup).
         INIT_PROFILE="$ROOT_DIR/tests/multi-instance/init.ccl"
         ;;
     startup-health)
@@ -1939,7 +1987,8 @@ if [ -n "$INIT_PROFILE" ]; then
     fi
     if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "ufs" ] ||
        [ "$TEST_NAME" = "ufs-write" ] || [ "$TEST_NAME" = "multi-instance" ] ||
-       [ "$TEST_NAME" = "usb-hotplug" ] || [ "$TEST_NAME" = "usb-slots" ]; then
+       [ "$TEST_NAME" = "usb-hotplug" ] || [ "$TEST_NAME" = "usb-slots" ] ||
+       [ "$TEST_NAME" = "xhci-bringup" ]; then
         # boot-logs prints the records logstore keeps (the base disk lacks it):
         # generic drivers (generic-check, ufs) and devmgr log through logstore.
         for GENERIC_IMAGE in logstore.svc boot-logs.app; do
@@ -3000,6 +3049,16 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$CPU_TIMES_IMAGE $CPU_TIMES_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $CPU_TIMES_IMAGE" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "clock-keeper" ]; then
+        for CLOCK_IMAGE in logstore.svc clock-keeper-check.app; do
+            debugfs -w -R "rm $CLOCK_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$CLOCK_IMAGE $CLOCK_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $CLOCK_IMAGE (make -C kernel clock-keeper-check)" >&2
                 exit 1
             fi
         done
@@ -4249,6 +4308,27 @@ if [ "$TEST_NAME" = "usb-slots" ]; then
         TEST_DEVICE_ARGS+=(-device "usb-hub,bus=xhcis.0,port=1.$HUB_PORT")
     done
     TEST_DEVICE_ARGS+=(-device usb-mouse,bus=xhcis.0,port=1.8)
+fi
+# xhci-bringup: the IdeaPad's shape. The first controller has nothing
+# attached (00:0d.0); the second a boot mouse, a boot keyboard and a USB
+# storage disk (direct access, like the live stick) holding an ISO9660
+# image with an apps/ tree (tests/xhci-bringup).
+if [ "$TEST_NAME" = "xhci-bringup" ]; then
+    TEMP_OPTICAL_TREE="$(mktemp -d "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-stick.XXXXXX")"
+    mkdir -p "$TEMP_OPTICAL_TREE/tree/apps"
+    echo "xhci-bringup stick" > "$TEMP_OPTICAL_TREE/tree/apps/readme.txt"
+    if ! xorriso -as mkisofs -quiet -V CUBITSTICK -o "$TEMP_OPTICAL_TREE/stick.iso" \
+      "$TEMP_OPTICAL_TREE/tree"; then
+        echo "headless: failed to create the USB stick image" >&2
+        exit 1
+    fi
+    TEST_DEVICE_ARGS=(
+        -device qemu-xhci,id=xhciempty
+        -device qemu-xhci,id=xhcistick
+        -device usb-mouse,bus=xhcistick.0,port=1
+        -device usb-kbd,bus=xhcistick.0,port=2
+        -drive "file=$TEMP_OPTICAL_TREE/stick.iso,if=none,id=usbstick,format=raw,readonly=on"
+        -device usb-storage,bus=xhcistick.0,port=3,drive=usbstick)
 fi
 # usb-hotplug: two controllers, the boot mouse on the second; the driver
 # script hot-plugs devices through the HMP monitor (tests/usb-hotplug).
@@ -6547,6 +6627,15 @@ if [ "$TEST_NAME" = "spawn-rules" ]; then
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "spawn-rules: done PASS" "spawn-rules: done FAIL" &
     INPUT_INJECTOR_PID=$!
 fi
+if [ "$TEST_NAME" = "xhci-bringup" ]; then
+    # Quit once boot-logs (after procmgr, after every controller's bring-up)
+    # is up; check.py reads the rest.
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "boot-logs: window ready" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "usb-slots" ]; then
     # Quit once devmgr has every controller's reply (the timeout is only
     # the bound); check.py reads the rest.
@@ -8349,6 +8438,87 @@ virt: svm usable
 virt: none: the CPU reports neither VMX nor SVM
 "
         ;;
+    tsc-sync|tsc-skew|tsc-skew-noadjust)
+        grep -aE 'TSC(-PROBE)?: ' "$SERIAL_LOG" || true
+        tsc_failed=0
+        case "$TEST_NAME" in
+            tsc-sync)
+                required_markers="
+TSC: CPU 0 TSC_ADJUST 0
+TSC: CPU 1 agrees with CPU 0: max warp 0 ticks
+TSC: CPU 2 agrees with CPU 0: max warp 0 ticks
+TSC: CPU 3 agrees with CPU 0: max warp 0 ticks
+TSC: 3 of 3 secondary CPUs agree with CPU 0; the clock is shared
+Process.Loader: Loaded module procmgr.svc
+"
+                if grep -aqF 'TSC-PROBE: ' "$SERIAL_LOG"; then
+                    echo "headless: tsc-sync: a TSC_SKEW_PROBE kernel (rebuild without it)" >&2
+                    tsc_failed=1
+                fi
+                if grep -aqE 'TSC: CPU [0-9]+ TSC_ADJUST -?[0-9]+ ->' "$SERIAL_LOG"; then
+                    echo "headless: tsc-sync: a TSC_ADJUST was rewritten on synchronized vCPUs" >&2
+                    tsc_failed=1
+                fi
+                ;;
+            tsc-skew)
+                required_markers="
+TSC: CPU 0 TSC_ADJUST 0
+TSC-PROBE: CPU 1's counter moved 1073741824 ticks ahead: written
+TSC: CPU 1 agrees with CPU 0: max warp 0 ticks
+TSC: CPU 2 agrees with CPU 0: max warp 0 ticks
+TSC: CPU 3 agrees with CPU 0: max warp 0 ticks
+TSC: 3 of 3 secondary CPUs agree with CPU 0; the clock is shared
+Process.Loader: Loaded module procmgr.svc
+"
+                # The probe moved CPU 1's TSC_ADJUST with its counter; the
+                # step put it back to CPU 0's.
+                if ! grep -aqE 'TSC: CPU 1 TSC_ADJUST [0-9]+ -> 0 \(CPU 0.s\)' "$SERIAL_LOG"; then
+                    echo "headless: tsc-skew: CPU 1's TSC_ADJUST was not set back to CPU 0's" >&2
+                    tsc_failed=1
+                fi
+                ;;
+            tsc-skew-noadjust)
+                required_markers="
+TSC: no TSC_ADJUST; each CPU's counter is checked against CPU 0's
+TSC-PROBE: CPU 1's counter moved 1073741824 ticks ahead: written
+TSC: CPU 2 agrees with CPU 0: max warp 0 ticks
+TSC: CPU 3 agrees with CPU 0: max warp 0 ticks
+Process.Loader: Loaded module procmgr.svc
+"
+                # CPU 1 is ahead: CPU 0 sees the warp, about the probe's
+                # 2**30 ticks (less the time between the probe's read and
+                # its write, and a turn of the lock).
+                if ! grep -aqE '^.*TSC: CPUs disagree by 10[0-9]{8} ticks after TSC_ADJUST; the clock is CPU 0.s alone' "$SERIAL_LOG"; then
+                    echo "headless: tsc-skew-noadjust: no disagreement of about 2**30 ticks" >&2
+                    tsc_failed=1
+                fi
+                if ! grep -aqE 'TSC: 2 of 3 secondary CPUs agree with CPU 0, 1 disagree by up to [0-9]+ ticks; the clock is CPU 0.s alone' "$SERIAL_LOG"; then
+                    echo "headless: tsc-skew-noadjust: the clock was not withdrawn to CPU 0" >&2
+                    tsc_failed=1
+                fi
+                ;;
+        esac
+        # The system's time goes on: CPU 0's 10 s report of each CPU's clock
+        # against msTicks (Time.noteTSC) came at least three times, and no
+        # CPU's counter fell outside the scheduling epoch.
+        tsc_reports=$(grep -acF 'TSC: CPU 0 msTicks minus its own clock' "$SERIAL_LOG")
+        if [ "$tsc_reports" -lt 3 ]; then
+            echo "headless: $TEST_NAME: msTicks did not reach 30 s ($tsc_reports reports)" >&2
+            tsc_failed=1
+        fi
+        if grep -aqF 'CLOCK: FAIL' "$SERIAL_LOG"; then
+            echo "headless: $TEST_NAME: a CLOCK: FAIL line" >&2
+            tsc_failed=1
+        fi
+        if [ "$TEST_NAME" != tsc-skew-noadjust ] && grep -aqF 'the clock is CPU 0' "$SERIAL_LOG"; then
+            echo "headless: $TEST_NAME: the shared clock was withdrawn" >&2
+            tsc_failed=1
+        fi
+        if [ "$tsc_failed" -ne 0 ]; then
+            echo "headless: serial log: $SERIAL_LOG" >&2
+            exit 1
+        fi
+        ;;
     cpu-refusal)
         required_markers="
 CuBit needs an x86-64-v3 CPU; this one lacks: AVX2 FMA BMI1 BMI2 MOVBE F16C LZCNT OSXSAVE AVX XCR0.AVX. Halted.
@@ -8359,6 +8529,32 @@ CuBit needs an x86-64-v3 CPU; this one lacks: AVX2 FMA BMI1 BMI2 MOVBE F16C LZCN
 Process: user FP/SIMD state saved with XSAVEOPT
 avx-check: all 16 YMM registers kept across 20000 yields PASS
 "
+        ;;
+    clock-keeper)
+        # Each check ran during its own probe stall of CPU 0's clock work;
+        # the kernel says when another CPU took over the time and when CPU 0
+        # came back (Time.clockTick).
+        required_markers="
+CLOCK-PROBE: CPU 0 runs no timer work for 800 ms
+clock-keeper-check: clock publication present PASS
+clock-keeper-check: a receive deadline ends on time while CPU 0 runs no timer work PASS
+clock-keeper-check: a futex deadline ends on time while CPU 0 runs no timer work PASS
+clock-keeper-check: msTicks advances while CPU 0 runs no timer work PASS
+TEST: PASS clock-keeper
+CLOCK: CPU 0 ran no timer work for
+CLOCK: CPU 0 runs its timer work again after
+"
+        grep -aE 'clock-keeper-check: (receive|futex) deadline|clock-keeper-check: msTicks advanced|CLOCK(-PROBE)?: ' \
+          "$SERIAL_LOG" || true
+        if grep -aF 'clock-keeper-check: ' "$SERIAL_LOG" | grep -qF ' FAIL'; then
+            echo "headless: clock-keeper: a deadline or msTicks stopped with CPU 0's timer work" >&2
+            exit 1
+        fi
+        # Another CPU kept time throughout: the time never jumped (case B).
+        if grep -aqF "CLOCK: the system's time jumped" "$SERIAL_LOG"; then
+            echo "headless: clock-keeper: the time jumped with CPU 0 silent" >&2
+            exit 1
+        fi
         ;;
     clock)
         required_markers="
@@ -10350,6 +10546,13 @@ NVMe Driver: Ready, entering message loop.
 devmgr: startup complete, entering service loop
 "
         ;;
+    xhci-bringup)
+        # tests/xhci-bringup/check.py checks the times and the devices.
+        required_markers="
+devmgr: startup complete, entering service loop
+boot-logs: window ready
+"
+        ;;
     multi-instance)
         # tests/multi-instance/check.py checks each instance by location.
         required_markers="
@@ -10815,6 +11018,12 @@ fi
 
 if [ "$TEST_NAME" = "usb-hotplug" ]; then
     if ! python3 "$ROOT_DIR/tests/usb-hotplug/check.py" "$SERIAL_LOG"; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
+if [ "$TEST_NAME" = "xhci-bringup" ]; then
+    if ! python3 "$ROOT_DIR/tests/xhci-bringup/check.py" "$SERIAL_LOG"; then
         echo "headless: serial log: $SERIAL_LOG" >&2
         exit 1
     fi

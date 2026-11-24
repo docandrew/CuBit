@@ -345,6 +345,25 @@ make -C kernel world boot-logs
 bash tests/headless/run.sh --test usb-hotplug --accel kvm --timeout 150
 ```
 
+## xhci-bringup (the IdeaPad's ~10 s USB boot stall)
+
+Two qemu-xhci controllers in the IdeaPad's shape: the first empty, the
+second with a boot mouse, a boot keyboard and a USB storage disk holding an
+ISO9660 image (the live stick). devmgr's configure call must be answered
+within 250 ms on each (devmgr never waits on a controller's USB bring-up),
+each bring-up must be reported within 1500 ms, the stick's apps/ tree must
+mount, and no STUCK-CALL may show devmgr waiting on xhci.drv. Fails before
+the fix: devmgr's synchronous configure call spanned each controller's
+whole bring-up, a fixed 3 s settle window included, one controller after
+the other. The hosted settle tests check which port states hold the boot
+window open and when it ends.
+
+```sh
+bash tests/xhci-hotplug/run.sh
+make -C kernel world boot-logs
+bash tests/headless/run.sh --test xhci-bringup --accel kvm --timeout 120
+```
+
 ## pci-capabilities (HW-002 follow-up)
 
 devmgr's PCI capability walk (MSI / MSI-X facts on every match line, and

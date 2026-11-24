@@ -1,0 +1,8 @@
+# Timekeeping check (headless clock-keeper): asks a probe kernel to keep CPU
+# 0's timer from its clock work, then times a receive deadline, a futex
+# deadline and msTicks meanwhile. No authority.
+(executable-manifest v1
+  (identity "com.cubit.clock-keeper-check")
+  (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore))

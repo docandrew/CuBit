@@ -30,9 +30,10 @@ package Boot_Diagnostics with SPARK_Mode => Off is
    --  NUL-terminated string; Detail is printed after it (for example an
    --  exception vector and RIP), empty when not needed.
    procedure Emergency (Message : System.Address; Detail : String);
-   --  Stuck_Calls: up to Stuck_Rows lines naming threads blocked in a
-   --  synchronous call for a long time, drawn above the heartbeat (CPU 0's
-   --  timer, every few seconds). Count = 0 clears a previous report.
+   --  Stuck_Calls: up to Stuck_Rows lines, the kernel's recent evidence
+   --  (Process.IPC.noteEvidence) then threads blocked in a synchronous call
+   --  for a long time, drawn above the heartbeat (the time keeper's timer,
+   --  any CPU's, every few seconds). Count = 0 clears a previous report.
    Stuck_Rows : constant := 12;
    subtype Stuck_Line is String (1 .. 112);
    type Stuck_Lines is array (1 .. Stuck_Rows) of Stuck_Line;

@@ -6,7 +6,7 @@
 --  device access to clients; BAR and DMA authority remain inside xhci.drv.
 --
 --  Initialize resets the controller and enumerates what is attached at
---  boot (bounded, before devmgr's configure reply). After it, Service runs
+--  boot (bounded, before its bring-up report). After it, Service runs
 --  everything from the event loop without blocking: the event ring, Port
 --  Status Change handling (hotplug attach and detach), the enumeration of
 --  hot-plugged root-port HID devices, halted-endpoint recovery and the

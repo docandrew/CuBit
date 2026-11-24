@@ -167,12 +167,13 @@ package Process.IPC is
          msg        : out Message;
          received   : out Boolean);
 
-    --  Called once per monotonic millisecond by the BSP timer. Timed receivers
+    --  Called once per monotonic millisecond by the keeper of the system's
+    --  time (Time.clockTick, Timekeeping_Turns). Timed receivers
     --  are removed from their one mailbox queue and made runnable when due.
     procedure expireReceiveDeadlines (nowMs : Unsigned_64);
 
     --  Diagnostics for machines without serial: every Stuck_Report_Period_Ms
-    --  the BSP timer draws the threads blocked in a synchronous call for at
+    --  the time keeper's timer draws the threads blocked in a synchronous call for at
     --  least Stuck_Call_Ms (Boot_Diagnostics.Stuck_Calls), with the server's
     --  main-thread state. Reads thread records without locks: a torn line is
     --  possible and harmless; it grants and changes nothing. Each line is
@@ -180,6 +181,15 @@ package Process.IPC is
     Stuck_Report_Period_Ms : constant := 2_000;
     Stuck_Call_Ms          : constant := 3_000;
     procedure reportStuckCalls (nowMs : Unsigned_64);
+
+    --  Evidence for the same panel (the screen is what survives a hang
+    --  without serial or logs): a few short kernel verdicts (the clock's,
+    --  a DMA fault's), drawn above the stuck calls at the next reports for
+    --  Evidence_Show_Ms after the latest. Text past a row is cut. Any CPU,
+    --  interrupts masked or not.
+    Evidence_Rows    : constant := 3;
+    Evidence_Show_Ms : constant := 60_000;
+    procedure noteEvidence (text : String);
 
     ---------------------------------------------------------------------------
     -- receiveEvent

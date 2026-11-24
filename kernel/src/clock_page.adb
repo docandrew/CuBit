@@ -65,6 +65,15 @@ is
         Note_Milliseconds (Base_Milliseconds);
     end Publish;
 
+    procedure Withdraw_Sharing is
+    begin
+        if not Shared_State then
+            return;
+        end if;
+        Shared_State := False;
+        Write (CP.Not_Published);
+    end Withdraw_Sharing;
+
     procedure Note_Milliseconds (Milliseconds : Unsigned_64) is
     begin
         if Frame = 0 then

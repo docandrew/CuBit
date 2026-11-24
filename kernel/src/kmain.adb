@@ -25,6 +25,7 @@ with Interrupts;
 with Interrupt_Lines;
 with IPI;
 with TLB_Shootdown;
+with TSC_Sync;
 with Lapic;
 with Mem_mgr;
 with MemoryAreas;
@@ -233,6 +234,9 @@ begin
     -- The futex pause's MSR (IPC-010), through the recovering MSR path,
     -- which needs the #GP handler.
     User_Wait.Setup_This_CPU (Boot_CPU => True);
+    -- CPU 0's IA32_TSC_ADJUST (TSC_Sync), through the recovering MSR path,
+    -- before the TSC is calibrated or any clock is anchored on it.
+    TSC_Sync.Start_Boot_CPU;
 
     earlyCheckpoint ("normalize boot memory map");
     Multiboot.getMemoryAreas (mbInfo, bootMemoryAreas, memAreaCount);
@@ -605,6 +609,8 @@ begin
                     for Poll in 1 .. 100_000_000 loop
                         exit when startingCPU = 0;
                         exit when x86.rdtsc - Started_At > Time.tscFrequencyHz * 2;
+                        -- The starting CPU's TSC warp check, if it posted one.
+                        TSC_Sync.Serve_Boot_CPU;
                         System.Machine_Code.Asm ("pause", Volatile => True);
                     end loop;
                     if startingCPU /= 0 then
@@ -619,6 +625,9 @@ begin
             end loop;
         end initSMP;
     end if;
+    TSC_Sync.Report (if acpi.numCPUs > 1
+                     then Natural'Min (acpi.numCPUs - 1, Config.MAX_SMP_CPUS - 1)
+                     else 0);
     showBootStage ("CPU initialization complete");
     Boot_Timeline.Mark_Stage (BT.Secondary_CPUs_Ready);
 
@@ -694,6 +703,10 @@ begin
     -- Diagnostic rendering needs both CPU-local lock bookkeeping and the
     -- kernel framebuffer mapping, not the AP's bootstrap page tables.
     print ("CPU started: ", GREEN, BLACK); printdln (cpuNum);
+
+    -- This CPU's TSC_ADJUST and its warp check against CPU 0, before its
+    -- timer starts (TSC_Sync): a CPU that disagrees withdraws the shared clock.
+    TSC_Sync.Start_Secondary (Natural (cpuNum));
 
     -- Enable SMEP/SMAP on this AP
     enableAPSMEPSMAP : declare

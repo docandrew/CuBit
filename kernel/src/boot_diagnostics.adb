@@ -337,7 +337,7 @@ package body Boot_Diagnostics with SPARK_Mode => Off is
    Stuck_Shown : Natural := 0;
    --  Panels erased so far (System_Publications.Scanout_Overwrites).
    Stuck_Erasures : Unsigned_64 := 0;
-   Stuck_Title : constant String := "STUCK CALLS (caller -> server, seconds)  * = watch";
+   Stuck_Title : constant String := "KERNEL EVIDENCE, THEN STUCK CALLS (caller -> server, seconds)  * = watch";
    Stuck_Color : constant Unsigned_32 := 16#00FFD040#;
    Stuck_Background : constant Unsigned_32 := 16#00202020#;
    Stuck_Erased : constant Unsigned_32 := 16#00000000#;
