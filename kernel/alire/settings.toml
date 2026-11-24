@@ -1,0 +1,11 @@
+# Crate-local Alire settings, committed so a fresh clone builds without
+# Alire's first-run toolchain prompt (which also fails when no terminal is
+# attached). The versions match the exact pins in kernel/alire.toml.
+[toolchain]
+assistant = false
+[toolchain.external]
+gnat = false
+gprbuild = false
+[toolchain.use]
+gnat = "gnat_native=15.3.1"
+gprbuild = "gprbuild=26.0.1"

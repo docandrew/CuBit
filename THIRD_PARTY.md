@@ -67,8 +67,20 @@ they showed us.
 - **ACPICA**, for the ACPI behaviour CuBit's AML interpreter is checked
   against.
 - **QEMU**, as the machine almost every CuBit test runs on.
-- **Con Kolivas's BFS and MuQSS schedulers**, for virtual-deadline
-  scheduling.
+- **Con Kolivas**, whose BFS (2009) and MuQSS schedulers showed that a
+  small, simple rule keeps a desktop responsive under load: run the thread
+  with the earliest virtual deadline. CuBit's scheduler is built on his
+  ideas:
+  - `kernel/src/virtual_deadlines.ads` follows MuQSS's earliest-deadline
+    rule, and BFS's rule that a sleeper keeps its deadline but gets no more
+    than the rest of its slice;
+  - `kernel/src/realtime_admission.ads` caps admitted real time at a share of
+    each CPU, as his SCHED_ISO did.
+
+  He put the desktop and its users first, and he measured what they feel,
+  at a time when mainline Linux would not. His work never got the welcome
+  in mainline it deserved, and CuBit owes it a great deal. No code of his is
+  in CuBit; the ideas are his.
 - **seL4 and the capability-system tradition**, for capability handles and
   CSpaces.
 - **BeOS and Haiku**, for the desktop's look and its Deskbar.
