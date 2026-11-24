@@ -2108,7 +2108,7 @@ package body AML_Execute with SPARK_Mode is
             Concat_Operands_Per_Frame : constant := 2;
             Roots_Per_Frame : constant := Saved_Operands_Per_Frame + Concat_Operands_Per_Frame
               + Value_Arguments'Length + Target_List'Length + Roots_Per_Expression_Frame;
-            Max_Root_Values : constant := Max_Expression_Depth * Roots_Per_Frame + Value_Arguments'Length + 1;
+            Max_Root_Values : constant Positive := Depth * Roots_Per_Frame + Value_Arguments'Length + 1;
             Root_Values : Expression_Values (1 .. Max_Root_Values);
             Used : Natural range 0 .. Max_Root_Values := 0;
             procedure Add (Value : Datum) is
