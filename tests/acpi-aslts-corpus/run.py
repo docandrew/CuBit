@@ -15,6 +15,9 @@ def command(argv,cwd,log,seconds):
   return dict(argv=list(map(str,argv)),returncode=r.returncode,elapsed=time.monotonic()-started,log=str(log),timeout=False)
  except subprocess.TimeoutExpired:
   return dict(argv=list(map(str,argv)),returncode=None,elapsed=time.monotonic()-started,log=str(log),timeout=True)
+def runtime_argv(runner,aml):
+ # Match the explicitly bounded hosted census; never inherit a small shell stack.
+ return ['prlimit','--as=25769803776','--stack=134217728',str(runner),str(aml)]
 def summary(rows):
  c=collections.Counter(r['status'] for r in rows);done=len(rows)-c['NOT_RUN'];return dict(counts={s:c[s] for s in STATUSES},total=len(rows),completed=done,pass_percent_of_completed=round(100*c['PASS']/done,3) if done else 0,completion_percent=round(100*done/len(rows),3),pass_percent_of_full_grid=round(100*c['PASS']/len(rows),3))
 def line(s): return 'ASLTS '+' '.join(k+'='+str(v) for k,v in s['counts'].items())+' TOTAL='+str(s['total'])+' PASS_RATE='+str(s['pass_percent_of_completed'])+'% COMPLETION='+str(s['completion_percent'])+'%'
@@ -29,7 +32,7 @@ def main():
  sources=inventory['source_files'];sources={r['path']:r['sha256'] for r in sources} if isinstance(sources,list) else sources
  for p,h in sources.items():
   if sha(a.upstream/p)!=h: raise SystemExit('upstream source drift: '+p)
- save(a.output/'INPUTS.json',dict(cache_key=key,upstream_commit=inventory['commit'],source_files=len(sources),source_manifest_sha256=sha(HERE/'upstream.json'),tools=tools,case_timeout=a.case_timeout,common_flags=['-of','-cr','-vs'],compat_6141=a.compat_6141,profile='release -O1 -gnatp; hosted only',proofs='unchanged packages reused; no proof run'))
+ save(a.output/'INPUTS.json',dict(cache_key=key,upstream_commit=inventory['commit'],source_files=len(sources),source_manifest_sha256=sha(HERE/'upstream.json'),tools=tools,case_timeout=a.case_timeout,common_flags=['-of','-cr','-vs'],compat_6141=a.compat_6141,profile='release -O1 -gnatp; hosted only',proofs='unchanged packages reused; no proof run',runtime_limits=dict(address_space_bytes=25769803776,stack_bytes=134217728)))
  runtime_candidates={}
  for aggregate in a.reuse_runtime:
   prior=json.loads(aggregate.read_text());inputs=json.loads((aggregate.parent/'INPUTS.json').read_text())
@@ -107,7 +110,7 @@ def main():
     extra_result=dict(runtime=prior['runtime'])
     if 'result' in prior:extra_result['result']=prior['result']
     return finish(prior['status'],prior['reason'],**extra_result)
-  r=command([str(a.runner),str(aml)],folder,folder/'runtime.log',a.case_timeout)
+  r=command(runtime_argv(a.runner,aml),folder,folder/'runtime.log',a.case_timeout)
   if r['timeout']:return finish('TIMEOUT','hosted runner wall limit',runtime=r)
   records=[t[len('ASLTS_RESULT '):] for t in P(r['log']).read_text(errors='replace').splitlines() if t.startswith('ASLTS_RESULT ')]
   if r['returncode']!=0 or len(records)!=1:return finish('BLOCKED','hosted runner crash or missing/duplicate result record',runtime=r)

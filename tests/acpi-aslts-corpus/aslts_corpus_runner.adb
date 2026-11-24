@@ -71,6 +71,49 @@ procedure ASLTS_Corpus_Runner is
       end;
    end Read_Input;
    Table : constant Firmware_Tables.Bytes := Read_Input;
+   -- An upstream output may concatenate AML tables. Validate the complete
+   -- bundle before staging any of it; Core still admits exact table extents.
+   Maximum_Catalog_Tables : constant := 32;
+   use type Firmware_Tables.Admission;
+   function Signature_At (Offset : Natural) return Firmware_Tables.Signature is
+      Signature : Firmware_Tables.Signature;
+   begin
+      for I in Signature'Range loop
+         Signature (I) := Character'Val (Table (Table'First + Offset + I - 1));
+      end loop;
+      return Signature;
+   end Signature_At;
+   function Inspect_Bundle return Natural is
+      Offset, Count : Natural := 0;
+   begin
+      while Offset < Table'Length loop
+         if Table'Length - Offset < Firmware_Tables.Table_Header_Size then return 0; end if;
+         declare
+            Signature : constant Firmware_Tables.Signature := Signature_At (Offset);
+            Header : constant Firmware_Tables.Table_Result := Firmware_Tables.Read_Table
+              (Table (Table'First + Offset .. Table'Last), Signature);
+         begin
+            if Signature not in "DSDT" | "SSDT"
+              or else (Signature = "DSDT" and then Offset /= 0)
+              or else Header.Status /= Firmware_Tables.Accepted
+              or else Count = Maximum_Catalog_Tables
+            then return 0; end if;
+            Count := Count + 1;
+            Offset := Offset + Header.Extent;
+         end;
+      end loop;
+      -- SSDT-only inputs need the same 64-bit empty-DSDT policy as acpiexec.
+      -- It occupies a slot and counts against the explicit catalog ceiling.
+      if Signature_At (0) = "SSDT" and then Count = Maximum_Catalog_Tables then return 0; end if;
+      return Count;
+   end Inspect_Bundle;
+   Bundle_Count : constant Natural := Inspect_Bundle;
+   Needs_Empty_DSDT : constant Boolean := Signature_At (0) = "SSDT";
+   Empty_DSDT : constant Firmware_Tables.Bytes :=
+     [68, 83, 68, 84, 36, 0, 0, 0, 2, 61, 67, 85, 66, 73, 84, 0,
+      80, 82, 79, 70, 69, 77, 80, 84, 1, 0, 0, 0, 73, 78, 84, 76, 8, 4, 38, 32];
+   Catalog_Count : constant Positive :=
+     (if Bundle_Count = 0 then 1 else Bundle_Count + (if Needs_Empty_DSDT then 1 else 0));
    -- Storage follows admitted input size, with named, explicit hosted ceilings.
    Nodes : constant Positive := Positive'Min (1_000_000, Table'Length + 512);
    Objects : constant Positive := Positive'Min (262_144, Table'Length * 4 + 8192);
@@ -86,7 +129,8 @@ procedure ASLTS_Corpus_Runner is
    use type V.Value_Handle, V.Value_Kind;
    type Service_Access is access C.State;
    Owner : constant Service_Access := new C.State
-     (1, Table'Length, Table'Length, 1, Value_Object_Capacity => Objects,
+     (Catalog_Count, Table'Length + (if Needs_Empty_DSDT then Empty_DSDT'Length else 0),
+      Table'Length, Catalog_Count, Value_Object_Capacity => Objects,
       Value_Byte_Capacity => Bytes, Value_Element_Capacity => Elements);
    Stage : C.Stage_Status; Frozen : C.Freeze_Status; Access_Result : V.Access_Status;
    Execution : C.Execution_Report; Members : N.Initialization_Report;
@@ -171,8 +215,33 @@ procedure ASLTS_Corpus_Runner is
    end Check_Records;
    Known, Complete : Boolean;
 begin
-   C.Stage_Table (Owner.all, 1, C.DSDT, Table, Stage);
-   if Stage /= C.Staged then Emit ("UNSUPPORTED", "stage " & Stage'Image); return; end if;
+   if Bundle_Count = 0 then Emit ("UNSUPPORTED", "stage invalid AML table bundle"); return; end if;
+   declare
+      Offset : Natural := 0;
+      ID : Positive := 1;
+   begin
+      if Needs_Empty_DSDT then
+         C.Stage_Table (Owner.all, ID, C.DSDT, Empty_DSDT, Stage);
+         if Stage /= C.Staged then Emit ("UNSUPPORTED", "empty DSDT stage " & Stage'Image); return; end if;
+         ID := ID + 1;
+      end if;
+      for Index in 1 .. Bundle_Count loop
+         declare
+            Signature : constant Firmware_Tables.Signature := Signature_At (Offset);
+            Header : constant Firmware_Tables.Table_Result := Firmware_Tables.Read_Table
+              (Table (Table'First + Offset .. Table'Last), Signature);
+         begin
+            if Header.Status /= Firmware_Tables.Accepted then
+               Emit ("UNSUPPORTED", "stage bundle header changed"); return;
+            end if;
+            C.Stage_Table (Owner.all, ID, (if Signature = "DSDT" then C.DSDT else C.SSDT),
+              Table (Table'First + Offset .. Table'First + Offset + Header.Extent - 1), Stage);
+            if Stage /= C.Staged then Emit ("UNSUPPORTED", "stage " & Stage'Image); return; end if;
+            Offset := Offset + Header.Extent;
+            ID := ID + 1;
+         end;
+      end loop;
+   end;
    C.Freeze_Catalog (Owner.all, Frozen);
    if Frozen /= C.Catalog_Frozen_OK then Emit ("BLOCKED", "harness freeze " & Frozen'Image); return; end if;
    C.Execute_Frozen (Owner.all, Fuel, Execution, Access_Result);

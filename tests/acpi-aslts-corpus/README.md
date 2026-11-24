@@ -65,10 +65,24 @@ states that runtime collections should compile and execute. The runtime grid
 keeps all342entrypoints unless their own metadata establishes another role.
 
 Limits: two workers,12s runtime/case,30s compiler invocation,15s make query,
-1,200s batch,128MiB stack,16MiB table input ceiling, explicit hosted capacities.
+1,200s batch,24GiB address space,128MiB stack,16MiB table input ceiling,
+explicit hosted capacities. Runtime commands (including selftests) install
+these address-space/stack limits explicitly with `prlimit`.
+The runner validates the complete input as one DSDT or a concatenation of
+DSDT/SSDT tables before staging any table. It rejects malformed lengths,
+checksums, trailing bytes, other signatures, and a DSDT after the first table.
+Each original table is staged as its exact slice in file order. An SSDT-only
+input receives a separate empty revision-2 DSDT, matching acpiexec's default
+64-bit policy; the supplied AML and compiler/source hashes stay unchanged.
+A DSDT supplied first retains its own revision and integer width. The catalog
+has an explicit 32-table ceiling including a synthetic DSDT, while the existing
+16-MiB input and value/fuel/time limits stay in effect. The adapter handles
+functional/external's four-table output; it installs no field handlers and
+adds no exception-continuation or dynamic-load support.
+
 The single-threaded runner uses real host delays and finite waits, with no
 hardware address-space, async, exception-continuation or dynamic-load adapter.
 This is release hosted coverage, not native/hardware integration, whole-service
 SPARK proof, leak freedom, or ACPICA performance parity. No proofs are run;
-accepted unchanged packages retain their receipts. Six separate synthetic
-classification controls are excluded from corpus percentages.
+accepted unchanged packages retain their receipts. Twenty-two separate synthetic
+classification/bundle controls are excluded from corpus percentages.
