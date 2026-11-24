@@ -39,12 +39,17 @@
     # (power-off), (halt): power.svc, as the console's own requester badge
     # (PWR-003; startup plan only).
     (service "power-console" "power")
+    # (power.sources): power.svc's power sources, read only
+    # (CuBit.Power_Sources, PWR-004; startup plan only).
+    (service "power-sources" "power-sources")
     # debug.*: the debugger engine (DBG-001), Observe only: procmgr mints
     # Debug_Observe within the user session's debug envelope.
     (service "debug-session" "debug-session")]
   # Without these the console runs; lexicon.*, system.*, wifi.*, llm.*,
-  # secrets.* and machine.* say why not (machine.* is then absent).
-  optional => ["series" "lexicon" "installer" "network-stack" "wifi" "llm" "secrets" "power" "debug-session"]
+  # secrets.* and machine.* say why not (machine.* and power.* are then
+  # absent).
+  optional => ["series" "lexicon" "installer" "network-stack" "wifi" "llm" "secrets" "power" "power-sources"
+               "debug-session"]
   scopes => [
     (config-all [File_Right.Read])
     # Every series, read only.

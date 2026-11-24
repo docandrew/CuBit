@@ -1543,7 +1543,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_buffer_layouts.ads",
-      "sha256": "ef216dde7f2f44625ae544f3e31db4c92adc00aa6f0d7c32b6b8265467f4ebd5"
+      "sha256": "79cbdebdcfc9358fdc5c5cd05a49f92b8735c11e6d5c1721f704dfb73930f244"
     },
     {
       "path": "userspace/services/acpi/lib/aml_byte_sources.adb",
@@ -1623,7 +1623,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_decode.ads",
-      "sha256": "3f312c98587da55cabbd1a800b8dd4634a7adbc502e95e1fbbac11ac91567bfa"
+      "sha256": "9042edfa8df14222b65fa0aae1b85e6d21b7c8a11bc7182e5412a850377a57f4"
     },
     {
       "path": "userspace/services/acpi/lib/aml_definition_loads.adb",
@@ -1847,11 +1847,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-      "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+      "sha256": "692bf7f4dae7517867b9f49990ff61080ba10c770e3e85aadf01c24c493fc272"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-      "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+      "sha256": "02d5cb2242316e1791fbd4afcd75512ce175330daf6dac9222a7ecaabc5d040b"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -2295,11 +2295,11 @@
     },
     {
       "path": "userspace/services/acpi/power/acpi_battery_cache-observers.adb",
-      "sha256": "517e1cc7944ed00e9b6e4d0727eb6103c543377cba389b37b8ebc2d02e043c25"
+      "sha256": "ab6dcb1fe38010579108be933a4a850bac0ba2532ca509bc428032c0f51ebb8c"
     },
     {
       "path": "userspace/services/acpi/power/acpi_battery_cache-observers.ads",
-      "sha256": "410ca39630886826a325a26929301c99b574bc5910444c7246929eb384725512"
+      "sha256": "0fffe480336451e1eb0fb0f543a695a7d8dc7a549f79b08ec1ae5346b44ed21d"
     },
     {
       "path": "userspace/services/acpi/power/acpi_battery_cache.adb",
@@ -2375,11 +2375,11 @@
     },
     {
       "path": "userspace/services/acpi/power/acpi_bootstrap-power_sources.adb",
-      "sha256": "69bd76ad11c624811c6f646ea4c763d654eaba769a2769ba05431c338ca9447b"
+      "sha256": "c965268ff8a877eec2ed4b54a154043e11bee76cd433af22486f445fc6b133d4"
     },
     {
       "path": "userspace/services/acpi/power/acpi_bootstrap-power_sources.ads",
-      "sha256": "464afc59d7f1e627e03a79306ef11cb3af0dca2f002fa3872e4f5fa4d9d9dd72"
+      "sha256": "49699a3050bb642b245af531792fc668d0b82ebc71c1d2fd8b199eaf27a47dfe"
     },
     {
       "path": "userspace/services/acpi/power/acpi_bootstrap-sleep_registers.adb",
@@ -2431,7 +2431,7 @@
     },
     {
       "path": "userspace/services/acpi/power/acpi_requests-power_sources.ads",
-      "sha256": "320395334d23f77138038468dd5450d9e38ec8bfbc4fdc8e9c05563a502e94d1"
+      "sha256": "f0450abfcbb0eced55567f03db7453d47dbc89e70152196b31a586807c309f22"
     },
     {
       "path": "userspace/services/acpi/power/acpi_requests-sleep_registers.adb",
@@ -2467,11 +2467,11 @@
     },
     {
       "path": "userspace/services/acpi/region-init/acpi_region_initialization.adb",
-      "sha256": "1e9e037d52bb2171afae0ed339d399ad3cd7ecbdf027ef0b03b8843cfe83f814"
+      "sha256": "538ac5505e248ad0195264d5c8adfd1211aa94cf84afa0bfe8e73257f4a00b37"
     },
     {
       "path": "userspace/services/acpi/region-init/acpi_region_initialization.ads",
-      "sha256": "c0ff6057d9cd576129a323a95f152bc9d0f09b240b845b1ff3a1b6462d21e2c7"
+      "sha256": "7f221fa209b80748e7adf1ca6d16c0d74f54a24192df5014fb6e21ae881d0098"
     },
     {
       "path": "userspace/services/acpi/request-driver/acpi_observer_endpoint.adb",
@@ -2672,6 +2672,14 @@
     {
       "path": "userspace/services/acpi/lib/bcd_decimal_lemmas.adb",
       "sha256": "1880b33272b8c6df86511272b77e6fa742fe043bd7feada2c7b7ec973a303574"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_pci_bridge_probe.ads",
+      "sha256": "a382184cce945722a9f6cd661e5ba93e65ffb3a12b4d9dcb58db83355ad2223f"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_pci_bridge_probe.adb",
+      "sha256": "f8769e531d20445e5dcf31b55bcda4abd4dcfa8f8d42c8730681618a4f3c7b94"
     }
   ],
   "source_directories": {

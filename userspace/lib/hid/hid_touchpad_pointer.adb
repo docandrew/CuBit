@@ -1,18 +1,16 @@
 pragma Ada_2022;
+with HID_Axis_Motion;
 package body HID_Touchpad_Pointer with SPARK_Mode is
    use type Interfaces.Unsigned_32;
    use type Interfaces.Unsigned_64;
-   use type Pointer_Pending.Button_State;
-   Empty_Report : constant Pointer_Pending.Report := (Buttons => 0, X => 0, Y => 0, Wheel => 0, Flags => 0);
-   Wire_Motion_Bound : constant Motion_Math := Motion_Math
-     (Integer'Min (Pointer_Pending.Displacement'Last, -Pointer_Pending.Displacement'First));
+   use type Pointer_Pending.Button_State, HID_Motion_Fragments.Motion;
+   Empty_Report : constant HID_Motion_Fragments.Frame := (Buttons => 0, X => 0, Y => 0, Wheel => 0, Flags => 0);
    function Admissible (Range_Value : Axis_Range; Scale : Gain) return Boolean is
-      Distance, Numerator, Denominator : Motion_Math;
+      pragma Unreferenced (Scale);
    begin
-      if Range_Value.Minimum >= Range_Value.Maximum then return False; end if;
-      Distance := Motion_Math (Range_Value.Maximum) - Motion_Math (Range_Value.Minimum);
-      Numerator := Distance * Motion_Math (Scale.Numerator); Denominator := Motion_Math (Scale.Denominator);
-      return (Numerator + Denominator - 1) / Denominator <= Wire_Motion_Bound;
+      return Range_Value.Minimum < Range_Value.Maximum
+        and then Motion_Math (Range_Value.Maximum) - Motion_Math (Range_Value.Minimum)
+          <= Maximum_Axis_Span;
    end Admissible;
    procedure Clear_Contact (S : in out State) is
    begin
@@ -58,12 +56,10 @@ package body HID_Touchpad_Pointer with SPARK_Mode is
         (Delta_Value : Motion_Math; Scale : Gain; Orientation : Direction;
          Previous : Motion_Math; Displacement, Remainder : out Motion_Math)
       is
-         Total : Motion_Math := Delta_Value * Motion_Math (Scale.Numerator);
       begin
-         if Orientation = Reversed then Total := -Total; end if;
-         Total := Total + Previous;
-         Displacement := Total / Motion_Math (Scale.Denominator);
-         Remainder := Total rem Motion_Math (Scale.Denominator);
+         HID_Axis_Motion.Scale (Long_Long_Integer (Delta_Value),
+           (Scale.Numerator, Scale.Denominator), Orientation = Reversed,
+           Previous, Displacement, Remainder);
       end Scale_Delta;
    begin
       Result := (Outcome => Policy_Not_Configured, Emit => False, Data => Empty_Report);
@@ -96,14 +92,11 @@ package body HID_Touchpad_Pointer with SPARK_Mode is
             Scale_Delta (Motion_Math (X) - Motion_Math (S.Last_X), S.X_Gain, S.X_Direction, S.Remainder_X, DX, Rem_X);
             Scale_Delta (Motion_Math (Y) - Motion_Math (S.Last_Y), S.Y_Gain, S.Y_Direction, S.Remainder_Y, DY, Rem_Y);
          end if;
-         if DX not in Motion_Math (Pointer_Pending.Displacement'First) .. Motion_Math (Pointer_Pending.Displacement'Last) or else
-            DY not in Motion_Math (Pointer_Pending.Displacement'First) .. Motion_Math (Pointer_Pending.Displacement'Last)
-         then Refuse; return; end if;
          S.Has_Primary := True; S.ID := ID; S.Last_X := X; S.Last_Y := Y; S.Remainder_X := Rem_X; S.Remainder_Y := Rem_Y;
       else Clear_Contact (S);
       end if;
       S.Buttons := Buttons;
-      Result.Data := (Buttons => Buttons, X => Integer (DX), Y => Integer (DY), Wheel => 0, Flags => 0);
+      Result.Data := (Buttons => Buttons, X => DX, Y => DY, Wheel => 0, Flags => 0);
       Result.Emit := Buttons /= Old_Buttons or else DX /= 0 or else DY /= 0;
       Result.Outcome := (if Result.Emit then Pointer_Changed else Pointer_Unchanged);
    end Update;

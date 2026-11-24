@@ -5,6 +5,7 @@ package body Main_Model is
    use type P.Process_ID, W.Word, I.Word;
    procedure Check (OK : Boolean; Why : String) is
    begin Checks := Checks + 1; if not OK then raise Program_Error with Why; end if; end Check;
+   function Target_Pin return G.ACPI_Pin is (if Current=Pad_Reset_Wait then 209 else 160);
    procedure Initialize is
    begin
       Current := Scenario'Value (Ada.Command_Line.Argument (1));
@@ -16,14 +17,20 @@ package body Main_Model is
             end if;
          end;
       end loop;
-      declare L : constant G.Location := G.Locate (160); begin
+      declare L : constant G.Location := G.Locate (Target_Pin); begin
          Memory (L.Resource) (Natural (L.Host_Register) / 4) := 7;
          Memory (L.Resource) (Natural (L.Enable_Register) / 4) := 16#A500_0007#;
          Memory (L.Resource) (Natural (L.Status_Register) / 4) := 16#A500_0007#;
       end;
+      if Current=Pad_Reset_Wait then
+         declare L : constant G.Location:=G.Locate(Target_Pin);begin
+            Memory(L.Resource)(Natural(L.Host_Register)/4):=L.Interrupt_Mask;
+         end;
+         Badge:=GPIO_Channel_Badges.Canonical((GPIO_Channel_Badges.Pin_Number(Target_Pin),GPIO_Channel_Badges.Level_Triggered,GPIO_Channel_Badges.Active_Low));
+      end if;
       Initial_Memory := Memory;
       Stop_Queued := Current = Early_Stop;
-      Check (Badge = GPIO_Channel_Badges.Canonical ((160, GPIO_Channel_Badges.Level_Triggered, GPIO_Channel_Badges.Active_Low)),
+      Check (Badge = GPIO_Channel_Badges.Canonical ((GPIO_Channel_Badges.Pin_Number(Target_Pin), GPIO_Channel_Badges.Level_Triggered, GPIO_Channel_Badges.Active_Low)),
          "fixture has canonical full-width GPv1 badge");
    end Initialize;
    function Authorized (Caller : P.Process_ID) return Boolean is (Caller = Launcher_ID);
@@ -52,9 +59,9 @@ package body Main_Model is
    procedure Try_Event (Sink : Natural; Value : W.Event; Accepted : out Boolean) is
    begin Check (Sink = 17 and then not Sink_Closed, "event goes to current sink"); Event_Deliveries := Event_Deliveries + 1; Last_Event := Value; Accepted := True; end Try_Event;
    procedure Close_Sink (Sink : Natural; Closed : out Boolean) is
-      L : constant G.Location := G.Locate (160);
+      L : constant G.Location := G.Locate (Target_Pin);
    begin
-      Check (Sink = 17 and then not Sink_Closed and then (Memory (L.Resource) (Natural (L.Enable_Register) / 4) and 1) = 0,
+      Check (Sink = 17 and then not Sink_Closed and then (Memory (L.Resource) (Natural (L.Enable_Register) / 4) and L.Interrupt_Mask) = 0,
          "close once only after confirmed mask"); Sink_Closes := Sink_Closes + 1; Sink_Closed := True; Closed := True;
    end Close_Sink;
 end Main_Model;

@@ -1,0 +1,24 @@
+# PWR-004 slice 1 (tests/headless power-sources): the battery and AC adapter
+# through power.svc to Desktop's Battery item and the console's
+# (power.sources). power-standin.app is the TEST STAND-IN for acpi.svc's
+# power sources (QEMU has no ACPI battery): pages, identities, the
+# power-source watch and demand reads. power.svc starts BEFORE it, as it
+# may on hardware: its acpi-observer request is Absent at its launch and
+# procmgr introduces it late, once the stand-in registers the ACPI role.
+# The stand-in then starts slowly (silent, then not ready) as acpi.svc
+# does. power.svc starts before Desktop and the console: their
+# power-sources requests (startup plan only) resolve at theirs.
+# reading_age_ms is short (2 s) so the console's read finds the battery's
+# sample too old and asks for a fresh one.
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "clock.svc" (priority 5))
+  (start "power.svc" (priority 5)
+    (arguments (Power_Parameters undeclared_grace_ms => 300 storage_deadline_ms => 10000
+                                 driver_grace_ms => 1000 button => Button_Policy.Ignore
+                                 reading_age_ms => 2000)))
+  (start "power-standin.app" (priority 5))
+  (start "display.svc" (priority 5))
+  (start "desktop.svc" (priority 4))
+  (start "ccl-console.app" (priority 3))
+)

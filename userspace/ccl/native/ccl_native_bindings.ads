@@ -33,6 +33,8 @@ package CCL_Native_Bindings is
    function Secrets          return CuBit.Handles.Endpoint;   --  "secrets"
    --  power.svc, as a requester's badge (CuBit.Power_Requests): machine.*.
    function Power            return CuBit.Handles.Endpoint;   --  "power"
+   --  power.svc's power sources, read only (CuBit.Power_Sources): power.*.
+   function Power_Sources    return CuBit.Handles.Endpoint;   --  "power-sources"
    --  procmgr's badge "debug-observe for the user session" (DBG-001,
    --  CuBit.Launch_Handles): debug.attach.
    function Debug_Session    return CuBit.Handles.Endpoint;   --  "debug-session"

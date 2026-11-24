@@ -17,7 +17,7 @@ package body HID_GPIO_Input with SPARK_Mode is
       function Wake_Deadline (S : State; Now, Otherwise : W.Word) return W.Word is
       begin
          if S.Info.At_Phase in Cold | Stopped | Unresolved then return Otherwise;
-         elsif S.Info.At_Phase = Armed and then S.Info.Buffered_Lease /= 0 then
+         elsif S.Info.At_Phase = Armed and then S.Info.Buffered_Lease /= 0 and then Input_Ready then
             return W.Word'Min (Now, Otherwise);
          elsif S.Op /= No_Operation then
             return Controls.Wake_Deadline (S.Client, Now, Otherwise);
@@ -158,6 +158,7 @@ package body HID_GPIO_Input with SPARK_Mode is
                Stop_Device (S, D, Device_Failed); Release (S, D, Now, Clock_Available);
             end if;
          elsif S.Info.At_Phase = Armed and then S.Info.Buffered_Lease /= 0 then
+            if not Input_Ready then return; end if;
             if S.Info.Buffered_Lease /= S.Info.Lease or else S.Info.Buffered_Generation <= S.Info.Last_Acknowledged then
                S.Info.Buffered_Lease := 0; S.Info.Buffered_Generation := 0; return;
             end if;

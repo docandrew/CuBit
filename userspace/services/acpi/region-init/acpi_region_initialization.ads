@@ -114,6 +114,9 @@ package ACPI_Region_Initialization with SPARK_Mode is
       Action : out Cleanup_Action)
      with Pre => Core.Valid (Service), Post => Core.Valid (Service);
 private
+   function Same_Declaration
+     (Now, Saved : Core.Namespace.Operation_Region_Attributes) return Boolean
+     with Global => null;
    subtype Node_ID is Core.Namespace.Node_ID;
    type Entry_State is record
       Present : Boolean := False;

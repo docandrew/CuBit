@@ -45,7 +45,8 @@
   # its recovery copies before it is ended.
   (start "power.svc" (priority 5)
     (arguments (Power_Parameters undeclared_grace_ms => 2000 storage_deadline_ms => 10000
-                                 driver_grace_ms => 1000 button => Button_Policy.Power_Off)))
+                                 driver_grace_ms => 1000 button => Button_Policy.Power_Off
+                                 reading_age_ms => 60000)))
   # Dictionary, thesaurus and spelling (docs/lexicon.md).
   (start "lexicon.svc" (priority 4))
   # GPU rendering is a settings grant (desktop.render.gpu, default on);

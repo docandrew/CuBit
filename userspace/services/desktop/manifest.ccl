@@ -17,6 +17,9 @@
     # Shut Down... in the Apps menu (PWR-003): power.svc as Desktop's own
     # requester badge (CuBit.Power_Requests; startup plan only).
     (service "power-desktop" "power")
+    # The status area's Battery item (PWR-004): power.svc's power sources,
+    # read only (CuBit.Power_Sources; startup plan only).
+    (service "power-sources" "power-sources")
     # The status area's CPU and memory bars (UI-027): the kernel's per-CPU
     # times page, mapped read-only (KERN-002); read without a system call.
     (Request.Publication "cpu-times")
@@ -45,7 +48,7 @@
     (notification "keyboard" Notify_Access.Manage "keyboard")
     (notification "mouse" Notify_Access.Manage "mouse")
     (notification "desktop" Notify_Access.Manage "registration")]
-  optional => ["mixer-control" "wifi" "netmgr" "power" "clock"]
+  optional => ["mixer-control" "wifi" "netmgr" "power" "power-sources" "clock"]
   scopes => [
     (config [File_Right.Read File_Right.Write] "desktop.appearance.")
     # The Apps menu entries (Desktop_Launch).

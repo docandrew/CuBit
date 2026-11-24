@@ -87,6 +87,8 @@ project Devmgr is
        "devmgr_pci_broker.adb",
        "acpi_pci_window_exchange.ads",
        "acpi_pci_window_exchange.adb",
+       "acpi_cmos_handover_protocol.ads",
+       "acpi_cmos_handover_protocol.adb",
        "firmware_tables.ads",
        "firmware_tables.adb",
        "firmware_tables-mcfg.ads",

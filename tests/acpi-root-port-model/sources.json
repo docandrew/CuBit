@@ -140,10 +140,6 @@
       "sha256": "00c73104fe5e4ca78da389223703266454c0cbb2ec475246855f5d9dab5877a8"
     },
     {
-      "path": "shared/acpi/acpi_power_query_protocol.ads",
-      "sha256": "e2fdea5002bd7040173b6ddea676d2845db08f9437f3ccd894cd01351acb2839"
-    },
-    {
       "path": "shared/acpi/acpi_protocol.ads",
       "sha256": "ce40736ea2bb6a09747b1e52ff0063d4f1e321cc6bd67b90ac67a4fa0e1e2d6c"
     },
@@ -925,7 +921,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_buffer_layouts.ads",
-      "sha256": "ef216dde7f2f44625ae544f3e31db4c92adc00aa6f0d7c32b6b8265467f4ebd5"
+      "sha256": "79cbdebdcfc9358fdc5c5cd05a49f92b8735c11e6d5c1721f704dfb73930f244"
     },
     {
       "path": "userspace/services/acpi/lib/aml_byte_sources.adb",
@@ -1013,7 +1009,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_decode.ads",
-      "sha256": "3f312c98587da55cabbd1a800b8dd4634a7adbc502e95e1fbbac11ac91567bfa"
+      "sha256": "9042edfa8df14222b65fa0aae1b85e6d21b7c8a11bc7182e5412a850377a57f4"
     },
     {
       "path": "userspace/services/acpi/lib/aml_definition_loads.adb",
@@ -1113,11 +1109,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_layout.adb",
-      "sha256": "6ac801fea1eaf6485c11ff36fb8c00258864bcac5d46b6f81bb5dedd822ebefe"
+      "sha256": "0a1b5440214dec4e3255dc8a14f31b445cb479762bbcffff254cf5d167863df3"
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_layout.ads",
-      "sha256": "b61f9c324bc2ea6a18f0dadcc0f4c59569d473d3a1767964d936f114d36f23ee"
+      "sha256": "288e94e64f9aef05e0c7b0a5dadd6fa2f7077327d1a22c8b17ac6d7c2a538de4"
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_notes.ads",
@@ -1125,11 +1121,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_plans.adb",
-      "sha256": "e746d07c81e9b6d2dec781f3a95ba3e2d8568aabd85788959547aa0c3cb37852"
+      "sha256": "7745d238fb168ff46f4870dde43dbe171a95726bf6c461eee5fff9045c8a8830"
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_plans.ads",
-      "sha256": "1e22c20c6cfd41374003a94d37cac7ff876847ac86e648b503c70c70926fa240"
+      "sha256": "e9fc03b56a7bfcc35beda021afb8c00573fe6322c8fe218f23db5a5a3718aead"
     },
     {
       "path": "userspace/services/acpi/lib/aml_field_targets.ads",
@@ -1257,11 +1253,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-      "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+      "sha256": "692bf7f4dae7517867b9f49990ff61080ba10c770e3e85aadf01c24c493fc272"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-      "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+      "sha256": "02d5cb2242316e1791fbd4afcd75512ce175330daf6dac9222a7ecaabc5d040b"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -1297,11 +1293,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects.adb",
-      "sha256": "c7376aacca7718e23e61e2dd874111f0195959aa2fe084f9078f554b6386e27b"
+      "sha256": "7c7797fd48bbf33a9a0907f398b8210ba5feb5d9a10f5770fabef5f2822d5c06"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects.ads",
-      "sha256": "b67346d03a4fc7d821d671e2f4f0dbe8e749dda339aa39711a6a6557363ef1f8"
+      "sha256": "982e10f190e21dc691808612a96d192e854fb186a4b8f973074a33fa4b2e43aa"
     },
     {
       "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -1349,7 +1345,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_register_views.ads",
-      "sha256": "add5cbe1beabab4f95d40263d53f6423ec267bbd87b4fa013cfe93d5b6faafce"
+      "sha256": "663a96b5210824ddf43277388bcf7db4d43c05d11be8ae7c621d80b111d94eba"
     },
     {
       "path": "userspace/services/acpi/lib/aml_resource_templates.adb",
@@ -1634,6 +1630,14 @@
     {
       "path": "userspace/services/acpi/resource-data/acpi_resource_data.ads",
       "sha256": "704a461f20c90cbde9e15c34fc457373b2fed6d3e948d4706daa2ffe55ee8532"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_pci_bridge_probe.ads",
+      "sha256": "a382184cce945722a9f6cd661e5ba93e65ffb3a12b4d9dcb58db83355ad2223f"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_pci_bridge_probe.adb",
+      "sha256": "f8769e531d20445e5dcf31b55bcda4abd4dcfa8f8d42c8730681618a4f3c7b94"
     }
   ],
   "expected_cases": 120,

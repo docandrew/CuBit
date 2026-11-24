@@ -156,11 +156,11 @@
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_log.adb",
-      "sha256": "6c23ed0bfca33bb30fe34995ba08080c1a358bea6b208c935971b37ef12891ee"
+      "sha256": "286da91649c61e3396621ce1c5e3f51058e8ca410640990e7e32130295080e0c"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_log.ads",
-      "sha256": "70234a6df52ec4e47da7a15e0871129b5a9c67217dde7b2c0adf532f245e0872"
+      "sha256": "c04f9c81b5a1d4200451ac67556187daf852fb0a3b4f4454e8d62b259bb7e1eb"
     },
     {
       "path": "userspace/services/gpio/native/gpio_native_pump.adb",
@@ -320,7 +320,15 @@
     },
     {
       "path": "userspace/services/gpio/native/gpio_main_entry.adb",
-      "sha256": "0bddc51fa98a3dcd584769b3d3a84576059f48562f6dc99441b217bc18d87720"
+      "sha256": "3f031b8f673f40de94e8500f54619c9112d5bd4fb3faa11084952cc51426804b"
+    },
+    {
+      "path": "userspace/services/gpio/lib/gpio_pad_diagnostics.ads",
+      "sha256": "e0d885499ed340de1a824f567fb92c3682e8c66adec54120f060ce8650b97c3c"
+    },
+    {
+      "path": "userspace/services/gpio/lib/gpio_pad_diagnostics.adb",
+      "sha256": "0214fc809a9398935c671684adeaf52ca0687a5ad4966067c7901fcb90729450"
     }
   ],
   "suites": {
@@ -373,7 +381,7 @@
         },
         {
           "path": "tests/gpio-native/models/main/cubit-messages.adb",
-          "sha256": "b0386e1018b515a981584e232bb9330bb00fdf6a758cdf7f927bb6f0055d9d1a",
+          "sha256": "34a2b3feb021850582b51f398f6c0a0c0daee6ac9dc6cf2cfe8add0b8a05beae",
           "kind": "test-or-runtime-fixture"
         },
         {
@@ -408,7 +416,7 @@
         },
         {
           "path": "tests/gpio-native/models/main/gpio_native_communities.adb",
-          "sha256": "705ba5c7f1ea528f779708cd37a2997a9e85f505d7b7640eba8c3152aeac3f61",
+          "sha256": "c6bcb856fed00944941e5966b6074c62490d682cab3c823cc86b9e66349d2da3",
           "kind": "modeled-boundary"
         },
         {
@@ -418,7 +426,7 @@
         },
         {
           "path": "tests/gpio-native/models/main/gpio_native_pump.adb",
-          "sha256": "e8126e4ae2ba2674622ecb554ddce5887af5f036b002a17ffa7b77f0d187e6d2",
+          "sha256": "c612bc254d26c0051a37dedebb5cb464a4573e15372a6a32c264286790bcfb71",
           "kind": "modeled-boundary"
         },
         {
@@ -428,17 +436,17 @@
         },
         {
           "path": "tests/gpio-native/models/main/main_model.adb",
-          "sha256": "aabf4cae5d440bffb0561b54dcad14759b6bcdf714100423fbd5ca05600713aa",
+          "sha256": "d52edb2a43522b1d6dcc7c97149e4ee46a0b780aa7a8f9fd73617008b74195e8",
           "kind": "test-or-runtime-fixture"
         },
         {
           "path": "tests/gpio-native/models/main/main_model.ads",
-          "sha256": "ece356d3c584e66dcda61911dcb01f9805732fec63d67d5d0a09204fe8df48b6",
+          "sha256": "ca6926ef5894f9c21543b9ef6a3f67f22150bf8e007449a905066b9be35f61c2",
           "kind": "test-or-runtime-fixture"
         },
         {
           "path": "tests/gpio-native/models/main/main_tests.adb",
-          "sha256": "ceda2380acdc214e4bcf244a1015d4a5df9430278b8752ef837c94f3db112b91",
+          "sha256": "8cf78495989ad70c8ad0c369bf6c30893d7d0935849f5af95d2fc0621a0f2833",
           "kind": "test-or-runtime-fixture"
         },
         {
@@ -709,12 +717,12 @@
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_log.adb",
-          "sha256": "6c23ed0bfca33bb30fe34995ba08080c1a358bea6b208c935971b37ef12891ee",
+          "sha256": "286da91649c61e3396621ce1c5e3f51058e8ca410640990e7e32130295080e0c",
           "kind": "production"
         },
         {
           "path": "userspace/services/gpio/native/gpio_native_log.ads",
-          "sha256": "70234a6df52ec4e47da7a15e0871129b5a9c67217dde7b2c0adf532f245e0872",
+          "sha256": "c04f9c81b5a1d4200451ac67556187daf852fb0a3b4f4454e8d62b259bb7e1eb",
           "kind": "production"
         },
         {
@@ -841,7 +849,7 @@
         },
         {
           "path": "userspace/services/gpio/native/gpio_main_entry.adb",
-          "sha256": "0bddc51fa98a3dcd584769b3d3a84576059f48562f6dc99441b217bc18d87720"
+          "sha256": "3f031b8f673f40de94e8500f54619c9112d5bd4fb3faa11084952cc51426804b"
         },
         {
           "path": "tests/gpio-native/models/main/cubit-waits.ads",
@@ -850,10 +858,20 @@
         {
           "path": "tests/gpio-native/models/main/cubit-waits.adb",
           "sha256": "9d5013ccded4b59e562370cc88925cda035f6bc984ec7196a4f5ec5c92d53a93"
+        },
+        {
+          "path": "userspace/services/gpio/lib/gpio_pad_diagnostics.ads",
+          "sha256": "e0d885499ed340de1a824f567fb92c3682e8c66adec54120f060ce8650b97c3c",
+          "kind": "production"
+        },
+        {
+          "path": "userspace/services/gpio/lib/gpio_pad_diagnostics.adb",
+          "sha256": "0214fc809a9398935c671684adeaf52ca0687a5ad4966067c7901fcb90729450",
+          "kind": "production"
         }
       ],
       "engine": "tests/gpio-native/engines/main.mjs",
-      "engine_sha256": "843008b52691470f6e55fcfa6ef351ddca4a8a8f38c3fd245d6babc09311074e",
+      "engine_sha256": "3f56b7d0bff03658f23c86943780fba97a137a64e289520d784a85c329c7174f",
       "project": null
     },
     "registry": {

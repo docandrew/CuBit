@@ -65,7 +65,7 @@ if(validateOnly) {
   process.exit(0);
 }
 if(!process.env.TMPDIR || !path.isAbsolute(process.env.TMPDIR)) throw Error('Set an absolute TMPDIR for private test outputs');
-const out=fs.mkdtempSync(path.join(process.env.TMPDIR,'hid-i2c-native-'));
+const out=process.env.CUBIT_HID_TEST_OUTPUT?path.resolve(process.env.CUBIT_HID_TEST_OUTPUT):fs.mkdtempSync(path.join(process.env.TMPDIR,'hid-i2c-native-'));if(process.env.CUBIT_HID_TEST_OUTPUT)fs.mkdirSync(out);
 fs.mkdirSync(path.join(out,'source'));
 for(const item of files) fs.copyFileSync(item.path,path.join(out,'source',item.name));
 fs.writeFileSync(path.join(out,'inputs.json'),JSON.stringify(pins,null,2)+'\n');

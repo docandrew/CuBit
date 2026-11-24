@@ -30,7 +30,7 @@
   "native_context_inputs": [
     {
       "path": "userspace/services/acpi/native/acpi_native_instance.adb",
-      "sha256": "babd1dfb4a418e48a789dadaaab55d6fe64de0991590021375434324e946b020",
+      "sha256": "4517600d64330100cadba5ad3cf6893f566056857d194b3d47eb8f37343c33e6",
       "kind": "native-context"
     },
     {

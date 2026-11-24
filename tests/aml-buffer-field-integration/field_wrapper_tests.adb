@@ -14,6 +14,7 @@ procedure Field_Wrapper_Tests is
    use type Integer_Value;
    use type Byte;
    use type AML_Objects.Allocation_Status;
+   use type AML_References.Node_Incarnation;
    A : Arena;
    Input : aliased AML_Table_Backing.State (1, 1);
    Width : Integer_Width := Bits_64;
@@ -35,7 +36,7 @@ procedure Field_Wrapper_Tests is
       return AML_Names.Read_Name (B);
    end Path;
    procedure Clock (Value : out Integer_Value; Available : out Boolean) is
-      Before : State;
+      Before : State := Empty;
       V, Copy, Bad : Datum;
       Ref : Reference;
       Found : Lookup_Result;
@@ -47,6 +48,23 @@ procedure Field_Wrapper_Tests is
       begin
          Define_Buffer_Field_Value (A, 3, Path (S), Width, Item, Offset, Bits, Buffer_Result, Status);
       end Define;
+      procedure Check_Rejected_Conversion (Expected : Execution_Status) is
+         Existing : Lookup_Result;
+      begin
+         Check (Status = Expected);
+         -- Conversion can allocate before name/offset validation. Completed
+         -- effects remain; namespace and authenticated backing stay valid.
+         Check (Valid (A) and then Has_Source (A, Source.Object.Source));
+         Check (Count (Snapshot (A)) = Count (Before));
+         Check (Last_Incarnation (Snapshot (A)) >= Last_Incarnation (Before));
+         Existing := Resolve (Snapshot (A), 3, Path ("BUFF"));
+         Check (Existing.Status = N.Found and then Existing.Node = Found.Node);
+         Check (Kind (A, Existing.Node) = Buffer_Field_Object);
+         Read_Buffer_Field (A, Ref, Width, V, Status);
+         Check (Status = Returned and then V.Number = 16#81#);
+         Check (AML_Objects.Stored_Byte
+           (Value_Store (Snapshot (A)), Source.Object.ID, 1) = 16#42#);
+      end Check_Rejected_Conversion;
       procedure Find (S : String) is
       begin
          Found := Resolve (Snapshot (A), 3, Path (S)); Check (Found.Status = N.Found);
@@ -65,11 +83,14 @@ procedure Field_Wrapper_Tests is
       Last_Field := Ref;
       Before := Snapshot (A);
       Define ("BUFF", (Integer_Datum, 7, Ordinary_Integer), 0, 8);
-      Check (Status = Duplicate_Name and then Snapshot (A) = Before);
+      Check_Rejected_Conversion (Duplicate_Name);
       Define ("OVER", Text, Integer_Value'Last, 1);
-      Check (Status = Buffer_Field_Limit and then Snapshot (A) = Before);
+      Check_Rejected_Conversion (Buffer_Field_Limit);
+      Check (Resolve (Snapshot (A), 3, Path ("OVER")).Status = Not_Found);
       Define ("ZERO", Text, 0, 0);
-      Check (Status = Invalid_Field_Length and then Snapshot (A) = Before);
+      Check_Rejected_Conversion (Invalid_Field_Length);
+      Check (Resolve (Snapshot (A), 3, Path ("ZERO")).Status = Not_Found);
+      Before := Snapshot (A);
       Bad := Source; Bad.Object.ID := Text.Object.ID;
       Define ("BAD0", Bad, 0, 8);
       Check (Status = Unsupported_Value and then Snapshot (A) = Before);

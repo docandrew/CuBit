@@ -14,7 +14,7 @@ package body HID_Touchpad_Reports with SPARK_Mode is
    use type Metadata.Decode_Status;
    use type Frames.Contact_Count;
    use type Interfaces.Unsigned_16;
-   use type Contacts.Coordinate_Bounds;
+   use type Contacts.Coordinate_Bounds, Contacts.Coordinate_Measurements;
    Application_Collection : constant Schema.Byte := 1;
    Logical_Collection : constant Schema.Byte := 2;
    Finger_Usage : constant Schema.Word := 16#000D_0022#;
@@ -89,9 +89,13 @@ package body HID_Touchpad_Reports with SPARK_Mode is
                   if Contacts.Report_Identity (Candidates (Positive (Count))) /= Metadata.Report_Identity (Meta)
                   then Info.Outcome := Split_Report; return; end if;
                   Charge; if not Allowed then return; end if;
-                  declare Bounds : constant Contacts.Coordinate_Bounds := Contacts.Coordinates (Candidates (Positive (Count))); begin
-                     if Count = 1 then Geometry := (Uniform_Coordinates, Bounds);
-                     elsif Geometry.Outcome = Uniform_Coordinates and then Geometry.Bounds /= Bounds then
+                  declare
+                     Bounds : constant Contacts.Coordinate_Bounds := Contacts.Coordinates (Candidates (Positive (Count)));
+                     Measures : constant Contacts.Coordinate_Measurements := Contacts.Measurements (Candidates (Positive (Count)));
+                  begin
+                     if Count = 1 then Geometry := (Uniform_Coordinates, Bounds, Measures);
+                     elsif Geometry.Outcome = Uniform_Coordinates and then
+                       (Geometry.Bounds /= Bounds or else Geometry.Measurements /= Measures) then
                         Geometry := (Outcome => Inconsistent_Coordinates);
                      end if;
                   end;

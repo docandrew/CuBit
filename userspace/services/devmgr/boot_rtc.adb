@@ -20,7 +20,7 @@ package body Boot_RTC is
 
    procedure Read (Ports : CuBit.Handles.IO_Ports;
                    UTC_Seconds, Monotonic_Ms : out Unsigned_64;
-                   Valid : out Boolean) is
+                   Valid : out Boolean; History : out Handover_History) is
       procedure Read_Register
         (Register : RTC_Decode.CMOS_Register; Value : out Unsigned_8;
          OK : out Boolean; Index_Refused : out Boolean)
@@ -33,6 +33,8 @@ package body Boot_RTC is
          Result := portOutp8 (Ports, CMOS_Index, Register);
          Index_Refused := Result = Port_Refused;
          if Index_Refused then OK := False; return; end if;
+         History.Selector_Completed := True;
+         History.NMI_Disabled := False; -- the completed write used bit7 clear
          Result := portInp8 (Ports, CMOS_Data);
          OK := Result <= Largest_Byte;
          if OK then Value := Unsigned_8 (Result); end if;
@@ -47,7 +49,10 @@ package body Boot_RTC is
       use type Sampling.Failure;
       Result : Sampling.Diagnosis;
    begin
+      History := (others => <>);
       Sampling.Sample (RTC_Decode.Default_Century, UTC_Seconds, Monotonic_Ms, Result);
+      History.Legacy_Validated := Result.Have_Snapshot and then
+        Result.Reason in Sampling.None | Sampling.Decode_Failed | Sampling.Monotonic_Unavailable;
       Valid := Result.Reason = Sampling.None;
       debugPrint ("devmgr: RTC registers " & Sampling.Registers_Text (Result) & LF);
       --  devmgr has no FADT, whose century field names the CMOS century

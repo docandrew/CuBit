@@ -6,10 +6,11 @@ ulimit -c 0
 suite_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 repo_dir=$(cd -- "$suite_dir/../.." && pwd)
 # Functional mode deliberately has no timing claim and disjoint outputs.
-if [[ "${1:-}" == --functional-only ]]; then
-    shift
-    exec nice -n 19 node "$suite_dir/run.mjs" --functional-only "$@"
-fi
+for argument in "$@"; do
+    if [[ "$argument" == --functional-only || "$argument" == --device-initialization ]]; then
+        exec nice -n 19 node "$suite_dir/run.mjs" "$@"
+    fi
+done
 if [[ -n "${CUBIT_BUILD_LOCK:-}" ]]; then
     shared_lock=$CUBIT_BUILD_LOCK
 else
@@ -20,4 +21,4 @@ else
     fi
     shared_lock="$(dirname -- "$common_git_dir")/coordination/build.lock"
 fi
-exec flock --exclusive "$shared_lock" nice -n 19 node "$suite_dir/run.mjs" "$@"
+exec flock --exclusive --nonblock "$shared_lock" nice -n 19 node "$suite_dir/run.mjs" "$@"

@@ -15,6 +15,9 @@ generic
    with function Events_Healthy return Boolean;
    Fuel_Budget:Positive:=ACPI_Local_Sample_Status.Default_Fuel;
    Window_Microseconds:ACPI_Local_Sample_Status.Window_Allowance:=ACPI_Local_Sample_Status.Default_Window_Microseconds;
+   -- Validated discovered descriptor only; callback copies metadata and may
+   -- not perform IPC/AML, mutate Core or reenter this collector.
+   with procedure Remember_Device (Device : ACPI_Service.Node_Descriptor) is null;
 -- Same private request Core and fixed battery collector. Complete inventory
 -- publication only; per-entry failure/absence remains explicit. No implicit
 -- retry, source dequeue/ACK, hardware grant or shared-owner retirement.
@@ -39,6 +42,11 @@ package ACPI_Requests.Battery_Observations.With_Local_Events is
    procedure Route(Server:State;Routed:out Boolean) with Pre=>Valid(Server);
    procedure Advance(Server:in out State;Result:out Status.Outcome) with Pre=>Valid(Server);
    function Read(Server:State;Now:Samples.Clock_Reading;Maximum_Age:Samples.Tick) return Samples.View with Pre=>Valid(Server);
+   function Owns_Context(Server:State) return Boolean with Pre=>Valid(Server);
+   procedure Request_Refresh(Server:State;At_Time:Samples.Clock_Reading;Accepted:out Boolean)
+     with Pre=>Valid(Server);
+   function Metadata_View(Server:State) return Samples.View with Pre=>Valid(Server);
+   function Metadata_Revision(Server:State) return Samples.Revision_Number with Pre=>Valid(Server);
    procedure Stop;
 private
    type Storage is limited record

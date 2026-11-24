@@ -6,6 +6,7 @@ with Parameters;
 with HID_Launch_Adapter;
 with GPIO_Lease_Control;
 with HID_GPIO_Reset;
+with HID_Reset_Policy;
 with HID_Touchpad_Native;
 with HID_Touchpad_Pump;
 with HID_Touchpad_Native_Wait;
@@ -28,6 +29,9 @@ with I2C_Transfer_Wire;
 with CuBit.Process_IDs;
 procedure Touchpad_Publication_Tests is
    package W renames I2C_Transfer_Wire;
+   Mode : constant String := (if Ada.Command_Line.Argument_Count=0 then "normal" else Ada.Command_Line.Argument(1));
+   Timeout_Case : constant Boolean := Mode in "reset-timeout"|"reset-pending"|"reset-bogus"|"reset-release-uncertain";
+   Startup_Limit : constant W.Millisecond := (if Timeout_Case then 5000 else 1000);
    package D renames HID_I2C_Descriptors;
    package P renames CuBit.Process_IDs;
    use type W.Word, W.Count, W.Completion_Status, D.Bytes, D.Byte_Count;
@@ -52,7 +56,7 @@ procedure Touchpad_Publication_Tests is
    package Bus is new I2C_HID_Channel_Model (Read_Input, Write_Output);
    procedure Open_Channel (Expected : P.Process_ID; Deadline : W.Millisecond; Ready : out Boolean) is
    begin
-      Check (not Session_Open and P.To_Word (Expected) = 16#F123_4567_0000_1234# and Deadline = 1000);
+      Check (not Session_Open and P.To_Word (Expected) = 16#F123_4567_0000_1234# and Deadline = Startup_Limit);
       Opens := Opens + 1; Session_Open := True; Ready := True;
    end Open_Channel;
    procedure Store (Data : D.Bytes; Stored : out Boolean) is
@@ -104,6 +108,7 @@ procedure Touchpad_Publication_Tests is
    procedure Poll_Release (Reply : out GPIO_Lease_Control.Reply) is
    begin Reply := (GPIO_Lease_Control.Pending, 0); end Poll_Release;
    package GW renames GPIO_Control_Wire;
+   use type GW.Completion_Status;
    GPIO_Token : GW.Word := 0;
    GPIO_Calls : Natural := 0;
    GPIO_Request : GW.Request;
@@ -116,8 +121,19 @@ procedure Touchpad_Publication_Tests is
    procedure Clock (Value : out GW.Word; Available : out Boolean) is
    begin Value := Cached_Now; Available := Cached_Available; end Clock;
    package Reset is new HID_GPIO_Reset.Bridge (Controls, GPIO_Server, 20, Next_Token, Clock);
+   Observed_Descriptors : Natural := 0;
+   Observed_Length : Natural := 0;
+   Observed_Data : D.Bytes (0 .. 511) := [others => 0];
+   procedure Observe_Descriptor (Data : D.Bytes) is
+   begin
+      Check (Data'Length <= Observed_Data'Length);
+      Observed_Descriptors := Observed_Descriptors + 1;
+      Observed_Length := Data'Length;
+      for I in Data'Range loop Observed_Data (I - Data'First) := Data (I); end loop;
+   end Observe_Descriptor;
    package App is new HID_I2C_Touchpad (C, 512, 32, 0, 5, 2, 8, 16, 32, 64, 8, Next_Token,
-      Reset.Begin_Arm_Reset, Reset.Poll_Arm_Reset, Reset.Begin_Release_Reset, Reset.Poll_Release_Reset);
+      Reset.Begin_Arm_Reset, Reset.Poll_Arm_Reset, Reset.Begin_Release_Reset, Reset.Poll_Release_Reset,
+      Observe_Report_Data => Observe_Descriptor);
    package Live is new App.GPIO_Input (Controls, GPIO_Server, 50, 100, 20);
    Badge : constant GW.Word := GPIO_Channel_Badges.Canonical ((160, GPIO_Channel_Badges.Level_Triggered, GPIO_Channel_Badges.Active_Low));
    package Native is new HID_Touchpad_Native (Reset, App, Live, Badge);
@@ -213,12 +229,12 @@ procedure Touchpad_Publication_Tests is
    Generation : GW.Word := 0;
    procedure App_Step (Now : W.Word; Available : Boolean) is
    begin Cached_Now := Now; Native.Step (Now, Available); end App_Step;
-   procedure GPIO_Complete (Now : W.Word) is
+   procedure GPIO_Complete (Now : W.Word; Advance_Now : Boolean := True; Status : GW.Completion_Status := GW.Completed) is
       Result : Native.Completion_Report;
       Entry_Value : M.CompletionEntry := M.NULL_COMPLETION;
       Reply_Lease : constant GW.Word := (if Live.Observe.At_Phase = Live.Owner.Cold then 42 else 43);
       Reply_Generation : constant GW.Word := (if GPIO_Request.Kind = GW.Acknowledge then GPIO_Request.Generation_To_Ack else 0);
-      Words : constant GW.Message_Words := GW.Encode_Completion ((GPIO_Request.Kind, GW.Completed, Reply_Lease, Reply_Generation));
+      Words : constant GW.Message_Words := GW.Encode_Completion ((GPIO_Request.Kind, Status, Reply_Lease, Reply_Generation));
       Expected : constant Native.Destination := (if Live.Observe.At_Phase = Live.Owner.Cold then Native.GPIO_Reset_Control else Native.GPIO_Input_Control);
    begin
       Cached_Now := Now; Entry_Value.valid := True; Entry_Value.token := GPIO_Token; Entry_Value.from := P.To_Word (GPIO_Server);
@@ -226,7 +242,7 @@ procedure Touchpad_Publication_Tests is
       Entry_Value.msg.tag.length := Words'Length;
       for Index in Words'Range loop Entry_Value.msg.words (Index - Words'First) := Words (Index); end loop;
       Native.Receive_Completion (Entry_Value, Now, True, Result);
-      Check (Result.Frame_Valid and then Result.Routed_To = Expected and then Result.GPIO_Result = Controls.Accepted); App_Step (Now, True);
+      Check (Result.Frame_Valid and then Result.Routed_To = Expected and then Result.GPIO_Result = (if Status=GW.Uncertain then Controls.Uncertain_Result else Controls.Accepted)); if Advance_Now then App_Step (Now, True);end if;
    end GPIO_Complete;
    procedure Native_Event (Lease, Epoch : GW.Word) is
       Message : M.Message := M.NULL_MESSAGE;
@@ -246,7 +262,7 @@ procedure Touchpad_Publication_Tests is
    package Ambiguous is new HID_I2C_Touchpad (C_Ambiguous, 512, 32, 0, 5, 2, 8, 16, 32, 64, 8, Next_Token, Arm, Poll_Arm, Release_Latch, Poll_Release);
    package Budgeted is new HID_I2C_Touchpad (C_Budgeted, 512, 32, 0, 5, 2, 8, 16, 32, 64, 8, Next_Token, Arm, Poll_Arm, Release_Latch, Poll_Release);
    package Too_Small is new HID_I2C_Touchpad (C_Small, 512, 32, 0, 5, 2, 8, 16, 1, 64, 8, Next_Token, Arm, Poll_Arm, Release_Latch, Poll_Release);
-   use type App.Start_Result, App.Admission_Status, App.Device.Failure;
+   use type App.Start_Result, App.Admission_Status, App.Device.Failure, App.Device.Request_Result;
    use type App.Source.Status, App.Schema.Count;
    use type Ambiguous.Start_Result, Ambiguous.Admission_Status;
    use type Budgeted.Start_Result, Budgeted.Admission_Status, Budgeted.Bindings.Work_Count;
@@ -283,8 +299,10 @@ procedure Touchpad_Publication_Tests is
       Item (16#15#, 0); Item (16#25#, 1); Item (16#09#, 16#47#); Item (16#09#, 16#42#);
       Item (16#75#, 1); Item (16#95#, 2); Item (16#81#, 2); Item (16#95#, 6); Item (16#81#, 3);
       Item (16#09#, 16#51#); Item (16#75#, 8); Item (16#95#, 1); Item (16#25#, 255); Item (16#81#, 2);
-      Item (16#05#, 1); Item (16#26#, 4095, 2); Item (16#75#, 16);
-      Item (16#09#, 16#30#); Item (16#81#, 2); Item (16#09#, 16#31#); Item (16#81#, 2); End_Collection;
+      Item (16#05#, 1); Item (16#26#, (if Mode in "wide-motion" | "wide-backpressure" then 3217 else 4095), 2); Item (16#75#, 16);
+      Item (16#09#, 16#30#); Item (16#81#, 2);
+      if Mode in "wide-motion" | "wide-backpressure" then Item (16#26#, 2097, 2); end if;
+      Item (16#09#, 16#31#); Item (16#81#, 2); End_Collection;
       Item (16#05#, 13); Item (16#09#, 16#54#); Item (16#25#, 5);
       Item (16#75#, 8); Item (16#95#, 1); Item (16#81#, 2);
       Item (16#09#, 16#56#); Item (16#26#, 65_535, 2); Item (16#75#, 16); Item (16#55#, 12);
@@ -294,6 +312,27 @@ procedure Touchpad_Publication_Tests is
       if Duplicate then Item (16#05#, 13); Item (16#09#, 5); Item (16#A1#, 1); End_Collection; end if;
       Header (4) := D.Byte (Used mod 256); Header (5) := D.Byte (Used / 256);
    end Build;
+   procedure Check_Descriptor_Metadata is
+      use type App.Schema.Status;
+      use type App.Schema.Collection, App.Schema.Byte, App.Schema.Bit_Count;
+      use type App.Admission_Report;
+      Before : constant App.Admission_Report := App.Admission;
+      Layout : constant App.Schema.Result := App.Report_Layout;
+      Mouse : constant App.Schema.Collection := App.Report_Collection (1);
+      Pad : constant App.Schema.Collection := App.Report_Collection (2);
+   begin
+      Check (Observed_Descriptors = 1 and Observed_Length = Used);
+      Check (Observed_Data (0 .. Used - 1) = Descriptor (0 .. Used - 1));
+      Check (Layout.Outcome = App.Schema.Decoded and Layout.Collections_Required = 3);
+      Check (Mouse.Parent = 0 and Mouse.Kind = 1 and Mouse.Usage = 16#0001_0002#);
+      Check (Pad.Parent = 0 and Pad.Kind = 1 and Pad.Usage = 16#000D_0005#);
+      Check (App.Report_Collection (3).Parent = 2);
+      Check (Layout.Present (App.Schema.Input, 7) and Layout.Bits (App.Schema.Input, 7) = 80);
+      Check (not Layout.Present (App.Schema.Feature, 7));
+      Check (App.Report_Collection (0) = (others => <>));
+      Check (App.Report_Collection (Natural'Last) = (others => <>));
+      Check (App.Admission = Before);
+   end Check_Descriptor_Metadata;
    procedure Packet (X, Y : Natural; Buttons : D.Byte := 1) is
    begin
       Output_Page (0 .. 31) := [others => 0];
@@ -324,28 +363,94 @@ procedure Touchpad_Publication_Tests is
    procedure Small_Complete is new Complete (Too_Small.Step);
    procedure Payload (Buttons : Pointer_Pending.Button_State; X, Y : Pointer_Pending.Displacement := 0) is
    begin Check (App.Count > 0); Check (App.Head.Payload = Pointer_Pending.Encode ((Buttons, X, Y, 0, 0))); end Payload;
+   procedure Finish_Special(Now:W.Word) is
+   begin
+      Flush(Now,True);Live.Request_Stop(Now,True);
+      if not Live.Quiescent then Check(GPIO_Request.Kind=GW.Release_Pin);GPIO_Complete(Now+1);end if;
+      Check(Live.Quiescent and App.Quiescent);App.Close(Closed);Check(Closed=C.Closed and not Session_Open);
+      for N in 1..8 loop Flush(Now+2,True);exit when App.Count=0;end loop;
+      Check(Native.Drained);
+   end Finish_Special;
 begin
    Check (Ada.Command_Line.Argument_Count = 0 or else
-      (Ada.Command_Line.Argument_Count = 1 and then Ada.Command_Line.Argument (1) in "startup-cutoff" | "startup-after-cutoff"));
+      (Ada.Command_Line.Argument_Count = 1 and then Mode in "startup-cutoff" | "startup-after-cutoff" |
+       "reset-timeout"|"reset-pending"|"reset-bogus"|"elan-input-bogus"|"reset-release-uncertain"|"wide-motion"|"wide-backpressure"));
    Bus.Initialize;
    Build;
-   Settings.Binding_Budget := 0; App.Start (Server, 16#20#, Settings, 1000, 1, True, Started);
+   if Mode in "wide-motion" | "wide-backpressure" then
+      Settings.X_Gain := (if Mode = "wide-backpressure" then (32, 1) else (1, 1));
+      Settings.Y_Gain := Settings.X_Gain;
+      Settings.X_Direction := App.Source.Pointer.As_Reported;
+      Settings.Y_Direction := App.Source.Pointer.As_Reported;
+   end if;
+   if Timeout_Case or Mode="elan-input-bogus"then Header(20):=16#F3#;Header(21):=4;end if;
+   Settings.Binding_Budget := 0; App.Start (Server, 16#20#, Settings, Startup_Limit, 1, True, Started);
    Check (Started = App.Invalid_Budget and then Opens = 0);
    Settings.Binding_Budget := 100_000; Settings.X_Gain := (1, 1);
-   App.Start (Server, 16#20#, Settings, 1000, 1, True, Started); Check (Started = App.Invalid_Calibration and then Opens = 0);
+   Settings.X_Range := (0, 0);
+   App.Start (Server, 16#20#, Settings, Startup_Limit, 1, True, Started); Check (Started = App.Invalid_Calibration and then Opens = 0);
    Settings.X_Gain := (1, 4); Settings.Coordinates := App.Source.Report_Bounds;
+   if Mode in "wide-motion" | "wide-backpressure" then
+      Settings.X_Gain := (if Mode = "wide-backpressure" then (32, 1) else (1, 1));
+      Settings.Y_Gain := Settings.X_Gain;
+   end if;
    Settings.X_Range := (0, 0); Settings.Y_Range := (0, 0);
-   App.Start (Server, 16#20#, Settings, 1000, 1, True, Started);
+   App.Start (Server, 16#20#, Settings, Startup_Limit, 1, True, Started);
    Check (Started = App.Started and then not App.Ready and then Input_Page (0 .. 1) = [16#20#, 0]);
-   App_Complete (Header, 10); App_Complete ([], 20);
-   Check (App.Observe.At_Phase = App.Device.Arming_Reset and then Submit_Calls = 2);
-   Check (Reset.Wake_Deadline (20, 5000) = 1000);
-   Check (Native.Wake_Deadline (20, 19, False) = 19);
-   GPIO_Complete (21); Native_Event (42, 1); Check (Event_Result = Native.Reset_Latched);
+   App_Complete (Header, 10);
+   Check (App.Observe.At_Phase = App.Device.Arming_Reset and then Submit_Calls = 1);
+   Check (Reset.Wake_Deadline (10, 6000) = Startup_Limit);
+   Check (Native.Wake_Deadline (10, 9, False) = 9);
+   Native_Event (42, 1); Check (Event_Result = Native.Unrelated); -- no confirmed lease yet
+   GPIO_Complete (11,False);
+   Check(App.Observe.At_Phase=App.Device.Arming_Reset and then Submit_Calls=1);
+   if not Timeout_Case then Native_Event (42, 1); Check(Event_Result=Native.Reset_Latched);end if; -- receipt/event before owner Step
+   App_Step(11,True);
+   Check(App.Observe.At_Phase=App.Device.Power_On and then Submit_Calls=2);
+   Native_Event (41, 1); Check (Event_Result=Native.Unrelated);
+   if not Timeout_Case then Native_Event (42, 1); Check (Event_Result = Native.Reset_Latched);end if; -- before POWER_ON completion/RESET
+   App_Complete ([], 20);Check(App.Observe.At_Phase=App.Device.Resetting);
+   if Timeout_Case then
+      declare Ack_Point:W.Word:=1030;Before:constant Natural:=Submit_Calls;begin
+         if Mode="reset-pending"then
+            App_Step(1030,True);
+            Check(App.Observe.At_Phase=App.Device.Resetting and not App.Observe.Reset_Ack_Timed_Out and Submit_Calls=Before and GPIO_Request.Kind=GW.Arm);
+            App_Complete([],1031);Ack_Point:=2031;
+         else App_Complete([],30);end if;
+         Check(App.Observe.At_Phase=App.Device.Await_Reset and App.Observe.Reset_Ack_Until=Ack_Point);
+         Check(App.Wake_Deadline(Ack_Point-1,6000)=Ack_Point);
+         if Mode="reset-bogus"then
+            Native_Event(42,1);Check(Event_Result=Native.Reset_Latched);App_Step(40,True);
+            App_Complete([16#FF#,16#FF#],50);
+            Check(App.Observe.At_Phase=App.Device.Await_Reset and App.Observe.Bogus_IRQ_Ignored and not App.Observe.Reset_Ack_Timed_Out and App.Observe.Reason=App.Device.None);
+         end if;
+         App_Step(Ack_Point-1,True);Check(App.Observe.At_Phase=App.Device.Await_Reset and not App.Observe.Reset_Ack_Timed_Out);
+         App_Step(Ack_Point,True);Check(App.Observe.At_Phase=App.Device.Releasing_Reset and App.Observe.Reset_Ack_Timed_Out and App.Observe.Reason=App.Device.None and GPIO_Request.Kind=GW.Release_Pin);
+         Check(not App.Ready and App.Observe.Reset_Still_Armed); -- no advance before confirmed release
+         if Mode="reset-release-uncertain"then
+            declare Before_Bus:constant Natural:=Submit_Calls;Before_GPIO:constant Natural:=GPIO_Calls;begin
+               GPIO_Complete(Ack_Point+1,True,GW.Uncertain);
+               Check(not App.Ready and App.Observe.Reason=App.Device.Reset_Release_Failed and App.Observe.Latch_Uncertain and App.Observe.Reset_Still_Armed);
+               Check(not App.Quiescent and not Native.Drained and Submit_Calls=Before_Bus);
+               for N in 2..4 loop App_Step(Ack_Point+W.Word(N),True);end loop;
+               App.Close(Closed);Check(Closed=C.Still_Owned and Submit_Calls=Before_Bus and GPIO_Calls=Before_GPIO and Session_Open);
+            end;
+            Ada.Text_IO.Put_Line("HID touchpad publication checks"&Checks'Image);return;
+         end if;
+         GPIO_Complete(Ack_Point+1);Check(App.Observe.At_Phase=App.Device.Fetch_Report and not App.Observe.Reset_Still_Armed);
+         App_Complete(Descriptor(0..Used-1),Ack_Point+10);Check(App.Ready and App.Observe.Reset_Ack_Timed_Out and App.Observe.Reason=App.Device.None);
+         Check_Descriptor_Metadata;
+         Finish_Special(Ack_Point+11);
+      end;
+      Ada.Text_IO.Put_Line("HID touchpad publication checks"&Checks'Image);return;
+   end if;
    App_Complete ([], 30); Check (App.Wake_Deadline (31, 5000) = 1000); App.Step (40, True);
    App_Complete ([0, 0], 50); Check (App.Observe.At_Phase = App.Device.Releasing_Reset); GPIO_Complete (51);
+   if Mode="elan-input-bogus"then Check(App.Observe.At_Phase=App.Device.Fetch_Report);
+   else Check(App.Observe.At_Phase=App.Device.Post_Reset_Power_On);App_Complete([],55);end if;
    App_Complete (Descriptor (0 .. Used - 1), 60);
    Check (App.Ready and then App.Admission.Outcome = App.Source_Configured and then App.Admission.Touchpad = 2);
+   Check_Descriptor_Metadata;
    Payload (0); Check (App.Head.Recover and then App.Head.Observed_Ms = 60);
    Check (Native.Wake_Deadline (60, 5000, True) = 61);
    Check (Native.Wake_Deadline (60, 5000, False) = 5000);
@@ -365,7 +470,7 @@ begin
    Check (Live.Control_Token = GPIO_Token);
    Check (Live.Wake_Deadline (61, 5000) = 111);
    Check (Native.Wake_Deadline (61, 5000, False) = 111);
-   if Ada.Command_Line.Argument_Count = 1 then
+   if Mode in "startup-cutoff"|"startup-after-cutoff" then
       declare
          Before : constant Natural := Submit_Calls;
          Words : constant GW.Message_Words := GW.Encode_Completion ((GW.Arm, GW.Completed, 43, 0));
@@ -392,7 +497,102 @@ begin
       end;
    end if;
    GPIO_Complete (62);
+   if Mode="elan-input-bogus"then
+      Check(Live.Ready);Flush(63,True);Check(App.Count=0);
+      Read_Event(70);App_Complete([16#FF#,16#FF#],71);
+      Check(App.Ready and App.Observe.Bogus_IRQ_Ignored and App.Observe.Reason=App.Device.None and App.Observe.Input_Packets=0 and App.Count=0);
+      Check(GPIO_Request.Kind=GW.Acknowledge and Live.Observe.At_Phase=Live.Owner.Acknowledging);
+      GPIO_Complete(72);Check(Live.Ready);Finish_Special(73);
+      Ada.Text_IO.Put_Line("HID touchpad publication checks"&Checks'Image);return;
+   end if;
    Check (Live.Ready and then Live.Control_Token = 0);
+   if Mode in "wide-motion" | "wide-backpressure" then
+      declare
+         Gain : constant Integer := (if Mode = "wide-backpressure" then 32 else 1);
+         Sum_X, Sum_Y, Transitions : Integer := 0;
+         Last_Button : W.Word := 0;
+         Parts : Natural := 0;
+         procedure Take_Event (At_Time : W.Word) is
+            Item : constant Input_Pending.Item := App.Head;
+            function Signed (Value : W.Word) return Integer is
+              (if Value >= 2048 then Integer (Value) - 4096 else Integer (Value));
+            Button : constant W.Word := Item.Payload mod 256;
+         begin
+            Check (not Item.Recover);
+            Sum_X := Sum_X + Signed ((Item.Payload / 2 ** 8) mod 4096);
+            Sum_Y := Sum_Y + Signed ((Item.Payload / 2 ** 20) mod 4096);
+            if Button /= Last_Button then
+               if Button = 1 then
+                  Check (Sum_X = 3217 * Gain and Sum_Y = 2097 * Gain);
+               else Check (Button = 0 and Last_Button = 1); end if;
+               Transitions := Transitions + 1;
+            end if;
+            Last_Button := Button;
+            Parts := Parts + 1;
+            Flush (At_Time, True);
+            Check (Published.Accepted = 1);
+         end Take_Event;
+      begin
+         Read_Event (70); Packet (0, 0, 0);
+         declare Data : constant D.Bytes := Output_Page (0 .. 31); begin App_Complete (Data, 71); end;
+         GPIO_Complete (72); Check (App.Count = 0);
+         Read_Event (80); Packet (3217, 2097, 1);
+         declare Data : constant D.Bytes := Output_Page (0 .. 31); begin App_Complete (Data, 81); end;
+         GPIO_Complete (82);
+         Check (App.Ready and App.Input_Observation.Outcome = App.Source.Input_Updated);
+         if Mode = "wide-backpressure" then
+            declare
+               Before_Bus : constant Natural := Submit_Calls;
+               Asked : App.Device.Request_Result;
+            begin
+               Check (App.Count = Input_Pending.Capacity and not App.Input_Ready);
+               Generation := 3; Native_Event (43, Generation); App_Step (90, True);
+               Check (Live.Observe.At_Phase = Live.Owner.Armed
+                 and Live.Observe.Buffered_Generation = 3 and Submit_Calls = Before_Bus);
+               Check (Live.Wake_Deadline (90, 5000) = 5000);
+               App.Request_Input (200, 90, True, Asked);
+               Check (Asked = App.Device.Busy and Submit_Calls = Before_Bus);
+               while not App.Input_Ready loop
+                  Take_Event (91);
+                  Check (Parts <= 100 and Submit_Calls = Before_Bus);
+               end loop;
+               Check (App.Count > 0);
+               App_Step (110, True);
+               Check (App.Observe.At_Phase = App.Device.Read_Input
+                 and Live.Observe.At_Phase = Live.Owner.Reading);
+            end;
+         else
+            Check (App.Count = 2);
+            Read_Event (90);
+         end if;
+         -- Lift while the swipe still has queued wire fragments. The release
+         -- must follow all motion, and the old anchor must not survive the lift.
+         Packet (3217, 2097, 0); Output_Page (3) := 1; Output_Page (9) := 0;
+         declare Data : constant D.Bytes := Output_Page (0 .. 31); begin App_Complete (Data, 111); end;
+         GPIO_Complete (112);
+         while App.Count > 0 loop
+            Take_Event (113); Check (Parts <= 100);
+         end loop;
+         Check (Sum_X = 3217 * Gain and Sum_Y = 2097 * Gain and Transitions = 2 and Last_Button = 0);
+         Check (App.Input_Ready);
+         -- Same contact ID reused at the other edge must establish a new anchor.
+         Read_Event (120); Packet (0, 0, 0);
+         declare Data : constant D.Bytes := Output_Page (0 .. 31); begin App_Complete (Data, 121); end;
+         GPIO_Complete (122); Check (App.Count = 0);
+         -- Move to the far edge, drain, then reverse the entire axis span.
+         Read_Event (130); Packet (3217, 2097, 0);
+         declare Data : constant D.Bytes := Output_Page (0 .. 31); begin App_Complete (Data, 131); end;
+         GPIO_Complete (132);
+         while App.Count > 0 loop Take_Event (133); Check (Parts <= 200); end loop;
+         Read_Event (140); Packet (0, 0, 0);
+         declare Data : constant D.Bytes := Output_Page (0 .. 31); begin App_Complete (Data, 141); end;
+         GPIO_Complete (142);
+         while App.Count > 0 loop Take_Event (143); Check (Parts <= 300); end loop;
+         Check (Sum_X = 3217 * Gain and Sum_Y = 2097 * Gain and Last_Button = 0);
+         Finish_Special (150);
+      end;
+      Ada.Text_IO.Put_Line ("HID touchpad publication checks" & Checks'Image); return;
+   end if;
    Read_Event (70);
    Packet (100, 200);
    declare Data : constant D.Bytes := Output_Page (0 .. 31); begin App_Complete (Data, 71, False); end;
@@ -425,20 +625,24 @@ begin
    Current_Consumer := Consumer_Two; Flush (102, False); Payload (0);
    Check (Published.Consumer_Changed and then Published.Consumer_Identity = Consumer_Two and then App.Head.Recover and then App.Head.Observed_Ms = 102);
    Saved := App.Head; Check_Wire (Saved); Flush (102, True); Check (App.Count = 0);
-   Read_Event (110); App_Complete ([0, 0], 111);
+   for N in 1 .. HID_Reset_Policy.Maximum_Spurious_Resets loop
+      Read_Event (W.Word(110 + 2*N)); App_Complete ([0, 0], W.Word(111 + 2*N)); GPIO_Complete (W.Word(111 + 2*N));
+      Check (App.Ready and then Live.Ready and then App.Observe.Consecutive_Spurious_Resets = N);
+   end loop;
+   Read_Event (128); App_Complete ([0, 0], 129);
    Check (not App.Ready and then App.Observe.Reason = App.Device.Unexpected_Device_Reset and then App.Quiescent);
    Check (not Live.Ready and then not Live.Quiescent and then GPIO_Request.Kind = GW.Release_Pin);
-   GPIO_Complete (112); Check (Live.Quiescent and then Live.Control_Token = 0);
+   GPIO_Complete (130); Check (Live.Quiescent and then Live.Control_Token = 0);
    Payload (0); App.Close (Closed); Check (Closed = C.Closed and then not Session_Open);
    Check (not Native.Drained);
-   Current_Consumer := P.No_Process; Flush (112, True);
+   Current_Consumer := P.No_Process; Flush (130, True);
    Check (Published.No_Consumer and then not Native.Drained);
    Current_Consumer := Consumer_One;
-   Saved := App.Head; Flush (112, False);
+   Saved := App.Head; Flush (130, False);
    Check (Published.Blocked and then not Native.Drained);
-   Saved := App.Head; Flush (112, False);
+   Saved := App.Head; Flush (130, False);
    Check (Published.Blocked and then not Native.Drained and then App.Head = Saved);
-   Flush (112, True); Check_Wire (Saved); Check (App.Count = 0 and then Native.Drained);
+   Flush (130, True); Check_Wire (Saved); Check (App.Count = 0 and then Native.Drained);
    Build (True);
    declare Config : constant Ambiguous.Configuration := (5, 100_000, (0, 4095), (0, 4095), (1, 4), (1, 4),
       Ambiguous.Source.Pointer.As_Reported, Ambiguous.Source.Pointer.Reversed, Ambiguous.Source.Pointer.Require_Confident,
@@ -448,7 +652,7 @@ begin
       Ambiguous.Start (Server, 16#20#, Config, 1000, 200, True, Status); Check (Status = Ambiguous.Started);
       Ambiguous_Complete (Header, 210); Ambiguous_Complete ([], 220); Ambiguous.Reset_Interrupt (42, Event);
       Ambiguous_Complete ([], 230); Ambiguous.Step (240, True); Ambiguous_Complete ([0, 0], 250);
-      Ambiguous_Complete (Descriptor (0 .. Used - 1), 260);
+      Ambiguous_Complete ([], 255); Ambiguous_Complete (Descriptor (0 .. Used - 1), 260);
       Check (not Ambiguous.Ready and then Ambiguous.Admission.Outcome = Ambiguous.Touchpad_Ambiguous and then Ambiguous.Quiescent);
       Ambiguous.Close (Ambiguous_Closed); Check (Ambiguous_Closed = C_Ambiguous.Closed);
    end;
@@ -461,7 +665,7 @@ begin
       Budgeted.Start (Server, 16#20#, Config, 1000, 300, True, Status); Check (Status = Budgeted.Started);
       Budgeted_Complete (Header, 310); Budgeted_Complete ([], 320); Budgeted.Reset_Interrupt (42, Event);
       Budgeted_Complete ([], 330); Budgeted.Step (340, True); Budgeted_Complete ([0, 0], 350);
-      Budgeted_Complete (Descriptor (0 .. Used - 1), 360);
+      Budgeted_Complete ([], 355); Budgeted_Complete (Descriptor (0 .. Used - 1), 360);
       Check (not Budgeted.Ready and then Budgeted.Admission.Outcome = Budgeted.Root_Budget_Exhausted
          and then Budgeted.Admission.Root_Charge = 1 and then Budgeted.Admission.Binding_Charge = 0);
       Budgeted.Close (Budgeted_Closed); Check (Budgeted_Closed = C_Budgeted.Closed);
@@ -474,13 +678,13 @@ begin
       Too_Small.Start (Server, 16#20#, Config, 1000, 400, True, Status); Check (Status = Too_Small.Started);
       Small_Complete (Header, 410); Small_Complete ([], 420); Too_Small.Reset_Interrupt (42, Event);
       Small_Complete ([], 430); Too_Small.Step (440, True); Small_Complete ([0, 0], 450);
-      Small_Complete (Descriptor (0 .. Used - 1), 460);
+      Small_Complete ([], 455); Small_Complete (Descriptor (0 .. Used - 1), 460);
       Check (not Too_Small.Ready and then Too_Small.Admission.Outcome = Too_Small.Parser_Refused
          and then Too_Small.Admission.Parser = Too_Small.Schema.Need_Capacity and then Too_Small.Admission.Fields_Required > 1);
       Too_Small.Close (Small_Closed); Check (Small_Closed = C_Small.Closed);
    end;
    Check (not Session_Open and then Submit_Calls > 0 and then Opens = 4 and then Close_Calls = 4);
-   Check (GPIO_Calls = 10 and then Publication_Attempts > 0);
+   Check (GPIO_Calls = 10 + HID_Reset_Policy.Maximum_Spurious_Resets and then Publication_Attempts > 0);
    -- The actual parser/device/GPIO composition is now stopped. Exercise fair
    -- queue scheduling without replacing its lifecycle with a policy mock.
    Pump_Time := 120; Completion_Queued := 3; Event_Queued := 3; Request_Queued := 3;

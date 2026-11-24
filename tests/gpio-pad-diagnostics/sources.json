@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "tests/gpio-pad-diagnostics/pad_tests.adb",
+      "sha256": "9291f89ff41451fd45473f8e39aeea0a05530dc9e6fb0495f54770ac1beee981"
+    },
+    {
+      "path": "userspace/services/gpio/lib/gpio_pad_diagnostics.ads",
+      "sha256": "e0d885499ed340de1a824f567fb92c3682e8c66adec54120f060ce8650b97c3c"
+    },
+    {
+      "path": "userspace/services/gpio/lib/gpio_pad_diagnostics.adb",
+      "sha256": "0214fc809a9398935c671684adeaf52ca0687a5ad4966067c7901fcb90729450"
+    },
+    {
+      "path": "userspace/services/gpio/lib/intel_adln_gpio.ads",
+      "sha256": "4dc2283bf20ace8a72db2bb307ed113234baa6998b6fb613ef74a2c8e2cf5622"
+    },
+    {
+      "path": "userspace/services/gpio/lib/intel_adln_gpio.adb",
+      "sha256": "74116b564512250c8ab0f5df99416aa737ec1f0b7eb3fcd542bd372e2036d788"
+    },
+    {
+      "path": "userspace/services/gpio/lib/intel_gpio_irq.ads",
+      "sha256": "cd789862fda9fca63d1f292eb0ef2800899007ae1e63bf4a2a68025fd9d9ac26"
+    },
+    {
+      "path": "userspace/services/gpio/lib/intel_gpio_irq.adb",
+      "sha256": "1141e4996196d1094a939eb9257e85b7a9ef9ccf92f60e3b493baa529ca6bf1c"
+    }
+  ],
+  "tools": {
+    "gprbuild": {
+      "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+      "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+    }
+  }
+}

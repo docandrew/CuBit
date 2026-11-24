@@ -17,8 +17,9 @@ package AML_Decode with SPARK_Mode, Pure is
    function Literal_Origin (Opcode : Byte) return Integer_Origin is
      (if Opcode in 0 | 1 | 16#FF# then AML_Constant else Ordinary_Integer);
    subtype Integer_Value is Interfaces.Unsigned_64;
-   -- CuBit AML interpreter policy version; distinct from _REV/table revision.
-   Interpreter_Revision : constant Integer_Value := 1;
+   -- CuBit AML interpreter build revision, in calendar form like ACPICA.
+   -- This identifies the CuBit AML build, not ACPICA or _REV/table revision.
+   Interpreter_Revision : constant Integer_Value := 16#2026_1122#;
    subtype Bytes is Firmware_Tables.Bytes;
    type Status is (Accepted, Truncated, Unsupported, Malformed, Limit_Exceeded);
    type Integer_Width is (Bits_32, Bits_64);
@@ -112,7 +113,15 @@ package AML_Decode with SPARK_Mode, Pure is
      (Data : Bytes; Width : Integer_Width) return Integer_Result
      with Post =>
        (if Read_Integer'Result.Kind = Accepted then
-          Read_Integer'Result.Consumed <= Data'Length);
+          Read_Integer'Result.Consumed <= Data'Length)
+       and then (if Data'Length > 0 and then Data (Data'First) in Extended_Op then
+          (if Data'Length < Revision_Bytes then
+             Read_Integer'Result.Kind = Truncated
+           elsif Data (Data'First + 1) in Revision_Extension then
+             Read_Integer'Result.Kind = Accepted
+             and then Read_Integer'Result.Value in Interpreter_Revision
+             and then Read_Integer'Result.Consumed = Revision_Bytes
+           else Read_Integer'Result.Kind = Unsupported));
 
    --  For package-bearing opcodes only: NOT a Field bit-length decoder.
    --  Empty bodies are legal; opcode-specific body requirements are separate.

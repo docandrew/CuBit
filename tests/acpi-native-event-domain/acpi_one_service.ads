@@ -9,6 +9,10 @@ package ACPI_One_Service is
    Now:Interfaces.Unsigned_64:=100;
    Expire_After_Candidate : Boolean := False;
    Delay_After_Candidate : Interfaces.Unsigned_64 := 0;
+   Delay_In_Sample_HID:Interfaces.Unsigned_64:=0;
+   Button_Test_Delay:Interfaces.Unsigned_64:=0;
+   Button_Test_Unsafe,Fail_Next_HID:Boolean:=False;
+   Query_Windows : Natural := 0;
    Maximum_Window_Length, Last_Window_Length : Interfaces.Unsigned_64 := 0;
    function Current_Event_Deadline return Interfaces.Unsigned_64;
    Read_Clock_Available : Boolean := True;
@@ -25,6 +29,9 @@ package ACPI_One_Service is
    procedure End_Delays(Accepted:out Boolean);
    procedure Stop_Delays;
    package Root is
+      package Hardware is
+         function Admitting return Boolean;
+      end Hardware;
       package Fields is
          type EC_Boot_Status is (EC_Ready,EC_Absent);
          type EC_Boot_Report is record

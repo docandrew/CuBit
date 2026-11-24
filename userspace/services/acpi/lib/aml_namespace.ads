@@ -38,6 +38,7 @@ with AML_Events;
 with AML_Byte_Sources;
 with AML_Data;
 with AML_Execute;
+with AML_PCI_Bridge_Probe;
 with AML_Execution_Limits;
 with AML_Table_Backing;
 with AML_Objects;
@@ -774,18 +775,19 @@ package Owned with SPARK_Mode is
    -- integer object; byte slots receive the low byte. Other source kinds are
    -- handled separately; this is not a complete AML Store entry point.
    procedure Store_Integer (A : in out Arena; R : Reference;
-     Value : AML_Decode.Integer_Value; Status : out AML_Execute.Execution_Status)
+     Value : AML_Decode.Integer_Value; Status : out AML_Execute.Execution_Status;
+     Origin : AML_Decode.Integer_Origin := AML_Decode.Ordinary_Integer)
      with Pre => Valid (A),
      Post => Valid (A) and then Generation (A) = Generation (A)'Old
        and then Status in AML_Execute.Returned | AML_Execute.Unsupported_Value | AML_Execute.Value_Limit
-       and then (if Status /= AML_Execute.Returned then Model (A) = Model (A)'Old
-         else Matches (A, R) and then
+       and then (if Status = AML_Execute.Returned then Matches (A, R) and then
            (if AML_References.Kind (R) = AML_References.Byte_Slot then
               Byte_At (A, R) = AML_Decode.Byte (Value mod 256)
             else AML_References.Kind (R) = AML_References.Package_Slot
               and then Element_At (A, R) > 0
               and then AML_Objects.Kind (Model (A), Element_At (A, R)) = AML_Objects.Integer_Object
-              and then AML_Objects.Integer_Data (Model (A), Element_At (A, R)) = Value));
+              and then AML_Objects.Integer_Data (Model (A), Element_At (A, R)) = Value
+              and then AML_Objects.Origin_Of (Model (A), Element_At (A, R)) = Origin));
 
    -- Semantic Snapshot excludes issuance metadata, which is explicitly
    -- observed here and never rolled back while this arena identity is live.
@@ -842,8 +844,7 @@ package Owned with SPARK_Mode is
       Width : AML_Decode.Integer_Width; Initializer : AML_Decode.Bytes;
       Count : AML_Data.Count_Result; Status : out AML_Execute.Execution_Status)
      with Pre => Valid (A), Post => Valid (A)
-       and then Generation (A) = Generation (A)'Old
-       and then (if Status /= AML_Execute.Returned then Snapshot (A) = Snapshot (A)'Old);
+       and then Generation (A) = Generation (A)'Old;
    function Abort_Frame (Tree, Prior : State; Node : Node_ID) return Boolean with Ghost;
    procedure Abort_Name
      (A : in out Arena; Token : Name_Reservation; Status : out AML_Execute.Execution_Status)
@@ -1054,8 +1055,7 @@ package Owned with SPARK_Mode is
      with Pre => Valid (A),
      Post => Valid (A) and then Generation (A) = Generation (A)'Old
        and then Node_Count (A) = Node_Count (A)'Old
-       and then Methods_Used (A) = Methods_Used (A)'Old
-       and then (if Status /= AML_Execute.Returned then Snapshot (A) = Snapshot (A)'Old);
+       and then Methods_Used (A) = Methods_Used (A)'Old;
    -- Leaf field APIs: authenticated backing retained by namespace edge.
    -- No GC or AML callbacks occur here. Generic CreateField always reads Buffer.
    function Buffer_Field_Defined (Tree, Prior : State; Node : Node_ID;
@@ -1081,8 +1081,8 @@ package Owned with SPARK_Mode is
      (Tree, Prior : State; Scope : Natural; Width : AML_Decode.Integer_Width;
       Source : AML_Execute.Datum; Offset, Bits : AML_Decode.Integer_Value;
       Always_Buffer : Boolean) return Boolean with Ghost;
-   -- Value-level declaration transaction. Existing Buffers retain identity;
-   -- Integer/String conversion and namespace insertion commit together.
+   -- Value-level declaration in place. Existing Buffers retain identity;
+   -- completed conversion effects remain if later namespace insertion fails.
    -- Collection, when required, occurs in the evaluator adapter before entry.
    procedure Define_Buffer_Field_Value
      (A : in out Arena; Scope : Natural; Path : AML_Names.Name_Result;
@@ -1095,8 +1095,7 @@ package Owned with SPARK_Mode is
          and then Methods_Used (A) = Methods_Used (A)'Old
          and then (if Status = AML_Execute.Returned then
            Buffer_Field_Value_Defined (Snapshot (A), Snapshot (A)'Old, Scope,
-             Width, Source, Bit_Offset, Bit_Length, Always_Buffer)
-          else Snapshot (A) = Snapshot (A)'Old);
+             Width, Source, Bit_Offset, Bit_Length, Always_Buffer));
    procedure Read_Buffer_Field
      (A : in out Arena; Field : Reference; Width : AML_Decode.Integer_Width;
       Value : out AML_Execute.Datum; Status : out AML_Execute.Execution_Status)
@@ -1104,24 +1103,27 @@ package Owned with SPARK_Mode is
        Post => Valid (A) and then Generation (A) = Generation (A)'Old
          and then Buffer_Field_Read_Frame (Snapshot (A), Snapshot (A)'Old)
          and then (if Status /= AML_Execute.Returned then
-           Snapshot (A) = Snapshot (A)'Old
-           and then Value.Value_Kind = AML_Execute.Integer_Datum and then Value.Number = 0);
+           Value.Value_Kind = AML_Execute.Integer_Datum and then Value.Number = 0);
    procedure Write_Buffer_Field
      (A : in out Arena; Field : Reference; Width : AML_Decode.Integer_Width;
       Item : AML_Execute.Datum; Status : out AML_Execute.Execution_Status)
      with Pre => Valid (A),
        Post => Valid (A) and then Generation (A) = Generation (A)'Old
          and then (if Status = AML_Execute.Returned then
-           Buffer_Field_Write_Frame (Snapshot (A), Snapshot (A)'Old, Field)
-          else Snapshot (A) = Snapshot (A)'Old);
+           Buffer_Field_Write_Frame (Snapshot (A), Snapshot (A)'Old, Field));
 
    procedure Store_Reference_Value
      (A : in out Arena; R : Reference; Width : AML_Decode.Integer_Width;
       Item : AML_Execute.Datum; Status : out AML_Execute.Execution_Status;
       Mode : AML_Execute.Reference_Store_Mode := AML_Execute.Direct_Target)
      with Pre => Valid (A),
+       -- Failed stores retain a valid state; no rollback/snapshot equality.
        Post => Valid (A) and then Generation (A) = Generation (A)'Old
-         and then (if Status /= AML_Execute.Returned then Snapshot (A) = Snapshot (A)'Old);
+         and then (if Status = AML_Execute.Returned
+           and then AML_References.Kind (R) = AML_References.Byte_Slot
+           and then Item.Value_Kind = AML_Execute.Integer_Datum
+         then Matches (A, R)
+           and then Byte_At (A, R) = AML_Decode.Byte (Item.Number mod 256));
    -- Structural resource-template composition only; no hardware authority.
    procedure Concatenate_Resources_And_Attach
      (A : in out Arena; Width : AML_Decode.Integer_Width;
@@ -1163,8 +1165,7 @@ package Owned with SPARK_Mode is
          and then Invocation_Count (A) = Invocation_Count (A)'Old
          and then Last_Incarnation (Snapshot (A)) = Last_Incarnation (Snapshot (A)'Old)
          and then (if Status /= AML_Execute.Returned then
-           Snapshot (A) = Snapshot (A)'Old
-           and then Result_Value.Value_Kind = AML_Execute.Integer_Datum and then Result_Value.Number = 0
+           Result_Value.Value_Kind = AML_Execute.Integer_Datum and then Result_Value.Number = 0
            and then Cell_Value.Value_Kind = AML_Execute.Integer_Datum and then Cell_Value.Number = 0);
    -- Start and Count must already be width-normalized. Noncanonical raw
    -- ranges are rejected without mutation; Integer source is normalized here.
@@ -1230,7 +1231,8 @@ package Owned with SPARK_Mode is
            Snapshot (A) = Snapshot (A)'Old and then Copy.Value_Kind = AML_Execute.Integer_Datum
            and then Copy.Number = 0);
    -- Copy only an object owned by this arena incarnation. Numeric IDs from
-   -- snapshots do not authorize a copy. Allocation failure publishes nothing.
+   -- snapshots do not authorize a copy. Failure publishes no result; fresh
+   -- temporary objects remain valid until their owning roots are released.
    procedure Clone_Source
      (A : in out Arena; Source : AML_References.Object_Handle;
       Copy : out AML_References.Object_Handle;
@@ -1239,13 +1241,13 @@ package Owned with SPARK_Mode is
      Post => Valid (A) and then Generation (A) = Generation (A)'Old
        and then Status in AML_Execute.Returned | AML_Execute.Unsupported_Value
          | AML_Execute.Value_Limit
+       and then AML_Objects.Extends (Model (A), Model (A)'Old)
+       and then Node_Count (A) = Node_Count (A)'Old
+       and then Methods_Used (A) = Methods_Used (A)'Old
        and then (if Status = AML_Execute.Returned then
          Has_Source (A, Copy) and then Has_Source (A, Source)
          and then not AML_Objects.Is_Live (Model (A)'Old, AML_References.Source (Copy))
-         and then AML_Objects.Extends (Model (A), Model (A)'Old)
-         and then Node_Count (A) = Node_Count (A)'Old
-         and then Methods_Used (A) = Methods_Used (A)'Old
-       else Snapshot (A) = Snapshot (A)'Old and then not Has_Source (A, Copy));
+       else not Has_Source (A, Copy));
    -- NAME package leaves are read-only value bindings, never Store authority.
    function Name_Member_Matches (A : Arena; R : Reference) return Boolean with Pre => Valid (A);
    procedure Resolve_Name_Member (A : Arena; R : Reference; Value : out AML_Execute.Datum;
@@ -2225,11 +2227,22 @@ private
    subtype Mutex_Frame_Index is AML_Frame_Handles.Frame_Index range 1 .. AML_Frame_Handles.Max_Active_Frames;
    type Mutex_Frame_Array is array (Mutex_Frame_Index) of AML_Frame_Handles.Frame_Handle;
    type Mutex_Token_Array is array (Mutex_Frame_Index) of Mutex_Registry.Method_Token;
-   type PCI_Setup_Phase is (PCI_Up, PCI_HID, PCI_CID, PCI_ADR, PCI_SEG, PCI_BBN, PCI_Done);
+   type PCI_Setup_Phase is (PCI_Up, PCI_HID, PCI_CID, PCI_ADR, PCI_SEG, PCI_BBN, PCI_Done, PCI_Path, PCI_Probe);
+   -- Session-local metadata. Owner is supplied by the current work ticket;
+   -- the incarnation prevents a reused node slot from becoming a new path.
+   type PCI_Path_Cursor is record
+      Node : Node_ID := Root;
+      Stamp : AML_References.Node_Incarnation := 0;
+   end record;
    type PCI_Setup_Work is record
       Active : Boolean := False;
       Ticket : AML_Execute.Field_Context_Ticket := 0;
       Field, Region, Device, Walk, Host : Reference := AML_References.No_Reference;
+      Cursor, Search, Candidate : PCI_Path_Cursor;
+      Probe : AML_PCI_Bridge_Probe.State;
+      Metadata_Reads : AML_Execution_Limits.Field_Request_Count := 0;
+      Follow_Bridge : Boolean := False;
+      Follow_Bus : ACPI_PCI_Config_Reads.Bus_Number := 0;
       Stage : PCI_Setup_Phase := PCI_Up;
       Location : ACPI_PCI_Config_Reads.Location;
    end record;

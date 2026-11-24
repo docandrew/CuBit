@@ -46,7 +46,8 @@
   # its recovery copies before it is ended.
   (start "power.svc" (priority 5)
     (arguments (Power_Parameters undeclared_grace_ms => 2000 storage_deadline_ms => 10000
-                                 driver_grace_ms => 1000 button => Button_Policy.Power_Off)))
+                                 driver_grace_ms => 1000 button => Button_Policy.Power_Off
+                                 reading_age_ms => 60000)))
   # The touchpad (SUP-001): devmgr starts the HID-over-I2C driver for each
   # PNP0C50 device acpi.svc offers, through procmgr's Start_Child. The
   # launch is one typed value, a Device_Class_Launch: policy is hid-i2c's

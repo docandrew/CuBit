@@ -3,6 +3,7 @@ with AML_Delays;
 with AML_Decode; use AML_Decode;
 with AML_Execute;
 with AML_Namespace;
+with AML_Objects;
 with AML_Table_Backing;
 procedure Field_Package_Tests is
    use type AML_Decode.Bytes;
@@ -38,6 +39,16 @@ procedure Field_Package_Tests is
       return [16#14#, 16#40# + Byte ((Size + 2) mod 16), Byte ((Size + 2) / 16)] &
         Name ("TEST") & Bytes'(1 => 0) & Code;
    end Method;
+   -- Legacy collector-specific liveness fixtures. Allocation now tries first
+   -- and collects only after quota refusal. Fill the byte quota with temporary
+   -- buffers, rather than requiring an eager sweep after every allocation.
+   -- Keep the value/liveness assertions when this is replaced by refcounts.
+   Quarter : constant Integer_Value := AML_Objects.Max_Bytes / 4;
+   Quota_Pressure : constant Bytes :=
+     [16#70#,16#0A#,24,16#63#,16#A2#,16#0E#,16#63#,16#70#,
+      16#11#,7,16#0C#,Byte (Quarter mod 256),Byte ((Quarter / 256) mod 256),
+      Byte ((Quarter / 65_536) mod 256),Byte ((Quarter / 16_777_216) mod 256),
+      0,16#62#,16#76#,16#63#,16#70#,0,16#62#];
    Data : constant Bytes := [16#11#,5,16#0A#,2,65,66];
    Package_Value : constant Bytes := [16#12#,6,1] & Name ("FLD0");
    procedure Check (Good : Boolean) is
@@ -61,7 +72,7 @@ begin
                -- convert the captured element to Integer after further GC.
                Code : constant Bytes := Field_Code & Package_Code &
                  [16#70#,16#0A#,66] & Name ("FLD0") &
-                 [16#70#,16#0D#,88,0,16#61#,16#A4#,16#99#,16#83#,16#88#] &
+                 Quota_Pressure & Bytes'(16#70#,16#0D#,88,0,16#61#,16#A4#,16#99#,16#83#,16#88#) &
                  Package_Source & [0,0,0];
             begin
                C.Reset (A, Status); Check (Status = C.Available);
@@ -69,7 +80,7 @@ begin
                Check (Status = C.Available and then Loaded = N.Loaded);
                C.Seal (A, Report, Status); Check (Status = C.Available);
                declare Before : constant C.Collection_Count := C.Reclamation_Metrics (A).Completed; begin
-                  C.Invoke (A, Input, 1, Args, 0, 200, R, Status);
+                  C.Invoke (A, Input, 1, Args, 0, 1000, R, Status);
                   Check (Status = C.Available);
                   Check (R.Status = AML_Execute.Returned and then R.Number = 65);
                   Check (C.Reclamation_Metrics (A).Completed > Before and then

@@ -126,6 +126,15 @@ package body Desktop_Status_Panel is
       return T;
    end To_Short;
 
+   function To_Row (S : String) return Row_Text is
+      T : Row_Text;
+      N : constant Natural := Natural'Min (S'Length, T.Data'Length);
+   begin
+      T.Data (1 .. N) := S (S'First .. S'First + N - 1);
+      T.Length := N;
+      return T;
+   end To_Row;
+
    ---------------------------------------------------------------------------
    --  Layout
    ---------------------------------------------------------------------------
@@ -150,10 +159,11 @@ package body Desktop_Status_Panel is
       Drawn := Replacement_Drawn;
    end Replacement_Switch;
 
-   function Height (Net : DNR.Layout; Note_Rows : Natural; System_Shown, Remote_Shown : Boolean)
+   function Height (Net : DNR.Layout; Note_Rows : Natural; System_Shown, Remote_Shown, Power_Shown : Boolean)
      return Natural is
      (DBS.Panel_Stripe + DBS.Panel_Header + 2 * DBS.Panel_Section + 2 * DBS.Panel_Row
       + (if Remote_Shown then DBS.Panel_Section + Remote_Rows * DBS.Panel_Row else 0)
+      + (if Power_Shown then DBS.Panel_Section + DBS.Panel_Row else 0)
       + (if System_Shown then DBS.Panel_Section + 2 * DBS.Panel_Row else 0)
       + Net_Height (Net)
       + (if Note_Rows = 0 then DBS.Panel_Row else Note_Rows * DBS.Panel_Note_Row)
@@ -317,7 +327,7 @@ package body Desktop_Status_Panel is
       Join : DNM.Join_State; Editor : DAE.Editor; Acts : in out Action_List)
    is
       Colors : constant Theme := Current_Theme;
-      Rows : constant Natural := Height (Net, V.Note_Rows, V.System_Shown, V.Remote_Shown);
+      Rows : constant Natural := Height (Net, V.Note_Rows, V.System_Shown, V.Remote_Shown, V.Power_Shown);
       OK : Boolean;
       C : Canvas;
       Full : Rect;
@@ -459,6 +469,21 @@ package body Desktop_Status_Panel is
          end;
          Y := Y + DBS.Panel_Row;
       end Remote_Section;
+
+      ------------------------------------------------------------------
+      --  The Power section (PWR-004): the battery's charge, state and
+      --  runtime, in words (Desktop_Power_Text), never colour alone.
+      ------------------------------------------------------------------
+      procedure Power_Section is
+         R : Rect;
+      begin
+         Section (C, Row_Rect (DBS.Panel_Section), "Power", Colors);
+         Y := Y + DBS.Panel_Section;
+         R := Row_Rect (DBS.Panel_Row);
+         Draw_UI_Text_Transparent (C, Pad, Text_Y (R), "Battery", Colors.text);
+         Draw_UI_Text_Transparent (C, Pad + Label_W, Text_Y (R), Image (V.Power_Row), Colors.text);
+         Y := Y + DBS.Panel_Row;
+      end Power_Section;
 
       ------------------------------------------------------------------
       --  The System section: a bar per CPU (busy since the last reading)
@@ -840,6 +865,9 @@ package body Desktop_Status_Panel is
          Remote_Section;
       end if;
       Quick_Settings;
+      if V.Power_Shown then
+         Power_Section;
+      end if;
       if V.System_Shown then
          System_Section;
       end if;

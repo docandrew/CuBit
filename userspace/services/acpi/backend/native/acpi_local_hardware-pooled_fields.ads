@@ -15,6 +15,10 @@ with ACPI_Platform_Region_Cache;
 with ACPI_Platform_Field_Provider;
 with ACPI_Local_Field_Mux;
 with ACPI_Local_Field_Mux.With_EC;
+with ACPI_Local_Field_Mux.With_EC.With_CMOS;
+with ACPI_Local_CMOS_Provider;
+with ACPI_Native_CMOS_Ports;
+with ACPI_CMOS_Transactions;
 with ACPI_Local_EC_Commands;
 with ACPI_Local_EC_Field_Provider;
 with ACPI_EC_Types;
@@ -54,6 +58,7 @@ package ACPI_Local_Hardware.Pooled_Fields is
    -- Actual composed handler/cache readiness, not ECDT metadata alone.
    -- Does not authorize any SystemMemory alias used by firmware REG bodies.
    function EC_Handler_Available return Boolean;
+   function CMOS_Handler_Available return Boolean;
    type Field_Sequence is new Interfaces.Unsigned_64;
    type Field_Trace_Report is record
       Sequence : Field_Sequence := 0;
@@ -187,7 +192,12 @@ private
      (EC_Commands,EC_Cell_Allowed,EC_Deadline,EC_Pause,EC_Command_Work);
    package Ordinary_Mux is new ACPI_Local_Field_Mux
       (Declaration,Scalar,Platform,Named_Data,Configuration.Provider,Check_Field_Access);
-   package Mux is new Ordinary_Mux.With_EC (EC_Provider);
+   procedure CMOS_Transfer (Plan : ACPI_CMOS_Transactions.Transfer;
+      Value : out ACPI_CMOS_Transactions.I.Byte; Outcome : out ACPI_CMOS_Transactions.Completion);
+   package CMOS_Provider is new ACPI_Local_CMOS_Provider
+     (ACPI_Native_CMOS_Ports.Read_Configuration, Check_Field_Access, CMOS_Transfer);
+   package EC_Mux is new Ordinary_Mux.With_EC (EC_Provider);
+   package Mux is new EC_Mux.With_CMOS (CMOS_Provider);
    EC_Info : EC_Boot_Report;
    EC_Control_Ports,EC_Data_Ports : CuBit.Handles.IO_Ports := CuBit.Handles.No_IO_Ports;
    EC_Frame_Open,EC_Guard_Retained : Boolean := False;

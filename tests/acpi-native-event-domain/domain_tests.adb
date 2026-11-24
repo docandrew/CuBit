@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with ACPI_Native_Power_Buttons;
 with ACPI_Hosted_Heap;
 with ACPI_Snapshot_Startup;with ACPI_Snapshot_Startup.With_Driver;
 with Ada.Strings.Fixed;with Ada.Strings;
@@ -19,6 +20,7 @@ with ACPI_SCI_Events;with ACPI_SCI_Registers;with ACPI_SCI_Quiesce;
 with ACPI_Requests.With_Local_Maintenance;
 pragma Elaborate_All(ACPI_Hosted_Heap);
 procedure Domain_Tests is
+   use type ACPI_One_Service.Runtime.Status.Phase;
    package C renames ACPI_Service;package Q renames ACPI_Requests;package One renames ACPI_One_Service;
    package L renames ACPI_Snapshot_Startup;
    package D renames ACPI_Native_Event_Domain;package Log renames ACPI_Native_Log;
@@ -706,20 +708,19 @@ procedure Domain_Tests is
    procedure Failed_Identity is
    begin
       Check(D.Observe.Consumers_Started and not D.Observe.EC_Armed,"failed EC identity confers no EC source authority");
-      for Step in 1..256 loop
-         D.Advance(Owner.all,Owner_Result);
-         exit when Owner_Result=ACPI_Native_Server.Owner_Refused;
-      end loop;
-      Check(Owner_Result=ACPI_Native_Server.Owner_Refused and D.Observe.Stage=D.Failed
-         and D.Observe.Why=D.Consumer_Work_Refused,"bad identity later refuses the consumer domain");
-      Check(ACPI_Native_Diagnostic_Output.Saw("stage consumer fail reason=FAMILY_REFUSED family="),
-         "later refusal retains typed consumer diagnostics: "&ACPI_Native_Diagnostic_Output.Latest);
-      Check(One.Reads=0 and One.Writes=0 and ACPI_SCI_Events.Enables=0
-         and not Log.Saw("HID-I2C candidate"),"failed identity acquisition publishes no candidate or EC access");
+      Run_To_Idle;
+      Check(D.Observe.Stage=D.Live and One.Runtime.Current=One.Runtime.Status.Idle,
+         "ordinary identity error isolates affected families without stopping the shared owner");
+      Check(ACPI_Native_Diagnostic_Output.Saw("isolated=TRUE"),
+         "isolated identity failure retains typed consumer diagnostics: "&ACPI_Native_Diagnostic_Output.Latest);
+      Check(One.Reads=0 and One.Writes=0 and ACPI_SCI_Events.Enables=0,
+         "failed EC identity confers no EC IO or enabled source");
+      Check(Log.Saw("HID-I2C candidate"),
+         "ordinary unrelated identity failure preserves independently resolved HID candidate");
       declare Before : constant Natural := One.Eval_Calls;begin
          D.GPE_Event(ACPI_SCI_Events.EC_Source,Disposition);
          Check(Disposition=ACPI_SCI_Events.Unbound and One.Eval_Calls=Before,
-            "failed domain cannot dispatch a new EC handler");
+            "unavailable EC cannot dispatch a handler despite healthy independent owner");
       end;
       D.Begin_Stop;Check_Cached_Unavailable("stopping");D.Confirm_Disarm((State=>ACPI_SCI_Quiesce.Quiesced));Drain_Only;
       D.Close(Owner.all,Drain_Result);
@@ -790,7 +791,6 @@ begin
          Before_Evaluations : constant Natural := One.Eval_Calls;
          Before_Reads : constant Natural := One.Reads;
          Before_Writes : constant Natural := One.Writes;
-         use type One.Runtime.Status.Phase;
       begin
          if Mode="prepare-active-notify" then
             ACPI_SCI_Events.Armed_State:=False;
@@ -849,7 +849,24 @@ begin
    end if;
    One.Expire_After_Candidate:=Mode="candidate-expiry";
    if Mode="slow-discovery" then One.Delay_After_Candidate := 700_000; end if;
+   if Mode="button-slow" then One.Button_Test_Delay:=700_000;
+   elsif Mode="button-expired" then One.Button_Test_Delay:=6_000_000;
+   elsif Mode="button-unsafe" then One.Button_Test_Unsafe:=True;end if;
    D.Start(Owner.all,Start_Result);
+   if Mode in "button-slow"|"button-expired"|"button-unsafe" then
+      if Mode="button-slow" then
+         Check(Start_Result=D.Ready and One.Delay_In_Sample_HID=0 and One.Last_Window_Length=5_000_000,
+            "actual native button discovery admits700ms lookup under finite5s window");
+         Check(ACPI_Native_Power_Buttons.Control_Configured and One.Runtime.Current=One.Runtime.Status.Idle,
+            "actual button bridge is published only after original owner closes safely");
+      else
+         Check(Start_Result=D.Refused and D.Observe.Why=D.Button_Discovery_Refused,
+            "expired or unsafe button discovery remains refused");
+         Check(not ACPI_Native_Power_Buttons.Control_Configured and One.Runtime.Current=One.Runtime.Status.Stopped,
+            "expiry/FieldIndeterminate cannot publish button or continue runtime");
+      end if;
+      Ada.Text_IO.Put_Line("Native event domain "&Mode&" checks"&Checks'Image);return;
+   end if;
    declare View:constant ACPI_Native_EC_Discovery.Report:=ACPI_Native_EC_Discovery.Observe;
    begin
       if View.Status=ACPI_Native_EC_Discovery.Ready then
@@ -866,15 +883,20 @@ begin
    if Mode in "battery-absent"|"battery-none"|"battery-unknown"|"battery-legacy"|"battery-multiple"|"battery-full"|"battery-overflow" then
       Check(Start_Result=D.Ready,"battery fixture event-domain admission");
       if Mode = "battery-overflow" then
-         for Step in 1 .. 256 loop
-            D.Advance (Owner.all, Owner_Result);
-            exit when Owner_Result = ACPI_Native_Server.Owner_Refused;
-         end loop;
-         Check (Owner_Result = ACPI_Native_Server.Owner_Refused, "oversized inventory refuses instead of truncating");
-         Check (D.Observe.Stage = D.Failed and D.Observe.Why = D.Consumer_Work_Refused
-           and ACPI_Native_Diagnostic_Output.Saw ("stage consumer fail reason=FAMILY_REFUSED family=BATTERY"),
-           "overflow refusal attributed to battery consumer, not unrelated event owner");
-         Check_Cached_Unavailable ("inventory limit refuses partial battery data");
+         Run_To_Idle;
+         Check (D.Observe.Stage=D.Live and One.Runtime.Current=One.Runtime.Status.Idle
+           and ACPI_Native_Diagnostic_Output.Saw("sample refusal family=BATTERY isolated=TRUE")
+           and ACPI_Native_Diagnostic_Output.Saw("battery guard=INVENTORY_LIMIT"),
+           "oversized inventory is completely refused and the closed battery family is isolated");
+         declare
+            Batteries:BV.View;Power:CP.Snapshot;
+         begin
+            D.Read_Batteries(Owner.all,100_000,Batteries);D.Read_Power(Owner.all,100_000,Power);
+            Check(Batteries.Status=CP.Not_Ready and Batteries.Count=0,
+               "inventory limit publishes no truncated battery prefix");
+            Check(Power.Lid.Status=CP.Available and Power.Source.Status=CP.Available,
+               "isolated battery failure preserves independent lid and AC readers");
+         end;
       else
          Run_To_Idle;
          declare
@@ -1018,7 +1040,12 @@ begin
          Check (One.Maximum_Window_Length = 5_000_000 and then One.Delay_After_Candidate = 0,
             "separate five-second discovery window admits 700ms metadata scan");
       end if;
+      if Mode="slow-consumer" then One.Delay_In_Sample_HID:=700_000;end if;
       Run_To_Idle;
+      if Mode="slow-consumer" then
+         Check(One.Delay_In_Sample_HID=0 and then One.Last_Window_Length=5_000_000 and then One.Runtime.Current=One.Runtime.Status.Idle,
+           "native full-namespace sample admits700ms modeled HID lookup under finite5s window");
+      end if;
       Check(Log.Saw("lid OPEN") and Log.Saw("AC ONLINE") and Log.Saw("remaining=20000 full=40000") and Log.Saw("descriptor=32 gpio=42"),"initial actual four-family facts through concrete owner");
       if Mode="normal" then Check_Cached_Initial;end if;
       if Mode="general" then General_Event;end if;
@@ -1059,10 +1086,11 @@ begin
             for Step in 1..8 loop D.Advance(Owner.all,Owner_Result);exit when Q.Notifications_Pending(Owner.all);end loop;
             Check(Q.Notifications_Pending(Owner.all) and Log.Count=0,"pending Notify/fact stop witness");
          else
+            One.Query_Windows:=0;
             Run_To_Idle;
             if Mode="slow-discovery" then
-               Check (One.Last_Window_Length = 500_000,
-                  "ordinary EC query retains original 500ms deadline");
+               Check (One.Query_Windows>0 and then One.Last_Window_Length=5_000_000,
+                  "500ms EC query followed by finite5s consumer refresh");
             end if;
             Check(Log.Saw("query Q58") and Log.Saw("query Q59 UNMAPPED"),"unknown queries logged and consumed without domain failure");
             Check(Log.Saw("lid CLOSED") and Log.Saw("AC OFFLINE") and Log.Saw("remaining=15000 full=40000") and Log.Saw("descriptor=33 gpio=42"),"actual query/Notify refreshed all four families");

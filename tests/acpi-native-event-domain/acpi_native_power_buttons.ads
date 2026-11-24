@@ -1,6 +1,10 @@
 with CuBit.Messages;
 package ACPI_Native_Power_Buttons is
    Configured : Boolean := False;
+   Control_Configured:Boolean:=False;
+   procedure Configure_Control_Method(Available:Boolean);
+   procedure Control_Method_Press;
+   procedure Withdraw_Control_Method;
    Offered_Presses : Natural := 0;
    procedure Configure_Fixed (Available : Boolean);
    procedure Fixed_Press;

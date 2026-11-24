@@ -1,0 +1,22 @@
+--  gnatprove (level 2) over PWR-004 slice 1's pure parts: the contract's
+--  wire (CuBit.Power_Sources: total decoders, Read_Page reads back as
+--  written, the summary round trip), the ACPI page decoders and reader,
+--  the mapping and the Deskbar's text. acpi.svc's codecs and the test
+--  fixture are not in scope.
+project Prove is
+   for Source_Dirs use ("build/links", "prove", "../../userspace/ccl/runtime-shared");
+   for Source_Files use
+     ("cubit.ads", "cubit-power_sources.ads", "cubit-power_sources.adb",
+      "power_acpi_facts.ads", "power_acpi_facts.adb", "power_acpi_reader.ads", "power_acpi_reader.adb",
+      "power_source_mapping.ads", "power_source_mapping.adb",
+      "power_acpi_identity.ads", "power_acpi_identity.adb", "power_acpi_watch.ads", "power_acpi_watch.adb",
+      "power_acpi_sources.ads", "power_acpi_sources.adb",
+      "desktop_power_text.ads", "desktop_power_text.adb", "reader_proof.ads", "reader_proof.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Prove;

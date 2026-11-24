@@ -46,6 +46,10 @@ package Desktop_Endpoints with SPARK_Mode => Off is
    --  profile starts no power.svc (the item then says so).
    Power_Service   : constant CuBit.Handles.Endpoint :=
      (if Startup.Power.Present then Startup.Power.Value else CuBit.Handles.No_Endpoint);
+   --  power.svc's power sources, read only (the Battery item, PWR-004;
+   --  Desktop_Power_Refresh); null without power.svc or the grant.
+   Power_Sources   : constant CuBit.Handles.Endpoint :=
+     (if Startup.Power_Sources.Present then Startup.Power_Sources.Value else CuBit.Handles.No_Endpoint);
 
    --  The admitted render session, or the null handle (software start).
    function Render return CuBit.Handles.Endpoint with Global => null;

@@ -1,0 +1,8 @@
+# TEST STAND-IN (tests/headless power-sources): acpi.svc's power sources
+# for a scripted machine (pages, identities, the watch, demand reads),
+# through acpi.svc's own codecs and watch policy (tests/power-sources/fixture,
+# userspace/services/acpi/power). Never part of a production image.
+(Component name => "power-standin" kind => Kind.Application
+  source => (Source.Ada (Ada_Source
+    sources => ["tests/power-sources/fixture" "userspace/services/acpi/power" "shared/acpi"]
+    language => Ada_Language.Ada_2022)))

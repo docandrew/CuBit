@@ -66,6 +66,14 @@ package body ACPI_Host_Bridge_Owners is
          View.Metadata_Claim := False;
          View.Stage := (if Keep then Retained else Stopping);
       end Fail;
+      procedure Suspend_At_Boundary (Why : Failure) is
+      begin
+         View.Attempted := True;
+         View.Metadata_Claim := False;
+         View.Had_Errors := True;
+         View.Why := Why;
+         View.Stage := Suspended;
+      end Suspend_At_Boundary;
       function Sample return Boolean is
          Us, Ms : W.Word; Available : Boolean;
       begin
@@ -247,12 +255,19 @@ package body ACPI_Host_Bridge_Owners is
          if not View.Attempted or else View.Stage = Finished then return; end if;
          -- Discovery's finite allowance never limits the lifetime of an
          -- acknowledged producer session. No clock/AML/poll work in Holding.
-         if View.Stage = Holding and then not View.Stop_Requested then return; end if;
+         if View.Stage in Holding | Suspended and then not View.Stop_Requested then return; end if;
          View.Working := True;
          if not Sample then
             Fail (Clock_Failed, View.Window_Open or else (Head /= null and then Head.Query_Started));
          elsif Last_Us >= View.Deadline_Microseconds or else Last_Ms >= View.Deadline_Milliseconds then
-            if not View.Stop_Requested then Fail (Deadline_Expired); end if;
+            if not View.Stop_Requested then
+               if not View.Window_Open and then View.Stage in Capturing | Starting_Query then
+                  Suspend_At_Boundary (Deadline_Expired);
+                  View.Working := False;
+                  return;
+               end if;
+               Fail (Deadline_Expired);
+            end if;
          end if;
          if View.Stage = Retained then Result := Failed; View.Working := False; return; end if;
          if View.Stop_Requested then
@@ -369,7 +384,7 @@ package body ACPI_Host_Bridge_Owners is
             when Retiring =>
                Cleanup_Current (Result);
                if View.Stage /= Retained and then Result = Runnable then Continue_Discovery; end if;
-            when Fresh | Holding | Stopping | Finished | Retained => null;
+            when Fresh | Holding | Stopping | Finished | Retained | Suspended => null;
          end case;
          if View.Stage = Retained then Result := Failed; end if;
          View.Working := False;
@@ -411,6 +426,17 @@ package body ACPI_Host_Bridge_Owners is
          if View.Working then Fail (Reentered, True); return; end if;
          if Head /= null and then Head.Query_Started then A.Disarm (Head.Work); end if;
       end Disarm;
+      procedure Suspend_Discovery (Why : Failure) is
+      begin
+         if View.Working then Fail (Reentered, True); return; end if;
+         if View.Stage in Retained | Suspended then return; end if;
+         if View.Stage in Holding | Finished and then not View.Stop_Requested then return; end if;
+         if View.Window_Open or else View.Stop_Requested
+           or else View.Stage not in Fresh | Capturing | Starting_Query then
+            Fail (Why, True); return;
+         end if;
+         Suspend_At_Boundary (Why);
+      end Suspend_Discovery;
       procedure Request_Stop is
       begin
          View.Stop_Requested := True; View.Metadata_Claim := False;
@@ -419,7 +445,7 @@ package body ACPI_Host_Bridge_Owners is
       function Wake_Deadline return W.Word is
       begin
          if View.Stage in Fresh | Finished | Retained then return CuBit.Messages.Wait_Forever; end if;
-         if View.Stage = Holding and then not View.Stop_Requested then return CuBit.Messages.Wait_Forever; end if;
+         if View.Stage in Holding | Suspended and then not View.Stop_Requested then return CuBit.Messages.Wait_Forever; end if;
          if View.Stop_Requested or else View.Stage = Retiring then
             return (if Have_Time and then Last_Ms < W.Word'Last - Retirement_Poll_Milliseconds
               then Last_Ms + Retirement_Poll_Milliseconds else CuBit.Messages.Wait_Forever);

@@ -1,4 +1,6 @@
 pragma Ada_2022;
+with Interfaces;
+with ACPI_Source_Paths;with ACPI_Power_Identity_Protocol;
 with ACPI_Requests;with ACPI_Cached_Power_Values;
 with ACPI_Cached_Battery_Values;
 with ACPI_Native_Server;
@@ -32,6 +34,13 @@ package ACPI_Native_Event_Domain is
       Maximum_Age : ACPI_Cached_Power_Values.Microseconds;
       Value : out ACPI_Cached_Battery_Values.View)
      with Pre => ACPI_Requests.Valid (Server);
+   procedure Read_Identity(Server:ACPI_Requests.State;Index:Natural;Expected:ACPI_Cached_Power_Values.Generation;
+      Current:out ACPI_Cached_Power_Values.Generation;Code:out ACPI_Power_Identity_Protocol.Result_Code;
+      Value:out ACPI_Source_Paths.Path) with Pre=>ACPI_Requests.Valid(Server);
+   procedure Preview_Battery_Refresh(Server:ACPI_Requests.State;Now:out Interfaces.Unsigned_64;Allowed:out Boolean);
+   procedure Commit_Battery_Refresh(Server:ACPI_Requests.State;Now:Interfaces.Unsigned_64;
+      Ticket:out Interfaces.Unsigned_64;Accepted:out Boolean);
+   function Battery_Refresh_Ready(Ticket:Interfaces.Unsigned_64) return Boolean;
    -- Startup-only metadata/receipt preparation. No EC/GPE enrollment or AML.
    procedure Prepare_Consumers(Server:in out ACPI_Requests.State;Accepted:out Boolean)
      with Pre=>ACPI_Requests.Valid(Server);

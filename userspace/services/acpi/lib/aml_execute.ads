@@ -1,5 +1,7 @@
 pragma Ada_2022;
 with AML_Profile_Events;
+with AML_Field_Layout;
+with ACPI_FADT.Transactions;
 with AML_Mutexes;
 with AML_Fatal;
 with AML_Declaration_Contexts;
@@ -128,11 +130,14 @@ package AML_Execute with SPARK_Mode, Pure is
    -- Internal progress only: no device descriptor or hardware authority.
    type Field_Context_Ticket is new AML_Decode.Integer_Value;
    No_Field_Context : constant Field_Context_Ticket := 0;
-   type Field_Context_Phase is (Context_Ready, Context_Value, Context_Failed);
+   type Field_Context_Phase is (Context_Ready, Context_Value, Context_Failed, Context_Read);
    type Field_Context_Step is record
       Phase : Field_Context_Phase := Context_Ready;
-      Property : Binding_Result;
+      Property : Binding_Result := (Status => Missing_Binding);
       Failure : Payload_Free_Failure := Unsupported_Value;
+      Read_Geometry : AML_Field_Layout.Register_Geometry :=
+        (Region => (Space => AML_Field_Layout.Memory_Space, Base => 0, Length => 0,
+          PCI => (Known => False)), Byte_Offset => 0, Width => ACPI_FADT.Transactions.Byte_Access);
    end record;
    Max_Method_Bytes : constant := AML_Execution_Limits.Max_Method_Code_Bytes;
    subtype Method_Length is Natural range 0 .. Max_Method_Bytes;
@@ -677,6 +682,12 @@ package AML_Execute with SPARK_Mode, Pure is
          Budget : Natural; Charged : in out Natural;
          Ref : in out AML_References.Reference;
          Status : in out Execution_Status) is null;
+      -- Metadata only. The installed provider still admits and owns every IO.
+      -- Default rejection is retained by the caller-initialized status.
+      with procedure Read_Field_Context
+        (Environment : in out Context; Ref : AML_References.Reference;
+         Ticket : Field_Context_Ticket; Geometry : AML_Field_Layout.Register_Geometry;
+         Value : in out Datum; Status : in out Execution_Status) is null;
    procedure Execute_From_Source
      (Code : AML_Decode.Bytes; Width : AML_Decode.Integer_Width;
       Args : Value_Arguments; Argument_Count : Natural; Budget : Natural;

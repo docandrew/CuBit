@@ -1,0 +1,15 @@
+# TEST STAND-IN for acpi.svc's power sources (PWR-004, tests/headless
+# power-sources): QEMU has no ACPI battery. It registers the ACPI role as
+# acpi.svc does (procmgr lets com.cubit.acpi register only from the startup
+# plan) and answers Read_Metrics on the AC (21), battery (22) and identity
+# (23) pages and the power-source watch (label 29) with acpi.svc's own
+# codecs and watch policy over a scripted machine; every other request is
+# refused. It holds no hardware. Never part of a production image.
+(Executable_Manifest
+  identity => "com.cubit.acpi"
+  version => "0.0.1"
+  requests => [
+    (notification "acpi" Notify_Access.Manage "registration")
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")]
+  optional => ["logstore"])

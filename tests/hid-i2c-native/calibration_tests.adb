@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with Ada.Text_IO;
+with GNAT.Source_Info;
 with Interfaces;
 with HID_Report_Schema;
 with HID_Field_Usages;
@@ -20,8 +21,8 @@ procedure Calibration_Tests is
    use type Interfaces.Unsigned_32, Schema.Status, Schema.Numeric_Value;
    use type Source.Configure_Status, Reports.Coordinate_Status, Reports.Compile_Status, Bindings.Work_Count;
    Checks : Natural := 0;
-   procedure Check (OK : Boolean) is
-   begin Checks := Checks + 1; if not OK then raise Program_Error with Checks'Image; end if; end Check;
+   procedure Check (OK : Boolean; Location : String := GNAT.Source_Info.Source_Location) is
+   begin Checks := Checks + 1; if not OK then raise Program_Error with Checks'Image & " " & Location; end if; end Check;
    Data : Schema.Bytes (1 .. 1024);
    Used : Natural := 0;
    Fields : Schema.Field_Table (1 .. 64);
@@ -31,7 +32,7 @@ procedure Calibration_Tests is
    Signal : Source.State;
    Info : Source.Configure_Report;
    Charged : Bindings.Work_Count;
-   type Shape is (Ordinary, Wide, Empty_Axis, Reversed_Axis);
+   type Shape is (Ordinary, Wide, Empty_Axis, Reversed_Axis, Physical);
    procedure Byte (Value : Natural) is
    begin Used := Used + 1; Data (Used) := Schema.Byte (Value); end Byte;
    procedure Item (Prefix : Natural; Value : Interfaces.Unsigned_32; Width : Positive := 1) is
@@ -60,12 +61,18 @@ procedure Calibration_Tests is
             Item (16#26#, (if Form in Empty_Axis | Reversed_Axis then 0
                elsif Different and then Finger = 2 then 1023 else 4095), 2);
          end if;
+         if Form = Physical then
+            Item (16#35#, 0); Item (16#46#, 1000, 2);
+            Item (16#55#, 14); Item (16#65#, 16#11#);
+         end if;
          Item (16#81#, 2); Item (16#09#, 16#31#);
+         if Form = Physical then Item (16#46#, 500, 2); end if;
          if Form = Wide then
             Item (16#17#, 16#8000_0000#, 4); Item (16#27#, 16#7FFF_FFFF#, 4);
          else Item (16#15#, 0); Item (16#26#, 2047, 2); end if;
          Item (16#81#, 2); Byte (16#C0#);
       end loop;
+      Item (16#35#, 0); Item (16#45#, 0); Item (16#55#, 0); Item (16#65#, 0);
       Item (16#05#, 13); Item (16#15#, 0); Item (16#09#, 16#54#); Item (16#25#, 5);
       Item (16#75#, 8); Item (16#81#, 2);
       Item (16#09#, 16#56#); Item (16#26#, 65_535, 2); Item (16#75#, 16);
@@ -112,5 +119,9 @@ begin
       Reports.Invalidate (Raw);
       Check (not Reports.Ready (Raw) and then Reports.Coordinates (Raw).Outcome = Reports.Coordinates_Unavailable);
    end;
+   Build (1, False, Physical); Configure (Source.Report_Bounds);
+   Check (Source.Ready (Signal));
+   Check (Info.X_Gain.Numerator * 4095 * 127 * 4 = 500_000 * Info.X_Gain.Denominator);
+   Check (Info.Y_Gain.Numerator * 2047 * 127 * 4 = 250_000 * Info.Y_Gain.Denominator);
    Ada.Text_IO.Put_Line ("HID calibration checks" & Checks'Image);
 end Calibration_Tests;

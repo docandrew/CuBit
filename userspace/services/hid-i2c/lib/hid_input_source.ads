@@ -10,6 +10,7 @@ with HID_Touchpad_Contact;
 with HID_Report_Metadata;
 with HID_Touchpad_Reports;
 with HID_Touchpad_Pointer;
+with HID_Motion_Fragments;
 generic
    Maximum_Contacts, Maximum_Slots : Positive;
    with package Schema is new HID_Report_Schema (<>);
@@ -38,9 +39,10 @@ package HID_Input_Source with SPARK_Mode is
       Raw : Reports.Compile_Report;
       Policy : Pointer.Status := Pointer.Policy_Not_Configured;
       Coordinates : Reports.Coordinate_Report;
+      X_Gain, Y_Gain : Pointer.Gain;
    end record;
    type Status is (Input_Updated, Input_Unchanged, Frame_Waiting, Report_Ignored,
-                   Input_Rejected, Source_Not_Ready, Source_Reset, Consumer_Reset);
+                   Input_Rejected, Source_Not_Ready, Source_Reset, Consumer_Reset, Input_Backpressured);
    type Report is record
       Outcome : Status := Source_Not_Ready;
       Raw : Reports.Report;
@@ -52,6 +54,9 @@ package HID_Input_Source with SPARK_Mode is
    function Ready (S : State) return Boolean;
    function Tracking (S : State) return Boolean;
    function Pending (S : State) return Boolean;
+   function Input_Ready (S : State) return Boolean;
+   -- A retained wide frame owns its complete remainder. Defer the next device
+   -- read until it has been queued; acknowledgements refill the existing queue.
    function Count (S : State) return Input_Pending.Count_Type;
    function Head (S : State) return Input_Pending.Item with Pre => Count (S) > 0;
    procedure Acknowledge (S : in out State) with Pre => Count (S) > 0;
@@ -81,11 +86,17 @@ private
       Raw : Reports.State;
       Policy : Pointer.State;
       Queue : Pointer_Pending.State;
+      Motion : HID_Motion_Fragments.Frame;
+      Motion_Before : Pointer_Pending.Button_State := 0;
+      Motion_At : Input_Pending.Word := Input_Pending.Word'Last;
+      Motion_Pending : Boolean := False;
       Buttons : Button_Map := [others => Ignore];
    end record;
    function Ready (S : State) return Boolean is (Reports.Ready (S.Raw) and then Pointer.Ready (S.Policy));
    function Tracking (S : State) return Boolean is (Pointer.Tracking (S.Policy));
    function Pending (S : State) return Boolean is (Reports.Pending (S.Raw));
+   function Input_Ready (S : State) return Boolean is
+     (Ready (S) and then not S.Motion_Pending);
    function Count (S : State) return Input_Pending.Count_Type is (Pointer_Pending.Count (S.Queue));
    function Head (S : State) return Input_Pending.Item is (Pointer_Pending.Element (S.Queue, 0));
    function Wake_Deadline (S : State; Now, Otherwise : Input_Pending.Word) return Input_Pending.Word is

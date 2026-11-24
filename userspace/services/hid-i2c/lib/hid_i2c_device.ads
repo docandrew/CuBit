@@ -5,6 +5,7 @@ with HID_I2C_Descriptors;
 with HID_I2C_Wire;
 with HID_I2C_Buffered_Client;
 with CuBit.Process_IDs;
+with HID_Reset_Policy;
 generic
    with package Bus is new HID_I2C_Buffered_Client (<>);
    Maximum_Report, Maximum_Input, Output_Capacity : HID_I2C_Descriptors.Byte_Count;
@@ -30,7 +31,7 @@ package HID_I2C_Device with SPARK_Mode is
    package T renames Bus.Transactions;
    use type T.Phase, L.Operation;
    type Phase is (Cold, Fetch_HID, Power_On, Arming_Reset, Resetting, Await_Reset,
-      Read_Reset, Releasing_Reset, Fetch_Report, Serving, Read_Input, Draining, Stopped, Faulted);
+      Read_Reset, Releasing_Reset, Post_Reset_Power_On, Fetch_Report, Serving, Read_Input, Draining, Stopped, Faulted);
    type Failure is (None, Requested_Stop, Buffer_Setup_Failed, Clock_Unavailable,
       Clock_Reversed, Deadline_Expired, Token_Unavailable, Submit_Refused,
       Transfer_Failed, Read_Refused, Descriptor_Refused, Capacity_Refused,
@@ -49,7 +50,10 @@ package HID_I2C_Device with SPARK_Mode is
       Reset_Still_Armed, Latch_Uncertain, Memory_Uncertain : Boolean := False;
       Pending_Control : L.Operation := L.No_Control;
       Last_Control : L.Reply;
-      Input_Packets : W.Word := 0;
+      Reset_Ack_Until : W.Word := 0;
+      Reset_Ack_Timed_Out, Bogus_IRQ_Ignored : Boolean := False;
+      Input_Packets, Spurious_Reset_Reports : W.Word := 0;
+      Consecutive_Spurious_Resets : HID_Reset_Policy.Spurious_Reset_Count := 0;
    end record;
    type Request_Result is (Accepted, Not_Ready, Busy);
    type Interrupt_Result is (Latched, Unrelated);
@@ -63,6 +67,9 @@ package HID_I2C_Device with SPARK_Mode is
       Now : W.Word; Clock_Available : Boolean; Result : out Request_Result);
    procedure Step (S : in out State; Now : W.Word; Clock_Available : Boolean);
    procedure Reset_Interrupt (S : in out State; Ticket : W.Word; Result : out Interrupt_Result);
+   -- Outer owner authenticates publisher/badge/frame. Only a confirmed ARM
+   -- lease is accepted, including before Power_On/RESET. Polling an already
+   -- delivered control receipt creates no authority and never resends ARM.
    procedure Request_Input (S : in out State; Deadline : W.Millisecond;
       Now : W.Word; Clock_Available : Boolean; Result : out Request_Result);
    procedure Request_Stop (S : in out State);

@@ -3,7 +3,6 @@ package body ACPI_Battery_Cache.Observers with SPARK_Mode is
    use type Interfaces.Unsigned_64;
    use type Samples.Availability;
    use type Static_Info.Source_Kind;
-   package Protocol renames ACPI_Power_Query_Protocol;
    Critical_Flag : constant Word := 4;
    Charge_Limiting_Flag : constant Word := 8;
    Byte_Radix : constant Word := 256;
@@ -94,10 +93,10 @@ package body ACPI_Battery_Cache.Observers with SPARK_Mode is
          when Swap => return Pair (Flag (Selected_Info.Extended.Swap_Reported), (if Selected_Info.Extended.Swap_Reported then Word (Selected_Info.Extended.Swap_Raw) else 0));
          when Information_Source =>
             return Pair
-              (Word (Protocol.Information_Source'Enum_Rep
-                ((case Selected_Info.Source is when Static_Info.Extended_Reported => Protocol.BIX,
-                  when Static_Info.Legacy_Reported => Protocol.BIF,
-                  when Static_Info.None_Reported => Protocol.Unavailable))), 0);
+              (Word (Information_Kind'Enum_Rep
+                ((case Selected_Info.Source is when Static_Info.Extended_Reported => BIX,
+                  when Static_Info.Legacy_Reported => BIF,
+                  when Static_Info.None_Reported => Unavailable))), 0);
          when Model_Number .. OEM_Information =>
             declare
                Field : constant Static_Info.Text_Field :=

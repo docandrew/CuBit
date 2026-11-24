@@ -1,4 +1,6 @@
 pragma Ada_2022;
+with Interfaces;
+with ACPI_Source_Paths;with ACPI_Power_Identity_Protocol;
 with ACPI_Requests;with ACPI_Cached_Power_Values;
 with ACPI_Cached_Battery_Values;
 with ACPI_Native_Server;
@@ -17,7 +19,7 @@ package ACPI_Native_Consumers is
       Text : String (1 .. 192) := [others => ' '];
       Last : Natural range 0 .. 192 := 0;
    end record;
-   type Diagnostic_Lines is array (Positive range 1 .. 4) of Diagnostic_Line;
+   type Diagnostic_Lines is array (Positive range 1 .. 6) of Diagnostic_Line;
    type Report is record
       Started, Stopping, Closed : Boolean := False;
       Why : Failure := None;
@@ -50,6 +52,17 @@ package ACPI_Native_Consumers is
       Maximum_Age : ACPI_Cached_Power_Values.Microseconds;
       Value : out ACPI_Cached_Battery_Values.View)
      with Pre => ACPI_Requests.Valid (Server);
+   -- Complete generation-bound copied source names; no clock, AML or refresh.
+   -- Index0 is the measured AC source; positive indices are battery slots.
+   procedure Read_Identity(Server:ACPI_Requests.State;Index:Natural;Expected:ACPI_Cached_Power_Values.Generation;
+      Current:out ACPI_Cached_Power_Values.Generation;Code:out ACPI_Power_Identity_Protocol.Result_Code;
+      Value:out ACPI_Source_Paths.Path) with Pre=>ACPI_Requests.Valid(Server);
+   -- Metadata-only explicit reader demand. Preview reads the trusted clock;
+   -- Commit accepts only that same observation under the same serialized owner.
+   procedure Preview_Battery_Refresh(Server:ACPI_Requests.State;Now:out Interfaces.Unsigned_64;Allowed:out Boolean);
+   procedure Commit_Battery_Refresh(Server:ACPI_Requests.State;Now:Interfaces.Unsigned_64;
+      Ticket:out Interfaces.Unsigned_64;Accepted:out Boolean);
+   function Battery_Refresh_Ready(Ticket:Interfaces.Unsigned_64) return Boolean;
    Maximum_Battery_Facts:constant Positive:=ACPI_Cached_Battery_Values.Maximum_Batteries;
    Maximum_HID_Facts:constant Positive:=16;
    Single_Family_Facts:constant Positive:=2;

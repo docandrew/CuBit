@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "tests/acpi-power-watch/watch_tests.adb",
+      "sha256": "c9b8926e4b9d77198d92f933a3cb425cc2bf21ddd2f4175e5f94f148c4c2ff16"
+    },
+    {
+      "path": "tests/acpi-power-watch/run.sh",
+      "sha256": "11ee94042cad01ea83f1d4267609e043b1d27f6f4b871c8d35cbffa658d53259"
+    },
+    {
+      "path": "tests/acpi-power-watch/models/cubit-handles-ipc.ads",
+      "sha256": "adc1eace7ad00ced97dfee433da446b3f56a7a3b3bcceeb99eda283197b83e3a"
+    },
+    {
+      "path": "tests/acpi-power-watch/models/cubit-handles-ipc.adb",
+      "sha256": "9db367f960f1e6582213b61b7f233a8586aa7f00cdbfa928a38a64bcd8875803"
+    },
+    {
+      "path": "tests/acpi-power-watch/models/cubit.ads",
+      "sha256": "6a3f0b27b91935d939c20d290422ebfb6e2e7447d6f9f04f7373ad5cb9c728f2"
+    },
+    {
+      "path": "tests/acpi-power-watch/models/cubit-handles.adb",
+      "sha256": "d93693887680da9e3cbc4bbc430bdc05c4c2f504acc3d07d29de032d2fea6aa6"
+    },
+    {
+      "path": "tests/acpi-power-watch/models/cubit-messages.adb",
+      "sha256": "3896e5141945341dd2d7f7f09c0b443569a660fe2be9a5d18ee792637f644a82"
+    },
+    {
+      "path": "tests/acpi-power-watch/models/cubit-messages.ads",
+      "sha256": "8d23058349b7cee0b43d238e4c42dd96a84224f394d6b0703c2ede4b1c7107ec"
+    },
+    {
+      "path": "tests/acpi-power-watch/models/cubit-handles.ads",
+      "sha256": "f704fadc3d2130d1384bd112dc6e629d1318f96c966a04eaa43a3a10c61180b8"
+    },
+    {
+      "path": "shared/acpi/acpi_protocol.ads",
+      "sha256": "ce40736ea2bb6a09747b1e52ff0063d4f1e321cc6bd67b90ac67a4fa0e1e2d6c"
+    },
+    {
+      "path": "shared/acpi/acpi_power_watch_protocol.ads",
+      "sha256": "a908e20392147db2d06548b6616c237810f0c39c7b68510ab724b961275846b3"
+    },
+    {
+      "path": "userspace/services/acpi/power/acpi_power_inventory_watches.ads",
+      "sha256": "34edb078e260b48bd57eaa1e169c4fbedcf0b368918e4276cc58daf4450f11d7"
+    },
+    {
+      "path": "userspace/services/acpi/power/acpi_power_inventory_watches.adb",
+      "sha256": "d68bff1a03656b8f299f5f39e0e21e62846c49918f3d47568562c5f353a4fa4a"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_power_inventory.ads",
+      "sha256": "cbf03583a26932d9324608114a658dea97eec3144bc62a7b05946f2a981118b1"
+    },
+    {
+      "path": "userspace/services/acpi/native/acpi_native_power_inventory.adb",
+      "sha256": "18ea2864cdcfe1a4d536d10b86293e6093af21bd5aa19329d75b25e7f3338f01"
+    }
+  ],
+  "tools": {
+    "gprbuild": {
+      "path": "/nix/store/3xpy8h5k8fdlfi1v43iwfap0zv5n4bmp-gprbuild-25.0.0/bin/gprbuild",
+      "sha256": "98d565f501e7840286e90daeddf276ff4c0bdb16e09f94e6ad7835b8063d7ee2"
+    }
+  },
+  "scope": "Pure bounded inventory watch policy plus actual native reply adapter; IPC and kernel sender are explicit models, no AML/native/hardware execution.",
+  "supplementary_inputs": [
+    {
+      "path": "tests/acpi-power-watch/events.asl",
+      "sha256": "1a94db61292118874cb364f1e6472b52d30238779a4e8e53d1a1abe312757f8b"
+    },
+    {
+      "path": "tests/acpi-power-watch/joined/cubit-handles-kernel.adb",
+      "sha256": "6b31a1ff3d59d4bc6b97f726021692971e0fe192086f942ee9a148bac6c8e26d"
+    },
+    {
+      "path": "tests/acpi-power-watch/joined/power_watch_events.adb",
+      "sha256": "bf833eece21bf249e8b9efb33f1c6bb2a57c2a2b3a84df798b5624cbde4f5a71"
+    },
+    {
+      "path": "tests/acpi-power-watch/joined/power_watch_events.ads",
+      "sha256": "6f78c9617245392ac0b0b5512552c964c4ac05049dc7dcad727675f5b8e4d9c7"
+    }
+  ]
+}

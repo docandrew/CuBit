@@ -23,7 +23,7 @@ procedure Main is
    PHASE_COMPLETE : constant Unsigned_64 := 2;
    --  q35's 7 tables plus the ACPI-ONE-001 regression SSDT
    --  (tests/headless acpi-one-service, -acpitable).
-   Q35_TABLES : constant Unsigned_64 := 8;
+   Q35_MINIMUM_TABLES : constant Unsigned_64 := 8;
 
    Call_Deadline_Ms : constant := 2_000;
    --  acpi.svc runs AML startup before it registers; each attempt waits
@@ -66,7 +66,10 @@ begin
           and then First.tag.protocol = 0 and then First.tag.reserved = 0,
           "metrics reply well formed");
    Check (Complete (First), "phase complete");
-   Check (First.words (2) = Q35_TABLES and then First.words (3) = Q35_TABLES,
+   -- The harness checks the exact census (8 normally,9 with CMOS SSDT).
+   debugPrint ("acpi-metrics-check: tables captured=" & First.words (2)'Image &
+     " installed=" & First.words (3)'Image & LF);
+   Check (First.words (2) >= Q35_MINIMUM_TABLES and then First.words (3) = First.words (2),
           "every expected table installed");
    declare
       Second : constant Message := Read;

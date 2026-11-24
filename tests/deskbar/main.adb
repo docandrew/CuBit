@@ -302,6 +302,10 @@ procedure Main is
              and then DSI.Glyph (DSI.Wifi) and then not DSI.Glyph (DSI.Volume), "status item names");
       Check (DSI.Name (DSI.Screen_Capture, False) = "Screen captured by the remote session"
              and then DSI.Glyph (DSI.Screen_Capture), "the screen-captured mark is a named glyph");
+      --  PWR-004: the battery is a glyph (its charge drawn); its name in
+      --  words comes from Desktop_Power_Text (tests/power-sources).
+      Check (DSI.Glyph (DSI.Battery) and then DSI.Name (DSI.Battery, False) = "Battery",
+             "the battery item is a named glyph");
    end Tooltips;
    procedure Placement is
       package WP renames Desktop_Window_Placement;

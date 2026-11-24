@@ -37,13 +37,19 @@ END {
      print "acpi-shutdown: missing: " need[i] > "/dev/stderr"; exit 1
    }
    if(cut) { print "acpi-shutdown: \"" need[i] "\" without \"" need[cut] "\" before it" > "/dev/stderr"; exit 1 }
-   if(i==9) continue
+   # The power.svc apps-stopped/prepare/PREPARED records (7..9) come from a
+   # different producer than the procmgr service stops (10..): the logstore
+   # mirror may print one producer records a few lines late. procmgr only
+   # stops services after the power.svc prepare reply (causally), so order
+   # 7..9 among themselves and after 6, not against the procmgr lines.
+   if(i>=7 && i<=9) continue
    if(at[i]<=last) { print "acpi-shutdown: misordered: " need[i] > "/dev/stderr"; exit 1 }
    last=at[i]
  }
  # power.svc logs PREPARED before asking procmgr to stop services, but
  # the mirror can print that record after procmgr starts. Preserve the
  # power producer request/reply/entry order, not a cross-producer order.
+ if(at[7]<=at[6] || at[8]<=at[7]) { print "acpi-shutdown: misordered apps stop or prepare request" > "/dev/stderr"; exit 1 }
  if(at[9]<=at[8] || (at[n] && at[9]>=at[n])) { print "acpi-shutdown: misordered preparation reply" > "/dev/stderr"; exit 1 }
  if(at[n] && !at[n-1]) { print "acpi-shutdown: S5 asked without the stop report" > "/dev/stderr"; exit 1 }
  if(at[n-1] && !at[n-2]) { print "acpi-shutdown: power.svc stop report without procmgr report" > "/dev/stderr"; exit 1 }

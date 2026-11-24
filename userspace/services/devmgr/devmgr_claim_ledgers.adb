@@ -9,6 +9,7 @@ pragma Ada_2022;
 package body Devmgr_Claim_Ledgers is
 
    use type PC.Take_Result;
+   use type PC.CMOS_Handover_Result;
    use type MC.Claim_Result;
    use type Port_Store.Growth_Status;
    use type Memory_Store.Growth_Status;
@@ -61,6 +62,29 @@ package body Devmgr_Claim_Ledgers is
       end loop;
       Granted := Result = PC.Granted;
    end Take;
+
+   procedure Handover_CMOS
+     (L : in out Port_Ledger; Extended, Intel_Aliases : Boolean;
+      Result : out PC.CMOS_Handover_Result)
+   is
+      Report : Capacity_Report;
+   begin
+      Result := PC.Handover_Refused;
+      for Attempt in 1 .. 2 loop
+         if Port_Store.Capacity (L.Claims) = 0 then return; end if;
+         declare
+            Items : PC.Claim_Array (1 .. Port_Store.Capacity (L.Claims))
+              with Import, Address => Port_Store.Block (L.Claims);
+            Used : Natural := Port_Store.Length (L.Claims);
+         begin
+            PC.Handover_CMOS (Items, Used, Extended, Intel_Aliases, Result);
+            Port_Store.Set_Length (L.Claims, Used);
+         end;
+         exit when Result /= PC.Handover_Needs_Room;
+         Port_Store.Reserve (L.Claims, Port_Store.Length (L.Claims) + 1, Report);
+         exit when Report.Status /= Port_Store.Grown;
+      end loop;
+   end Handover_CMOS;
 
    procedure Release_Owner (L : in out Port_Ledger; Owner : PC.Owner_Word; Released : out Natural) is
       Items : PC.Claim_Array (1 .. Port_Store.Capacity (L.Claims))

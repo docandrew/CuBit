@@ -303,7 +303,7 @@ begin
       Core.Freeze_Catalog (Service.all, Frozen);
       if Frozen /= Core.Catalog_Frozen_OK then raise Program_Error with "freeze " & Frozen'Image; end if;
       Executing := RT.Clock;
-      Fields.Execute_Frozen (Service.all, IO, [others => AML_Field_Access.No_Target], 0, Laptop_Profile.Startup_Fuel, Report, Status);
+      Fields.Execute_Frozen (Service.all, IO, Fields.Default_Module_Target_Set'(others => AML_Field_Access.No_Target), 0, Laptop_Profile.Startup_Fuel, Report, Status);
       Ada.Text_IO.Put_Line ("BENCH execute_s=" & RT.To_Duration (RT.Clock-Executing)'Image &
         " total_s=" & RT.To_Duration (RT.Clock-Started)'Image & " profiling=" & Profiling'Image);
       for I in 1 .. Tail_Used loop

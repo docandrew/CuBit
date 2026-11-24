@@ -23,7 +23,14 @@
 --  if 4 fails, power.svc halts: everything else is stopped and the storage
 --  committed, and it says so. procmgr's stops are submitted
 --  asynchronously: power.svc keeps answering (Busy) while they run. Calls go down only (procmgr,
---  acpi.svc); nothing calls power.svc but its requesters.
+--  acpi.svc); nothing calls power.svc but its requesters and its observers.
+--
+--  It is also the power-source aggregator (PWR-004, Power_Source_Service):
+--  it watches acpi.svc's AC adapter and batteries through acpi.svc's
+--  observer endpoint, reads them when they change, and serves them, read
+--  only, as CuBit.Power_Sources
+--  records to the holders of its "power-sources" badge (Desktop's Battery
+--  item, the console's power.sources).
 --  Every limit is a typed startup parameter or a named constant.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
@@ -38,6 +45,7 @@ with CuBit.Power_Requests;
 with CuBit.Power_Event_Exchange;
 with CuBit.System_Stops;
 with Power_Decisions;
+with Power_Source_Service;
 with Parameters;
 with Startup;
 with CuBit.Monotonic;
@@ -88,6 +96,13 @@ procedure Main is
    begin
       return Text (Text'First + 1 .. Text'Last);
    end Image;
+
+   --  The earlier of two deadlines (0: none), Wait_Forever without one.
+   function Earliest (A, B : Unsigned_64) return Unsigned_64 is
+     (if A = 0 and then B = 0 then Wait_Forever
+      elsif A = 0 then B
+      elsif B = 0 then A
+      else Unsigned_64'Min (A, B));
 
    procedure Halt (Why : String) is
    begin
@@ -349,16 +364,22 @@ begin
       CuBit.Log.Error ("power: registration failed; procmgr will refuse its stops");
    end if;
    Watch;
+   --  The sources: acpi.svc's power-source watch, submitted now (or when
+   --  procmgr introduces acpi.svc); read when it answers.
+   Power_Source_Service.Start (Startup.Acpi_Observer, Unsigned_64 (P.reading_age_ms));
    CuBit.Log.Info ("power: ready");
    loop
-      Activity := Wait_For_Activity_Until (if Watch_Retry_At = 0 then Wait_Forever else Watch_Retry_At);
+      Activity := Wait_For_Activity_Until (Earliest (Watch_Retry_At, Power_Source_Service.Next_Due));
       exit when Activity = Unavailable;
       if Watch_Retry_At /= 0 and then CuBit.Monotonic.Milliseconds >= Watch_Retry_At then
          Watch_Retry_At := 0;
          Watch;
       end if;
+      Power_Source_Service.Advance (CuBit.Monotonic.Milliseconds);
       while Poll_Completion (Completion'Address) = 1 loop
-         if Completion.token = Watch_Token then
+         if Power_Source_Service.Handles_Completion (Completion.token) then
+            Power_Source_Service.Collect (Completion);
+         elsif Completion.token = Watch_Token then
             Watch_Answer (Completion);
          elsif Completion.token = Stop_Apps_Token then
             Stop_Answer (Completion, Apps => True);
@@ -369,7 +390,11 @@ begin
       loop
          Poll_Service_Request (From, Request, Found);
          exit when not Found;
-         Serve (From, Request);
+         if Power_Source_Service.Handles (Request.tag.label) then
+            Power_Source_Service.Serve (From, Request);
+         else
+            Serve (From, Request);
+         end if;
       end loop;
    end loop;
    CuBit.Log.Error ("power: activity wait unavailable; stopping");

@@ -3,6 +3,7 @@ with AML_Delays;
 with AML_Decode; use AML_Decode;
 with AML_Execute;
 with AML_Namespace;
+with AML_Objects;
 with AML_Table_Backing;
 procedure Field_Live_Tests is
    use type AML_Decode.Bytes;
@@ -33,7 +34,17 @@ procedure Field_Live_Tests is
    function Method (Text : String; Code : Bytes) return Bytes is
      ([16#14#, Byte (Code'Length + 6)] & Name (Text) & Bytes'(1 => 0) & Code);
    Buffer_2 : constant Bytes := [16#11#,5,16#0A#,2,16#81#,16#42#];
-   Collect : constant Bytes := [16#70#,16#0D#,88,0,16#61#];
+   -- Legacy collector-specific liveness fixtures. Allocation now tries first
+   -- and collects only after quota refusal. Fill the byte quota with temporary
+   -- buffers, rather than requiring an eager sweep after every allocation.
+   -- Keep the value/liveness assertions when this is replaced by refcounts.
+   Quarter : constant Integer_Value := AML_Objects.Max_Bytes / 4;
+   Quota_Pressure : constant Bytes :=
+     [16#70#,16#0A#,24,16#63#,16#A2#,16#0E#,16#63#,16#70#,
+      16#11#,7,16#0C#,Byte (Quarter mod 256),Byte ((Quarter / 256) mod 256),
+      Byte ((Quarter / 65_536) mod 256),Byte ((Quarter / 16_777_216) mod 256),
+      0,16#62#,16#76#,16#63#,16#70#,0,16#62#];
+   Collect : constant Bytes := Quota_Pressure & Bytes'(16#70#,16#0D#,88,0,16#61#);
    Fixed : constant Bytes := [16#8C#] & Buffer_2 & [0] & Name ("FLD0");
    Generic_Field : constant Bytes := [16#5B#,16#13#] & Buffer_2 & [1,16#0A#,9] & Name ("FLD0");
    Fixture : constant Bytes :=
@@ -45,7 +56,7 @@ procedure Field_Live_Tests is
        [16#70#,1,16#60#] & Collect & [16#A4#] & Name ("FLD0")) &
      Method ("INTR", [16#8C#,16#0A#,65,0] & Name ("FLD0") & Collect & [16#A4#] & Name ("FLD0")) &
      Method ("STRR", [16#8C#,16#0D#,65,66,0,1] & Name ("FLD0") & Collect & [16#A4#] & Name ("FLD0")) &
-     Method ("TYPR", Fixed & [16#A4#,16#8E#] & Name ("FLD0"));
+     Method ("TYPR", Fixed & Quota_Pressure & [16#A4#,16#8E#] & Name ("FLD0"));
    procedure Check (Good : Boolean) is
    begin
       Checks := Checks + 1;
@@ -66,7 +77,7 @@ begin
       C.Seal (A, Report, Status); Check (Status = C.Available);
       for Node in N.Node_ID range 1 .. 8 loop
          declare Before : constant C.Collection_Count := C.Reclamation_Metrics (A).Completed; begin
-            C.Invoke (A, Input, Node, Args, 0, 100, R, Status);
+            C.Invoke (A, Input, Node, Args, 0, 1000, R, Status);
             Check (Status = C.Available);
             Check (C.Reclamation_Metrics (A).Completed > Before and then C.Reclamation_Metrics (A).Rejected = 0);
             Check (C.Observe_Usage (A).Nodes = 8);
@@ -87,10 +98,10 @@ begin
       end loop;
       -- Retained field result survives field cleanup and subsequent GC; then
       -- another result occupies the final pin and a third is denied up front.
-      C.Invoke (A, Input, 2, Args, 0, 100, R, Status);
+      C.Invoke (A, Input, 2, Args, 0, 1000, R, Status);
       Check (Status = C.Available and then R.Status = AML_Execute.Object_Returned);
       declare Second : C.Value_Handle := R.Handle; begin
-         C.Invoke (A, Input, 2, Args, 0, 100, R, Status);
+         C.Invoke (A, Input, 2, Args, 0, 1000, R, Status);
          Check (Status = C.Root_Limit);
          Bytes_Are (Keep); Bytes_Are (Second);
          C.Release (A, Second, Status); Check (Status = C.Available);

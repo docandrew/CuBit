@@ -3,6 +3,7 @@ with AML_Delays;
 with AML_Decode; use AML_Decode;
 with AML_Execute; use AML_Execute;
 with AML_Integers;
+with AML_Objects;
 with AML_Namespace;
 with AML_Table_Backing;
 procedure Field_Execute_Tests is
@@ -43,7 +44,7 @@ procedure Field_Execute_Tests is
       Check (Status = C.Available and then Loaded = N.Loaded);
       C.Seal (A, Report, Status); Check (Status = C.Available);
    end Load;
-   procedure Invoke (Budget : Natural := 100) is
+   procedure Invoke (Budget : Natural := 1000) is
    begin
       C.Invoke (A, Input, 1, Args, 0, Budget, Outcome, Status);
       Check (Status = C.Available and then Outcome.Charged <= Budget);
@@ -57,6 +58,16 @@ procedure Field_Execute_Tests is
       Check (Data (1 .. Copied) = Expected);
       C.Release (A, H, Status); Check (Status = C.Available);
    end Verify_Bytes;
+   -- Legacy collector-specific liveness fixtures. Allocation now tries first
+   -- and collects only after quota refusal. Fill the byte quota with temporary
+   -- buffers, rather than requiring an eager sweep after every allocation.
+   -- Keep the value/liveness assertions when this is replaced by refcounts.
+   Quarter : constant Integer_Value := AML_Objects.Max_Bytes / 4;
+   Quota_Pressure : constant Bytes :=
+     [16#70#,16#0A#,24,16#61#,16#A2#,16#0E#,16#61#,16#70#,
+      16#11#,7,16#0C#,Byte (Quarter mod 256),Byte ((Quarter / 256) mod 256),
+      Byte ((Quarter / 65_536) mod 256),Byte ((Quarter / 16_777_216) mod 256),
+      0,16#60#,16#76#,16#61#,16#70#,0,16#60#];
    Fixed_Ops : constant Bytes := [Create_Bit_Field_Op, Create_Byte_Field_Op,
      Create_Word_Field_Op, Create_DWord_Field_Op, Create_QWord_Field_Op];
    Fixed_Values : constant array (1 .. 5) of Integer_Value :=
@@ -102,7 +113,7 @@ begin
       Invoke; Check (Outcome.Status = Buffer_Field_Limit);
       -- Later index method allocates while the anonymous source must stay live.
       Load (Bytes'(1 => Create_Byte_Field_Op) & Buffer_Code & Name ("NEXT") & Field_Name & Return_Field,
-        Width, Method ("NEXT", [16#70#,16#0D#,88,0,16#60#,16#A4#,0]));
+        Width, Method ("NEXT", Quota_Pressure & Bytes'(16#70#,16#0D#,88,0,16#60#,16#A4#,0)));
       declare Before : constant C.Collection_Count := C.Reclamation_Metrics (A).Completed; begin
          Invoke; Check (Outcome.Status = Returned and then Outcome.Number = 16#41#);
          Check (C.Reclamation_Metrics (A).Completed > Before);
@@ -113,7 +124,9 @@ begin
          First : constant Bytes := Bytes'(16#5B#,Create_Field_Extension) & Buffer_Code & Bytes'(0,16#0A#,8) & Name ("FLD1");
          Second : constant Bytes := Bytes'(16#5B#,Create_Field_Extension) & Buffer_Code & Bytes'(0,16#0A#,8) & Name ("FLD2");
       begin
-         Load (First & Second & Bytes'(16#A4#,16#93#) & Name ("FLD1") & Name ("FLD2"), Width);
+         Load (First & Second & Bytes'(16#A4#,16#93#) & Name ("FLD1")
+           & Name ("FILL") & Name ("FLD2"), Width,
+           Method ("FILL", Quota_Pressure & Bytes'(16#A4#,16#68#), Flags => 1));
          declare Before : constant C.Collection_Count := C.Reclamation_Metrics (A).Completed; begin
             Invoke; Check (Outcome.Status = Returned and then Outcome.Number = AML_Integers.Normalize (Integer_Value'Last, Width));
             Check (C.Reclamation_Metrics (A).Completed >= Before + 4);
@@ -134,7 +147,7 @@ begin
            & Bytes'(1 => 16#A4#) & Name ("HELP")
            & Bytes'(1 => 16#71#) & Target_Name;
          Help_Code : constant Bytes := Bytes'(1 => 16#9D#) & Source_Name
-           & Bytes'(16#68#, 16#A4#) & Target_Name;
+           & Bytes'(1 => 16#68#) & Quota_Pressure & Bytes'(1 => 16#A4#) & Target_Name;
       begin
          Load (Main_Code, Width, Method ("HELP", Help_Code, Flags => 1));
          declare Before : constant C.Collection_Count := C.Reclamation_Metrics (A).Completed; begin
@@ -169,7 +182,7 @@ begin
             Main_Code : constant Bytes := Bytes'(16#9D#,16#88#) & Source_Code
               & Bytes'(0,0) & Name ("DST0") & Bytes'(16#A4#,0);
             Read_Code : constant Bytes :=
-              Bytes'(16#70#,16#11#,3,1,66,16#60#,16#A4#,16#83#) & Name ("DST0");
+              Quota_Pressure & Bytes'(16#70#,16#11#,3,1,66,16#60#,16#A4#,16#83#) & Name ("DST0");
          begin
             Load (Main_Code, Width, Bytes'(1 => 16#08#) & Name ("DST0")
               & Bytes'(1 => 0) & Method ("READ", Read_Code));
@@ -178,7 +191,7 @@ begin
             -- The original invocation and every one of its expression roots
             -- have ended before this distinct invocation forces collection.
             declare Before : constant C.Collection_Count := C.Reclamation_Metrics (A).Completed; begin
-               C.Invoke (A, Input, 3, Args, 0, 100, Outcome, Status);
+               C.Invoke (A, Input, 3, Args, 0, 1000, Outcome, Status);
                Check (Status = C.Available and then Outcome.Status = Returned and then Outcome.Number = 65);
                Check (C.Reclamation_Metrics (A).Completed > Before);
             end;

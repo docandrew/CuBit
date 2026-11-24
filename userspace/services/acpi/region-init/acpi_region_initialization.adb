@@ -95,6 +95,14 @@ package body ACPI_Region_Initialization with SPARK_Mode is
       Core.Find_Child (Service, V.Parent_Position (Item.Region), "_BBN", Node, Status);
       return Status = V.Available and then Node /= N.Root;
    end Suppressed;
+   -- PCI setup resolves a derived route lazily during ordinary AML reads.
+   -- That cache fill does not replace the declaration or grant IO authority.
+   -- Preserve every declaration field and any route already known at Prepare.
+   function Same_Declaration
+     (Now, Saved : N.Operation_Region_Attributes) return Boolean is
+     (Now = Saved or else
+       (Now.Space = PCI_Space and then not Saved.PCI.Known and then Now.PCI.Known
+        and then (Now with delta PCI => Saved.PCI) = Saved));
    function Current
      (Run : Session; Service : Core.State; Context : Controller) return Boolean is
       Description, Method : Core.Node_Descriptor;
@@ -114,7 +122,7 @@ package body ACPI_Region_Initialization with SPARK_Mode is
       for Item of Run.Items loop
          if Item.Present then
             Core.Read_Region_Descriptor (Service, Item.Region, Data, Status);
-            if Status /= V.Available or else Data /= Item.Data
+            if Status /= V.Available or else not Same_Declaration (Data, Item.Data)
               or else Handler_Ready (Context, Item.Region, Data) /= Item.Handler_Present
               or else (Require_Every_Handler and then not Item.Handler_Present)
               or else Suppressed (Service, Context, Item) /= Item.Suppressed

@@ -4,9 +4,11 @@ with ACPI_Bootstrap.Power_Sources;
 with ACPI_Bootstrap.Power_Sources.Cached;
 generic
    with package Driver is new ACPI_Power_Source (Core => ACPI_Service, others => <>);
+   Observe_All : Boolean := False;
+   with procedure Remember_Device (Device : ACPI_Service.Node_Descriptor) is null;
 package ACPI_Requests.Power_Sources with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
-   package Controller is new ACPI_Bootstrap.Power_Sources (Driver);
+   package Controller is new ACPI_Bootstrap.Power_Sources (Driver,Observe_All,Remember_Device);
    package Cached is new Controller.Cached;
    package Samples renames Cached.Samples;
    type Cache is limited private;

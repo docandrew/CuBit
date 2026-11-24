@@ -27,6 +27,10 @@ generic
    with procedure Begin_Release_Reset (Ticket : I2C_Transfer_Wire.Word;
       Deadline : I2C_Transfer_Wire.Millisecond; Reply : out GPIO_Lease_Control.Reply);
    with procedure Poll_Release_Reset (Reply : out GPIO_Lease_Control.Reply);
+   -- Passive diagnostic copy, after the I2C read has been acknowledged. The
+   -- observer must return normally, never reenter this instance or affect
+   -- parser/configuration policy. It receives bytes, not device authority.
+   with procedure Observe_Report_Data (Data : HID_I2C_Descriptors.Bytes) is null;
 package HID_I2C_Touchpad with SPARK_Mode is
    package W renames I2C_Transfer_Wire;
    package L renames GPIO_Lease_Control;
@@ -70,8 +74,12 @@ package HID_I2C_Touchpad with SPARK_Mode is
       Clock_Available : Boolean; Result : out Start_Result);
    function Observe return Device.Report;
    function Admission return Admission_Report;
+   function Report_Layout return Schema.Result;
+   -- Only a Decoded layout is usable. Other indexes return an empty record.
+   function Report_Collection (Index : Natural) return Schema.Collection;
    function Input_Observation return Source.Report;
    function Ready return Boolean;
+   function Input_Ready return Boolean;
    function Quiescent return Boolean;
    function Count return Input_Pending.Count_Type;
    function Head return Input_Pending.Item with Pre => Count > 0;
@@ -90,7 +98,7 @@ package HID_I2C_Touchpad with SPARK_Mode is
       Control_Window, Read_Window, Cleanup_Window : HID_GPIO_Input.Window;
    package GPIO_Input is
       package Owner is new HID_GPIO_Input.Owner
-        (Controls, Device, Expected_Sender, Control_Window, Read_Window, Cleanup_Window, Next_Token);
+        (Controls, Device, Expected_Sender, Control_Window, Read_Window, Cleanup_Window, Next_Token, Input_Ready);
       procedure Start (Now : W.Word; Clock_Available : Boolean; Result : out Owner.Start_Result);
       procedure Step (Now : W.Word; Clock_Available : Boolean);
       procedure Receive_Control (Token : W.Word; Sender : CuBit.Process_IDs.Process_ID;

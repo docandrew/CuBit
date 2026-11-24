@@ -15,19 +15,22 @@ package AML_Register_Views with SPARK_Mode, Pure is
        when T.Dword_Access => 4, when T.Qword_Access => 8)
      with Post => Octets'Result = AML_Decode.Integer_Value (T.Octets (Width));
    function Valid_Region (Item : L.Region_Geometry) return Boolean is
-     (Item.Space in L.Memory_Space | L.IO_Space | L.PCI_Config_Space | L.Embedded_Control_Space
+     (Item.Space in L.Memory_Space | L.IO_Space | L.PCI_Config_Space | L.Embedded_Control_Space | L.System_CMOS_Space
       and then L.Domain_Valid (Item)
       and then Item.Length /= 0
       and then Item.Length - 1 <= AML_Decode.Integer_Value'Last - Item.Base
       and then (if Item.Space = L.IO_Space then Item.Base <= L.IO_Last_Address
         and then Item.Length - 1 <= L.IO_Last_Address - Item.Base)
       and then (if Item.Space = L.Embedded_Control_Space then Item.Base <= L.EC_Last_Cell
-        and then Item.Length - 1 <= L.EC_Last_Cell - Item.Base));
+        and then Item.Length - 1 <= L.EC_Last_Cell - Item.Base)
+      and then (if Item.Space = L.System_CMOS_Space then Item.Base <= L.CMOS_Last_Cell
+        and then Item.Length - 1 <= L.CMOS_Last_Cell - Item.Base));
    function Valid_Register (Item : L.Register_Geometry) return Boolean is
      (Valid_Region (Item.Region) and then Item.Byte_Offset < Item.Region.Length
       and then Octets (Item.Width) <= Item.Region.Length - Item.Byte_Offset
       and then (if Item.Region.Space /= L.Memory_Space then Item.Width /= T.Qword_Access)
       and then (if Item.Region.Space = L.Embedded_Control_Space then Item.Width = T.Byte_Access)
+      and then (if Item.Region.Space = L.System_CMOS_Space then Item.Width = T.Byte_Access)
       and then T.Aligned (Item.Region.Base + Item.Byte_Offset, Item.Width));
    function First_Address (Item : L.Register_Geometry) return AML_Decode.Integer_Value is
      (Item.Region.Base + Item.Byte_Offset) with Pre => Valid_Register (Item),

@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with Main_Model;
+with Ada.Strings.Fixed;
 with GPIO_Admin_Wire;
 with GPIO_Loop_Time;
 with GPIO_IRQ_Notices;
@@ -56,7 +57,8 @@ package body GPIO_Native_Pump is
          when 2 =>
             if B.Control_Answers = 1 then
                B.Check (B.Last_Control.Status = W.Completed, "real GPIO owner completes arm");
-               declare L : constant B.G.Location := B.G.Locate (160); begin
+               if B.Current=B.Pad_Reset_Wait and then Ada.Strings.Fixed.Index(B.U.To_String(B.Logs),"stage=first-arm+250ms")=0 then return;end if;
+               declare L : constant B.G.Location := B.G.Locate (B.Target_Pin); begin
                   B.Memory (L.Resource) (Natural (L.Status_Register) / 4) :=
                      B.Memory (L.Resource) (Natural (L.Status_Register) / 4) or L.Interrupt_Mask;
                end;

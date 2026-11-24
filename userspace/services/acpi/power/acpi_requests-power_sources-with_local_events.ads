@@ -37,6 +37,8 @@ package ACPI_Requests.Power_Sources.With_Local_Events is
    function Read (Server : State; Now : Samples.Clock_Reading; Maximum_Age : Samples.Tick) return Samples.View
      with Pre => Valid(Server);
    -- Stop this consumer only. Backing/shared-owner retirement stays separate.
+   function Metadata_View(Server:State) return Samples.View with Pre=>Valid(Server);
+   function Metadata_Revision(Server:State) return Samples.Revision_Number with Pre=>Valid(Server);
    procedure Stop;
 private
    Snapshot : Collection_Diagnostic;

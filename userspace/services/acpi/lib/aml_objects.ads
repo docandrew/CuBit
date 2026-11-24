@@ -99,6 +99,13 @@ package AML_Objects with SPARK_Mode, Pure is
      with Pre => Is_Live (Store, ID);
    function Length (Store : State; ID : Object_ID) return Natural
      with Pre => Is_Live (Store, ID);
+   -- Read-only ghost lemma: expose only the per-object shape needed by clients.
+   procedure Observe_Valid_Object_Layout (Store : State; ID : Object_ID)
+     with Ghost, Pre => Valid (Store) and then Is_Live (Store, ID),
+       Post => (case Kind (Store, ID) is
+         when Package_Object => Length (Store, ID) <= Store.Element_Capacity,
+         when String_Object | Buffer_Object => Length (Store, ID) <= Store.Byte_Capacity,
+         when others => Length (Store, ID) = 0);
    function Origin_Of (Store : State; ID : Object_ID) return AML_Decode.Integer_Origin
      with Pre => Is_Live (Store, ID)
        and then Kind (Store, ID) = Integer_Object;
@@ -484,6 +491,43 @@ private
       Bytes : AML_Decode.Bytes (1 .. Byte_Capacity) := [others => 0];
       Elements : Element_Array (1 .. Element_Capacity) := [others => 0];
    end record;
+   -- Proof-visible completions of existing observers; bodies are unchanged.
+   function Extends (Store, Prior : State) return Boolean is
+     (Same_Capacities (Store, Prior) and then Store.Generation_Limit = Prior.Generation_Limit
+      and then Store.Used >= Prior.Used and then Store.Live_Used >= Prior.Live_Used
+      and then Store.Bytes_Used >= Prior.Bytes_Used and then Store.Elements_Used >= Prior.Elements_Used
+      and then (for all I in 1 .. Store.Object_Capacity =>
+        Store.Objects (I).Stamp >= Prior.Objects (I).Stamp
+        and then (if Prior.Objects (I).Occupied then Store.Objects (I) = Prior.Objects (I)))
+      and then Store.Bytes (1 .. Prior.Bytes_Used) = Prior.Bytes (1 .. Prior.Bytes_Used)
+      and then Store.Elements (1 .. Prior.Elements_Used) = Prior.Elements (1 .. Prior.Elements_Used));
+   function Kind (Store : State; ID : Object_ID) return Object_Kind is (Store.Objects (ID).Tag);
+   function Length (Store : State; ID : Object_ID) return Natural is (Store.Objects (ID).Size);
+   function Byte_Data (Store : State; ID : Object_ID) return AML_Decode.Bytes is
+     (Store.Bytes (Store.Objects (ID).First + 1 .. Store.Objects (ID).First + Store.Objects (ID).Size));
+   function Fresh_Allocation (Store, Prior : State; ID : Object_ID) return Boolean is
+     (Same_Capacities (Store, Prior) and then Is_Live (Store, ID) and then not Is_Live (Prior, ID)
+      and then Prior.Objects (ID).Stamp < Prior.Generation_Limit
+      and then Store.Objects (ID).Stamp = Prior.Objects (ID).Stamp + 1
+      and then Store.Generation_Limit = Prior.Generation_Limit
+      and then Store.Live_Used = Prior.Live_Used + 1
+      and then Store.Used = Object_ID'Max (Prior.Used, ID)
+      and then Extends (Store, Prior)
+      and then (for all I in 1 .. Store.Object_Capacity => (if I /= ID then Store.Objects (I) = Prior.Objects (I)))
+      and then (case Store.Objects (ID).Tag is
+        when Integer_Object | Reference_Object | Metadata_Object | Metadata_Snapshot_Object | Event_Object | Mutex_Object =>
+          Store.Bytes_Used = Prior.Bytes_Used and then Store.Elements_Used = Prior.Elements_Used
+          and then Store.Objects (ID).First = 0 and then Store.Objects (ID).Size = 0,
+        when String_Object | Buffer_Object =>
+          Store.Objects (ID).First = Prior.Bytes_Used
+          and then Store.Objects (ID).Size <= Store.Byte_Capacity - Prior.Bytes_Used
+          and then Store.Bytes_Used = Prior.Bytes_Used + Store.Objects (ID).Size
+          and then Store.Elements_Used = Prior.Elements_Used,
+        when Package_Object =>
+          Store.Objects (ID).First = Prior.Elements_Used
+          and then Store.Objects (ID).Size <= Store.Element_Capacity - Prior.Elements_Used
+          and then Store.Elements_Used = Prior.Elements_Used + Store.Objects (ID).Size
+          and then Store.Bytes_Used = Prior.Bytes_Used));
    -- Shared private allocation plan: transaction record-before-write uses
    -- the exact allocator selector, never an independently guessed free slot.
    procedure Select_Slot (Store : State; ID : out Object_ID; Status : out Allocation_Status);

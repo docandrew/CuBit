@@ -61,6 +61,8 @@ package body CuBit.Messages is
    end registerDriver;
    procedure debugPrint (Text : String) is
    begin
+      if Ada.Strings.Fixed.Index(Text,"stage=first-arm pad=")/=0 then B.Arm_Snapshot_Time:=B.Clock;
+      elsif Ada.Strings.Fixed.Index(Text,"stage=first-arm+250ms pad=")/=0 then B.Wait_Snapshot_Time:=B.Clock;end if;
       if Ada.Strings.Fixed.Index (Text, "gpio: runtime fault controller ") /= 0 then
          B.Runtime_Snapshots := B.Runtime_Snapshots + 1;
 
