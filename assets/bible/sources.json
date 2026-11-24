@@ -38,9 +38,9 @@
         "name": "English"
       },
       "url": "https://ebible.org/Scriptures/eng-web_usfm.zip",
-      "sha256": "bd7f44cd6c78b94c214cce3d30920736c338df873789e3af30bf62b5ed16f6bc",
-      "retrieved": "2026-11-23",
-      "publisher": "eBible.org (Michael Paul Johnson; 2020 stable text, source files dated 2026-11-21)",
+      "sha256": "9d0fc1372e34140da9fad77175fd3da69adee997f5f6c21b5db3e74811625966",
+      "retrieved": "2026-11-24",
+      "publisher": "eBible.org (Michael Paul Johnson; 2020 stable text, source files dated 2026-11-24)",
       "licence": "Public Domain. \"The World English Bible is in the Public Domain. That means that it is not copyrighted. However, 'World English Bible' is a Trademark of eBible.org. ... All we ask is that if you CHANGE the actual text of the World English Bible in any way, you not call the result the World English Bible any more.\" CuBit does not change the text: footnotes, cross-references and Strong's numbers are left out, and the words are unchanged."
     },
     {
