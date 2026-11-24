@@ -71,11 +71,14 @@ package CuBit.UI.Modifier_Reveal with SPARK_Mode is
    procedure Release_All (S : out State)
    with Post => Keys.Is_Empty (Held (S)) and then not Chord_Used (S);
 
-   --  When Revealed next changes without input (NEVER: it will not).
-   function Next_Deadline (S : State) return Interfaces.Unsigned_64 is
+   --  When Revealed next changes without input (NEVER: it will not, as
+   --  once it shows: a deadline already passed would wake a loop forever).
+   function Next_Deadline (S : State; Now_Ms : Interfaces.Unsigned_64) return Interfaces.Unsigned_64 is
      (if Chord_Used (S) or else Keys.Is_Empty (Held (S)) then NEVER
       elsif Since (S) > NEVER - HOLD_DELAY_MS then NEVER
-      else Since (S) + HOLD_DELAY_MS);
+      elsif Now_Ms >= Since (S) + HOLD_DELAY_MS then NEVER
+      else Since (S) + HOLD_DELAY_MS)
+   with Post => Next_Deadline'Result = NEVER or else Next_Deadline'Result > Now_Ms;
 private
    type State is record
       Held_Set : Keys.Modifier_Set := Keys.No_Modifiers;

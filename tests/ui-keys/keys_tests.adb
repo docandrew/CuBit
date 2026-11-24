@@ -210,8 +210,11 @@ procedure Keys_Tests is
    begin
       MR.Key_Event (S, Keys.Control_Key, True, Ctrl_Set, T0);
       Check (not MR.Is_Revealed (S, T0 + MR.HOLD_DELAY_MS - 1), "no reveal before the hold delay");
-      Check (MR.Next_Deadline (S) = T0 + MR.HOLD_DELAY_MS, "the delay is the deadline");
+      Check (MR.Next_Deadline (S, T0) = T0 + MR.HOLD_DELAY_MS, "the delay is the deadline");
       Check (MR.Revealed (S, T0 + MR.HOLD_DELAY_MS) = Ctrl_Set, "holding Ctrl reveals the Ctrl layer");
+      --  Regression (found on CuBit itself): once revealed, no deadline is
+      --  pending; a passed one made Desktop and Files spin while held.
+      Check (MR.Next_Deadline (S, T0 + MR.HOLD_DELAY_MS) = MR.NEVER, "revealed: nothing pending");
       MR.Key_Event (S, Keys.Left_Shift_Key, True, Ctrl_Set + Keys.Shift, T0 + 2 * MR.HOLD_DELAY_MS);
       Check (MR.Revealed (S, T0 + 2 * MR.HOLD_DELAY_MS) = Ctrl_Set + Keys.Shift,
              "Shift added to a revealed Ctrl switches to Ctrl+Shift at once");
@@ -223,7 +226,7 @@ procedure Keys_Tests is
       MR.Key_Event (S, Keys.Control_Key, True, Ctrl_Set, T0 + 5_000);
       MR.Key_Event (S, Keys.S, True, Ctrl_Set, T0 + 5_050);
       Check (not MR.Is_Revealed (S, T0 + 5_000 + 2 * MR.HOLD_DELAY_MS), "a quick chord reveals nothing");
-      Check (MR.Next_Deadline (S) = MR.NEVER, "and nothing is pending");
+      Check (MR.Next_Deadline (S, T0 + 5_100) = MR.NEVER, "and nothing is pending");
       MR.Key_Event (S, Keys.Control_Key, False, Keys.No_Modifiers, T0 + 6_000);
       Check (not MR.Chord_Used (S), "release forgets the chord");
 

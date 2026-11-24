@@ -16277,7 +16277,7 @@ begin
               DN.Toast_Due (notifications) = DN.Never and then
               not Desktop_Capture.Marked and then
               TTP.Next_Deadline (tipState) = TTP.NEVER and then
-              MR.Next_Deadline (superReveal) = MR.NEVER and then
+              MR.Next_Deadline (superReveal, nowMs) = MR.NEVER and then
               modeTrial.Current = Desktop_Mode_Trial.Idle and then
               not KR.Armed (keyRepeat) and then
               not renderingPending and then
@@ -16337,9 +16337,9 @@ begin
                     (nextDueMs = 0 or else TTP.Next_Deadline (tipState) < nextDueMs)
                   then nextDueMs := TTP.Next_Deadline (tipState); end if;
                   --  Holding Super: when its hints show (Modifier_Reveal).
-                  if MR.Next_Deadline (superReveal) /= MR.NEVER and then
-                    (nextDueMs = 0 or else MR.Next_Deadline (superReveal) < nextDueMs)
-                  then nextDueMs := MR.Next_Deadline (superReveal); end if;
+                  if MR.Next_Deadline (superReveal, nowMs) /= MR.NEVER and then
+                    (nextDueMs = 0 or else MR.Next_Deadline (superReveal, nowMs) < nextDueMs)
+                  then nextDueMs := MR.Next_Deadline (superReveal, nowMs); end if;
                   --  "Keep this display mode?": its countdown and deadline.
                   if modeTrial.Current = Desktop_Mode_Trial.Asking then
                      declare

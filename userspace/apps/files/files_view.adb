@@ -3879,7 +3879,7 @@ package body Files_View is
                                            Files_Reader.Deadline), Files_Operations.Deadline),
          Unsigned_64'Min
            (Microseconds_Of (Tooltips.Next_Deadline (Tip)),
-            Unsigned_64'Min (Microseconds_Of (MR.Next_Deadline (Reveal)),
+            Unsigned_64'Min (Microseconds_Of (MR.Next_Deadline (Reveal, Now_Ms)),
                              Unsigned_64'Min (Microseconds_Of (Bars.Next_Deadline (Key_Bar)),
                                               Microseconds_Of (Bars.Next_Deadline (Tool_Bar)))))));
    function Waiting_For_IO (State : View_State) return Boolean is
