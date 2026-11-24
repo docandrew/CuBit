@@ -19,6 +19,7 @@ with Interfaces; use Interfaces;
 with CuBit.Block_Requests; use CuBit.Block_Requests;
 with CuBit.Block_Work; use CuBit.Block_Work;
 with CuBit.Device_Identities;
+with CuBit.Messages;
 
 generic
    --  The device's command slots, one request in flight per slot.
@@ -67,6 +68,30 @@ package CuBit.Block_Driver is
    --  Some command is in flight (the caller should not sleep past the
    --  device's completion).
    function Outstanding return Boolean;
+
+   --  For a driver whose endpoint also serves other devices (xhci: the
+   --  boot medium and a disk on one mailbox), which receives and routes
+   --  each request itself: Collect_Finished is Poll without taking new
+   --  requests, and Serve takes one already received (its reply not yet
+   --  given) into a free slot.
+   procedure Collect_Finished (Progressed : out Boolean);
+   function Slot_Free return Boolean;
+   procedure Serve (Sender : CuBit.Messages.Process_ID; Request : CuBit.Messages.Message)
+     with Pre => Slot_Free;
+   --  Serve for a driver with several devices on its endpoint (FS-034:
+   --  xhci's USB disks, routed by unit badge): the request is answered
+   --  against State and Identity, the device it was routed to, with the
+   --  write Authority the router found (Writes are not looked up from the
+   --  badge here). Post must know which device the slot's command is for.
+   procedure Serve_As
+     (Sender    : CuBit.Messages.Process_ID;
+      Request   : CuBit.Messages.Message;
+      State     : Device_State;
+      Identity  : CuBit.Device_Identities.Identity;
+      Authority : Write_Authority)
+     with Pre => Slot_Free
+                 and then CuBit.Device_Identities.Well_Formed (Identity.Model)
+                 and then CuBit.Device_Identities.Well_Formed (Identity.Serial);
 
    --  Blocks until a request arrives and takes it (call only with nothing
    --  in flight: Poll's deadlines are not watched while blocked).

@@ -7,4 +7,11 @@
   (request-service desktop read-write desktop)
   (request-service filesystem read-write files-filesystem)
   (filesystem-scope (rights read) "@nvme:0/")
-  (filesystem-scope (rights read) "@mem:0/"))
+  (filesystem-scope (rights read) "@mem:0/")
+  # USB sticks (FS-034), read and written, and ejected (Eject needs write
+  # access to the whole volume); by position until removable places are
+  # named by label (@media, FS-033).
+  (filesystem-scope (rights read write create) "@usb:0")
+  (filesystem-scope (rights read write create) "@usb:1")
+  (filesystem-scope (rights read write create) "@usb:2")
+  (filesystem-scope (rights read write create) "@usb:3"))

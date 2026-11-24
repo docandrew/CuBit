@@ -20,7 +20,8 @@ for unit in cubit.ads cubit-filesystems.ads cubit-filesystems.adb cubit-director
             cubit-channel_contracts.ads cubit-channel_contracts.adb cubit-protocols.ads \
             cubit-directory_pages.ads cubit-directory_pages.adb cubit-failures.ads cubit-failures.adb \
             cubit-filesystem_events.ads cubit-filesystem_events.adb cubit-volume_descriptions.ads \
-            cubit-volume_descriptions.adb cubit-file_access.ads cubit-file_access.adb \
+            cubit-volume_descriptions.adb cubit-volume_ejection.ads cubit-volume_ejection.adb \
+            cubit-file_access.ads cubit-file_access.adb \
             cubit-filesystem_places.ads cubit-filesystem_places.adb \
             cubit-published_clock.ads cubit-published_clock.adb cubit-kernel_calls.ads \
             cubit-kernel_calls.adb cubit-handles.ads cubit-handles-grants.ads cubit-handles-grants.adb \

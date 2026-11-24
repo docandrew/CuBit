@@ -133,4 +133,14 @@ package body CCL_Places is
       when Use_Error => Result := Access_Denied;
       when others => Result := Failed;
    end Write_At;
+   --  The preview has no removable volumes.
+   procedure Eject
+     (Locator : String; Close_Open : Boolean; Outcome : out Eject_Outcome; Open : out Natural)
+   is
+      pragma Unreferenced (Locator, Close_Open);
+   begin
+      Outcome := Not_Attached;
+      Open := 0;
+   end Eject;
+
 end CCL_Places;

@@ -37,4 +37,14 @@ package CCL_Places is
    procedure Create (Path : String; Result : out Result_Kind);
    --  Text written into the file at Path from Offset.
    procedure Write_At (Path : String; Offset : Natural; Text : String; Result : out Result_Kind);
+
+   --  Eject (FS-034, CuBit.Volume_Ejection): the removable volume Locator
+   --  names ("@usb:0") made safe to pull out. Close_Open: close what other
+   --  programs (and this one) still have open on it, else refuse while
+   --  anything is open (Open says how many).
+   type Eject_Outcome is
+     (Safe_To_Remove, Open_Handles, Not_Removable, Not_Attached, Flush_Failed, Access_Denied,
+      Service_Unavailable);
+   procedure Eject
+     (Locator : String; Close_Open : Boolean; Outcome : out Eject_Outcome; Open : out Natural);
 end CCL_Places;

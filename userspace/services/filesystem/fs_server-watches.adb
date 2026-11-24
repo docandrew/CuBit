@@ -112,6 +112,19 @@ package body Fs_Server.Watches is
       end if;
    end endWatch;
 
+   procedure endVolumeWatches (volume : Volume_Index) is
+   begin
+      for q in clientQueues'Range loop
+         if clientQueues (q).owner /= No_Process and then clientQueues (q).eventLink.Active then
+            for w in FE.Watch_Number loop
+               if live (q, w) and then watches (q, w).volume = volume then
+                  endWatch (q, w);
+               end if;
+            end loop;
+         end if;
+      end loop;
+   end endVolumeWatches;
+
    --  One event for live watch w of queue q, or its Rescan_Needed.
    procedure offer
      (q : Client_Queue_Index; w : FE.Watch_Number; item : FE.Event; name : String)

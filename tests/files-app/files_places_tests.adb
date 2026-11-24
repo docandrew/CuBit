@@ -143,6 +143,10 @@ package body Files_Places_Tests is
       Check (Caption ("@mem:1/") = "Live workspace 1", "a second memory volume");
       Check (Caption ("@ata:0/") = "ATA disk 0", "ATA caption");
       Check (Caption ("@cd:0/") = "Optical disc", "optical caption");
+      --  FS-034: USB sticks, the volumes that can be ejected.
+      Check (Caption ("@usb:0/") = "USB stick" and then Caption ("@usb:1/") = "USB stick 1", "USB captions");
+      Check (Ejectable ("@usb:0/") and then Ejectable ("@usb:2") and then not Ejectable ("@usb:0/dir")
+             and then not Ejectable ("@nvme:0/") and then not Ejectable ("@cd:0/"), "only USB roots eject");
       Check (Caption ("@boot/") = "Boot image", "boot archive caption");
       Check (Caption ("@nvme:0/home/doc/") = "@nvme:0/home/doc/", "a scope below a root keeps its path");
       Check (Caption ("@host:0/") = "@host:0/", "an unknown volume keeps its root");

@@ -9,10 +9,11 @@
 --  After HCRST the devices attached before boot come back: a USB 2.0 port
 --  shows its device at once, a SuperSpeed link trains (Polling, with no
 --  connection yet), and a device whose SuperSpeed attempt fails connects
---  again on its USB 2.0 companion port. Hotplug takes HID devices only, so
---  the window must not end while a port is still moving. It ends once every
---  root port has held still for Quiet_Ms (what Attachment shows unchanged,
---  none Moving), and at the latest after Limit_Ms.
+--  again on its USB 2.0 companion port. Hotplug takes HID devices and USB
+--  disks but never the boot medium (Probe_Optical looks once, after this
+--  window), so the window must not end while a port is still moving. It
+--  ends once every root port has held still for Quiet_Ms (what Attachment
+--  shows unchanged, none Moving), and at the latest after Limit_Ms.
 --
 --  The window used to be Limit_Ms every boot, on every controller. On the
 --  IdeaPad's two controllers that was 6 s of devmgr's ~10 s wait (images

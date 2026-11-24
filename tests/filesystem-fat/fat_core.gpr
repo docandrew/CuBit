@@ -1,0 +1,25 @@
+project Fat_Core is
+   --  The pure FAT32 core (SPARK): on-disk codecs, names, chains and the
+   --  free-cluster ledger, with its hosted tests (main.adb) and a proof
+   --  instance of the chain walks (fat_chain_instances.ads).
+   --  FS_SRC/FS_OBJ are overridden only by mutate.sh (private copies).
+   Fs_Src := external ("FS_SRC", "../../userspace/services/filesystem");
+   Fs_Obj := external ("FS_OBJ", "build/core");
+   for Languages use ("Ada");
+   for Source_Dirs use (".", Fs_Src);
+   for Source_Files use
+     ("main.adb", "fat_chain_instances.ads", "fat_chain_instances.adb",
+      "fat_chain_fixture.ads", "fat_chain_fixture.adb",
+      "fat_format.ads", "fat_format.adb", "fat_names.ads", "fat_names.adb",
+      "fat_chains.ads", "fat_chains.adb");
+   for Object_Dir use Fs_Obj;
+   for Exec_Dir use Fs_Obj;
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--no-loop-unrolling");
+   end Prove;
+end Fat_Core;

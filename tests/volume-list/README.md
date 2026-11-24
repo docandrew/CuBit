@@ -14,9 +14,12 @@ Names match exactly: `@nvme:1/file` never means volume zero. Null strings and
 non-1-based strings are included in the hosted parser tests.
 
 Identities are internal to one FS-service lifetime, not persistent media UUIDs,
-client handles or authority. There is no remove/rebind API: a live handle cannot
-be silently redirected by recycling an entry. Future replacement/hotplug needs
-explicit lifecycle handling before reuse is introduced.
+client handles or authority. Names are never removed. FS-034 adds `Detach`: a
+removable disk's endpoint is given back and the name can be attached again
+(a stick pulled out and plugged in again). The service invalidates every
+handle, cached name and file version on the volume before it detaches it
+(Fs_Server.Storage), so a live handle is never redirected to the new disk.
+The system volume is never detached.
 
 Hosted tests register two endpoints with the same driver-role hint, then use
 their distinct volume indices in the production shared-object table with equal

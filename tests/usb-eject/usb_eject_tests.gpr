@@ -1,0 +1,32 @@
+--  CuBit
+--  Copyright (C) 2026 Jon Andrew
+--  SPDX-License-Identifier: GPL-3.0-or-later
+--
+--  USB stick hot-plug and Eject (FS-034): the unit badge, the disk
+--  presence report, xhci's report state and the eject codec and plan, as
+--  hosted tests and SPARK proof, and devmgr's USB disk table. USB_EJECT_RUNTIME / USB_EJECT_XHCI /
+--  USB_EJECT_OBJ let mutate.sh build a private copy.
+project USB_Eject_Tests is
+   Runtime := external ("USB_EJECT_RUNTIME", "../../userspace/runtime/gnat");
+   Xhci := external ("USB_EJECT_XHCI", "../../userspace/services/xhci");
+   Devmgr := external ("USB_EJECT_DEVMGR", "../../userspace/services/devmgr");
+   Filesystem := "../../userspace/services/filesystem";
+   for Languages use ("Ada");
+   for Source_Dirs use (".", Runtime, Xhci, Devmgr, Filesystem);
+   for Source_Files use ("main.adb", "cubit.ads",
+      "cubit-block_unit_badges.ads",
+      "cubit-disk_presence.ads", "cubit-disk_presence.adb",
+      "cubit-volume_ejection.ads", "cubit-volume_ejection.adb",
+      "disk_reports.ads", "disk_reports.adb", "test_reports.ads",
+      "devmgr_usb_disks.ads", "devmgr_usb_disks.adb", "fs_attachments.ads");
+   for Object_Dir use external ("USB_EJECT_OBJ", "build");
+   for Exec_Dir use external ("USB_EJECT_OBJ", "build");
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-O2", "-gnat2022", "-gnata", "-gnatwa");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end USB_Eject_Tests;

@@ -153,6 +153,8 @@ begin
             Fs_Server.Revoke_Access_Profile (sender, msg);
          when Fs_Attachments.Attach_Label =>
             Fs_Server.Attach_Storage (sender, msg);
+         when Fs_Attachments.Detach_Label =>
+            Fs_Server.Detach_Storage (sender, msg);
          when CuBit.System_Stops.Storage_Operation =>
             Fs_Server.Stop_Storage (sender, msg);
          when OP_RELEASE_OWNER =>

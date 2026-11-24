@@ -25,11 +25,12 @@ with XHCI_Capabilities;
 with XHCI_DMA_Layout;
 with XHCI_Bring_Up_Report;
 with XHCI_Controller_Identity;
-with Optical_Service;
+with Storage_Requests;
 with USB_Keyboards;
 with Pointer_Pending;
 with Input_Sources;
 with CuBit.Control_Events;
+with CuBit.Disk_Presence;
 
 procedure main is
    use type XHCI.Init_Result;
@@ -248,6 +249,73 @@ procedure main is
 
    function Earliest (A, B : Unsigned_64) return Unsigned_64 is (Unsigned_64'Min (A, B));
 
+   --  FS-034: devmgr learns of each disk that came or went by a report
+   --  submitted to its endpoint, never by a call (devmgr calls us; the
+   --  synchronous graph stays a DAG). One report is in flight at a time,
+   --  and it counts as delivered only when devmgr answers it REPLY_OK (its
+   --  completion): one the kernel did not take (devmgr's queue full), or
+   --  that devmgr's startup received without answering (REPLY_ENDED), stays
+   --  owed and is offered again after Report_Retry_Ms. Nothing is dropped
+   --  (XHCI.Next_Report).
+   Report_Retry_Ms : constant Unsigned_64 := 10;
+   --  devmgr refused it (it does not take reports from this process yet).
+   Report_Refused_Retry_Ms : constant Unsigned_64 := 1_000;
+   Report_Token : constant Unsigned_64 := 16#D15C_0000_0001#;
+   reportRetryAt : Unsigned_64 := 0;
+   reportInFlight : Boolean := False;
+   reportItem : CuBit.Disk_Presence.Report;
+
+   procedure Send_Disk_Reports (Progressed : out Boolean) is
+      package DP renames CuBit.Disk_Presence;
+      Due : Boolean;
+      Words : DP.Words;
+      Done : CompletionEntry;
+   begin
+      Progressed := False;
+      if reportInFlight then
+         if Poll_Completion (Done'Address) = 0 then
+            return;
+         end if;
+         Progressed := True;
+         if Done.token /= Report_Token then
+            return;   --  no other completions here
+         end if;
+         reportInFlight := False;
+         if Done.status = COMPLETION_OK and then Done.msg.tag.label = REPLY_OK then
+            XHCI.Report_Sent;
+            Boot_Log.Line ("xhci: " & Location & " disk unit" & reportItem.Unit'Image & " reported " &
+                           (case reportItem.State is when DP.Present => "present", when DP.Gone => "gone"));
+         else
+            reportRetryAt := CuBit.Monotonic.Milliseconds +
+              (if Done.status = COMPLETION_OK and then Done.msg.tag.label = REPLY_ERR
+               then Report_Refused_Retry_Ms else Report_Retry_Ms);
+         end if;
+         return;
+      end if;
+      if reportRetryAt /= 0 and then CuBit.Monotonic.Milliseconds < reportRetryAt then
+         return;
+      end if;
+      reportRetryAt := 0;
+      XHCI.Next_Report (Due, reportItem);
+      if not Due or else not DP.Well_Formed (reportItem) then
+         return;
+      end if;
+      Words := DP.Encode (reportItem);
+      if capSubmit
+        (Startup.Ready,
+         (tag => (label => DP.Report_Label, length => DP.Report_Words,
+                  protocol => 0, ipc => <>, reserved => 0),
+          authorityTag => 0,
+          words => [0 => Words (DP.Unit_Word), 1 => Words (DP.State_Word), others => 0]),
+         Report_Token)
+      then
+         reportInFlight := True;
+         Progressed := True;
+      else
+         reportRetryAt := CuBit.Monotonic.Milliseconds + Report_Retry_Ms;
+      end if;
+   end Send_Disk_Reports;
+
 begin
    --  ABI-002: its lines into its logstore ring, never the kernel console;
    --  queued until devmgr introduces logstore (CuBit.Late_Introduction).
@@ -333,6 +401,7 @@ begin
    end if;
 
    XHCI.Probe_Optical;
+   XHCI.Probe_Disks;
    XHCI.Start_Boot_Mouse_Transfers;
    XHCI.Start_Boot_Keyboard_Transfers;
    XHCI.Enable_Runtime_Interrupts (interruptMode, interruptEnabled);
@@ -341,7 +410,8 @@ begin
    Boot_Log.Line ("xhci: " & Location & " devices keyboard=" &
                   (if XHCI.Has_Keyboard then "1" else "0") & " mouse=" &
                   (if XHCI.Has_Mouse then "1" else "0") & " storage=" &
-                  (if XHCI.Has_Storage then "1" else "0") & " ports=" &
+                  (if XHCI.Has_Storage then "1" else "0") & " disk=" &
+                  (if XHCI.Has_Disk then "1" else "0") & " ports=" &
                   Image (Unsigned_64 (XHCI.Port_Count)) & " connected=" &
                   Image (Unsigned_64 (XHCI.Connected_Port_Count)));
    Boot_Log.Line ("xhci: " & Location & " bring-up complete (" &
@@ -366,7 +436,13 @@ begin
          Note_Source_Event (msg);
       end if;
       XHCI.Service (serviceProgress);
-      Optical_Service.Poll (storageProgress);
+      Storage_Requests.Poll (storageProgress);
+      declare
+         Reported : Boolean;
+      begin
+         Send_Disk_Reports (Reported);
+         storageProgress := storageProgress or else Reported;
+      end;
 
       --  A keyboard that went away releases every key it held, then its
       --  source ends (hot-plug: one that comes back is a new source).
@@ -425,6 +501,9 @@ begin
             D : Unsigned_64 := Earliest (XHCI.Next_Deadline, XHCI.Optical_Deadline);
          begin
             D := Earliest (D, diagnosticsDue);
+            if reportRetryAt /= 0 then
+               D := Earliest (D, reportRetryAt);
+            end if;
             --  A source still looking for Desktop looks again by then.
             if keyboardPresent then
                D := Earliest (D, Keyboards.Next_Deadline (Keyboard_Source));

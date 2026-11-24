@@ -73,6 +73,9 @@ with CuBit.Startup_Tables;
 with Devmgr_Authority;
 with Devmgr_Launches;
 with Fs_Attachments;
+with Devmgr_USB_Disks;
+with CuBit.Disk_Presence;
+with CuBit.Block_Unit_Badges;
 with Native_GPU_Probe_Protocol;
 with Boot_RTC;
 with CCL.Configurations;
@@ -1388,6 +1391,12 @@ procedure main is
    --  devmgr receives: True when From is an xhci.drv instance whose report
    --  is pending and Msg is it (answered and acted on here).
    function XHCI_Report (From : Process_ID; Msg : Message) return Boolean;
+   --  An xhci.drv instance's USB disk report (CuBit.Disk_Presence, FS-034),
+   --  wherever devmgr receives: noted and answered. Its boot disks report
+   --  after its bring-up report, while devmgr's startup may still be
+   --  waiting on other drivers; taken there too, each is attached once
+   --  devmgr's loop runs (Pump_USB_Disks).
+   procedure Take_Disk_Report (From : Process_ID; Msg : Message);
    --  Before devmgr needs what USB storage may hold (a boot image missing
    --  from the initrd, intel-gpu's firmware, procmgr's programs): receive
    --  until every accepted xHCI controller has reported, answering what
@@ -1560,6 +1569,9 @@ procedure main is
    --  The kernel's "kernel: process killed" record says why when it faulted.
    Exit_Check_Interval_Ms : constant := 250;
    Next_Exit_Check : Unsigned_64 := 0;
+   --  An xhci.drv instance ended: its USB disks go (FS-034).
+   procedure USB_Driver_Ended (Child : Process_ID);
+
    procedure Log_Child_Exits (Now : Unsigned_64) is
       Child  : Process_ID;
       Name   : Devmgr_Children.Child_Name;
@@ -1577,6 +1589,7 @@ procedure main is
          Devmgr_Children.Take_Next_Exit (Child, Name, Length, Report, Found);
          exit when not Found;
          Sources.Exited (Child);
+         USB_Driver_Ended (Child);
          DL.Forget_Introductions (Child);
          declare
             Line : constant String :=
@@ -1989,6 +2002,8 @@ procedure main is
          DL.Await (sender, msg);
       elsif XHCI_Report (sender, msg) then
          null;
+      elsif msg.tag.label = CuBit.Disk_Presence.Report_Label then
+         Take_Disk_Report (sender, msg);
       elsif sender = Intel_Inspection_PID and then sender /= No_Process and then
         msg.authorityTag = Intel_Ready_Tag
       then
@@ -2195,6 +2210,28 @@ procedure main is
       end if;
       return Attach_Storage_With (Which, Ordinal, H.Copy (DL.Mailbox (Driver), H.Read_Write));
    end Attach_Storage;
+
+   --  The attach call itself, waiting until Deadline at most.
+   function Offer_Storage
+     (Which : Fs_Attachments.Device; Ordinal : Fs_Attachments.Device_Ordinal;
+      Copy : H.Derivation; System_Disk : Boolean; Deadline : Unsigned_64)
+      return Devmgr_USB_Disks.Call_Outcome
+   is
+      Request : Message :=
+        (tag => (label => Fs_Attachments.Attach_Label, length => Fs_Attachments.Attach_Words,
+                 protocol => 0, ipc => <>, reserved => 0),
+         authorityTag => 0,
+         words => [Fs_Attachments.Device_Code (Which), Unsigned_64 (Ordinal),
+                   (if System_Disk then Fs_Attachments.System_Disk else Fs_Attachments.Data_Disk), 0]);
+      Reply : MessageTag;
+   begin
+      Reply := IPC.Call_Offering (Filesystem_Endpoint, Request, Deadline, Copy);
+      return (case Ending_Of (Reply) is
+                when Call_Answered =>
+                  (if Reply.label = REPLY_OK then Devmgr_USB_Disks.Answered_OK
+                   else Devmgr_USB_Disks.Answered_Refused),
+                when Call_Timed_Out | Call_Not_Delivered | Call_Ended => Devmgr_USB_Disks.Not_Answered);
+   end Offer_Storage;
 
    function Attach_Storage_With
      (Which : Fs_Attachments.Device; Ordinal : Fs_Attachments.Device_Ordinal;
@@ -2663,6 +2700,155 @@ procedure main is
    --  "<name> <bus:dev.fn>": how devmgr's lines name one instance.
    function Instance_Text (I : Inventory_Index; Name : String) return String is
      (Name & " " & Location_Text (inventory (I).location));
+
+   ---------------------------------------------------------------------------
+   --  USB disks (FS-034). Each xhci.drv instance reports the disks it
+   --  serves as they come and go (CuBit.Disk_Presence, submitted, never a
+   --  call: devmgr calls the drivers). Each disk is the filesystem's
+   --  @usb:N (Devmgr_USB_Disks), attached with a copy of its driver's
+   --  endpoint badged with the disk's unit (CuBit.Block_Unit_Badges): the
+   --  write grant for that disk alone, which also routes its requests. The
+   --  boot medium has no unit and stays the read-only optical volume.
+   --  Calls to the filesystem carry a short deadline and are tried again
+   --  later if unanswered, so a filesystem busy with a slow stick never
+   --  holds devmgr's loop.
+   ---------------------------------------------------------------------------
+   USB_Disks : Devmgr_USB_Disks.Table;
+
+   function USB_Name (Name : Fs_Attachments.Device_Ordinal) return String is
+     ("@usb:" & Natural'Image (Name) (2 .. Natural'Image (Name)'Last));
+
+   procedure Note_Disk_Report (From : Process_ID; Msg : Message; Taken : out Boolean) is
+      package DP renames CuBit.Disk_Presence;
+      package DU renames Devmgr_USB_Disks;
+      Driver : constant Natural := Instance_Of (From, "xhci.drv");
+      Item : DP.Report;
+      Valid : Boolean;
+      Placed : DU.Placement;
+      Found : Boolean;
+      Name : DU.Ordinal;
+   begin
+      DP.Decode (Natural (Msg.tag.length), [Msg.words (DP.Unit_Word), Msg.words (DP.State_Word)],
+                 Item, Valid);
+      Taken := Driver /= 0 and then Valid and then DU.Valid (USB_Disks);
+      if not Taken then
+         Warnings.Warn ("devmgr: disk report refused (not an xhci.drv instance, or malformed)");
+         return;
+      end if;
+      case Item.State is
+         when DP.Present =>
+            DU.Note_Present (USB_Disks, Driver, Item.Unit, Item.Write_Protected, Placed, Name);
+            case Placed is
+               when DU.Placed =>
+                  Warnings.Inform ("devmgr: " & Instance_Text (Driver, "xhci.drv") & " disk unit" &
+                                   Item.Unit'Image & " is " & USB_Name (Name) &
+                                   (if Item.Write_Protected then " (write protected)" else ""));
+               when DU.Already_Known => null;
+               when DU.No_Free_Name =>
+                  Warnings.Warn ("devmgr: " & Instance_Text (Driver, "xhci.drv") & " disk unit" &
+                                 Item.Unit'Image & " not attached: CAPACITY USB disk names: all" &
+                                 Natural'Image (DU.Maximum_Disks) & " in use");
+            end case;
+         when DP.Gone =>
+            DU.Note_Gone (USB_Disks, Driver, Item.Unit, Found, Name);
+            if Found then
+               Warnings.Inform ("devmgr: " & USB_Name (Name) & " gone (" &
+                                Instance_Text (Driver, "xhci.drv") & " unit" & Item.Unit'Image & ")");
+            end if;
+      end case;
+   end Note_Disk_Report;
+
+   --  Submitted with a completion: answered, so the driver knows the report
+   --  arrived (REPLY_OK), or that devmgr refused it (REPLY_ERR).
+   procedure Take_Disk_Report (From : Process_ID; Msg : Message) is
+      Taken : Boolean;
+      Ignore : Unsigned_64;
+   begin
+      Note_Disk_Report (From, Msg, Taken);
+      Refuse (From, Answered => Taken);
+      if Taken then
+         Ignore := reply (From, (tag => (label => REPLY_OK, length => 0, protocol => 0,
+                                         ipc => <>, reserved => 0),
+                                 authorityTag => 0, words => [others => 0]));
+      end if;
+   end Take_Disk_Report;
+
+   --  One owed attach or detach call per turn.
+   procedure Pump_USB_Disks (Now : Unsigned_64) is
+      package DU renames Devmgr_USB_Disks;
+      Found : Boolean;
+      Name : DU.Ordinal;
+      Outcome : DU.Call_Outcome;
+   begin
+      if not DU.Valid (USB_Disks) then
+         return;
+      end if;
+      DU.Next_Due (USB_Disks, Now, Found, Name);
+      if not Found then
+         return;
+      end if;
+      if not H.Valid (Filesystem_Endpoint) then
+         DU.Postpone (USB_Disks, Name, Now);
+         return;
+      end if;
+      declare
+         D : constant DU.Disk := USB_Disks (Name);
+      begin
+         case D.State is
+            when DU.Attach_Owed =>
+               if D.Driver not in 1 .. inventoryCount or else instances (D.Driver).Child = DL.No_Child
+                 or else D.Unit = CuBit.Block_Unit_Badges.No_Unit
+               then
+                  DU.Postpone (USB_Disks, Name, Now);
+                  return;
+               end if;
+               Outcome := Offer_Storage
+                 (Fs_Attachments.USB_Disk_Device, Name,
+                  H.Badged (DL.Mailbox (instances (D.Driver).Child), H.Read_Write,
+                            CuBit.Block_Unit_Badges.Badge (D.Unit)),
+                  System_Disk => False,
+                  Deadline => Deadline_After (DU.Call_Deadline_Ms));
+               DU.Attach_Done (USB_Disks, Name, Outcome, CuBit.Monotonic.Milliseconds);
+               Warnings.Inform ("devmgr: " & USB_Name (Name) &
+                                (case Outcome is
+                                   when DU.Answered_OK => " attached",
+                                   when DU.Answered_Refused => " refused by the filesystem",
+                                   when DU.Not_Answered => " attach not answered in time; trying again"));
+            when DU.Detach_Owed =>
+               declare
+                  Request : Message :=
+                    (tag => (label => Fs_Attachments.Detach_Label, length => Fs_Attachments.Detach_Words,
+                             protocol => 0, ipc => <>, reserved => 0),
+                     authorityTag => 0,
+                     words => [Fs_Attachments.Device_Code (Fs_Attachments.USB_Disk_Device),
+                               Unsigned_64 (Name), 0, 0]);
+                  Reply : constant MessageTag :=
+                    capCall (Filesystem_Endpoint, Request, Deadline_After (DU.Call_Deadline_Ms));
+               begin
+                  Outcome := (case Ending_Of (Reply) is
+                                when Call_Answered =>
+                                  (if Reply.label = REPLY_OK then DU.Answered_OK else DU.Answered_Refused),
+                                when others => DU.Not_Answered);
+                  DU.Detach_Done (USB_Disks, Name, Outcome, CuBit.Monotonic.Milliseconds);
+                  Warnings.Inform ("devmgr: " & USB_Name (Name) &
+                                   (case Outcome is
+                                      when DU.Answered_OK => " detached",
+                                      when DU.Answered_Refused => " detach refused; trying again",
+                                      when DU.Not_Answered => " detach not answered in time; trying again"));
+               end;
+            when others =>
+               null;
+         end case;
+      end;
+   end Pump_USB_Disks;
+
+   procedure USB_Driver_Ended (Child : Process_ID) is
+      Driver : constant Natural := Instance_Of (Child, "xhci.drv");
+   begin
+      if Driver /= 0 and then Devmgr_USB_Disks.Valid (USB_Disks) then
+         Devmgr_USB_Disks.Driver_Ended (USB_Disks, Driver);
+      end if;
+   end USB_Driver_Ended;
 
    NVME_REGISTER_BYTES : constant Unsigned_64 := 16#4000#;
    HDA_REGISTER_BYTES  : constant Unsigned_64 := 16#4000#;
@@ -4480,7 +4666,8 @@ procedure main is
               Unsigned_64'Image (Took) & " ms");
             --  Read-only optical block endpoint; no raw controller authority.
             --  The filesystem has one optical volume (@cd:0): the first
-            --  controller with a USB storage device serves it.
+            --  controller whose USB storage holds the boot medium (ISO 9660)
+            --  serves it.
             if filesystemPID /= No_Process and then not Optical_Storage_Ready and then
               R.Has (Devices, R.Storage_Bit)
             then
@@ -4488,6 +4675,9 @@ procedure main is
                  Attach_Storage (Fs_Attachments.Optical_Device, instances (I).Child,
                                  Ordinal_Of (I, "xhci.drv"));
             end if;
+            --  USB disks (never the boot medium) are not in this report:
+            --  the driver reports each as it comes and goes, at boot too,
+            --  after this one (Note_Disk_Report, FS-034).
          else
             Warnings.Inform ("devmgr: " & Name & " rejected setup (no device or a fault; " &
                              "see its lines); result" &
@@ -8708,6 +8898,7 @@ begin
          end if;
       end if;
       GPU_Launch.Step (GPU_Launches, Launch_Now);
+      Pump_USB_Disks (Launch_Now);
       Intel_Allocation_Growth.Step (Intel_Allocations);
       declare
          Windows_Changed : Boolean;
@@ -8723,13 +8914,15 @@ begin
            not Intel_Allocation_Growth.Pending (Intel_Allocations) and then Host_Bridge.Arm then
             Launch_Activity := Wait_For_Activity_Until
               (Unsigned_64'Min
+                 (Devmgr_USB_Disks.Next_Wake (USB_Disks),
+                  Unsigned_64'Min
                  ((if Devmgr_Driver_Stops.Wake_At = 0 then Unsigned_64'Last
                    else Devmgr_Driver_Stops.Wake_At),
                   (if Warnings.Pending and then
                       Launch_Now <= Unsigned_64'Last - Warnings.Pump_Interval_Ms
                    then Unsigned_64'Min (GPU_Launch.Next_Deadline (GPU_Launches),
                                          Launch_Now + Warnings.Pump_Interval_Ms)
-                   else GPU_Launch.Next_Deadline (GPU_Launches))));
+                   else GPU_Launch.Next_Deadline (GPU_Launches)))));
             if Launch_Activity = Unavailable then
                -- Exceptional kernel failure, not periodic broker polling.
                ret := CuBit.Waits.Sleep_For (1);
@@ -9753,6 +9946,8 @@ begin
                       2 => (if F.Mode = Polled then 0 else Unsigned_64 (F.Vectors.Count)),
                       3 => delivered])));
          end;
+      elsif msg.tag.label = CuBit.Disk_Presence.Report_Label then
+         Take_Disk_Report (from, msg);
       elsif msg.tag.label = CuBit.Devices.OP_PUBLISH_XHCI_STATS and then
             Instance_Of (from, "xhci.drv") /= 0 and then msg.tag.length >= 3
       then

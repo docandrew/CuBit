@@ -130,6 +130,18 @@ bench-fs: tests/fs-bench (build tests/fs-bench/build-cubit.sh first).
 bench-cualloc: tests/userspace-allocator/cubit (build its build-cubit.sh first; --accel kvm).
 fs-coherence-CASE: one cross-process coherence case, CASE from
   tests/fs-coherence/cases.txt (build tests/fs-coherence/build-cubit.sh first).
+fat32-volume: FAT32 (FS-030) on a second NVMe disk, an MBR stick image the
+  host makes and checks after the run with fsck.fat -n and mtools
+  (tests/filesystem-fat/native; build its build-cubit.sh first).
+usb-disk: USB mass-storage disks (SELF-003): the FAT32 suite on a USB stick
+  (@usb:0), a second stick hot-plugged (@usb:1) and removed while written, a
+  replacement hot-plugged as @usb:1; the host checks stick 1 with fsck.fat -n
+  (tests/usb-disk; build tests/usb-disk/native/build-cubit.sh first).
+usb-eject: USB sticks after boot (FS-034): plug in, write, Eject (refused
+  while a file is open, then safe), pull out, plug in again (data intact), a
+  second stick on the same controller, a surprise removal while written (a
+  dirty stick comes back read only); the host checks the images with
+  fsck.fat -n (tests/usb-eject; build tests/usb-eject/native/build-cubit.sh).
 bench-latency: tests/sched-latency (build tests/sched-latency/build-cubit.sh
   and bench-ipc-server first); defaults to 300 s. QEMU quits at its done marker.
 Logging fixture: log-authority (build logstore procmgr clock log-check first).
@@ -368,7 +380,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|power-sources|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|power-sources|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -895,6 +907,21 @@ with open(sys.argv[1], "wb") as f:
         # keeps about 128 MiB live.
         INIT_PROFILE="$ROOT_DIR/tests/userspace-allocator/cubit/init-bench-cualloc.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-1G}"
+        ;;
+    fat32-volume)
+        # FS-030: tests/filesystem-fat/native (the stick is made below).
+        INIT_PROFILE="$ROOT_DIR/tests/filesystem-fat/native/init.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+        ;;
+    usb-disk)
+        # SELF-003: tests/usb-disk/native (the sticks are made below).
+        INIT_PROFILE="$ROOT_DIR/tests/usb-disk/native/init.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+        ;;
+    usb-eject)
+        # FS-034: tests/usb-eject/native (the sticks are made below).
+        INIT_PROFILE="$ROOT_DIR/tests/usb-eject/native/init.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
     fs-coherence-*)
         FS_COHERENCE_CASE=${TEST_NAME#fs-coherence-}
@@ -2587,6 +2614,21 @@ if [ -n "$INIT_PROFILE" ]; then
             fi
             if ! debugfs -R "stat $BENCH_FS_DIR" "$TEMP_DISK" 2>/dev/null | grep -q 'Type: directory'; then
                 echo "headless: failed to make $BENCH_FS_DIR" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "fat32-volume" ] || [ "$TEST_NAME" = "usb-disk" ] || [ "$TEST_NAME" = "usb-eject" ]; then
+        case "$TEST_NAME" in
+            usb-disk) FAT_PROGRAM=usb-disk.app ;;
+            usb-eject) FAT_PROGRAM=usb-eject.app ;;
+            *) FAT_PROGRAM=fat-volume.app ;;
+        esac
+        for FAT_IMAGE in logstore.svc "$FAT_PROGRAM"; do
+            debugfs -w -R "rm $FAT_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$FAT_IMAGE $FAT_IMAGE" \
+                "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $FAT_IMAGE (tests/filesystem-fat/native or tests/usb-disk/native build-cubit.sh)" >&2
                 exit 1
             fi
         done
@@ -4324,6 +4366,73 @@ if [ -n "${ACPI_SHUTDOWN_REFUSAL_TABLE:-}" ]; then
         exit 1
     fi
     TEST_DEVICE_ARGS+=(-acpitable "file=$ACPI_SHUTDOWN_REFUSAL_TABLE")
+fi
+# fat32-volume: a FAT32 stick (an MBR, one type-0C partition) as a second
+# NVMe disk, @nvme:1 (tests/filesystem-fat/native/check-image.py).
+if [ "$TEST_NAME" = "fat32-volume" ]; then
+    TEMP_SECOND_NVME="$(mktemp "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-nvme1.XXXXXX.img")"
+    if ! python3 -I "$ROOT_DIR/tests/filesystem-fat/native/check-image.py" make "$TEMP_SECOND_NVME"; then
+        echo "headless: failed to make the FAT32 stick" >&2
+        exit 1
+    fi
+    TEST_DEVICE_ARGS=(
+        -drive "file=$TEMP_SECOND_NVME,if=none,id=nvme1,format=raw"
+        -device nvme,serial=cubitfat1,drive=nvme1)
+fi
+# usb-disk: two xHCI controllers: stick 1 an MBR FAT32 stick (@usb:0,
+# check-image.py) with a live medium (an ISO 9660 stick, @cd:0) behind it on
+# the same controller; stick 2 a bare FAT32 volume hot-plugged on the second
+# controller once @usb:0 is mounted (so it is @usb:1), then removed during
+# the run; stick 3 hot-plugged in its place (@usb:1 again: FS-034). Sticks 2
+# and 3 are drives only; tests/usb-disk/drive.py plugs them.
+if [ "$TEST_NAME" = "usb-disk" ]; then
+    USB_STICK_DIR="$(mktemp -d "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-sticks.XXXXXX")"
+    if ! python3 -I "$ROOT_DIR/tests/filesystem-fat/native/check-image.py" make "$USB_STICK_DIR/stick1.img"; then
+        echo "headless: failed to make USB stick 1" >&2
+        exit 1
+    fi
+    # The boot medium as a dd'ed live stick: an ISO 9660 image on a USB
+    # disk, on stick 1's controller behind it (port 2): @cd:0, read only.
+    mkdir -p "$USB_STICK_DIR/live/apps"
+    echo "usb-disk live medium" > "$USB_STICK_DIR/live/apps/readme.txt"
+    if ! xorriso -as mkisofs -quiet -V CUBITLIVE -o "$USB_STICK_DIR/live.iso" "$USB_STICK_DIR/live"; then
+        echo "headless: failed to make the live medium" >&2
+        exit 1
+    fi
+    for USB_STICK in stick2 stick3; do
+        truncate -s 40M "$USB_STICK_DIR/$USB_STICK.img"
+        if ! PATH="$PATH:/usr/sbin" mkfs.fat -F 32 -S 512 -s 1 -n "${USB_STICK^^}" \
+            "$USB_STICK_DIR/$USB_STICK.img" >/dev/null; then
+            echo "headless: failed to make USB $USB_STICK" >&2
+            exit 1
+        fi
+    done
+    TEST_DEVICE_ARGS=(
+        -device qemu-xhci,id=xhcia
+        -device qemu-xhci,id=xhcib
+        -drive "file=$USB_STICK_DIR/stick1.img,if=none,id=stick1,format=raw"
+        -device usb-storage,id=usbstick1,bus=xhcia.0,port=1,drive=stick1
+        -drive "file=$USB_STICK_DIR/live.iso,if=none,id=livestick,format=raw"
+        -device usb-storage,id=usblive,bus=xhcia.0,port=2,drive=livestick
+        -drive "file=$USB_STICK_DIR/stick2.img,if=none,id=stick2,format=raw"
+        -drive "file=$USB_STICK_DIR/stick3.img,if=none,id=stick3,format=raw"
+        # SeaBIOS tries USB disks before the CD: boot the CD.
+        -boot order=d)
+fi
+# usb-eject: one xHCI controller, empty at boot; sticks A and B (bare FAT32
+# volumes) are plugged and pulled by tests/usb-eject/drive.py on the
+# guest's markers (blockdev-add and device_add, device_del).
+if [ "$TEST_NAME" = "usb-eject" ]; then
+    USB_STICK_DIR="$(mktemp -d "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-sticks.XXXXXX")"
+    for USB_STICK in sticka stickb; do
+        truncate -s 40M "$USB_STICK_DIR/$USB_STICK.img"
+        if ! PATH="$PATH:/usr/sbin" mkfs.fat -F 32 -S 512 -s 1 -n "${USB_STICK^^}" \
+            "$USB_STICK_DIR/$USB_STICK.img" >/dev/null; then
+            echo "headless: failed to make USB $USB_STICK" >&2
+            exit 1
+        fi
+    done
+    TEST_DEVICE_ARGS=(-device qemu-xhci,id=xhcia)
 fi
 # Two xHCI controllers, a USB keyboard on one and a USB optical drive on
 # the other (a disc with the apps/ tree @cd:0 mounts, holding one file),
@@ -6503,6 +6612,26 @@ if [ "$TEST_NAME" = "nvme-timeout" ] || [ "$TEST_NAME" = "nvme-stuck" ]; then
     INPUT_INJECTOR_PID=$!
 fi
 
+if [ "$TEST_NAME" = "usb-disk" ]; then
+    # Unplug and hot-plug on the guest's markers, then quit (drive.py).
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    USB_DISK_DRIVE_RESULT="$USB_STICK_DIR/drive.result"
+    python3 "$ROOT_DIR/tests/usb-disk/drive.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$USB_DISK_DRIVE_RESULT" &
+    INPUT_INJECTOR_PID=$!
+fi
+
+if [ "$TEST_NAME" = "usb-eject" ]; then
+    # Plug and pull the sticks on the guest's markers, then quit (drive.py).
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    USB_EJECT_DRIVE_RESULT="$USB_STICK_DIR/drive.result"
+    python3 "$ROOT_DIR/tests/usb-eject/drive.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "$USB_EJECT_DRIVE_RESULT" "$USB_STICK_DIR" &
+    INPUT_INJECTOR_PID=$!
+fi
+
 if [ "$TEST_NAME" = "usb-hotplug" ]; then
     MONITOR_SOCKET="$(qemu_socket monitor)"
     rm -f "$MONITOR_SOCKET"
@@ -6736,7 +6865,7 @@ if [ "$TEST_NAME" = "gnat" ]; then
     INPUT_INJECTOR_PID=$!
 fi
 case "$TEST_NAME" in
-    bench-fs|bench-cualloc|kern014-bench|fs-coherence-*)
+    bench-fs|bench-cualloc|kern014-bench|fs-coherence-*|fat32-volume)
         # Quit at the program's last line, not the timeout.
         QMP_SOCKET="$(qemu_socket qmp)"
         QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
@@ -6746,6 +6875,8 @@ case "$TEST_NAME" in
             FS_TEST_ENDS=("cualloc-bench: done" "cualloc-bench: FAIL")
         elif [ "$TEST_NAME" = "kern014-bench" ]; then
             FS_TEST_ENDS=("kern014: done")
+        elif [ "$TEST_NAME" = "fat32-volume" ]; then
+            FS_TEST_ENDS=("fat-volume: end")
         else
             FS_TEST_ENDS=("fs-coherence: end")
         fi
@@ -7595,6 +7726,56 @@ kern014: done
             exit 1
         fi
         grep -a 'kern014: ' "$SERIAL_LOG" || true
+        ;;
+    fat32-volume|usb-disk)
+        required_markers="
+fat-volume: start
+fat-volume: PASS
+fat-volume: end
+"
+        if [ "$TEST_NAME" = "usb-disk" ]; then
+            required_markers="$required_markers
+fat-volume: unplug
+fat-volume: removal seen
+usb disk ready slot=
+optical LUN=0
+fat-volume: live medium read only ok
+disk gone (detached)
+devmgr: @usb:0 attached
+devmgr: @usb:1 attached
+devmgr: @usb:1 gone
+devmgr: @usb:1 detached
+"
+        fi
+        if grep -qa 'fat-volume: FAIL' "$SERIAL_LOG"; then
+            echo "headless: fat32-volume reported a failure" >&2
+            exit 1
+        fi
+        ;;
+    usb-eject)
+        required_markers="
+usb-eject: start
+devmgr: @usb:0 attached
+usb-eject: A written
+usb-eject: eject refused open=1
+FS Server: @usb:0 ejected
+usb-eject: A safe to remove
+devmgr: @usb:0 detached
+usb-eject: A data intact
+devmgr: @usb:1 attached
+usb-eject: two sticks ok
+usb-eject: removal seen
+@usb:0 was removed without Eject
+usb-eject: kept handle refused
+usb-eject: dirty A read only
+usb-eject: both ejected
+usb-eject: PASS
+usb-eject: end
+"
+        if grep -qa 'usb-eject: FAIL' "$SERIAL_LOG"; then
+            echo "headless: usb-eject reported a failure" >&2
+            exit 1
+        fi
         ;;
     fs-coherence-*)
         required_markers="
@@ -11403,6 +11584,56 @@ if [ "$TEST_NAME" = "late-introduction" ]; then
                       last = at[key] }
           }' "$SERIAL_LOG"; then
         echo "headless: late-introduction: numbered lines before and after the introduction not all delivered, in order, before the program ended" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
+
+# usb-disk: the driver script's steps, then Linux checks stick 1 as
+# fat32-volume checks its NVMe stick (CUBIT_USB_DISK_KEEP=DIR keeps them).
+if [ "$TEST_NAME" = "usb-disk" ]; then
+    if [ -n "${CUBIT_USB_DISK_KEEP:-}" ]; then
+        mkdir -p "$CUBIT_USB_DISK_KEEP" && cp "$USB_STICK_DIR"/*.img "$CUBIT_USB_DISK_KEEP/"
+    fi
+    if ! grep -qx 'replacement attached' "$USB_DISK_DRIVE_RESULT" 2>/dev/null; then
+        echo "headless: usb-disk driver steps: $(cat "$USB_DISK_DRIVE_RESULT" 2>/dev/null)" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    if ! python3 -I "$ROOT_DIR/tests/filesystem-fat/native/check-image.py" check "$USB_STICK_DIR/stick1.img"; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    rm -rf "$USB_STICK_DIR"
+fi
+
+# usb-eject: the driver script's steps (it checked stick A's dirty mark
+# after the surprise removal), then Linux checks both sticks after their
+# final Eject: B clean; A still dirty (CuBit mounted it read only and never
+# repaired it), its files intact (CUBIT_USB_EJECT_KEEP=DIR keeps them).
+if [ "$TEST_NAME" = "usb-eject" ]; then
+    if [ -n "${CUBIT_USB_EJECT_KEEP:-}" ]; then
+        mkdir -p "$CUBIT_USB_EJECT_KEEP" && cp "$USB_STICK_DIR"/*.img "$CUBIT_USB_EJECT_KEEP/"
+    fi
+    if ! grep -qx 'done' "$USB_EJECT_DRIVE_RESULT" 2>/dev/null; then
+        echo "headless: usb-eject driver steps: $(cat "$USB_EJECT_DRIVE_RESULT" 2>/dev/null)" >&2
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    if ! python3 -I "$ROOT_DIR/tests/usb-eject/check-sticks.py" "$USB_STICK_DIR"; then
+        echo "headless: serial log: $SERIAL_LOG" >&2
+        exit 1
+    fi
+    rm -rf "$USB_STICK_DIR"
+fi
+
+# fat32-volume: Linux checks the stick CuBit wrote (CUBIT_FAT32_KEEP=PATH
+# keeps a copy of it).
+if [ "$TEST_NAME" = "fat32-volume" ]; then
+    if [ -n "${CUBIT_FAT32_KEEP:-}" ]; then
+        cp "$TEMP_SECOND_NVME" "$CUBIT_FAT32_KEEP"
+    fi
+    if ! python3 -I "$ROOT_DIR/tests/filesystem-fat/native/check-image.py" check "$TEMP_SECOND_NVME"; then
         echo "headless: serial log: $SERIAL_LOG" >&2
         exit 1
     fi

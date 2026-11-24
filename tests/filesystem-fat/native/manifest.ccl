@@ -1,0 +1,10 @@
+# FAT32 on a second NVMe disk (tests/filesystem-fat/native): files under
+# @nvme:1 only, the FAT32 volume the headless runner attaches.
+(executable-manifest v1
+  (identity "com.cubit.fat-volume")
+  (version "0.1.0")
+  (request-service filesystem read-write filesystem)
+  (filesystem-scope (rights read write create) "@nvme:1")
+  # Its diagnostics (cubit_debug_write, the libc's records: CuBit.Libc_Log).
+  (request-service logstore read-write logstore)
+  (optional logstore))

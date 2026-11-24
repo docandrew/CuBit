@@ -76,6 +76,7 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     "$here/ada/cubit-libc_descriptors.adb" "$here/ada/cubit-libc_file_cache.adb" \
     "$here/ada/cubit-libc_dirty_map.adb" "$here/ada/cubit-libc_park_table.adb" \
     "$here/ada/cubit-libc_files.adb" "$here/../runtime/gnat/cubit-filesystem_queues.ads" \
+    "$here/../runtime/gnat/cubit-volume_ejection.adb" \
     "$here/../runtime/gnat/cubit-submission_queues.adb" "$here/../runtime/gnat/cubit-slot_rings.adb" \
     "$here/ada/cubit-libc_net_addresses.adb" "$here/ada/cubit-libc_net_targets.adb" \
     "$here/ada/cubit-libc_net_names.adb" "$here/ada/cubit-libc_net.adb" \

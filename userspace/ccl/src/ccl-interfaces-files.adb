@@ -74,7 +74,13 @@ package body CCL.Interfaces.Files with SPARK_Mode is
             when Read =>
               (Argument => CCL.Host_Values.Object_Value, Argument_Schema => EXCERPT_KEY,
                Result => CCL.Host_Values.Object_Value, Result_Schema => TEXT_KEY,
-               Authority => CCL.VM.Observe_Authority, others => <>));
+               Authority => CCL.VM.Observe_Authority, others => <>),
+            --  Ejecting changes the system; the filesystem service checks
+            --  that the caller may write the whole volume.
+            when Eject | Eject_Closing =>
+              (Argument => CCL.Host_Values.Object_Value, Argument_Schema => PLACE_KEY,
+               Result => CCL.Host_Values.Object_Value, Result_Schema => TEXT_KEY,
+               Authority => CCL.VM.Control_Authority, others => <>));
    begin
       Error := CCL.Catalog.Invalid_Host_Contract;
       Define_Types (Types, Bound, Accepted);

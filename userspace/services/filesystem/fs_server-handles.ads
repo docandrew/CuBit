@@ -29,10 +29,25 @@ private package Fs_Server.Handles is
 
    procedure releaseHandlesForOwner (owner : Process_ID);
 
+   --  FS-034: the slot's handle is closed because its volume went away;
+   --  its owner's next use of it is answered REPLY_VOLUME_GONE (goneLabel).
+   procedure closeForGone (slot : Handle_Slot; reason : Volume_Gone_Reason);
+   --  The answer for a handle word resolveHandle refused: REPLY_VOLUME_GONE
+   --  for one closeForGone closed (Reason set), else REPLY_ERR.
+   procedure goneAnswer
+     (handle : Unsigned_64; sender : Process_ID; label : out Unsigned_32; reason : out Unsigned_64);
+   --  Sends goneAnswer's answer (Otherwise instead of REPLY_ERR).
+   procedure refuseHandle
+     (sender : Process_ID; handle : Unsigned_64; otherwise : Unsigned_32 := REPLY_ERR);
+
    --  The version of a file seen during this service's life (each change
    --  moves it on), and moving it on.
    function versionOf (key : Inode_Identity) return Unsigned_64;
    procedure bumpVersion (key : Inode_Identity);
+   --  FS-034: the volume went away: its files' versions are forgotten, so
+   --  the files of the next disk attached under the same name (which may
+   --  reuse the numbers) get versions no client has pages of.
+   procedure forgetVolumeVersions (volume : Volume_Index);
 
    --  A file's last name is gone while handles hold it: they keep a
    --  zero-link inode (their writes must not restore the link), freed at

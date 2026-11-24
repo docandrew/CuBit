@@ -631,6 +631,34 @@ prove-scsi:
 	$(ALR) gnatprove -P../tests/scsi/scsi_tests.gpr -u scsi.adb \
 		--level=2 --report=all --checks-as-errors=on -j2
 
+# SELF-003: USB mass-storage disks: the Bulk-Only Transport codec, the
+# SCSI disk decoders and the probe (hosted tests, level-2 proof; the
+# mutation check is tests/usb-disk/mutate.sh).
+.PHONY: test-usb-disk prove-usb-disk
+test-usb-disk:
+	$(ALR) gprbuild -p -P../tests/usb-disk/usb_disk_tests.gpr
+	../tests/usb-disk/build/main
+
+prove-usb-disk:
+	$(ALR) gnatprove -P../tests/usb-disk/usb_disk_tests.gpr \
+		-u scsi.adb scsi_disks.adb usb_bulk_only.adb usb_disk_probe.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+
+# FS-034: USB stick hot-plug and Eject: the unit badge, the disk presence
+# report, xhci's report state, devmgr's USB disk names, the eject codec
+# and plan (hosted tests, level-2 proof; the mutation check is
+# tests/usb-eject/mutate.sh).
+.PHONY: test-usb-eject prove-usb-eject
+test-usb-eject:
+	$(ALR) gprbuild -p -P../tests/usb-eject/usb_eject_tests.gpr
+	../tests/usb-eject/build/main
+
+prove-usb-eject:
+	$(ALR) gnatprove -P../tests/usb-eject/usb_eject_tests.gpr \
+		-u cubit-block_unit_badges.ads cubit-disk_presence.adb cubit-volume_ejection.adb test_reports.ads \
+		devmgr_usb_disks.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+
 # HW-001: the UFS driver's codecs (UFSHCI, UPIU, descriptors, GPT).
 .PHONY: test-ufs prove-ufs
 test-ufs:

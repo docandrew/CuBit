@@ -46,6 +46,10 @@ private package Fs_Server.Watches is
 
    procedure handleUnwatch (q : Client_Queue_Index; number : Unsigned_64);
 
+   --  FS-034: volume went away (removed or ejected): every watch on it
+   --  ends (Watch_Ended, as for a folder that went).
+   procedure endVolumeWatches (volume : Volume_Index);
+
    --  Queue q is released: its watches end with it.
    procedure forgetWatches (q : Client_Queue_Index);
 

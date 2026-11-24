@@ -148,6 +148,13 @@ def main(serial_path, monitor_path, timeout):
     # The periodic health line (every 5 s while counters move) from both.
     wait(rf'xhci: {first} health ', 'a health line from the first controller')
     wait(rf'xhci: {second} health ', 'a health line from the second controller')
+    # check.py wants each controller's stage lines as boot-logs prints them
+    # from logstore. boot-logs replays from the start of the boot, so on a
+    # fast host the devices can finish before it gets this far: wait for it
+    # before quitting.
+    for location in (first, second):
+        wait(rf'boot-logs: xhci: {location} stage identify ok',
+             f'boot-logs to show {location}\'s stage lines from logstore')
     print('usb-hotplug: DRIVE PASS', flush=True)
     time.sleep(1)
     hmp('quit')

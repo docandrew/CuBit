@@ -6,6 +6,7 @@ with Fs_Server.Delegations; use Fs_Server.Delegations;
 with Fs_Server.Handles; use Fs_Server.Handles;
 with Fs_Server.Replies; use Fs_Server.Replies;
 with CuBit.Monotonic;
+with Fs_Volumes;
 
 package body Fs_Server.Copies is
 
@@ -186,7 +187,7 @@ package body Fs_Server.Copies is
          begin
             case files (source).filesystemKind is
                when EXT2_FILESYSTEM =>
-                  Ext2.readData
+                  Fs_Volumes.readData
                     (Contexts (files (source).volume).Fs,
                      Open_Inodes.Value (inodeObjects, Open_Inodes.Owner_Index (source)),
                      Copy_Slices.Source_Position (copy.plan), harvestBuffer'Address, slice,
@@ -210,7 +211,7 @@ package body Fs_Server.Copies is
             elsif read > 0 then
                fileChanging ((files (target).volume, files (target).inodeNum), target);
                targetInode := Open_Inodes.Value (inodeObjects, Open_Inodes.Owner_Index (target));
-               Ext2.writeData
+               Fs_Volumes.writeData
                  (Contexts (files (target).volume).Fs, files (target).inodeNum, targetInode,
                   Copy_Slices.Target_Position (copy.plan), harvestBuffer'Address, read,
                   copied, writeStatus);

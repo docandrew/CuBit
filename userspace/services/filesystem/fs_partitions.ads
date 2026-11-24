@@ -6,8 +6,10 @@
 --  A GPT disk's root volume: the first Linux filesystem partition (the
 --  installer's root, SYS-001). Read through the device's Block.Device.V1
 --  endpoint and the volume's grant, decoded by Partition_Tables (the same
---  decoder the UFS driver logs the table with). A disk without a GPT is
---  one volume, as before.
+--  decoder the UFS driver logs the table with); without one, the first
+--  basic data partition (FAT32, FS-030). A disk with an MBR (not a FAT32
+--  boot sector at block 0) is its first FAT32 partition (types 0B, 0C);
+--  any other disk is one volume, as before.
 ------------------------------------------------------------------------------
 with CuBit.Handles;
 with CuBit.Memory_Grants;

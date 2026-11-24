@@ -3,7 +3,8 @@
 --  volume's root gets its kind's caption ("@nvme:0/" is "NVMe volume 0",
 --  "@mem:0/" the live workspace); a scope below a root keeps its path.
 package Files_Places with SPARK_Mode is
-   type Place_Kind is (Live_Workspace, NVMe_Volume, ATA_Volume, Optical_Disc, Boot_Image, Other_Volume);
+   type Place_Kind is
+     (Live_Workspace, NVMe_Volume, ATA_Volume, Optical_Disc, Boot_Image, USB_Volume, Other_Volume);
 
    --  The volume names the service registers (its volume list), up to the
    --  ':' and the volume's number.
@@ -11,6 +12,8 @@ package Files_Places with SPARK_Mode is
    NVME_DEVICE : constant String := "nvme";
    ATA_DEVICE : constant String := "ata";
    OPTICAL_DEVICE : constant String := "cd";
+   --  A USB stick or card reader (FS-034): removable, so it can be ejected.
+   USB_DEVICE : constant String := "usb";
    BOOT_ARCHIVE : constant String := "boot";
    VOLUME_MARK : constant Character := '@';
    NUMBER_MARK : constant Character := ':';
@@ -20,6 +23,9 @@ package Files_Places with SPARK_Mode is
    function Kind_Of (Prefix : String) return Place_Kind;
    --  Prefix is a volume's root ("@name/" or "@name:N/").
    function Is_Root (Prefix : String) return Boolean;
+   --  Prefix is the root of a volume that can be ejected (FS-034).
+   function Ejectable (Prefix : String) return Boolean is
+     (Is_Root (Prefix) and then Kind_Of (Prefix) = USB_Volume);
    --  What the drawer shows for Prefix.
    function Caption (Prefix : String) return String
      with Pre => Prefix'Length < Positive'Last / 2;

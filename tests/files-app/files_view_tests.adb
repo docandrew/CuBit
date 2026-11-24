@@ -893,6 +893,49 @@ package body Files_View_Tests is
          Check (Path (View.all, Right_Pane) = "@mem:0/kept", "the other pane's folder is restored");
          Close (View.all);
 
+         --  FS-034: a USB stick is a place that can be ejected. The context
+         --  menu on empty space ends with Eject; the panes leave the stick
+         --  first, the service detaches it, and the drawer drops it.
+         Ada.Directories.Create_Path (Volume_Folder ("usb:0") & "/photos");
+         Start ([Volume ("usb:0", Present => True), Volume ("mem:0", Present => True)], "", "", "stick");
+         Check (Drawer_Places = "USB stick|Live workspace|", "the stick is a place: " & Drawer_Places);
+         Check (Path (View.all, Left_Pane) = "@usb:0/", "panes start on the stick: " & Path (View.all, Left_Pane));
+         declare
+            Rows_Box : constant CuBit.UI.Rect := CuBit.UI.Controls.Bounds (Map.all, ROWS_ID (Left_Pane));
+            X : constant Natural := Rows_Box.x + 60;
+            Y : constant Natural := Rows_Box.y + Rows_Box.h - 10;
+            Busy, Changed : Boolean;
+            Until_Us : Interfaces.Unsigned_64;
+         begin
+            Pointer (View.all, UI.all, Map.all, CuBit.UI.Controls.Pointer_Press, X, Y, 5_000, Secondary => True);
+            Frame;
+            Pointer (View.all, UI.all, Map.all, CuBit.UI.Controls.Pointer_Release, X, Y, 5_010, Secondary => True);
+            Frame;
+            Check (Menu_Open (View.all), "a right-click on the stick's empty space opens a menu");
+            Key (End_Key);   --  the last item: Eject, closing open files
+            Key (Enter);
+            Until_Us := Now_Us + 4_000_000;
+            while Ada.Strings.Fixed.Index (Status_Message (View.all), "safe to remove") = 0
+              and then Now_Us < Until_Us
+            loop
+               Pump (View.all, 20_000, Now_Us, Busy, Changed);
+               delay 0.001;
+            end loop;
+            Frame;
+            Check (Status_Message (View.all) = "USB stick is safe to remove.",
+                   "Eject says the stick is safe to remove: " & Status_Message (View.all));
+            Check (Path (View.all, Left_Pane) = "@mem:0/" and then Path (View.all, Right_Pane) = "@mem:0/",
+                   "the panes left the stick: " & Path (View.all, Left_Pane));
+            Until_Us := Now_Us + 4_000_000;
+            while Drawer_Places /= "Live workspace|" and then Now_Us < Until_Us loop
+               Pump (View.all, 20_000, Now_Us, Busy, Changed);
+               delay 0.01;
+            end loop;
+            Check (Drawer_Places = "Live workspace|", "the ejected stick left the drawer: " & Drawer_Places);
+         end;
+         Save_PPM (Screen, "build/files-eject.ppm");
+         Close (View.all);
+
          --  Nothing granted is present: the panes say so, muted, in words.
          Start ([Volume ("nvme:0", Present => False)], "", "", "no volume");
          Check (Load (View.all, Left_Pane) = Failed and then Path (View.all, Left_Pane) = "",

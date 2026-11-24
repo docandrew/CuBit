@@ -1,0 +1,5 @@
+# tests/filesystem-fat/native (headless: fat32-volume).
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "fat-volume.app" (priority 3))
+)

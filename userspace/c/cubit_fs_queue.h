@@ -109,6 +109,9 @@ enum {
 	FS_LOCK_WAIT = 4,
 	/* handle: its lock ends (a wait is answered CANCELLED). */
 	FS_QUEUE_UNLOCK = 27,
+	/* FS-034: eject the volume named in the arena (position = its length;
+	 * options = 1 refuse if open, 2 close open handles); value = outcome. */
+	FS_QUEUE_EJECT = 28,
 	/* Progress: token (u64) then bytes done (u64) per running copy. */
 	FS_SERVER_COPIES_AT = 256,
 	FS_COPY_ENTRY_BYTES = 16,

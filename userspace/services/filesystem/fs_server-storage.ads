@@ -23,6 +23,20 @@ private package Fs_Server.Storage is
    --  its endpoint, offered with the call (Fs_Attachments).
    procedure handleAttach (sender : Process_ID; msg : Message);
 
+   --  devmgr detaches a block device that went away (Fs_Attachments
+   --  Detach_Label, FS-034): its handles are closed (REPLY_VOLUME_GONE,
+   --  Volume_Removed), its watches end, its caches and versions are
+   --  forgotten, its endpoint is closed; the name waits for the next attach.
+   procedure handleDetach (sender : Process_ID; msg : Message);
+
+   --  Queue_Eject (FS-034, CuBit.Volume_Ejection): the volume locator in the
+   --  arena (pathLength bytes of rangeBytes), the open-handle policy in
+   --  options. Safe_To_Remove once every buffered write is written, the
+   --  volume committed and marked clean, and detached as handleDetach does
+   --  (Volume_Ejected); otherwise the typed reason. Needs write access to
+   --  the whole volume.
+   procedure handleEject (owner : Process_ID; pathLength, rangeBytes : Unsigned_64; options : Unsigned_32);
+
    --  Queue_Describe_Volume (step 7): the volume of a path the caller may
    --  read, from the service's in-memory superblock (with the blocks freed
    --  by the running transaction, which are free once it commits).

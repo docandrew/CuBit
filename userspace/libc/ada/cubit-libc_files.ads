@@ -81,5 +81,11 @@ package CuBit.Libc_Files is
    with Export, Convention => C, External_Name => "__cubit_path_rename";
    function Directory_Read_Page (Handle : Unsigned_64; Page : System.Address) return long
    with Export, Convention => C, External_Name => "__cubit_dir_read_page";
+   --  Eject (FS-034, CuBit.Volume_Ejection): the removable volume Locator
+   --  names ("@usb:0"); Close_Open /= 0 closes handles still open on it.
+   --  The outcome's code (1: safe to remove), Open the open-handle count
+   --  of a refusal; or -errno when the request itself failed.
+   function Volume_Eject (Locator : System.Address; Close_Open : int; Open : System.Address) return long
+   with Export, Convention => C, External_Name => "__cubit_volume_eject";
 
 end CuBit.Libc_Files;

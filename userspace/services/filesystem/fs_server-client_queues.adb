@@ -437,6 +437,12 @@ package body Fs_Server.Client_Queues is
             else
                sendReply (owner, REPLY_ERR, 0);
             end if;
+         when FQ.Queue_Eject =>
+            if inArena then
+               handleEject (owner, r.Position, r.Length, r.Options);
+            else
+               sendReply (owner, REPLY_ERR, 0);
+            end if;
          when FQ.Queue_Rename =>
             --  Both paths in the arena range, split at Position; the
             --  handler copies them out before it checks either.

@@ -124,6 +124,21 @@ package body Volume_Lists with SPARK_Mode is
       Attached := True;
    end Attach;
 
+   procedure Detach
+     (List : in out State; Volume : Volume_Index; Old : out Endpoint_Type;
+      Detached : out Boolean)
+   is
+   begin
+      Old := No_Endpoint;
+      Detached := False;
+      if Volume = List.System then
+         return;
+      end if;
+      Old := List.Items (Volume).Device.Endpoint;
+      List.Items (Volume).Device.Endpoint := No_Endpoint;
+      Detached := True;
+   end Detach;
+
    procedure Choose_System (List : in out State; Volume : Volume_Index; Rank : System_Rank) is
    begin
       if Rank > List.Rank then

@@ -20,13 +20,14 @@ package SCSI with SPARK_Mode, Pure is
    --  Operation codes (SPC-4 / SBC-3).
    ---------------------------------------------------------------------------
    type Operation_Code is
-     (Test_Unit_Ready, Request_Sense, Inquiry, Read_Capacity_10, Read_10,
-      Write_10, Synchronize_Cache_10, Read_16, Write_16,
+     (Test_Unit_Ready, Request_Sense, Inquiry, Mode_Sense_6, Read_Capacity_10,
+      Read_10, Write_10, Synchronize_Cache_10, Read_16, Write_16,
       Service_Action_In_16);
    for Operation_Code use
      (Test_Unit_Ready      => 16#00#,
       Request_Sense        => 16#03#,
       Inquiry              => 16#12#,
+      Mode_Sense_6         => 16#1A#,
       Read_Capacity_10     => 16#25#,
       Read_10              => 16#28#,
       Write_10             => 16#2A#,
@@ -114,6 +115,21 @@ package SCSI with SPARK_Mode, Pure is
                   and then Request_Sense'Result.Size = CDB_6
                   and then Request_Sense'Result.Direction = From_Device
                   and then Request_Sense'Result.Expected =
+                    Transfer_Length (Allocation);
+
+   --  MODE SENSE(6) (SPC-4 6.11) for every page (code 3Fh, current
+   --  values), block descriptors disabled: the 4-byte mode parameter header
+   --  and whatever pages the device returns, up to Allocation bytes. Only
+   --  the header is decoded (Decode_Mode_Header_6).
+   All_Pages : constant Unsigned_8 := 16#3F#;
+   function Mode_Sense_6 (Allocation : Allocation_8) return Command_Block
+     with Post => Well_Formed (Mode_Sense_6'Result)
+                  and then Mode_Sense_6'Result.Operation = Mode_Sense_6
+                  and then Mode_Sense_6'Result.Size = CDB_6
+                  and then Mode_Sense_6'Result.Direction = From_Device
+                  and then Mode_Sense_6'Result.Data (3) = All_Pages
+                  and then Mode_Sense_6'Result.Data (5) = Allocation
+                  and then Mode_Sense_6'Result.Expected =
                     Transfer_Length (Allocation);
 
    function Read_Capacity_10 return Command_Block
@@ -298,4 +314,33 @@ package SCSI with SPARK_Mode, Pure is
    Descriptor_Sense_Header_Bytes : constant := 8;
    procedure Decode_Sense
      (Data : Bytes; Result : out Sense_Data; Valid : out Boolean);
+
+   ---------------------------------------------------------------------------
+   --  Mode parameter header (6) (SPC-4 7.5.5; SBC-3 6.5.1 for the
+   --  direct-access device-specific parameter).
+   ---------------------------------------------------------------------------
+   Mode_Header_6_Bytes : constant := 4;
+   --  Device-specific parameter (byte 2): WP, the medium is write protected.
+   Write_Protect_Bit : constant Unsigned_8 := 16#80#;
+
+   type Mode_Header is record
+      --  The mode data length byte: the bytes that follow it.
+      Data_Length       : Unsigned_8 := 0;
+      Write_Protected   : Boolean := False;
+      Descriptor_Length : Unsigned_8 := 0;
+   end record;
+
+   --  Valid: at least the 4-byte header, and its mode data length covers
+   --  the rest of the header (at least 3). Write_Protected is the WP bit.
+   procedure Decode_Mode_Header_6
+     (Data : Bytes; Result : out Mode_Header; Valid : out Boolean)
+     with Post =>
+       Valid = (Data'Length >= Mode_Header_6_Bytes
+                and then Data (Data'First) >= Mode_Header_6_Bytes - 1)
+       and then (if Valid then
+                   Result.Data_Length = Data (Data'First)
+                   and then Result.Write_Protected =
+                     ((Data (Data'First + 2) and Write_Protect_Bit) /= 0)
+                   and then Result.Descriptor_Length = Data (Data'First + 3)
+                 else not Result.Write_Protected);
 end SCSI;

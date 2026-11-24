@@ -2,7 +2,8 @@
 # Every Linux-hosted filesystem suite, in one run (inside nix develop, with
 # TMPDIR outside /tmp): JBD2 replay against e2fsprogs, power cuts, the
 # namespace, hard-link (FS-031) and pressure workloads, I/O counts, Linux
-# round-trip images, the service's pure core, its advisory locks (tests/filesystem-locks), and
+# round-trip images, FAT32 (tests/filesystem-fat: its core, and the driver
+# against fsck.fat and mtools), the service's pure core, its advisory locks (tests/filesystem-locks), and
 # the cross-process coherence cases (locks among them) against
 # Linux's own semantics (tests/fs-coherence/host.sh). Prints one line per
 # suite and FILESYSTEM-HOSTED: PASS or FAIL; full output in LOG_DIR.
@@ -31,6 +32,10 @@ suite pressure filesystem-journal python3 pressure.py
 suite io-counts filesystem-journal python3 io_counts.py
 suite build-interop filesystem-interop gprbuild -q -p -P interop.gpr
 suite linux-round-trip filesystem-interop python3 run.py
+suite build-fat-core filesystem-fat gprbuild -q -p -P fat_core.gpr
+suite fat-core filesystem-fat build/core/main
+suite build-fat-driver filesystem-fat gprbuild -q -p -P fat_driver.gpr
+suite fat-driver filesystem-fat python3 run.py
 suite build-server-core filesystem-server-core gprbuild -q -p -P server_core.gpr
 suite server-core filesystem-server-core build/main
 suite build-locks filesystem-locks gprbuild -q -p -P locks.gpr

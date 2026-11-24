@@ -7,6 +7,7 @@ with Fs_Server.Handles; use Fs_Server.Handles;
 with Fs_Server.Replies; use Fs_Server.Replies;
 with Fs_Server.Storage; use Fs_Server.Storage;
 with Fs_Server.Watches; use Fs_Server.Watches;
+with Fs_Volumes;
 
 package body Fs_Server.Namespace_Requests is
 
@@ -117,7 +118,7 @@ package body Fs_Server.Namespace_Requests is
             --  Do not rename an exclusively held inode. Check identity after
             --  authority, before any mutation;
             --  path spelling and caller PID cannot bypass an exclusive hold.
-            Ext2.resolvePath
+            Fs_Volumes.resolvePath
               (Contexts (Volume_Index (oldVolume)).Fs,
                oldPath (oldRelStart .. oldPath'Last), inodeNum, lookup);
             if lookup not in Ext2.Lookup_Found | Ext2.Lookup_Not_Found then
@@ -132,7 +133,7 @@ package body Fs_Server.Namespace_Requests is
             --  A replaced destination is checked as unlink checks its file:
             --  no exclusive hold, and a held one keeps its inode until the
             --  last close (the ext3 orphan list).
-            Ext2.resolvePath
+            Fs_Volumes.resolvePath
               (Contexts (volume).Fs, newPath (newRelStart .. newPath'Last),
                target, lookup);
             if lookup not in Ext2.Lookup_Found | Ext2.Lookup_Not_Found then
@@ -151,7 +152,7 @@ package body Fs_Server.Namespace_Requests is
             --  own preflight distinguish an unsupported parent layout from
             --  an absent source; failed metadata I/O was already stopped above.
             bumpNamespace;
-            Ext2.renamePath
+            Fs_Volumes.renamePath
               (Contexts (volume).Fs,
                oldPath (oldRelStart .. oldPath'Last),
                newPath (newRelStart .. newPath'Last),
@@ -183,7 +184,7 @@ package body Fs_Server.Namespace_Requests is
                      isDirectory : Boolean := False;
                      cookie : Unsigned_64;
                   begin
-                     Ext2.readInode (Contexts (volume).Fs, inodeNum, moved, movedStatus);
+                     Fs_Volumes.readInode (Contexts (volume).Fs, inodeNum, moved, movedStatus);
                      if movedStatus = Ext2.Read_Complete then
                         isDirectory := Ext2.inodeType (moved) = Ext2.INODE_DIRECTORY;
                      end if;
@@ -336,7 +337,7 @@ package body Fs_Server.Namespace_Requests is
       declare
          relPath : String renames pathBuffer (relStart .. pathLen);
       begin
-         Ext2.resolvePath (Contexts (volume).Fs, relPath, target, lookup);
+         Fs_Volumes.resolvePath (Contexts (volume).Fs, relPath, target, lookup);
          if lookup /= Ext2.Lookup_Found then
             sendReply (sender, Labels.Lookup_Label (lookup), 0);
             return;
@@ -371,7 +372,7 @@ package body Fs_Server.Namespace_Requests is
                holder := Open_Inodes.Holder (inodeObjects, object, 0);
             end if;
          end;
-         Ext2.unlinkPath
+         Fs_Volumes.unlinkPath
            (Contexts (volume).Fs, relPath, holder >= 0, unlinkedNumber, unlinked, status);
       end;
       if holder >= 0 and then unlinkedNumber = target then
@@ -417,7 +418,7 @@ package body Fs_Server.Namespace_Requests is
       if not ok then
          return;
       end if;
-      Ext2.makeDirectoryPath
+      Fs_Volumes.makeDirectoryPath
         (Contexts (volume).Fs, pathBuffer (relStart .. pathLen), created, lookup, status);
       if lookup /= Ext2.Lookup_Found then
          sendReply (sender, Labels.Lookup_Label (lookup), 0);
@@ -448,7 +449,7 @@ package body Fs_Server.Namespace_Requests is
       declare
          relPath : String renames pathBuffer (relStart .. pathLen);
       begin
-         Ext2.resolvePath (Contexts (volume).Fs, relPath, target, lookup);
+         Fs_Volumes.resolvePath (Contexts (volume).Fs, relPath, target, lookup);
          if lookup /= Ext2.Lookup_Found then
             sendReply (sender, Labels.Lookup_Label (lookup), 0);
             return;
@@ -462,7 +463,7 @@ package body Fs_Server.Namespace_Requests is
                return;
             end if;
          end loop;
-         Ext2.removeDirectoryPath (Contexts (volume).Fs, relPath, removed, status);
+         Fs_Volumes.removeDirectoryPath (Contexts (volume).Fs, relPath, removed, status);
          if Labels.Remove_Label (status) = REPLY_OK then
             notify (volume, relPath, FE.Removed, True, objectOf ((volume, target)));
          end if;

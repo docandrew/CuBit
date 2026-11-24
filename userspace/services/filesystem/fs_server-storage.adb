@@ -17,6 +17,10 @@ with Fs_Server.Replies; use Fs_Server.Replies;
 with Fs_Server.Watches; use Fs_Server.Watches;
 with CuBit.System_Stops;
 with CuBit.Console_Route;
+with Fs_Volumes; use type Fs_Volumes.Volume_Format;
+with Fat32;
+with CuBit.Volume_Ejection;
+with Fs_Server.Handles; use Fs_Server.Handles;
 
 package body Fs_Server.Storage is
 
@@ -37,6 +41,9 @@ package body Fs_Server.Storage is
    --  A UFS disk: one slot's buffer (64 KiB) per transfer.
    UFS_Volume_Prefix : constant String := "ufs:";
    UFS_Transfer_Pages : constant Transfer_Page_Count := 16;
+   --  xhci.drv moves at most its 32 KiB bounce buffer per command.
+   USB_Volume_Prefix : constant String := "usb:";
+   USB_Transfer_Pages : constant Transfer_Page_Count := 8;
 
    --  Generic endpoint admission. The registry role is only a boot-order hint;
    --  grant creation is authorized by the endpoint already installed by devmgr.
@@ -87,7 +94,7 @@ package body Fs_Server.Storage is
            (Device.Endpoint, Context.Grant, Context.Buffer,
             Unsigned_32 (Device.Transfer_Pages) * FS_PAGE_SIZE, Window, Found);
          if Found in Fs_Partitions.Whole_Device | Fs_Partitions.Partition then
-            Ext2.initBlockDevice
+            Fs_Volumes.initBlockDevice
               (Context.Fs, Device.Endpoint, Unsigned_64 (Volume), Context.Grant, Context.Buffer,
                Unsigned_32 (Device.Transfer_Pages) * FS_PAGE_SIZE, Window, Result);
          else
@@ -188,6 +195,7 @@ package body Fs_Server.Storage is
       Volume : Volume_Reference := No_Volume;
       Result : Registration_Result;
       System_Disk : Boolean;
+      Repeated : Boolean := False;
    begin
       if sender = No_Process or else sender /= Registered_Driver (DRIVER_DEVMGR)
         or else msg.tag.length /= Fs_Attachments.Attach_Words
@@ -215,18 +223,24 @@ package body Fs_Server.Storage is
                end if;
             elsif Device in Fs_Attachments.Device_Code (Fs_Attachments.NVMe_Device)
                           | Fs_Attachments.Device_Code (Fs_Attachments.UFS_Device)
+                          | Fs_Attachments.Device_Code (Fs_Attachments.USB_Disk_Device)
             then
                declare
                   UFS : constant Boolean :=
                     Device = Fs_Attachments.Device_Code (Fs_Attachments.UFS_Device);
+                  USB : constant Boolean :=
+                    Device = Fs_Attachments.Device_Code (Fs_Attachments.USB_Disk_Device);
                   Name : constant String :=
-                    (if UFS then UFS_Volume_Prefix else NVMe_Volume_Prefix) & Ordinal_Image (Ordinal);
+                    (if UFS then UFS_Volume_Prefix elsif USB then USB_Volume_Prefix
+                     else NVMe_Volume_Prefix) & Ordinal_Image (Ordinal);
                begin
                   Volume := Volume_List.Find (Volumes, Name);
                   if Volume = No_Volume then
                      Register (Volumes, Name,
                        (Endpoint => CuBit.Handles.No_Endpoint, Ready_Role => 0,
-                        Transfer_Pages => (if UFS then UFS_Transfer_Pages else NVMe_Transfer_Pages)),
+                        Transfer_Pages => (if UFS then UFS_Transfer_Pages
+                                           elsif USB then USB_Transfer_Pages
+                                           else NVMe_Transfer_Pages)),
                        Volume, Result);
                      if Result /= Registered then
                         debugPrint ("FS Server: volume " & Name & " not registered" & LF);
@@ -247,6 +261,11 @@ package body Fs_Server.Storage is
                end if;
             end if;
             if not Attached then
+               --  devmgr repeats an attach it got no answer to in time
+               --  (FS-034): the name is attached already, so it is OK.
+               Repeated := Volume /= No_Volume and then
+                 Device = Fs_Attachments.Device_Code (Fs_Attachments.USB_Disk_Device) and then
+                 CuBit.Handles.Valid (Binding (Volumes, Volume).Endpoint);
                declare
                   Ignore : constant CuBit.Handles.IPC.Close_Result :=
                     CuBit.Handles.IPC.Close (Offered.Value);
@@ -256,8 +275,233 @@ package body Fs_Server.Storage is
             end if;
          end if;
       end;
-      sendReply (sender, (if Attached then REPLY_OK else REPLY_ERR), 0);
+      sendReply (sender, (if Attached or else Repeated then REPLY_OK else REPLY_ERR), 0);
    end handleAttach;
+
+   ---------------------------------------------------------------------------
+   --  FS-034: removable volumes go away (pulled out, or ejected).
+   ---------------------------------------------------------------------------
+
+   function Removable (Volume : Volume_Index) return Boolean is
+      Name : constant String := Volume_List.Name (Volumes, Volume);
+   begin
+      return Name'Length > USB_Volume_Prefix'Length
+        and then Name (Name'First .. Name'First + USB_Volume_Prefix'Length - 1) = USB_Volume_Prefix;
+   end Removable;
+
+   function Open_On (Volume : Volume_Index) return Natural is
+      Count : Natural := 0;
+   begin
+      for slot in files'Range loop
+         if files (slot).active and then files (slot).volume = Volume
+           and then files (slot).filesystemKind = EXT2_FILESYSTEM
+           and then not parkedIdle (slot)
+         then
+            Count := Count + 1;
+         end if;
+      end loop;
+      return Count;
+   end Open_On;
+
+   --  Volume's device is gone or ejected: every handle on it is closed
+   --  (its owner hears Reason), its watches end, its unlinked-but-held
+   --  files, versions, caches and grant are forgotten, and its endpoint is
+   --  closed. The name stays, for the next attach; nothing of this disk
+   --  can reach the next one (ext2 and FAT32 admission discard the name
+   --  and block caches of the volume's key before they read anything).
+   procedure forgetVolume (Volume : Volume_Index; Reason : Volume_Gone_Reason) is
+      Context : Volume_Context renames Contexts (Volume);
+      Old : CuBit.Handles.Endpoint;
+      Detached, Revoked : Boolean;
+      Closed : Natural := 0;
+   begin
+      --  A held unlinked file is not reclaimed on a disk that is gone
+      --  (fsck reclaims it on ext2).
+      for orphan of orphans loop
+         if orphan.number /= 0 and then orphan.volume = Volume then
+            orphan := NO_ORPHAN;
+            orphanCount := orphanCount - 1;
+         end if;
+      end loop;
+      for slot in files'Range loop
+         if files (slot).active and then files (slot).volume = Volume
+           and then files (slot).filesystemKind = EXT2_FILESYSTEM
+         then
+            closeForGone (slot, Reason);
+            Closed := Closed + 1;
+         end if;
+      end loop;
+      endVolumeWatches (Volume);
+      forgetVolumeVersions (Volume);
+      if Context.Status = Admitted then
+         Fs_Volumes.Retire (Context.Fs);
+         CuBit.Memory_Grants.Revoke (Context.Grant, Revoked);
+      end if;
+      --  A fresh transfer buffer for the next disk: the old grant's
+      --  revocation may still be pending, and its pages are not reused.
+      Context := (Status => Provider_Not_Ready, Buffer => System.Null_Address, others => <>);
+      Volume_List.Detach (Volumes, Volume, Old, Detached);
+      if Detached and then CuBit.Handles.Valid (Old) then
+         declare
+            Ignore : constant CuBit.Handles.IPC.Close_Result := CuBit.Handles.IPC.Close (Old);
+         begin
+            null;
+         end;
+      end if;
+      bumpNamespace;
+      debugPrint ("FS Server: @" & Volume_List.Name (Volumes, Volume) &
+                  (case Reason is
+                     when Volume_Removed => " removed",
+                     when Volume_Ejected => " ejected") &
+                  ";" & Natural'Image (Closed) & " handles closed" & LF);
+   end forgetVolume;
+
+   procedure handleDetach (sender : Process_ID; msg : Message) is
+      Volume : Volume_Reference := No_Volume;
+   begin
+      if sender = No_Process or else sender /= Registered_Driver (DRIVER_DEVMGR)
+        or else msg.tag.length /= Fs_Attachments.Detach_Words
+        or else msg.words (0) /= Fs_Attachments.Device_Code (Fs_Attachments.USB_Disk_Device)
+        or else msg.words (1) > Fs_Attachments.Maximum_Ordinal
+      then
+         sendReply (sender, REPLY_ERR, 0);
+         return;
+      end if;
+      Volume := Volume_List.Find
+        (Volumes, USB_Volume_Prefix & Ordinal_Image (Fs_Attachments.Device_Ordinal (msg.words (1))));
+      if Volume /= No_Volume and then CuBit.Handles.Valid (Binding (Volumes, Volume).Endpoint) then
+         if Contexts (Volume).Status = Admitted
+           and then Fs_Volumes.dirtyBlocks (Contexts (Volume).Fs)
+         then
+            --  Pulled out with writes not yet committed: the stick keeps
+            --  its dirty mark (FAT32's clean bit cleared at the first
+            --  write), so its next mount is read only until it is checked.
+            debugPrint ("FS Server: WARNING @" & Volume_List.Name (Volumes, Volume) &
+                        " was removed without Eject while it held uncommitted writes;" &
+                        " it is marked dirty. Use Eject before pulling a stick out." & LF);
+         elsif Contexts (Volume).Status = Admitted then
+            debugPrint ("FS Server: @" & Volume_List.Name (Volumes, Volume) &
+                        " was removed without Eject (nothing was waiting to be written)." & LF);
+         end if;
+         forgetVolume (Volume, Volume_Removed);
+      end if;
+      --  Also when nothing was attached (ejected first, or a repeated detach).
+      sendReply (sender, REPLY_OK, 0);
+   end handleDetach;
+
+   procedure handleEject (owner : Process_ID; pathLength, rangeBytes : Unsigned_64; options : Unsigned_32) is
+      package VE renames CuBit.Volume_Ejection;
+      use type VE.Step, VE.Outcome;
+      pathBuffer : String (1 .. Natural (MAXIMUM_PATH_BYTES));
+      Policy : VE.Open_Handle_Policy;
+      Valid : Boolean;
+      Answer : VE.Answer;
+      selection : Path_Selection;
+      reference : Volume_Reference;
+      relStart : Integer;
+      Last : Natural;
+
+      procedure Answer_With (Item : VE.Answer) is
+      begin
+         sendReply (owner, REPLY_OK, (if VE.Well_Formed (Item) then VE.Encode (Item) else 0));
+      end Answer_With;
+   begin
+      VE.Decode_Policy (options, Policy, Valid);
+      if not Valid or else pathLength = 0 or else pathLength > MAXIMUM_PATH_BYTES
+        or else pathLength > rangeBytes
+      then
+         sendReply (owner, REPLY_ERR, 0);
+         return;
+      end if;
+      declare
+         source : String (1 .. Natural (pathLength)) with Import, Address => curArena;
+      begin
+         pathBuffer (1 .. Natural (pathLength)) := source;   --  copy, then validate
+      end;
+      Last := Natural (pathLength);
+      --  "@usb:0" or "@usb:0/": the whole volume, nothing below it.
+      if Last > 1 and then pathBuffer (Last) = '/' then
+         Last := Last - 1;
+      end if;
+      declare
+         path : String renames pathBuffer (1 .. Last);
+      begin
+         if path (path'First) /= '@' or else Fs_Path_Checks.Has_Traversal (path) then
+            sendReply (owner, REPLY_ERR, 0);
+            return;
+         elsif not checkAccess (owner, path, ACL_WRITE) then
+            Answer_With ((Result => VE.Access_Denied, Open => 0));
+            return;
+         end if;
+         Select_Path (Volumes, path, selection, reference, relStart);
+         if selection /= Known_Volume or else relStart <= path'Last then
+            Answer_With ((Result => (if selection = Known_Volume then VE.Not_Removable else VE.Not_Attached),
+                          Open => 0));
+            return;
+         end if;
+      end;
+      declare
+         Volume : constant Volume_Index := Volume_Index (reference);
+         Context : Volume_Context renames Contexts (Volume);
+         Plan : VE.Step;
+         status : Ext2.Flush_Status := Ext2.Flush_Complete;
+         Flushed : Boolean := True;
+      begin
+         --  Every client's buffered writes first: what was written through
+         --  a closed handle must reach the stick too.
+         for q in clientQueues'Range loop
+            if clientQueues (q).owner /= No_Process then
+               harvestOwner (q);
+            end if;
+         end loop;
+         Plan := VE.Plan
+           (Attached  => CuBit.Handles.Valid (Binding (Volumes, Volume).Endpoint),
+            Removable => Removable (Volume) and then Volume /= System_Volume (Volumes),
+            Open      => VE.Open_Count (Open_On (Volume)),
+            Policy    => Policy);
+         case Plan is
+            when VE.Refuse_Not_Attached =>
+               Answer_With ((Result => VE.Not_Attached, Open => 0));
+               return;
+            when VE.Refuse_Not_Removable =>
+               Answer_With ((Result => VE.Not_Removable, Open => 0));
+               return;
+            when VE.Refuse_Open =>
+               Answer_With ((Result => VE.Open_Handles, Open => VE.Open_Count (Open_On (Volume))));
+               return;
+            when VE.Close_Then_Flush =>
+               --  Each handle's own buffered writes go first (its release
+               --  recalls its delegation), then it is closed.
+               for slot in files'Range loop
+                  if files (slot).active and then files (slot).volume = Volume
+                    and then files (slot).filesystemKind = EXT2_FILESYSTEM
+                  then
+                     closeForGone (slot, Volume_Ejected);
+                  end if;
+               end loop;
+            when VE.Flush_Only =>
+               null;
+         end case;
+         if Context.Status = Admitted
+           and then not Fs_Volumes.Quarantined (Context.Fs)
+           and then not CuBit.Block_Devices.Is_Read_Only (Fs_Volumes.Session (Context.Fs).description)
+         then
+            --  Committed and marked clean (FAT32: the clean bit, then
+            --  SYNCHRONIZE CACHE; ext3: the journal emptied), as at stop.
+            Fs_Volumes.Detach (Context.Fs, status);
+            Flushed := status = Ext2.Flush_Complete;
+         end if;
+         Answer := VE.After_Flush (Flushed);
+         if Flushed then
+            forgetVolume (Volume, Volume_Ejected);
+         else
+            debugPrint ("FS Server: eject of @" & Volume_List.Name (Volumes, Volume) &
+                        " refused: its writes could not be committed (" &
+                        Ext2.Flush_Status'Image (status) & ")" & LF);
+         end if;
+         Answer_With (Answer);
+      end;
+   end handleEject;
 
    package VD renames CuBit.Volume_Descriptions;
    use type VD.Volume_Kind;
@@ -319,27 +563,48 @@ package body Fs_Server.Storage is
                   return;
                end if;
                declare
-                  fs : Ext2.Filesystem renames Contexts (volume).Fs;
-                  free : constant Unsigned_64 := Unsigned_64 (fs.sb.freeBlocks);
-                  total : constant Unsigned_64 := Unsigned_64 (fs.sb.blockCount);
+                  fs : Fs_Volumes.Store renames Contexts (volume).Fs;
+                  device : constant CuBit.Block_Devices.Device_Session := Fs_Volumes.Session (fs);
                begin
-                  item.Kind := (if (fs.sb.compatibleFeatures and Ext2_Support.Compat_Has_Journal) /= 0
-                                then VD.Ext3 else VD.Ext2);
-                  item.Flags :=
-                    (if fs.writeQuarantined or else
-                        CuBit.Block_Devices.Is_Read_Only (fs.device.description)
-                     then VD.Read_Only else 0) +
-                    (if fs.journal.Active and then item.Kind = VD.Ext3 then VD.Journaled else 0) +
-                    (if CuBit.Block_Devices.Can_Persist (fs.device.description)
-                     then VD.Durable_Flush else 0);
-                  item.Block := VD.Block_Size'Max (VD.Smallest_Block,
-                                  VD.Block_Size'Min (VD.Largest_Block, fs.blkSize));
-                  item.Total_Blocks := total;
-                  item.Free_Blocks := Unsigned_64'Min (free, total);
-                  item.Releasing_Blocks :=
-                    Unsigned_64'Min (Unsigned_64 (fs.pendingCount), total - item.Free_Blocks);
-                  item.Total_Inodes := Unsigned_64 (fs.sb.inodeCount);
-                  item.Free_Inodes := Unsigned_64'Min (Unsigned_64 (fs.sb.freeInodes), item.Total_Inodes);
+                  case fs.Format is
+                     when Fs_Volumes.Ext_Format =>
+                        declare
+                           free : constant Unsigned_64 := Unsigned_64 (fs.Ext.sb.freeBlocks);
+                           total : constant Unsigned_64 := Unsigned_64 (fs.Ext.sb.blockCount);
+                        begin
+                           item.Kind := (if (fs.Ext.sb.compatibleFeatures and Ext2_Support.Compat_Has_Journal) /= 0
+                                         then VD.Ext3 else VD.Ext2);
+                           item.Flags :=
+                             (if fs.Ext.writeQuarantined or else
+                                 CuBit.Block_Devices.Is_Read_Only (device.description)
+                              then VD.Read_Only else 0) +
+                             (if fs.Ext.journal.Active and then item.Kind = VD.Ext3 then VD.Journaled else 0) +
+                             (if CuBit.Block_Devices.Can_Persist (device.description)
+                              then VD.Durable_Flush else 0);
+                           item.Block := VD.Block_Size'Max (VD.Smallest_Block,
+                                           VD.Block_Size'Min (VD.Largest_Block, fs.Ext.blkSize));
+                           item.Total_Blocks := total;
+                           item.Free_Blocks := Unsigned_64'Min (free, total);
+                           item.Releasing_Blocks :=
+                             Unsigned_64'Min (Unsigned_64 (fs.Ext.pendingCount), total - item.Free_Blocks);
+                           item.Total_Inodes := Unsigned_64 (fs.Ext.sb.inodeCount);
+                           item.Free_Inodes :=
+                             Unsigned_64'Min (Unsigned_64 (fs.Ext.sb.freeInodes), item.Total_Inodes);
+                        end;
+                     when Fs_Volumes.Fat32_Format =>
+                        --  Clusters as blocks; FAT has no inodes (none reported).
+                        item.Kind := VD.FAT32;
+                        item.Flags :=
+                          (if Fat32.Read_Only (fs.Fat) or else Fat32.Quarantined (fs.Fat)
+                              or else CuBit.Block_Devices.Is_Read_Only (device.description)
+                           then VD.Read_Only else 0) +
+                          (if CuBit.Block_Devices.Can_Persist (device.description)
+                           then VD.Durable_Flush else 0);
+                        item.Block := VD.Block_Size'Max (VD.Smallest_Block,
+                                        VD.Block_Size'Min (VD.Largest_Block, Fat32.Cluster_Bytes (fs.Fat)));
+                        item.Total_Blocks := Fat32.Total_Clusters (fs.Fat);
+                        item.Free_Blocks := Unsigned_64'Min (Fat32.Free_Clusters (fs.Fat), item.Total_Blocks);
+                  end case;
                   setName (Volume_List.Name (Volumes, volume));
                end;
             end;
@@ -457,8 +722,8 @@ package body Fs_Server.Storage is
       end loop;
       settleWatches;
       for V in Contexts'Range loop
-         if Contexts (V).Status = Admitted and then Ext2.dirtyBlocks (Contexts (V).Fs) then
-            Ext2.Flush (Contexts (V).Fs, status);
+         if Contexts (V).Status = Admitted and then Fs_Volumes.dirtyBlocks (Contexts (V).Fs) then
+            Fs_Volumes.Flush (Contexts (V).Fs, status);
             if status /= Ext2.Flush_Complete then
                debugPrint ("FS: periodic commit failed" & LF);
             end if;
@@ -492,25 +757,26 @@ package body Fs_Server.Storage is
       for V in 1 .. Volume_List.Count (Volumes) loop
          if Contexts (V).Status = Admitted and then not Detached (V) then
             declare
-               fs : Ext2.Filesystem renames Contexts (V).Fs;
+               fs : Fs_Volumes.Store renames Contexts (V).Fs;
                Name : constant String := Volume_List.Name (Volumes, V);
             begin
-               if fs.writeQuarantined
-                 or else CuBit.Block_Devices.Is_Read_Only (fs.device.description)
-                 or else not CuBit.Block_Devices.Can_Persist (fs.device.description)
+               if Fs_Volumes.Quarantined (fs)
+                 or else CuBit.Block_Devices.Is_Read_Only (Fs_Volumes.Session (fs).description)
+                 or else not CuBit.Block_Devices.Can_Persist (Fs_Volumes.Session (fs).description)
                then
                   --  Nothing it holds can be made durable here.
                   Passed := Passed + 1;
                   debugPrint ("FS: stop: " & Name & " passed over (read-only or volatile)" & LF);
                else
-                  Ext2.Detach (fs, status);
+                  Fs_Volumes.Detach (fs, status);
                   if status = Ext2.Flush_Complete then
                      Committed := Committed + 1;
                      --  Detached: nothing more is written to it.
-                     fs.writeQuarantined := True;
+                     Fs_Volumes.Retire (fs);
                      Detached (V) := True;
                      debugPrint ("FS: stop: " & Name & " committed and detached" &
-                                 (if (fs.sb.compatibleFeatures and Ext2_Support.Compat_Has_Journal) /= 0
+                                 (if fs.Format = Fs_Volumes.Fat32_Format then " (FAT32 marked clean)"
+                                  elsif (fs.Ext.sb.compatibleFeatures and Ext2_Support.Compat_Has_Journal) /= 0
                                   then " (journal empty, needs_recovery clear)" else "") & LF);
                   else
                      Failed := Failed + 1;

@@ -1,0 +1,5 @@
+# tests/usb-eject/native (headless: usb-eject).
+(startup v1
+  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "usb-eject.app" (priority 3))
+)

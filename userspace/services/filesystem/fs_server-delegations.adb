@@ -2,6 +2,7 @@ with System.Machine_Code;
 with Fs_Server.Handles; use Fs_Server.Handles;
 with Fs_Server.Replies; use Fs_Server.Replies;
 with Fs_Server.Watches; use Fs_Server.Watches;
+with Fs_Volumes;
 
 package body Fs_Server.Delegations is
 
@@ -226,7 +227,7 @@ package body Fs_Server.Delegations is
          if length = 0 or else first < 0 or else last < first then
             return;
          end if;
-         Ext2.writeData
+         Fs_Volumes.writeData
            (Contexts (files (slot).volume).Fs, files (slot).inodeNum,
             currentInode, offset, harvestBuffer'Address, Unsigned_64 (length),
             written, status);

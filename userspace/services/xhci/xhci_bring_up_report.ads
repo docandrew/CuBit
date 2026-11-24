@@ -19,7 +19,10 @@
 --  * Ready_Label with Report_Words words: the root port count, the
 --    connected port count and what the controller enumerated, as
 --    Device_Bits. devmgr then unmasks the controller's interrupts and
---    attaches the optical volume to the first controller with USB storage.
+--    attaches the optical volume to the first controller whose USB storage
+--    holds the boot medium (ISO 9660; Storage_Bit). USB disks are reported
+--    apart, after this report, as they come and go (CuBit.Disk_Presence,
+--    FS-034).
 --  * Failed_Label with Failure_Word: the XHCI.Init_Result position. devmgr
 --    releases its vectors; the driver exits.
 ------------------------------------------------------------------------------

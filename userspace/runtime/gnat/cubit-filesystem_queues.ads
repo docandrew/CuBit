@@ -261,6 +261,12 @@ package CuBit.Filesystem_Queues with Pure, SPARK_Mode is
    --  Handle (a file): its lock ends, and a wait of it is answered
    --  REPLY_CANCELLED. REPLY_OK whether or not it held one.
    Queue_Unlock : constant := 27;
+   --  Eject (FS-034, CuBit.Volume_Ejection): the volume whose locator
+   --  ("@usb:0") is in the arena range (Position = its length), Options =
+   --  CuBit.Volume_Ejection.Open_Handle_Policy. REPLY_OK with the encoded
+   --  Answer as the value (Safe_To_Remove, or why not); REPLY_ERR for a
+   --  malformed request.
+   Queue_Eject : constant := 28;
 
    --  Byte offsets within a request and an answer (the token first).
    Token_At        : constant := 0;

@@ -6,8 +6,8 @@
 --  Which of a configuration's interfaces xhci.drv drives.
 --
 --  @description
---  A hub is driven as a hub; a mass-storage interface as the optical
---  drive. Otherwise every boot-protocol HID interface whose role is still
+--  A hub is driven as a hub; a mass-storage interface as storage (the
+--  boot medium or a disk, decided by probing its medium). Otherwise every boot-protocol HID interface whose role is still
 --  free: a composite device (a wireless receiver with a boot keyboard and a
 --  boot mouse interface, common for USB mice) gets BOTH interrupt
 --  endpoints, not the keyboard alone. Before 2026-10-24 the driver took the

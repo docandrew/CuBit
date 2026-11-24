@@ -5,6 +5,7 @@ with Fs_Server.Access_Control; use Fs_Server.Access_Control;
 with Fs_Server.Handles; use Fs_Server.Handles;
 with Fs_Server.Replies; use Fs_Server.Replies;
 with Fs_Server.Storage; use Fs_Server.Storage;
+with Fs_Volumes;
 
 package body Fs_Server.Directory_Requests is
 
@@ -109,7 +110,7 @@ package body Fs_Server.Directory_Requests is
                end if;
             end;
             filesystemKind := EXT2_FILESYSTEM;
-            Ext2.resolvePath
+            Fs_Volumes.resolvePath
               (Contexts (selectedVolume).Fs, path (relStart .. path'Last),
                inodeNum, pathStatus);
          elsif selection in Unknown_Volume | Invalid_Path then
@@ -129,7 +130,7 @@ package body Fs_Server.Directory_Requests is
       if filesystemKind /= CPIO_ARCHIVE then
          case filesystemKind is
             when EXT2_FILESYSTEM =>
-               Ext2.readInode (Contexts (selectedVolume).Fs, inodeNum, dirIno, inodeStatus);
+               Fs_Volumes.readInode (Contexts (selectedVolume).Fs, inodeNum, dirIno, inodeStatus);
             when CPIO_ARCHIVE | ISO_FILESYSTEM => null;
          end case;
          if inodeStatus /= Ext2.Read_Complete then
@@ -197,13 +198,13 @@ package body Fs_Server.Directory_Requests is
       identity : Unsigned_64;
       lookupReply : Unsigned_32 := REPLY_ERR;
 
-      procedure Lookup (fs : Ext2.Filesystem) is
+      procedure Lookup (fs : Fs_Volumes.Store) is
          parentInode : Ext2.Inode;
          readStatus : Ext2.Read_Status;
          lookupStatus : Ext2.Directory_Lookup_Status;
       begin
          --  Refresh metadata: directory contents may have grown since open.
-         Ext2.readInode (fs, files (parent).inodeNum, parentInode, readStatus);
+         Fs_Volumes.readInode (fs, files (parent).inodeNum, parentInode, readStatus);
          if readStatus /= Ext2.Read_Complete then
             lookupReply := Labels.Read_Label (readStatus);
             return;
@@ -211,11 +212,11 @@ package body Fs_Server.Directory_Requests is
             lookupReply := REPLY_WRONG_OBJECT_TYPE;
             return;
          end if;
-         Ext2.lookupInDir
+         Fs_Volumes.lookupInDir
            (fs, parentInode, nameBuffer (1 .. Natural (nameLength)),
             inodeNum, lookupStatus);
          if lookupStatus = Ext2.Lookup_Found then
-            Ext2.readInode (fs, inodeNum, ino, readStatus);
+            Fs_Volumes.readInode (fs, inodeNum, ino, readStatus);
             lookupReply := Labels.Read_Label (readStatus);
             if readStatus /= Ext2.Read_Complete then
                inodeNum := 0;
@@ -314,7 +315,7 @@ package body Fs_Server.Directory_Requests is
       end if;
       case files (handle).filesystemKind is
          when EXT2_FILESYSTEM =>
-            Ext2.readInode (Contexts (files (handle).volume).Fs, files (handle).inodeNum, candidate, status);
+            Fs_Volumes.readInode (Contexts (files (handle).volume).Fs, files (handle).inodeNum, candidate, status);
          when CPIO_ARCHIVE | ISO_FILESYSTEM => null;
       end case;
       if status /= Ext2.Read_Complete then
@@ -450,7 +451,7 @@ package body Fs_Server.Directory_Requests is
       else
          case files (handle).filesystemKind is
             when EXT2_FILESYSTEM =>
-               Ext2.readDirectoryPage
+               Fs_Volumes.readDirectoryPage
                  (Contexts (files (handle).volume).Fs, extras (handle).directoryInode,
                   files (handle).offset, records, count, nextCursor, readStatus);
             when CPIO_ARCHIVE | ISO_FILESYSTEM => null;
@@ -472,7 +473,7 @@ package body Fs_Server.Directory_Requests is
                         inodeStatus : Ext2.Read_Status;
                         described : Entry_Inspection;
                      begin
-                        Ext2.readInode
+                        Fs_Volumes.readInode
                           (Contexts (files (handle).volume).Fs, item.inode, ino, inodeStatus);
                         if inodeStatus = Ext2.Read_Complete then
                            described := inspectionOf (ino, files (handle).volume, item.inode);

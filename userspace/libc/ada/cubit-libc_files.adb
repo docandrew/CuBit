@@ -20,6 +20,7 @@ with CuBit.Path_Names_C;
 
 with CuBit.Libc_Startup;
 with CuBit.Startup_Tables;
+with CuBit.Volume_Ejection;
 package body CuBit.Libc_Files is
 
    package K renames CuBit.Kernel_ABI;
@@ -1988,5 +1989,42 @@ package body CuBit.Libc_Files is
       Unlock;
       return (if Label = K.Reply_OK then 0 else To_Errno (Label));
    end Directory_Read_Page;
+
+   function Volume_Eject (Locator : System.Address; Close_Open : int; Open : System.Address) return long is
+      package VE renames CuBit.Volume_Ejection;
+      Name : aliased Name_Text;
+      Length : constant long := Name_Of (Locator, Name'Address);
+      Label : Unsigned_32;
+      Value, Spare : Unsigned_64;
+      Answer : VE.Answer;
+      Valid : Boolean;
+      Count : Unsigned_64 with Import, Address => Open;
+   begin
+      if Length < 0 then
+         return Length;
+      end if;
+      Lock;
+      if Length > long (Arena_Bytes) or else not Queue_Ready then
+         Unlock;
+         return Error (EIO);
+      end if;
+      Arena_Put (Name (1 .. Natural (Length)));
+      Label := Request
+        (FQ.Queue_Eject,
+         VE.Policy_Code (if Close_Open /= 0 then VE.Close_Open_Handles else VE.Refuse_If_Open),
+         0, Unsigned_64 (Length), Unsigned_64 (Length), Value, Spare);
+      Unlock;
+      if Label /= K.Reply_OK then
+         return To_Errno (Label);
+      end if;
+      VE.Decode (Value, Answer, Valid);
+      if not Valid then
+         return Error (EIO);
+      end if;
+      if Open /= System.Null_Address then
+         Count := Unsigned_64 (Answer.Open);
+      end if;
+      return long (VE.Outcome'Enum_Rep (Answer.Result));
+   end Volume_Eject;
 
 end CuBit.Libc_Files;
