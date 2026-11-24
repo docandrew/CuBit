@@ -2839,6 +2839,8 @@ procedure main is
    SUPER_ONLY : constant UIK.Modifier_Set := [UIK.Super => True, others => False];
    --  Gap between a hint and the control under it.
    SUPER_HINT_GAP : constant := CuBit.UI_Metrics.Space_S;
+   --  The taskbar's hint sits over its first task button's width.
+   SUPER_TASK_ANCHOR : constant := 10 * CuBit.UI_Metrics.Base_Em;
 
    procedure loadSuperKeys is
       refused : Natural;
@@ -12984,7 +12986,9 @@ procedure main is
       else (case Item is
                when SK.Deskbar_Panel => statusRect,
                when SK.Taskbar_Focus =>
-                 (taskAreaLeft, taskbarY, (if taskAreaRight > taskAreaLeft then taskAreaRight - taskAreaLeft else 0),
+                 --  Over the first task button: the focus lands there.
+                 (taskAreaLeft, taskbarY,
+                  Natural'Min (SUPER_TASK_ANCHOR, (if taskAreaRight > taskAreaLeft then taskAreaRight - taskAreaLeft else 0)),
                   TASKBAR_H),
                when SK.Clipboard_History =>
                  --  Its manager opens centred over the Deskbar.
