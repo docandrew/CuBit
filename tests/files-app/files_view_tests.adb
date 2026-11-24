@@ -450,6 +450,34 @@ package body Files_View_Tests is
             Check (Menu_Row_Hint (View.all, 1) /= K.No_Chord, "its first item shows a keycap");
             Key (K.Escape);
 
+            --  UI-035: the wheel scrolls the pane under the pointer, through
+            --  the toolkit's scroll container; elsewhere it scrolls nothing.
+            declare
+               Rows_Box : constant CuBit.UI.Rect := CuBit.UI.Controls.Bounds (Map.all, ROWS_ID (Left_Pane));
+               Right_Box : constant CuBit.UI.Rect := CuBit.UI.Controls.Bounds (Map.all, ROWS_ID (Right_Pane));
+               Left_Top : constant Natural := Top_Row (View.all, Left_Pane);
+               Right_Top : constant Natural := Top_Row (View.all, Right_Pane);
+               procedure Wheel_At (X, Y : Natural; Steps : Integer) is
+               begin
+                  Handle (View.all, (Kind => Wheel, X => X, Y => Y, Steps => Steps, others => <>), Map.all, Redraw);
+                  Frame;
+               end Wheel_At;
+            begin
+               Wheel_At (Rows_Box.x + 20, Rows_Box.y + 20, -2);
+               Check (Top_Row (View.all, Left_Pane) = Left_Top + 6
+                      and then Top_Row (View.all, Right_Pane) = Right_Top,
+                      "the wheel scrolls the left pane under it, three rows a notch:"
+                      & Natural'Image (Top_Row (View.all, Left_Pane)));
+               Wheel_At (Right_Box.x + 20, Right_Box.y + 20, -1);
+               Check (Top_Row (View.all, Right_Pane) = Right_Top + 3, "and the right pane under it");
+               Wheel_At (5, 5, -1);
+               Check (Top_Row (View.all, Left_Pane) = Left_Top + 6 and then Top_Row (View.all, Right_Pane) = Right_Top + 3,
+                      "over the toolbar it scrolls nothing");
+               Wheel_At (Rows_Box.x + 20, Rows_Box.y + 20, 2);
+               Wheel_At (Right_Box.x + 20, Right_Box.y + 20, 1);
+               Check (Top_Row (View.all, Left_Pane) = Left_Top, "back up");
+            end;
+
             --  Held Ctrl: after the hold delay the bar shows the Ctrl layer.
             Set_Clock (View.all, T0);
             Key (K.Control_Key, Control => True);

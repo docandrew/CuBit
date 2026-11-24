@@ -2884,12 +2884,15 @@ package body Files_View is
                Type_Filter (State, Which, Files_Filter.Query (State.Panes (Which).Filter) & Item.Character_Value);
             end if;
          when Wheel =>
-            for W in Side range 1 .. State.Count loop
-               if Point_In_Rect (Item.X, Item.Y, State.Panes (W).Rows_Area) then
-                  VP.Scroll (State.Panes (W).View, -(Item.Steps * WHEEL_ROWS));
-                  Dirty (State, State.Panes (W).Rows_Area);
-               end if;
-            end loop;
+            --  The toolkit's scroll containers take the wheel (UI-035): the
+            --  pane under the pointer scrolls through its scrollbar.
+            declare
+               Taken : Boolean;
+               Wheel_Damage : Rect;
+            begin
+               Controls.Route_Wheel (Map, Item.X, Item.Y, Item.Steps, Taken, Wheel_Damage);
+               Dirty (State, Wheel_Damage);
+            end;
          when Pointer_Event =>
             if Item.Action = Controls.Pointer_Press and then Item.Secondary
               and then (for some W in Side range 1 .. State.Count => Point_In_Rect (Item.X, Item.Y, State.Panes (W).Header_Area))
@@ -3308,7 +3311,13 @@ package body Files_View is
             CuBit.UI.Widgets.Vertical_Scrollbar
               (C, UI, Map, SCROLL_ID (Which),
                (Regions.Rows.x + Regions.Rows.w - SCROLLBAR_WIDTH, Regions.Rows.y, SCROLLBAR_WIDTH, Regions.Rows.h),
-               Table, Colors, 0, Row_Total (P) - 1, Value, Widget, pageSize => Rows, retainedInput => True);
+               Table, Colors, 0, Row_Total (P) - 1, Value, Widget, pageSize => Rows, retainedInput => True,
+               --  UI-035: the wheel over the rows scrolls them (the
+               --  toolkit routes it), unless a menu or prompt is up.
+               wheelArea =>
+                 (if CuBit.UI.Popup_Menus.Is_Open (Popup) or else Prompt /= No_Prompt then (others => 0)
+                  else Regions.Rows),
+               wheelStep => WHEEL_ROWS);
             VP.Scroll_To (P.View, Natural'Min (Value, Row_Count'Last));
          end;
       end if;

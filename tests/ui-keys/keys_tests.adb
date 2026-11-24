@@ -392,6 +392,46 @@ procedure Keys_Tests is
       end;
    end Band_And_Layers;
 
+   --  UI-035: the toolkit routes the wheel to the innermost scroll
+   --  container under the pointer.
+   procedure Wheel_Routing is
+      M : Controls.Control_Map;
+      Taken : Boolean;
+      Damage : Rect;
+      Value : Natural;
+      Available : Boolean;
+      OUTER : constant := 20;
+      INNER : constant := 21;
+      Outer_Area : constant Rect := (0, 0, 400, 300);
+      Inner_Area : constant Rect := (50, 50, 100, 100);
+      procedure Frame (Outer_Value, Inner_Value : Natural) is
+      begin
+         Controls.Clear (M);
+         Controls.Add_Vertical_Scrollbar (M, OUTER, (390, 0, 10, 300), Outer_Area, Outer_Value, 0, 999, 10);
+         Controls.Set_Wheel_Area (M, OUTER, Outer_Area, 3);
+         Controls.Add_Vertical_Scrollbar (M, INNER, (140, 50, 10, 100), Inner_Area, Inner_Value, 0, 99, 10);
+         Controls.Set_Wheel_Area (M, INNER, Inner_Area, 3);
+      end Frame;
+   begin
+      Frame (100, 10);
+      Controls.Route_Wheel (M, 60, 60, -2, Taken, Damage);
+      Check (Taken and then Damage = Inner_Area, "the inner container under the pointer takes the wheel");
+      Frame (100, 10);
+      Controls.Take_Value (M, INNER, Value, Available);
+      Check (Available and then Value = 16, "two notches down: three rows each:" & Value'Image);
+      Controls.Take_Value (M, OUTER, Value, Available);
+      Check (Value = 100, "the outer one did not move");
+      Controls.Route_Wheel (M, 300, 200, 1, Taken, Damage);
+      Frame (100, 16);
+      Controls.Take_Value (M, OUTER, Value, Available);
+      Check (Taken and then Value = 97, "outside the inner one the outer one scrolls");
+      Frame (97, 0);
+      Controls.Route_Wheel (M, 60, 60, 5, Taken, Damage);
+      Check (Taken and then Is_Empty (Damage), "at its top the inner one still takes the wheel (the outer one stays)");
+      Controls.Route_Wheel (M, 500, 500, 1, Taken, Damage);
+      Check (not Taken, "no container under the pointer: the app gets the wheel");
+   end Wheel_Routing;
+
    procedure Menu_Keys is
       package Menus renames CuBit.UI.Menus;
       File_Caption : aliased constant String := "File";
@@ -457,6 +497,7 @@ begin
    Reveal;
    Bar_Tests;
    Band_And_Layers;
+   Wheel_Routing;
    Menu_Keys;
    Draws;
    if Failures = 0 then

@@ -305,7 +305,8 @@ procedure Main is
                            else CuBit.UI.Controls.Pointer_Move),
                 X => CuBit.UI.Input.Pointer_X (Event), Y => CuBit.UI.Input.Pointer_Y (Event), others => <>));
       elsif Event.kind = CuBit.UI.Input.INPUT_POINTER_WHEEL then
-         Send ((Kind => Log_View.Wheel, Steps => CuBit.UI.Input.Pointer_Wheel_Delta (Event), others => <>));
+         Send ((Kind => Log_View.Wheel, Steps => CuBit.UI.Input.Pointer_Wheel_Delta (Event),
+                X => CuBit.UI.Input.Pointer_X (Event), Y => CuBit.UI.Input.Pointer_Y (Event), others => <>));
       end if;
       Apply_Keep_Request;
       if Redraw then Dirty := CuBit.UI.App.Full_Rect (Win); end if;

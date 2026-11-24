@@ -118,7 +118,10 @@ package body CuBit.UI.Controls is
          activated    => False,
          pendingValue => False,
          enabled      => True,
-         shortcut     => CuBit.UI.Keys.No_Chord);
+         shortcut     => CuBit.UI.Keys.No_Chord,
+         wheelArea    => (others => 0),
+         wheelStep    => 0,
+         wheelPending => 0);
    end Add;
 
    procedure Add_Surface
@@ -607,6 +610,96 @@ package body CuBit.UI.Controls is
       end if;
       return CuBit.UI.Pointer_Default;
    end Cursor;
+
+   procedure Set_Wheel_Area
+      (m : in out Control_Map; id : Control_ID; area : CuBit.UI.Rect; step : Positive)
+   is
+      index : constant Integer := Find (m.entries, m.entryCount, id);
+   begin
+      if m.valid and then index >= 0 then
+         m.entries (Control_Index (index)).wheelArea := area;
+         m.entries (Control_Index (index)).wheelStep := step;
+         --  Notches routed in the last frame and not taken carry over.
+         declare
+            retainedIndex : constant Integer := Find (m.retainedEntries, m.retainedCount, id);
+         begin
+            if retainedIndex >= 0 then
+               m.entries (Control_Index (index)).wheelPending :=
+                 m.retainedEntries (Control_Index (retainedIndex)).wheelPending;
+            end if;
+         end;
+      end if;
+   end Set_Wheel_Area;
+
+   procedure Route_Wheel
+      (m : in out Control_Map; x, y : Natural; notches : Integer;
+       handled : out Boolean; damage : out CuBit.UI.Rect)
+   is
+      --  Notches beyond this are one very fast flick, not an overflow.
+      MAXIMUM_NOTCHES : constant := 1_000_000;
+      best : Integer := -1;
+      bestSize : Long_Long_Integer := Long_Long_Integer'Last;
+      clamped : constant Integer := Integer'Max (-MAXIMUM_NOTCHES, Integer'Min (MAXIMUM_NOTCHES, notches));
+   begin
+      handled := False;
+      damage := (others => 0);
+      if not m.valid or else notches = 0 or else m.entryCount = 0 then
+         return;
+      end if;
+      --  The innermost container: the smallest wheel area under the pointer.
+      for i in Control_Index'First .. Control_Index (m.entryCount) loop
+         declare
+            e : Control_Entry renames m.entries (i);
+            size : constant Long_Long_Integer := Long_Long_Integer (e.wheelArea.w) * Long_Long_Integer (e.wheelArea.h);
+         begin
+            if e.enabled and then e.wheelStep > 0 and then CuBit.UI.Point_In_Rect (x, y, e.wheelArea)
+              and then size < bestSize
+            then
+               best := i;
+               bestSize := size;
+            end if;
+         end;
+      end loop;
+      if best < 0 then
+         return;
+      end if;
+      handled := True;
+      declare
+         e : Control_Entry renames m.entries (Control_Index (best));
+      begin
+         if e.behavior = Retained_Vertical_Scrollbar then
+            declare
+               layout : constant CuBit.UI.Vertical_Scrollbar_Layout :=
+                 CuBit.UI.Layout_Vertical_Scrollbar (e.bounds, e.minimumValue, e.maximumValue, e.value, e.pageSize);
+               moved : constant Long_Long_Integer :=
+                 Long_Long_Integer (e.value) - Long_Long_Integer (clamped) * Long_Long_Integer (e.wheelStep);
+               target : constant Natural :=
+                 Natural (Long_Long_Integer'Max (Long_Long_Integer (e.minimumValue),
+                          Long_Long_Integer'Min (Long_Long_Integer (layout.maximumValue), moved)));
+            begin
+               if target /= e.value then
+                  e.value := target;
+                  e.pendingValue := True;
+                  damage := e.actionDamage;
+               end if;
+            end;
+         else
+            e.wheelPending := Integer'Max (-MAXIMUM_NOTCHES, Integer'Min (MAXIMUM_NOTCHES, e.wheelPending + clamped));
+            damage := e.actionDamage;
+         end if;
+      end;
+   end Route_Wheel;
+
+   function Take_Wheel (m : in out Control_Map; id : Control_ID) return Integer is
+      index : constant Integer := Find (m.entries, m.entryCount, id);
+      result : Integer := 0;
+   begin
+      if m.valid and then index >= 0 then
+         result := m.entries (Control_Index (index)).wheelPending;
+         m.entries (Control_Index (index)).wheelPending := 0;
+      end if;
+      return result;
+   end Take_Wheel;
 
    procedure Set_Shortcut
       (m : in out Control_Map; id : Control_ID; shortcut : CuBit.UI.Keys.Chord)

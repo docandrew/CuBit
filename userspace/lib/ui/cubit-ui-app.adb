@@ -1060,6 +1060,9 @@ package body CuBit.UI.App is
       Ring.Flush (win.ring);
    end Present;
 
+   function Wheel_Taken (interaction : Pointer_Interaction; event : Input_Event) return Boolean is
+     (event.kind = INPUT_POINTER_WHEEL and then interaction.wheelTaken);
+
    procedure Apply_Pointer_Event
       (interaction : in out Pointer_Interaction;
        ui : in out CuBit.UI.State.UI_State;
@@ -1109,6 +1112,7 @@ package body CuBit.UI.App is
          end if;
       end Update_Cursor;
    begin
+      interaction.wheelTaken := False;
       if event.kind = INPUT_RESYNC then
          x := Natural (event.payload0 and 16#FFFF_FFFF#);
          y := Natural (Shift_Right (event.payload0, 32));
@@ -1249,6 +1253,17 @@ package body CuBit.UI.App is
          CuBit.UI.State.Set_Pointer (ui, x, y, ui.pointer.down);
          Mark_Hover_Transition (hit);
          Update_Cursor (hit);
+         --  UI-035: the scroll container under the pointer takes the
+         --  wheel; the app sees it only when none does.
+         declare
+            wheelDamage : CuBit.UI.Rect;
+         begin
+            CuBit.UI.Controls.Route_Wheel
+              (controls, x, y, CuBit.UI.Input.Pointer_Wheel_Delta (event), interaction.wheelTaken, wheelDamage);
+            if not CuBit.UI.Is_Empty (wheelDamage) then
+               dirty := CuBit.UI.Union_Rect (dirty, wheelDamage);
+            end if;
+         end;
       end if;
    end Apply_Pointer_Event;
 
@@ -1408,7 +1423,10 @@ package body CuBit.UI.App is
                   Apply_Pointer_Event
                     (pointer, ui, controls, win, event, dirty,
                      pointerRepaint);
-                  Handle_Event (win, event, dirty, running);
+                  --  A wheel a scroll container took is not the app's too.
+                  if not Wheel_Taken (pointer, event) then
+                     Handle_Event (win, event, dirty, running);
+                  end if;
                   Finish_Input_Event (win, event);
                   exit when not running;
                   --  Keyboard, wheel, configuration, and application-defined
