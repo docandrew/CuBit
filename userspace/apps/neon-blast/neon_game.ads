@@ -42,8 +42,8 @@ package Neon_Game is
    procedure Start (G : out Game; Seed : Unsigned_64);
 
    --  Step the simulation until its time reaches Target. Edge controls
-   --  (Dash, Confirm, Calibrate, Tap, Press_Judged) apply to the first step
-   --  only; held ones to every step.
+   --  (Dash, Confirm, Calibrate, Tap, Press_Judged and the title's
+   --  pickers) apply to the first step only; held ones to every step.
    procedure Advance (G : in out Game; Input : Neon_Sim.Controls; Target : Samples);
 
    --  Render the next Frames of audio at the write head.

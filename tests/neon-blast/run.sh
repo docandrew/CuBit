@@ -17,6 +17,7 @@ mkdir -p "$work/a" "$work/b" "$work/c"
    alr exec -- gprbuild -p -q -j8 -XNEON_HOST_BUILD=release -P "$here/neon_blast_host.gpr")
 
 "$here/build/neon_keys_tests"
+"$here/build/neon_title_tests"
 
 # The synthesizer renders the same samples however the caller cuts blocks.
 one=$("$here/build/neon_audio_host" "$work/blocks-1024.wav" 12 7 1024 | sed -n 's/.*hash *//p')

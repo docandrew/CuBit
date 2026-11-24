@@ -161,6 +161,11 @@ package body Neon_Game is
          Step_Input.Calibrate := False;
          Step_Input.Tap := False;
          Step_Input.Press_Judged := False;
+         Step_Input.Seed_Step := 0;
+         Step_Input.Seed_Random := False;
+         Step_Input.Keep := False;
+         Step_Input.Choice_Step := 0;
+         Step_Input.Bestiary := False;
       end loop;
    end Advance;
 

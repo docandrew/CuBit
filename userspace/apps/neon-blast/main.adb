@@ -367,7 +367,7 @@ procedure Main is
          C.Choice_Step := (if Was_Pressed (Snap, Down) then 1 elsif Was_Pressed (Snap, Up) then -1 else 0);
          C.Seed_Random := Was_Pressed (Snap, R);
          C.Keep := Was_Pressed (Snap, K);
-         C.Bestiary := Was_Pressed (Snap, G);
+         C.Bestiary := Was_Pressed (Snap, Neon_Keys.G);
       end if;
       if Last_Press_Us /= 0 then
          declare
