@@ -3426,12 +3426,22 @@ test-desktop-mixed: desktop display virtio-gpu display-check ccl-workbench
 	CUBIT_TEST_MIXED_OUTPUTS=1 ../tests/headless/run.sh --test desktop-dual-output --accel kvm --cpus 4 --timeout 60 --keep-logs
 
 .PHONY : run-desktop
+# CONSOLE_MIRROR=1 (development diagnosis only, BUG-008): boot logstore's
+# test variant (logstore-test, with the test console object that
+# DESKTOP_INIT's (test-console approve-declared) approves), so every
+# program's console text, Desktop's launch lines included, is mirrored
+# onto serial_output.log. Shipped images never carry it (tests/test-console).
+CONSOLE_MIRROR ?= 0
 run-desktop: cubit_kernel desktop-session-content
 	$(MAKE) nvme_disk.img
+	$(if $(filter 1,$(CONSOLE_MIRROR)),$(MAKE) logstore-test)
 	$(MAKE) initrd
 	cp cubit_kernel isodir/boot/cubit_kernel
 	@rm -f serial_output.log net.pcap
 	$(MAKE) prepare-desktop-disk
+	$(if $(filter 1,$(CONSOLE_MIRROR)),debugfs -w -R "rm logstore.svc" $(DESKTOP_SCRATCH_DISK) >/dev/null 2>&1; \
+		debugfs -w -R "write isodir/boot/logstore-test.svc logstore.svc" $(DESKTOP_SCRATCH_DISK) && \
+		echo "run-desktop: CONSOLE_MIRROR=1: console text is mirrored to serial_output.log")
 	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
 	grub-mkrescue -o cubit_kernel.iso isodir
 	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
