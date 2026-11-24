@@ -19,6 +19,11 @@ You need Linux (or WSL2) with [Nix](https://nixos.org/download/) installed.
 The Nix development shell provides everything else: the Ada toolchain (through
 Alire), GRUB and image tools, and QEMU.
 
+On NixOS, enable [nix-ld](https://github.com/nix-community/nix-ld)
+(`programs.nix-ld.enable = true;`). Alire's GNAT is a prebuilt Linux
+toolchain, and it and the tools it builds run through it. The development
+shell points that GNAT at Nix's C library itself.
+
 1. **Get the source.**
 
         git clone https://github.com/docandrew/CuBit.git
