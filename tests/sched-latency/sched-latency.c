@@ -32,6 +32,11 @@
  *                sched_yield, forever (a polling service)
  *   io           one thread: IO_BLOCK_BYTES pwrites over IO_SPAN_BLOCKS
  *                blocks of one file, fsync every IO_FSYNC_EVERY writes
+ *   commit       one thread mapping COMMIT_BYTES of anonymous memory,
+ *                touching its first byte and unmapping it, forever (a
+ *                growing heap: on CuBit each map commits the region's pages
+ *                through CHANGE_OWNED_RANGE, in steps of at most the
+ *                kernel's Maximum_Owned_Commit_Bytes)
  *
  * One line per (workload, load):
  *   sched-latency: workload=W load=L samples=N p50_us= p99_us= max_us=
@@ -52,6 +57,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/syscall.h>
 #include <time.h>
 #include <unistd.h>
@@ -100,6 +106,9 @@
 #define IO_SPAN_BLOCKS 64
 #define IO_FSYNC_EVERY 16
 #define IO_FILE_MODE 0644
+/* A large heap step: four times the 16 MiB commit step CuBit allowed until
+ * 2026-11 (its commits held the process lock with interrupts off). */
+#define COMMIT_BYTES (64UL * 1024 * 1024)
 
 #define CALIBRATE_MS 1000
 #define WORK_CALIBRATE_UNITS 2000000
@@ -464,12 +473,29 @@ static void *io_thread(void *arg)
 	return 0;
 }
 
-/* spam runs last: on the 2026-09-29 kernel it can panic the guest. */
-enum load_kind { LOAD_NONE, LOAD_BURN, LOAD_POLL, LOAD_IO, LOAD_SPAM, LOAD_COUNT };
+static void *commit_thread(void *arg)
+{
+	struct counter *c = arg;
+	while (!atomic_load_explicit(&bg_stop, memory_order_relaxed)) {
+		unsigned char *heap = mmap(0, COMMIT_BYTES, PROT_READ | PROT_WRITE,
+					   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		if (heap == MAP_FAILED) {
+			report("sched-latency: commit load mmap failed errno=%d\n", errno);
+			break;
+		}
+		heap[0] = 1;
+		munmap(heap, COMMIT_BYTES);
+		atomic_fetch_add_explicit(&c->value, 1, memory_order_relaxed);
+	}
+	return 0;
+}
 
-static const char *const load_names[LOAD_COUNT] = { "none", "burn", "poll", "io", "spam" };
+/* spam runs last: on the 2026-09-29 kernel it can panic the guest. */
+enum load_kind { LOAD_NONE, LOAD_BURN, LOAD_POLL, LOAD_IO, LOAD_COMMIT, LOAD_SPAM, LOAD_COUNT };
+
+static const char *const load_names[LOAD_COUNT] = { "none", "burn", "poll", "io", "commit", "spam" };
 static const char *const load_units[LOAD_COUNT] = {
-	"-", "kunits/s", "yields/s", "writes/s", "handoffs/s" };
+	"-", "kunits/s", "yields/s", "writes/s", "maps/s", "handoffs/s" };
 
 /*
  * A fixed pool of threads, created once: background loads and the waker run
@@ -583,6 +609,9 @@ static int start_load(enum load_kind kind)
 			}
 		}
 		spawn(io_thread, &bg_counts[0]);
+		break;
+	case LOAD_COMMIT:
+		spawn(commit_thread, &bg_counts[0]);
 		break;
 	}
 	return 1;

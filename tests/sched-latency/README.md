@@ -42,6 +42,7 @@ frame.
 | `spam` (run last) | CPUs / 2 thread pairs; each pair ping-pongs through a futex with 2 µs of spinning per turn, so each thread wakes and sleeps every few µs | handoffs per second |
 | `poll` | one thread polling a flag for 50 µs, then `sched_yield`, forever (a polling service) | yields per second |
 | `io` | one thread doing 4 KiB `pwrite`s over the first 64 blocks of one file, `fsync` every 16 writes. On CuBit through filesystem.svc and NVMe (`@nvme:0/sched-latency/io.dat`); on Linux, the initramfs (no device) | writes per second |
+| `commit` | one thread mapping 64 MiB of anonymous memory, touching its first byte and unmapping it, forever (a growing heap). On CuBit each map commits and each unmap retires the pages in kernel steps of `Owned_Reservation_Policy.Pages_Per_Locked_Step`; `check-commit-load.py` fails the run when any workload's worst sample under it exceeds 1 ms | maps per second |
 
 Each (workload, load) pair refits the clock origin (CuBit), starts the load,
 lets it run 250 ms, runs the workload, then stops the load and waits for its

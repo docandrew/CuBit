@@ -7951,10 +7951,15 @@ sched-latency: start
 sched-latency: peer ready
 sched-latency: workload=wake load=none
 sched-latency: workload=audio load=io
+sched-latency: workload=audio load=commit
 sched-latency: done
 "
         if grep -qa 'sched-latency: FAIL\|sched-latency: .*unavailable' "$SERIAL_LOG"; then
             echo "headless: sched-latency reported a failure" >&2
+            exit 1
+        fi
+        # A growing heap must not stall the others (bounded kernel steps).
+        if ! python3 -I "$ROOT_DIR/tests/sched-latency/check-commit-load.py" "$SERIAL_LOG"; then
             exit 1
         fi
         ;;
