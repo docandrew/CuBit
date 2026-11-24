@@ -212,21 +212,24 @@ package body AML_Execute.Scalar_Transport with SPARK_Mode is
       for Index in First .. Last loop
          if Store.Slots (Index).Tag = Temporary_Scalar then Count := Count + 1; end if;
       end loop;
-      declare
-         Items : Ledger.Handle_Array (1 .. Count);
-         Used : Natural := 0;
-         Result : Ledger.Status;
-      begin
-         for Index in First .. Last loop
-            if Store.Slots (Index).Tag = Temporary_Scalar then
-               Used := Used + 1;
-               Items (Used) := Store.Slots (Index).Lease;
-            end if;
-         end loop;
-         Ledger.Drop_Many (Store.Scalars, Items, Result);
-         pragma Assert (Result = Ledger.Ready);
-         if Result /= Ledger.Ready then return; end if;
-      end;
+      -- With no temporary leases, retirement has no ledger work.
+      if Count > 0 then
+         declare
+            Items : Ledger.Handle_Array (1 .. Count);
+            Used : Natural := 0;
+            Result : Ledger.Status;
+         begin
+            for Index in First .. Last loop
+               if Store.Slots (Index).Tag = Temporary_Scalar then
+                  Used := Used + 1;
+                  Items (Used) := Store.Slots (Index).Lease;
+               end if;
+            end loop;
+            Ledger.Drop_Many (Store.Scalars, Items, Result);
+            pragma Assert (Result = Ledger.Ready);
+            if Result /= Ledger.Ready then return; end if;
+         end;
+      end if;
       for Index in First .. Last loop Store.Slots (Index) := (others => <>); end loop;
    end Clear_Range;
    procedure Clear_All (Store : in out State) is
