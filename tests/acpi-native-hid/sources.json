@@ -3193,12 +3193,12 @@
     {
       "path": "userspace/services/acpi/lib/aml_child_indices.adb",
       "kind": "ada",
-      "sha256": "8688a26606615a6123cfc8af0d39d7a7db526a6fc782baa9430a41c4cb8614f8"
+      "sha256": "b6675f89588bec346e6491b31a5adfe32e9e5f63718250072b8e539162451755"
     },
     {
       "path": "userspace/services/acpi/lib/aml_child_indices.ads",
       "kind": "ada",
-      "sha256": "db03ec1a3c34cb27e6bf72ed0627946c2ee7ef1bb1ba0e57d0ba75f5e1149ccf"
+      "sha256": "959276f1cc510d30dc6bbdad8e1063ae754fcad79c0eb55bfcc1195fa759164f"
     },
     {
       "path": "userspace/services/acpi/lib/aml_clock.adb",

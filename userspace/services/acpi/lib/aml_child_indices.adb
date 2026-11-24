@@ -49,4 +49,35 @@ package body AML_Child_Indices with SPARK_Mode is
          Item := (others => <>);
       end Release;
    end Name_Reservations;
+   package body Memberships with SPARK_Mode is
+   function Empty return State is (others => <>);
+   procedure Attach (Item : in out State; Node, Key : Position) is
+   begin
+      AML_Child_Indices.Prepend (Item.Index, Node, AML_Child_Indices.Bucket_Index (Key));
+      Item.Key (Node) := Key;
+   end Attach;
+   procedure Detach (Item : in out State; Node : Position) is
+      Key : constant Position := Position (Item.Key (Node));
+   begin
+      AML_Child_Indices.Unlink (Item.Index, Node, AML_Child_Indices.Bucket_Index (Key));
+      Item.Key (Node) := Root;
+   end Detach;
+   end Memberships;
+   package body Code_Bounds with SPARK_Mode is
+      function Empty return State is (others => <>);
+      procedure Append (Item : in out State; Code_End : Usage) is
+      begin
+         Item.Prefix (Item.Used + 1) := Usage'Max (Item.Prefix (Item.Used), Code_End);
+         Item.Used := Item.Used + 1;
+      end Append;
+      procedure Update_Last (Item : in out State; Code_End : Usage) is
+      begin
+         Item.Prefix (Item.Used) := Usage'Max (Item.Prefix (Item.Used - 1), Code_End);
+      end Update_Last;
+      procedure Pop (Item : in out State) is
+      begin
+         Item.Prefix (Item.Used) := 0;
+         Item.Used := Item.Used - 1;
+      end Pop;
+   end Code_Bounds;
 end AML_Child_Indices;

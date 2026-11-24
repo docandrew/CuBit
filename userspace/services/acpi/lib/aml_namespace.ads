@@ -2326,6 +2326,13 @@ private
    subtype Child_Bucket is Child_Indices.Bucket_Index;
    subtype Child_Index is Child_Indices.State;
    use type Child_Indices.State;
+   package Memberships renames Child_Indices.Memberships;
+   package Code_Bounds is new Child_Indices.Code_Bounds (Aggregate_Method_Capacity);
+   use type Memberships.State;
+   function Membership_Indexed (Items : Entries; Used : Node_ID; By_Owner : Boolean)
+      return Memberships.State with Ghost;
+   function Cleanup_Indices_Valid (Tree : State) return Boolean with Ghost;
+
    -- Derived lookup state belongs to the namespace: snapshots and rollbacks
    -- copy it with Items; there is no independent cache lifetime or authority.
    function Indexed (Items : Entries; Used : Node_ID) return Child_Index;
@@ -2378,6 +2385,9 @@ private
       Current_Definition : Definition_Identity := No_Definition;
       Items : Entries;
       Child_Names : Child_Index;
+      Owner_Members, Temporary_Children : Memberships.State := Memberships.Empty;
+      Method_Bounds : Code_Bounds.State := Code_Bounds.Empty;
+
       -- Root is a physical scope; this optional semantic payload is never an Items index.
       Root_Value : AML_Objects.Object_ID := 0;
       Values : AML_Objects.State (Object_Capacity, Byte_Capacity, Element_Capacity) := AML_Objects.Empty
@@ -2386,6 +2396,7 @@ private
       Code_Used : Aggregate_Method_Count := 0;
    end record
      with Type_Invariant =>
+       Cleanup_Indices_Valid (State) and then
        State.Child_Names = Indexed (State.Items, State.Used) and then
        AML_Module_Frames.Valid (State.Module_Frames) and then
        Pending.Valid (State.Journal) and then
@@ -2447,4 +2458,17 @@ private
       Tree : State (Object_Capacity, Byte_Capacity, Element_Capacity);
       Import, Preparation : Natural;
    end record;
+   -- Private cleanup entrypoint shared with focused child-unit inspection.
+   function Valid_Context (Tree : State) return Boolean;
+   function Same_Values (Tree, Prior : State) return Boolean with Ghost;
+   procedure End_Method (Tree : in out State; Scope : Natural)
+     with Pre => Valid_Context (Tree),
+       Post => Valid_Context (Tree) and then Tree.Root_Value = Tree'Old.Root_Value
+         and then Same_Values (Tree, Tree'Old)
+         and then Last_Incarnation (Tree) = Last_Incarnation (Tree'Old)
+         and then Tree.Used <= Tree'Old.Used and then Tree.Code_Used <= Tree'Old.Code_Used
+         and then (if Scope > 0 and then Scope <= Tree'Old.Used
+           and then Tree'Old.Items (Scope).Active_Calls = 1 then
+             (for all I in 1 .. Tree.Used =>
+                not Tree.Items (I).Alive or else Tree.Items (I).Owner /= Scope));
 end AML_Namespace;

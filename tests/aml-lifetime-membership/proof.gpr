@@ -1,0 +1,6 @@
+project Lifetime_Proof is
+ for Source_Dirs use (".","../../userspace/services/acpi/lib","../../shared/firmware");
+ Build_Root := external ("ACPI_LIFETIME_PROOF", "build-proof");
+ for Object_Dir use Build_Root & "/obj";
+ package Compiler is for Default_Switches("Ada")use("-gnat2022");end Compiler;
+end Lifetime_Proof;

@@ -53,7 +53,7 @@ package body AML_Namespace with SPARK_Mode is
    -- Keep the old complete state as the prefix. GNAT 15.3 crashes lowering
    -- direct Tree'Old.Values projections in checked postconditions.
    function Same_Values (Tree, Prior : State) return Boolean is
-     (Tree.Values = Prior.Values) with Ghost;
+     (Tree.Values = Prior.Values);
 
    use type AML_Execute.Declaration_Status;
    use type AML_Execute.Execution_Status;
@@ -190,6 +190,57 @@ package body AML_Namespace with SPARK_Mode is
       end loop;
       return Result;
    end Indexed;
+   function Membership_Indexed (Items : Entries; Used : Node_ID; By_Owner : Boolean)
+      return Memberships.State is
+      Result : Memberships.State := Memberships.Empty;
+      Key : Node_ID;
+   begin
+      for I in 1 .. Used loop
+         if Items (I).Alive and then Items (I).Owner /= Root then
+            Key := (if By_Owner then Items (I).Owner else Items (I).Up);
+            if Key /= Root then Memberships.Attach (Result, I, Key); end if;
+         end if;
+      end loop;
+      return Result;
+   end Membership_Indexed;
+   function Cleanup_Indices_Valid (Tree : State) return Boolean is
+     (Tree.Owner_Members = Membership_Indexed (Tree.Items, Tree.Used, True)
+      and then Tree.Temporary_Children = Membership_Indexed (Tree.Items, Tree.Used, False)
+      and then Code_Bounds.Valid (Tree.Method_Bounds)
+      and then Code_Bounds.Count (Tree.Method_Bounds) = Tree.Used
+      and then (for all I in 1 .. Tree.Used =>
+        Tree.Items (I).Method_Size <= Aggregate_Method_Capacity - Tree.Items (I).Method_Offset
+        and then Code_Bounds.Bound_At (Tree.Method_Bounds, I) =
+          Code_Bounds.Usage'Max (Code_Bounds.Bound_At (Tree.Method_Bounds, I - 1),
+            Tree.Items (I).Method_Offset + Tree.Items (I).Method_Size)));
+   procedure Set_Lifetime_Owner (Tree : in out State; Node, Owner : Node_ID)
+     with Pre => Node > Root and then Node <= Tree.Used and then Tree.Items (Node).Alive
+       and then Owner < Node
+       and then (Node = Tree.Used or else Tree.Items (Node).Owner = Owner);
+   procedure Set_Lifetime_Owner (Tree : in out State; Node, Owner : Node_ID) is
+   begin
+      if Tree.Items (Node).Owner = Owner then return; end if;
+      if Tree.Items (Node).Owner /= Root then
+         Memberships.Detach (Tree.Owner_Members, Node);
+         if Tree.Items (Node).Up /= Root then Memberships.Detach (Tree.Temporary_Children, Node); end if;
+      end if;
+      Tree.Items (Node).Owner := Owner;
+      if Owner /= Root then
+         Memberships.Attach (Tree.Owner_Members, Node, Owner);
+         if Tree.Items (Node).Up /= Root then
+            Memberships.Attach (Tree.Temporary_Children, Node, Tree.Items (Node).Up);
+         end if;
+      end if;
+   end Set_Lifetime_Owner;
+   procedure Record_Method_Bounds (Tree : in out State; Node : Node_ID)
+     with Pre => Node > Root and then Node = Tree.Used
+       and then Code_Bounds.Count (Tree.Method_Bounds) = Tree.Used
+       and then Tree.Items (Node).Method_Size <= Aggregate_Method_Capacity - Tree.Items (Node).Method_Offset;
+   procedure Record_Method_Bounds (Tree : in out State; Node : Node_ID) is
+   begin
+      Code_Bounds.Update_Last (Tree.Method_Bounds,
+        Tree.Items (Node).Method_Offset + Tree.Items (Node).Method_Size);
+   end Record_Method_Bounds;
    procedure Index_Insert (Tree : in out State; Node : Node_ID)
      with Pre => Node > Root and then Node = Tree.Used
        and then Tree.Items (Node).Alive
@@ -200,6 +251,15 @@ package body AML_Namespace with SPARK_Mode is
         Name_Bucket (Tree.Items (Node).Up, Tree.Items (Node).Part);
    begin
       Child_Indices.Prepend (Tree.Child_Names, Node, Bucket);
+      if Tree.Items (Node).Owner /= Root then
+         Memberships.Attach (Tree.Owner_Members, Node, Tree.Items (Node).Owner);
+         if Tree.Items (Node).Up /= Root then
+            Memberships.Attach (Tree.Temporary_Children, Node, Tree.Items (Node).Up);
+         end if;
+      end if;
+      Code_Bounds.Append (Tree.Method_Bounds,
+        Tree.Items (Node).Method_Offset + Tree.Items (Node).Method_Size);
+
    end Index_Insert;
    procedure Index_Remove (Tree : in out State; Node : Node_ID)
      with Pre => Node > Root and then Node <= Tree.Used
@@ -209,6 +269,11 @@ package body AML_Namespace with SPARK_Mode is
    begin
       if not Tree.Items (Node).Alive then return; end if;
       Child_Indices.Unlink (Tree.Child_Names, Node, Bucket);
+      if Tree.Items (Node).Owner /= Root then
+         Memberships.Detach (Tree.Owner_Members, Node);
+         if Tree.Items (Node).Up /= Root then Memberships.Detach (Tree.Temporary_Children, Node); end if;
+      end if;
+
    end Index_Remove;
    function Child
      (Tree : State; Scope : Node_ID; Part : AML_Names.Segment) return Node_ID
@@ -414,7 +479,7 @@ package body AML_Namespace with SPARK_Mode is
          when Inserted =>
             Tree.Items (Node).Table_Binding := Field;
             Tree.Items (Node).Object_Type := Table_Field_Object;
-            Tree.Items (Node).Owner := Owner;
+            Set_Lifetime_Owner (Tree, Node, Owner);
             Result := Bound;
       end case;
    end Bind_Table_Field;
@@ -868,16 +933,54 @@ package body AML_Namespace with SPARK_Mode is
           Object_Type => Scope_Object, Object_Ref => 0)
       else (Item with delta Alive => False, Initializing => False));
 
+   procedure Retire_Node (Tree : in out State; Node : Node_ID)
+     with Pre => Node > Root and then Node <= Tree.Used and then Tree.Items (Node).Alive;
+   procedure Retire_Node (Tree : in out State; Node : Node_ID) is
+   begin
+      Index_Remove (Tree, Node);
+      Tree.Items (Node) := Retired_Entry (Tree.Items (Node));
+   end Retire_Node;
+   procedure Trim_Dead_Suffix (Tree : in out State) is
+   begin
+      while Tree.Used > Root and then not Tree.Items (Tree.Used).Alive loop
+         pragma Loop_Variant (Decreases => Tree.Used);
+         pragma Assert (not Memberships.Contains (Tree.Owner_Members, Tree.Used));
+         pragma Assert (not Memberships.Contains (Tree.Temporary_Children, Tree.Used));
+         Tree.Items (Tree.Used) := (others => <>);
+         Code_Bounds.Pop (Tree.Method_Bounds);
+         Tree.Used := Tree.Used - 1;
+      end loop;
+   end Trim_Dead_Suffix;
+   procedure Retire_Temporary_Subtree (Tree : in out State; Node : Node_ID)
+     with Pre => Node > Root and then Node <= Tree.Used
+       and then Tree.Items (Node).Alive and then Tree.Items (Node).Owner /= Root;
+   procedure Retire_Temporary_Subtree (Tree : in out State; Node : Node_ID) is
+      Current : Node_ID := Node;
+      Child, Parent : Node_ID;
+      Remaining : Node_ID := Tree.Used;
+   begin
+      while Remaining > Root loop
+         pragma Loop_Variant (Decreases => Remaining);
+         Remaining := Remaining - 1;
+         while Memberships.First (Tree.Temporary_Children, Current) /= Root loop
+            pragma Loop_Variant (Increases => Current);
+            Child := Memberships.First (Tree.Temporary_Children, Current);
+            if Child <= Current or else Child > Tree.Used
+              or else not Tree.Items (Child).Alive or else Tree.Items (Child).Owner = Root
+            then raise Program_Error with "temporary child membership invariant"; end if;
+            Current := Child;
+         end loop;
+         Parent := Tree.Items (Current).Up;
+         Retire_Node (Tree, Current);
+         if Current = Node then return; end if;
+         if Parent < Node or else Parent >= Current then
+            raise Program_Error with "temporary subtree parent invariant";
+         end if;
+         Current := Parent;
+      end loop;
+      raise Program_Error with "temporary subtree progress invariant";
+   end Retire_Temporary_Subtree;
    procedure End_Method (Tree : in out State; Scope : Natural)
-     with Pre => Valid_Context (Tree),
-       Post => Valid_Context (Tree) and then Tree.Root_Value = Tree'Old.Root_Value
-         and then Same_Values (Tree, Tree'Old)
-         and then Last_Incarnation (Tree) = Last_Incarnation (Tree'Old)
-         and then Tree.Used <= Tree'Old.Used and then Tree.Code_Used <= Tree'Old.Code_Used
-         and then (if Scope > 0 and then Scope <= Tree'Old.Used
-           and then Tree'Old.Items (Scope).Active_Calls = 1 then
-             (for all I in 1 .. Tree.Used =>
-                not Tree.Items (I).Alive or else Tree.Items (I).Owner /= Scope))
    is
       Kept_Code : Aggregate_Method_Count := 0;
    begin
@@ -886,41 +989,19 @@ package body AML_Namespace with SPARK_Mode is
          Tree.Items (Scope).Active_Calls := Tree.Items (Scope).Active_Calls - 1;
          return;
       end if;
-      -- Keep the final owner active until every provisional marker it owns
-      -- has been cleared, preserving Valid_Context during the cleanup loop.
-      -- ACPICA removes this method's subtree and objects it created elsewhere.
-      -- Ascending IDs visit parents first, propagating deletion to descendants.
-      for I in 1 .. Tree.Used loop
-         pragma Loop_Invariant (Valid_Context (Tree));
-         pragma Loop_Invariant
-           (for all J in 1 .. I - 1 => not Tree.Items (J).Alive or else Tree.Items (J).Owner /= Scope);
-         if Tree.Items (I).Owner /= Root and then
-           (Tree.Items (I).Owner = Scope or else Tree.Items (I).Up = Scope or else
-            (Tree.Items (I).Up /= Root and then not Tree.Items (Tree.Items (I).Up).Alive))
-         then
-            Index_Remove (Tree, I);
-            Tree.Items (I) := Retired_Entry (Tree.Items (I));
-         end if;
+      -- The shared recursive owner stays active through complete retirement.
+      -- Each root and temporary lexical descendant is removed once. Root-owned
+      -- permanent nodes are excluded from the lexical membership index.
+      while Memberships.First (Tree.Owner_Members, Scope) /= Root loop
+         Retire_Temporary_Subtree (Tree, Memberships.First (Tree.Owner_Members, Scope));
+      end loop;
+      while Memberships.First (Tree.Temporary_Children, Scope) /= Root loop
+         Retire_Temporary_Subtree (Tree, Memberships.First (Tree.Temporary_Children, Scope));
       end loop;
       Tree.Items (Scope).Active_Calls := 0;
-      -- Keep interior dead slots reserved so active method IDs never move.
-      while Tree.Used > 0 and then not Tree.Items (Tree.Used).Alive loop
-         pragma Loop_Invariant (Valid_Context (Tree));
-         pragma Loop_Variant (Decreases => Tree.Used);
-         pragma Loop_Invariant (Tree.Used <= Tree'Loop_Entry.Used);
-         pragma Loop_Invariant
-           (for all I in 1 .. Tree.Used => not Tree.Items (I).Alive or else Tree.Items (I).Owner /= Scope);
-         Tree.Items (Tree.Used) := (others => <>);
-         Tree.Used := Tree.Used - 1;
-      end loop;
-      for I in 1 .. Tree.Used loop
-         pragma Loop_Invariant (Kept_Code <= Tree.Code_Used);
-         pragma Loop_Invariant
-           (for all J in 1 .. I - 1 => Tree.Items (J).Method_Offset <= Kept_Code
-             and then Tree.Items (J).Method_Size <= Kept_Code - Tree.Items (J).Method_Offset);
-         Kept_Code := Aggregate_Method_Count'Max
-           (Kept_Code, Tree.Items (I).Method_Offset + Tree.Items (I).Method_Size);
-      end loop;
+      -- Include older dead tails, even on an invocation creating no names.
+      Trim_Dead_Suffix (Tree);
+      Kept_Code := Code_Bounds.Bound_At (Tree.Method_Bounds, Tree.Used);
       if Kept_Code < Tree.Code_Used then
       for I in Kept_Code + 1 .. Tree.Code_Used loop
          pragma Loop_Invariant (Tree.Used = Tree'Loop_Entry.Used);
@@ -1278,7 +1359,7 @@ package body AML_Namespace with SPARK_Mode is
          if Added /= Inserted then
             Status := AML_Execute.Unsupported_Value; return;
          end if;
-         Tree.Items (Node).Owner := Node_ID (Lifetime_Owner);
+         Set_Lifetime_Owner (Tree, Node, Node_ID (Lifetime_Owner));
          pragma Assert (Name_Reservations.Matches (Reservation,
            Name_Reservations.Node_ID (Node), Name_Reservations.Node_ID (Tree.Items (Node).Owner),
            Tree.Items (Node).Incarnation, Owner_Stamp, Tree.Items (Node).Definition));
@@ -1295,6 +1376,7 @@ package body AML_Namespace with SPARK_Mode is
                   Release_Reservation;
                   Index_Remove (Tree, Node);
                   Tree.Items (Node) := Saved_Entry;
+                  Code_Bounds.Pop (Tree.Method_Bounds);
                   Tree.Used := Old_Count;
                   Tree.Last_Stamp := Old_Stamp;
                end;
@@ -1387,10 +1469,11 @@ package body AML_Namespace with SPARK_Mode is
          when Inserted => null;
       end case;
       Append_Code (Tree.Code, Tree.Code_Used, Code, Start);
-      Tree.Items (Node).Owner := Node_ID (Lifetime_Owner);
+      Set_Lifetime_Owner (Tree, Node, Node_ID (Lifetime_Owner));
       Tree.Items (Node).Object_Type := Method_Object;
       Tree.Items (Node).Method_Offset := Start;
       Tree.Items (Node).Method_Size := Code'Length;
+      Record_Method_Bounds (Tree, Node);
       Tree.Items (Node).Method_Flags := Flags;
       Tree.Items (Node).Method_Width := Width;
       Status := AML_Execute.Declared;
@@ -2074,7 +2157,7 @@ package body AML_Namespace with SPARK_Mode is
          when Invalid_Name => return;
          when Inserted => null;
       end case;
-      Tree.Items (Node).Owner := Node_ID (Lifetime_Owner);
+      Set_Lifetime_Owner (Tree, Node, Node_ID (Lifetime_Owner));
       Tree.Items (Node).Object_Type := Uninitialized_Region_Object;
       Token := Natural (Node);
       Status := AML_Execute.Returned;
@@ -3465,6 +3548,7 @@ package body AML_Namespace with SPARK_Mode is
                end if;
                Candidate.Items (Node).Method_Offset := Code_Start;
                Candidate.Items (Node).Method_Size := Limit - Offset;
+               Record_Method_Bounds (Candidate, Node);
                pragma Assert
                  (if Offset < Limit then Method_Data (Candidate, Node) =
                     Data (Data'First + Offset .. Data'First + (Limit - 1))
@@ -4317,7 +4401,9 @@ package body Owned with SPARK_Mode is
       Always_Buffer : Boolean) return Boolean is
      (Node = Prior.Used + 1 and then Tree.Used = Node
       and then Tree = (Prior with delta Items => Tree.Items, Used => Tree.Used,
-        Last_Stamp => Tree.Last_Stamp, Child_Names => Tree.Child_Names)
+        Last_Stamp => Tree.Last_Stamp, Child_Names => Tree.Child_Names,
+        Owner_Members => Tree.Owner_Members, Temporary_Children => Tree.Temporary_Children,
+        Method_Bounds => Tree.Method_Bounds)
       and then (for all I in 1 .. Prior.Used => Tree.Items (I) = Prior.Items (I))
       and then Tree.Items (Node).Alive and then not Tree.Items (Node).Initializing
       and then Tree.Items (Node).Object_Type = Buffer_Field_Object
@@ -4373,8 +4459,9 @@ package body Owned with SPARK_Mode is
             when Invalid_Name => Status := AML_Execute.Bad_Name; return;
             when Inserted => null;
          end case;
+         Set_Lifetime_Owner (A.Tree.all, Node, Lifetime_Owner);
          A.Tree.Items (Node) := (A.Tree.Items (Node) with delta
-           Owner => Lifetime_Owner, Object_Type => Buffer_Field_Object, Object_Ref => 0,
+           Object_Type => Buffer_Field_Object, Object_Ref => 0,
            Buffer_Field_Info => (Source, Bit_Offset, Bit_Length, Always_Buffer));
          Field := AML_References.Bind_Named (A.Token, AML_References.Node_Position (Node),
            A.Tree.Items (Node).Incarnation);
@@ -6605,8 +6692,9 @@ package body Owned with SPARK_Mode is
          when Invalid_Name => Status := AML_Execute.Bad_Name; return;
          when Inserted => null;
       end case;
+      Set_Lifetime_Owner (A.Tree.all, Node, Lifetime_Owner);
       A.Tree.Items (Node) := (A.Tree.Items (Node) with delta
-        Owner => Lifetime_Owner, Object_Type => Uninitialized_Name_Object, Initializing => True,
+        Object_Type => Uninitialized_Name_Object, Initializing => True,
         Initializer_Frame => (if Module_Declaration then AML_Module_Frames.Top (A.Tree.Module_Frames) else AML_Frame_Handles.No_Frame));
       Token := (Ref => AML_References.Bind_Named (A.Token,
           AML_References.Node_Position (Node), A.Tree.Items (Node).Incarnation),
@@ -6699,7 +6787,8 @@ package body Owned with SPARK_Mode is
    function Abort_Frame (Tree, Prior : State; Node : Node_ID) return Boolean is
      (Node > Root and then Node <= Prior.Used and then Tree.Used <= Prior.Used
       and then Tree = (Prior with delta Used => Tree.Used, Items => Tree.Items,
-        Child_Names => Tree.Child_Names)
+        Child_Names => Tree.Child_Names, Owner_Members => Tree.Owner_Members,
+        Temporary_Children => Tree.Temporary_Children, Method_Bounds => Tree.Method_Bounds)
       and then (for all I in 1 .. Tree.Used =>
         (if I = Node then Tree.Items (I) =
            Retired_Entry (Prior.Items (I))
@@ -6716,12 +6805,8 @@ package body Owned with SPARK_Mode is
       Status := AML_Execute.Unsupported_Value;
       if not Reservation_Matches (A, Token) then return; end if;
       Node := Node_ID (AML_References.Named_Node (Token.Ref));
-      Index_Remove (A.Tree.all, Node);
-      A.Tree.Items (Node) := Retired_Entry (A.Tree.Items (Node));
-      while A.Tree.Used > Root and then not A.Tree.Items (A.Tree.Used).Alive loop
-         A.Tree.Items (A.Tree.Used) := (Up => Root, Part => "____", others => <>);
-         A.Tree.Used := A.Tree.Used - 1;
-      end loop;
+      Retire_Node (A.Tree.all, Node);
+      Trim_Dead_Suffix (A.Tree.all);
       Status := AML_Execute.Returned;
    end Abort_Name;
    function Named_Identity_Matches (A : Arena; R : Reference) return Boolean is
@@ -8497,6 +8582,7 @@ package body Owned with SPARK_Mode is
                when Invalid_Name => Status := AML_Execute.Bad_Name; return;
                when Inserted => null;
             end case;
+            Set_Lifetime_Owner (Environment.Tree.all, Node, Pending_Entry.Owner);
             Environment.Tree.Items (Node) := Pending_Entry;
          end if;
          Execute_Declaration_Lease_Store := Candidate_Lease;
@@ -8615,8 +8701,7 @@ package body Owned with SPARK_Mode is
             for I in 1 .. Environment.Tree.Used loop
                if Environment.Tree.Items (I).Initializing and then Environment.Tree.Items (I).Owner = Root
                  and then Environment.Tree.Items (I).Initializer_Frame = AML_Declaration_Contexts.Frame_Of (Lease) then
-                  Index_Remove (Environment.Tree.all, I);
-                  Environment.Tree.Items (I) := Retired_Entry (Environment.Tree.Items (I));
+                  Retire_Node (Environment.Tree.all, I);
                end if;
             end loop;
             declare
@@ -8649,7 +8734,7 @@ package body Owned with SPARK_Mode is
             when Invalid_Name => Status := AML_Execute.Bad_Name; return;
             when Inserted => null;
          end case;
-         Environment.Tree.Items (Node).Owner := Node_ID (AML_Declaration_Contexts.Scope_Of (Lease));
+         Set_Lifetime_Owner (Environment.Tree.all, Node, Node_ID (AML_Declaration_Contexts.Scope_Of (Lease)));
          Environment.Tree.Items (Node).Object_Type := Alias_Object;
          Environment.Tree.Items (Node).Alias_Target := Source.Node;
          Environment.Tree.Items (Node).Alias_Stamp := (if Source.Node = Root then 0 else Environment.Tree.Items (Source.Node).Incarnation);
@@ -8865,7 +8950,7 @@ package body Owned with SPARK_Mode is
             when Inserted => null;
          end case;
          AML_Objects.Transfer (Candidate_Values, Environment.Tree.Values);
-         Environment.Tree.Items (Node).Owner := Node_ID (AML_Declaration_Contexts.Scope_Of (Lease));
+         Set_Lifetime_Owner (Environment.Tree.all, Node, Node_ID (AML_Declaration_Contexts.Scope_Of (Lease)));
          Environment.Tree.Items (Node).Object_Type := Event_Object;
          Environment.Tree.Items (Node).Object_Ref := Object;
          Status := AML_Execute.Returned;
@@ -8944,7 +9029,7 @@ package body Owned with SPARK_Mode is
             when Inserted => null;
          end case;
          AML_Objects.Transfer (Candidate_Values, Environment.Tree.Values);
-         Environment.Tree.Items (Node).Owner := Node_ID (AML_Declaration_Contexts.Scope_Of (Lease));
+         Set_Lifetime_Owner (Environment.Tree.all, Node, Node_ID (AML_Declaration_Contexts.Scope_Of (Lease)));
          Environment.Tree.Items (Node).Object_Type := Mutex_Object;
          Environment.Tree.Items (Node).Mutex_Flags := Flags;
          Environment.Tree.Items (Node).Object_Ref := Object;

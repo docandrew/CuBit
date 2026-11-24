@@ -1,0 +1,7 @@
+project Lifetime_checked is
+ for Source_Dirs use (".","../../userspace/services/acpi/lib","../../shared/firmware","../../shared/capabilities","../../userspace/services/acpi","../../userspace/services/acpi/resource-consumer");
+ Build_Root := external ("ACPI_LIFETIME_BUILD", "build-checked");
+ for Object_Dir use Build_Root & "/obj";for Exec_Dir use Build_Root & "/bin";
+ for Main use ("membership_tests.adb","bounds_tests.adb","cleanup_tests.adb","container_lifetime_tests.adb");
+ package Compiler is for Default_Switches("Ada") use ("-O1","-gnat2022","-gnata","-gnato");end Compiler;
+end Lifetime_checked;
