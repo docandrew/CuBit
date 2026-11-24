@@ -13025,7 +13025,7 @@ procedure main is
       if shown /= superShown then
          superShown := shown;
          damageSuperHints;
-         debugPrint ("desktop: super hints " & (if shown then "shown" else "hidden") & LF);
+         debugPrint ("desktop: super hints " & (if shown then "shown" else "hidden") & " at " & Decimal (now) & " ms" & LF);
       end if;
    end noteSuperReveal;
 
@@ -13788,6 +13788,8 @@ procedure main is
             --  Super's device repeats never get here (Key_Repeat).
             MR.Key_Event (superReveal, UIK.Super_Key, not release,
                           (if release then UIK.No_Modifiers else SUPER_ONLY), nowMs);
+            debugPrint ("desktop: super " & (if release then "up" else "down") & " at "
+                        & Decimal (nowMs) & " ms" & LF);
             noteSuperReveal (nowMs);
             if not release then
                desktopSuperChord := False;

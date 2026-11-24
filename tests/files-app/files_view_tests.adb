@@ -514,9 +514,11 @@ package body Files_View_Tests is
             Key (K.Alt_Key, Alt => True);
             Hold_Until (T0 + 10 * HOLD_US);
             Check (Revealed (View.all) = Alt_Only, "holding Alt reveals");
-            Check (Tool_Revealed (View.all, Tool_Back) and then Tool_Revealed (View.all, Tool_Refresh),
-                   "Back [Alt][Left] and Refresh [F2] show under the toolbar");
-            Check (not Tool_Revealed (View.all, Tool_Columns), "Columns has no chord: no keycap");
+            Check (Tool_Revealed (View.all, Tool_Back) and then Tool_Revealed (View.all, Tool_Forward)
+                   and then Tool_Revealed (View.all, Tool_Up),
+                   "Back, Forward and Up (the Alt chords) show their keys over the toolbar");
+            Check (not Tool_Revealed (View.all, Tool_Refresh) and then not Tool_Revealed (View.all, Tool_Columns),
+                   "Refresh (F2) and Columns (no chord) stay quiet under Alt");
             Save_PPM (Screen, "build/files-alt-toolbar.ppm");
             Set_Clock (View.all, T0 + 11 * HOLD_US);
             Release (K.Alt_Key);

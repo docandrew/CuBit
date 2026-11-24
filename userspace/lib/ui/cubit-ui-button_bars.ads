@@ -29,10 +29,11 @@
 --  (Ctrl+F3 sorts by name), with the layer's caps once at the start
 --  ([Ctrl]) and each cell keeping its plain width where the caption fits;
 --  icon-only buttons whose chord uses exactly the held modifiers show a
---  reveal label ("Refresh [Ctrl][R]"); holding Alt reveals every icon-only
---  button's keycaps. Reveal labels sit in a band directly under the bar,
---  centred under their buttons in one lane, two at most. A key pressed on
---  the keyboard flashes its button briefly.
+--  reveal label ("Refresh [Ctrl][R]"), Alt as Ctrl. Reveal labels sit over the bar's own row, each
+--  centred on its button, never over the content and never moving the
+--  layout; neighbours that would collide show the key's cap alone ([B],
+--  the held modifier implied). A key pressed on the keyboard flashes its
+--  button briefly.
 --
 --  The bar draws, registers its buttons (Controls) and their tooltips; the
 --  app routes clicks back with Take_Chosen and key presses through its
@@ -130,7 +131,7 @@ package CuBit.UI.Button_Bars is
      (C : Canvas; Map : in out Controls.Control_Map; Tips : in out Tooltips.Tip_Table; B : in out Bar;
       Keymap : Commands.Keymap; Area : Rect; Colors : Theme; Pointer : Pointer_State;
       Revealed : Keys.Modifier_Set; Now_Ms : Unsigned_64);
-   --  The reveal labels under icon-only buttons (see above), kept inside
+   --  The reveal labels over icon-only buttons (see above), kept inside
    --  Window; what they cover is Reveal_Area (damage it when the revealed
    --  set changes).
    procedure Draw_Reveal

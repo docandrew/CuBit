@@ -80,48 +80,4 @@ package body CuBit.UI.Button_Bar_Layout with SPARK_Mode is
       Rows := Row + 1;
    end Arrange;
 
-   procedure Stack_Labels
-     (Centres, Widths : Edge_Table; Count : Button_Count; Gap : Coordinate;
-      Lefts : out Edge_Table; Lanes : out Lane_Table; Lane_Count : out Row_Number)
-   is
-      --  Where each lane's last label ended, and whether it has one.
-      type Lane_Edges is array (Lane_Number) of Coordinate;
-      type Lane_Flags is array (Lane_Number) of Boolean;
-      Ends_At : Lane_Edges := [others => 0];
-      Taken : Lane_Flags := [others => False];
-      Used : Row_Number := 0;
-   begin
-      Lefts := [others => 0];
-      Lanes := [others => 0];
-      for K in 1 .. Count loop
-         declare
-            Centred : constant Coordinate :=
-              (if Centres (K) > Widths (K) / 2 then Centres (K) - Widths (K) / 2 else 0);
-            Fits_First : constant Boolean := not Taken (0) or else Ends_At (0) + Gap <= Centred;
-            Fits_Second : constant Boolean := not Taken (1) or else Ends_At (1) + Gap <= Centred;
-            Chosen : Lane_Number;
-            Left : Coordinate;
-         begin
-            if Fits_First then
-               Chosen := 0;
-               Left := Centred;
-            elsif Fits_Second then
-               Chosen := 1;
-               Left := Centred;
-            else
-               --  Both lanes run past it: the one that ends first, nudged.
-               Chosen := (if Ends_At (1) < Ends_At (0) then 1 else 0);
-               Left := Natural'Min (MAXIMUM_COORDINATE, Ends_At (Chosen) + Gap);
-            end if;
-            Lefts (K) := Left;
-            Lanes (K) := Chosen;
-            Taken (Chosen) := True;
-            Ends_At (Chosen) := Natural'Min (MAXIMUM_COORDINATE, Left + Widths (K));
-            Used := Natural'Max (Used, Chosen + 1);
-         end;
-         pragma Loop_Invariant (Used in 1 .. MAXIMUM_LANES);
-         pragma Loop_Invariant (for all J in 1 .. K => Lanes (J) < Used);
-      end loop;
-      Lane_Count := Used;
-   end Stack_Labels;
 end CuBit.UI.Button_Bar_Layout;

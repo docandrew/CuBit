@@ -204,10 +204,23 @@ procedure Main is
       Collect (Dirty);
    end Pump_View;
 
+   --  The held modifiers whose keys the frame reveals (UI-052), logged when
+   --  they change: tests and traces read it.
+   use type CuBit.UI.Keys.Modifier_Set;
+   Logged_Reveal : CuBit.UI.Keys.Modifier_Set := CuBit.UI.Keys.No_Modifiers;
+   function Reveal_Image (Set : CuBit.UI.Keys.Modifier_Set) return String is
+     ((if Set (CuBit.UI.Keys.Ctrl) then " ctrl" else "") & (if Set (CuBit.UI.Keys.Shift) then " shift" else "")
+      & (if Set (CuBit.UI.Keys.Alt) then " alt" else "")
+      & (if Set = CuBit.UI.Keys.No_Modifiers then " none" else ""));
+
    procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
       Start : constant Unsigned_64 := Now_Us;
    begin
       Files_View.Render (View, CuBit.UI.App.Canvas (Win, Damage), CuBit.UI.App.Full_Rect (Win), UI, Controls);
+      if Revealed (View) /= Logged_Reveal then
+         Logged_Reveal := Revealed (View);
+         debugPrint ("files: revealed" & Reveal_Image (Logged_Reveal) & ASCII.LF);
+      end if;
       Note_Frame (View, Now_Us - Start, Last_Pump_Us);
       if First_Frame then
          First_Frame := False;
@@ -334,6 +347,10 @@ procedure Main is
          Clipboard_Key;
       elsif Event.kind in CuBit.UI.Input.INPUT_KEY_DOWN | CuBit.UI.Input.INPUT_KEY_UP then
          --  Releases too: held modifiers reveal their hints (UI-052).
+         if CuBit.UI.Keys.Is_Modifier_Key (CuBit.UI.Keys.Key_Of (Event.payload0)) then
+            debugPrint ("files: modifier " & CuBit.UI.Keys.Label (CuBit.UI.Keys.Key_Of (Event.payload0))
+                        & (if Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN then " down" else " up") & ASCII.LF);
+         end if;
          Send ((Kind => (if Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN then Key_Event else Key_Release),
                 Key => CuBit.UI.Keys.Key_Of (Event.payload0), Shift => Shift, Control => Control,
                 Alt => Alt, others => <>));

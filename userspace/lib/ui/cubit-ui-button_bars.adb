@@ -10,11 +10,8 @@ package body CuBit.UI.Button_Bars is
    use type Command;
    package Caps renames CuBit.UI.Keycaps;
 
-   ALT_ONLY : constant Keys.Modifier_Set := [Keys.Alt => True, others => False];
-   --  The reveal band's padding, its lanes' spacing, labels' least gap.
-   BAND_PADDING : constant := 2;
-   LANE_GAP : constant := 2;
-   LABEL_GAP : constant := CuBit.UI_Metrics.Space_S;
+   --  The least gap between two reveal labels.
+   LABEL_GAP : constant := CuBit.UI_Metrics.Space_XS;
 
    procedure Clear
      (B : out Bar; First_ID : Controls.Control_ID; Style : Bar_Style := Key_Bar_Style;
@@ -331,59 +328,75 @@ package body CuBit.UI.Button_Bars is
       declare
          Chord : constant Keys.Chord := Commands.Hint (Keymap, B.Buttons (K).Item);
       begin
-         return Keys.Is_Chord (Chord) and then (Revealed = ALT_ONLY or else Chord.Modifiers = Revealed);
+         --  One model for every modifier: the buttons whose chord is
+         --  exactly what is held (Alt: Back and Forward; Ctrl: Places ...).
+         return Keys.Is_Chord (Chord) and then Chord.Modifiers = Revealed;
       end;
    end Revealed_At;
 
-   --  The reveal band: directly under the bar, the panel's colour, with
-   --  each label (caps, and the caption for a Ctrl or Shift layer) centred
-   --  under its button in one lane, or two when neighbours would collide.
-   function Label_Caption (B : Bar; K : Button_Index; Revealed : Keys.Modifier_Set) return String is
-     (if Revealed = ALT_ONLY then "" else Caption (B.Buttons (K).Item));
+   --  Reveal labels sit over the bar's own row, each centred on its
+   --  button: never over the content below, never moving the layout (the
+   --  bar's icons are covered only while the modifier is held). A label is
+   --  "Places [Ctrl][B]"; when neighbours would collide, every label goes
+   --  compact, the key's cap alone ([B]: the held modifier is implied),
+   --  and a label that still collides is nudged right past its neighbour.
+   type Label_Form is (Full_Label, Compact_Label);
+
+   function Label_Chord (Item : Keys.Chord; Revealed : Keys.Modifier_Set; Form : Label_Form) return Keys.Chord is
+     (if Form = Full_Label then Item else (Modifiers => Keys.No_Modifiers, Pressed => Item.Pressed));
+   function Label_Caption (B : Bar; K : Button_Index; Form : Label_Form) return String is
+     (if Form = Full_Label then Caption (B.Buttons (K).Item) else "");
 
    procedure Place_Labels
      (B : Bar; Keymap : Commands.Keymap; Revealed : Keys.Modifier_Set; Window : Rect;
-      Boxes : out Rect_Table; Band : out Rect)
+      Boxes : out Rect_Table; Form : out Label_Form)
    is
-      Centres, Widths, Lefts : Layout.Edge_Table := [others => 0];
-      Lanes : Layout.Lane_Table;
-      Lane_Count : Layout.Row_Number;
-      Which : array (Button_Index) of Button_Count := [others => 0];
-      N : Button_Count := 0;
-      Height : constant Natural := Natural'Max (UI_Text_Height, Caps.Height);
+      Height : constant Natural := Caps.Label_Height;
+      function Width_Of (K : Button_Index; F : Label_Form) return Natural is
+        (Caps.Label_Width (Label_Caption (B, K, F),
+                           Label_Chord (Commands.Hint (Keymap, B.Buttons (K).Item), Revealed, F)));
+      function Left_Of (K : Button_Index; W : Natural) return Natural is
+        (if B.Areas (K).x + B.Areas (K).w / 2 > W / 2 then B.Areas (K).x + B.Areas (K).w / 2 - W / 2 else 0);
+      --  Whether the labels of form F fit centred, none overlapping.
+      function Fits (F : Label_Form) return Boolean is
+         Pen : Natural := 0;
+         First : Boolean := True;
+      begin
+         for K in 1 .. B.Count loop
+            if Revealed_At (B, Keymap, K, Revealed) and then not Is_Empty (B.Areas (K)) then
+               if not First and then Left_Of (K, Width_Of (K, F)) < Pen + LABEL_GAP then
+                  return False;
+               end if;
+               First := False;
+               Pen := Left_Of (K, Width_Of (K, F)) + Width_Of (K, F);
+            end if;
+         end loop;
+         return True;
+      end Fits;
+      Pen : Natural := 0;
+      First : Boolean := True;
+      Right_Edge : constant Natural := Natural'Min (Window.x + Window.w, B.Area.x + B.Area.w);
    begin
       Boxes := [others => (others => 0)];
-      Band := (others => 0);
+      Form := (if Fits (Full_Label) then Full_Label else Compact_Label);
       for K in 1 .. B.Count loop
          if Revealed_At (B, Keymap, K, Revealed) and then not Is_Empty (B.Areas (K)) then
-            N := N + 1;
-            Which (N) := K;
-            Centres (N) := Natural'Min
-              (Layout.MAXIMUM_COORDINATE,
-               (if B.Areas (K).x + B.Areas (K).w / 2 > B.Area.x then B.Areas (K).x + B.Areas (K).w / 2 - B.Area.x
-                else 0));
-            Widths (N) := Natural'Min
-              (Layout.MAXIMUM_COORDINATE,
-               Caps.Plain_Label_Width (Label_Caption (B, K, Revealed), Commands.Hint (Keymap, B.Buttons (K).Item)));
+            declare
+               W : constant Natural := Width_Of (K, Form);
+               X : Natural := Natural'Max (Left_Of (K, W), B.Area.x);
+               Box : constant Rect := B.Areas (K);
+            begin
+               if not First and then X < Pen + LABEL_GAP then
+                  X := Pen + LABEL_GAP;
+               end if;
+               if X + W > Right_Edge then
+                  X := (if Right_Edge > W then Right_Edge - W else 0);
+               end if;
+               Boxes (K) := (X, Box.y + (if Box.h > Height then (Box.h - Height) / 2 else 0), W, Height);
+               Pen := X + W;
+               First := False;
+            end;
          end if;
-      end loop;
-      if N = 0 then
-         return;
-      end if;
-      Layout.Stack_Labels (Centres, Widths, N, LABEL_GAP, Lefts, Lanes, Lane_Count);
-      Band := (B.Area.x, B.Area.y + B.Area.h, Natural'Min (B.Area.w, (if Window.x + Window.w > B.Area.x
-                                                                       then Window.x + Window.w - B.Area.x else 0)),
-               2 * BAND_PADDING + Lane_Count * Height + (Lane_Count - 1) * LANE_GAP);
-      for J in 1 .. N loop
-         declare
-            Right_Edge : constant Natural := Band.x + Band.w;
-            X : Natural := Band.x + Lefts (J);
-         begin
-            if X + Widths (J) > Right_Edge then
-               X := (if Right_Edge > Widths (J) + Band.x then Right_Edge - Widths (J) else Band.x);
-            end if;
-            Boxes (Which (J)) := (X, Band.y + BAND_PADDING + Lanes (J) * (Height + LANE_GAP), Widths (J), Height);
-         end;
       end loop;
    end Place_Labels;
 
@@ -392,19 +405,15 @@ package body CuBit.UI.Button_Bars is
       Window : Rect)
    is
       Boxes : Rect_Table;
-      Band : Rect;
+      Form : Label_Form;
    begin
-      Place_Labels (B, Keymap, Revealed, Window, Boxes, Band);
-      if Is_Empty (Band) then
-         return;
-      end if;
-      Fill_Rect (C, Band, Colors.panel);
-      Fill_Rect (C, (Band.x, Band.y + Band.h - 1, Band.w, 1), Colors.shadow);
+      Place_Labels (B, Keymap, Revealed, Window, Boxes, Form);
       for K in 1 .. B.Count loop
          if not Is_Empty (Boxes (K)) then
-            Caps.Draw_Plain_Label
-              (With_Clip (C, Band), Boxes (K).x, Boxes (K).y, Label_Caption (B, K, Revealed),
-               Commands.Hint (Keymap, B.Buttons (K).Item), Colors, Shade (B.Buttons (K).Item));
+            Caps.Draw_Label
+              (C, Boxes (K).x, Boxes (K).y, Label_Caption (B, K, Form),
+               Label_Chord (Commands.Hint (Keymap, B.Buttons (K).Item), Revealed, Form), Colors,
+               Shade (B.Buttons (K).Item));
          end if;
       end loop;
    end Draw_Reveal;
@@ -413,19 +422,25 @@ package body CuBit.UI.Button_Bars is
      return Rect
    is
       Boxes : Rect_Table;
-      Band : Rect;
+      Form : Label_Form;
+      Result : Rect := (others => 0);
    begin
-      Place_Labels (B, Keymap, Revealed, Window, Boxes, Band);
-      return Band;
+      Place_Labels (B, Keymap, Revealed, Window, Boxes, Form);
+      for K in 1 .. B.Count loop
+         if not Is_Empty (Boxes (K)) then
+            Result := (if Is_Empty (Result) then Boxes (K) else Union_Rect (Result, Boxes (K)));
+         end if;
+      end loop;
+      return Result;
    end Reveal_Area;
 
    function Reveal_Label (B : Bar; Keymap : Commands.Keymap; K : Button_Index; Revealed : Keys.Modifier_Set;
                           Window : Rect) return Rect
    is
       Boxes : Rect_Table;
-      Band : Rect;
+      Form : Label_Form;
    begin
-      Place_Labels (B, Keymap, Revealed, Window, Boxes, Band);
+      Place_Labels (B, Keymap, Revealed, Window, Boxes, Form);
       return Boxes (K);
    end Reveal_Label;
 

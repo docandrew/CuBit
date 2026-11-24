@@ -275,11 +275,12 @@ procedure Keys_Tests is
             CuBit.UI.Tooltips.Dismiss (Tip, Damage);
          end;
       end loop;
-      Check (Bars.Revealed_At (B, Map, 2, Alt_Set) and then not Bars.Revealed_At (B, Map, 1, Alt_Set),
-             "holding Alt reveals the icon-only button's keycap (the default one already shows it)");
+      Check (not Bars.Revealed_At (B, Map, 2, Alt_Set),
+             "holding Alt reveals only Alt chords: Save is Ctrl+S, so it stays quiet");
       Check (Bars.Revealed_At (B, Map, 2, Ctrl_Set), "holding Ctrl reveals Save [Ctrl][S]");
+      Check (not Bars.Revealed_At (B, Map, 1, Ctrl_Set), "the default button already shows its keycap");
       Check (not Bars.Revealed_At (B, Map, 2, Keys.No_Modifiers), "nothing held, nothing revealed");
-      Check (not Is_Empty (Bars.Reveal_Area (B, Map, Alt_Set, Window)), "the reveal has an area to draw");
+      Check (not Is_Empty (Bars.Reveal_Area (B, Map, Ctrl_Set, Window)), "the reveal has an area to draw");
       Check (Bars.Shown_Caption (B, Map, 3, Keys.No_Modifiers) = "", "F3 runs nothing in the base layer");
       Check (Bars.Shown_Caption (B, Map, 3, Ctrl_Set) = "Name", "while Ctrl is held F3 shows Ctrl+F3's Name");
 
@@ -366,27 +367,29 @@ procedure Keys_Tests is
       end;
       Controls.Clear (Controls_Map);
       Bars.Draw (Screen, Controls_Map, Tips, B, Map, Bar_Area, Colors, Pointer, Keys.No_Modifiers, 0);
+      --  Back, Back (Alt+Left twice) and the rest: Alt reveals the Alt
+      --  chords, over the bar's own row, never below it, none overlapping;
+      --  neighbours too wide for their buttons go compact (the key alone).
       Band := Bars.Reveal_Area (B, Map, Alt_Set, Window);
-      Check (Band.y = Bar_Area.y + Bar_Area.h and then Band.x = Bar_Area.x, "the reveal band sits right under the bar");
-      Check (Band.h <= 2 * (Natural'Max (UI_Text_Height, CuBit.UI.Keycaps.Height) + 2) + 4,
-             "two lanes at most");
+      Check (not Is_Empty (Band) and then Band.y >= Bar_Area.y and then Band.y + Band.h <= Bar_Area.y + Bar_Area.h,
+             "the reveal stays on the bar's row: nothing below it is covered");
       for J in 1 .. Bars.Count (B) loop
          declare
             L : constant Rect := Bars.Reveal_Label (B, Map, J, Alt_Set, Window);
          begin
-            Check (not Is_Empty (L), "label" & J'Image & " shows");
-            Check (L.x >= Band.x and then L.x + L.w <= Band.x + Band.w and then L.y >= Band.y
-                   and then L.y + L.h <= Band.y + Band.h, "label" & J'Image & " is inside the band");
+            Check (Is_Empty (L) = not Bars.Revealed_At (B, Map, J, Alt_Set), "label" & J'Image & " shows iff revealed");
             for I in 1 .. J - 1 loop
                declare
                   O : constant Rect := Bars.Reveal_Label (B, Map, I, Alt_Set, Window);
                begin
-                  Check (O.y /= L.y or else O.x + O.w <= L.x or else L.x + L.w <= O.x,
+                  Check (Is_Empty (O) or else Is_Empty (L) or else O.x + O.w <= L.x or else L.x + L.w <= O.x,
                          "labels" & I'Image & " and" & J'Image & " don't overlap");
                end;
             end loop;
          end;
       end loop;
+      Check (Bars.Reveal_Label (B, Map, 1, Alt_Set, Window).w < CuBit.UI.Keycaps.Label_Width ("", Keys.Alt + Keys.Left),
+             "adjacent Alt+Left labels go compact: the arrow's cap alone");
       Check (CuBit.UI.Keycaps.Width (Keys.Alt + Keys.Left) < CuBit.UI.Keycaps.Width (Keys.Alt + Keys.F10),
              "an arrow cap is a glyph, narrower than a word");
 
