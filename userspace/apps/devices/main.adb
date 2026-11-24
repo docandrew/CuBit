@@ -749,7 +749,9 @@ procedure main is
          CuBit.UI.Widgets.Vertical_Scrollbar
            (c, ui, controls, CONTROL_SCROLLBAR, scrollBounds, treeContent,
             colors, 0, visibleKeyCount - 1, treeScroll, scrollResult,
-            pageSize => Positive'Max (1, visibleRows), retainedInput => True);
+            pageSize => Positive'Max (1, visibleRows), retainedInput => True,
+            --  UI-035: the toolkit gives the wheel over the tree to it.
+            wheelArea => treeContent);
       end if;
       Item (NODE_COMPUTER, "This computer", 0, True, computerExpanded,
             CuBit.UI.Trees.Computer_Icon);
@@ -812,12 +814,9 @@ procedure main is
        running : in out Boolean)
    is
       x, y : Natural;
-      wheel : Integer;
-      maxScroll : Natural := 0;
       visibleRows : Natural := 1;
       hit : CuBit.UI.Controls.Control_ID;
       selectionMoved : Boolean := False;
-      oldScroll : Natural;
       use type Clipboard_Chords.Command;
    begin
       if event.kind = CuBit.UI.App.INPUT_KEY_DOWN and then
@@ -907,31 +906,6 @@ procedure main is
                   dirty := CuBit.UI.App.Full_Rect (win);
                end if;
             end;
-         end if;
-      elsif event.kind = CuBit.UI.App.INPUT_POINTER_WHEEL and then
-        --  UI-035: the wheel scrolls the tree under the pointer (the
-        --  event carries the pointer's position), clicked into or not.
-        CuBit.UI.Point_In_Rect (CuBit.UI.Input.Pointer_X (event), CuBit.UI.Input.Pointer_Y (event),
-                                lastTreeBounds)
-      then
-         wheel := CuBit.UI.App.Pointer_Wheel_Delta (event);
-         Rebuild_Visible_Keys;
-         if lastTreeBounds.h > 8 then
-            visibleRows := Natural'Max
-              (1, (lastTreeBounds.h - 8) /
-                 CuBit.UI.Trees.TREE_ROW_HEIGHT);
-         end if;
-         if visibleKeyCount > visibleRows then
-            maxScroll := visibleKeyCount - visibleRows;
-         end if;
-         oldScroll := treeScroll;
-         if wheel > 0 then
-            if treeScroll > 0 then treeScroll := treeScroll - 1; end if;
-         elsif wheel < 0 then
-            treeScroll := Natural'Min (treeScroll + 1, maxScroll);
-         end if;
-         if treeScroll /= oldScroll then
-            dirty := CuBit.UI.Union_Rect (dirty, lastTreeBounds);
          end if;
       end if;
    end Handle_Event;

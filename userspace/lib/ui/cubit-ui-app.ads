@@ -262,6 +262,11 @@ package CuBit.UI.App is
        dirty : in out CuBit.UI.Rect;
        repaint : Pointer_Repaint_Policy := Repaint_Changed_Controls);
 
+   --  The wheel event just applied went to a scroll container under the
+   --  pointer (UI-035: CuBit.UI.Controls.Route_Wheel); Run then does not
+   --  pass it to the app as well.
+   function Wheel_Taken (interaction : Pointer_Interaction; event : Input_Event) return Boolean;
+
    --  Defaults for Run's optional timed-work hooks: no deadline.
    function No_Deadline return Interfaces.Unsigned_64 is (0);
    --  Default for Run's completion hook: no other asynchronous work.
@@ -347,6 +352,8 @@ private
         CuBit.UI.Controls.NO_CONTROL;
       cursor   : CuBit.UI.Pointer_Cursor_Style := CuBit.UI.Pointer_Default;
       controlsValid : Boolean := True;
+      --  The last wheel event went to a toolkit scroll container.
+      wheelTaken : Boolean := False;
    end record;
 
    type Window is limited record

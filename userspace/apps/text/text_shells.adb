@@ -4,6 +4,8 @@ with CuBit.UI; use CuBit.UI;
 with CuBit.UI.Controls;
 with CuBit.UI.Editor;
 with CuBit.UI.Icons;
+with CuBit.UI.Keycaps;
+with CuBit.UI.Keys;
 with CuBit.UI.Menus;
 with CuBit.UI.Tooltips;
 with CuBit.UI.Widgets;
@@ -25,6 +27,43 @@ package body Text_Shells is
    package Controls renames CuBit.UI.Controls;
    package Menus renames CuBit.UI.Menus;
    package Tooltips renames CuBit.UI.Tooltips;
+   package UI_Keys renames CuBit.UI.Keys;
+
+   --  The editor's chord as the toolkit's typed chord, for the menus' and
+   --  tooltips' keycaps (CuBit.UI.Keycaps). The editor keeps its own key
+   --  table until it moves onto CuBit.UI.Keymaps (UI-052, slice 2).
+   function To_Keys (Pressed : Chord) return UI_Keys.Chord is
+      function Key_Of (Item : Text_Commands.Key) return UI_Keys.Key is
+        (case Item is
+            when No_Key => UI_Keys.Unknown,
+            when Key_A => UI_Keys.A, when Key_B => UI_Keys.B, when Key_C => UI_Keys.C, when Key_D => UI_Keys.D,
+            when Key_E => UI_Keys.E, when Key_F => UI_Keys.F, when Key_G => UI_Keys.G, when Key_H => UI_Keys.H,
+            when Key_I => UI_Keys.I, when Key_J => UI_Keys.J, when Key_K => UI_Keys.K, when Key_L => UI_Keys.L,
+            when Key_M => UI_Keys.M, when Key_N => UI_Keys.N, when Key_O => UI_Keys.O, when Key_P => UI_Keys.P,
+            when Key_Q => UI_Keys.Q, when Key_R => UI_Keys.R, when Key_S => UI_Keys.S, when Key_T => UI_Keys.T,
+            when Key_U => UI_Keys.U, when Key_V => UI_Keys.V, when Key_W => UI_Keys.W, when Key_X => UI_Keys.X,
+            when Key_Y => UI_Keys.Y, when Key_Z => UI_Keys.Z,
+            when Key_0 => UI_Keys.Digit_0, when Key_1 => UI_Keys.Digit_1, when Key_2 => UI_Keys.Digit_2,
+            when Key_3 => UI_Keys.Digit_3, when Key_4 => UI_Keys.Digit_4, when Key_5 => UI_Keys.Digit_5,
+            when Key_6 => UI_Keys.Digit_6, when Key_7 => UI_Keys.Digit_7, when Key_8 => UI_Keys.Digit_8,
+            when Key_9 => UI_Keys.Digit_9,
+            when F1 => UI_Keys.F1, when F2 => UI_Keys.F2, when F3 => UI_Keys.F3, when F4 => UI_Keys.F4,
+            when F5 => UI_Keys.F5, when F6 => UI_Keys.F6, when F7 => UI_Keys.F7, when F8 => UI_Keys.F8,
+            when F9 => UI_Keys.F9, when F10 => UI_Keys.F10, when F11 => UI_Keys.F11, when F12 => UI_Keys.F12,
+            when Up => UI_Keys.Up, when Down => UI_Keys.Down, when Left => UI_Keys.Left, when Right => UI_Keys.Right,
+            when Home => UI_Keys.Home, when End_Key => UI_Keys.End_Key, when Page_Up => UI_Keys.Page_Up,
+            when Page_Down => UI_Keys.Page_Down, when Enter => UI_Keys.Enter, when Escape => UI_Keys.Escape,
+            when Backspace => UI_Keys.Backspace, when Delete => UI_Keys.Delete, when Tab => UI_Keys.Tab,
+            when Insert_Key => UI_Keys.Insert, when Space => UI_Keys.Space, when Slash => UI_Keys.Slash,
+            when Backslash => UI_Keys.Backslash, when Minus => UI_Keys.Minus, when Equals => UI_Keys.Equals,
+            when Period => UI_Keys.Period, when Comma => UI_Keys.Comma, when Semicolon => UI_Keys.Semicolon,
+            when Quote => UI_Keys.Apostrophe, when Left_Bracket => UI_Keys.Left_Bracket,
+            when Right_Bracket => UI_Keys.Right_Bracket, when Grave => UI_Keys.Grave);
+   begin
+      return (Modifiers => [UI_Keys.Shift => Pressed.Shift, UI_Keys.Ctrl => Pressed.Control,
+                            UI_Keys.Alt => Pressed.Alt, UI_Keys.Super => False],
+              Pressed => Key_Of (Pressed.Item));
+   end To_Keys;
    use type Menus.Text;
 
    --  Layout, in logical pixels.
@@ -96,7 +135,7 @@ package body Text_Shells is
    type Command_Texts is array (Command) of Menus.Text;
    type Title_Texts is array (Menu_Name) of Menus.Text;
    type Command_Letters is array (Command) of Character;
-   Captions, Shortcuts : Command_Texts := [others => null];
+   Captions : Command_Texts := [others => null];
    Titles : Title_Texts := [others => null];
    Mnemonics : Command_Letters := [others => ' '];
    Menu_Popup_Width : Positive := MENU_MINIMUM_WIDTH;
@@ -293,10 +332,8 @@ package body Text_Shells is
       procedure Take (Item : Command; Starts_Group : Boolean) is
          pragma Unreferenced (Starts_Group);
          Text : constant String := Caption (Item);
-         Keys : constant String := Chord_Text (Binding (Item));
       begin
          Captions (Item) := new String'(Text);
-         Shortcuts (Item) := (if Keys'Length = 0 then null else new String'(Keys));
          for Ch of Text loop
             if Lower (Ch) in Letter_Set'Range and then not Taken (Lower (Ch)) then
                Taken (Lower (Ch)) := True;
@@ -887,10 +924,11 @@ package body Text_Shells is
          if Result.Item_Count < Menus.Max_Items then
             Result.Item_Count := Result.Item_Count + 1;
             Result.Items (Result.Item_Count) :=
-              (Parent => Parent, Caption => Captions (Item), Shortcut => Shortcuts (Item),
+              (Parent => Parent, Caption => Captions (Item), Hint => To_Keys (Binding (Item)),
                Mnemonic => Mnemonics (Item), Command => Command'Pos (Item),
                Enabled => Command_Enabled (S, Item),
-               Checked => Is_Toggle (Item) and then Command_Checked (S, Item), Separator => False);
+               Checked => Is_Toggle (Item) and then Command_Checked (S, Item), Separator => False,
+               Shade => CuBit.UI.Keycaps.Neutral);
          end if;
       end Add;
       procedure Add_All is new Each_Menu_Item (Add);
@@ -2696,7 +2734,7 @@ package body Text_Shells is
                else Full);
          begin
             Controls.Add_Button (St.Map, Tool_ID (T), Box, Box);
-            Tooltips.Set (St.Tips, Tool_ID (T), Name, Chord_Text (Binding (Tool_Command (T))));
+            Tooltips.Set (St.Tips, Tool_ID (T), Name, To_Keys (Binding (Tool_Command (T))));
          end;
       end loop;
       if Intersects (Clip, St.Toolbar_Area) then

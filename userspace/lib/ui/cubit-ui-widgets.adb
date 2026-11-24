@@ -73,7 +73,8 @@ package body CuBit.UI.Widgets is
         columns - Natural'Min (columns, visibleColumns) + 1));
       Vertical_Scrollbar (c, st, controls, verticalId,
         (field.x + field.w + 2, field.y, 16, field.h), bounds,
-        colors, 1, lines, firstLine, result, pageSize => visibleLines);
+        colors, 1, lines, firstLine, result, pageSize => visibleLines,
+        wheelArea => field);
       Horizontal_Scrollbar (c, st, controls, horizontalId,
         (field.x, field.y + field.h + 2, field.w, 16), bounds,
         colors, 1, columns, firstColumn, result, pageSize => visibleColumns);
@@ -532,7 +533,8 @@ package body CuBit.UI.Widgets is
          0,
          (if contentHeight > 0 then contentHeight - 1 else 0),
          scrollY, result,
-         pageSize => Positive'Max (1, viewport.h));
+         pageSize => Positive'Max (1, viewport.h),
+         wheelArea => bounds, wheelStep => WHEEL_STEP * CuBit.UI_Metrics.Line_Height);
 
       contentOriginY := viewport.y;
       if scrollY < contentOriginY then
@@ -541,6 +543,11 @@ package body CuBit.UI.Widgets is
          contentOriginY := 0;
       end if;
    end Scroll_Area;
+
+   function Button_Width (label : String; hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord) return Natural is
+     (2 * CuBit.UI.BUTTON_TEXT_INSET + CuBit.UI.UI_Text_Width (label)
+      + (if CuBit.UI.Keys.Is_Chord (CuBit.UI.Keycaps.Persistent (hint)) then HINT_GAP + CuBit.UI.Keycaps.Width (hint)
+         else 0));
 
    procedure Button
       (c : CuBit.UI.Canvas;
@@ -553,7 +560,9 @@ package body CuBit.UI.Widgets is
        label : String;
        result : out CuBit.UI.Widget_Result;
        retainedInput : Boolean := False;
-       quiet : Boolean := False)
+       quiet : Boolean := False;
+       hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+       shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral)
    is
       style : CuBit.UI.Button_Style;
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
@@ -589,9 +598,27 @@ package body CuBit.UI.Widgets is
             bounds.y + (bounds.h - Natural'Min
               (bounds.h, CuBit.UI.UI_Text_Height)) / 2,
             label, colors.muted, colors.face);
+      elsif CuBit.UI.Keys.Is_Chord (CuBit.UI.Keycaps.Persistent (hint)) then
+         --  The label and its keycaps, centred together.
+         declare
+            capW : constant Natural := CuBit.UI.Keycaps.Width (hint);
+            textW : constant Natural := CuBit.UI.UI_Text_Width (label);
+            groupW : constant Natural := textW + HINT_GAP + capW;
+            x : constant Natural := bounds.x + (if bounds.w > groupW then (bounds.w - groupW) / 2 else 0);
+            clipped : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (pc, bounds);
+         begin
+            CuBit.UI.Draw_Button_Frame (pc, bounds, colors, style);
+            CuBit.UI.Draw_UI_Text_Transparent
+              (clipped, x, bounds.y + (bounds.h - Natural'Min (bounds.h, CuBit.UI.UI_Text_Height)) / 2, label,
+               colors.text);
+            CuBit.UI.Keycaps.Draw
+              (clipped, x + textW + HINT_GAP,
+               bounds.y + (bounds.h - Natural'Min (bounds.h, CuBit.UI.Keycaps.Height)) / 2, hint, colors, shade);
+         end;
       else
          CuBit.UI.Draw_Button (pc, bounds, colors, style, label);
       end if;
+      CuBit.UI.Controls.Set_Shortcut (controls, id, hint);
 
       --  Retained buttons do not participate in the legacy per-frame
       --  last-widget focus protocol. A fresh UI_State has both keyboardItem
@@ -1014,7 +1041,9 @@ package body CuBit.UI.Widgets is
        value : in out Natural;
        result : out CuBit.UI.Widget_Result;
        pageSize : Positive := 1;
-       retainedInput : Boolean := False)
+       retainedInput : Boolean := False;
+       wheelArea : CuBit.UI.Rect := (others => 0);
+       wheelStep : Positive := WHEEL_STEP)
    is
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
       retainedValue : Natural;
@@ -1024,6 +1053,9 @@ package body CuBit.UI.Widgets is
          CuBit.UI.Controls.Add_Vertical_Scrollbar
            (controls, id, bounds, damage, value,
             minValue, maxValue, pageSize);
+         if not CuBit.UI.Is_Empty (wheelArea) then
+            CuBit.UI.Controls.Set_Wheel_Area (controls, id, wheelArea, wheelStep);
+         end if;
          CuBit.UI.Controls.Take_Value
            (controls, id, retainedValue, available);
          if available then
@@ -1039,6 +1071,22 @@ package body CuBit.UI.Widgets is
       else
          CuBit.UI.Controls.Add
            (controls, id, bounds, damage, continuousAction => True);
+         if not CuBit.UI.Is_Empty (wheelArea) then
+            --  Notches the wheel routed here last frame move the value.
+            CuBit.UI.Controls.Set_Wheel_Area (controls, id, wheelArea, wheelStep);
+            declare
+               notches : constant Integer := CuBit.UI.Controls.Take_Wheel (controls, id);
+               top : constant Natural :=
+                 CuBit.UI.Layout_Vertical_Scrollbar (bounds, minValue, maxValue, value, pageSize).maximumValue;
+               moved : constant Long_Long_Integer :=
+                 Long_Long_Integer (value) - Long_Long_Integer (notches) * Long_Long_Integer (wheelStep);
+            begin
+               if notches /= 0 then
+                  value := Natural (Long_Long_Integer'Max (Long_Long_Integer (minValue),
+                                    Long_Long_Integer'Min (Long_Long_Integer (Natural'Max (top, minValue)), moved)));
+               end if;
+            end;
+         end if;
          result :=
             CuBit.UI.State.Vertical_Scrollbar
               (st, CuBit.UI.Controls.Bounds (controls, id),

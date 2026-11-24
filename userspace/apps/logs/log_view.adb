@@ -38,7 +38,6 @@ package body Log_View is
    MATCH_MARK_WIDTH : constant := 3;
    --  Rows moved by one wheel step, and the most steps one event counts.
    WHEEL_ROWS : constant := 3;
-   WHEEL_STEPS_MAXIMUM : constant := MAXIMUM_RECORDS / WHEEL_ROWS;
 
    --  Captions with program lifetime, borrowed by the combo box models.
    ALL_SERVICES : aliased constant String := "All services";
@@ -978,9 +977,14 @@ package body Log_View is
                   when No_Combo => null;
                end case;
             else
-               --  The view alone moves; moving it pauses following.
-               VP.Scroll (State.Position,
-                          -WHEEL_ROWS * Integer'Max (-WHEEL_STEPS_MAXIMUM, Integer'Min (WHEEL_STEPS_MAXIMUM, Item.Steps)));
+               --  The records' scroll container takes the wheel (UI-035).
+               declare
+                  Taken : Boolean;
+                  Wheel_Damage : Rect;
+               begin
+                  Controls.Route_Wheel (Map, Item.X, Item.Y, Item.Steps, Taken, Wheel_Damage);
+                  Redraw := Taken;
+               end;
             end if;
          when Pointer_Event =>
             declare
@@ -1175,7 +1179,13 @@ package body Log_View is
               (C, UI, Map, SCROLL_ID,
                (Regions.Rows.x + Regions.Rows.w - SCROLLBAR_WIDTH, Regions.Rows.y, SCROLLBAR_WIDTH, Regions.Rows.h),
                Table, Colors, 0, State.Position.Count - 1, Value, Widget,
-               pageSize => Rows, retainedInput => True);
+               pageSize => Rows, retainedInput => True,
+               --  UI-035: the wheel over the records scrolls them (the
+               --  toolkit routes it); an open list takes it instead.
+               wheelArea =>
+                 (if CB.Is_Open (State.Service) or else CB.Is_Open (State.Time) or else CB.Is_Open (State.Level)
+                    or else CB.Is_Open (State.Keep) then (others => 0) else Regions.Rows),
+               wheelStep => WHEEL_ROWS);
             --  The view alone moves; moving it pauses following.
             VP.Scroll_To (State.Position, Natural'Min (Value, VP.MAXIMUM_ROWS));
          end;

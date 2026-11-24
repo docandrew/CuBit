@@ -6122,6 +6122,51 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             # first category open (the taskbar and its logo show in both).
             sleep 0.5
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-files.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            # UI-051/052: held modifiers reveal their keys after the hold
+            # delay (500 ms): Ctrl shows the key bar's Ctrl layer, Alt the
+            # toolbar's keycaps, Super the Desktop's hints. sendkey's hold
+            # time keeps the key down while the screen is captured.
+            # (nc -q 1 itself lingers a second after sending.)
+            # The key is pressed and released through QMP (qmp-key.py):
+            # QEMU's sendkey hold time would queue another hold of delay
+            # behind the release, and every later key would reach the
+            # guest that late (BUG-007: each screenshot one step behind).
+            files_hold_shot() {
+                python3 -I "$ROOT_DIR/tests/headless/qmp-key.py" "$QMP_SOCKET" down "$1"
+                sleep 2.0
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-$2.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+                sleep 2.5
+                printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-$2-later.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+                python3 -I "$ROOT_DIR/tests/headless/qmp-key.py" "$QMP_SOCKET" up "$1"
+                sleep 0.5
+            }
+            # The order is FILES_HOLD_ORDER's (default: Super, Alt, Ctrl).
+            for files_hold in ${FILES_HOLD_ORDER:-meta_l alt ctrl}; do
+                case "$files_hold" in
+                    meta_l) files_hold_shot meta_l hold-super
+                            files_wait "desktop: super hints shown"
+                            # Released after the hold, Super opens the Apps menu.
+                            files_keys esc
+                            sleep 0.5 ;;
+                    alt) files_hold_shot alt hold-alt
+                         files_wait "files: revealed alt" ;;
+                    ctrl) files_hold_shot ctrl hold-ctrl
+                          files_wait "files: revealed ctrl" ;;
+                esac
+            done
+            # A lag probe: one Down moves the cursor one row; the screen two
+            # seconds later must show it (a frame left unshown would not).
+            files_keys down
+            sleep 2.0
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-probe-down.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            files_keys up
+            sleep 0.5
+            # The context menu's keycaps (Shift+F10).
+            files_keys shift-f10
+            sleep 0.5
+            printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-menu.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            files_keys esc
+            sleep 0.3
             files_keys meta_l
             sleep 0.4
             files_keys right

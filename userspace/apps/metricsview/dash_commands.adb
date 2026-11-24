@@ -1,8 +1,12 @@
 pragma Ada_2022;
+with CuBit.UI.Keycaps;
+with CuBit.UI.Keys;
 with CuBit.UI_Metrics;
 
 package body Dash_Commands is
    package Menus renames CuBit.UI.Menus;
+   package Keys renames CuBit.UI.Keys;
+   use type Keys.Modifier, Keys.Modifier_Set, Keys.Key;
    use type Menus.Text;
 
    --  A popup is never narrower than this (short menus look cramped).
@@ -21,7 +25,8 @@ package body Dash_Commands is
    --  whether a separator comes before it.
    type Entry_Text is record
       Menu : Menu_Name := File_Menu;
-      Caption, Shortcut : Menus.Text := null;
+      Caption : Menus.Text := null;
+      Hint : Keys.Chord := Keys.No_Chord;
       Letter : Character := ' ';
       Starts_Group : Boolean := False;
    end record;
@@ -51,53 +56,53 @@ package body Dash_Commands is
    C_Keys : aliased constant String := "Keys";
    C_No_Recent : aliased constant String := "No Recent Dashboards";
 
-   S_New : aliased constant String := "Ctrl+N";
-   S_Open : aliased constant String := "Ctrl+O";
-   S_Save_As : aliased constant String := "Ctrl+Shift+S";
-   S_Undo : aliased constant String := "Ctrl+Z";
-   S_Redo : aliased constant String := "Ctrl+Y";
-   S_Editor : aliased constant String := "E";
-   S_Add : aliased constant String := "A";
-   S_Source : aliased constant String := "Enter";
-   S_Duplicate : aliased constant String := "Insert";
-   S_Remove : aliased constant String := "Delete";
-   S_Copy : aliased constant String := "Ctrl+C";
-   S_Zoom_In : aliased constant String := "=";
-   S_Zoom_Out : aliased constant String := "-";
-   S_Range_1 : aliased constant String := "1";
-   S_Range_2 : aliased constant String := "2";
-   S_Range_3 : aliased constant String := "3";
-   S_Range_4 : aliased constant String := "4";
-   S_Range_5 : aliased constant String := "5";
-   S_Range_6 : aliased constant String := "6";
-   S_Live : aliased constant String := "L";
-   S_Show_Source : aliased constant String := "C";
-   S_Keys : aliased constant String := "F1";
+   S_New : constant Keys.Chord := (Keys.Ctrl + Keys.N);
+   S_Open : constant Keys.Chord := (Keys.Ctrl + Keys.O);
+   S_Save_As : constant Keys.Chord := (Keys.Ctrl + Keys.Shift + Keys.S);
+   S_Undo : constant Keys.Chord := (Keys.Ctrl + Keys.Z);
+   S_Redo : constant Keys.Chord := (Keys.Ctrl + Keys.Y);
+   S_Editor : constant Keys.Chord := (+Keys.E);
+   S_Add : constant Keys.Chord := (+Keys.A);
+   S_Source : constant Keys.Chord := (+Keys.Enter);
+   S_Duplicate : constant Keys.Chord := (+Keys.Insert);
+   S_Remove : constant Keys.Chord := (+Keys.Delete);
+   S_Copy : constant Keys.Chord := (Keys.Ctrl + Keys.C);
+   S_Zoom_In : constant Keys.Chord := (+Keys.Equals);
+   S_Zoom_Out : constant Keys.Chord := (+Keys.Minus);
+   S_Range_1 : constant Keys.Chord := (+Keys.Digit_1);
+   S_Range_2 : constant Keys.Chord := (+Keys.Digit_2);
+   S_Range_3 : constant Keys.Chord := (+Keys.Digit_3);
+   S_Range_4 : constant Keys.Chord := (+Keys.Digit_4);
+   S_Range_5 : constant Keys.Chord := (+Keys.Digit_5);
+   S_Range_6 : constant Keys.Chord := (+Keys.Digit_6);
+   S_Live : constant Keys.Chord := (+Keys.L);
+   S_Show_Source : constant Keys.Chord := (+Keys.C);
+   S_Keys : constant Keys.Chord := (+Keys.F1);
 
    Table : constant array (Command range New_Dashboard .. Show_Keys) of Entry_Text :=
-     [New_Dashboard => (File_Menu, C_New'Access, S_New'Access, 'n', False),
-      Open_Dashboard => (File_Menu, C_Open'Access, S_Open'Access, 'o', False),
-      Save_As => (File_Menu, C_Save_As'Access, S_Save_As'Access, 'a', False),
-      Duplicate_Dashboard => (File_Menu, C_Duplicate_Board'Access, null, 'd', False),
-      Undo => (Edit_Menu, C_Undo'Access, S_Undo'Access, 'u', False),
-      Redo => (Edit_Menu, C_Redo'Access, S_Redo'Access, 'r', False),
-      Toggle_Editor => (Edit_Menu, C_Editor'Access, S_Editor'Access, 'e', True),
-      Add_Panel => (Edit_Menu, C_Add'Access, S_Add'Access, 'a', False),
-      Panel_Source => (Edit_Menu, C_Source'Access, S_Source'Access, 's', False),
-      Duplicate_Panel => (Edit_Menu, C_Duplicate'Access, S_Duplicate'Access, 'd', False),
-      Remove_Panel => (Edit_Menu, C_Remove'Access, S_Remove'Access, 'm', False),
-      Copy_Source => (Edit_Menu, C_Copy'Access, S_Copy'Access, 'c', True),
-      Zoom_In => (View_Menu, C_Zoom_In'Access, S_Zoom_In'Access, 'i', False),
-      Zoom_Out => (View_Menu, C_Zoom_Out'Access, S_Zoom_Out'Access, 'o', False),
-      Range_1 => (View_Menu, C_Range_1'Access, S_Range_1'Access, 'm', True),
-      Range_2 => (View_Menu, C_Range_2'Access, S_Range_2'Access, '5', False),
-      Range_3 => (View_Menu, C_Range_3'Access, S_Range_3'Access, 'u', False),
-      Range_4 => (View_Menu, C_Range_4'Access, S_Range_4'Access, 'h', False),
-      Range_5 => (View_Menu, C_Range_5'Access, S_Range_5'Access, '6', False),
-      Range_6 => (View_Menu, C_Range_6'Access, S_Range_6'Access, '2', False),
-      Go_Live => (View_Menu, C_Live'Access, S_Live'Access, 'l', False),
-      Show_Source => (View_Menu, C_Show_Source'Access, S_Show_Source'Access, 'c', True),
-      Show_Keys => (View_Menu, C_Keys'Access, S_Keys'Access, 'k', False)];
+     [New_Dashboard => (File_Menu, C_New'Access, S_New, 'n', False),
+      Open_Dashboard => (File_Menu, C_Open'Access, S_Open, 'o', False),
+      Save_As => (File_Menu, C_Save_As'Access, S_Save_As, 'a', False),
+      Duplicate_Dashboard => (File_Menu, C_Duplicate_Board'Access, Keys.No_Chord, 'd', False),
+      Undo => (Edit_Menu, C_Undo'Access, S_Undo, 'u', False),
+      Redo => (Edit_Menu, C_Redo'Access, S_Redo, 'r', False),
+      Toggle_Editor => (Edit_Menu, C_Editor'Access, S_Editor, 'e', True),
+      Add_Panel => (Edit_Menu, C_Add'Access, S_Add, 'a', False),
+      Panel_Source => (Edit_Menu, C_Source'Access, S_Source, 's', False),
+      Duplicate_Panel => (Edit_Menu, C_Duplicate'Access, S_Duplicate, 'd', False),
+      Remove_Panel => (Edit_Menu, C_Remove'Access, S_Remove, 'm', False),
+      Copy_Source => (Edit_Menu, C_Copy'Access, S_Copy, 'c', True),
+      Zoom_In => (View_Menu, C_Zoom_In'Access, S_Zoom_In, 'i', False),
+      Zoom_Out => (View_Menu, C_Zoom_Out'Access, S_Zoom_Out, 'o', False),
+      Range_1 => (View_Menu, C_Range_1'Access, S_Range_1, 'm', True),
+      Range_2 => (View_Menu, C_Range_2'Access, S_Range_2, '5', False),
+      Range_3 => (View_Menu, C_Range_3'Access, S_Range_3, 'u', False),
+      Range_4 => (View_Menu, C_Range_4'Access, S_Range_4, 'h', False),
+      Range_5 => (View_Menu, C_Range_5'Access, S_Range_5, '6', False),
+      Range_6 => (View_Menu, C_Range_6'Access, S_Range_6, '2', False),
+      Go_Live => (View_Menu, C_Live'Access, S_Live, 'l', False),
+      Show_Source => (View_Menu, C_Show_Source'Access, S_Show_Source, 'c', True),
+      Show_Keys => (View_Menu, C_Keys'Access, S_Keys, 'k', False)];
 
    --  Menu item commands: the table's by position (from 1), the recent
    --  dashboards' after them.
@@ -156,9 +161,9 @@ package body Dash_Commands is
                if Table (C).Starts_Group then
                   Separator (Result.Menu_Count);
                end if;
-               Add ((Parent => Result.Menu_Count, Caption => Table (C).Caption, Shortcut => Table (C).Shortcut,
+               Add ((Parent => Result.Menu_Count, Caption => Table (C).Caption, Hint => Table (C).Hint,
                      Mnemonic => Table (C).Letter, Command => Command'Pos (C), Enabled => Enabled (S, C),
-                     Checked => Checked (S, C), Separator => False));
+                     Checked => Checked (S, C), Separator => False, Shade => CuBit.UI.Keycaps.Neutral));
             end if;
          end loop;
          if M = File_Menu then

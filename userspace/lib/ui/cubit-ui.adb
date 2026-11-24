@@ -1458,6 +1458,64 @@ package body CuBit.UI is
       end if;
    end Draw_Status_Bar;
 
+   function Fit_UI_Parts (text : String; width : Natural) return String is
+      Last : Natural := text'Last;
+   begin
+      --  Trailing separators are not part of what shows.
+      while Last >= text'First and then text (Last) = ' ' loop
+         Last := Last - 1;
+      end loop;
+      loop
+         if UI_Text_Width (text (text'First .. Last)) <= width then
+            return text (text'First .. Last);
+         end if;
+         --  Drop the last whole part.
+         declare
+            Cut : Natural := 0;
+         begin
+            for I in reverse text'First .. Last - PART_SEPARATOR'Length + 1 loop
+               if text (I .. I + PART_SEPARATOR'Length - 1) = PART_SEPARATOR then
+                  Cut := I;
+                  exit;
+               end if;
+            end loop;
+            if Cut = 0 then
+               --  One part left that does not fit: elide it.
+               return Fit_UI_Text (text (text'First .. Last), width);
+            end if;
+            Last := Cut - 1;
+            while Last >= text'First and then text (Last) = ' ' loop
+               Last := Last - 1;
+            end loop;
+         end;
+      end loop;
+   end Fit_UI_Parts;
+
+   procedure Draw_Status_Parts
+      (c : Canvas; r : Rect; colors : Theme; left, right : String)
+   is
+      STATUS_INSET : constant := 8;
+      STATUS_GAP : constant := 16;
+      textBounds : constant Rect := Content_Rect (r, STATUS_INSET, 3);
+      shownRight : constant String := Fit_UI_Parts (right, textBounds.w / 2);
+      rightWidth : constant Natural := UI_Text_Width (shownRight);
+      gap : constant Natural := (if rightWidth > 0 then STATUS_GAP else 0);
+      shownLeft : constant String :=
+        Fit_UI_Parts (left, (if textBounds.w > rightWidth + gap then textBounds.w - rightWidth - gap else 0));
+   begin
+      if Is_Empty (r) then return; end if;
+      Fill_Rect (c, r, colors.panel);
+      Stroke_Rect (c, Content_Rect (r, 1, 1), colors.shadow, colors.highlight);
+      Stroke_Rect (c, Content_Rect (r, 2, 2),
+        Blend (colors.darkShadow, colors.panel, 150), colors.panel);
+      Draw_UI_Text_Transparent (With_Clip (c, textBounds), textBounds.x, Center_Text_Y (r), shownLeft, colors.text);
+      if rightWidth > 0 then
+         Draw_UI_Text_Transparent
+           (With_Clip (c, textBounds), textBounds.x + textBounds.w - rightWidth, Center_Text_Y (r), shownRight,
+            colors.muted);
+      end if;
+   end Draw_Status_Parts;
+
    procedure Draw_Pane
       (c : Canvas; r : Rect; colors : Theme; title : String)
    is

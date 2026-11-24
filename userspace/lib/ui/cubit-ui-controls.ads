@@ -5,6 +5,7 @@
 --  @summary
 --  Small control map for hit testing and damage lookup
 ------------------------------------------------------------------------------
+with CuBit.UI.Keys;
 package CuBit.UI.Controls is
    subtype Control_ID is Natural;
    NO_CONTROL : constant Control_ID := 0;
@@ -48,6 +49,15 @@ package CuBit.UI.Controls is
       activated    : Boolean := False;
       pendingValue : Boolean := False;
       enabled      : Boolean := False;
+      --  The control's shortcut, as data (like aria-keyshortcuts) for
+      --  screen readers and the modifier reveal: No_Chord for none.
+      shortcut     : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+      --  A scroll container's wheel (UI-035): the area the wheel scrolls
+      --  this scrollbar from, the value one notch moves (0: no wheel), and
+      --  notches routed to an immediate-mode scrollbar not yet taken.
+      wheelArea    : CuBit.UI.Rect := (others => 0);
+      wheelStep    : Natural := 0;
+      wheelPending : Integer := 0;
    end record;
 
    type Control_Entries is array (Control_Index) of Control_Entry;
@@ -157,6 +167,31 @@ package CuBit.UI.Controls is
    function Cursor
       (m : Control_Map; id : Control_ID)
       return CuBit.UI.Pointer_Cursor_Style;
+
+   --  Scroll wheels (UI-035): the scroll container under the pointer
+   --  takes the wheel, in the toolkit, so no app routes it. A vertical
+   --  scrollbar names the area it scrolls (its list, tree, table or text
+   --  view) and how far one notch moves it; Route_Wheel, called by
+   --  CuBit.UI.App for every wheel event, moves the innermost such
+   --  scrollbar under the pointer: a retained one's value directly (Take_Value
+   --  returns it next frame), an immediate one's through Take_Wheel.
+   --  Handled: a container took the notches (even at its end, so an outer
+   --  one does not scroll instead); Damage: what to repaint.
+   procedure Set_Wheel_Area
+      (m : in out Control_Map; id : Control_ID; area : CuBit.UI.Rect; step : Positive);
+   procedure Route_Wheel
+      (m : in out Control_Map; x, y : Natural; notches : Integer;
+       handled : out Boolean; damage : out CuBit.UI.Rect);
+   --  Notches routed to an immediate-mode scrollbar in the last frame
+   --  (positive: toward the top), taken once.
+   function Take_Wheel (m : in out Control_Map; id : Control_ID) return Integer;
+
+   --  A registered control's shortcut (accessibility data). Set after
+   --  adding the control in the same frame; unknown IDs are ignored.
+   procedure Set_Shortcut
+      (m : in out Control_Map; id : Control_ID; shortcut : CuBit.UI.Keys.Chord);
+   function Shortcut
+      (m : Control_Map; id : Control_ID) return CuBit.UI.Keys.Chord;
 
    function Has_Continuous_Action
       (m : Control_Map; id : Control_ID) return Boolean;

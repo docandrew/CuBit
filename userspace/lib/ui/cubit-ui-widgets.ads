@@ -6,12 +6,16 @@
 --  Stateful widgets that draw themselves and register hit/damage metadata
 ------------------------------------------------------------------------------
 with CuBit.UI.Controls;
+with CuBit.UI.Keys;
+with CuBit.UI.Keycaps;
 with CuBit.UI.State;
 with CuBit.UI_Metrics;
 
 package CuBit.UI.Widgets is
    DEFAULT_PADDING : constant Natural := 8;
    DENSE_PADDING   : constant Natural := 6;
+   --  Rows or lines one wheel notch moves a list, table or text.
+   WHEEL_STEP : constant := 3;
 
    type Badge_Style is (Badge_Neutral, Badge_Good, Badge_Danger);
    type Toolbar_Icon is
@@ -144,7 +148,14 @@ package CuBit.UI.Widgets is
        label : String;
        result : out CuBit.UI.Widget_Result;
        retainedInput : Boolean := False;
-       quiet : Boolean := False);
+       quiet : Boolean := False;
+       hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+       shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral);
+   --  A button's label with its shortcut keycaps after it ("Cancel [Esc]",
+   --  CuBit.UI.Keycaps: the chord comes from the keymap or the toolkit's
+   --  standard keys, never text), and the width that shows both whole.
+   HINT_GAP : constant := CuBit.UI_Metrics.Space_S;
+   function Button_Width (label : String; hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord) return Natural;
 
    type Navigation_Icon is (Navigate_Back, Navigate_Forward, Navigate_Reload);
    procedure Navigation_Button
@@ -312,7 +323,13 @@ package CuBit.UI.Widgets is
        value : in out Natural;
        result : out CuBit.UI.Widget_Result;
        pageSize : Positive := 1;
-       retainedInput : Boolean := False);
+       retainedInput : Boolean := False;
+       wheelArea : CuBit.UI.Rect := (others => 0);
+       wheelStep : Positive := WHEEL_STEP);
+   --  The wheel (UI-035): a scrollbar given the area it scrolls (its list,
+   --  table, tree or text) takes the wheel over that area, in the toolkit
+   --  (CuBit.UI.Controls.Route_Wheel); wheelStep is one notch in the
+   --  scrollbar's units (rows, lines or pixels).
 
    procedure Horizontal_Scrollbar
       (c : CuBit.UI.Canvas;

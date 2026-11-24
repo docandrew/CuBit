@@ -171,6 +171,84 @@ package body CuBit.UI.Menus is
       end case;
    end Handle_Key;
 
+   function Mnemonic_Key (Letter : Character) return CuBit.UI.Keys.Key is
+      use CuBit.UI.Keys;
+   begin
+      case Lower (Letter) is
+         when 'a' => return A; when 'b' => return B; when 'c' => return C; when 'd' => return D;
+         when 'e' => return E; when 'f' => return F; when 'g' => return G; when 'h' => return H;
+         when 'i' => return I; when 'j' => return J; when 'k' => return K; when 'l' => return L;
+         when 'm' => return M; when 'n' => return N; when 'o' => return O; when 'p' => return P;
+         when 'q' => return Q; when 'r' => return R; when 's' => return S; when 't' => return T;
+         when 'u' => return U; when 'v' => return V; when 'w' => return W; when 'x' => return X;
+         when 'y' => return Y; when 'z' => return Z;
+         when others => return Unknown;
+      end case;
+   end Mnemonic_Key;
+
+   function Mnemonic_Letter (Item : CuBit.UI.Keys.Key) return Character is
+      use type CuBit.UI.Keys.Key;
+   begin
+      for L in Character range 'a' .. 'z' loop
+         if Mnemonic_Key (L) = Item then
+            return L;
+         end if;
+      end loop;
+      return ' ';
+   end Mnemonic_Letter;
+
+   procedure Handle_Chord
+     (State : in out Menu_State; Definition : Model; Pressed : CuBit.UI.Keys.Chord;
+      Command : out Natural; Handled : out Boolean)
+   is
+      use CuBit.UI.Keys;
+      use type CuBit.UI.Keys.Modifier_Set, CuBit.UI.Keys.Key;
+      Plain : constant Boolean := Pressed.Modifiers = No_Modifiers;
+      Alt_Only : constant Boolean := Pressed.Modifiers = Modifier_Set'[Alt => True, others => False];
+      Letter : constant Character := Mnemonic_Letter (Pressed.Pressed);
+   begin
+      Command := 0;
+      Handled := False;
+      if Pressed.Pressed = F10 and then Plain then
+         Handle_Key (State, Definition, Activate, Command, Handled);
+      elsif not Is_Open (State) then
+         if Alt_Only and then Letter /= ' '
+           and then (for some I in 1 .. Definition.Menu_Count => Lower (Definition.Menus (I).Mnemonic) = Letter)
+         then
+            Handle_Key (State, Definition, Mnemonic, Command, Handled, Letter);
+         end if;
+      elsif Plain or else Alt_Only then
+         case Pressed.Pressed is
+            when Left => Handle_Key (State, Definition, Menus.Left, Command, Handled);
+            when Right => Handle_Key (State, Definition, Menus.Right, Command, Handled);
+            when Up => Handle_Key (State, Definition, Menus.Up, Command, Handled);
+            when Down => Handle_Key (State, Definition, Menus.Down, Command, Handled);
+            when Home => Handle_Key (State, Definition, Menus.Home, Command, Handled);
+            when End_Key => Handle_Key (State, Definition, Menus.End_Key, Command, Handled);
+            when Enter => Handle_Key (State, Definition, Menus.Enter, Command, Handled);
+            when Space => Handle_Key (State, Definition, Menus.Space, Command, Handled);
+            when Escape => Handle_Key (State, Definition, Menus.Escape, Command, Handled);
+            when Tab => Handle_Key (State, Definition, Tab_Key, Command, Handled);
+            when others =>
+               if Letter /= ' ' then
+                  Handle_Key (State, Definition, Mnemonic, Command, Handled, Letter);
+               else
+                  --  An open menu takes every key; others close it.
+                  Handle_Key (State, Definition, Menus.Escape, Command, Handled);
+               end if;
+         end case;
+      else
+         Handle_Key (State, Definition, Menus.Escape, Command, Handled);
+      end if;
+   end Handle_Chord;
+
+   procedure Alt_Tapped (State : in out Menu_State; Definition : Model) is
+      Command : Natural;
+      Handled : Boolean;
+   begin
+      Handle_Key (State, Definition, Activate, Command, Handled);
+   end Alt_Tapped;
+
    procedure Handle_Pointer
      (State : in out Menu_State; Definition : Model;
       Map : in out Controls.Control_Map; Base : ID_Base;
@@ -251,7 +329,7 @@ package body CuBit.UI.Menus is
          if not Definition.Items (I).Separator then
             Widest := Natural'Max
               (Widest, UI_Text_Width (Value (Definition.Items (I).Caption)) +
-                 UI_Text_Width (Value (Definition.Items (I).Shortcut)));
+                 CuBit.UI.Keycaps.Width (CuBit.UI.Keycaps.Persistent (Definition.Items (I).Hint)));
          end if;
       end loop;
       return Widest + CAPTION_ROOM + 2 * POPUP_PADDING;
@@ -393,7 +471,7 @@ package body CuBit.UI.Menus is
                         end loop;
                      end if;
                      declare
-                        SW : constant Natural := UI_Text_Width (Value (It.Shortcut));
+                        SW : constant Natural := CuBit.UI.Keycaps.Width (CuBit.UI.Keycaps.Persistent (It.Hint));
                         Caption_Width : constant Natural :=
                           (if R.w > SW + CAPTION_ROOM then R.w - SW - CAPTION_ROOM else 0);
                         Caption : constant String := Fit_UI_Text (Value (It.Caption), Caption_Width);
@@ -407,9 +485,14 @@ package body CuBit.UI.Menus is
                               R.x + ITEM_TEXT_LEFT, Center_Text_Y (R), Caption,
                               It.Mnemonic, Fg);
                         end if;
-                        if SW + SHORTCUT_RIGHT < R.w then
-                           Draw_UI_Text (RC, R.x + R.w - SW - SHORTCUT_RIGHT,
-                             Center_Text_Y (R), Value (It.Shortcut), Fg, Bg);
+                        if SW > 0 and then SW + SHORTCUT_RIGHT < R.w then
+                           CuBit.UI.Keycaps.Draw
+                             (RC, R.x + R.w - SW - SHORTCUT_RIGHT,
+                              R.y + (if R.h > CuBit.UI.Keycaps.Height then (R.h - CuBit.UI.Keycaps.Height) / 2 else 0),
+                              It.Hint, Colors, It.Shade,
+                              (if I = State.Selected then CuBit.UI.Keycaps.On_Selection
+                               elsif not It.Enabled then CuBit.UI.Keycaps.Disabled
+                               else CuBit.UI.Keycaps.Normal));
                         end if;
                      end;
                      if It.Enabled then

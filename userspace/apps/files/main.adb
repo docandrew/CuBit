@@ -23,6 +23,7 @@ with Clipboard_Chords;
 with Clipboard_Text;
 with CuBit.UI.Controls;
 with CuBit.UI.Input;
+with CuBit.UI.Keys;
 with CuBit.UI.State;
 with Files_Filter;
 with Files_Limits;
@@ -34,39 +35,9 @@ procedure Main is
    use Files_View;
    use type CuBit.UI.Controls.Pointer_Action;
 
-   --  Set-1 scan codes the desktop delivers (payload0 of a key event).
-   KEY_ESCAPE : constant Unsigned_64 := CuBit.UI.App.KEY_ESC;
-   KEY_BACKSPACE : constant Unsigned_64 := 16#0E#;
-   KEY_TAB : constant Unsigned_64 := 16#0F#;
-   KEY_W : constant Unsigned_64 := 16#11#;
-   KEY_R : constant Unsigned_64 := 16#13#;
-   KEY_T : constant Unsigned_64 := 16#14#;
-   KEY_U : constant Unsigned_64 := 16#16#;
-   KEY_I : constant Unsigned_64 := 16#17#;
-   KEY_ENTER : constant Unsigned_64 := 16#1C#;
-   KEY_A : constant Unsigned_64 := 16#1E#;
-   KEY_D : constant Unsigned_64 := 16#20#;
-   KEY_B : constant Unsigned_64 := 16#30#;
-   KEY_N : constant Unsigned_64 := 16#31#;
-   KEY_SPACE : constant Unsigned_64 := 16#39#;
-   KEY_F1 : constant Unsigned_64 := 16#3B#;
-   KEY_F10 : constant Unsigned_64 := 16#44#;
-   KEY_HOME : constant Unsigned_64 := 16#47#;
-   KEY_UP : constant Unsigned_64 := 16#48#;
-   KEY_PAGE_UP : constant Unsigned_64 := 16#49#;
-   KEY_LEFT : constant Unsigned_64 := 16#4B#;
-   KEY_RIGHT : constant Unsigned_64 := 16#4D#;
-   KEY_END : constant Unsigned_64 := 16#4F#;
-   KEY_DOWN : constant Unsigned_64 := 16#50#;
-   KEY_PAGE_DOWN : constant Unsigned_64 := 16#51#;
-   KEY_INSERT : constant Unsigned_64 := 16#52#;
-   KEY_DELETE : constant Unsigned_64 := 16#53#;
-   KEY_F11 : constant Unsigned_64 := 16#57#;
-   KEY_F12 : constant Unsigned_64 := 16#58#;
    --  Pointer events carry the held buttons in payload1, never modifiers:
    --  the primary button shares bit 0 with KEYMOD_SHIFT. Modifiers come from
    --  key events (payload1's low word) and INPUT_RESYNC (its high word).
-   KEY_MODIFIERS_MASK : constant Unsigned_64 := 16#FFFF_FFFF#;
    RESYNC_MODIFIERS_SHIFT : constant := 32;
    PRIMARY_BUTTON : constant Unsigned_64 := 1;
    SECONDARY_BUTTON : constant Unsigned_64 := 2;
@@ -233,10 +204,23 @@ procedure Main is
       Collect (Dirty);
    end Pump_View;
 
+   --  The held modifiers whose keys the frame reveals (UI-052), logged when
+   --  they change: tests and traces read it.
+   use type CuBit.UI.Keys.Modifier_Set;
+   Logged_Reveal : CuBit.UI.Keys.Modifier_Set := CuBit.UI.Keys.No_Modifiers;
+   function Reveal_Image (Set : CuBit.UI.Keys.Modifier_Set) return String is
+     ((if Set (CuBit.UI.Keys.Ctrl) then " ctrl" else "") & (if Set (CuBit.UI.Keys.Shift) then " shift" else "")
+      & (if Set (CuBit.UI.Keys.Alt) then " alt" else "")
+      & (if Set = CuBit.UI.Keys.No_Modifiers then " none" else ""));
+
    procedure Render (Win : in out CuBit.UI.App.Window; Damage : Rect) is
       Start : constant Unsigned_64 := Now_Us;
    begin
       Files_View.Render (View, CuBit.UI.App.Canvas (Win, Damage), CuBit.UI.App.Full_Rect (Win), UI, Controls);
+      if Revealed (View) /= Logged_Reveal then
+         Logged_Reveal := Revealed (View);
+         debugPrint ("files: revealed" & Reveal_Image (Logged_Reveal) & ASCII.LF);
+      end if;
       Note_Frame (View, Now_Us - Start, Last_Pump_Us);
       if First_Frame then
          First_Frame := False;
@@ -245,38 +229,6 @@ procedure Main is
       end if;
    end Render;
 
-   function Key_Of (Code : Unsigned_64; Shift : Boolean) return Key_Name is
-     (if Code = KEY_ESCAPE then Escape
-      elsif Code = KEY_ENTER then Enter
-      elsif Code = KEY_BACKSPACE then Backspace
-      elsif Code = KEY_TAB then Tab
-      elsif Code = KEY_SPACE then Space
-      elsif Code = KEY_UP then Up
-      elsif Code = KEY_DOWN then Down
-      elsif Code = KEY_LEFT then Left
-      elsif Code = KEY_RIGHT then Right
-      elsif Code = KEY_PAGE_UP then Page_Up
-      elsif Code = KEY_PAGE_DOWN then Page_Down
-      elsif Code = KEY_HOME then Home
-      elsif Code = KEY_END then End_Key
-      elsif Code = KEY_INSERT then Insert
-      elsif Code = KEY_DELETE then Delete
-      --  Shift+F10 opens the context menu (no Menu key on most keyboards).
-      elsif Code = KEY_F10 and then Shift then Menu_Key
-      elsif Code in KEY_F1 .. KEY_F10 then Key_Name'Val (Key_Name'Pos (F1) + Integer (Code - KEY_F1))
-      elsif Code = KEY_F11 then F11
-      elsif Code = KEY_F12 then F12
-      elsif Code = KEY_A then Letter_A
-      elsif Code = KEY_B then Letter_B
-      elsif Code = KEY_D then Letter_D
-      elsif Code = KEY_I then Letter_I
-      elsif Code = KEY_N then Letter_N
-      elsif Code = KEY_R then Letter_R
-      elsif Code = KEY_T then Letter_T
-      elsif Code = KEY_U then Letter_U
-      elsif Code = KEY_W then Letter_W
-      else No_Key);
-
    procedure Handle_Event
      (Win : in out CuBit.UI.App.Window; Event : CuBit.UI.App.Input_Event; Dirty : in out Rect;
       Running : in out Boolean)
@@ -284,13 +236,15 @@ procedure Main is
       Redraw : Boolean := False;
       function Current_Modifiers return Unsigned_64 is
         (if Event.kind in CuBit.UI.Input.INPUT_KEY_DOWN | CuBit.UI.Input.INPUT_KEY_UP
-         then Event.payload1 and KEY_MODIFIERS_MASK
+         then CuBit.UI.Input.Key_Modifiers (Event)
          elsif Event.kind = CuBit.UI.Input.INPUT_RESYNC
          then Shift_Right (Event.payload1, RESYNC_MODIFIERS_SHIFT)
          else Modifiers);
-      Shift : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_SHIFT) /= 0;
-      Control : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_CTRL) /= 0;
-      Alt : constant Boolean := (Current_Modifiers and CuBit.UI.App.KEYMOD_ALT) /= 0;
+      --  Keys are decoded once, by the toolkit (CuBit.UI.Keys).
+      Held : constant CuBit.UI.Keys.Modifier_Set := CuBit.UI.Keys.Modifiers_Of (Current_Modifiers);
+      Shift : constant Boolean := Held (CuBit.UI.Keys.Shift);
+      Control : constant Boolean := Held (CuBit.UI.Keys.Ctrl);
+      Alt : constant Boolean := Held (CuBit.UI.Keys.Alt);
       Time_Ms : constant Unsigned_64 := CuBit.Monotonic.Milliseconds;
       procedure Send (Item : Files_View.Event) is
       begin
@@ -391,11 +345,15 @@ procedure Main is
         Command in Clipboard_Chords.Copy_Command | Clipboard_Chords.Cut_Command | Clipboard_Chords.Paste_Command
       then
          Clipboard_Key;
-      elsif Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN then
-         if Key_Of (Event.payload0, Shift) /= No_Key then
-            Send ((Kind => Key_Event, Key => Key_Of (Event.payload0, Shift), Shift => Shift, Control => Control,
-                   Alt => Alt, others => <>));
+      elsif Event.kind in CuBit.UI.Input.INPUT_KEY_DOWN | CuBit.UI.Input.INPUT_KEY_UP then
+         --  Releases too: held modifiers reveal their hints (UI-052).
+         if CuBit.UI.Keys.Is_Modifier_Key (CuBit.UI.Keys.Key_Of (Event.payload0)) then
+            debugPrint ("files: modifier " & CuBit.UI.Keys.Label (CuBit.UI.Keys.Key_Of (Event.payload0))
+                        & (if Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN then " down" else " up") & ASCII.LF);
          end if;
+         Send ((Kind => (if Event.kind = CuBit.UI.Input.INPUT_KEY_DOWN then Key_Event else Key_Release),
+                Key => CuBit.UI.Keys.Key_Of (Event.payload0), Shift => Shift, Control => Control,
+                Alt => Alt, others => <>));
       elsif Event.kind = CuBit.UI.Input.INPUT_TEXT then
          if (Event.payload0 and CODE_POINT_MASK) in Character'Pos (' ') .. Character'Pos ('~') then
             Send ((Kind => Text_Event, Character_Value => Character'Val (Event.payload0 and CODE_POINT_MASK),

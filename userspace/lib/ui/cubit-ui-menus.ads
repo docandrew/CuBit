@@ -1,5 +1,9 @@
 --  Native menubar controller. No allocation, application callbacks, or IPC.
+--  Each item's shortcut is a typed chord (the keymap's Hint for its
+--  command), drawn as keycaps right-aligned (CuBit.UI.Keycaps).
 with CuBit.UI.Controls;
+with CuBit.UI.Keys;
+with CuBit.UI.Keycaps;
 package CuBit.UI.Menus is
    Max_Menus : constant := 8;
    Max_Items : constant := 64;
@@ -10,7 +14,9 @@ package CuBit.UI.Menus is
    end record;
    type Item is record
       Parent : Positive range 1 .. Max_Menus := 1;
-      Caption, Shortcut : Text := null;
+      Caption : Text := null;
+      Hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+      Shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral;
       Mnemonic : Character := ' ';
       Command : Natural := 0;
       Enabled : Boolean := True;
@@ -70,6 +76,25 @@ package CuBit.UI.Menus is
    --  The narrowest Popup_Width that shows every item's caption and
    --  shortcut whole.
    function Required_Width (Definition : Model) return Positive;
+
+   --  The physical key a mnemonic letter names ('f' and 'F': Keys.F;
+   --  Unknown for a character that is no letter key), for the keymap's
+   --  conflict check (Keymaps.Reserve_Mnemonic) and Handle_Chord.
+   function Mnemonic_Key (Letter : Character) return CuBit.UI.Keys.Key;
+   --  The letter a physical letter key types in a mnemonic (' ': none).
+   function Mnemonic_Letter (Item : CuBit.UI.Keys.Key) return Character;
+
+   --  Toolkit key dispatch for a menu bar (UI-053): F10 activates the bar
+   --  (and closes it); Alt+letter opens the menu whose title has that
+   --  mnemonic; while a menu is open the arrows, Home, End, Enter, Space,
+   --  Escape and Tab drive it and a plain letter picks an item. Handled:
+   --  the menus took the key (the app's keymap must not see it). A lone Alt
+   --  tap activates the bar too: call Alt_Tapped on Alt's release when no
+   --  chord used it (CuBit.UI.Modifier_Reveal.Chord_Used).
+   procedure Handle_Chord
+     (State : in out Menu_State; Definition : Model; Pressed : CuBit.UI.Keys.Chord;
+      Command : out Natural; Handled : out Boolean);
+   procedure Alt_Tapped (State : in out Menu_State; Definition : Model);
 
    type Key is (Activate, Left, Right, Up, Down, Home, End_Key,
                 Enter, Space, Escape, Tab_Key, Mnemonic);

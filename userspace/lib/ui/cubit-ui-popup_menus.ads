@@ -4,7 +4,8 @@
 --
 --  @summary
 --  Popup (context) menus: opened at a point, with separators, disabled and
---  checked items, accelerator hints, icons and one level of submenus.
+--  checked items, shortcut keycaps (typed chords from the keymap's Hint,
+--  right-aligned: CuBit.UI.Keycaps), icons and one level of submenus.
 --  Keyboard: Up/Down (skipping separators and disabled items), Right or
 --  Enter into a submenu, Left out of it, Enter to choose, Escape to close.
 --  Pointer: hover selects, a release on an item chooses it, a press
@@ -15,6 +16,8 @@
 ------------------------------------------------------------------------------
 with CuBit.UI.Controls;
 with CuBit.UI.Icons;
+with CuBit.UI.Keys;
+with CuBit.UI.Keycaps;
 with Client_Popup_Layout;
 with CuBit.UI_Metrics;
 
@@ -22,7 +25,6 @@ package CuBit.UI.Popup_Menus is
    MAXIMUM_MENUS : constant := 4;           --  the root and its submenus
    MAXIMUM_ITEMS : constant := Client_Popup_Layout.MAXIMUM_ROWS;
    MAXIMUM_CAPTION : constant := 48;
-   MAXIMUM_ACCELERATOR : constant := 16;
    subtype Menu_Count is Natural range 0 .. MAXIMUM_MENUS;
    subtype Menu_Index is Menu_Count range 1 .. MAXIMUM_MENUS;
    ROOT : constant Menu_Index := 1;
@@ -38,11 +40,14 @@ package CuBit.UI.Popup_Menus is
    --  index is returned) for further items.
    procedure Add
      (M : in out Model; Menu : Menu_Index; Caption : String; Choice : Command;
-      Accelerator : String := ""; Enabled : Boolean := True; Checked : Boolean := False;
-      Has_Icon : Boolean := False; Picture : CuBit.UI.Icons.Icon := CuBit.UI.Icons.File);
+      Hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord; Enabled : Boolean := True; Checked : Boolean := False;
+      Has_Icon : Boolean := False; Picture : CuBit.UI.Icons.Icon := CuBit.UI.Icons.File;
+      Shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral);
    procedure Add_Separator (M : in out Model; Menu : Menu_Index);
    procedure Add_Submenu (M : in out Model; Menu : Menu_Index; Caption : String; Child : out Menu_Count);
    function Items (M : Model; Menu : Menu_Index) return Item_Count;
+   --  An item's shortcut (accessibility data and tests); No_Chord for none.
+   function Hint (M : Model; Menu : Menu_Index; Row : Item_Index) return CuBit.UI.Keys.Chord;
 
    type Popup_State is private;
    function Is_Open (S : Popup_State) return Boolean;
@@ -65,6 +70,10 @@ package CuBit.UI.Popup_Menus is
    type Key is (Up, Down, Left, Right, Home, End_Key, Enter, Escape);
    procedure Handle_Key (S : in out Popup_State; M : Model; Pressed : Key; Chosen : out Command;
                          Handled : out Boolean);
+   --  The toolkit's key dispatch for an open menu (UI-053): the arrows,
+   --  Home, End, Enter and Space drive it; any other key closes it.
+   procedure Handle_Chord (S : in out Popup_State; M : Model; Pressed : CuBit.UI.Keys.Chord; Chosen : out Command;
+                           Handled : out Boolean);
    --  While open, route every pointer event here before anything else;
    --  Handled means consumed.
    procedure Handle_Pointer
@@ -74,8 +83,8 @@ private
    type Item is record
       Caption : String (1 .. MAXIMUM_CAPTION) := [others => ' '];
       Caption_Length : Natural range 0 .. MAXIMUM_CAPTION := 0;
-      Accelerator : String (1 .. MAXIMUM_ACCELERATOR) := [others => ' '];
-      Accelerator_Length : Natural range 0 .. MAXIMUM_ACCELERATOR := 0;
+      Hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+      Shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral;
       Choice : Command := NO_COMMAND;
       Enabled : Boolean := True;
       Checked : Boolean := False;

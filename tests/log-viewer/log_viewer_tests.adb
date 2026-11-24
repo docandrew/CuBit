@@ -5,6 +5,7 @@ with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.UI;
 with CuBit.UI.Combo_Boxes;
+with CuBit.UI.Controls;
 with CuBit.UI.State;
 with CuBit.Log_Records;
 with Log_View; use Log_View;
@@ -66,9 +67,15 @@ procedure Log_Viewer_Tests is
       Handle (State.all, (Kind => Key_Event, Key => Name, Shift => Shift, others => <>), Map.all, Redraw);
       Frame;
    end Key;
+   --  The wheel over the records (UI-035: the toolkit routes it to the
+   --  scroll container under the pointer).
    procedure Wheel (Steps : Integer) is
+      Bar : constant CuBit.UI.Rect := CuBit.UI.Controls.Bounds (Map.all, SCROLL_ID);
+      WHEEL_INSET : constant := 40;
    begin
-      Handle (State.all, (Kind => Log_View.Wheel, Steps => Steps, others => <>), Map.all, Redraw);
+      Handle (State.all, (Kind => Log_View.Wheel, Steps => Steps,
+                          X => (if Bar.x > WHEEL_INSET then Bar.x - WHEEL_INSET else 0), Y => Bar.y + Bar.h / 2,
+                          others => <>), Map.all, Redraw);
       Frame;
    end Wheel;
    procedure Type_Text (Text : String) is

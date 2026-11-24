@@ -1,0 +1,16 @@
+with "../../userspace/allocator/allocator_runtime_host.gpr";
+--  Hosted tests of the toolkit's keys, keymap, keycaps and button bars
+--  (UI-049, UI-051, UI-052): tests/ui-keys/run.sh.
+with "../../userspace/lib/ui/fonts_host.gpr";
+project Tests is
+   for Source_Dirs use (".", "../../userspace/lib/ui", "../../userspace/lib/theme",
+                        "../../userspace/ccl/tools/ccl-ui-preview/host",
+                        "../../userspace/lib/compositor", "../../userspace/lib/display", "build/source");
+   for Excluded_Source_Files use ("keymap_instance.ads");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("keys_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa");
+   end Compiler;
+end Tests;
