@@ -2731,7 +2731,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_data.adb",
-      "sha256": "edfb6d2f3504715445d567d176b7369cabf2683a368974eb37e66cf2c7d509d1",
+      "sha256": "ad59a679c17917e4fc811f9cc62647e6c9e71fe201db9c236e90fe96cbb4b70a",
       "kind": "ada"
     },
     {
@@ -3086,12 +3086,12 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects.adb",
-      "sha256": "7c7797fd48bbf33a9a0907f398b8210ba5feb5d9a10f5770fabef5f2822d5c06",
+      "sha256": "2a05d40be4e8ff6db25ae0118e3a2730b1c94ef7d9fb7c02513f1126b6c64315",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects.ads",
-      "sha256": "982e10f190e21dc691808612a96d192e854fb186a4b8f973074a33fa4b2e43aa",
+      "sha256": "45d52b86877a83fc872679e830ab80c897e6eee9c6ff5b616d75ddfa82cd9b5b",
       "kind": "ada"
     },
     {

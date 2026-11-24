@@ -219,11 +219,72 @@ package AML_Objects with SPARK_Mode, Pure is
    --  Reused slots receive a nonwrapping incarnation; exhausted slots retire.
    --  Zero denotes an uninitialized package element, not an Integer zero.
    type Allocation_Status is (Allocated, Object_Limit, Generation_Limit, Byte_Limit, Element_Limit, Invalid_Reference, Invalid_Metadata, Invalid_Mutex_Flags, Unsupported_Copy, Storage_Unavailable, Invalid_Copy_Workspace);
+   -- One unpublished allocation's exact before image. The caller owns
+   -- its journal links; this pure package owns only scalar/array receipts.
+   type Construction_Plan is private;
+   type Construction_Receipt (Byte_Length, Element_Length : Natural) is limited private;
+   function Construction_Admitted (Plan : Construction_Plan) return Boolean;
+   function Construction_Bytes (Plan : Construction_Plan) return Natural;
+   function Construction_Elements (Plan : Construction_Plan) return Natural;
+   function Construction_Current (Store : State; Plan : Construction_Plan) return Boolean
+     with Annotate => (GNATprove, Inline_For_Proof);
+   procedure Plan_Construction
+     (Store : State; Byte_Length : AML_Decode.Integer_Value;
+      Element_Length : Natural; Plan : out Construction_Plan; Status : out Allocation_Status)
+     with Pre => Valid (Store),
+       Post => (if Status = Allocated then Construction_Current (Store, Plan)
+         else not Construction_Admitted (Plan));
+   function Construction_Ready (Item : Construction_Receipt) return Boolean;
+   function Construction_Restorable (Store : State; Item : Construction_Receipt) return Boolean
+     with Annotate => (GNATprove, Inline_For_Proof);
+   function Construction_Before_Image (Store : State; Item : Construction_Receipt) return State
+     with Ghost, Pre => Construction_Restorable (Store, Item),
+       Annotate => (GNATprove, Inline_For_Proof);
+   function Capture_Construction (Store : State; Plan : Construction_Plan)
+      return Construction_Receipt
+     with Pre => Valid (Store) and then Construction_Current (Store, Plan),
+       Post => Capture_Construction'Result.Byte_Length = Construction_Bytes (Plan)
+         and then Capture_Construction'Result.Element_Length = Construction_Elements (Plan)
+         and then Construction_Restorable (Store, Capture_Construction'Result)
+         and then Construction_Before_Image (Store, Capture_Construction'Result) = Store;
+   -- Raw reverse restoration may temporarily invalidate unpublished package
+   -- links. The parser must finish the complete rollback before observation.
+   procedure Restore_Construction (Store : in out State; Item : in out Construction_Receipt)
+     with Pre => Construction_Restorable (Store, Item),
+       Post => Store = Construction_Before_Image (Store, Item)'Old
+         and then not Construction_Ready (Item);
    function Fresh_Allocation (Store, Prior : State; ID : Object_ID) return Boolean
      with Ghost;
    function Reference_Allocated
      (Store, Prior : State; ID : Object_ID; Value : AML_References.Reference)
       return Boolean with Ghost;
+   -- Apply an admitted construction without selecting its free slot again.
+   -- The same core serves ordinary constructors and journaled parsers.
+   procedure Construct_Integer
+     (Store : in out State; Plan : Construction_Plan;
+      Value : AML_Decode.Integer_Value; ID : out Object_ID;
+      Origin : AML_Decode.Integer_Origin := AML_Decode.Ordinary_Integer)
+     with Pre => Valid (Store) and then Construction_Current (Store, Plan)
+       and then Construction_Bytes (Plan) = 0 and then Construction_Elements (Plan) = 0,
+       Post => Valid (Store) and then Fresh_Allocation (Store, Store'Old, ID)
+         and then Is_Live (Store, ID) and then Kind (Store, ID) = Integer_Object
+         and then Integer_Data (Store, ID) = Value and then Origin_Of (Store, ID) = Origin;
+   procedure Construct_Buffer
+     (Store : in out State; Plan : Construction_Plan;
+      Initializer : AML_Decode.Bytes; ID : out Object_ID)
+     with Pre => Valid (Store) and then Construction_Current (Store, Plan)
+       and then Construction_Elements (Plan) = 0
+       and then Initializer'Length <= Construction_Bytes (Plan),
+       Post => Valid (Store) and then Fresh_Allocation (Store, Store'Old, ID)
+         and then Is_Live (Store, ID) and then Kind (Store, ID) = Buffer_Object
+         and then Length (Store, ID) = Construction_Bytes (Plan);
+   procedure Construct_Package
+     (Store : in out State; Plan : Construction_Plan; ID : out Object_ID)
+     with Pre => Valid (Store) and then Construction_Current (Store, Plan)
+       and then Construction_Bytes (Plan) = 0,
+       Post => Valid (Store) and then Fresh_Allocation (Store, Store'Old, ID)
+         and then Is_Live (Store, ID) and then Kind (Store, ID) = Package_Object
+         and then Length (Store, ID) = Construction_Elements (Plan);
    -- Invalid shape takes precedence over exhausted object quota. Well-formed
    -- stale/foreign payloads remain data; only the owner can validate live use.
    procedure New_Reference (Store : in out State; Value : AML_References.Reference;
@@ -434,6 +495,15 @@ package AML_Objects with SPARK_Mode, Pure is
               and then (for all I in 1 .. Byte_Length =>
                 Stored_Byte (Store, ID, I - 1) = Source_Byte (Data, First_Byte + (I - 1)))
              else Store = Store'Old and then ID = No_Object);
+      procedure Construct
+        (Store : in out State; Plan : Construction_Plan; Data : aliased Source_Type;
+         First_Byte : Natural; ID : out Object_ID)
+        with Pre => Valid (Store) and then Construction_Current (Store, Plan)
+          and then Construction_Elements (Plan) = 0
+          and then Fits_Source (Data, First_Byte, Construction_Bytes (Plan)),
+          Post => Valid (Store) and then Fresh_Allocation (Store, Store'Old, ID)
+            and then Is_Live (Store, ID) and then Kind (Store, ID) = String_Object
+            and then Length (Store, ID) = Construction_Bytes (Plan);
    end String_Initializers;
    procedure New_Package (Store : in out State; Size : Natural;
                           ID : out Object_ID; Status : out Allocation_Status)
@@ -491,6 +561,21 @@ private
       Bytes : AML_Decode.Bytes (1 .. Byte_Capacity) := [others => 0];
       Elements : Element_Array (1 .. Element_Capacity) := [others => 0];
    end record;
+   type Construction_Plan is record
+      Prepared : Boolean := False;
+      Objects, Bytes, Elements : Storage_Capacity := 1;
+      Slot, Old_Used, Old_Live : Object_ID := No_Object;
+      Old_Bytes, Old_Elements, Byte_Count, Element_Count : Natural := 0;
+      Generation : AML_Object_Identifiers.Incarnation_Budget := AML_Object_Identifiers.Slot_Incarnation'Last;
+      Slot_Stamp : AML_Object_Identifiers.Slot_Incarnation := 0;
+   end record;
+   type Construction_Receipt (Byte_Length, Element_Length : Natural) is limited record
+      Captured : Boolean := False;
+      Plan : Construction_Plan;
+      Object_Before : Object_Record;
+      Bytes_Before : AML_Decode.Bytes (1 .. Byte_Length);
+      Elements_Before : Element_Array (1 .. Element_Length);
+   end record;
    -- Proof-visible completions of existing observers; bodies are unchanged.
    function Extends (Store, Prior : State) return Boolean is
      (Same_Capacities (Store, Prior) and then Store.Generation_Limit = Prior.Generation_Limit
@@ -530,5 +615,10 @@ private
           and then Store.Bytes_Used = Prior.Bytes_Used));
    -- Shared private allocation plan: transaction record-before-write uses
    -- the exact allocator selector, never an independently guessed free slot.
-   procedure Select_Slot (Store : State; ID : out Object_ID; Status : out Allocation_Status);
+   procedure Select_Slot (Store : State; ID : out Object_ID; Status : out Allocation_Status)
+     with Pre => Valid (Store),
+       Post => (if Status = Allocated then ID /= No_Object
+         and then ID <= Store.Object_Capacity and then not Store.Objects (ID).Occupied
+         and then Store.Objects (ID).Stamp < Store.Generation_Limit
+         else ID = No_Object);
 end AML_Objects;

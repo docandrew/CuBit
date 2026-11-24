@@ -1,0 +1,7 @@
+project Undo_release is
+ for Source_Dirs use (".","../../userspace/services/acpi/lib","../../shared/firmware");
+ Build_Root := external ("ACPI_UNDO_BUILD", "build-release");
+ for Object_Dir use Build_Root & "/obj";for Exec_Dir use Build_Root & "/bin";
+ for Main use ("parser_tests.adb","receipt_tests.adb");
+ package Compiler is for Default_Switches("Ada") use ("-O3","-gnat2022","-gnatp");end Compiler;
+end Undo_release;

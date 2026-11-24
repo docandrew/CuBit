@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with AML_Names;
 with AML_Buffer_Layouts;
+with Ada.Unchecked_Deallocation;
 package body AML_Data with SPARK_Mode is
    use AML_Decode;
    use AML_Objects;
@@ -16,8 +17,71 @@ package body AML_Data with SPARK_Mode is
    is
       -- Keep the capacity-sized transaction frame off the integer-only path.
       procedure Load_Transactional is
-      Candidate : AML_Objects.State := AML_Objects.Empty_Like (Store);
-      Snapshot_Status : AML_Objects.Clone_Status;
+      -- Only allocations made by this parse are journaled. Committed older
+      -- objects are immutable here; package writes target newly born packages.
+      type Journal_Node;
+      type Journal_Owner is access Journal_Node;
+      type Journal_Node (Byte_Count, Element_Count : Natural) is limited record
+         Before : Construction_Receipt (Byte_Count, Element_Count);
+         Previous : Journal_Owner;
+      end record;
+      procedure Free is new Ada.Unchecked_Deallocation (Journal_Node, Journal_Owner);
+      Head : Journal_Owner := null;
+      Max_New : constant Natural := Natural'Min
+        (Data'Length, Store.Object_Capacity - Live_Count (Store));
+      Born : array (Positive range 1 .. Max_New) of Object_ID := [others => No_Object];
+      Born_Count : Natural range 0 .. Max_New := 0;
+      Initial_Live : constant Object_ID := Live_Count (Store);
+      Plan : Construction_Plan;
+      -- The allocator chooses the lowest reusable slot. Without collection or
+      -- retirement inside a parse, successive allocated slots increase.
+      function Original_Is_Live (Value : Object_ID) return Boolean is
+         Low : Natural := 0;
+         High : Natural := Born_Count;
+         Middle : Positive;
+      begin
+         if not Is_Live (Store, Value) then return False; end if;
+         while Low < High loop
+            Middle := Low + (High - Low) / 2 + 1;
+            if Born (Middle) = Value then return False;
+            elsif Born (Middle) < Value then Low := Middle;
+            else High := Middle - 1; end if;
+         end loop;
+         return True;
+      end Original_Is_Live;
+      procedure Prepare (Bytes : Integer_Value; Elements : Natural;
+                         Result : out Allocation_Status) is
+      begin
+         Plan_Construction (Store, Bytes, Elements, Plan, Result);
+         if Result /= Allocated then return; end if;
+         if Born_Count = Max_New then Result := Object_Limit; return; end if;
+         -- Fully initialized owned node, sized only to the overwritten spans.
+         -- No store mutation occurs until its before-image allocation succeeds.
+         Head := new Journal_Node'
+           (Byte_Count => Construction_Bytes (Plan),
+            Element_Count => Construction_Elements (Plan),
+            Before => Capture_Construction (Store, Plan), Previous => Head);
+      exception
+         when Storage_Error => Result := Storage_Unavailable;
+      end Prepare;
+      procedure Finish_Allocation (Value : Object_ID) is
+      begin
+         pragma Assert (Born_Count < Max_New);
+         pragma Assert (Born_Count = 0 or else Born (Born_Count) < Value);
+         Born_Count := Born_Count + 1;
+         Born (Born_Count) := Value;
+      end Finish_Allocation;
+      procedure Close_Journal (Rollback : Boolean) is
+         Old : Journal_Owner;
+      begin
+         while Head /= null loop
+            Old := Head;
+            Head := Old.Previous;
+            Old.Previous := null;
+            if Rollback then Restore_Construction (Store, Old.Before); end if;
+            Free (Old);
+         end loop;
+      end Close_Journal;
       function Copied_Context (Item : Context) return Context is (Item);
       pragma No_Inline (Copied_Context);
       Candidate_Context : Context := Copied_Context (Environment);
@@ -45,38 +109,32 @@ package body AML_Data with SPARK_Mode is
    begin
       ID := 0; Consumed := 0; Status := Malformed;
       if not AML_Byte_Sources.Corresponds (Source, Source_First, Data) then return; end if;
-      AML_Objects.Clone (Store, Candidate, Snapshot_Status);
-      if Snapshot_Status /= AML_Objects.Cloned then Status := Limit_Exceeded; return; end if;
       Status := Truncated;
       loop
-         pragma Loop_Invariant (Valid (Candidate));
-         pragma Loop_Invariant (Live_Count (Candidate) >= Live_Count (Store));
-         pragma Loop_Invariant (Root = No_Object or else Is_Live (Candidate, Root));
+         pragma Loop_Invariant (Valid (Store));
+         pragma Loop_Invariant (Live_Count (Store) = Initial_Live + Born_Count);
+         pragma Loop_Invariant (Root = No_Object or else Is_Live (Store, Root));
          pragma Loop_Invariant (Root = 0 or Offset > 0);
          pragma Loop_Invariant (Offset <= Data'Length);
          pragma Loop_Invariant
-           (for all J in 1 .. Slot_Bound (Store) => (if Is_Live (Store, J) then
-              Kind (Candidate, J) = Kind (Store, J)
-              and then Length (Candidate, J) = Length (Store, J)));
-         pragma Loop_Invariant
            (for all J in 1 .. Depth =>
-              Is_Live (Candidate, Frames (J).Object)
-              and then Kind (Candidate, Frames (J).Object) = Package_Object
-              and then Frames (J).Next <= Length (Candidate, Frames (J).Object)
+              Is_Live (Store, Frames (J).Object)
+              and then Kind (Store, Frames (J).Object) = Package_Object
+              and then Frames (J).Next <= Length (Store, Frames (J).Object)
               and then Offset <= Frames (J).Limit and then Frames (J).Limit <= Data'Length);
          pragma Loop_Invariant
            (for all J in 1 .. Depth =>
               (for all K in J .. Depth => Frames (K).Limit <= Frames (J).Limit));
          pragma Loop_Variant (Decreases => Data'Length - Offset, Decreases => Depth);
          if Depth = 0 and Root /= 0 then
-            AML_Objects.Transfer (Candidate, Store); Environment := Candidate_Context; ID := Root; Consumed := Offset; Status := Accepted;
+            Environment := Candidate_Context; ID := Root; Consumed := Offset; Status := Accepted;
             return;
          elsif Depth > 0 and then Offset = Frames (Depth).Limit then
             Depth := Depth - 1;
          else
             Limit := (if Depth = 0 then Data'Length else Frames (Depth).Limit);
             if Offset = Limit then return; end if;
-            if Depth > 0 and then Frames (Depth).Next = Length (Candidate, Frames (Depth).Object) then
+            if Depth > 0 and then Frames (Depth).Next = Length (Store, Frames (Depth).Object) then
                Status := Malformed; return;
             end if;
             Op := Data (Data'First + Offset);
@@ -105,7 +163,10 @@ package body AML_Data with SPARK_Mode is
                   Size := Natural (Package_Count.Value);
                   Offset := Offset + Package_Count.Consumed;
                end if;
-               New_Package (Candidate, Size, Item, Allocation);
+               Prepare (0, Size, Allocation);
+               if Allocation = Allocated then
+                  Construct_Package (Store, Plan, Item); Finish_Allocation (Item);
+               end if;
             elsif Depth > 0 and then
               (AML_Names.Lead (Op) or else Op in 16#5C# | 16#5E# | 16#2E# | 16#2F#)
             then
@@ -115,7 +176,7 @@ package body AML_Data with SPARK_Mode is
                if Member.Kind /= Accepted then Status := Member.Kind; return; end if;
                if Member.Consumed = 0 or else Member.Consumed > Limit - Offset
                  or else (Member.Binding = Resolved_Member and then
-                   not Is_Live (Store, Member.ID))
+                   not Original_Is_Live (Member.ID))
                  or else (Member.Binding = Deferred_Member and then Member.ID /= No_Object)
                then Status := Malformed; return; end if;
                -- Ordinary package construction preserves aliases. CopyObject
@@ -126,35 +187,45 @@ package body AML_Data with SPARK_Mode is
             elsif Op = 16#0D# then
                S := Read_String_Span (Data (Data'First + Offset .. Data'First + (Limit - 1)));
                if S.Kind /= Accepted then Status := S.Kind; return; end if;
-               String_Reader.Allocate (Candidate, Source,
-                 Source_First + Offset + S.Payload_Offset, S.Length, Item, Allocation);
+               Prepare (Integer_Value (S.Length), 0, Allocation);
+               if Allocation = Allocated then
+                  String_Reader.Construct (Store, Plan, Source,
+                    Source_First + Offset + S.Payload_Offset, Item);
+                  Finish_Allocation (Item);
+               end if;
                Offset := Offset + S.Consumed;
             elsif Op = 16#11# then
                B := AML_Buffer_Layouts.Read
                  (Data (Data'First + Offset .. Data'First + (Limit - 1)), Width);
                if B.Kind /= Accepted then Status := B.Kind; return; end if;
-               -- Preserve the operand offset until its initializer has been
-               -- sliced. An empty initializer needs no one-past-last index.
-               if B.Initializer_Length = 0 then
-                  New_Buffer (Candidate, B.Effective_Length, Bytes'(1 .. 0 => 0), Item, Allocation);
-               else
-                  New_Buffer (Candidate, B.Effective_Length,
-                    Data (Data'First + Offset + B.Initializer_Offset ..
-                          Data'First + Offset + (B.Consumed - 1)), Item, Allocation);
+               Prepare (B.Effective_Length, 0, Allocation);
+               if Allocation = Allocated then
+                  if B.Initializer_Length = 0 then
+                     Construct_Buffer (Store, Plan, Bytes'(1 .. 0 => 0), Item);
+                  else
+                     Construct_Buffer (Store, Plan,
+                       Data (Data'First + Offset + B.Initializer_Offset ..
+                             Data'First + Offset + (B.Consumed - 1)), Item);
+                  end if;
+                  Finish_Allocation (Item);
                end if;
                Offset := Offset + B.Consumed;
             else
                N := Read_Integer (Data (Data'First + Offset .. Data'First + (Limit - 1)), Width);
                if N.Kind /= Accepted then Status := N.Kind; return; end if;
                Offset := Offset + N.Consumed;
-               New_Integer (Candidate, N.Value, Item, Allocation,
-                 Literal_Origin (Data (Data'First + (Offset - N.Consumed))));
+               Prepare (0, 0, Allocation);
+               if Allocation = Allocated then
+                  Construct_Integer (Store, Plan, N.Value, Item,
+                    Literal_Origin (Data (Data'First + (Offset - N.Consumed))));
+                  Finish_Allocation (Item);
+               end if;
             end if;
             if Allocation /= Allocated then Status := Limit_Exceeded; return; end if;
             if Depth = 0 then
                Root := Item;
             else
-               Set_Element (Candidate, Frames (Depth).Object, Frames (Depth).Next, Item);
+               Set_Element (Store, Frames (Depth).Object, Frames (Depth).Next, Item);
                Frames (Depth).Next := Frames (Depth).Next + 1;
             end if;
             if Is_Package then
@@ -166,7 +237,7 @@ package body AML_Data with SPARK_Mode is
       end Execute_Transaction;
    begin
       Execute_Transaction;
-      AML_Objects.Discard (Candidate);
+      Close_Journal (Rollback => Status /= Accepted);
       end Load_Transactional;
       pragma No_Inline (Load_Transactional);
       Literal : Integer_Result;

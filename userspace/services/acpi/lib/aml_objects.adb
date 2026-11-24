@@ -578,7 +578,8 @@ package body AML_Objects with SPARK_Mode is
    begin
       Store.Objects (ID).Value := Value;
    end Set_Integer;
-   procedure Select_Slot (Store : State; ID : out Object_ID; Status : out Allocation_Status) is
+   procedure Select_Slot (Store : State; ID : out Object_ID; Status : out Allocation_Status)
+   is
    begin
       ID := No_Object;
       for I in 1 .. Store.Object_Capacity loop
@@ -657,6 +658,31 @@ package body AML_Objects with SPARK_Mode is
       Occupy (Store, Slot, (Tag => Event_Object, others => <>));
       ID := Slot;
    end New_Event;
+   procedure Apply_Integer
+     (Store : in out State; Slot : Object_ID; Value : AML_Decode.Integer_Value; ID : out Object_ID;
+      Origin : AML_Decode.Integer_Origin)
+     with Pre => Valid (Store) and then Slot /= No_Object
+       and then Slot <= Store.Object_Capacity and then not Store.Objects (Slot).Occupied
+       and then Store.Objects (Slot).Stamp < Store.Generation_Limit
+       and then Store.Live_Used < Store.Object_Capacity,
+       Post => Valid (Store) and then Fresh_Allocation (Store, Store'Old, ID)
+       and then ID = Slot and then Is_Live (Store, ID) and then Kind (Store, ID) = Integer_Object
+       and then Integer_Data (Store, ID) = Value and then Origin_Of (Store, ID) = Origin;
+   pragma Inline_Always (Apply_Integer);
+   procedure Apply_Integer
+     (Store : in out State; Slot : Object_ID; Value : AML_Decode.Integer_Value; ID : out Object_ID;
+      Origin : AML_Decode.Integer_Origin) is
+   begin
+      Occupy (Store, Slot, (Tag => Integer_Object, Value => Value, Origin => Origin, others => <>));
+      ID := Slot;
+   end Apply_Integer;
+   procedure Construct_Integer
+     (Store : in out State; Plan : Construction_Plan;
+      Value : AML_Decode.Integer_Value; ID : out Object_ID;
+      Origin : AML_Decode.Integer_Origin := AML_Decode.Ordinary_Integer) is
+   begin
+      Apply_Integer (Store, Plan.Slot, Value, ID, Origin);
+   end Construct_Integer;
    procedure New_Integer (Store : in out State; Value : AML_Decode.Integer_Value;
                           ID : out Object_ID; Status : out Allocation_Status;
                           Origin : AML_Decode.Integer_Origin := AML_Decode.Ordinary_Integer) is
@@ -664,8 +690,7 @@ package body AML_Objects with SPARK_Mode is
    begin
       ID := No_Object;
       Select_Slot (Store, Slot, Status); if Status /= Allocated then return; end if;
-      Occupy (Store, Slot, (Tag => Integer_Object, Value => Value, Origin => Origin, others => <>));
-      ID := Slot;
+      Apply_Integer (Store, Slot, Value, ID, Origin);
    end New_Integer;
    procedure New_Bytes (Store : in out State; Tag : Byte_Kind; Data : AML_Decode.Bytes;
                         ID : out Object_ID; Status : out Allocation_Status) is
@@ -682,6 +707,39 @@ package body AML_Objects with SPARK_Mode is
       Occupy (Store, Slot, (Tag => Tag, First => Start, Size => Data'Length, others => <>));
       ID := Slot;
    end New_Bytes;
+   procedure Apply_Buffer
+     (Store : in out State; Slot : Object_ID; Size : Natural; Initializer : AML_Decode.Bytes; ID : out Object_ID)
+     with Pre => Valid (Store) and then Slot /= No_Object
+       and then Slot <= Store.Object_Capacity and then not Store.Objects (Slot).Occupied
+       and then Store.Objects (Slot).Stamp < Store.Generation_Limit
+       and then Store.Live_Used < Store.Object_Capacity and then Size <= Store.Byte_Capacity - Store.Bytes_Used
+       and then Initializer'Length <= Size,
+       Post => Valid (Store) and then Fresh_Allocation (Store, Store'Old, ID)
+       and then ID = Slot and then Is_Live (Store, ID) and then Kind (Store, ID) = Buffer_Object
+       and then Length (Store, ID) = Size
+       and then Byte_Count (Store) = Byte_Count (Store'Old) + Size
+       and then Element_Count (Store) = Element_Count (Store'Old)
+       and then (for all I in 1 .. Size => Stored_Byte (Store, ID, I - 1) =
+         (if I <= Initializer'Length then Initializer (Initializer'First + (I - 1)) else 0));
+   pragma Inline_Always (Apply_Buffer);
+   procedure Apply_Buffer
+     (Store : in out State; Slot : Object_ID; Size : Natural; Initializer : AML_Decode.Bytes; ID : out Object_ID) is
+   begin
+      for I in 1 .. Size loop
+         Store.Bytes (Store.Bytes_Used + I) :=
+           (if I <= Initializer'Length then Initializer (Initializer'First + (I - 1)) else 0);
+      end loop;
+      Store.Bytes_Used := Store.Bytes_Used + Size;
+      Occupy (Store, Slot,
+        (Tag => Buffer_Object, First => Store.Bytes_Used - Size, Size => Size, others => <>));
+      ID := Slot;
+   end Apply_Buffer;
+   procedure Construct_Buffer
+     (Store : in out State; Plan : Construction_Plan;
+      Initializer : AML_Decode.Bytes; ID : out Object_ID) is
+   begin
+      Apply_Buffer (Store, Plan.Slot, Plan.Byte_Count, Initializer, ID);
+   end Construct_Buffer;
    procedure New_Buffer
      (Store : in out State; Requested_Length : AML_Decode.Integer_Value;
       Initializer : AML_Decode.Bytes; ID : out Object_ID;
@@ -689,24 +747,17 @@ package body AML_Objects with SPARK_Mode is
    is
       Effective : constant AML_Decode.Integer_Value := AML_Decode.Integer_Value'Max
         (Requested_Length, AML_Decode.Integer_Value (Initializer'Length));
-      Start : constant Natural := Store.Bytes_Used;
       Size : Natural;
       Slot : Object_ID;
    begin
       ID := No_Object;
       Select_Slot (Store, Slot, Status); if Status /= Allocated then return; end if;
       -- Check in the wide input domain before narrowing or touching the arena.
-      if Effective > AML_Decode.Integer_Value (Store.Byte_Capacity - Start) then
+      if Effective > AML_Decode.Integer_Value (Store.Byte_Capacity - Store.Bytes_Used) then
          Status := Byte_Limit; return;
       end if;
       Size := Natural (Effective);
-      for I in 1 .. Size loop
-         Store.Bytes (Start + I) :=
-           (if I <= Initializer'Length then Initializer (Initializer'First + (I - 1)) else 0);
-      end loop;
-      Store.Bytes_Used := Start + Size;
-      Occupy (Store, Slot, (Tag => Buffer_Object, First => Start, Size => Size, others => <>));
-      ID := Slot;
+      Apply_Buffer (Store, Slot, Size, Initializer, ID);
    end New_Buffer;
    package body Bit_Buffer_Initializers is
       function Window
@@ -748,40 +799,64 @@ package body AML_Objects with SPARK_Mode is
       end Allocate;
    end Bit_Buffer_Initializers;
    package body String_Initializers is
-      procedure Allocate
-        (Store : in out State; Data : aliased Source_Type;
-         First_Byte, Byte_Length : Natural; ID : out Object_ID;
-         Status : out Allocation_Status)
-      is
+      procedure Construct
+        (Store : in out State; Plan : Construction_Plan; Data : aliased Source_Type;
+         First_Byte : Natural; ID : out Object_ID) is
          Start : constant Natural := Store.Bytes_Used;
-         Slot : Object_ID;
       begin
-         ID := No_Object;
-         Select_Slot (Store, Slot, Status); if Status /= Allocated then return; end if;
-         if Byte_Length > Store.Byte_Capacity - Start then Status := Byte_Limit; return; end if;
-         -- Readers are trusted immutable observers, as for bit initializers.
-         -- No AML reentry, allocation hooks or collection occur in this loop.
-         for I in 1 .. Byte_Length loop
+         -- Immutable source observers cannot reenter AML or collect.
+         for I in 1 .. Plan.Byte_Count loop
             Store.Bytes (Start + I) := Source_Byte (Data, First_Byte + (I - 1));
          end loop;
-         Store.Bytes_Used := Start + Byte_Length;
-         Occupy (Store, Slot,
-           (Tag => String_Object, First => Start, Size => Byte_Length, others => <>));
-         ID := Slot;
+         Store.Bytes_Used := Start + Plan.Byte_Count;
+         Occupy (Store, Plan.Slot,
+           (Tag => String_Object, First => Start, Size => Plan.Byte_Count, others => <>));
+         ID := Plan.Slot;
+      end Construct;
+      procedure Allocate
+        (Store : in out State; Data : aliased Source_Type;
+         First_Byte, Byte_Length : Natural; ID : out Object_ID; Status : out Allocation_Status) is
+         Plan : Construction_Plan;
+      begin
+         ID := No_Object;
+         Plan_Construction (Store, AML_Decode.Integer_Value (Byte_Length), 0, Plan, Status);
+         if Status /= Allocated then return; end if;
+         Construct (Store, Plan, Data, First_Byte, ID);
       end Allocate;
    end String_Initializers;
+   procedure Apply_Package
+     (Store : in out State; Slot : Object_ID; Size : Natural; ID : out Object_ID)
+     with Pre => Valid (Store) and then Slot /= No_Object
+       and then Slot <= Store.Object_Capacity and then not Store.Objects (Slot).Occupied
+       and then Store.Objects (Slot).Stamp < Store.Generation_Limit
+       and then Store.Live_Used < Store.Object_Capacity and then Size <= Store.Element_Capacity - Store.Elements_Used,
+       Post => Valid (Store) and then Fresh_Allocation (Store, Store'Old, ID)
+       and then ID = Slot and then Is_Live (Store, ID) and then Kind (Store, ID) = Package_Object
+       and then Length (Store, ID) = Size
+       and then (for all I in 1 .. Size => Element (Store, ID, I - 1) = No_Object);
+   pragma Inline_Always (Apply_Package);
+   procedure Apply_Package
+     (Store : in out State; Slot : Object_ID; Size : Natural; ID : out Object_ID) is
+   begin
+      for I in 1 .. Size loop Store.Elements (Store.Elements_Used + I) := No_Object; end loop;
+      Store.Elements_Used := Store.Elements_Used + Size;
+      Occupy (Store, Slot,
+        (Tag => Package_Object, First => Store.Elements_Used - Size, Size => Size, others => <>));
+      ID := Slot;
+   end Apply_Package;
+   procedure Construct_Package
+     (Store : in out State; Plan : Construction_Plan; ID : out Object_ID) is
+   begin
+      Apply_Package (Store, Plan.Slot, Plan.Element_Count, ID);
+   end Construct_Package;
    procedure New_Package (Store : in out State; Size : Natural;
                           ID : out Object_ID; Status : out Allocation_Status) is
-      Start : constant Natural := Store.Elements_Used;
       Slot : Object_ID;
    begin
       ID := No_Object;
       Select_Slot (Store, Slot, Status); if Status /= Allocated then return; end if;
       if Size > Store.Element_Capacity - Store.Elements_Used then Status := Element_Limit; return; end if;
-      for I in 1 .. Size loop Store.Elements (Start + I) := No_Object; end loop;
-      Store.Elements_Used := Store.Elements_Used + Size;
-      Occupy (Store, Slot, (Tag => Package_Object, First => Start, Size => Size, others => <>));
-      ID := Slot;
+      Apply_Package (Store, Slot, Size, ID);
    end New_Package;
    function Element_Updated
      (Store, Prior : State; ID : Object_ID; Index : Natural; Value : Object_ID)
@@ -796,4 +871,89 @@ package body AML_Objects with SPARK_Mode is
    begin
       null;
    end Observe_Valid_Object_Layout;
+   function Construction_Admitted (Plan : Construction_Plan) return Boolean is (Plan.Prepared);
+   function Construction_Bytes (Plan : Construction_Plan) return Natural is (Plan.Byte_Count);
+   function Construction_Elements (Plan : Construction_Plan) return Natural is (Plan.Element_Count);
+   function Construction_Current (Store : State; Plan : Construction_Plan) return Boolean is
+     (Plan.Prepared and then Plan.Objects = Store.Object_Capacity
+      and then Plan.Bytes = Store.Byte_Capacity and then Plan.Elements = Store.Element_Capacity
+      and then Plan.Slot /= No_Object and then Plan.Slot <= Store.Object_Capacity
+      and then not Store.Objects (Plan.Slot).Occupied
+      and then Store.Objects (Plan.Slot).Stamp = Plan.Slot_Stamp
+      and then Plan.Slot_Stamp < Store.Generation_Limit
+      and then Plan.Generation = Store.Generation_Limit
+      and then Plan.Old_Used = Store.Used and then Plan.Old_Live = Store.Live_Used
+      and then Plan.Old_Bytes = Store.Bytes_Used and then Plan.Old_Elements = Store.Elements_Used
+      and then Plan.Old_Bytes <= Store.Byte_Capacity
+      and then Plan.Byte_Count <= Store.Byte_Capacity - Plan.Old_Bytes
+      and then Plan.Old_Elements <= Store.Element_Capacity
+      and then Plan.Element_Count <= Store.Element_Capacity - Plan.Old_Elements);
+   procedure Plan_Construction
+     (Store : State; Byte_Length : AML_Decode.Integer_Value;
+      Element_Length : Natural; Plan : out Construction_Plan; Status : out Allocation_Status) is
+      Slot : Object_ID;
+   begin
+      Plan := (others => <>);
+      Select_Slot (Store, Slot, Status);
+      if Status /= Allocated then return; end if;
+      if Byte_Length > AML_Decode.Integer_Value (Store.Byte_Capacity - Store.Bytes_Used) then
+         Status := Byte_Limit; return;
+      elsif Element_Length > Store.Element_Capacity - Store.Elements_Used then
+         Status := Element_Limit; return;
+      end if;
+      Plan := (Prepared => True, Objects => Store.Object_Capacity,
+        Bytes => Store.Byte_Capacity, Elements => Store.Element_Capacity,
+        Slot => Slot, Old_Used => Store.Used, Old_Live => Store.Live_Used,
+        Old_Bytes => Store.Bytes_Used, Old_Elements => Store.Elements_Used,
+        Byte_Count => Natural (Byte_Length), Element_Count => Element_Length,
+        Generation => Store.Generation_Limit, Slot_Stamp => Store.Objects (Slot).Stamp);
+   end Plan_Construction;
+   function Construction_Ready (Item : Construction_Receipt) return Boolean is (Item.Captured);
+   function Construction_Restorable (Store : State; Item : Construction_Receipt) return Boolean is
+     (Item.Captured and then Item.Plan.Prepared
+      and then Item.Plan.Objects = Store.Object_Capacity
+      and then Item.Plan.Bytes = Store.Byte_Capacity
+      and then Item.Plan.Elements = Store.Element_Capacity
+      and then Item.Plan.Generation = Store.Generation_Limit
+      and then Item.Plan.Slot /= No_Object and then Item.Plan.Slot <= Store.Object_Capacity
+      and then Item.Plan.Old_Used <= Store.Object_Capacity
+      and then Item.Plan.Old_Live <= Item.Plan.Old_Used
+      and then Item.Plan.Old_Bytes <= Store.Byte_Capacity
+      and then Item.Byte_Length = Item.Plan.Byte_Count
+      and then Item.Byte_Length <= Store.Byte_Capacity - Item.Plan.Old_Bytes
+      and then Item.Plan.Old_Elements <= Store.Element_Capacity
+      and then Item.Element_Length = Item.Plan.Element_Count
+      and then Item.Element_Length <= Store.Element_Capacity - Item.Plan.Old_Elements);
+   function Construction_Before_Image (Store : State; Item : Construction_Receipt) return State is
+     ((Store with delta
+       Objects => (Store.Objects with delta Item.Plan.Slot => Item.Object_Before),
+       Bytes => [for I in Store.Bytes'Range =>
+         (if I > Item.Plan.Old_Bytes and then I - Item.Plan.Old_Bytes <= Item.Byte_Length
+          then Item.Bytes_Before (I - Item.Plan.Old_Bytes) else Store.Bytes (I))],
+       Elements => [for I in Store.Elements'Range =>
+         (if I > Item.Plan.Old_Elements and then I - Item.Plan.Old_Elements <= Item.Element_Length
+          then Item.Elements_Before (I - Item.Plan.Old_Elements) else Store.Elements (I))],
+       Used => Item.Plan.Old_Used, Live_Used => Item.Plan.Old_Live,
+       Bytes_Used => Item.Plan.Old_Bytes, Elements_Used => Item.Plan.Old_Elements));
+   function Capture_Construction (Store : State; Plan : Construction_Plan)
+      return Construction_Receipt is
+   begin
+      return (Byte_Length => Plan.Byte_Count, Element_Length => Plan.Element_Count,
+        Captured => True, Plan => Plan, Object_Before => Store.Objects (Plan.Slot),
+        Bytes_Before => Store.Bytes (Plan.Old_Bytes + 1 .. Plan.Old_Bytes + Plan.Byte_Count),
+        Elements_Before => Store.Elements (Plan.Old_Elements + 1 .. Plan.Old_Elements + Plan.Element_Count));
+   end Capture_Construction;
+   procedure Restore_Construction (Store : in out State; Item : in out Construction_Receipt) is
+   begin
+      Store.Objects (Item.Plan.Slot) := Item.Object_Before;
+      if Item.Byte_Length > 0 then
+         Store.Bytes (Item.Plan.Old_Bytes + 1 .. Item.Plan.Old_Bytes + Item.Byte_Length) := Item.Bytes_Before;
+      end if;
+      if Item.Element_Length > 0 then
+         Store.Elements (Item.Plan.Old_Elements + 1 .. Item.Plan.Old_Elements + Item.Element_Length) := Item.Elements_Before;
+      end if;
+      Store.Used := Item.Plan.Old_Used; Store.Live_Used := Item.Plan.Old_Live;
+      Store.Bytes_Used := Item.Plan.Old_Bytes; Store.Elements_Used := Item.Plan.Old_Elements;
+      Item.Captured := False;
+   end Restore_Construction;
 end AML_Objects;

@@ -1,0 +1,7 @@
+project Undo_checked is
+ for Source_Dirs use (".","../../userspace/services/acpi/lib","../../shared/firmware");
+ Build_Root := external ("ACPI_UNDO_BUILD", "build-checked");
+ for Object_Dir use Build_Root & "/obj";for Exec_Dir use Build_Root & "/bin";
+ for Main use ("parser_tests.adb","receipt_tests.adb");
+ package Compiler is for Default_Switches("Ada") use ("-O1","-gnat2022","-gnata","-gnato");end Compiler;
+end Undo_checked;
