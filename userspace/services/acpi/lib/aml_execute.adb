@@ -5346,7 +5346,8 @@ package body AML_Execute with SPARK_Mode is
            AML_Frame_Handles.No_Frame, Request, Implementation, [others => 0], Root_Result_Location,
            Effects => Initial_Effects);
       end;
-      Transport.Clear_All (Values);
+      -- Frame teardown has already retired external roots. Values is plain
+      -- invocation-local metadata; a capacity-wide scrub here dies with it.
    end Execute_From_Source;
 
    procedure Execute_Typed
