@@ -9970,6 +9970,20 @@ package body Owned with SPARK_Mode is
             -- Keep the owned field's identity; capture validates its backing
             -- and reads declared logical bytes without a second heap Buffer.
             Value := Source; Status := AML_Execute.Returned;
+         elsif Hardware_Field (E, Source.Ref) then
+            -- Read once through the installed named provider. The source lease
+            -- and target have already been authenticated by this invocation.
+            Read_Field_At_Entry (E, Source.Ref, Width, Value, Status);
+            if Status /= AML_Execute.Returned then return; end if;
+            -- Keep the owned snapshot live through capture, including any
+            -- allocation boundary in the installed source adapter.
+            Publish_Held (E, AML_Declaration_Contexts.Frame_Of (Lease),
+              AML_Root_Slots.Reference_Read, True, Value);
+            Prepare_Source (E, Input, Lease, Scope, Width, Value, Budget, Charged, Succeeded, Status, Plan);
+            Publish_Held (E, AML_Declaration_Contexts.Frame_Of (Lease),
+              AML_Root_Slots.Reference_Read, False,
+              (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer));
+            return;
          else Resolve_Semantic_Reference (E, Source.Ref, Value, Status); end if;
          if Status /= AML_Execute.Returned then return; end if;
          Prepare_Source (E, Input, Lease, Scope, Width, Value, Budget, Charged, Succeeded, Status, Plan);

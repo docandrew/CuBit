@@ -18,7 +18,8 @@ with24GiB address space and1GiB stack. No native/hardware validation is implied.
 The cleanup child fixture exercises the actual private cleanup entrypoint and
 compares with the named-base scan behavior: foreign descendants, permanent
 barriers, recursion, old dead tails and retained interior code. The normal ASL
-Device-in-method fixture is compiled normally by pinned iasl20260408. The exact
+Device-in-method fixture at `fixtures/container.asl` is compiled normally by
+pinned iasl20260408. The exact
 payload returns11 twice and1 on ACPICA; its cache-tracking diagnostics are
 retained in external receipts. Both baseline and corrected CuBit replay pass;
 the initial omitted-container-index update is a failing negative control.

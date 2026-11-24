@@ -1,0 +1,210 @@
+{
+  "cases": [
+    {
+      "name": "copy0-buffer",
+      "fixture": "fixtures/load-buffer.asl",
+      "copied_tables": "0",
+      "status": "UNSUPPORTED",
+      "execution": "VALUE_LIMIT",
+      "io": null,
+      "gc": null
+    },
+    {
+      "name": "copy0-field",
+      "fixture": "fixtures/load-field.asl",
+      "copied_tables": "0",
+      "status": "UNSUPPORTED",
+      "execution": "VALUE_LIMIT",
+      "io": null,
+      "gc": null
+    },
+    {
+      "name": "copy0-region",
+      "fixture": "fixtures/load-region.asl",
+      "copied_tables": "0",
+      "status": "UNSUPPORTED",
+      "execution": "UNSUPPORTED_VALUE",
+      "io": null,
+      "gc": null
+    },
+    {
+      "name": "copy4-buffer",
+      "fixture": "fixtures/load-buffer.asl",
+      "copied_tables": "4",
+      "status": "PASS",
+      "execution": "RETURNED",
+      "io": null,
+      "gc": null
+    },
+    {
+      "name": "copy4-field",
+      "fixture": "fixtures/load-field.asl",
+      "copied_tables": "4",
+      "status": "PASS",
+      "execution": "RETURNED",
+      "io": null,
+      "gc": null
+    },
+    {
+      "name": "copy4-region",
+      "fixture": "fixtures/load-region.asl",
+      "copied_tables": "4",
+      "status": "UNSUPPORTED",
+      "execution": "UNSUPPORTED_VALUE",
+      "io": null,
+      "gc": null
+    },
+    {
+      "name": "wide8",
+      "fixture": "fixtures/wide8.asl",
+      "copied_tables": "0",
+      "status": "PASS",
+      "execution": "RETURNED",
+      "io": null,
+      "gc": null
+    },
+    {
+      "name": "wide64",
+      "fixture": "fixtures/wide64.asl",
+      "copied_tables": "0",
+      "status": "PASS",
+      "execution": "RETURNED",
+      "io": null,
+      "gc": null
+    },
+    {
+      "name": "wide65",
+      "fixture": "fixtures/wide65.asl",
+      "copied_tables": "0",
+      "status": "PASS",
+      "execution": "RETURNED",
+      "io": null,
+      "gc": null
+    },
+    {
+      "name": "wide528",
+      "fixture": "fixtures/wide528.asl",
+      "copied_tables": "0",
+      "status": "PASS",
+      "execution": "RETURNED",
+      "io": null,
+      "gc": null,
+      "skip_profiles": {
+        "checked": "Prior12s timeout retained; production runs under same12s cap."
+      }
+    },
+    {
+      "name": "unaligned",
+      "fixture": "fixtures/unaligned.asl",
+      "copied_tables": "4",
+      "status": "PASS",
+      "execution": "RETURNED",
+      "io": {
+        "reads": 47,
+        "writes": 45
+      },
+      "gc": null
+    },
+    {
+      "name": "extra-bit",
+      "fixture": "fixtures/extra-bit.asl",
+      "copied_tables": "4",
+      "status": "PASS",
+      "execution": "RETURNED",
+      "io": {
+        "reads": 46,
+        "writes": 45
+      },
+      "gc": null
+    },
+    {
+      "name": "two-tables",
+      "fixture": "fixtures/two-tables.asl",
+      "copied_tables": "4",
+      "status": "PASS",
+      "execution": "RETURNED",
+      "io": {
+        "reads": 88,
+        "writes": 88
+      },
+      "gc": null
+    },
+    {
+      "name": "bad-checksum",
+      "fixture": "fixtures/bad-checksum.asl",
+      "copied_tables": "4",
+      "status": "UNSUPPORTED",
+      "execution": "UNSUPPORTED_VALUE",
+      "io": {
+        "reads": 44,
+        "writes": 44
+      },
+      "gc": null
+    },
+    {
+      "name": "missing-target",
+      "fixture": "fixtures/missing-target.asl",
+      "copied_tables": "4",
+      "status": "UNSUPPORTED",
+      "execution": "UNKNOWN_NAME",
+      "io": {
+        "reads": 0,
+        "writes": 44
+      },
+      "gc": null
+    },
+    {
+      "name": "denied-provider",
+      "fixture": "fixtures/denied-provider.asl",
+      "copied_tables": "4",
+      "status": "UNSUPPORTED",
+      "execution": "UNSUPPORTED_VALUE",
+      "io": {
+        "reads": 0,
+        "writes": 0
+      },
+      "gc": null
+    },
+    {
+      "name": "pressure-load",
+      "fixture": "fixtures/pressure-load.asl",
+      "copied_tables": "4",
+      "status": "PASS",
+      "execution": "RETURNED",
+      "io": {
+        "reads": 44,
+        "writes": 44
+      },
+      "gc": "reclaim"
+    },
+    {
+      "name": "pressure-no-load",
+      "fixture": "fixtures/pressure-no-load.asl",
+      "copied_tables": "4",
+      "status": "PASS",
+      "execution": "RETURNED",
+      "io": {
+        "reads": 0,
+        "writes": 44
+      },
+      "gc": "none"
+    },
+    {
+      "name": "pressure-denied",
+      "fixture": "fixtures/pressure-denied.asl",
+      "copied_tables": "4",
+      "status": "UNSUPPORTED",
+      "execution": "UNSUPPORTED_VALUE",
+      "io": {
+        "reads": 0,
+        "writes": 0
+      },
+      "gc": "reclaim"
+    }
+  ],
+  "runtime_seconds": 12,
+  "build_seconds": 240,
+  "j": 2,
+  "address_space_bytes": 25769803776,
+  "stack_bytes": 134217728
+}

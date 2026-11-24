@@ -1,0 +1,82 @@
+{
+  "load-buffer": {
+    "sha256": "40a1ea4c0cc4e8af5cad9a8cedc81ee58572dc27420501cb570407d4799a1475",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "load-field": {
+    "sha256": "39e3225dfbf3926d350461d30f909da80d2be349423900323977b18177523745",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "load-region": {
+    "sha256": "027682baa2a3b098fcf28888cb47d39a36378aa4aab04e977d82be86a06aaf98",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "wide8": {
+    "sha256": "4d003ccd2efdfc0b46019db4b8942c9852d49fb6b4fa91526c9656e6beb2fcf7",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "wide64": {
+    "sha256": "6f1921958489cb2dcbd8171f9689702735b3b657949f01621d1338bf19970436",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "wide65": {
+    "sha256": "79f9937ab79bbaacc412d1bac00a48dd916693ed1466d963ee70c27a7b2df4f8",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "wide528": {
+    "sha256": "666a927258f0cdfe000d10ad6b4bb14f673ec4c68ad2366fa924f3ff2fba2ca7",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "unaligned": {
+    "sha256": "51d5f228b6c42cd2dc097f70eb463cb0c573b54a5a1ad83411359624a3d6cd1e",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "extra-bit": {
+    "sha256": "74a153e10da98aa3f9c0a99122925409edb65316c37d7a98df1f3a6a4680b604",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "two-tables": {
+    "sha256": "103254e19b14e4bf0b8f42d43ba0e2398a33505b38c4c2c19b59d5acc627ab5a",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "bad-checksum": {
+    "sha256": "65265820dfcf9e8359090d7e5acf5ed66a14b85d0836956bcdb753eb33a861d7",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "missing-target": {
+    "sha256": "c941009619c37188ca0f27c76fe51449a4bfbd68a257d537a62b494ec6701078",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "denied-provider": {
+    "sha256": "3e12a51c256b066a8e66b23889ef69c3013728b07281dc1188ab6bfa8f3cbf98",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "pressure-load": {
+    "sha256": "0590bf957100448db6083efd56170840e9c40b2b182d4c3f32fb4f25c416ac1e",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "pressure-no-load": {
+    "sha256": "f494c8a6f65d25f1e6655290b797faf5e7aec479346f29d2138c326d2cf822ca",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  },
+  "pressure-denied": {
+    "sha256": "c3e2f358820514eef1dbcfee7128bf48006f2511a167f33509b92a363f258db7",
+    "synthetic_fixture": true,
+    "role": "Focused Load source/bounds/provider/GC control, not original ACPICA suite assertion"
+  }
+}

@@ -206,7 +206,7 @@
     "userspace/services/acpi/lib/aml_mutexes.ads": "17d168f51a2fcc3914e4f2fdbd91fa313b719cb95ef03a7affcc6531ac1afe82",
     "userspace/services/acpi/lib/aml_names.adb": "c38d13f5f5fe640e775a1bdfc3e74eb64ecb58a92f6993cd8f8c3e656537dd61",
     "userspace/services/acpi/lib/aml_names.ads": "e5fca936d4c27a135a61ae102d423d3840b156af3194916ac4e7c180add2d990",
-    "userspace/services/acpi/lib/aml_namespace.adb": "2652da4feea7d78d3447f5d4931cde21a8ef8c8c0859a40f552e3af8e6d31713",
+    "userspace/services/acpi/lib/aml_namespace.adb": "99b782fa87f2c9eec197bf137fd4b2be354264ba6076cf90206fde55274c970c",
     "userspace/services/acpi/lib/aml_namespace.ads": "5d2b761d8250df6933ccc4a364060aa582114460c5f4a703f049e1fbd790fcf8",
     "userspace/services/acpi/lib/aml_object_identifiers.ads": "b7d4db854f3e2d3c8149e5ccab1f24f46493e6e7cd9b185de51e8b8cf899c356",
     "userspace/services/acpi/lib/aml_objects-byte_references.adb": "5d639dd2623b5b8da7f5de384fb1dd7673d27a2c7f80992b0b5af59253b13a1d",

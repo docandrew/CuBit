@@ -443,7 +443,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "2652da4feea7d78d3447f5d4931cde21a8ef8c8c0859a40f552e3af8e6d31713"
+      "sha256": "99b782fa87f2c9eec197bf137fd4b2be354264ba6076cf90206fde55274c970c"
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -675,7 +675,7 @@
     },
     {
       "path": "tests/aml-lifetime-membership/README.md",
-      "sha256": "b0e594dca7550df0b9d160816b4f5afc539e1b4033eed29b611b063689958f29"
+      "sha256": "f7e57ffbc1a81b98b8a6f2d7dd369e31d57c05bc4336508b0797e95562987c63"
     },
     {
       "path": "tests/aml-lifetime-membership/aml_namespace-lifetime_test_fixture.adb",
@@ -702,7 +702,7 @@
       "sha256": "e3e1a21a070e50b074a7884438f49563240248b21ca16c120d5dce7ebff11962"
     },
     {
-      "path": "tests/aml-lifetime-membership/container.asl",
+      "path": "tests/aml-lifetime-membership/fixtures/container.asl",
       "sha256": "a438b9af817d243197978a5490bc2acea7e906b761e7996b24454937c9da521a"
     },
     {
