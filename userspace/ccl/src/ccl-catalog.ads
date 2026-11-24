@@ -15,8 +15,9 @@ is
    MAX_NAME_LENGTH : constant := 48;
    --  CCL_Host_Environment checks at compile time that the most it can
    --  publish (MOST_INTERFACES: its interfaces, every program a front end
-   --  may launch, the front end's own) fits.
-   MAX_INTERFACES  : constant := 40;
+   --  may launch, the front end's own) fits. 41 with power.* (PWR-004) and
+   --  net.*, archive.*, git.* (SELF-003) together; 48 leaves a little room.
+   MAX_INTERFACES  : constant := 48;
    MAX_OPERATIONS  : constant := 16;
 
    subtype Parameter_Count is Natural range 0 .. 1;
