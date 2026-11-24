@@ -8,7 +8,8 @@ project Neon_Blast_Host is
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    type Build_Mode is ("checked", "release");
-   for Main use ("neon_audio_host.adb", "neon_replay_host.adb", "neon_keys_tests.adb");
+   for Main use ("neon_audio_host.adb", "neon_replay_host.adb", "neon_keys_tests.adb",
+                 "neon_styles_host.adb");
    --  The same float semantics as the native build: no fused multiply-add,
    --  so hashes match across hosts and CuBit.
    Game_Switches := ("-O2", "-gnat2022", "-gnatwa", "-gnatwJ", "-g", "-ffp-contract=off");

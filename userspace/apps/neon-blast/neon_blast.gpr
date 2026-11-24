@@ -44,6 +44,9 @@ project Neon_Blast is
       Proved := ("-O3", "-gnatp", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
                  "-mno-red-zone", "-fno-pic", "-fno-tree-vrp");
       for Switches ("gpu_canvas_slots.adb") use Proved;
+      --  Proved at level 2 (tests/neon-blast/prove.sh): the game's float
+      --  flags without run-time checks.
+      for Switches ("neon_style.adb") use Game & ("-gnatp");
    end Compiler;
 
    package Binder is

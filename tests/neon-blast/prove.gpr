@@ -1,8 +1,11 @@
 --  SPARK proof of Neon Blast's proved units (tests/neon-blast/prove.sh):
---  the typed keys (UI-049 prototype) and the seeded generator.
+--  the typed keys (UI-049 prototype), the seeded generator, and the style
+--  space (every seed's style inside its musically safe bounds).
 project Prove is
    for Source_Dirs use ("../../userspace/apps/neon-blast");
-   for Source_Files use ("neon_keys.ads", "neon_keys.adb", "neon_random.ads", "neon_random.adb");
+   for Source_Files use ("neon_keys.ads", "neon_keys.adb", "neon_random.ads", "neon_random.adb",
+                         "neon_style.ads", "neon_style.adb", "neon_math.ads", "neon_math.adb",
+                         "neon_time.ads", "neon_notes.ads");
    for Object_Dir use "build/prove";
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022");

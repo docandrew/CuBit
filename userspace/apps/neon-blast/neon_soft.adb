@@ -4,6 +4,7 @@
 --  SPDX-License-Identifier: GPL-3.0-or-later
 ------------------------------------------------------------------------------
 with Neon_Math; use Neon_Math;
+with Neon_Style;
 with Neon_Sim; use Neon_Sim;
 
 package body Neon_Soft is
@@ -184,6 +185,7 @@ package body Neon_Soft is
 
    procedure Background (R : in out Renderer; F : Frame; Cam : Camera; Pixels : in out Pixel_Array;
                          Width, Height, Pitch : Positive) is
+      L : Neon_Style.Look renames F.Look;
       H : constant Float := Float (Height);
       Horizon : Natural := Height;
       Hit : Boolean;
@@ -191,7 +193,7 @@ package body Neon_Soft is
       Sun_R : constant Float := Sun_Radius * H * (1.0 + 0.05 * F.Sun_Swell);
       Sun_X : Float := Cam.Center_X;
       Sun_Y : Float;
-      Haze : constant RGB := Mix (Sky_Low, Horizon_Glow, 0.55);
+      Haze : constant RGB := Mix (L.Sky_Low, L.Horizon, 0.55);
       Grid_Gain : constant Float := 0.55 + 0.75 * F.Kick;
       Ridges : array (0 .. Width - 1) of Float;
       LR : Light_Plane renames R.Light_R.all;
@@ -205,10 +207,10 @@ package body Neon_Soft is
       procedure Floor_Row (Y : Natural; Z, T, Last_Z : Float) is
          Row_Base : constant Natural := Y * Pitch;
          Pixel_World : constant Float := T / Cam.Focal;
-         Pixel_Cells : constant Float := Pixel_World / Grid_Cell;
-         Row_Cells : constant Float := Max (abs (Last_Z - Z), 1.0e-4) / Grid_Cell;
+         Pixel_Cells : constant Float := Pixel_World / L.Grid_Cell;
+         Row_Cells : constant Float := Max (abs (Last_Z - Z), 1.0e-4) / L.Grid_Cell;
          Across_Z : constant Float :=
-           Line_Profile (Cell_Distance ((Z + F.Scroll) / Grid_Cell), Row_Cells);
+           Line_Profile (Cell_Distance ((Z + F.Scroll) / L.Grid_Cell), Row_Cells);
          Inside_Z : constant Boolean := abs Z <= Neon_Sim.Half_Depth;
          Fog : constant Float := Smooth_Step (Neon_Sim.Half_Depth + 2.0, 80.0, Z);
          Keep : constant Float := 1.0 - 0.85 * Fog;
@@ -237,9 +239,9 @@ package body Neon_Soft is
          declare
             Base : constant Float := Across_Z + Even;
             Outside : constant Unsigned_32 :=
-              Pack (Keep * Floor_Base + (Base * Outer_Gain) * Grid_Violet + Fogged);
+              Pack (Keep * L.Floor_Base + (Base * Outer_Gain) * L.Grid_Outer + Fogged);
             Inside : constant Unsigned_32 :=
-              Pack (Keep * Floor_Base + (Base * Inner_Gain) * Grid_Pink + Fogged);
+              Pack (Keep * L.Floor_Base + (Base * Inner_Gain) * L.Grid_Inner + Fogged);
          begin
             for X in 0 .. Width - 1 loop
                Pixels (Row_Base + X) := (if X >= Arena_Left and then X <= Arena_Right then Inside else Outside);
@@ -249,18 +251,18 @@ package body Neon_Soft is
          if Blend < 1.0 then
             declare
                Reach : constant Float := 1.53 / 0.16 * Pixel_Cells + Pixel_Cells;   --  cells
-               First : constant Integer := Floor_Int ((Start_X / Grid_Cell) - Reach) ;
-               Last : constant Integer := Floor_Int ((Start_X + Pixel_World * Float (Width)) / Grid_Cell + Reach) + 1;
+               First : constant Integer := Floor_Int ((Start_X / L.Grid_Cell) - Reach) ;
+               Last : constant Integer := Floor_Int ((Start_X + Pixel_World * Float (Width)) / L.Grid_Cell + Reach) + 1;
                Line_Share : constant Float := 1.0 - Blend;
             begin
                for K in First .. Last loop
                   declare
-                     Center : constant Float := Column_Of (Float (K) * Grid_Cell);
+                     Center : constant Float := Column_Of (Float (K) * L.Grid_Cell);
                      Span : constant Float := Reach / Pixel_Cells;
                      X0 : constant Integer := Integer'Max (0, Floor_Int (Center - Span));
                      X1 : constant Integer := Integer'Min (Width - 1, Floor_Int (Center + Span) + 1);
-                     Inside_Line : constant Boolean := Inside_Z and then abs (Float (K) * Grid_Cell) <= Neon_Sim.Half_Width;
-                     Hue : constant RGB := (if Inside_Line then Grid_Pink else Grid_Violet);
+                     Inside_Line : constant Boolean := Inside_Z and then abs (Float (K) * L.Grid_Cell) <= Neon_Sim.Half_Width;
+                     Hue : constant RGB := (if Inside_Line then L.Grid_Inner else L.Grid_Outer);
                      Gain : constant Float := (if Inside_Line then Inner_Gain else Outer_Gain);
                   begin
                      for X in X0 .. X1 loop
@@ -321,7 +323,7 @@ package body Neon_Soft is
                                     LG (I00) * W00 + LG (I00 + 1) * W01 + LG (I10) * W10 + LG (I10 + 1) * W11,
                                     LB (I00) * W00 + LB (I00 + 1) * W01 + LB (I10) * W10 + LB (I10 + 1) * W11);
                                  Along : constant Float :=
-                                   Line_Profile (Cell_Distance (WX / Grid_Cell), Pixel_Cells) * (1.0 - Blend) + Even;
+                                   Line_Profile (Cell_Distance (WX / L.Grid_Cell), Pixel_Cells) * (1.0 - Blend) + Even;
                                  Grid : constant Float := Min (1.6, Along + Across_Z);
                               begin
                                  Add_Pixel (Pixels, Row_Base + X, Light_Color, Keep * (1.3 * Grid + 0.22));
@@ -371,7 +373,7 @@ package body Neon_Soft is
       Sun_Y := Float (Horizon) - 0.3 * Sun_R;
       Sun_X := Float (Width) / 2.0;
       for X in Ridges'Range loop
-         Ridges (X) := Float (Horizon) - H * Ridge (Float (X) / Float (Width));
+         Ridges (X) := Float (Horizon) - H * L.Ridge_Height * Ridge (Float (X) / Float (Width));
       end loop;
 
       Previous_Z := 1.0e6;
@@ -385,9 +387,9 @@ package body Neon_Soft is
                declare
                   Up : constant Float := Saturate (FY / Max (Float (Horizon), 1.0));
                   Sky : RGB :=
-                    (if Up < 0.55 then Mix (Sky_Top, Sky_Mid, Up / 0.55)
-                     elsif Up < 0.85 then Mix (Sky_Mid, Sky_Low, (Up - 0.55) / 0.3)
-                     else Mix (Sky_Low, Horizon_Glow, (Up - 0.85) / 0.15));
+                    (if Up < 0.55 then Mix (L.Sky_Top, L.Sky_Mid, Up / 0.55)
+                     elsif Up < 0.85 then Mix (L.Sky_Mid, L.Sky_Low, (Up - 0.55) / 0.3)
+                     else Mix (L.Sky_Low, L.Horizon, (Up - 0.85) / 0.15));
                   Above : constant Float := Float (Horizon) - FY;
                   Glow_Band : constant Float := 0.45 / (1.0 + (Above / (0.05 * H)) ** 2);
                   DY : constant Float := FY - Sun_Y;
@@ -395,13 +397,13 @@ package body Neon_Soft is
                   Band_Cut : Boolean := False;
                   Sky_Packed : Unsigned_32;
                begin
-                  Sky := Sky + Glow_Band * Horizon_Glow;
+                  Sky := Sky + Glow_Band * L.Horizon;
                   Sky_Packed := Pack (Sky);
                   --  The sun's stripes: wider gaps lower down, drifting down.
                   if DY > -0.15 * Sun_R then
                      declare
                         Depth : constant Float := (DY + 0.15 * Sun_R) / Sun_R;
-                        Phase : constant Float := Fraction (Depth * 7.0 - F.Seconds * 0.35);
+                        Phase : constant Float := Fraction (Depth * L.Sun_Bands - F.Seconds * 0.35);
                      begin
                         Band_Cut := Phase < 0.1 + 0.55 * Depth;
                      end;
@@ -423,8 +425,8 @@ package body Neon_Soft is
                            declare
                               Below : constant Float := FY - Ridges (X);
                            begin
-                              C := Mix (Mountain_Fill, Sky, 0.25)
-                                + (Saturate (1.6 - Below) * 1.2) * Mountain_Edge;
+                              C := Mix (L.Mountain_Fill, Sky, 0.25)
+                                + (Saturate (1.6 - Below) * 1.2) * L.Mountain_Edge;
                            end;
                         else
                            if Up < 0.6 then
@@ -443,12 +445,12 @@ package body Neon_Soft is
                                  D : constant Float := Sqrt (DX * DX + DY * DY);
                               begin
                                  if D < Sun_R and then not Band_Cut then
-                                    C := Mix (Sun_Top, Sun_Bottom,
+                                    C := Mix (L.Sun_Top, L.Sun_Bottom,
                                               Saturate ((DY + Sun_R) / (2.0 * Sun_R)))
                                       + (0.25 * F.Sun_Swell) * White;
                                  elsif D >= Sun_R then
                                     C := C + (0.55 / (1.0 + ((D - Sun_R) / (0.18 * Sun_R)) ** 2)
-                                              * (1.0 + 0.4 * F.Sun_Swell)) * Sun_Bottom;
+                                              * (1.0 + 0.4 * F.Sun_Swell)) * L.Sun_Bottom;
                                  end if;
                               end;
                            end if;

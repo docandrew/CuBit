@@ -19,8 +19,17 @@
 --
 --  Enemies move on the music: cubes hop a step toward the player on every
 --  beat, pyramids charge on every other beat, tori fire rings of orbs on
---  downbeats, shards weave and split. Waves spawn on beats, harder ones on
---  the build-ups, and a cleared wave drops the music into a breakdown.
+--  downbeats, shards weave and split, strobes jump on the bar to where
+--  they marked a beat before, sentries fire on the snare, droppers charge
+--  through a build and only strike on the drop. A warden (the mini-boss)
+--  arrives on a stage's first drop, and the totem (the boss) at its peak.
+--
+--  The game follows the song's form, not the other way round: a stage is
+--  the composer's stage (Neon_Composer), its sections are the waves, and
+--  each section spawns its own mix. Felling the totem lets the music move
+--  on, through an outro, into the next stage's style, palette and grid.
+--  The title picks the playlist's seed (any seed is a new style), the
+--  start (a stage, or a stage's boss) and keeps favourite seeds.
 --
 --  Every pool below is a named design ceiling of what one screen holds;
 --  reaching one drops the oldest particle or refuses the spawn, and the
@@ -30,6 +39,7 @@ with Interfaces; use Interfaces;
 with Neon_Math; use Neon_Math;
 with Neon_Time; use Neon_Time;
 with Neon_Random;
+with Neon_Style;
 with Neon_Composer;
 
 package Neon_Sim is
@@ -49,6 +59,13 @@ package Neon_Sim is
       Calibrate : Boolean := False;   --  open or close calibration
       Tap : Boolean := False;         --  a calibration tap (pressed in this step)
       Demo : Boolean := False;        --  Confirm starts an attract-mode demo game
+      --  The title's pickers (pressed in this step): the seed back or on,
+      --  a random seed, keep the seed, and the start choice back or on.
+      Seed_Step : Integer range -1 .. 1 := 0;
+      Seed_Random : Boolean := False;
+      Keep : Boolean := False;
+      Choice_Step : Integer range -1 .. 1 := 0;
+      Bestiary : Boolean := False;    --  show or hide the enemy guide
       --  The newest press among Fire, Dash and Tap in this step, judged
       --  against the beat by the caller (who has the hardware-side clock):
       --  signed milliseconds, late positive.
@@ -56,14 +73,28 @@ package Neon_Sim is
       Press_Error_Ms : Float := 0.0;
    end record;
 
-   type Enemy_Kind is (Cube, Pyramid, Torus, Shard, Splinter);
+   type Enemy_Kind is
+     (Cube, Pyramid, Torus, Shard, Splinter,
+      Strobe,     --  jumps on the bar to the mark it set a beat before
+      Dropper,    --  charges through a build, bursts and strikes on the drop
+      Sentry,     --  fires an aimed bolt on every snare
+      Warden,     --  mini-boss: the first drop's
+      Totem);     --  boss: the stage's peak
+   subtype Boss_Kind is Enemy_Kind range Warden .. Totem;
 
    ---------------------------------------------------------------------------
    --  What the audio side is asked to play (resolved against the beat grid
    --  there: shots take the chord, explosions their next sixteenth).
    type Sound_Kind is
      (Shot, Explosion, Dash_Sound, Hurt_Sound, Combo_Chime, Spawn_Warning, Wave_Chime,
-      Death_Sound, Tap_Sound);
+      Death_Sound, Tap_Sound,
+      Enemy_Fire,     --  a sentry's or a boss's bolt: a falling zap on the chord
+      Warp,           --  a strobe's jump: a rising zap
+      Burst_Sound,    --  a dropper strikes
+      Boss_Arrive,    --  growl and impact
+      Boss_Hit,       --  a clank
+      Boss_Down,      --  the boss falls
+      Title_Tick);    --  a title picker moved
    type Sound_Request is record
       Kind : Sound_Kind := Shot;
       Pan : Float := 0.0;         --  -1 .. 1 from the arena X
@@ -92,6 +123,9 @@ package Neon_Sim is
    type Enemy is record
       Alive : Boolean := False;
       Kind : Enemy_Kind := Cube;
+      Power : Float := 0.0;           --  a dropper's charge, 0 .. 1
+      Armed : Boolean := False;       --  a strobe has its mark; a dropper has struck
+      Volley : Natural := 0;          --  a boss's pattern counter
       Position, Velocity : Vec2;
       Height : Float := 0.0;          --  hops lift cubes off the floor
       Health : Natural := 1;
@@ -118,6 +152,7 @@ package Neon_Sim is
       Alive : Boolean := False;
       Position, Velocity : Vec2;
       Age : Float := 0.0;
+      Hue : RGB;
    end record;
    type Orb_Array is array (1 .. Orb_Ceiling) of Orb;
 
@@ -155,7 +190,8 @@ package Neon_Sim is
 
    type Score_Entry is record
       Score : Natural := 0;
-      Wave : Natural := 0;
+      Stage : Natural := 0;
+      Playlist : Unsigned_64 := 0;
    end record;
    type Score_Table is array (1 .. Score_Table_Size) of Score_Entry;
 
@@ -184,6 +220,16 @@ package Neon_Sim is
    end record;
 
    Calibration_Taps : constant := 16;
+   Favourite_Ceiling : constant := 6;
+   subtype Favourite_Count is Natural range 0 .. Favourite_Ceiling;
+   type Favourite_Array is array (1 .. Favourite_Ceiling) of Unsigned_64;
+   --  The title's start choices: a stage from its intro, or a stage's boss.
+   Choice_Count : constant := 2 * Neon_Composer.Stages_Per_Run;
+   subtype Start_Choice is Natural range 0 .. Choice_Count - 1;
+   function Choice_Stage (C : Start_Choice) return Positive is
+     (1 + C mod Neon_Composer.Stages_Per_Run);
+   function Choice_Is_Boss (C : Start_Choice) return Boolean is
+     (C >= Neon_Composer.Stages_Per_Run);
    type Tap_Array is array (1 .. Calibration_Taps) of Float;
 
    type World is record
@@ -211,11 +257,25 @@ package Neon_Sim is
       Last_Kill_On_Beat : Float := 0.0;   --  seconds the "ON BEAT" banner shows
       Kill_Timing : Judgement;
       Press_Timing : Judgement;
-      Wave : Natural := 0;
-      Wave_Budget : Natural := 0;         --  enemies still to spawn this wave
-      Wave_Bars : Natural := 0;           --  bars since the wave began
-      Clear_Bars : Natural := 0;          --  breakdown bars left before the next wave
-      Banner : Float := 0.0;              --  seconds the wave banner shows
+      --  The song's form as the game last saw it.
+      Run : Natural := 0;                 --  games started (the composer starts a run on a new one)
+      Stage : Natural := 0;
+      Section : Neon_Composer.Section_Kind := Neon_Composer.Title_Theme;
+      Defeated_Stage : Natural := 0;      --  the newest stage whose totem is down
+      Warden_Stage : Natural := 0;        --  the newest stage a warden came to
+      Totem_Stage : Natural := 0;         --  the newest stage a totem came to
+      Boss : Natural := 0;                --  the boss's enemy slot (0: none)
+      Boss_Health : Natural := 1;         --  its starting health, for the bar
+      Banner : Float := 0.0;              --  seconds the section banner shows
+      Banner_Kind : Neon_Composer.Section_Kind := Neon_Composer.Intro;
+      Stage_Clear : Float := 0.0;         --  seconds the stage-clear banner shows
+      Stages_Cleared : Natural := 0;
+      --  The title's pickers.
+      Playlist : Neon_Style.Playlist_Seed := 1;
+      Choice : Start_Choice := 0;
+      Favourites : Favourite_Array := [others => 0];
+      Favourites_Kept : Favourite_Count := 0;
+      Bestiary : Boolean := False;        --  the title shows the enemy guide
       Shake : Float := 0.0;
       Screen_Flash : Float := 0.0;
       Hurt_Flash : Float := 0.0;
@@ -238,7 +298,7 @@ package Neon_Sim is
 
    --  One step at song time Now. Current is the composer step playing at
    --  Now; New_Step says it began in this step (at most one does: steps are
-   --  6000 samples or more, simulation steps 200).
+   --  4500 samples or more, simulation steps 200).
    procedure Step (W : in out World; Input : Controls; Now : Samples;
                    Current : Neon_Composer.Step_Record; New_Step : Boolean;
                    Sounds : in out Sound_List);
@@ -254,7 +314,10 @@ package Neon_Sim is
    function Spread (J : Judgement) return Float;
 
    --  Insert Score into the table; Rank is its place (0: not placed).
-   procedure Place_Score (Table : in out Score_Table; Score, Wave : Natural; Rank : out Natural);
+   procedure Place_Score (Table : in out Score_Table; Score, Stage : Natural; Playlist : Unsigned_64;
+                          Rank : out Natural);
+   --  The seed is among the kept favourites.
+   function Is_Favourite (W : World; Seed : Unsigned_64) return Boolean;
 
    --  Colours of the palette (also used by the renderers).
    Hot_Pink : constant RGB := From_Hex (16#FF2BD6#);
@@ -264,6 +327,10 @@ package Neon_Sim is
    Lime : constant RGB := From_Hex (16#9DFF6A#);
    Gold : constant RGB := From_Hex (16#FFD84A#);
    White : constant RGB := (1.0, 1.0, 1.0);
+   Ember : constant RGB := From_Hex (16#FF6A2B#);     --  strobes
+   Orchid : constant RGB := From_Hex (16#B05CFF#);    --  droppers
+   Coral : constant RGB := From_Hex (16#FF3D5A#);     --  sentries
+   Magenta : constant RGB := From_Hex (16#FF4FD8#);   --  the warden
 
    function Enemy_Color (Kind : Enemy_Kind) return RGB is
      (case Kind is
@@ -271,10 +338,16 @@ package Neon_Sim is
         when Pyramid => Gold,
         when Torus => Hot_Pink,
         when Shard => Lime,
-        when Splinter => Lime);
+        when Splinter => Lime,
+        when Strobe => Ember,
+        when Dropper => Orchid,
+        when Sentry => Coral,
+        when Warden => Magenta,
+        when Totem => Gold);
    function Enemy_Radius (Kind : Enemy_Kind) return Float is
      (case Kind is
         when Cube => 0.9, when Pyramid => 0.85, when Torus => 1.3, when Shard => 0.8,
-        when Splinter => 0.5);
+        when Splinter => 0.5, when Strobe => 0.9, when Dropper => 0.8, when Sentry => 0.9,
+        when Warden => 1.6, when Totem => 2.6);
 
 end Neon_Sim;

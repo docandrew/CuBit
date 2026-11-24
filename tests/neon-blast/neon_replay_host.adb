@@ -11,6 +11,9 @@
 --  frames and the soundtrack as a WAV. Not a CuBit result.
 --
 --  Usage: neon_replay_host OUT_DIR SECONDS SEED WIDTH HEIGHT [SHOT_EVERY_FRAMES]
+--                          [START_CHOICE [BESTIARY]]
+--  START_CHOICE picks the title's start (0 .. 3: stages 1 .. 4, 4 .. 7:
+--  their bosses); BESTIARY 1 shows the enemy guide on the title.
 ------------------------------------------------------------------------------
 with Ada.Command_Line; use Ada.Command_Line;
 with Ada.Text_IO; use Ada.Text_IO;
@@ -31,6 +34,8 @@ procedure Neon_Replay_Host is
    Width : constant Positive := Positive'Value (Argument (4));
    Height : constant Positive := Positive'Value (Argument (5));
    Shot_Every : constant Natural := (if Argument_Count >= 6 then Natural'Value (Argument (6)) else 0);
+   Choice : constant Natural := (if Argument_Count >= 7 then Natural'Value (Argument (7)) else 0);
+   Bestiary : constant Boolean := Argument_Count >= 8 and then Argument (8) = "1";
 
    type Pixels_Type is array (0 .. Width * Height - 1) of Unsigned_32;
    type Pixels_Access is access Pixels_Type;
@@ -72,6 +77,8 @@ procedure Neon_Replay_Host is
    end Image;
 begin
    Neon_Replay.Start (R.all, Seed);
+   R.Game.Sim.Choice := Choice;
+   R.Game.Sim.Bestiary := Bestiary;
    Wave_Files.Create (Wave, Out_Dir & "/replay.wav");
    --  Every kick the composer placed, by song sample (the sync check).
    Ada.Text_IO.Create (Kicks, Ada.Text_IO.Out_File, Out_Dir & "/kicks.txt");
@@ -111,7 +118,7 @@ begin
                 & " size=" & Image (Width) & "x" & Image (Height));
       Put_Line ("REPLAY frame_hash=" & Unsigned_64'Image (O.Frame_Hash));
       Put_Line ("REPLAY audio_hash=" & Unsigned_64'Image (O.Audio_Hash));
-      Put_Line ("REPLAY score=" & Image (O.Score) & " wave=" & Image (O.Wave) & " kills="
+      Put_Line ("REPLAY score=" & Image (O.Score) & " stage=" & Image (O.Stage) & " kills="
                 & Image (O.Kills) & " on_beat=" & Image (O.On_Beat)
                 & " dropped_notes=" & Image (Neon_Synth.Dropped_Notes (R.Game.Synth)));
       Put_Line ("REPLAY step_ms_avg=" & Duration'Image (Render_Total / Frames * 1000)

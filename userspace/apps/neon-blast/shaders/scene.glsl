@@ -15,6 +15,7 @@ layout(std140, set = 0, binding = 0) uniform Globals {
     vec4 counts;     // lights, ripples, sun radius (fraction of height), 0
     vec4 lights[2 * LIGHT_CEILING];    // (pos, radius), (colour, 0)
     vec4 ripples[2 * RIPPLE_CEILING];  // (centre xz, radius, width), (colour, strength)
+    vec4 look[12];   // the stage's colours (Neon_Style.Look), then grid cell, sun bands, ridge
 } g;
 
 // Project a world point to pixels; w = camera depth.

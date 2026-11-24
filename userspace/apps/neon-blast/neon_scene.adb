@@ -5,11 +5,13 @@
 ------------------------------------------------------------------------------
 with Neon_Sim; use Neon_Sim;
 with Neon_Time; use Neon_Time;
+with Interfaces; use Interfaces;
 with Neon_Composer;
 with Neon_Font;
 
 package body Neon_Scene is
    package C renames Neon_Composer;
+   use type C.Section_Kind;
 
    --  The camera: 55 degrees down, high above the near edge, the floor
    --  bending away past the far edge (see the spec).
@@ -182,6 +184,35 @@ package body Neon_Scene is
       return Text (Text'First + 1 .. Text'Last);
    end Image;
 
+   --  A playlist seed as six digits.
+   function Seed_Image (Seed : Unsigned_64) return String is
+      Digits_Shown : constant := 6;
+      Text : String (1 .. Digits_Shown);
+      Value : Unsigned_64 := Seed;
+   begin
+      for I in reverse Text'Range loop
+         Text (I) := Character'Val (Character'Pos ('0') + Natural (Value mod 10));
+         Value := Value / 10;
+      end loop;
+      return Text;
+   end Seed_Image;
+
+   function Section_Label (S : C.Section_Kind) return String is
+     (case S is
+        when C.Title_Theme => "TITLE", when C.Intro => "INTRO", when C.Groove => "GROOVE",
+        when C.Build => "BUILD", when C.Drop => "DROP", when C.Breakdown => "BREAKDOWN",
+        when C.Peak => "BOSS", when C.Outro => "OUTRO", when C.Finale => "FINALE",
+        when C.Metronome => "CALIBRATE");
+
+   --  The style line: name, region, tempo, key.
+   function Style_Line (Current : C.Step_Record) return String is
+     (C.Style_Name (Current) & "   " & Neon_Style.Region_Name (Current.Region) & "   "
+      & Image (BPM (Current.Length)) & " BPM   " & Neon_Style.Key_Name (Current.Key) & " "
+      & Neon_Style.Mode_Name (Current.Mode));
+
+   --  Right-aligned text ending at X.
+   procedure Add_Right (F : in out Frame; Text : String; X, Y, Size : Float; Color : RGB; Width : Float);
+
    --  A point rotated about the vertical axis by Turns, then tilted about
    --  X by Tilt turns, placed at Center.
    function Place (Local : Vec3; Turns, Tilt : Float; Center : Vec3) return Vec3 is
@@ -290,6 +321,53 @@ package body Neon_Scene is
       end loop;
    end Add_Octahedron;
 
+   --  A regular prism: Sides-gon top and bottom, standing on Base.
+   procedure Add_Prism (F : in out Frame; Base : Vec3; Radius, Height, Turns : Float; Sides : Positive;
+                        Color : RGB) is
+      A, B : Vec3;
+   begin
+      for I in 0 .. Sides - 1 loop
+         A := Place ((Radius * Cos_Turns (Float (I) / Float (Sides)), 0.0,
+                      Radius * Sin_Turns (Float (I) / Float (Sides))), Turns, 0.0, Base);
+         B := Place ((Radius * Cos_Turns (Float (I + 1) / Float (Sides)), 0.0,
+                      Radius * Sin_Turns (Float (I + 1) / Float (Sides))), Turns, 0.0, Base);
+         Add_Line (F, A, B, Color, 2.4);
+         Add_Line (F, A + (0.0, Height, 0.0), B + (0.0, Height, 0.0), Color, 2.4);
+         Add_Line (F, A, A + (0.0, Height, 0.0), 0.7 * Color, 1.6);
+      end loop;
+   end Add_Prism;
+
+   --  A ring of Segments in the plane tilted Tilt turns about X, turning.
+   procedure Add_Ring (F : in out Frame; Center : Vec3; Radius, Turns, Tilt : Float; Segments : Positive;
+                       Color : RGB; Width : Float := 2.2) is
+      A, B : Vec3;
+   begin
+      for I in 0 .. Segments - 1 loop
+         A := Place ((Radius * Cos_Turns (Float (I) / Float (Segments)), 0.0,
+                      Radius * Sin_Turns (Float (I) / Float (Segments))), Turns, Tilt, Center);
+         B := Place ((Radius * Cos_Turns (Float (I + 1) / Float (Segments)), 0.0,
+                      Radius * Sin_Turns (Float (I + 1) / Float (Segments))), Turns, Tilt, Center);
+         Add_Line (F, A, B, Color, Width);
+      end loop;
+   end Add_Ring;
+
+   --  A dropper: a small octahedron with spikes that grow with its charge.
+   procedure Add_Star (F : in out Frame; Center : Vec3; Power, Turns : Float; Color : RGB) is
+      Spikes : constant := 6;
+      Reach : constant Float := 0.5 + 0.9 * Power;
+   begin
+      Add_Octahedron (F, Center, 0.4, Turns, Color);
+      for I in 0 .. Spikes - 1 loop
+         declare
+            Out_Dir : constant Vec3 :=
+              Place ((Cos_Turns (Float (I) / Float (Spikes)), (if I mod 2 = 0 then 0.35 else -0.35),
+                      Sin_Turns (Float (I) / Float (Spikes))), Turns, 0.0, (0.0, 0.0, 0.0));
+         begin
+            Add_Line (F, Center + 0.35 * Out_Dir, Center + Reach * Out_Dir, Mix (Color, White, 0.4 * Power), 2.0);
+         end;
+      end loop;
+   end Add_Star;
+
    procedure Add_Ship (F : in out Frame; Position, Facing : Vec2; Color : RGB; Scale : Float := 1.0) is
       Right : constant Vec2 := (Facing.Y, -Facing.X);
       function At_Local (Side, Ahead, Up : Float) return Vec3 is
@@ -327,6 +405,12 @@ package body Neon_Scene is
       end loop;
    end Add_Arena;
 
+   procedure Add_Right (F : in out Frame; Text : String; X, Y, Size : Float; Color : RGB; Width : Float) is
+   begin
+      Add_Text (F, Text, X - Size / Float (Neon_Font.Grid_Height) * Float (Neon_Font.Width (Text)), Y, Size,
+                Color, Width);
+   end Add_Right;
+
    procedure Build_HUD (F : in out Frame; G : Neon_Game.Game; Current : C.Step_Record;
                         Beat_Phase : Float) is
       W : World renames G.Sim;
@@ -337,8 +421,17 @@ package body Neon_Scene is
       if W.Demo and then W.Phase in Playing | Dying | Game_Over
         and then Fraction (F.Seconds * 0.5) < 0.75
       then
-         Add_Text (F, "DEMO   CLICK TO PLAY", Aspect / 2.0, 0.93, 0.024, 0.8 * Hot_Pink, 1.6,
+         Add_Text (F, "DEMO   CLICK TO PLAY", Aspect / 2.0, 0.935, 0.024, 0.8 * Hot_Pink, 1.6,
                    Centered => True);
+      end if;
+      if W.Phase = Title and then W.Bestiary then
+         Add_Text (F, "BESTIARY", Aspect / 2.0, 0.06, 0.06, Mix (Hot_Pink, White, 0.25 * Pulse), 3.0,
+                   Centered => True);
+         Add_Text (F, "EVERY ENEMY MOVES ON THE MUSIC", Aspect / 2.0, 0.14, 0.02, Cyan, 1.5,
+                   Centered => True);
+         Add_Text (F, "G BACK   ENTER PLAY", Aspect / 2.0, 0.968, 0.018, 0.8 * Violet, 1.5,
+                   Centered => True);
+         return;
       end if;
       case W.Phase is
          when Playing | Dying =>
@@ -351,15 +444,29 @@ package body Neon_Scene is
                Add_Stroke (F, (Margin, Margin + 0.145),
                            (Margin + 0.18 * W.Combo_Timer / 1.6, Margin + 0.145), Gold, 3.0);
             end if;
-            declare
-               Label : constant String := "WAVE " & Image (W.Wave);
-               Size : constant := 0.03;
-            begin
-               --  Right-aligned: shift left by the text's width.
-               Add_Text (F, Label, Aspect - Margin
-                         - Size / Float (Neon_Font.Grid_Height) * Float (Neon_Font.Width (Label)),
-                         Margin, Size, Violet, 2.0);
-            end;
+            Add_Right (F, "STAGE " & Image (Natural'Max (1, W.Stage)), Aspect - Margin, Margin, 0.03, Violet, 2.0);
+            if Current.Stage > 0 then
+               Add_Right (F, Section_Label (Current.Section), Aspect - Margin, Margin + 0.11, 0.018,
+                          (if Current.Section in C.Drop | C.Peak then Mix (Hot_Pink, White, 0.4 * Pulse)
+                           else 0.8 * Cyan), 1.4);
+            end if;
+            Add_Text (F, Style_Line (Current), Margin, 0.972, 0.014, 0.55 * Cyan, 1.2);
+            --  The boss's health.
+            if W.Boss /= 0 and then W.Enemies (W.Boss).Alive and then W.Enemies (W.Boss).Spawn_Left = 0.0 then
+               declare
+                  Boss : Enemy renames W.Enemies (W.Boss);
+                  Left : constant Float := Aspect / 2.0 - 0.3;
+                  Bar_Y : constant := 0.905;
+                  Share : constant Float := Saturate (Float (Boss.Health) / Float (W.Boss_Health));
+                  Name : constant String := (if Boss.Kind = Totem then "TOTEM" else "WARDEN");
+               begin
+                  Add_Text (F, Name, Aspect / 2.0, Bar_Y - 0.035, 0.02, Enemy_Color (Boss.Kind), 1.6,
+                            Centered => True);
+                  Add_Stroke (F, (Left, Bar_Y), (Left + 0.6, Bar_Y), 0.25 * White, 5.0);
+                  Add_Stroke (F, (Left, Bar_Y), (Left + 0.6 * Share, Bar_Y),
+                              Mix (Enemy_Color (Boss.Kind), White, 0.5 * Boss.Hit_Flash), 5.0);
+               end;
+            end if;
             for Life in 1 .. W.Player.Lives loop
                declare
                   X : constant Float := Aspect - Margin - 0.04 * Float (Life);
@@ -389,21 +496,33 @@ package body Neon_Scene is
                           else Cyan), 1.6, Centered => True);
             end if;
             if W.Last_Kill_On_Beat > 0.0 then
-               Add_Text (F, "ON BEAT", Aspect / 2.0, 0.86, 0.03 + 0.02 * W.Last_Kill_On_Beat,
+               Add_Text (F, "ON BEAT", Aspect / 2.0, 0.78, 0.03 + 0.02 * W.Last_Kill_On_Beat,
                          W.Last_Kill_On_Beat * 1.6 * Gold, 2.2, Centered => True);
             end if;
-            if W.Banner > 0.0 then
+            if W.Stage_Clear > 0.0 then
+               declare
+                  Fade : constant Float := Saturate (W.Stage_Clear);
+               begin
+                  Add_Text (F, "STAGE CLEAR", Aspect / 2.0, 0.4, 0.075, Fade * Gold, 3.2, Centered => True);
+                  Add_Text (F, "+" & Image (5000 * Natural'Max (1, W.Stage)), Aspect / 2.0, 0.5, 0.035,
+                            Fade * White, 2.0, Centered => True);
+               end;
+            elsif W.Banner > 0.0 then
                declare
                   Fade : constant Float := Saturate (W.Banner);
                begin
-                  if W.Clear_Bars > 0 then
-                     Add_Text (F, "WAVE CLEAR", Aspect / 2.0, 0.42, 0.07, Fade * Gold, 3.0,
-                               Centered => True);
-                     Add_Text (F, "+" & Image (1000 * W.Wave), Aspect / 2.0, 0.52, 0.035,
-                               Fade * White, 2.0, Centered => True);
-                  else
-                     Add_Text (F, "WAVE " & Image (W.Wave), Aspect / 2.0, 0.42, 0.08,
+                  if W.Banner_Kind = C.Intro then
+                     Add_Text (F, "STAGE " & Image (W.Stage), Aspect / 2.0, 0.38, 0.08,
                                Fade * Mix (Hot_Pink, White, 0.3 * Pulse), 3.4, Centered => True);
+                     Add_Text (F, C.Style_Name (Current), Aspect / 2.0, 0.49, 0.032, Fade * Cyan, 1.8,
+                               Centered => True);
+                     Add_Text (F, Neon_Style.Region_Name (Current.Region) & "   " & Image (BPM (Current.Length))
+                               & " BPM", Aspect / 2.0, 0.54, 0.02, Fade * Violet, 1.4, Centered => True);
+                  else
+                     Add_Text (F, Section_Label (W.Banner_Kind), Aspect / 2.0, 0.42,
+                               (if W.Banner_Kind in C.Drop | C.Peak then 0.08 else 0.055),
+                               Fade * (if W.Banner_Kind in C.Drop | C.Peak then Mix (Hot_Pink, White, 0.3 * Pulse)
+                                       else Cyan), 3.0, Centered => True);
                   end if;
                end;
             end if;
@@ -416,8 +535,31 @@ package body Neon_Scene is
                Add_Text (F, "BLAST", Aspect / 2.0, 0.215 + Bob, 0.11, Mix (Cyan, White, 0.25 * Pulse),
                          5.0, Centered => True);
             end;
+            --  The playlist: the seed, its style, where the run starts.
+            Add_Text (F, "SEED  " & Seed_Image (W.Playlist) & (if Is_Favourite (W, W.Playlist) then " *" else "")
+                      & (if Neon_Style.Is_Preset (W.Playlist) then "  PRESET" else ""),
+                      Aspect / 2.0, 0.37, 0.04, Mix (Gold, White, 0.2 * Pulse), 2.4, Centered => True);
+            Add_Text (F, Style_Line (Current), Aspect / 2.0, 0.435, 0.02, Cyan, 1.5, Centered => True);
+            Add_Text (F, "START  " & (if Choice_Is_Boss (W.Choice) then "BOSS " else "STAGE ")
+                      & Image (Choice_Stage (W.Choice)), Aspect / 2.0, 0.49, 0.026, Hot_Pink, 1.8,
+                      Centered => True);
+            Add_Text (F, "LEFT RIGHT SEED   R RANDOM   K KEEP   UP DOWN START   G BESTIARY", Aspect / 2.0, 0.535, 0.017,
+                      0.7 * Violet, 1.3, Centered => True);
+            if W.Favourites_Kept > 0 then
+               declare
+                  Kept : String (1 .. 7 * Favourite_Ceiling) := [others => ' '];
+                  Last : Natural := 0;
+               begin
+                  for I in 1 .. W.Favourites_Kept loop
+                     Kept (Last + 1 .. Last + 6) := Seed_Image (W.Favourites (I));
+                     Last := Last + 7;
+                  end loop;
+                  Add_Text (F, "KEPT  " & Kept (1 .. Last - 1), Aspect / 2.0, 0.57, 0.017, 0.8 * Gold, 1.3,
+                            Centered => True);
+               end;
+            end if;
             if Fraction (F.Seconds * 0.5) < 0.7 then
-               Add_Text (F, "CLICK OR PRESS ENTER", Aspect / 2.0, 0.62, 0.032, Gold, 2.2,
+               Add_Text (F, "CLICK OR PRESS ENTER", Aspect / 2.0, 0.63, 0.032, Gold, 2.2,
                          Centered => True);
             end if;
             Add_Text (F, "WASD MOVE   MOUSE AIM   CLICK FIRE   SPACE DASH", Aspect / 2.0, 0.7, 0.02,
@@ -428,16 +570,17 @@ package body Neon_Scene is
                Add_Text (F, "HIGH SCORES", Aspect / 2.0, 0.8, 0.022, Hot_Pink, 1.6, Centered => True);
                for I in 1 .. 3 loop
                   exit when W.Scores (I).Score = 0;
-                  Add_Text (F, Image (I) & ". " & Image (W.Scores (I).Score) & "  WAVE "
-                            & Image (W.Scores (I).Wave), Aspect / 2.0, 0.8 + 0.035 * Float (I),
-                            0.02, White, 1.4, Centered => True);
+                  Add_Text (F, Image (I) & ". " & Image (W.Scores (I).Score) & "  STAGE "
+                            & Image (W.Scores (I).Stage) & "  SEED " & Seed_Image (W.Scores (I).Playlist),
+                            Aspect / 2.0, 0.8 + 0.035 * Float (I), 0.02, White, 1.4, Centered => True);
                end loop;
             end if;
          when Game_Over =>
             Add_Text (F, "GAME OVER", Aspect / 2.0, 0.12, 0.09, Mix (Hot_Pink, White, 0.3 * Pulse),
                       4.0, Centered => True);
             Add_Text (F, Image (W.Score), Aspect / 2.0, 0.26, 0.06, White, 3.0, Centered => True);
-            Add_Text (F, "WAVE " & Image (W.Wave) & "   BEST RHYTHM " & Image (W.Best_Streak)
+            Add_Text (F, "STAGE " & Image (W.Stage) & "   SEED " & Seed_Image (W.Playlist)
+                      & "   BEST RHYTHM " & Image (W.Best_Streak)
                       & "   ON BEAT " & Image (W.On_Beat_Kills), Aspect / 2.0, 0.35, 0.022, Cyan, 1.6,
                       Centered => True);
             if W.New_High_Rank > 0 then
@@ -445,8 +588,8 @@ package body Neon_Scene is
             end if;
             for I in W.Scores'Range loop
                exit when W.Scores (I).Score = 0;
-               Add_Text (F, Image (I) & ". " & Image (W.Scores (I).Score) & "  WAVE "
-                         & Image (W.Scores (I).Wave), Aspect / 2.0, 0.46 + 0.04 * Float (I), 0.024,
+               Add_Text (F, Image (I) & ". " & Image (W.Scores (I).Score) & "  STAGE "
+                         & Image (W.Scores (I).Stage), Aspect / 2.0, 0.46 + 0.04 * Float (I), 0.024,
                          (if I = W.New_High_Rank then Gold else White), 1.6, Centered => True);
             end loop;
             if W.Phase_Time > 1.0 and then Fraction (F.Seconds * 0.5) < 0.7 then
@@ -480,6 +623,165 @@ package body Neon_Scene is
       end if;
    end Build_HUD;
 
+   --  One enemy (the arena's, or the bestiary's).
+   procedure Draw_Enemy (F : in out Frame; E : Enemy) is
+   begin
+      declare
+         Base : constant Vec3 := (E.Position.X, E.Height, E.Position.Y);
+         Color : constant RGB := Mix (Enemy_Color (E.Kind), White, E.Hit_Flash);
+      begin
+         if E.Spawn_Left > 0.0 then
+            declare
+               Grow : constant Float :=
+                 Saturate (1.0 - E.Spawn_Left / (if E.Kind in Boss_Kind then 1.5 else 0.6));
+            begin
+               Add_Circle (F, (E.Position.X, 0.05, E.Position.Y),
+                           Enemy_Radius (E.Kind) * (2.5 - 1.5 * Grow), (0.4 + Grow) * Color, 20);
+               Add_Line (F, (E.Position.X, 0.0, E.Position.Y),
+                         (E.Position.X, 6.0 * (1.0 - Grow), E.Position.Y), Grow * Color, 2.0);
+            end;
+         else
+            case E.Kind is
+               when Cube =>
+                  Add_Cube (F, Base + (0.0, 0.8, 0.0), 0.75, E.Spin, 0.05, Color);
+               when Pyramid =>
+                  Add_Pyramid (F, Base, 0.85, E.Spin, Color);
+               when Torus =>
+                  Add_Torus (F, Base + (0.0, 0.6, 0.0), E.Spin, Color);
+               when Shard =>
+                  Add_Octahedron (F, Base + (0.0, 1.1, 0.0), 0.65, E.Spin, Color);
+               when Splinter =>
+                  Add_Octahedron (F, Base + (0.0, 0.8, 0.0), 0.42, E.Spin, Color);
+               when Strobe =>
+                  Add_Prism (F, Base + (0.0, 0.2, 0.0), 0.8, 0.9, E.Spin, 6, Color);
+                  if E.Armed then
+                     --  Its mark: a dashed path and a ring where it lands on the downbeat.
+                     declare
+                        Dashes : constant := 8;
+                        Path : constant Vec2 := E.Hop_To - E.Position;
+                     begin
+                        for D in 0 .. Dashes - 1 loop
+                           if D mod 2 = 0 then
+                              Add_Line (F, (E.Position.X + Path.X * Float (D) / Float (Dashes), 0.06,
+                                            E.Position.Y + Path.Y * Float (D) / Float (Dashes)),
+                                        (E.Position.X + Path.X * Float (D + 1) / Float (Dashes), 0.06,
+                                         E.Position.Y + Path.Y * Float (D + 1) / Float (Dashes)),
+                                        0.6 * Ember, 1.6);
+                           end if;
+                        end loop;
+                        Add_Circle (F, (E.Hop_To.X, 0.06, E.Hop_To.Y), 0.9 + 0.2 * F.Kick, 0.8 * Ember, 16);
+                     end;
+                  end if;
+               when Dropper =>
+                  declare
+                     Flicker : constant Float :=
+                       (if Fraction (F.Seconds * (2.0 + 10.0 * E.Power)) < 0.5 then E.Power else 0.0);
+                  begin
+                     Add_Star (F, Base + (0.0, 1.0, 0.0), E.Power, E.Spin, Mix (Color, White, 0.6 * Flicker));
+                     if not E.Armed then
+                        Add_Circle (F, (E.Position.X, 0.06, E.Position.Y), 0.5 + 0.8 * E.Power,
+                                    (0.3 + 0.7 * E.Power) * Color, 16);
+                     end if;
+                  end;
+               when Sentry =>
+                  Add_Ring (F, Base + (0.0, 1.0, 0.0), 0.8, E.Spin, 0.0, 16, Color);
+                  Add_Ring (F, Base + (0.0, 1.0, 0.0), 0.8, -E.Spin, 0.25, 16, 0.8 * Color);
+                  Add_Point (F, Base + (0.0, 1.0, 0.0), 1.6 * Mix (Color, White, 0.5), 0.22);
+               when Warden =>
+                  Add_Octahedron (F, Base + (0.0, 1.8, 0.0), 1.2, E.Spin, Color);
+                  Add_Octahedron (F, Base + (0.0, 1.8, 0.0), 0.6, -2.0 * E.Spin, Mix (Color, White, 0.5));
+                  for K in 0 .. 3 loop
+                     Add_Cube (F, Base + (2.0 * Cos_Turns (E.Spin * 2.0 + Float (K) / 4.0), 1.4,
+                                          2.0 * Sin_Turns (E.Spin * 2.0 + Float (K) / 4.0)),
+                               0.3, E.Spin * 3.0, 0.1, Color);
+                  end loop;
+               when Totem =>
+                  for K in 0 .. 3 loop
+                     declare
+                        P0 : constant Vec3 :=
+                          Place ((0.5 * Cos_Turns (Float (K) / 4.0), 0.0, 0.5 * Sin_Turns (Float (K) / 4.0)),
+                                 E.Spin, 0.0, Base);
+                     begin
+                        Add_Line (F, P0, P0 + (0.0, 5.6, 0.0), Mix (Gold, White, 0.3 + 0.7 * E.Hit_Flash), 2.2);
+                     end;
+                  end loop;
+                  Add_Ring (F, Base + (0.0, 1.2, 0.0), 2.8, E.Spin, 0.03, 14,
+                            Mix (Hot_Pink, White, E.Hit_Flash), 3.2);
+                  Add_Ring (F, Base + (0.0, 2.9, 0.0), 2.1, -1.5 * E.Spin, -0.04, 12,
+                            Mix (Cyan, White, E.Hit_Flash), 3.0);
+                  Add_Ring (F, Base + (0.0, 4.5, 0.0), 1.4, 2.0 * E.Spin, 0.05, 10,
+                            Mix (Gold, White, E.Hit_Flash), 2.8);
+                  Add_Pyramid (F, Base + (0.0, 5.6, 0.0), 0.9, -E.Spin, Color);
+                  Add_Octahedron (F, Base + (0.0, 2.9, 0.0), 0.7, 3.0 * E.Spin, Mix (Gold, White, 0.5));
+                  Add_Point (F, Base + (0.0, 2.9, 0.0), (0.6 + 0.4 * F.Kick) * Gold, 0.3);
+                  Add_Light (F, (E.Position.X, 1.5, E.Position.Y), (0.8 + 0.6 * F.Kick) * Gold, 7.0);
+            end case;
+            --  A soft shadow-light under each enemy.
+            Add_Light (F, (E.Position.X, 0.6, E.Position.Y), 0.5 * Enemy_Color (E.Kind), 2.2);
+         end if;
+      end;
+   end Draw_Enemy;
+
+   --  The bestiary: every enemy on show, each with its rule.
+   type Guide_Entry is record
+      Kind : Enemy_Kind;
+      Where : Vec2;
+   end record;
+   type Guide_Array is array (Positive range <>) of Guide_Entry;
+   Guide : constant Guide_Array :=
+     [(Cube, (-12.0, -5.0)), (Pyramid, (-6.0, -5.0)), (Torus, (0.0, -5.0)), (Shard, (6.0, -5.0)),
+      (Sentry, (12.0, -5.0)), (Strobe, (-12.0, 2.0)), (Dropper, (-5.0, 2.0)), (Warden, (3.0, 2.0)),
+      (Totem, (11.5, 3.5))];
+
+   --  Each enemy's rule, two short lines.
+   function Rule (Kind : Enemy_Kind; Second : Boolean) return String is
+     (case Kind is
+        when Cube => (if Second then "EVERY BEAT" else "HOPS ON"),
+        when Pyramid => (if Second then "OTHER BEAT" else "CHARGES EVERY"),
+        when Torus => (if Second then "ON THE BAR" else "ORB RING"),
+        when Shard => (if Second then "SPLITS IN TWO" else "WEAVES, THEN"),
+        when Splinter => "",
+        when Strobe => (if Second then "JUMPS ON 1" else "MARKS ON 4"),
+        when Dropper => (if Second then "STRIKES ON DROP" else "CHARGES IN BUILD"),
+        when Sentry => (if Second then "EVERY SNARE" else "FIRES ON"),
+        when Warden => (if Second then "OF THE DROP" else "MINI-BOSS"),
+        when Totem => (if Second then "THE PEAK" else "BOSS OF"));
+
+   function Guide_Name (Kind : Enemy_Kind) return String is
+     (case Kind is
+        when Cube => "CUBE", when Pyramid => "PYRAMID", when Torus => "TORUS", when Shard => "SHARD",
+        when Splinter => "SPLINTER", when Strobe => "STROBE", when Dropper => "DROPPER",
+        when Sentry => "SENTRY", when Warden => "WARDEN", when Totem => "TOTEM");
+
+   procedure Draw_Bestiary (F : in out Frame) is
+      Label_Size : constant := 0.019;
+      Rule_Size : constant := 0.014;
+      Label_Drop : constant := 1.8;    --  world units in front of the enemy
+   begin
+      for G of Guide loop
+         declare
+            E : constant Enemy :=
+              (Alive => True, Kind => G.Kind, Position => G.Where, Spin => F.Seconds * 0.15,
+               Power => 0.5 + 0.5 * Sin_Turns (F.Seconds * 0.25), Hop_Time => 1.0, Health => 1,
+               others => <>);
+            X, Y, Depth : Float;
+            Visible : Boolean;
+         begin
+            Draw_Enemy (F, E);
+            Add_Light (F, (G.Where.X, 0.6, G.Where.Y), 0.5 * Enemy_Color (G.Kind), 2.5);
+            Project (F.Cam, (G.Where.X, 0.0, G.Where.Y - Label_Drop), X, Y, Depth, Visible);
+            if Visible then
+               Add_Text (F, Guide_Name (G.Kind), X / Float (F.Height), Y / Float (F.Height), Label_Size,
+                         Enemy_Color (G.Kind), 1.6, Centered => True);
+               Add_Text (F, Rule (G.Kind, False), X / Float (F.Height), Y / Float (F.Height) + 0.03,
+                         Rule_Size, 0.85 * White, 1.2, Centered => True);
+               Add_Text (F, Rule (G.Kind, True), X / Float (F.Height), Y / Float (F.Height) + 0.052,
+                         Rule_Size, 0.85 * White, 1.2, Centered => True);
+            end if;
+         end;
+      end loop;
+   end Draw_Bestiary;
+
    procedure Build (F : in out Frame; G : Neon_Game.Game; Width, Height : Positive) is
       W : World renames G.Sim;
       View : constant Samples := W.Clock;
@@ -498,7 +800,6 @@ package body Neon_Scene is
       F.Ripple_Count := 0;
       F.Dropped := 0;
       F.Seconds := Neon_Time.Seconds (Sample_Offset (View));
-      F.Scroll := Fraction (F.Seconds * Scroll_Speed / (2.0 * Grid_Cell)) * 2.0 * Grid_Cell;
 
       C.Find (G.Composer, View, Current, Found);
       if Found then
@@ -513,6 +814,8 @@ package body Neon_Scene is
       F.Sun_Swell := (if Found then Exp (-Swell_Decay * Neon_Time.Seconds (Sample_Offset (View - Chord_At)))
                       else 0.0);
       F.Glow := 0.5 + 0.4 * Current.Pad_Level + 0.3 * F.Kick;
+      F.Look := (if W.Phase = Calibrating then Neon_Style.Classic else Current.Look);
+      F.Scroll := Fraction (F.Seconds * Scroll_Speed / (2.0 * F.Look.Grid_Cell)) * 2.0 * F.Look.Grid_Cell;
       F.Underwater := (if Current.Section in C.Breakdown | C.Finale then 1.0 - Current.Cutoff else 0.0);
       F.Flash := W.Screen_Flash;
       F.Hurt := W.Hurt_Flash;
@@ -554,7 +857,7 @@ package body Neon_Scene is
       end loop;
       for O of W.Orbs loop
          if O.Alive then
-            Add_Point (F, (O.Position.X, 0.45, O.Position.Y), 1.4 * Hot_Pink, 0.32);
+            Add_Point (F, (O.Position.X, 0.45, O.Position.Y), 1.4 * O.Hue, 0.32);
             Add_Point (F, (O.Position.X, 0.45, O.Position.Y), White, 0.12);
          end if;
       end loop;
@@ -562,36 +865,7 @@ package body Neon_Scene is
       --  Enemies.
       for E of W.Enemies loop
          if E.Alive then
-            declare
-               Base : constant Vec3 := (E.Position.X, E.Height, E.Position.Y);
-               Color : constant RGB := Mix (Enemy_Color (E.Kind), White, E.Hit_Flash);
-            begin
-               if E.Spawn_Left > 0.0 then
-                  declare
-                     Grow : constant Float := 1.0 - E.Spawn_Left / 0.6;
-                  begin
-                     Add_Circle (F, (E.Position.X, 0.05, E.Position.Y),
-                                 Enemy_Radius (E.Kind) * (2.5 - 1.5 * Grow), (0.4 + Grow) * Color, 20);
-                     Add_Line (F, (E.Position.X, 0.0, E.Position.Y),
-                               (E.Position.X, 6.0 * (1.0 - Grow), E.Position.Y), Grow * Color, 2.0);
-                  end;
-               else
-                  case E.Kind is
-                     when Cube =>
-                        Add_Cube (F, Base + (0.0, 0.8, 0.0), 0.75, E.Spin, 0.05, Color);
-                     when Pyramid =>
-                        Add_Pyramid (F, Base, 0.85, E.Spin, Color);
-                     when Torus =>
-                        Add_Torus (F, Base + (0.0, 0.6, 0.0), E.Spin, Color);
-                     when Shard =>
-                        Add_Octahedron (F, Base + (0.0, 1.1, 0.0), 0.65, E.Spin, Color);
-                     when Splinter =>
-                        Add_Octahedron (F, Base + (0.0, 0.8, 0.0), 0.42, E.Spin, Color);
-                  end case;
-                  --  A soft shadow-light under each enemy.
-                  Add_Light (F, (E.Position.X, 0.6, E.Position.Y), 0.5 * Enemy_Color (E.Kind), 2.2);
-               end if;
-            end;
+            Draw_Enemy (F, E);
          end if;
       end loop;
 
@@ -623,8 +897,10 @@ package body Neon_Scene is
          end;
       end if;
 
-      --  Title: wireframe shapes turning slowly over the floor.
-      if W.Phase in Title | Game_Over | Calibrating then
+      if W.Phase = Title and then W.Bestiary then
+         Draw_Bestiary (F);
+      elsif W.Phase in Title | Game_Over | Calibrating then
+         --  Title: wireframe shapes turning slowly over the floor.
          Add_Cube (F, (-9.0, 1.6 + 0.3 * Sin_Turns (F.Seconds * 0.2), 2.0), 1.0, F.Seconds * 0.07, 0.08,
                    (0.8 + 0.4 * F.Kick) * Cyan);
          Add_Torus (F, (9.0, 1.4 + 0.3 * Sin_Turns (F.Seconds * 0.17 + 0.5), 2.5), F.Seconds * 0.05,

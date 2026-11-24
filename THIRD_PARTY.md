@@ -101,3 +101,13 @@ own Ada code. These are the designs it follows:
 - **Melissa O'Neill, "PCG: A Family of Simple Fast Space-Efficient
   Statistically Good Algorithms for Random Number Generation"** (2014), for
   the seeded generator behind the composer and the game.
+- **Gordon Reid, "Synth Secrets"** (Sound On Sound, 1999-2004), the article
+  series on analogue synthesis, for the drum recipes the kit follows: the
+  kick as a sine swept down in pitch with a click, the snare as tuned body
+  modes over filtered noise, and the cymbal as inharmonic square waves
+  summed and high-passed. Articles only; no code.
+- **Sebastiano Vigna, SplitMix64** (public domain, 2015), whose first
+  multiplier and shift mix a playlist seed and a stage number into the
+  stage's style seed.
+- **Olinde Rodrigues** (1840), for the rotation about the grey axis that
+  turns a stage palette's hue.

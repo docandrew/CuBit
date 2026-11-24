@@ -36,6 +36,32 @@ package body Neon_Sim is
    Shard_Speed : constant := 5.5;
    Splinter_Speed : constant := 7.5;
    Warning_Seconds : constant := 0.6;      --  seconds before a spawn is solid
+   Boss_Warning_Seconds : constant := 1.5;
+   Strobe_Mark_Spread : constant := 2.0;   --  how far off the player a strobe marks
+   Strobe_Mark_Step : constant := 12;      --  the bar's last beat: it marks; the downbeat: it jumps
+   Strobe_Lift : constant := 0.6;
+   Dropper_Hover : constant := 6.5;        --  the distance a dropper circles the player at
+   Dropper_Orbs : constant := 12;
+   Dropper_Strike_Speed : constant := 15.0;
+   Dropper_Strike_Seconds : constant := 0.7;
+   Dropper_Chase_Speed : constant := 6.5;
+   Bolt_Speed : constant := 9.0;
+   Sentry_Range : constant := 7.0;
+   Warden_Charge_Speed : constant := 9.0;
+   Warden_Charge_Seconds : constant := 0.5;
+   Warden_Orbs : constant := 4;
+   Warden_Turn : constant := 1.0 / 16.0;   --  its cross turns this much a beat
+   Totem_Spiral_Orbs : constant := 3;
+   Totem_Spiral_Turn : constant := 0.07;
+   Totem_Ring_Orbs : constant := 16;
+   Totem_Spread : constant := 0.04;        --  turns between the snare triple's bolts
+   Totem_Home : constant Vec2 := (0.0, 3.5);
+   Warden_Health_Base : constant := 50;
+   Warden_Health_Stage : constant := 20;
+   Totem_Health_Base : constant := 100;
+   Totem_Health_Stage : constant := 50;
+   Crowd_Base : constant := 12;
+   Crowd_Per_Stage : constant := 4;
 
    --  Scoring.
    Combo_Window : constant := 1.6;         --  seconds between kills to keep a combo
@@ -43,8 +69,9 @@ package body Neon_Sim is
    Maximum_Multiplier : constant := 8;
    On_Beat_Fraction : constant := 0.12;    --  of a beat, either side
    On_Beat_Bonus_Percent : constant := 50;
-   Wave_Clear_Bonus : constant := 1000;
-   Clear_Breakdown_Bars : constant := 2;
+   Stage_Clear_Bonus : constant := 5000;
+   Banner_Seconds : constant := 2.2;
+   Stage_Banner_Seconds : constant := 3.2;
    Dying_Seconds : constant := 1.8;
    Restart_Delay : constant := 1.0;
    Shield_Blast_Radius : constant := 4.5;
@@ -52,10 +79,14 @@ package body Neon_Sim is
    function Base_Score (Kind : Enemy_Kind) return Natural is
      (case Kind is
         when Cube => 100, when Pyramid => 150, when Torus => 400, when Shard => 200,
-        when Splinter => 50);
-   function Base_Health (Kind : Enemy_Kind) return Natural is
+        when Splinter => 50, when Strobe => 250, when Dropper => 300, when Sentry => 350,
+        when Warden => 3000, when Totem => 8000);
+   function Base_Health (Kind : Enemy_Kind; Stage : Natural) return Natural is
      (case Kind is
-        when Cube => 2, when Pyramid => 1, when Torus => 6, when Shard => 2, when Splinter => 1);
+        when Cube => 2, when Pyramid => 1, when Torus => 6, when Shard => 2, when Splinter => 1,
+        when Strobe => 3, when Dropper => 6, when Sentry => 4,
+        when Warden => Warden_Health_Base + Warden_Health_Stage * Stage,
+        when Totem => Totem_Health_Base + Totem_Health_Stage * Stage);
 
    function Pan_Of (X : Float) return Float is (Clamp (X / Half_Width, -1.0, 1.0));
 
@@ -150,7 +181,8 @@ package body Neon_Sim is
      (if J.Count < 2 then 0.0
       else Sqrt (Max (0.0, J.Sum_Squares / Float (J.Count) - Mean (J) * Mean (J))));
 
-   procedure Place_Score (Table : in out Score_Table; Score, Wave : Natural; Rank : out Natural) is
+   procedure Place_Score (Table : in out Score_Table; Score, Stage : Natural; Playlist : Unsigned_64;
+                          Rank : out Natural) is
    begin
       Rank := 0;
       if Score = 0 then
@@ -166,16 +198,24 @@ package body Neon_Sim is
          for I in reverse Rank + 1 .. Table'Last loop
             Table (I) := Table (I - 1);
          end loop;
-         Table (Rank) := (Score => Score, Wave => Wave);
+         Table (Rank) := (Score => Score, Stage => Stage, Playlist => Playlist);
       end if;
    end Place_Score;
 
    ---------------------------------------------------------------------------
 
+   function Is_Favourite (W : World; Seed : Unsigned_64) return Boolean is
+     (for some I in 1 .. W.Favourites_Kept => W.Favourites (I) = Seed);
+
+   Playlist_Span : constant := Neon_Style.Playlist_Seed'Last;
+
    procedure Reset (W : out World; Seed : Unsigned_64) is
    begin
       W := (Random => Neon_Random.Seeded (Seed, 16#AE0B#), others => <>);
       W.Player.Lives := Starting_Lives;
+      --  The title opens on the lo-fi preset (the seed drives the game's
+      --  own draws; the playlist is the player's to pick).
+      W.Playlist := Neon_Style.Presets (Neon_Style.Lo_Fi);
    end Reset;
 
    function Living_Enemies (W : World) return Natural is
@@ -190,74 +230,61 @@ package body Neon_Sim is
    end Living_Enemies;
 
    function Mood (W : World) return Neon_Composer.Mood is
-      Level : constant Level_Range := Level_Range (Natural'Min (5, 1 + (Natural'Max (W.Wave, 1) - 1) / 2));
-      Speed : constant Tempo :=
-        (if W.Wave <= 2 then Lounge elsif W.Wave <= 4 then Cruise
-         elsif W.Wave <= 7 then Drive else Rush);
       Arp : constant Boolean := W.Rhythm_Streak >= 4;
       Lead : constant Boolean := W.Rhythm_Streak >= 8;
    begin
-      case W.Phase is
-         when Title =>
-            return (Section => Title_Theme, Level => 0, Speed => Lounge, others => False);
-         when Calibrating =>
-            return (Section => Metronome, Level => 0, Speed => Lounge, others => False);
-         when Dying | Game_Over =>
-            return (Section => Finale, Level => 0, Speed => Lounge, others => False);
-         when Playing =>
-            if W.Clear_Bars > 0 or else W.Wave = 0 then
-               return (Section => Breakdown, Level => Level, Speed => Speed, others => False);
-            elsif W.Wave >= 2 and then W.Wave_Bars < 2 then
-               return (Section => Build, Level => Level, Speed => Speed, Arp_On => Arp,
-                       Lead_On => Lead);
-            else
-               return (Section => (if Level >= 3 then Peak else Groove), Level => Level,
-                       Speed => Speed, Arp_On => Arp, Lead_On => Lead);
-            end if;
-      end case;
+      return (Scene => (case W.Phase is
+                          when Title => Attract, when Calibrating => Calibrate,
+                          when Dying | Game_Over => Over, when Playing => Play),
+              Playlist => W.Playlist, Run => W.Run, Start_Stage => Choice_Stage (W.Choice),
+              Boss_Practice => Choice_Is_Boss (W.Choice), Defeated_Stage => W.Defeated_Stage,
+              Arp_On => Arp, Lead_On => Lead);
    end Mood;
 
    procedure Start_Game (W : in out World) is
-      Keep_Scores : constant Score_Table := W.Scores;
-      Keep_Offset : constant Float := W.Calibration_Offset_Ms;
-      Keep_Random : constant Neon_Random.Generator := W.Random;
-      Keep_Clock : constant Samples := W.Clock;
-      Keep_Serial : constant Natural := W.Last_Serial;
-      Keep_Particles : constant Particle_Array := W.Particles;
-      Keep_Press : constant Judgement := W.Press_Timing;
+      Keep : constant World := W;
    begin
       W := (others => <>);
-      W.Random := Keep_Random;
-      W.Scores := Keep_Scores;
-      W.Calibration_Offset_Ms := Keep_Offset;
-      W.Clock := Keep_Clock;
-      W.Last_Serial := Keep_Serial;
-      W.Particles := Keep_Particles;
-      W.Press_Timing := Keep_Press;
+      W.Random := Keep.Random;
+      W.Scores := Keep.Scores;
+      W.Calibration_Offset_Ms := Keep.Calibration_Offset_Ms;
+      W.Clock := Keep.Clock;
+      W.Last_Serial := Keep.Last_Serial;
+      W.Particles := Keep.Particles;
+      W.Press_Timing := Keep.Press_Timing;
+      W.Playlist := Keep.Playlist;
+      W.Choice := Keep.Choice;
+      W.Favourites := Keep.Favourites;
+      W.Favourites_Kept := Keep.Favourites_Kept;
+      W.Run := Keep.Run + 1;
       W.Phase := Playing;
       W.Player.Lives := Starting_Lives;
       W.Player.Position := (0.0, -4.0);
-      W.Clear_Bars := 1;   --  one bar to breathe, then wave 1 on a downbeat
    end Start_Game;
 
    ---------------------------------------------------------------------------
    --  Spawning
    ---------------------------------------------------------------------------
 
-   procedure Spawn (W : in out World; Kind : Enemy_Kind; At_Point : Vec2; Sounds : in out Sound_List) is
+   procedure Spawn (W : in out World; Kind : Enemy_Kind; At_Point : Vec2; Sounds : in out Sound_List;
+                    Slot : out Natural) is
       Spin : constant Float := Uniform (W);
       Orbit : constant Float := Uniform (W);
    begin
-      for E of W.Enemies loop
-         if not E.Alive then
-            E := (Alive => True, Kind => Kind, Position => At_Point, Velocity => (0.0, 0.0),
-                  Height => 0.0, Health => Base_Health (Kind), Spin => Spin,
-                  Spawn_Left => Warning_Seconds, Hop_From => At_Point, Hop_To => At_Point,
-                  Hop_Time => 1.0, Charge_Left => 0.0, Hit_Flash => 0.0, Age => 0.0,
-                  Orbit => Orbit);
-            Request (Sounds, (Kind => Spawn_Warning, Pan => Pan_Of (At_Point.X),
-                              X => At_Point.X, Z => At_Point.Y, Color => Enemy_Color (Kind),
-                              others => <>));
+      Slot := 0;
+      for I in W.Enemies'Range loop
+         if not W.Enemies (I).Alive then
+            W.Enemies (I) :=
+              (Alive => True, Kind => Kind, Position => At_Point, Velocity => (0.0, 0.0),
+               Height => 0.0, Health => Base_Health (Kind, W.Stage), Spin => Spin,
+               Spawn_Left => (if Kind in Boss_Kind then Boss_Warning_Seconds else Warning_Seconds),
+               Hop_From => At_Point, Hop_To => At_Point, Hop_Time => 1.0, Charge_Left => 0.0,
+               Hit_Flash => 0.0, Age => 0.0, Orbit => Orbit, Power => 0.0, Armed => False,
+               Volley => 0);
+            Request (Sounds, (Kind => (if Kind in Boss_Kind then Boss_Arrive else Spawn_Warning),
+                              Pan => Pan_Of (At_Point.X), X => At_Point.X, Z => At_Point.Y,
+                              Color => Enemy_Color (Kind), others => <>));
+            Slot := I;
             return;
          end if;
       end loop;
@@ -287,76 +314,160 @@ package body Neon_Sim is
    procedure Spawn_Group (W : in out World; Kind : Enemy_Kind; Count : Natural;
                           Sounds : in out Sound_List) is
       Center : constant Vec2 := Edge_Point (W);
-      Placed : Natural := 0;
       Spread_X, Spread_Z : Float;
+      Slot : Natural;
    begin
       for I in 1 .. Count loop
-         exit when W.Wave_Budget = 0;
          Spread_X := Between (W, -2.5, 2.5);
          Spread_Z := Between (W, -2.0, 2.0);
          Spawn (W, Kind,
                 (Clamp (Center.X + Spread_X, -Half_Width + 1.0, Half_Width - 1.0),
                  Clamp (Center.Y + Spread_Z, -Half_Depth + 1.0, Half_Depth - 1.0)),
-                Sounds);
-         W.Wave_Budget := W.Wave_Budget - 1;
-         Placed := Placed + 1;
+                Sounds, Slot);
       end loop;
-      pragma Unreferenced (Placed);
    end Spawn_Group;
 
-   procedure On_Beat_Spawns (W : in out World; Beat_Index : Natural; Sounds : in out Sound_List) is
-      Crowd : constant Natural := Living_Enemies (W);
-      Crowd_Limit : constant Natural := Natural'Min (Enemy_Ceiling - 8, 16 + 3 * W.Wave);
-      Build_Up : constant Boolean := W.Wave_Bars mod 4 = 3 or else W.Wave_Bars < 2;
+   procedure Spawn_Boss (W : in out World; Kind : Boss_Kind; Sounds : in out Sound_List) is
+      Slot : Natural;
    begin
-      if W.Wave_Budget = 0 or else Crowd >= Crowd_Limit or else W.Clear_Bars > 0 then
+      Spawn (W, Kind, Totem_Home, Sounds, Slot);
+      if Slot /= 0 then
+         W.Boss := Slot;
+         W.Boss_Health := Natural'Max (1, W.Enemies (Slot).Health);
+         W.Shake := Max (W.Shake, 0.6);
+      end if;
+   end Spawn_Boss;
+
+   function Boss_Alive (W : World) return Boolean is
+     (W.Boss /= 0 and then W.Enemies (W.Boss).Alive);
+
+   --  Each section spawns its own mix, on its beats.
+   procedure On_Beat_Spawns (W : in out World; Current : Step_Record; Sounds : in out Sound_List) is
+      Stage : constant Natural := Current.Stage;
+      Bar : constant Natural := Current.Section_Bar;
+      Beat : constant Natural := Beat_In_Bar (Current);
+      Crowd_Limit : constant Natural :=
+        Natural'Min (Enemy_Ceiling - 8, Crowd_Base + Crowd_Per_Stage * Stage + 2 * Current.Energy);
+   begin
+      if Stage = 0 or else Current.Run /= W.Run then
          return;
       end if;
-      case Beat_Index is
-         when 0 =>
-            Spawn_Group (W, Cube, 2 + W.Wave / 2, Sounds);
-            if W.Wave >= 3 and then W.Wave_Bars mod 4 = 2 then
-               Spawn_Group (W, Torus, 1, Sounds);
+      if Current.Section = Peak and then Bar = 0 and then Beat = 0 and then W.Totem_Stage < Stage then
+         W.Totem_Stage := Stage;
+         Spawn_Boss (W, Totem, Sounds);
+         return;
+      end if;
+      if Current.Section = Drop and then Bar = 0 and then Beat = 0 and then Stage >= 2
+        and then W.Warden_Stage < Stage
+      then
+         W.Warden_Stage := Stage;
+         Spawn_Boss (W, Warden, Sounds);
+      end if;
+      if Living_Enemies (W) >= Crowd_Limit then
+         return;
+      end if;
+      case Current.Section is
+         when Intro =>
+            if Beat in 0 | 2 then
+               Spawn_Group (W, Cube, 1 + Beat / 2, Sounds);
             end if;
-         when 2 =>
-            if W.Wave >= 2 then
-               Spawn_Group (W, Pyramid, 1 + W.Wave / 3, Sounds);
+         when Groove =>
+            case Beat is
+               when 0 =>
+                  Spawn_Group (W, Cube, 2 + Stage / 2, Sounds);
+                  if Stage >= 2 and then Bar = 4 then
+                     Spawn_Group (W, Torus, 1, Sounds);
+                  end if;
+               when 1 =>
+                  if Bar mod 2 = 1 then
+                     Spawn_Group (W, Pyramid, 1 + Stage / 3, Sounds);
+                  end if;
+                  if Bar in 3 | 6 then
+                     Spawn_Group (W, Strobe, 1 + Stage / 3, Sounds);
+                  end if;
+               when 2 =>
+                  Spawn_Group (W, Cube, 1 + Stage / 2, Sounds);
+               when others =>
+                  if Stage >= 2 and then Bar in 2 | 5 then
+                     Spawn_Group (W, Sentry, 1, Sounds);
+                  end if;
+                  if Stage >= 3 and then Bar in 1 | 5 then
+                     Spawn_Group (W, Shard, 1, Sounds);
+                  end if;
+            end case;
+         when Build =>
+            if Beat = 0 and then Bar in 0 | 2 then
+               Spawn_Group (W, Dropper, 1 + Stage / 2, Sounds);
+            elsif Beat = 2 then
+               Spawn_Group (W, Cube, 1 + Stage / 3, Sounds);
             end if;
-            if W.Wave = 1 or else Build_Up then
-               Spawn_Group (W, Cube, 2, Sounds);
-            end if;
-         when others =>
-            if W.Wave >= 4 and then Build_Up then
-               Spawn_Group (W, Shard, 1 + W.Wave / 5, Sounds);
-            elsif Build_Up and then W.Wave >= 2 then
+         when Drop =>
+            case Beat is
+               when 0 =>
+                  Spawn_Group (W, Cube, 2 + Stage / 2, Sounds);
+               when 1 =>
+                  Spawn_Group (W, Pyramid, 1 + Stage / 3, Sounds);
+                  if Bar in 2 | 5 then
+                     Spawn_Group (W, Strobe, 1 + Stage / 3, Sounds);
+                  end if;
+               when 2 =>
+                  Spawn_Group (W, Cube, 2, Sounds);
+               when others =>
+                  if Stage >= 2 and then Bar in 1 | 4 then
+                     Spawn_Group (W, Sentry, 1, Sounds);
+                  end if;
+                  if Bar = 3 then
+                     Spawn_Group (W, (if Stage >= 2 then Torus else Strobe), 1, Sounds);
+                  end if;
+                  if Bar = 6 then
+                     Spawn_Group (W, (if Stage >= 3 then Shard else Strobe), 1 + Stage / 3, Sounds);
+                  end if;
+            end case;
+         when Breakdown =>
+            if Beat = 0 then
                Spawn_Group (W, Cube, 1, Sounds);
+            elsif Beat = 2 and then Stage >= 2 and then Bar in 1 | 3 then
+               Spawn_Group (W, (if Bar = 1 then Torus else Sentry), 1, Sounds);
             end if;
+         when Peak =>
+            if Boss_Alive (W) then
+               if Beat = 2 then
+                  Spawn_Group (W, Cube, 1 + Stage / 2, Sounds);
+               elsif Beat = 0 and then Bar mod 2 = 1 then
+                  Spawn_Group (W, Pyramid, 1, Sounds);
+               elsif Beat = 1 and then Current.Feel = Double_Time then
+                  Spawn_Group (W, Strobe, 1, Sounds);
+               end if;
+            end if;
+         when Title_Theme | Outro | Finale | Metronome =>
+            null;
       end case;
    end On_Beat_Spawns;
 
-   procedure On_Bar (W : in out World; Sounds : in out Sound_List) is
+   --  The song's form moved on: a new stage or section shows its banner.
+   procedure On_Section (W : in out World; Current : Step_Record; Sounds : in out Sound_List) is
    begin
-      if W.Phase /= Playing then
+      if Current.Stage = 0 or else Current.Run /= W.Run then
          return;
       end if;
-      if W.Clear_Bars > 0 then
-         W.Clear_Bars := W.Clear_Bars - 1;
-         if W.Clear_Bars = 0 then
-            W.Wave := W.Wave + 1;
-            W.Wave_Budget := Natural'Min (90, 8 + 5 * W.Wave);
-            W.Wave_Bars := 0;
-            W.Banner := 2.5;
-            Request (Sounds, (Kind => Wave_Chime, Color => Cyan, others => <>));
-         end if;
-      else
-         W.Wave_Bars := W.Wave_Bars + 1;
+      if Current.Stage /= W.Stage then
+         W.Stage := Current.Stage;
+         W.Banner_Kind := Intro;
+         W.Banner := Stage_Banner_Seconds;
+         Request (Sounds, (Kind => Wave_Chime, Color => Cyan, others => <>));
+      elsif Current.Section /= W.Section and then Current.Section in Build | Drop | Breakdown | Peak then
+         W.Banner_Kind := Current.Section;
+         W.Banner := Banner_Seconds;
       end if;
-   end On_Bar;
+      W.Section := Current.Section;
+   end On_Section;
 
    ---------------------------------------------------------------------------
    --  Combat
    ---------------------------------------------------------------------------
 
+   procedure Kill (W : in out World; Index : Positive; Current : Step_Record; Scored : Boolean;
+                   Sounds : in out Sound_List);
    procedure Kill (W : in out World; Index : Positive; Current : Step_Record; Scored : Boolean;
                    Sounds : in out Sound_List) is
       E : constant Enemy := W.Enemies (Index);
@@ -371,7 +482,10 @@ package body Neon_Sim is
       On_Beat : constant Boolean :=
         abs Error_Ms <= On_Beat_Fraction * Beat_Length * 1000.0 / Float (Sample_Rate);
       Points : Natural;
-      Size : constant Float := (if E.Kind = Torus then 2.0 elsif E.Kind = Splinter then 0.6 else 1.0);
+      Size : constant Float :=
+        (case E.Kind is
+           when Torus => 2.0, when Splinter => 0.6, when Warden => 2.5, when Totem => 3.2,
+           when others => 1.0);
    begin
       W.Enemies (Index).Alive := False;
       W.Kills := W.Kills + 1;
@@ -379,8 +493,32 @@ package body Neon_Sim is
              Natural (40.0 * Size), 9.0 * Size);
       Add_Ripple (W, E.Position, 0.8 * Size, Color);
       W.Shake := Max (W.Shake, 0.18 * Size);
-      Request (Sounds, (Kind => Explosion, Pan => Pan_Of (E.Position.X), Size => Size,
+      Request (Sounds, (Kind => (if E.Kind in Boss_Kind then Boss_Down else Explosion),
+                        Pan => Pan_Of (E.Position.X), Size => Size,
                         X => E.Position.X, Z => E.Position.Y, Color => Color, others => <>));
+      if Index = W.Boss then
+         W.Boss := 0;
+      end if;
+      if E.Kind = Totem then
+         --  The stage's boss is down: the music may move on, and the rest
+         --  of the stage's enemies go with it.
+         W.Defeated_Stage := Natural'Max (W.Defeated_Stage, W.Stage);
+         W.Stages_Cleared := W.Stages_Cleared + 1;
+         W.Stage_Clear := Stage_Banner_Seconds;
+         W.Screen_Flash := 1.0;
+         W.Shake := 1.0;
+         if Scored then
+            W.Score := W.Score + Stage_Clear_Bonus * Natural'Max (1, W.Stage);
+         end if;
+         for O of W.Orbs loop
+            O.Alive := False;
+         end loop;
+         for I in W.Enemies'Range loop
+            if W.Enemies (I).Alive then
+               Kill (W, I, Current, Scored => Scored, Sounds => Sounds);
+            end if;
+         end loop;
+      end if;
       if E.Kind = Shard then
          for Side in 0 .. 1 loop
             declare
@@ -436,7 +574,9 @@ package body Neon_Sim is
          O.Alive := False;
       end loop;
       for I in W.Enemies'Range loop
-         if W.Enemies (I).Alive and then Length (W.Enemies (I).Position - P) < Shield_Blast_Radius then
+         if W.Enemies (I).Alive and then W.Enemies (I).Kind not in Boss_Kind
+           and then Length (W.Enemies (I).Position - P) < Shield_Blast_Radius
+         then
             Kill (W, I, Current, Scored => False, Sounds => Sounds);
          end if;
       end loop;
@@ -578,10 +718,28 @@ package body Neon_Sim is
       end if;
    end Bounce;
 
-   procedure Update_Enemies (W : in out World; Current : Step_Record; New_Step : Boolean) is
+   procedure Fire_Orb (W : in out World; From, Velocity : Vec2; Hue : RGB) is
+   begin
+      for O of W.Orbs loop
+         if not O.Alive then
+            O := (Alive => True, Position => From, Velocity => Velocity, Age => 0.0, Hue => Hue);
+            return;
+         end if;
+      end loop;
+   end Fire_Orb;
+
+   procedure Update_Enemies (W : in out World; Current : Step_Record; New_Step : Boolean;
+                             Sounds : in out Sound_List) is
       Player : constant Vec2 := W.Player.Position;
       On_Beat : constant Boolean := New_Step and then Is_Beat (Current);
       Downbeat : constant Boolean := New_Step and then Current.Step = 0;
+      Beat_Seconds : constant Float :=
+        Float (Steps_Per_Beat * Current.Length) / Float (Sample_Rate);
+      Build_Progress : constant Float :=
+        (if Current.Section = Build and then Current.Section_Bars > 0
+         then Float (Current.Section_Bar * Steps_Per_Bar + Current.Step)
+              / Float (Current.Section_Bars * Steps_Per_Bar)
+         else 0.0);
    begin
       for I in W.Enemies'Range loop
          if W.Enemies (I).Alive then
@@ -604,7 +762,7 @@ package body Neon_Sim is
                            declare
                               Wobble : constant Float := Between (W, -0.06, 0.06);
                               Reach : constant Float :=
-                                Hop_Distance + 0.12 * Float (Natural'Min (W.Wave, 10));
+                                Hop_Distance + 0.12 * Float (Natural'Min (3 * W.Stage, 10));
                            begin
                               E.Hop_From := E.Position;
                               E.Hop_To := E.Position + Reach * Rotate (To_Player, Wobble);
@@ -642,14 +800,14 @@ package body Neon_Sim is
                         end;
                         E.Position := E.Position + Dt * E.Velocity;
                         E.Spin := E.Spin + Dt * 0.25;
-                        if Downbeat or else (On_Beat and then Current.Step = 8 and then Current.Level >= 3) then
+                        if Downbeat or else (On_Beat and then Current.Step = 8 and then Current.Energy >= 4) then
                            for K in 0 .. Orbs_Per_Ring - 1 loop
                               for O of W.Orbs loop
                                  if not O.Alive then
                                     O := (Alive => True, Position => E.Position,
                                           Velocity => Orb_Speed * Rotate ((1.0, 0.0),
                                             E.Spin + Float (K) / Float (Orbs_Per_Ring)),
-                                          Age => 0.0);
+                                          Age => 0.0, Hue => Hot_Pink);
                                     exit;
                                  end if;
                               end loop;
@@ -668,6 +826,154 @@ package body Neon_Sim is
                            E.Position := E.Position + Dt * E.Velocity;
                            E.Spin := E.Spin + Dt * 0.8;
                         end;
+                     when Strobe =>
+                        --  Marks a spot by the player on the bar's last beat,
+                        --  jumps there on the downbeat, in one beat.
+                        if New_Step and then Current.Step = Strobe_Mark_Step and then E.Hop_Time >= 1.0 then
+                           declare
+                              DX : constant Float := Between (W, -Strobe_Mark_Spread, Strobe_Mark_Spread);
+                              DZ : constant Float := Between (W, -Strobe_Mark_Spread, Strobe_Mark_Spread);
+                              Limit_X : constant Float := Half_Width - Enemy_Radius (Strobe);
+                              Limit_Z : constant Float := Half_Depth - Enemy_Radius (Strobe);
+                           begin
+                              E.Hop_To := (Clamp (Player.X + DX, -Limit_X, Limit_X),
+                                           Clamp (Player.Y + DZ, -Limit_Z, Limit_Z));
+                              E.Armed := True;
+                           end;
+                        elsif Downbeat and then E.Armed then
+                           E.Armed := False;
+                           E.Hop_From := E.Position;
+                           E.Hop_Time := 0.0;
+                           E.Charge_Left := Beat_Seconds;
+                           Request (Sounds, (Kind => Warp, Pan => Pan_Of (E.Position.X), Color => Ember,
+                                             others => <>));
+                        end if;
+                        if E.Hop_Time < 1.0 then
+                           E.Hop_Time := Min (1.0, E.Hop_Time + Dt / Max (E.Charge_Left, Dt));
+                           E.Position := E.Hop_From
+                             + Smooth_Step (0.0, 1.0, E.Hop_Time) * (E.Hop_To - E.Hop_From);
+                           E.Height := Strobe_Lift * Sin_Turns (0.5 * E.Hop_Time);
+                           E.Spin := E.Spin + Dt * 2.0;
+                        else
+                           E.Height := 0.0;
+                           E.Spin := E.Spin + Dt * 0.3;
+                        end if;
+                     when Dropper =>
+                        if not E.Armed and then New_Step and then Current.Impact then
+                           --  The drop: it strikes.
+                           E.Armed := True;
+                           E.Power := 1.0;
+                           E.Velocity := Dropper_Strike_Speed * To_Player;
+                           E.Charge_Left := Dropper_Strike_Seconds;
+                           for K in 0 .. Dropper_Orbs - 1 loop
+                              Fire_Orb (W, E.Position,
+                                        Orb_Speed * Rotate ((1.0, 0.0), E.Spin + Float (K) / Float (Dropper_Orbs)),
+                                        Orchid);
+                           end loop;
+                           Add_Ripple (W, E.Position, 1.0, Orchid);
+                           W.Shake := Max (W.Shake, 0.35);
+                           Request (Sounds, (Kind => Burst_Sound, Pan => Pan_Of (E.Position.X),
+                                             X => E.Position.X, Z => E.Position.Y, Color => Orchid,
+                                             others => <>));
+                        elsif not E.Armed then
+                           --  Charging with the build, circling at a distance.
+                           E.Power := Max (E.Power, Build_Progress);
+                           declare
+                              Away : constant Vec2 := Normalize (E.Position - Player, (1.0, 0.0));
+                              Target : constant Vec2 := Player + Dropper_Hover * Rotate (Away, Dt * 0.08);
+                           begin
+                              E.Velocity := E.Velocity + (Dt * 2.0) * (1.5 * (Target - E.Position) - E.Velocity);
+                           end;
+                        elsif E.Charge_Left > 0.0 then
+                           E.Charge_Left := Max (0.0, E.Charge_Left - Dt);
+                        else
+                           E.Velocity := E.Velocity + (Dt * 2.5) * (Dropper_Chase_Speed * To_Player - E.Velocity);
+                        end if;
+                        E.Position := E.Position + Dt * E.Velocity;
+                        E.Spin := E.Spin + Dt * (0.2 + 1.5 * E.Power);
+                     when Sentry =>
+                        --  Keeps its range, circling; fires on every snare.
+                        E.Orbit := Fraction (E.Orbit + Dt * 0.05);
+                        declare
+                           Target : constant Vec2 :=
+                             Player + Sentry_Range * (Cos_Turns (E.Orbit), 0.6 * Sin_Turns (E.Orbit));
+                        begin
+                           E.Velocity := E.Velocity + (Dt * 1.2) * (Target - E.Position - E.Velocity);
+                        end;
+                        E.Position := E.Position + Dt * E.Velocity;
+                        E.Spin := E.Spin + Dt * 0.6;
+                        if New_Step and then Current.Snare then
+                           Fire_Orb (W, E.Position, Bolt_Speed * To_Player, Coral);
+                           Request (Sounds, (Kind => Enemy_Fire, Pan => Pan_Of (E.Position.X), Color => Coral,
+                                             others => <>));
+                        end if;
+                     when Warden =>
+                        --  Charges on the bar; a turning cross of bolts on every beat.
+                        if Downbeat then
+                           E.Velocity := Warden_Charge_Speed * To_Player;
+                           E.Charge_Left := Warden_Charge_Seconds;
+                           Request (Sounds, (Kind => Enemy_Fire, Pan => Pan_Of (E.Position.X), Color => Magenta,
+                                             others => <>));
+                        end if;
+                        if E.Charge_Left > 0.0 then
+                           E.Charge_Left := Max (0.0, E.Charge_Left - Dt);
+                        else
+                           E.Velocity := Exp (-3.0 * Dt) * E.Velocity;
+                        end if;
+                        E.Position := E.Position + Dt * E.Velocity;
+                        E.Spin := E.Spin + Dt * 0.35;
+                        if On_Beat then
+                           declare
+                              Count : constant Positive :=
+                                (if 2 * E.Health < W.Boss_Health then 2 * Warden_Orbs else Warden_Orbs);
+                           begin
+                              for K in 0 .. Count - 1 loop
+                                 Fire_Orb (W, E.Position,
+                                           Orb_Speed * Rotate ((1.0, 0.0), Warden_Turn * Float (E.Volley)
+                                                               + Float (K) / Float (Count)),
+                                           Magenta);
+                              end loop;
+                              E.Volley := E.Volley + 1;
+                           end;
+                        end if;
+                     when Totem =>
+                        --  Drifts across the far half; a spiral on every beat,
+                        --  an aimed triple on the snare, a ring on the chase's bars.
+                        E.Orbit := Fraction (E.Orbit + Dt * 0.03);
+                        declare
+                           Target : constant Vec2 :=
+                             (0.45 * Half_Width * Sin_Turns (E.Orbit),
+                              Totem_Home.Y + 2.0 * Cos_Turns (2.0 * E.Orbit));
+                        begin
+                           E.Velocity := E.Velocity + (Dt * 1.0) * (Target - E.Position - E.Velocity);
+                        end;
+                        E.Position := E.Position + Dt * E.Velocity;
+                        E.Spin := E.Spin + Dt * 0.2;
+                        if On_Beat then
+                           for K in 0 .. Totem_Spiral_Orbs - 1 loop
+                              Fire_Orb (W, E.Position,
+                                        Orb_Speed * Rotate ((1.0, 0.0), Totem_Spiral_Turn * Float (E.Volley)
+                                                            + Float (K) / Float (Totem_Spiral_Orbs)),
+                                        (if E.Volley mod 2 = 0 then Gold else Hot_Pink));
+                           end loop;
+                           E.Volley := E.Volley + 1;
+                        end if;
+                        if New_Step and then Current.Snare then
+                           for K in -1 .. 1 loop
+                              Fire_Orb (W, E.Position, Bolt_Speed * Rotate (To_Player, Totem_Spread * Float (K)),
+                                        Cyan);
+                           end loop;
+                           Request (Sounds, (Kind => Enemy_Fire, Pan => Pan_Of (E.Position.X), Color => Cyan,
+                                             others => <>));
+                        end if;
+                        if Downbeat and then Current.Feel = Double_Time then
+                           for K in 0 .. Totem_Ring_Orbs - 1 loop
+                              Fire_Orb (W, E.Position,
+                                        Orb_Speed * Rotate ((1.0, 0.0), Float (K) / Float (Totem_Ring_Orbs)),
+                                        Hot_Pink);
+                           end loop;
+                           Add_Ripple (W, E.Position, 0.8, Hot_Pink);
+                        end if;
                   end case;
                   Bounce (E);
                end if;
@@ -688,6 +994,10 @@ package body Neon_Sim is
                           < Enemy_Radius (W.Enemies (I).Kind) + Shot_Radius
                then
                   S.Alive := False;
+                  if W.Enemies (I).Kind in Boss_Kind and then W.Enemies (I).Hit_Flash < 0.5 then
+                     Request (Sounds, (Kind => Boss_Hit, Pan => Pan_Of (S.Position.X),
+                                       Color => Enemy_Color (W.Enemies (I).Kind), others => <>));
+                  end if;
                   W.Enemies (I).Hit_Flash := 1.0;
                   Burst (W, (S.Position.X, 0.5, S.Position.Y), S.Hue, 6, 6.0, 0.35);
                   if W.Enemies (I).Health > 1 then
@@ -784,6 +1094,7 @@ package body Neon_Sim is
       W.Screen_Flash := Max (0.0, W.Screen_Flash - 3.0 * Dt);
       W.Hurt_Flash := Max (0.0, W.Hurt_Flash - 1.5 * Dt);
       W.Banner := Max (0.0, W.Banner - Dt);
+      W.Stage_Clear := Max (0.0, W.Stage_Clear - Dt);
       W.Last_Kill_On_Beat := Max (0.0, W.Last_Kill_On_Beat - Dt);
       if W.Combo_Timer > 0.0 then
          W.Combo_Timer := Max (0.0, W.Combo_Timer - Dt);
@@ -813,6 +1124,57 @@ package body Neon_Sim is
       W.Phase_Time := 0.0;
    end Finish_Calibration;
 
+   --  The title's pickers: the playlist's seed, a random one, keeping a
+   --  favourite, and where the run starts.
+   procedure Title_Pickers (W : in out World; Input : Controls; Sounds : in out Sound_List) is
+      Moved : Boolean := False;
+      Value : Natural;
+   begin
+      if Input.Seed_Step /= 0 then
+         W.Playlist := Neon_Style.Playlist_Seed
+           (1 + (Unsigned_64 (Integer (W.Playlist) - 1 + Playlist_Span + Input.Seed_Step)) mod Playlist_Span);
+         Moved := True;
+      end if;
+      if Input.Seed_Random then
+         Neon_Random.Pick (W.Random, Playlist_Span, Value);
+         W.Playlist := Neon_Style.Playlist_Seed (1 + Value);
+         Moved := True;
+      end if;
+      if Input.Choice_Step /= 0 then
+         W.Choice := (W.Choice + Choice_Count + Input.Choice_Step) mod Choice_Count;
+         Moved := True;
+      end if;
+      if Input.Keep then
+         if Is_Favourite (W, W.Playlist) then
+            declare
+               Kept : Favourite_Count := 0;
+               Old : constant Favourite_Array := W.Favourites;
+            begin
+               for I in 1 .. W.Favourites_Kept loop
+                  if Old (I) /= W.Playlist then
+                     Kept := Kept + 1;
+                     W.Favourites (Kept) := Old (I);
+                  end if;
+               end loop;
+               W.Favourites_Kept := Kept;
+            end;
+         else
+            --  Newest first; the oldest drops off a full list.
+            W.Favourites (2 .. Favourite_Ceiling) := W.Favourites (1 .. Favourite_Ceiling - 1);
+            W.Favourites (1) := W.Playlist;
+            W.Favourites_Kept := Natural'Min (Favourite_Ceiling, W.Favourites_Kept + 1);
+         end if;
+         Moved := True;
+      end if;
+      if Input.Bestiary then
+         W.Bestiary := not W.Bestiary;
+         Moved := True;
+      end if;
+      if Moved then
+         Request (Sounds, (Kind => Title_Tick, Color => Cyan, others => <>));
+      end if;
+   end Title_Pickers;
+
    procedure Step (W : in out World; Input : Controls; Now : Samples;
                    Current : Neon_Composer.Step_Record; New_Step : Boolean;
                    Sounds : in out Sound_List) is
@@ -822,11 +1184,11 @@ package body Neon_Sim is
       W.Phase_Time := W.Phase_Time + Dt;
       if New_Step then
          W.Last_Serial := Current.Serial;
-         if Current.Step = 0 then
-            On_Bar (W, Sounds);
-         end if;
-         if Is_Beat (Current) and then W.Phase = Playing then
-            On_Beat_Spawns (W, Beat_In_Bar (Current), Sounds);
+         if W.Phase = Playing then
+            On_Section (W, Current, Sounds);
+            if Is_Beat (Current) then
+               On_Beat_Spawns (W, Current, Sounds);
+            end if;
          end if;
          if Current.Kick then
             W.Screen_Flash := Max (W.Screen_Flash, 0.12);
@@ -839,6 +1201,7 @@ package body Neon_Sim is
 
       case W.Phase is
          when Title =>
+            Title_Pickers (W, Input, Sounds);
             if Input.Confirm then
                Start_Game (W);
                W.Demo := Input.Demo;
@@ -861,20 +1224,11 @@ package body Neon_Sim is
             end if;
          when Playing =>
             Update_Player (W, Input, Current, Sounds);
-            Update_Enemies (W, Current, New_Step);
+            Update_Enemies (W, Current, New_Step, Sounds);
             Update_Projectiles (W);
             Collide (W, Current, Sounds);
-            if New_Step and then Current.Step = 0 and then W.Clear_Bars = 0 and then W.Wave > 0
-              and then W.Wave_Budget = 0 and then Living_Enemies (W) = 0
-            then
-               --  Wave cleared: score it now, then a breakdown before the next.
-               W.Score := W.Score + Wave_Clear_Bonus * W.Wave;
-               W.Clear_Bars := Clear_Breakdown_Bars;
-               W.Banner := 2.0;
-               Request (Sounds, (Kind => Wave_Chime, Color => Gold, others => <>));
-            end if;
          when Dying =>
-            Update_Enemies (W, Current, New_Step);
+            Update_Enemies (W, Current, New_Step, Sounds);
             Update_Projectiles (W);
             if W.Phase_Time < 1.0 and then Uniform (W) < 0.3 then
                declare
@@ -892,7 +1246,7 @@ package body Neon_Sim is
                if W.Demo then
                   W.New_High_Rank := 0;
                else
-                  Place_Score (W.Scores, W.Score, W.Wave, W.New_High_Rank);
+                  Place_Score (W.Scores, W.Score, W.Stage, W.Playlist, W.New_High_Rank);
                end if;
                for E of W.Enemies loop
                   if E.Alive then

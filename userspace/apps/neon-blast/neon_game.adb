@@ -13,19 +13,27 @@ package body Neon_Game is
    Arpeggio_Notes : constant := 4;
    Flash_Seconds : constant := 0.3;
    Flash_Particles : constant := 26;
+   Boss_Cascade : constant := 8;
+   Zap_Fall : constant := 12.0;     --  semitones a bolt's zap falls from
+   Zap_Lift : constant := 24.0;     --  a warp sits two octaves above the chord
+
+   function To_Synth (M : C.Mix_Targets) return Neon_Synth.Targets is
+     ((Pad_Level => M.Pad_Level, Cutoff => M.Cutoff, Delay_Samples => M.Delay_Samples,
+       Echo_Feedback => M.Echo_Feedback, Wobble => M.Wobble, Reverb_Wet => M.Reverb_Wet,
+       Reverb_Room => M.Reverb_Room, Room_Level => M.Room_Level));
 
    procedure Compose_Until (G : in out Game; Time : Samples) is
       Batch : C.Note_Batch;
       Info : C.Step_Record;
+      Mix : C.Mix_Targets;
    begin
       while C.Next_Start (G.Composer) <= Time loop
          Batch.Count := 0;
-         C.Compose_Next (G.Composer, Neon_Sim.Mood (G.Sim), Batch, Info);
+         C.Compose_Next (G.Composer, Neon_Sim.Mood (G.Sim), Batch, Info, Mix);
          for I in 1 .. Batch.Count loop
             Neon_Synth.Schedule (G.Synth, Batch.Items (I));
          end loop;
-         Neon_Synth.Set_Targets (G.Synth, Info.Start, Info.Pad_Level, Info.Cutoff, 3 * Info.Length,
-                                 (if Info.Section in C.Breakdown | C.Finale then 1.0 else 0.55));
+         Neon_Synth.Set_Targets (G.Synth, Info.Start, To_Synth (Mix));
       end loop;
    end Compose_Until;
 
@@ -57,10 +65,12 @@ package body Neon_Game is
             R : constant Neon_Sim.Sound_Request := G.Sounds.Items (I);
             Chord : constant C.Chord_Value := Chord_At (G, At_Time);
             procedure Play (Voice : Instrument; Pitch, Velocity : Float; Length : Positive;
-                            When_At : Samples := At_Time) is
+                            When_At : Samples := At_Time; Glide : Glide_Semitones := 0.0;
+                            Tone : Unit_Float := 0.5) is
             begin
                Neon_Synth.Schedule (G.Synth, (At_Time => When_At, Voice => Voice, Pitch => Pitch,
-                                              Velocity => Velocity, Length => Length, Pan => R.Pan));
+                                              Velocity => Velocity, Length => Length, Pan => R.Pan,
+                                              Glide => Glide, Tone => Tone, others => <>));
             end Play;
          begin
             case R.Kind is
@@ -102,6 +112,28 @@ package body Neon_Game is
                   Play (Sparkle, Chord.Bass + Octave, 0.22, 4_800);
                when Neon_Sim.Tap_Sound =>
                   null;
+               when Neon_Sim.Enemy_Fire =>
+                  Play (Zap, Chord.Bass + 2.0 * Octave, 0.32, 4_000, Glide => Zap_Fall);
+               when Neon_Sim.Warp =>
+                  Play (Zap, C.Chord_Pitch (Chord, 0) + Octave, 0.26, 6_000, Glide => -Zap_Lift / 2.0);
+               when Neon_Sim.Burst_Sound =>
+                  Play (Boom, 36.0, 0.9, 12_000);
+                  Play (Zap, Chord.Bass + 3.0 * Octave, 0.35, 6_000, Glide => Zap_Fall);
+               when Neon_Sim.Boss_Arrive =>
+                  Play (Growl, Chord.Bass, 0.85, 72_000);
+                  Play (Impact, 28.0, 0.9, 24_000);
+               when Neon_Sim.Boss_Hit =>
+                  Play (Bell, C.Chord_Pitch (Chord, 1), 0.22, 2_400, Tone => 0.9);
+               when Neon_Sim.Boss_Down =>
+                  Play (Impact, 26.0, 1.0, 36_000);
+                  Play (Crash, 70.0, 0.9, 48_000);
+                  Play (Boom, 30.0, 1.6, 36_000);
+                  for K in 0 .. Boss_Cascade - 1 loop
+                     Play (Sparkle, C.Chord_Pitch (Chord, K) + Octave, 0.5 - 0.04 * Float (K), 9_600,
+                           At_Time + Samples (K) * 3_000);
+                  end loop;
+               when Neon_Sim.Title_Tick =>
+                  Play (Blip, C.Chord_Pitch (Chord, 2), 0.35, 1_200);
             end case;
          end;
       end loop;

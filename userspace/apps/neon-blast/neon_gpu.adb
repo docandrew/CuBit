@@ -7,6 +7,7 @@ with System;
 with CuBit.Monotonic;
 with Neon_Math; use Neon_Math;
 with Neon_Scene; use Neon_Scene;
+with Neon_Style;
 
 package body Neon_GPU is
    package GC renames CuBit.UI.GPU_Canvas;
@@ -18,9 +19,13 @@ package body Neon_GPU is
    Kind_Stroke : constant := 1.0;
    Kind_Point : constant := 2.0;
 
-   --  shaders/scene.glsl's Globals: 8 rows, then lights and ripples.
+   --  shaders/scene.glsl's Globals: 8 rows, then lights, ripples and the
+   --  stage's look (eleven colours, then the grid cell, sun bands and
+   --  ridge height).
    Header_Rows : constant := 8;
-   Rows : constant := Header_Rows + 2 * Light_Ceiling + 2 * Ripple_Ceiling;
+   Look_Rows : constant := 12;
+   Look_Base : constant := Header_Rows + 2 * Light_Ceiling + 2 * Ripple_Ceiling;
+   Rows : constant := Look_Base + Look_Rows;
    type Globals is array (0 .. 4 * Rows - 1) of Float with Convention => C;
 
    --  One instance (shaders/segment.vert): A + width, B + kind, colour + size.
@@ -105,6 +110,18 @@ package body Neon_GPU is
             Row (Base + 1, R.Color.R, R.Color.G, R.Color.B, R.Strength);
          end;
       end loop;
+      declare
+         L : Neon_Style.Look renames F.Look;
+         type Colour_Rows is array (0 .. Look_Rows - 2) of RGB;
+         Colours : constant Colour_Rows :=
+           [L.Sky_Top, L.Sky_Mid, L.Sky_Low, L.Horizon, L.Floor_Base, L.Grid_Inner, L.Grid_Outer,
+            L.Sun_Top, L.Sun_Bottom, L.Mountain_Fill, L.Mountain_Edge];
+      begin
+         for I in Colours'Range loop
+            Row (Look_Base + I, Colours (I).R, Colours (I).G, Colours (I).B, 0.0);
+         end loop;
+         Row (Look_Base + Look_Rows - 1, L.Grid_Cell, L.Sun_Bands, L.Ridge_Height, 0.0);
+      end;
    end Fill_Globals;
 
    function Fill_Instances (F : Frame) return Natural is

@@ -31,17 +31,20 @@ package Neon_Time with SPARK_Mode, Pure is
    Steps_Per_Bar : constant := Steps_Per_Beat * Beats_Per_Bar;
    subtype Step_Index is Natural range 0 .. Steps_Per_Bar - 1;
 
-   --  The tempos the soundtrack moves between, slow to fast.
-   type Tempo is (Lounge, Cruise, Drive, Rush);
-   --  Samples per sixteenth note: 720_000 / BPM, a whole number for each.
-   type Step_Lengths is array (Tempo) of Positive;
-   Step_Length : constant Step_Lengths :=
-     [Lounge => 8_000,   --  90 BPM
-      Cruise => 7_500,   --  96 BPM
-      Drive => 7_200,    --  100 BPM
-      Rush => 6_000];    --  120 BPM
-   type Tempo_BPM is array (Tempo) of Positive;
-   BPM : constant Tempo_BPM := [Lounge => 90, Cruise => 96, Drive => 100, Rush => 120];
+   --  A tempo is its sixteenth note's length in samples: any whole number
+   --  in this range (80 .. 160 BPM), so every style's beats and bars land
+   --  on exact samples, whatever tempo its seed draws.
+   Slowest_Step : constant := 9_000;    --  80 BPM
+   Fastest_Step : constant := 4_500;    --  160 BPM
+   subtype Step_Samples is Positive range Fastest_Step .. Slowest_Step;
+   --  Samples per minute over sixteenths per beat: BPM = this / step.
+   Sixteenth_Minute : constant := 60 * Sample_Rate / Steps_Per_Beat;
+   function BPM (Step : Step_Samples) return Positive is (Sixteenth_Minute / Step);
+   function Step_For_BPM (Beats : Positive) return Step_Samples is
+     (Step_Samples (Sixteenth_Minute / Beats))
+     with Pre => Beats in Sixteenth_Minute / Slowest_Step .. Sixteenth_Minute / Fastest_Step;
+   --  The calibration metronome's and the first composed step's tempo.
+   Default_Step : constant Step_Samples := 8_000;   --  90 BPM
 
    function Seconds (Count : Sample_Offset) return Float is (Float (Count) / Float (Sample_Rate));
    function Milliseconds (Count : Sample_Offset) return Float is

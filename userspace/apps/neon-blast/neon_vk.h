@@ -9,8 +9,8 @@
 
 /* Render targets the widget lends (CuBit.UI.GPU_Canvas slots). */
 #define NEON_SLOTS 2u
-/* Bytes of Neon_GPU.Globals: 8 + 64 + 32 vec4 rows (shaders/scene.glsl). */
-#define NEON_GLOBALS_BYTES 1664u
+/* Bytes of Neon_GPU.Globals: 8 + 64 + 32 + 12 vec4 rows (shaders/scene.glsl). */
+#define NEON_GLOBALS_BYTES 1856u
 /* One instance: three vec4 (Neon_GPU.Instance). */
 #define NEON_INSTANCE_BYTES 48u
 

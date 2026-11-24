@@ -45,6 +45,10 @@ package body Neon_Autopilot is
                if D < Danger_Radius then
                   Threat := Threat + (1.0 / Max (D, 0.3)) * (P - E.Position);
                end if;
+               --  A strobe's mark: where it lands on the downbeat.
+               if E.Kind = Strobe and then E.Armed and then Length (E.Hop_To - P) < Danger_Radius then
+                  Threat := Threat + (1.0 / Max (Length (E.Hop_To - P), 0.3)) * (P - E.Hop_To);
+               end if;
             end;
          end if;
       end loop;

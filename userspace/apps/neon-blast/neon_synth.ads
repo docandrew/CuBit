@@ -16,6 +16,11 @@
 --  reverb. The master then runs through the "underwater" low-pass sweep,
 --  tape wow and flutter, and the limiter.
 --
+--  Each note carries its timbre (Tone), a scale on its decay and a glide:
+--  the style's kit and sounds are notes' values, not this unit's state, so
+--  a style change is exact to the sample like everything else. The mix
+--  targets (Set_Targets) carry the style's effects.
+--
 --  Underruns are not this unit's business: it renders exactly the frames
 --  asked for, and the caller counts where they could not be delivered.
 ------------------------------------------------------------------------------
@@ -34,7 +39,7 @@ package Neon_Synth with SPARK_Mode is
    --  and counts it (Dropped_Notes).
    Queue_Ceiling : constant := 512;
    --  Voices sounding at once; a new note steals the quietest when full.
-   Voice_Ceiling : constant := 48;
+   Voice_Ceiling : constant := 64;
 
    type Synth is limited private;
 
@@ -45,10 +50,20 @@ package Neon_Synth with SPARK_Mode is
    procedure Schedule (S : in out Synth; Item : Neon_Notes.Note);
    --  From song time At_Time on, the mix glides to these targets: pad
    --  loudness, master low-pass opening (0 underwater .. 1 open), the delay
-   --  time in samples and the tape wobble depth (0 .. 1). Timed like notes,
-   --  so the rendered samples do not depend on how the caller cuts blocks.
-   procedure Set_Targets (S : in out Synth; At_Time : Samples; Pad_Level, Cutoff : Float;
-                          Delay_Samples : Positive; Wobble : Float);
+   --  time in samples and its feedback, the tape wobble depth, the reverb's
+   --  return and room size and the gated room's return (each 0 .. 1).
+   --  Timed like notes, so the rendered samples do not depend on how the
+   --  caller cuts blocks.
+   type Targets is record
+      Pad_Level, Cutoff : Float := 0.5;
+      Delay_Samples : Positive := 24_000;
+      Echo_Feedback : Float := 0.42;
+      Wobble : Float := 0.6;
+      Reverb_Wet : Float := 1.0;
+      Reverb_Room : Float := 0.92;
+      Room_Level : Float := 1.0;
+   end record;
+   procedure Set_Targets (S : in out Synth; At_Time : Samples; Wanted : Targets);
    --  Render the next Frames frames.
    procedure Render (S : in out Synth; Left, Right : out Block; Frames : Block_Frames);
 
@@ -81,10 +96,12 @@ private
       Velocity : Float := 1.0;
       Pan : Float := 0.0;
       Age : Natural := 0;           --  samples since its start
+      Tone : Float := 0.5;          --  the note's timbre, 0 .. 1
+      Glide : Float := 0.0;         --  semitones the pitch slides from (decays by Aux_2)
       Length : Positive := 1;       --  samples until release
       Releasing : Boolean := False;
       Envelope : Float := 0.0;
-      Phase_1, Phase_2, Phase_3, Phase_4 : Float := 0.0;
+      Phase_1, Phase_2, Phase_3, Phase_4, Phase_5 : Float := 0.0;
       --  Two per-voice modulation envelopes (pitch drops, filter and FM
       --  index sweeps) and their per-sample decay factors.
       Aux_1, Aux_2 : Float := 0.0;
@@ -100,7 +117,8 @@ private
 
    type Target_Change is record
       At_Time : Samples := 0;
-      Pad_Level, Cutoff, Delay_Time, Wobble : Float := 0.0;
+      Pad_Level, Cutoff, Delay_Time, Wobble, Echo_Feedback, Reverb_Wet, Reverb_Room,
+      Room_Level : Float := 0.0;
    end record;
    Change_Ceiling : constant := 64;
    type Change_Array is array (1 .. Change_Ceiling) of Target_Change;
@@ -116,6 +134,10 @@ private
       Cutoff, Cutoff_Target : Float := 0.5;
       Delay_Time, Delay_Target : Float := 24_000.0;
       Wobble : Float := 0.6;
+      Echo_Feedback, Echo_Target : Float := 0.42;
+      Reverb_Wet, Wet_Target : Float := 1.0;
+      Room_Size, Room_Target : Float := 0.92;
+      Room_Level, Room_Level_Target : Float := 1.0;
       Changes : Change_Array;
       Changes_Queued : Natural range 0 .. Change_Ceiling := 0;
       Duck_Level : Float := 0.0;

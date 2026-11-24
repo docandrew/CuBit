@@ -7,19 +7,22 @@
 #include "scene.glsl"
 layout(location = 0) out vec4 color;
 
-const vec3 SKY_TOP = vec3(0x0B, 0x04, 0x20) / 255.0;
-const vec3 SKY_MID = vec3(0x3A, 0x0E, 0x5C) / 255.0;
-const vec3 SKY_LOW = vec3(0xB0, 0x20, 0x6E) / 255.0;
-const vec3 HORIZON = vec3(0xFF, 0x6A, 0x5E) / 255.0;
-const vec3 FLOOR_BASE = vec3(0x0E, 0x04, 0x18) / 255.0;
-const vec3 GRID_PINK = vec3(0xFF, 0x2B, 0xD6) / 255.0;
-const vec3 GRID_VIOLET = vec3(0x7A, 0x3C, 0xFF) / 255.0;
-const vec3 SUN_TOP = vec3(0xFF, 0xE4, 0x5C) / 255.0;
-const vec3 SUN_BOTTOM = vec3(0xFF, 0x2B, 0x8A) / 255.0;
-const vec3 MOUNTAIN_FILL = vec3(0x14, 0x07, 0x2A) / 255.0;
-const vec3 MOUNTAIN_EDGE = vec3(0x18, 0xF0, 0xFF) / 255.0;
+// The stage's look (Neon_Style.Look, Neon_GPU's look rows).
+#define SKY_TOP g.look[0].rgb
+#define SKY_MID g.look[1].rgb
+#define SKY_LOW g.look[2].rgb
+#define HORIZON g.look[3].rgb
+#define FLOOR_BASE g.look[4].rgb
+#define GRID_PINK g.look[5].rgb
+#define GRID_VIOLET g.look[6].rgb
+#define SUN_TOP g.look[7].rgb
+#define SUN_BOTTOM g.look[8].rgb
+#define MOUNTAIN_FILL g.look[9].rgb
+#define MOUNTAIN_EDGE g.look[10].rgb
+#define GRID_CELL g.look[11].x
+#define SUN_BANDS g.look[11].y
+#define RIDGE_HEIGHT g.look[11].z
 const vec3 WHITE = vec3(1.0);
-const float GRID_CELL = 2.0;
 const float HALF_WIDTH = 16.0;    // Neon_Sim.Half_Width
 const float HALF_DEPTH = 9.0;     // Neon_Sim.Half_Depth
 const float TURN = 6.2831853;
@@ -89,7 +92,7 @@ void main() {
         c += 0.45 / (1.0 + pow(above / (0.05 * H), 2.0)) * HORIZON;
         float sun_r = g.counts.z * H * (1.0 + 0.05 * g.mood.x);
         vec2 sun = vec2(g.view.x * 0.5, horizon - 0.3 * sun_r);
-        float ridge_y = horizon - H * ridge(px.x / g.view.x);
+        float ridge_y = horizon - H * RIDGE_HEIGHT * ridge(px.x / g.view.x);
         if (px.y >= ridge_y) {
             float below = px.y - ridge_y;
             c = mix(MOUNTAIN_FILL, c, 0.25) + clamp(1.6 - below, 0.0, 1.0) * 1.2 * MOUNTAIN_EDGE;
@@ -103,7 +106,7 @@ void main() {
             bool cut = false;
             if (dy > -0.15 * sun_r) {
                 float depth = (dy + 0.15 * sun_r) / sun_r;
-                cut = fract(depth * 7.0 - g.view.w * 0.35) < 0.1 + 0.55 * depth;
+                cut = fract(depth * SUN_BANDS - g.view.w * 0.35) < 0.1 + 0.55 * depth;
             }
             if (d < sun_r) {
                 // Anti-aliased disc edge and stripe edges.

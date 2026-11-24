@@ -17,11 +17,12 @@
 --
 --  A frame is plain data: glowing 3D line segments (wireframes, shots,
 --  trails), points (particles), coloured point lights that light the grid,
---  ripples on the floor, 2D HUD strokes, and the beat-driven values (kick
---  pulse, sun swell, glow level). Ceilings are named; what does not fit is
+--  ripples on the floor, 2D HUD strokes, the beat-driven values (kick
+--  pulse, sun swell, glow level) and the stage's look (palette and grid). Ceilings are named; what does not fit is
 --  counted in Dropped and shown on the overlay.
 ------------------------------------------------------------------------------
 with Neon_Math; use Neon_Math;
+with Neon_Style;
 with Neon_Game;
 
 package Neon_Scene is
@@ -101,6 +102,7 @@ package Neon_Scene is
       Shake : Vec2;                   --  pixels at 1080 high
       Underwater : Float := 0.0;      --  breakdown tint 0 .. 1
       Scanlines : Boolean := True;
+      Look : Neon_Style.Look := Neon_Style.Classic;   --  the stage's palette and grid
       Lines : Line_Array;
       Line_Count : Natural range 0 .. Line_Ceiling := 0;
       Strokes : Stroke_Array;
@@ -125,19 +127,8 @@ package Neon_Scene is
    procedure Add_Text (F : in out Frame; Text : String; X, Y, Size : Float; Color : RGB;
                        Width : Float := 2.0; Centered : Boolean := False);
 
-   --  Palette of the sky and floor (shared with the renderers).
-   Sky_Top : constant RGB := From_Hex (16#0B0420#);
-   Sky_Mid : constant RGB := From_Hex (16#3A0E5C#);
-   Sky_Low : constant RGB := From_Hex (16#B0206E#);
-   Horizon_Glow : constant RGB := From_Hex (16#FF6A5E#);
-   Floor_Base : constant RGB := From_Hex (16#0E0418#);
-   Grid_Pink : constant RGB := From_Hex (16#FF2BD6#);
-   Grid_Violet : constant RGB := From_Hex (16#7A3CFF#);
-   Sun_Top : constant RGB := From_Hex (16#FFE45C#);
-   Sun_Bottom : constant RGB := From_Hex (16#FF2B8A#);
-   Mountain_Fill : constant RGB := From_Hex (16#14072A#);
-   Mountain_Edge : constant RGB := From_Hex (16#18F0FF#);
-   Grid_Cell : constant := 2.0;
+   --  The sky, floor, sun and mountain colours and the grid's cell are the
+   --  frame's Look (the stage's style draws them).
    --  The sun's radius as a fraction of the view height.
    Sun_Radius : constant := 0.14;
 

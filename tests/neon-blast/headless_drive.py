@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Drive Neon Blast in a headless CuBit run (tests/headless/run.sh --test
-neon-blast): wait for its first frame, photograph the title, let the attract
-demo play and photograph it, then play by QEMU's PS/2 keyboard and mouse
-(WASD, aim, fire, dash), photographing with and without the overlay.
+neon-blast): wait for its first frame, photograph the title, its seed
+picker and the bestiary, then let the attract demo play each stage and each
+stage's boss (the title's start choice, stepped with the Down key) and
+photograph them, then play by QEMU's PS/2 keyboard and mouse (WASD, aim,
+fire, dash), photographing with and without the overlay.
 
 Before that, F9 on the title runs the replay benchmark (seed 7, 15 s,
 640 x 400, software path) on CuBit; its frame and audio hashes must equal
@@ -139,6 +141,33 @@ def benchmark():
     return same
 
 
+STAGE_SHOTS = (20, 32, 44)   # seconds into a stage's demo: groove, build, drop
+BOSS_SHOTS = (14, 24)        # seconds into a boss-practice demo: the totem
+DEMO_IDLE = 13.5             # the attract demo starts after 12 s without input
+CHOICES = 8                  # the title's starts: stages 1 .. 4, then their bosses
+VIDEO_CHOICE = 2             # the film: stage 3
+
+
+def demo_at(choice, here, shots_at, label):
+    """From the title (start choice `here`), step the start to `choice`,
+    idle until the attract demo plays it, photograph it, then hand the game
+    back. Returns the new current choice."""
+    for _ in range((choice - here) % CHOICES):
+        key('down')
+        time.sleep(0.4)
+    here = choice
+    time.sleep(DEMO_IDLE)
+    began = time.time()
+    for n, at in enumerate(shots_at):
+        due = began + at
+        if time.time() < due:
+            time.sleep(due - time.time())
+        shot('%s-%c' % (label, ord('a') + n))
+    key('shift')              # a person is back: the demo ends, the title returns
+    time.sleep(1.5)
+    return here
+
+
 def main():
     if not wait_for('neon-blast: first frame painted', 180):
         return 1
@@ -146,29 +175,50 @@ def main():
     shot('01-title')
     replay_ok = benchmark()
     time.sleep(2.0)
+    # The playlist: step the seed on twice, keep it, step back.
+    key('right')
+    time.sleep(0.5)
+    key('right')
+    time.sleep(2.5)
+    key('k')
+    time.sleep(1.0)
+    shot('02-title-seed')
+    key('left')
+    time.sleep(0.5)
+    key('left')
+    time.sleep(2.5)
+    key('g')
+    time.sleep(2.0)
+    shot('03-bestiary')
+    key('g')
+    time.sleep(1.0)
     key('f3')
     time.sleep(1.5)
-    shot('02-title-overlay')
+    shot('04-title-overlay')
     key('f3')
-    # Idle: the attract demo starts after 12 s without input.
-    time.sleep(16)
-    shot('03-demo-a')
-    time.sleep(6)
-    shot('04-demo-b')
-    time.sleep(6)
+    # Each stage, then each boss, as the attract demo plays them.
+    here = 0
+    for stage in range(4):
+        here = demo_at(stage, here, STAGE_SHOTS, '1%d-stage%d' % (stage, stage + 1))
+    for stage in range(4):
+        here = demo_at(4 + stage, here, BOSS_SHOTS, '2%d-boss%d' % (stage, stage + 1))
+    # Film a demo of stage 3 once it has built up.
+    if video_seconds > 0:
+        for _ in range((VIDEO_CHOICE - here) % CHOICES):
+            key('down')
+            time.sleep(0.4)
+        here = VIDEO_CHOICE
+        time.sleep(DEMO_IDLE + 24)
+        film(video_seconds)
+        key('shift')
+        time.sleep(1.5)
     key('f3')
     time.sleep(1.0)
-    shot('05-demo-overlay')
+    shot('30-demo-overlay')
     key('f3')
-    # Film the demo once its waves have built up.
-    if video_seconds > 0:
-        time.sleep(4)
-        film(video_seconds)
-    # Any input ends the demo; Enter then starts a game of our own.
+    # Enter starts a game of our own (from the chosen start).
     move(-400, -300)
     move(300, 200)
-    key('ret')
-    time.sleep(1.0)
     key('ret')
     time.sleep(3.0)
     # Play: strafe with held keys, sweep the aim, fire in bursts, dash.
@@ -182,14 +232,14 @@ def main():
         if round_number % 5 == 2:
             key('spc')
         if round_number == 6:
-            shot('06-play-a')
+            shot('31-play-a')
         if round_number == 11:
             key('f3')
             time.sleep(1.2)
-            shot('07-play-overlay')
+            shot('32-play-overlay')
             key('f3')
         time.sleep(0.15)
-    shot('08-play-b')
+    shot('33-play-b')
     time.sleep(6)          # one more stats interval
     stats = [line for line in log_text().splitlines() if 'neon-blast: stats' in line]
     for line in stats:

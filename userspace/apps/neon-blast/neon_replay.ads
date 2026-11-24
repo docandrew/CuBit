@@ -29,7 +29,7 @@ package Neon_Replay is
    type Result is record
       Frames : Natural := 0;
       Frame_Hash, Audio_Hash : Unsigned_64 := 0;
-      Score, Wave, Kills, On_Beat : Natural := 0;
+      Score, Stage, Kills, On_Beat : Natural := 0;
    end record;
 
    --  The audio sample as 16-bit PCM, as written to the mixer and the WAV.

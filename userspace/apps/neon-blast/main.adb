@@ -99,6 +99,13 @@ procedure Main is
    OVERLAY_INSET : constant := 8;
    OVERLAY_WIDTH : constant := 520;
 
+   function Now_Us_Early return Unsigned_64 is
+      Reading : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
+   begin
+      return (if Reading.Available then Reading.Microseconds
+              else CuBit.Monotonic.Milliseconds * 1_000);
+   end Now_Us_Early;
+
    type Game_Access is access Neon_Game.Game;
    type Frame_Access is access Neon_Scene.Frame;
    G : constant Game_Access := new Neon_Game.Game;
@@ -132,6 +139,24 @@ procedure Main is
    Underruns_Now : Unsigned_32 := 0;
    Queued_Now : Natural := 0;
    Mix_Left, Mix_Right : Neon_Synth.Block;
+   --  Synthesis cost: microseconds spent rendering and frames rendered
+   --  since the last stats line, and the worst call scaled to a full block.
+   Synth_Us, Synth_Frames : Unsigned_64 := 0;
+   Synth_Worst_Us_Per_Block : Float := 0.0;
+
+   procedure Synthesize (Frames : Natural) is
+      Began : constant Unsigned_64 := Now_Us_Early;
+      Spent : Unsigned_64;
+   begin
+      Neon_Game.Render_Audio (G.all, Mix_Left, Mix_Right, Frames);
+      Spent := Now_Us_Early - Began;
+      Synth_Us := Synth_Us + Spent;
+      Synth_Frames := Synth_Frames + Unsigned_64 (Frames);
+      if Frames > 0 then
+         Synth_Worst_Us_Per_Block :=
+           Max (Synth_Worst_Us_Per_Block, Float (Spent) * Float (Neon_Synth.Maximum_Block) / Float (Frames));
+      end if;
+   end Synthesize;
 
    --  The song clock: Song_At (Us) = Base_Song + (Us - Base_Us) * 0.048.
    Base_Us : Unsigned_64 := 0;
@@ -163,12 +188,7 @@ procedure Main is
    Awaiting_Publish : Boolean := False;
    Display_Lead : Float := 0.0;            --  samples: frames show this much ahead
 
-   function Now_Us return Unsigned_64 is
-      Reading : constant CuBit.Monotonic.Reading := CuBit.Monotonic.Read;
-   begin
-      return (if Reading.Available then Reading.Microseconds
-              else CuBit.Monotonic.Milliseconds * 1_000);
-   end Now_Us;
+   function Now_Us return Unsigned_64 renames Now_Us_Early;
 
    function Decimal (Value : Natural) return String is
       Image : constant String := Natural'Image (Value);
@@ -232,7 +252,7 @@ procedure Main is
             while Neon_Game.Write_Head (G.all) < Wanted_Head loop
                Frames := Natural'Min (Neon_Synth.Maximum_Block,
                                       Natural (Wanted_Head - Neon_Game.Write_Head (G.all)));
-               Neon_Game.Render_Audio (G.all, Mix_Left, Mix_Right, Frames);
+               Synthesize (Frames);
             end loop;
          end;
          return;
@@ -247,7 +267,7 @@ procedure Main is
          Reservation := CuBit.Audio.reserveWrite (Stream, Wanted);
          exit when not CuBit.Audio.isReservationValid (Reservation);
          Frames := CuBit.Audio.reservedFrames (Reservation);
-         Neon_Game.Render_Audio (G.all, Mix_Left, Mix_Right, Frames);
+         Synthesize (Frames);
          Fill (CuBit.Audio.firstSpan (Reservation), 1);
          Fill (CuBit.Audio.secondSpan (Reservation), 1 + CuBit.Audio.firstSpan (Reservation).frames);
          CuBit.Audio.commitWrite (Stream, Reservation, Frames, Committed);
@@ -341,6 +361,14 @@ procedure Main is
       C.Confirm := Was_Pressed (Snap, Enter) or else (Click_Pressed and then not Playing);
       C.Calibrate := Was_Pressed (Snap, Neon_Keys.C);
       C.Tap := Was_Pressed (Snap, Space) or else Click_Pressed;
+      if G.Sim.Phase = Neon_Sim.Title then
+         --  The title's pickers: arrows step the seed and the start.
+         C.Seed_Step := (if Was_Pressed (Snap, Right) then 1 elsif Was_Pressed (Snap, Left) then -1 else 0);
+         C.Choice_Step := (if Was_Pressed (Snap, Down) then 1 elsif Was_Pressed (Snap, Up) then -1 else 0);
+         C.Seed_Random := Was_Pressed (Snap, R);
+         C.Keep := Was_Pressed (Snap, K);
+         C.Bestiary := Was_Pressed (Snap, G);
+      end if;
       if Last_Press_Us /= 0 then
          declare
             Error : Float;
@@ -368,12 +396,16 @@ procedure Main is
       if G.Sim.Demo and then G.Sim.Phase /= Neon_Sim.Title and then Last_Press_Us /= 0 then
          --  A person is back: end the demo and show the title.
          declare
-            Keep_Scores : constant Neon_Sim.Score_Table := G.Sim.Scores;
-            Keep_Offset : constant Float := G.Sim.Calibration_Offset_Ms;
+            Keep : constant Neon_Sim.World := G.Sim;
          begin
             Neon_Sim.Reset (G.Sim, SEED);
-            G.Sim.Scores := Keep_Scores;
-            G.Sim.Calibration_Offset_Ms := Keep_Offset;
+            G.Sim.Scores := Keep.Scores;
+            G.Sim.Calibration_Offset_Ms := Keep.Calibration_Offset_Ms;
+            G.Sim.Playlist := Keep.Playlist;
+            G.Sim.Choice := Keep.Choice;
+            G.Sim.Favourites := Keep.Favourites;
+            G.Sim.Favourites_Kept := Keep.Favourites_Kept;
+            G.Sim.Run := Keep.Run;
             G.Sim.Clock := Neon_Game.Sim_Time (G.all);
          end;
          Last_Press_Us := 0;
@@ -538,11 +570,18 @@ procedure Main is
                   & " queue=" & Decimal (Queued_Now) & "+" & Decimal (Device_Frames)
                   & " drift_ms=" & Tenths (Drift_Samples * MICROSECONDS_PER_SAMPLE / 1000.0)
                   & " beat_to_photon_ms_avg=" & Tenths (Mean (Beat_To_Photon))
+                  & " synth_load_pct=" & Tenths (if Synth_Frames = 0 then 0.0
+                                                 else 100.0 * Float (Synth_Us) * Float (Sample_Rate)
+                                                      / (1.0e6 * Float (Synth_Frames)))
+                  & " synth_us_per_block_max=" & Tenths (Synth_Worst_Us_Per_Block)
+                  & " voices=" & Decimal (Neon_Synth.Voices_Sounding (G.Synth))
+                  & " dropped_notes=" & Decimal (Neon_Synth.Dropped_Notes (G.Synth))
                   & " phase=" & (case G.Sim.Phase is
                                    when Neon_Sim.Title => "title", when Neon_Sim.Playing => "playing",
                                    when Neon_Sim.Dying => "dying", when Neon_Sim.Game_Over => "game-over",
                                    when Neon_Sim.Calibrating => "calibrating")
-                  & " score=" & Decimal (G.Sim.Score) & " wave=" & Decimal (G.Sim.Wave)
+                  & " score=" & Decimal (G.Sim.Score) & " stage=" & Decimal (G.Sim.Stage)
+                  & " seed=" & Decimal (Natural (G.Sim.Playlist))
                   & " demo=" & (if G.Sim.Demo then "yes" else "no") & ASCII.LF);
       Frame_Interval := (others => <>);
       Render_Time := (others => <>);
@@ -550,6 +589,9 @@ procedure Main is
       Input_To_Present := (others => <>);
       Key_To_Sound := (others => <>);
       Beat_To_Photon := (others => <>);
+      Synth_Us := 0;
+      Synth_Frames := 0;
+      Synth_Worst_Us_Per_Block := 0.0;
    end Report_Stats;
 
    ---------------------------------------------------------------------------
@@ -651,7 +693,7 @@ procedure Main is
                      & " size=" & Decimal (BENCH_WIDTH) & "x" & Decimal (BENCH_HEIGHT)
                      & " frame_hash=" & Unsigned_64'Image (O.Frame_Hash)
                      & " audio_hash=" & Unsigned_64'Image (O.Audio_Hash)
-                     & " score=" & Decimal (O.Score) & " wave=" & Decimal (O.Wave)
+                     & " score=" & Decimal (O.Score) & " stage=" & Decimal (O.Stage)
                      & " step_ms_avg=" & Tenths (Mean (Steps)) & " step_ms_max=" & Tenths (Steps.Peak)
                      & ASCII.LF);
       end;

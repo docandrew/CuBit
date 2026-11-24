@@ -50,7 +50,7 @@ package body Neon_Replay is
 
    function Outcome (R : Replay) return Result is
      ((R.Result_So_Far with delta
-         Score => R.Game.Sim.Score, Wave => R.Game.Sim.Wave, Kills => R.Game.Sim.Kills,
+         Score => R.Game.Sim.Score, Stage => R.Game.Sim.Stage, Kills => R.Game.Sim.Kills,
          On_Beat => R.Game.Sim.On_Beat_Kills));
 
 end Neon_Replay;
