@@ -35,6 +35,11 @@
   (setting "desktop.launch.20-doom"
     (Launch_Entry label => "DOOM" action => (Launch_Action.Program "doom.elf") icon => (Launch_Icon "Doom") category => App_Category.Games single_instance => true
       color => (App_Color.RGB (RGB_Color red => 179 green => 38 blue => 26))))
+  # Neon Blast (APP-008): the musical vaporwave arena shooter. It shows
+  # the Games category icon until its own icon is approved.
+  (setting "desktop.launch.22-neon-blast"
+    (Launch_Entry label => "Neon Blast" action => (Launch_Action.Program "neon-blast.app") icon => (Launch_Icon "Category_Games") category => App_Category.Games single_instance => true
+      color => (App_Color.RGB (RGB_Color red => 255 green => 43 blue => 214))))
   (setting "desktop.launch.30-devices"
     (Launch_Entry label => "Devices" action => (Launch_Action.Program "devices.app") icon => (Launch_Icon "Devices") category => App_Category.System
       color => (App_Color.RGB (RGB_Color red => 95 green => 184 blue => 72))))

@@ -3030,7 +3030,7 @@ DESKTOP_OVERLAY := isodir/boot/desktop.svc isodir/boot/display.svc isodir/boot/m
 	isodir/boot/calculator.app isodir/boot/doom.elf isodir/boot/ccl-workbench.app \
 	isodir/boot/ccl-console.app isodir/boot/logs.app isodir/boot/metricsview.app isodir/boot/config-storage.svc \
 	isodir/boot/lexicon.svc isodir/boot/dictionary.app isodir/boot/bible.app \
-	$(SERVO_DISK_CONTENTS)
+	isodir/boot/neon-blast.app $(SERVO_DISK_CONTENTS)
 DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(notdir $(sample))=$(sample)")
 
 # The session's startup profile (the Bible demo starts the Bible too).
@@ -3060,7 +3060,7 @@ INITRD_SERVICES := filesystem ramdisk ata nvme netstack virtio-net virtio-gpu hd
 .PHONY : desktop-session-content
 desktop-session-content: $(INITRD_SERVICES) desktop metricsvc display logstore \
 	desktop-shell devices files text calculator config-inspector ccl-workbench ccl-console logs config-storage clock timesync tls doom sameboy \
-	lexicon dictionary bible
+	lexicon dictionary bible neon-blast
 
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
