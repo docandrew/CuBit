@@ -486,6 +486,10 @@ package body Files_View_Tests is
             Check (Next_Deadline_Us (View.all) <= T0 + HOLD_US, "the view asks to be woken for the reveal");
             Hold_Until (T0 + HOLD_US);
             Check (Revealed (View.all) = Ctrl_Only, "holding Ctrl reveals the Ctrl layer");
+            --  Regression (found on CuBit): while the key stays down nothing
+            --  is due, so the app sleeps instead of waking in a loop.
+            Check (Next_Deadline_Us (View.all) = Unsigned_64'Last,
+                   "held and revealed: no wake pending" & Unsigned_64'Image (Next_Deadline_Us (View.all)));
             Check (Key_Cell_Caption (View.all, K.F3) = "Name" and then Key_Cell_Caption (View.all, K.F6) = "Size",
                    "Ctrl+F3 .. F6 sort: " & Key_Cell_Caption (View.all, K.F3));
             Bar_Fits ("Ctrl layer");
