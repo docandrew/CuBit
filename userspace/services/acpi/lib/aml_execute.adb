@@ -2563,7 +2563,8 @@ package body AML_Execute with SPARK_Mode is
                      Reading : Integer_Value;
                      Available : Boolean;
                   begin
-                     if Loading_Effects_Restricted then S := Unsupported; return; end if;
+                     -- The owner callback admits this read-only clock sample.
+                     -- An absent or unavailable owner clock still refuses below.
                      Read_Timer (Environment, Reading, Available);
                      if not Available then S := Unsupported; return; end if;
                      V := (Value_Kind => Integer_Datum,
@@ -2586,7 +2587,6 @@ package body AML_Execute with SPARK_Mode is
                   V := (Value_Kind => Integer_Datum, Number => 0, Origin => AML_Decode.Ordinary_Integer);
                elsif B = 16#11# and then Active_Buffer_Count
                  (Code (Code'First + Offset .. Code'First + (Parse_Limit - 1))) then
-                  if Allow_No_Return and Depth = 0 then S := Unsupported; return; end if;
                   declare
                      Header : constant Package_Result := Read_Package
                        (Code (Code'First + Offset + 1 .. Code'First + (Parse_Limit - 1)));
@@ -2690,7 +2690,6 @@ package body AML_Execute with SPARK_Mode is
                   end if;
                   V := (Value_Kind => Object_Datum, Object => Bound.Object);
                elsif B in 16#0D# | 16#11# then
-                  if Allow_No_Return and Depth = 0 then S := Unsupported; return; end if;
                   if B = 16#0D# then
                      Text := Read_String_Span (Code (Code'First + Offset .. Code'First + (Parse_Limit - 1)));
                      if Text.Kind /= Accepted then
@@ -2801,7 +2800,6 @@ package body AML_Execute with SPARK_Mode is
                         if S /= Returned then return; end if;
                      when Metadata_Binding => V := (Metadata_Datum, Bound.Metadata);
                      when Integer_Binding =>
-                        if Allow_No_Return and Depth = 0 then S := Unsupported; return; end if;
                         V := (Value_Kind => Integer_Datum, Number => Bound.Value, Origin => Bound.Origin);
                      when Method_Binding =>
                         if Bound.Parameters = 0 then
@@ -2823,7 +2821,6 @@ package body AML_Execute with SPARK_Mode is
                           or else Bound.Object.ID = 0 then
                            S := Unsupported_Value; return;
                         end if;
-                        if Allow_No_Return and Depth = 0 then S := Unsupported; return; end if;
                         V := (Value_Kind => Object_Datum, Object => Bound.Object);
                   end case;
                else
@@ -4583,7 +4580,7 @@ package body AML_Execute with SPARK_Mode is
                         Body_Result := Failure (Declared_Status, Charged); return;
                      end if;
                   end;
-               elsif Code (Code'First + Offset) in Conditional_Reference_Op | From_BCD_Extension | To_BCD_Extension | Wait_Extension | 16#33# then
+               elsif Code (Code'First + Offset) in Conditional_Reference_Op | From_BCD_Extension | To_BCD_Extension | Wait_Extension | Revision_Extension | 16#33# then
                   Offset := Offset - 1;
                   Operand (Value, State);
                   if State /= Returned then
@@ -5043,7 +5040,10 @@ package body AML_Execute with SPARK_Mode is
                   Body_Result := (Status => Object_Returned, Charged => Charged, Object => Value.Object); return;
                end if;
                Body_Result := (Status => Returned, Charged => Charged, Value => Value.Number, Origin => Value.Origin); return;
-            when 16#70# | Copy_Object_Op => -- Shared statement/expression evaluation.
+            when 16#00# | 16#01# | 16#FF# | 16#0A# .. 16#0E# |
+              16#11# .. 16#13# | 16#71# | 16#70# | Copy_Object_Op =>
+               -- Evaluate discarded TermList values through the ordinary
+               -- operand path; the common statement epilogue clears its root.
                Offset := Offset - 1;
                Charged := Charged - 1;
                Operand (Value, State);
