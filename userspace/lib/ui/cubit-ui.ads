@@ -330,6 +330,14 @@ package CuBit.UI is
    function Menu_Title_Width (label : String) return Natural;
    procedure Draw_Status_Bar
       (c : Canvas; r : Rect; colors : Theme; left, right : String);
+   --  A status line of hints ("Tab: other pane   Enter: open   ..."): the
+   --  parts between PART_SEPARATOR, in priority order. Too narrow, whole
+   --  parts drop from the end (right first, then left), never cut mid-word;
+   --  a single part that can't fit alone is elided.
+   PART_SEPARATOR : constant String := "   ";
+   function Fit_UI_Parts (text : String; width : Natural) return String;
+   procedure Draw_Status_Parts
+      (c : Canvas; r : Rect; colors : Theme; left, right : String);
    procedure Draw_Pane
       (c : Canvas; r : Rect; colors : Theme; title : String);
    type Table_Column_Layout is record

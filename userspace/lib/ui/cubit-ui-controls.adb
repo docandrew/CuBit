@@ -117,7 +117,8 @@ package body CuBit.UI.Controls is
          active       => False,
          activated    => False,
          pendingValue => False,
-         enabled      => True);
+         enabled      => True,
+         shortcut     => CuBit.UI.Keys.No_Chord);
    end Add;
 
    procedure Add_Surface
@@ -606,6 +607,27 @@ package body CuBit.UI.Controls is
       end if;
       return CuBit.UI.Pointer_Default;
    end Cursor;
+
+   procedure Set_Shortcut
+      (m : in out Control_Map; id : Control_ID; shortcut : CuBit.UI.Keys.Chord)
+   is
+      index : constant Integer := Find (m.entries, m.entryCount, id);
+   begin
+      if m.valid and then index >= 0 then
+         m.entries (Control_Index (index)).shortcut := shortcut;
+      end if;
+   end Set_Shortcut;
+
+   function Shortcut
+      (m : Control_Map; id : Control_ID) return CuBit.UI.Keys.Chord
+   is
+      index : constant Integer := Find (m.entries, m.entryCount, id);
+   begin
+      if m.valid and then index >= 0 then
+         return m.entries (Control_Index (index)).shortcut;
+      end if;
+      return CuBit.UI.Keys.No_Chord;
+   end Shortcut;
 
    function Has_Continuous_Action
       (m : Control_Map; id : Control_ID) return Boolean

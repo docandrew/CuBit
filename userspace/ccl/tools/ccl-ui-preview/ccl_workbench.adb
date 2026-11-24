@@ -1,4 +1,5 @@
 with CCL.Evaluation;
+with CuBit.UI.Keycaps;
 with CCL_Log_IO;
 with Interfaces; use Interfaces;
 with System;
@@ -31,6 +32,7 @@ with CuBit.File_Selection;
 with CuBit.UI.File_Dialogs;
 with CuBit.UI;
 with CuBit.UI.Controls;
+with CuBit.UI.Keys;
 with CuBit.UI.Editor;
 with CuBit.UI.Editor.Cursors;
 with CuBit.UI.Editor.Documents;
@@ -309,6 +311,9 @@ package body CCL_Workbench is
    --  as the event its shortcut sends (Menu_Event), or as its toolbar
    --  button does.
    package Menus renames CuBit.UI.Menus;
+   package Keys renames CuBit.UI.Keys;
+   package K renames CuBit.UI.Keys;
+   use type Keys.Modifier, Keys.Modifier_Set, Keys.Key, Keys.Chord;
    type Menu_Name is (File_Menu, Edit_Menu, View_Menu, Run_Menu, Help_Menu);
    type Menu_Command is
      (No_Menu_Command,
@@ -322,7 +327,7 @@ package body CCL_Workbench is
    type Menu_Entry is record
       Parent    : Menu_Name;
       Caption   : Menus.Text;
-      Shortcut  : Menus.Text;
+      Hint      : Keys.Chord;
       Mnemonic  : Character;
       Separated : Boolean;          --  a rule above it
    end record;
@@ -333,25 +338,25 @@ package body CCL_Workbench is
       Run_Menu => T ("Run"), Help_Menu => T ("Help")];
    MENU_MNEMONICS : constant array (Menu_Name) of Character :=
      [File_Menu => 'f', Edit_Menu => 'e', View_Menu => 'v', Run_Menu => 'r', Help_Menu => 'h'];
-   NO_SHORTCUT : constant Menus.Text := T ("");
+   NO_SHORTCUT : constant Keys.Chord := Keys.No_Chord;
    MENU_ENTRIES : constant array (Real_Menu_Command) of Menu_Entry :=
-     [Open_File          => (File_Menu, T ("Open..."), T ("Ctrl+O"), 'o', False),
-      Save_File          => (File_Menu, T ("Save As..."), T ("Ctrl+S"), 'a', False),
+     [Open_File          => (File_Menu, T ("Open..."), (K.Ctrl + K.O), 'o', False),
+      Save_File          => (File_Menu, T ("Save As..."), (K.Ctrl + K.S), 'a', False),
       Close_Window       => (File_Menu, T ("Close Window"), NO_SHORTCUT, 'c', True),
-      Undo_Edit          => (Edit_Menu, T ("Undo"), T ("Ctrl+Z"), 'u', False),
-      Redo_Edit          => (Edit_Menu, T ("Redo"), T ("Ctrl+Y"), 'r', False),
-      Select_All_Text    => (Edit_Menu, T ("Select All"), T ("Ctrl+A"), 'a', True),
-      Add_Next_Match     => (Edit_Menu, T ("Add Next Occurrence"), T ("Ctrl+D"), 'o', False),
-      Find_Text          => (Edit_Menu, T ("Find..."), T ("Ctrl+F"), 'f', True),
-      Find_Next_Match    => (Edit_Menu, T ("Find Next"), T ("F3"), 'n', False),
-      Matching_Paren     => (Edit_Menu, T ("Go to Matching Parenthesis"), T ("Ctrl+]"), 'm', False),
-      Show_REPL          => (View_Menu, T ("REPL"), T ("F6"), 'r', False),
-      Basic_Syntax       => (View_Menu, T ("BASIC Syntax"), T ("F8"), 'b', True),
-      Format_Source      => (View_Menu, T ("Format Source"), T ("Shift+F8"), 'f', False),
-      Run_Source_Command => (Run_Menu, T ("Run Source"), T ("F5"), 'r', False),
-      Watch_Live         => (Run_Menu, T ("Watch Every Second"), T ("F7"), 'w', False),
+      Undo_Edit          => (Edit_Menu, T ("Undo"), (K.Ctrl + K.Z), 'u', False),
+      Redo_Edit          => (Edit_Menu, T ("Redo"), (K.Ctrl + K.Y), 'r', False),
+      Select_All_Text    => (Edit_Menu, T ("Select All"), (K.Ctrl + K.A), 'a', True),
+      Add_Next_Match     => (Edit_Menu, T ("Add Next Occurrence"), (K.Ctrl + K.D), 'o', False),
+      Find_Text          => (Edit_Menu, T ("Find..."), (K.Ctrl + K.F), 'f', True),
+      Find_Next_Match    => (Edit_Menu, T ("Find Next"), (+K.F3), 'n', False),
+      Matching_Paren     => (Edit_Menu, T ("Go to Matching Parenthesis"), (K.Ctrl + K.Right_Bracket), 'm', False),
+      Show_REPL          => (View_Menu, T ("REPL"), (+K.F6), 'r', False),
+      Basic_Syntax       => (View_Menu, T ("BASIC Syntax"), (+K.F8), 'b', True),
+      Format_Source      => (View_Menu, T ("Format Source"), (K.Shift + K.F8), 'f', False),
+      Run_Source_Command => (Run_Menu, T ("Run Source"), (+K.F5), 'r', False),
+      Watch_Live         => (Run_Menu, T ("Watch Every Second"), (+K.F7), 'w', False),
       Compile_Program    => (Run_Menu, T ("Compile and Verify"), NO_SHORTCUT, 'c', True),
-      Compile_And_Run    => (Run_Menu, T ("Compile and Run Bytecode"), T ("Ctrl+F5"), 'b', False),
+      Compile_And_Run    => (Run_Menu, T ("Compile and Run Bytecode"), (K.Ctrl + K.F5), 'b', False),
       Run_Bytecode       => (Run_Menu, T ("Run Verified Bytecode"), NO_SHORTCUT, 'v', False),
       Pause_Program      => (Run_Menu, T ("Pause"), NO_SHORTCUT, 'p', True),
       Stop_Program       => (Run_Menu, T ("Stop"), NO_SHORTCUT, 's', False),
@@ -372,10 +377,10 @@ package body CCL_Workbench is
    procedure Set_Tooltips is
    begin
       Tooltips.Clear (Tips);
-      Tooltips.Set_Region (Tips, Open_Button_Bounds, "Open a CCL file", "Ctrl+O");
-      Tooltips.Set_Region (Tips, Save_Button_Bounds, "Save as a new file", "Ctrl+S");
+      Tooltips.Set_Region (Tips, Open_Button_Bounds, "Open a CCL file", (K.Ctrl + K.O));
+      Tooltips.Set_Region (Tips, Save_Button_Bounds, "Save as a new file", (K.Ctrl + K.S));
       Tooltips.Set_Region (Tips, Compile_Button_Bounds, "Compile and verify");
-      Tooltips.Set_Region (Tips, Run_Button_Bounds, "Run source", "F5");
+      Tooltips.Set_Region (Tips, Run_Button_Bounds, "Run source", (+K.F5));
       Tooltips.Set_Region (Tips, VM_Run_Button_Bounds, "Run verified bytecode");
       Tooltips.Set_Region (Tips, Pause_Button_Bounds, "Pause");
       Tooltips.Set_Region (Tips, Stop_Button_Bounds, "Stop");
@@ -2436,9 +2441,9 @@ package body CCL_Workbench is
             end if;
             Result.Item_Count := Result.Item_Count + 1;
             Result.Items (Result.Item_Count) :=
-              (Parent => Parent, Caption => E.Caption, Shortcut => E.Shortcut, Mnemonic => E.Mnemonic,
+              (Parent => Parent, Caption => E.Caption, Hint => E.Hint, Mnemonic => E.Mnemonic,
                Command => Menu_Command'Pos (Item), Enabled => Menu_Enabled (Item),
-               Checked => Menu_Checked (Item), Separator => False);
+               Checked => Menu_Checked (Item), Separator => False, Shade => CuBit.UI.Keycaps.Neutral);
          end;
       end loop;
       return Result;

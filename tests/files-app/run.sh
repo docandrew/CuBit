@@ -27,13 +27,18 @@ for unit in cubit.ads cubit-filesystems.ads cubit-filesystems.adb cubit-director
             cubit-handles-control.ads cubit-handles-control.adb cubit-handles-devices.ads \
             cubit-handles-devices.adb cubit-handles-ipc.ads cubit-handles-ipc.adb \
             cubit-handles-kernel.ads cubit-handles-kernel.adb cubit-system_facts.ads \
-            cubit-system_facts.adb cubit-startup_tables.ads cubit-startup_tables.adb; do
+            cubit-system_facts.adb cubit-startup_tables.ads cubit-startup_tables.adb \
+            cubit-call_census.ads cubit-call_census.adb cubit-channel_bells.ads cubit-channel_bells.adb \
+            cubit-readiness.ads cubit-readiness.adb cubit-waits.ads cubit-waits.adb cubit-wake_words.ads \
+            cubit-wake_words.adb cubit-monotonic.ads cubit-monotonic.adb; do
   cmp -s "$root/userspace/runtime/gnat/$unit" "$here/build/source/$unit" ||
     cp "$root/userspace/runtime/gnat/$unit" "$here/build/source/"
 done
 # Shared layouts the capability handles (CAP-002) and system facts name.
-for unit in capabilities/capability_abi.ads capabilities/capability_abi.adb boot/boot_timeline_layout.ads \
-            launch/process_layout.ads publications/system_publications.ads; do
+for unit in capabilities/capability_abi.ads capabilities/capability_abi.adb capabilities/wait_abi.ads boot/boot_timeline_layout.ads \
+            launch/process_layout.ads publications/system_publications.ads publications/readiness_publication.ads \
+            capabilities/futex_abi.ads capabilities/channel_wake_abi.ads launch/dma_allocation_abi.ads \
+            capabilities/process_list_abi.ads; do
   cmp -s "$root/shared/$unit" "$here/build/source/$(basename "$unit")" || cp "$root/shared/$unit" "$here/build/source/"
 done
 # The published clock's pure parts (CuBit.Messages reads the fast clock).

@@ -6,11 +6,16 @@ with CuBit.File_Access;
 with CuBit.Filesystem_Events;
 with CuBit.Filesystem_Places;
 with CuBit.Volume_Descriptions;
+with CuBit.UI.Button_Bars;
 with CuBit.UI.Drawers;
+with CuBit.UI.Keycaps;
+with CuBit.UI.Modifier_Reveal;
 with CuBit.UI.Popup_Menus;
+with CuBit.UI.Standard_Keys;
 with CuBit.UI.Tables;
 with CuBit.UI.Tooltips;
 with CuBit.UI.Widgets;
+with Files_Commands;
 with Files_Filter;
 with Files_Listing;
 with Files_Marks;
@@ -48,10 +53,6 @@ package body Files_View is
    PATH_HEIGHT : constant := M.Compact_Row_Height;
    ROW_HEIGHT : constant := M.Dense_Row_Height;
    STATUS_HEIGHT : constant := M.Compact_Row_Height;
-   --  The function-key bar: slim, one keycap per F1 .. F10.
-   KEYS_HEIGHT : constant := M.Dense_Row_Height;
-   KEY_BADGE_PADDING : constant := 4;
-   KEY_GAP : constant := 4;
    SCROLLBAR_WIDTH : constant := 14;
    TEXT_INSET : constant := M.Text_Inset;
    MARK_BAR_WIDTH : constant := 3;
@@ -84,7 +85,8 @@ package body Files_View is
    --  Change records taken per pump, at most (the rest wait for the next).
    EVENTS_PER_PUMP : constant := 1_024;
    DIALOG_WIDTH : constant := 560;
-   DIALOG_HEIGHT : constant := 9 * M.Base_Em + M.Space_M;
+   DIALOG_HEIGHT : constant := 11 * M.Base_Em + M.Space_M;
+   DIALOG_INSET : constant := M.Space_M;
    PROGRESS_WIDTH : constant := 240;
    --  How long a viewer read may take before it is reported as timed out,
    --  and how long a status message stays (explicit, docs/files-app.md).
@@ -247,8 +249,6 @@ package body Files_View is
    --  Something changed on it since: ask again.
    Volume_Stale : Boolean := False;
    Volume_Free, Volume_Total : Unsigned_64 := 0;
-   HINT : constant String :=
-     "Tab: other pane   Enter: open   Backspace: up   Ins/Space: mark   type to filter   F3: view   F12: timing";
 
    --  A status message, shown for MESSAGE_LIFETIME_US and then cleared.
    procedure Say (Text : String) is
@@ -294,35 +294,52 @@ package body Files_View is
    Tip : Tooltips.Tooltip;
    MICROSECONDS_PER_MILLISECOND : constant := 1_000;
 
-   --  The function-key bar: F1 .. F10, every key shown; a key without an
-   --  action here is drawn greyed and takes no click.
-   subtype Function_Key is Key_Name range F1 .. F10;
-   function Key_Caption (K : Function_Key) return String is
-     (case K is
-         when F1 => "Help", when F2 => "Refresh", when F3 => "View", when F4 => "Edit",
-         when F5 => "Copy", when F6 => "Move", when F7 => "Folder", when F8 => "Delete",
-         when F9 => "Single", when F10 => "Quit");
-   function Key_Badge (K : Function_Key) return String is
-     (case K is
-         when F1 => "F1", when F2 => "F2", when F3 => "F3", when F4 => "F4", when F5 => "F5",
-         when F6 => "F6", when F7 => "F7", when F8 => "F8", when F9 => "F9", when F10 => "F10");
-   function Key_Bound (K : Function_Key) return Boolean is
-     (case K is
-         when F1 | F4 => False,
-         when others => True);
-   function Key_ID (K : Function_Key) return Controls.Control_ID is
-     (FUNCTION_KEY_FIRST + (Key_Name'Pos (K) - Key_Name'Pos (F1)));
-   --  Ctrl+F12 hides and shows the bar.
+   --  Commands and keys (UI-052): every key, menu item, toolbar button and
+   --  key bar cell runs a command (Files_Commands) through one of three
+   --  keymaps, the context's: the panes, the viewer or a prompt.
+   package Keys renames CuBit.UI.Keys;
+   package Maps renames Files_Keymaps.Map;
+   subtype Command is Files_Keymaps.Command;
+   use all type Files_Keymaps.Command;
+   use type Keys.Key, Keys.Chord, Keys.Modifier_Set;
+   Panes_Map, Viewer_Map, Prompt_Map : Maps.Keymap;
+   --  Whether each command can run now and whether it is on, refreshed
+   --  from the view before each frame and each key (Note_State).
+   Enabled_Now : array (Command) of Boolean := [others => True];
+   Checked_Now : array (Command) of Boolean := [others => False];
+   function Enabled (Item : Command) return Boolean is (Enabled_Now (Item));
+   function Checked (Item : Command) return Boolean is (Checked_Now (Item));
+   package Bars is new CuBit.UI.Button_Bars
+     (Files_Keymaps.Map, Files_Commands.Caption, Files_Commands.Description, Enabled, Checked,
+      Files_Commands.Shade, Files_Commands.Picture);
+   --  The function-key bar (F1 .. F10, clusters as on a keyboard), the
+   --  toolbar (icon-only buttons) and a prompt's buttons.
+   Key_Bar, Tool_Bar, Dialog_Bar, Policy_Bar : Bars.Bar;
+   --  Toggle_Key_Bar (Ctrl+F12) hides and shows the key bar.
    Key_Bar_Shown : Boolean := True;
-   function Key_Bar_Height return Natural is (if Key_Bar_Shown then KEYS_HEIGHT else 0);
+   --  Held modifiers reveal their hints (CuBit.UI.Modifier_Reveal), and
+   --  what was revealed at the last frame (to repaint when it changes).
+   package MR renames CuBit.UI.Modifier_Reveal;
+   Reveal : MR.State;
+   Shown_Reveal : Keys.Modifier_Set := Keys.No_Modifiers;
+   Key_Bar_Area, Reveal_Damage : Rect := (others => 0);
+   --  The keymap of the context keys go to now.
+   function Context_Map return Maps.Keymap;
+   function Now_Ms return Unsigned_64;
+   function Revealed_Now return Keys.Modifier_Set is (MR.Revealed (Reveal, Now_Ms));
+   --  A hint as text, for status lines ("Esc"): generated from the keymap,
+   --  never typed by hand; "" when the command has no chord.
+   function Key_Text (Map : Maps.Keymap; Item : Command) return String is (Keys.Image (Maps.Hint (Map, Item)));
+   function Key_Bar_Height (Width : Natural) return Natural is
+     (if Key_Bar_Shown then Bars.Height (Key_Bar, Context_Map, Width, Revealed_Now) else 0);
 
-   --  The context menu and what it was opened on.
-   type Menu_Command is
-     (No_Menu_Command, Cmd_Open, Cmd_View, Cmd_Open_Other, Cmd_Copy, Cmd_Move, Cmd_Rename, Cmd_Delete,
-      Cmd_Mark_Toggle, Cmd_Mark_All, Cmd_Unmark_All, Cmd_Invert, Cmd_New_Folder, Cmd_Refresh, Cmd_Bookmark,
-      Cmd_Bookmark_Entry, Cmd_Sort_Name, Cmd_Sort_Extension, Cmd_Sort_Modified, Cmd_Sort_Size, Cmd_Up, Cmd_Drawer,
-      Cmd_Column_Extension, Cmd_Column_Size, Cmd_Column_Modified, Cmd_Column_Changed, Cmd_Column_Kind,
-      Cmd_Column_Mode, Cmd_Column_Owner, Cmd_Copy_Names, Cmd_Copy_Paths);
+   --  The toolbar's buttons and the commands they run.
+   TOOL_COMMANDS : constant array (Tool) of Command :=
+     [Tool_Back => History_Back, Tool_Forward => History_Forward, Tool_Up => Parent_Folder,
+      Tool_Refresh => Refresh, Tool_New_Folder => New_Folder, Tool_Copy => Copy, Tool_Move => Move,
+      Tool_Delete => Delete, Tool_Drawer => Toggle_Drawer, Tool_Columns => Columns_Menu, Tool_Viewer => View,
+      Tool_New_Tab => New_Tab, Tool_Add_Pane => Add_Pane, Tool_Single_Pane => Single_Pane];
+
    --  A clipboard copy chosen from the menu, for the platform.
    Pending_Clipboard : Clipboard_Request := No_Request;
    Menu : CuBit.UI.Popup_Menus.Model;
@@ -1004,7 +1021,8 @@ package body Files_View is
          Add_Shortcut (Shortcuts, Places (K).Caption (1 .. Places (K).Caption_Length), Places (K).Picture,
                        PLACE_VALUE + K);
       end loop;
-      Add_Section (Shortcuts, "Bookmarks" & (if Bookmark_Count = 0 then "  (Ctrl+D)" else ""));
+      Add_Section (Shortcuts, "Bookmarks" & (if Bookmark_Count = 0 and then Key_Text (Panes_Map, Bookmark_Folder)'Length > 0
+                                             then "  (" & Key_Text (Panes_Map, Bookmark_Folder) & ")" else ""));
       for K in 1 .. Bookmark_Count loop
          Add_Shortcut (Shortcuts, Bookmarks (K).Caption (1 .. Bookmarks (K).Caption_Length), CuBit.UI.Icons.Favorites,
                        BOOKMARK_VALUE + K, Pinned => True);
@@ -1341,6 +1359,45 @@ package body Files_View is
       end;
    end New_Pane;
 
+   --  The keymaps from the defaults (Files_Commands; the user's remaps
+   --  go over them), the clipboard's chords reserved for the toolkit, and
+   --  the bars' buttons.
+   procedure Load_Keys is
+      procedure Reserve_Clipboard is new CuBit.UI.Standard_Keys.Reserve_Clipboard (Maps);
+      Refused, Clipboard_Refused : Natural;
+      Total : Natural := 0;
+   begin
+      Maps.Load (Panes_Map, Files_Commands.Panes, Refused);
+      Total := Total + Refused;
+      Reserve_Clipboard (Panes_Map, Clipboard_Refused);
+      Total := Total + Clipboard_Refused;
+      Maps.Load (Viewer_Map, Files_Commands.Viewer, Refused);
+      Total := Total + Refused;
+      Maps.Load (Prompt_Map, Files_Commands.Prompt, Refused);
+      Total := Total + Refused;
+      if Total > 0 then
+         Say ("Files: " & Natural'Image (Total) & " default keys conflict.");
+      end if;
+      Bars.Clear (Key_Bar, FUNCTION_KEY_FIRST, Bars.Key_Bar_Style);
+      for K in Keys.Function_Key loop
+         Bars.Add_Key (Key_Bar, K, Starts_Cluster => K in Keys.F5 | Keys.F9);
+      end loop;
+      Bars.Clear (Tool_Bar, TOOL_FIRST, Bars.Toolbar_Style);
+      for T in Tool loop
+         Bars.Add_Command (Tool_Bar, TOOL_COMMANDS (T), Bars.Icon_Only,
+                           Starts_Cluster => T in Tool_New_Folder | Tool_Drawer | Tool_New_Tab);
+      end loop;
+   end Load_Keys;
+
+   function Hint (State : View_State; Item : Files_Keymaps.Command) return Keys.Chord is (Maps.Hint (Panes_Map, Item));
+   procedure Remap
+     (State : in out View_State; Item : Files_Keymaps.Command; From, To : Keys.Chord;
+      Result : out Files_Keymaps.Map.Bind_Result) is
+   begin
+      Maps.Remap (Panes_Map, Item, From, To, Result);
+      Dirty_All (State);
+   end Remap;
+
    procedure Initialize
      (State : out View_State; Capacity : Entry_Capacity; Name_Bytes : Arena_Capacity;
       Left_Path, Right_Path : String)
@@ -1348,6 +1405,7 @@ package body Files_View is
       Opened : Boolean;
    begin
       Files_Queue.Open (ARENA_PAGES, Opened);
+      Load_Keys;
       State.Current := Left_Pane;
       State.Dirty := (others => 0);
       State.Bounds := (others => 0);
@@ -1460,6 +1518,9 @@ package body Files_View is
    ---------------------------------------------------------------------------
    --  Pumping.
    ---------------------------------------------------------------------------
+   procedure Note_Reveal (State : in out View_State);
+   function Bar_Map return Maps.Keymap;
+
    procedure Pump
      (State : in out View_State; Budget : Work_Budget; Now_Us : Unsigned_64; Busy, Changed : out Boolean)
    is
@@ -1488,6 +1549,13 @@ package body Files_View is
             Dirty (State, Tip_Damage);
             Changed := True;
          end if;
+         --  A key's press flash ends; held modifiers reveal their hints.
+         Bars.Tick (Key_Bar, Now_Ms, Tip_Damage);
+         Dirty (State, Tip_Damage);
+         Bars.Tick (Tool_Bar, Now_Ms, Tip_Damage);
+         Dirty (State, Tip_Damage);
+         Note_Reveal (State);
+         Changed := Changed or else not Is_Empty (State.Dirty);
       end;
       Files_Operations.Pump (Now_Us);
       Watch_Operation (State);
@@ -1811,7 +1879,19 @@ package body Files_View is
    ---------------------------------------------------------------------------
    --  Context menu and toolbar commands.
    ---------------------------------------------------------------------------
-   function Pos (Command : Menu_Command) return CuBit.UI.Popup_Menus.Command is (Menu_Command'Pos (Command));
+   --  A menu item's choice is its command (0 is the menus' "nothing").
+   function Pos (Item : Command) return CuBit.UI.Popup_Menus.Command is (Command'Pos (Item) + 1);
+   function Is_Choice (Choice : CuBit.UI.Popup_Menus.Command) return Boolean is
+     (Choice in 1 .. Command'Pos (Command'Last) + 1);
+   function Of_Choice (Choice : CuBit.UI.Popup_Menus.Command) return Command is (Command'Val (Choice - 1))
+   with Pre => Is_Choice (Choice);
+   --  A command's hint in the menus: the panes' keymap's, or the toolkit's
+   --  clipboard chords for the clipboard commands (reserved, not bound).
+   function Menu_Hint (Item : Command) return Keys.Chord is
+     (case Item is
+         when Copy_Entry_Names => CuBit.UI.Standard_Keys.Copy,
+         when Copy_Entry_Paths => CuBit.UI.Standard_Keys.Copy_Shifted,
+         when others => Maps.Hint (Panes_Map, Item));
 
    --  The operations not built yet (docs/files-app.md, Phase 3) show, disabled.
    OPERATIONS_READY : constant Boolean := True;
@@ -1834,7 +1914,7 @@ package body Files_View is
       P : Pane_State renames State.Panes (Which).all;
    begin
       if Files_Operations.Busy then
-         Say ("An operation is running (Esc cancels it).");
+         Say ("An operation is running (" & Key_Text (Panes_Map, Clear_Or_Cancel) & " cancels it).");
          return;
       end if;
       if Kind in Confirm_Copy | Confirm_Move | Confirm_Delete | Ask_New_Name and then Source_Count (P) = 0 then
@@ -1974,60 +2054,64 @@ package body Files_View is
    end Watch_Operation;
 
    --  Keys and text while a prompt is up; True when consumed.
-   procedure Prompt_Input (State : in out View_State; Item : Event; Used : out Boolean) is
+   function Chord_Of (Item : Event) return Keys.Chord is
+     ((Modifiers => [Keys.Shift => Item.Shift, Keys.Ctrl => Item.Control, Keys.Alt => Item.Alt, Keys.Super => False],
+       Pressed => Item.Key));
+
+   --  A prompt's commands (its keymap, or its buttons).
+   procedure Run_Prompt (State : in out View_State; Item : Command) is
+      Choice : Files_Operations.Conflict_Policy := Files_Operations.Ask;
+   begin
+      case Item is
+         when Prompt_Cancel =>
+            if Prompt = Ask_Conflict then
+               Files_Operations.Cancel;
+            end if;
+            Prompt := No_Prompt;
+         when Prompt_Accept => Accept_Prompt (State);
+         when Prompt_Erase =>
+            if Input_Length > 0 then
+               Input_Length := Input_Length - 1;
+            end if;
+         when Skip_Existing | Overwrite_Existing | Keep_Both | Ask_Each | Skip_All | Overwrite_All | Keep_Both_All =>
+            Choice := (case Item is
+                          when Skip_Existing | Skip_All => Files_Operations.Skip_Existing,
+                          when Overwrite_Existing | Overwrite_All => Files_Operations.Overwrite_Existing,
+                          when Keep_Both | Keep_Both_All => Files_Operations.Keep_Both,
+                          when others => Files_Operations.Ask);
+            if Prompt = Ask_Conflict then
+               if Choice /= Files_Operations.Ask then
+                  Prompt := No_Prompt;
+                  --  The Shift forms: for the rest of the operation too.
+                  Files_Operations.Decide (Choice, For_All => Item in Skip_All | Overwrite_All | Keep_Both_All);
+               end if;
+            else
+               Prompt_Policy := Choice;
+            end if;
+         when others => null;
+      end case;
+   end Run_Prompt;
+
+   procedure Prompt_Input (State : in out View_State; Item : Event; Map : in out Controls.Control_Map;
+                           Used : out Boolean) is
       Names : constant Boolean := Prompt in Ask_Folder_Name | Ask_New_Name;
+      Found : Boolean;
+      Chosen : Command;
    begin
       Used := Prompt /= No_Prompt;
       if not Used then
          return;
       end if;
       if Item.Kind = Key_Event then
-         case Item.Key is
-            when Escape =>
-               if Prompt = Ask_Conflict then
-                  Files_Operations.Cancel;
-               end if;
-               Prompt := No_Prompt;
-            when Enter =>
-               if Prompt = Ask_Conflict then
-                  null;
-               else
-                  Accept_Prompt (State);
-               end if;
-            when Backspace =>
-               if Names and then Input_Length > 0 then
-                  Input_Length := Input_Length - 1;
-               end if;
-            when others => null;
-         end case;
+         Maps.Find (Prompt_Map, Chord_Of (Item), Found, Chosen);
+         if Found and then Enabled (Chosen) then
+            Run_Prompt (State, Chosen);
+         end if;
       elsif Item.Kind = Text_Event then
-         if Names then
-            if Item.Character_Value in ' ' .. '~' and then Input_Length < MAXIMUM_NAME_BYTES then
-               Input_Length := Input_Length + 1;
-               Input (Input_Length) := Item.Character_Value;
-            end if;
-         else
-            declare
-               Choice : Files_Operations.Conflict_Policy := Files_Operations.Ask;
-               C : constant Character := Item.Character_Value;
-            begin
-               case C is
-                  when 's' | 'S' => Choice := Files_Operations.Skip_Existing;
-                  when 'o' | 'O' => Choice := Files_Operations.Overwrite_Existing;
-                  when 'k' | 'K' => Choice := Files_Operations.Keep_Both;
-                  when 'a' | 'A' => Choice := Files_Operations.Ask;
-                  when others => null;
-               end case;
-               if Prompt = Ask_Conflict then
-                  if Choice /= Files_Operations.Ask then
-                     Prompt := No_Prompt;
-                     --  Upper case: for the rest of the operation too.
-                     Files_Operations.Decide (Choice, For_All => C in 'A' .. 'Z');
-                  end if;
-               elsif C in 's' | 'S' | 'o' | 'O' | 'k' | 'K' | 'a' | 'A' then
-                  Prompt_Policy := Choice;
-               end if;
-            end;
+         --  A name prompt types; the others take their keys as commands.
+         if Names and then Item.Character_Value in ' ' .. '~' and then Input_Length < MAXIMUM_NAME_BYTES then
+            Input_Length := Input_Length + 1;
+            Input (Input_Length) := Item.Character_Value;
          end if;
       elsif Item.Kind = Pointer_Event and then Item.Action = Controls.Pointer_Press
         and then not Point_In_Rect (Item.X, Item.Y, Dialog_Area)
@@ -2035,6 +2119,16 @@ package body Files_View is
          --  A click outside the dialog dismisses it (a conflict stays).
          if Prompt /= Ask_Conflict then
             Prompt := No_Prompt;
+         end if;
+      elsif Item.Kind = Pointer_Event then
+         --  The dialog's buttons do what their keys do.
+         Bars.Take_Chosen (Dialog_Bar, Map, Prompt_Map, Found, Chosen);
+         if Found and then Enabled (Chosen) then
+            Run_Prompt (State, Chosen);
+         end if;
+         Bars.Take_Chosen (Policy_Bar, Map, Prompt_Map, Found, Chosen);
+         if Found and then Enabled (Chosen) then
+            Run_Prompt (State, Chosen);
          end if;
       elsif Item.Kind = Resize then
          Used := False;
@@ -2049,15 +2143,17 @@ package body Files_View is
    procedure Open_Columns_Menu (State : in out View_State; Which : Side; X, Y : Natural) is
       package PM renames CuBit.UI.Popup_Menus;
       P : Pane_State renames State.Panes (Which).all;
-      Command : Menu_Command := Cmd_Column_Extension;
    begin
       PM.Clear (Menu);
       Menu_Side := Which;
-      for Kind in Extension_Column .. Column_Kind'Last loop
-         PM.Add (Menu, PM.ROOT, COLUMN_CAPTIONS (Kind).all, Pos (Command), Checked => Shows (P, Kind));
-         if Command < Menu_Command'Last then
-            Command := Menu_Command'Succ (Command);
-         end if;
+      for Item in Files_Commands.Column_Command loop
+         declare
+            Kind : constant Column_Kind :=
+              Column_Kind'Val (Column_Kind'Pos (Extension_Column) + Command'Pos (Item)
+                               - Command'Pos (Files_Commands.Column_Command'First));
+         begin
+            PM.Add (Menu, PM.ROOT, COLUMN_CAPTIONS (Kind).all, Pos (Item), Checked => Shows (P, Kind));
+         end;
       end loop;
       PM.Add_Separator (Menu, PM.ROOT);
       PM.Add (Menu, PM.ROOT, "Drag a header to move its column", PM.NO_COMMAND, Enabled => False);
@@ -2066,15 +2162,22 @@ package body Files_View is
    end Open_Columns_Menu;
 
    --  The menu for the row under the pointer (0: empty space) of Which.
+   --  Each item names a command; its keycap is the keymap's hint.
    procedure Open_Menu (State : in out View_State; Which : Side; Row : Row_Count; X, Y : Natural) is
       package PM renames CuBit.UI.Popup_Menus;
-      package IC renames CuBit.UI.Icons;
       P : Pane_State renames State.Panes (Which).all;
       Id : constant Entry_Count := (if Row = 0 then 0 else Entry_Of (P, Row));
       Marked : constant Natural := Files_Marks.Count (P.Marks);
       Folder : constant Boolean := Id > 0 and then Files_Listing.Kind (P.Listing, Id) = Files_Listing.Directory_Kind;
       Rule : constant Files_Order.Sort_Rule := Files_Order.Rule (P.Order);
       Sort_Menu : PM.Menu_Count;
+      procedure Add
+        (Into : PM.Menu_Index; Caption : String; Run : Command; Enabled : Boolean := True;
+         Checked : Boolean := False; Icon : Boolean := False) is
+      begin
+         PM.Add (Menu, Into, Caption, Pos (Run), Menu_Hint (Run), Enabled, Checked,
+                 Has_Icon => Icon, Picture => Files_Commands.Picture (Run), Shade => Files_Commands.Shade (Run));
+      end Add;
    begin
       PM.Clear (Menu);
       Menu_Side := Which;
@@ -2082,75 +2185,63 @@ package body Files_View is
          declare
             Count_Text : constant String := Thousands (Unsigned_64 (Marked)) & (if Marked = 1 then " item" else " items");
          begin
-            PM.Add (Menu, PM.ROOT, "Copy " & Count_Text & " to the other pane", Pos (Cmd_Copy), "F5", OPERATIONS_READY,
-                    Has_Icon => True, Picture => IC.Copy);
-            PM.Add (Menu, PM.ROOT, "Move " & Count_Text & " to the other pane", Pos (Cmd_Move), "F6", OPERATIONS_READY,
-                    Has_Icon => True, Picture => IC.Move);
-            PM.Add (Menu, PM.ROOT, "Delete " & Count_Text, Pos (Cmd_Delete), "F8", OPERATIONS_READY,
-                    Has_Icon => True, Picture => IC.Delete);
+            Add (PM.ROOT, "Copy " & Count_Text & " to the other pane", Copy, OPERATIONS_READY, Icon => True);
+            Add (PM.ROOT, "Move " & Count_Text & " to the other pane", Move, OPERATIONS_READY, Icon => True);
+            Add (PM.ROOT, "Delete " & Count_Text, Delete, OPERATIONS_READY, Icon => True);
             PM.Add_Separator (Menu, PM.ROOT);
-            PM.Add (Menu, PM.ROOT, "Copy names", Pos (Cmd_Copy_Names), "Ctrl+C");
-            PM.Add (Menu, PM.ROOT, "Copy paths", Pos (Cmd_Copy_Paths), "Ctrl+Shift+C");
+            Add (PM.ROOT, "Copy names", Copy_Entry_Names);
+            Add (PM.ROOT, "Copy paths", Copy_Entry_Paths);
             PM.Add_Separator (Menu, PM.ROOT);
-            PM.Add (Menu, PM.ROOT, "Unmark all", Pos (Cmd_Unmark_All), "Esc");
-            PM.Add (Menu, PM.ROOT, "Invert marks", Pos (Cmd_Invert), "Ctrl+I");
+            Add (PM.ROOT, "Unmark all", Unmark_All);
+            Add (PM.ROOT, "Invert marks", Invert_Marks);
          end;
       elsif Id > 0 then
          if Folder then
-            PM.Add (Menu, PM.ROOT, "Open", Pos (Cmd_Open), "Enter", Has_Icon => True, Picture => IC.Folder);
-            PM.Add (Menu, PM.ROOT, "Open in the other pane", Pos (Cmd_Open_Other));
-            PM.Add (Menu, PM.ROOT, "Bookmark", Pos (Cmd_Bookmark_Entry), Has_Icon => True, Picture => IC.Favorites);
+            Add (PM.ROOT, "Open", Open_Entry, Icon => True);
+            Add (PM.ROOT, "Open in the other pane", Open_In_Other_Pane);
+            Add (PM.ROOT, "Bookmark", Bookmark_Entry, Icon => True);
          else
-            PM.Add (Menu, PM.ROOT, "View", Pos (Cmd_View), "F3", Has_Icon => True, Picture => IC.Document_File);
+            Add (PM.ROOT, "View", View, Icon => True);
          end if;
          PM.Add_Separator (Menu, PM.ROOT);
-         PM.Add (Menu, PM.ROOT, "Copy to the other pane", Pos (Cmd_Copy), "F5", OPERATIONS_READY,
-                 Has_Icon => True, Picture => IC.Copy);
-         PM.Add (Menu, PM.ROOT, "Move to the other pane", Pos (Cmd_Move), "F6", OPERATIONS_READY,
-                 Has_Icon => True, Picture => IC.Move);
-         PM.Add (Menu, PM.ROOT, "Rename", Pos (Cmd_Rename), "Shift+F6", OPERATIONS_READY,
-                 Has_Icon => True, Picture => IC.Rename);
-         PM.Add (Menu, PM.ROOT, "Delete", Pos (Cmd_Delete), "F8", OPERATIONS_READY,
-                 Has_Icon => True, Picture => IC.Delete);
+         Add (PM.ROOT, "Copy to the other pane", Copy, OPERATIONS_READY, Icon => True);
+         Add (PM.ROOT, "Move to the other pane", Move, OPERATIONS_READY, Icon => True);
+         Add (PM.ROOT, "Rename", Rename, OPERATIONS_READY, Icon => True);
+         Add (PM.ROOT, "Delete", Delete, OPERATIONS_READY, Icon => True);
          PM.Add_Separator (Menu, PM.ROOT);
-         PM.Add (Menu, PM.ROOT, "Copy name", Pos (Cmd_Copy_Names), "Ctrl+C");
-         PM.Add (Menu, PM.ROOT, "Copy path", Pos (Cmd_Copy_Paths), "Ctrl+Shift+C");
-         PM.Add (Menu, PM.ROOT, "Mark", Pos (Cmd_Mark_Toggle), "Ins");
+         Add (PM.ROOT, "Copy name", Copy_Entry_Names);
+         Add (PM.ROOT, "Copy path", Copy_Entry_Paths);
+         Add (PM.ROOT, "Mark", Toggle_Mark);
       else
-         PM.Add (Menu, PM.ROOT, "New folder", Pos (Cmd_New_Folder), "F7", OPERATIONS_READY,
-                 Has_Icon => True, Picture => IC.New_Folder);
-         PM.Add (Menu, PM.ROOT, "Refresh", Pos (Cmd_Refresh), "Ctrl+R", Has_Icon => True, Picture => IC.Refresh);
-         PM.Add (Menu, PM.ROOT, "Up", Pos (Cmd_Up), "Backspace", not At_Root (P), Has_Icon => True, Picture => IC.Go_Up);
+         Add (PM.ROOT, "New folder", New_Folder, OPERATIONS_READY, Icon => True);
+         Add (PM.ROOT, "Refresh", Refresh, Icon => True);
+         Add (PM.ROOT, "Up", Parent_Folder, not At_Root (P), Icon => True);
          PM.Add_Separator (Menu, PM.ROOT);
          PM.Add_Submenu (Menu, PM.ROOT, "Sort by", Sort_Menu);
          if Sort_Menu > 0 then
-            PM.Add (Menu, Sort_Menu, "Name", Pos (Cmd_Sort_Name), "Ctrl+F3", Checked => Rule.Key = Files_Order.By_Name);
-            PM.Add (Menu, Sort_Menu, "Extension", Pos (Cmd_Sort_Extension), "Ctrl+F4",
-                    Checked => Rule.Key = Files_Order.By_Extension);
-            PM.Add (Menu, Sort_Menu, "Modified", Pos (Cmd_Sort_Modified), "Ctrl+F5",
-                    Checked => Rule.Key = Files_Order.By_Modified);
-            PM.Add (Menu, Sort_Menu, "Size", Pos (Cmd_Sort_Size), "Ctrl+F6", Checked => Rule.Key = Files_Order.By_Size);
+            Add (Sort_Menu, "Name", Sort_By_Name, Checked => Rule.Key = Files_Order.By_Name);
+            Add (Sort_Menu, "Extension", Sort_By_Extension, Checked => Rule.Key = Files_Order.By_Extension);
+            Add (Sort_Menu, "Modified", Sort_By_Modified, Checked => Rule.Key = Files_Order.By_Modified);
+            Add (Sort_Menu, "Size", Sort_By_Size, Checked => Rule.Key = Files_Order.By_Size);
          end if;
-         PM.Add (Menu, PM.ROOT, "Mark all", Pos (Cmd_Mark_All), "Ctrl+A");
+         Add (PM.ROOT, "Mark all", Mark_All);
          PM.Add_Separator (Menu, PM.ROOT);
-         PM.Add (Menu, PM.ROOT, "Bookmark this folder", Pos (Cmd_Bookmark), "Ctrl+D",
-                 Has_Icon => True, Picture => IC.Favorites);
-         PM.Add (Menu, PM.ROOT, (if Drawer.Open then "Hide the drawer" else "Show the drawer"), Pos (Cmd_Drawer),
-                 "Ctrl+B", Has_Icon => True, Picture => IC.Drawer);
+         Add (PM.ROOT, "Bookmark this folder", Bookmark_Folder, Icon => True);
+         Add (PM.ROOT, (if Drawer.Open then "Hide the drawer" else "Show the drawer"), Toggle_Drawer, Icon => True);
       end if;
       PM.Open (Popup, Menu, X, Y, State.Bounds);
       Dirty (State, PM.Covered (Popup));
    end Open_Menu;
 
-   procedure Run_Command (State : in out View_State; Command : Menu_Command) is
+   --  The menu's commands, on the menu's pane.
+   procedure Run_Command (State : in out View_State; Item : Command) is
       Which : constant Side := Menu_Side;
       P : Pane_State renames State.Panes (Which).all;
    begin
-      case Command is
-         when No_Menu_Command => null;
-         when Cmd_Open => Open_Cursor_Entry (State, Which);
-         when Cmd_View => Open_Viewer (State, Which);
-         when Cmd_Open_Other =>
+      case Item is
+         when Open_Entry => Open_Cursor_Entry (State, Which);
+         when View => Open_Viewer (State, Which);
+         when Open_In_Other_Pane =>
             if P.View.Cursor > 0 and then Entry_Of (P, P.View.Cursor) > 0 then
                declare
                   Child : DP.Path;
@@ -2162,31 +2253,31 @@ package body Files_View is
                   end if;
                end;
             end if;
-         when Cmd_Copy => Ask (State, Confirm_Copy, Which);
-         when Cmd_Copy_Names | Cmd_Copy_Paths =>
+         when Copy => Ask (State, Confirm_Copy, Which);
+         when Copy_Entry_Names | Copy_Entry_Paths =>
             --  The entries are the menu's pane's: make it the active one.
             State.Current := Which;
-            Pending_Clipboard := (if Command = Cmd_Copy_Names then Request_Copy_Names else Request_Copy_Paths);
-         when Cmd_Move => Ask (State, Confirm_Move, Which);
-         when Cmd_Delete => Ask (State, Confirm_Delete, Which);
-         when Cmd_Rename => Ask (State, Ask_New_Name, Which);
-         when Cmd_New_Folder => Ask (State, Ask_Folder_Name, Which);
-         when Cmd_Mark_Toggle =>
+            Pending_Clipboard := (if Item = Copy_Entry_Names then Request_Copy_Names else Request_Copy_Paths);
+         when Move => Ask (State, Confirm_Move, Which);
+         when Delete => Ask (State, Confirm_Delete, Which);
+         when Rename => Ask (State, Ask_New_Name, Which);
+         when New_Folder => Ask (State, Ask_Folder_Name, Which);
+         when Toggle_Mark =>
             if P.View.Cursor > 0 then
                Set_Mark (P, P.View.Cursor, not Marked_Row (P, P.View.Cursor));
             end if;
-         when Cmd_Mark_All | Cmd_Unmark_All =>
+         when Mark_All | Unmark_All =>
             for Row in 1 .. Row_Total (P) loop
-               Set_Mark (P, Row, Command = Cmd_Mark_All);
+               Set_Mark (P, Row, Item = Mark_All);
             end loop;
-         when Cmd_Invert =>
+         when Invert_Marks =>
             for Row in 1 .. Row_Total (P) loop
                Set_Mark (P, Row, not Marked_Row (P, Row));
             end loop;
-         when Cmd_Refresh => Refresh (State, Which);
-         when Cmd_Up => Go_Parent (State, Which);
-         when Cmd_Bookmark => Toggle_Bookmark (P.Where);
-         when Cmd_Bookmark_Entry =>
+         when Refresh => Refresh (State, Which);
+         when Parent_Folder => Go_Parent (State, Which);
+         when Bookmark_Folder => Toggle_Bookmark (P.Where);
+         when Bookmark_Entry =>
             if P.View.Cursor > 0 and then Entry_Of (P, P.View.Cursor) > 0 then
                declare
                   Child : DP.Path;
@@ -2198,15 +2289,16 @@ package body Files_View is
                   end if;
                end;
             end if;
-         when Cmd_Sort_Name => Set_Rule (State, Which, Files_Order.By_Name);
-         when Cmd_Sort_Extension => Set_Rule (State, Which, Files_Order.By_Extension);
-         when Cmd_Sort_Modified => Set_Rule (State, Which, Files_Order.By_Modified);
-         when Cmd_Sort_Size => Set_Rule (State, Which, Files_Order.By_Size);
-         when Cmd_Drawer => Drawer.Open := not Drawer.Open;
-         when Cmd_Column_Extension .. Cmd_Column_Owner =>
+         when Sort_By_Name => Set_Rule (State, Which, Files_Order.By_Name);
+         when Sort_By_Extension => Set_Rule (State, Which, Files_Order.By_Extension);
+         when Sort_By_Modified => Set_Rule (State, Which, Files_Order.By_Modified);
+         when Sort_By_Size => Set_Rule (State, Which, Files_Order.By_Size);
+         when Toggle_Drawer => Drawer.Open := not Drawer.Open;
+         when Files_Commands.Column_Command =>
             Toggle_Column
               (P, Column_Kind'Val (Column_Kind'Pos (Extension_Column)
-                                   + Menu_Command'Pos (Command) - Menu_Command'Pos (Cmd_Column_Extension)));
+                                   + Command'Pos (Item) - Command'Pos (Files_Commands.Column_Command'First)));
+         when others => null;
       end case;
       Dirty_All (State);
    end Run_Command;
@@ -2217,33 +2309,6 @@ package body Files_View is
    function Tab_Box (P : Pane_State; K : Positive) return Rect;
    function Tab_Close_Box (P : Pane_State; K : Positive) return Rect;
 
-   procedure Run_Tool (State : in out View_State; Item : Tool) is
-      Which : constant Side := State.Current;
-   begin
-      Menu_Side := Which;
-      case Item is
-         when Tool_Back => History_Move (State, Which, Backward => True);
-         when Tool_Forward => History_Move (State, Which, Backward => False);
-         when Tool_Up => Go_Parent (State, Which);
-         when Tool_Refresh => Refresh (State, Which);
-         when Tool_New_Folder => Run_Command (State, Cmd_New_Folder);
-         when Tool_Copy => Run_Command (State, Cmd_Copy);
-         when Tool_Move => Run_Command (State, Cmd_Move);
-         when Tool_Delete => Run_Command (State, Cmd_Delete);
-         when Tool_Drawer => Drawer.Open := not Drawer.Open;
-         when Tool_Columns =>
-            declare
-               Box : constant Rect := Toolbar_Area;
-            begin
-               Open_Columns_Menu (State, Which, Box.x + 10 * (TOOL_SIZE + TOOL_GAP), Box.y + Box.h);
-            end;
-         when Tool_Viewer => Open_Viewer (State, Which);
-         when Tool_New_Tab => New_Tab (State, Which);
-         when Tool_Add_Pane => Add_Pane (State, Which);
-         when Tool_Single_Pane => Toggle_Single (State);
-      end case;
-      Dirty_All (State);
-   end Run_Tool;
 
    ---------------------------------------------------------------------------
    --  Tabs and panes.
@@ -2486,19 +2551,247 @@ package body Files_View is
       return From;
    end Cycle;
 
+   function Now_Ms return Unsigned_64 is (Now_Us / MICROSECONDS_PER_MILLISECOND);
+   --  "Esc: cancel   ": a command's key and what it does, for status
+   --  lines; nothing when the command has no chord.
+   function Says (Map : Maps.Keymap; Item : Command; Text : String) return String is
+     (if Keys.Is_Chord (Maps.Hint (Map, Item)) then Key_Text (Map, Item) & ": " & Text & "   " else "");
+   function Context_Map return Maps.Keymap is
+     (if Prompt /= No_Prompt then Prompt_Map elsif Viewing then Viewer_Map else Panes_Map);
+   --  The key bar shows the panes' keys, or the viewer's while it is open.
+   function Bar_Map return Maps.Keymap is (if Viewing then Viewer_Map else Panes_Map);
+
+   --  What can run now, and what is on: the bars and the dispatch read it.
+   procedure Note_State (State : View_State) is
+      P : Pane_State renames State.Panes (State.Current).all;
+      On_File : constant Boolean :=
+        P.View.Cursor > 0 and then Entry_Of (P, P.View.Cursor) > 0
+        and then Files_Listing.Kind (P.Listing, Entry_Of (P, P.View.Cursor)) /= Files_Listing.Directory_Kind;
+      Policies : constant Boolean := Prompt in Confirm_Copy | Confirm_Move | Ask_Conflict;
+   begin
+      Enabled_Now := [others => True];
+      Checked_Now := [others => False];
+      --  Not built yet (docs/files-app.md): shown, dimmed.
+      Enabled_Now (Help) := False;
+      Enabled_Now (Edit) := False;
+      Enabled_Now (History_Back) := P.Back_Count > 0;
+      Enabled_Now (History_Forward) := P.Forward_Count > 0;
+      Enabled_Now (Parent_Folder) := not At_Root (P);
+      for Item in Command range Copy .. Delete loop
+         Enabled_Now (Item) := OPERATIONS_READY;
+      end loop;
+      Enabled_Now (View) := On_File;
+      for Item in Command range Close_Viewer .. Viewer_Text_Or_Hex loop
+         Enabled_Now (Item) := Viewing;
+      end loop;
+      Enabled_Now (Prompt_Accept) := Prompt not in No_Prompt | Ask_Conflict;
+      Enabled_Now (Prompt_Cancel) := Prompt /= No_Prompt;
+      Enabled_Now (Prompt_Erase) := Prompt in Ask_Folder_Name | Ask_New_Name;
+      for Item in Command range Skip_Existing .. Keep_Both loop
+         Enabled_Now (Item) := Policies;
+      end loop;
+      Enabled_Now (Ask_Each) := Prompt in Confirm_Copy | Confirm_Move;
+      for Item in Command range Skip_All .. Keep_Both_All loop
+         Enabled_Now (Item) := Prompt = Ask_Conflict;
+      end loop;
+      Checked_Now (Toggle_Drawer) := Drawer.Open;
+      Checked_Now (View) := Viewing;
+      Checked_Now (Single_Pane) :=
+        (for all K in Side range 1 .. State.Count => K = State.Current or else not State.Shown (K));
+      Checked_Now (Skip_Existing) := Prompt /= Ask_Conflict and then Prompt_Policy = Files_Operations.Skip_Existing;
+      Checked_Now (Overwrite_Existing) :=
+        Prompt /= Ask_Conflict and then Prompt_Policy = Files_Operations.Overwrite_Existing;
+      Checked_Now (Keep_Both) := Prompt /= Ask_Conflict and then Prompt_Policy = Files_Operations.Keep_Both;
+      Checked_Now (Ask_Each) := Prompt_Policy = Files_Operations.Ask;
+   end Note_State;
+
+   --  A command from the panes' keymap, a toolbar button or a key bar cell.
+   procedure Run (State : in out View_State; Item : Command; Map : in out Controls.Control_Map) is
+      Which : constant Side := State.Current;
+      P : Pane_State renames State.Panes (Which).all;
+      Page : constant Row_Delta := Integer'Max (1, P.View.Rows - 1);
+      procedure Cycle_Tab (Forward : Boolean) is
+      begin
+         if P.Tab_Count > 1 then
+            Show_Tab (State, Which,
+                      (if Forward then (if P.Current_Tab >= P.Tab_Count then 1 else P.Current_Tab + 1)
+                       else (if P.Current_Tab <= 1 then P.Tab_Count else P.Current_Tab - 1)));
+         end if;
+      end Cycle_Tab;
+      procedure Other_Pane (Forward : Boolean) is
+      begin
+         State.Current := Cycle (State, Which, Forward);
+         Dirty (State, P.Path_Area);
+         Dirty (State, Row_Area (P, P.View.Cursor));
+         Dirty (State, State.Panes (State.Current).Path_Area);
+         Dirty (State, Row_Area (State.Panes (State.Current).all, State.Panes (State.Current).View.Cursor));
+         Dirty (State, Status_Area);
+      end Other_Pane;
+   begin
+      Menu_Side := Which;
+      case Item is
+         when Cursor_Up | Extend_Up => Move_Cursor (State, Which, -1, Item = Extend_Up);
+         when Cursor_Down | Extend_Down => Move_Cursor (State, Which, 1, Item = Extend_Down);
+         when Page_Up_Rows | Extend_Page_Up => Move_Cursor (State, Which, -Page, Item = Extend_Page_Up);
+         when Page_Down_Rows | Extend_Page_Down => Move_Cursor (State, Which, Page, Item = Extend_Page_Down);
+         when First_Row | Extend_First => Move_Cursor (State, Which, -Row_Count'Last, Item = Extend_First);
+         when Last_Row | Extend_Last => Move_Cursor (State, Which, Row_Count'Last, Item = Extend_Last);
+         when Parent_Folder => Go_Parent (State, Which);
+         when Erase_Or_Parent =>
+            if Files_Filter.Active (P.Filter) then
+               declare
+                  Query : constant String := Files_Filter.Query (P.Filter);
+               begin
+                  Type_Filter (State, Which, Query (Query'First .. Query'Last - 1));
+               end;
+            else
+               Go_Parent (State, Which);
+            end if;
+         when History_Back | History_Forward => History_Move (State, Which, Backward => Item = History_Back);
+         when Clear_Or_Cancel =>
+            if Files_Operations.Busy then
+               Files_Operations.Cancel;
+               Dirty (State, Status_Area);
+            elsif Files_Filter.Active (P.Filter) then
+               Type_Filter (State, Which, "");
+            elsif Files_Marks.Count (P.Marks) > 0 then
+               Files_Marks.Clear (P.Marks);
+               Dirty_All (State);
+            end if;
+         when Next_Pane | Previous_Pane => Other_Pane (Item = Next_Pane);
+         when Next_Tab | Previous_Tab => Cycle_Tab (Item = Next_Tab);
+         when Move_Tab_Left | Move_Tab_Right =>
+            Move_Tab (State, Which, P.Current_Tab,
+                      (if Item = Move_Tab_Left then Natural'Max (1, P.Current_Tab - 1)
+                       else Natural'Min (P.Tab_Count, P.Current_Tab + 1)));
+         when New_Tab => New_Tab (State, Which);
+         when Restore_Tab => Restore_Tab (State, Which);
+         when Close_Tab => Close_Tab (State, Which);
+         when Close_Pane => Close_Pane (State, Which);
+         when Add_Pane => Add_Pane (State, Which);
+         when Single_Pane => Toggle_Single (State);
+         when Toggle_Left_Pane => Toggle_Shown (State, Left_Pane);
+         when Toggle_Right_Pane => Toggle_Shown (State, Right_Pane);
+         when Swap_Panes =>
+            declare
+               Next : constant Side := Other (State, Which);
+               Swap : constant Pane_Access := State.Panes (Which);
+            begin
+               State.Panes (Which) := State.Panes (Next);
+               State.Panes (Next) := Swap;
+            end;
+            Dirty_All (State);
+         when Mark_And_Next =>
+            if P.View.Cursor > 0 then
+               Set_Mark (P, P.View.Cursor, not Marked_Row (P, P.View.Cursor));
+               Dirty (State, P.Path_Area);
+               Dirty (State, Status_Area);
+               Move_Cursor (State, Which, 1, False);
+            end if;
+         when Toggle_Mark =>
+            if P.View.Cursor > 0 then
+               Set_Mark (P, P.View.Cursor, not Marked_Row (P, P.View.Cursor));
+               Dirty (State, Row_Area (P, P.View.Cursor));
+               Dirty (State, P.Path_Area);
+               Dirty (State, Status_Area);
+            end if;
+         when Open_Entry => Open_Cursor (State, Which);
+         when Context_Menu =>
+            declare
+               Box : constant Rect := Row_Area (P, P.View.Cursor);
+            begin
+               Open_Menu (State, Which, P.View.Cursor,
+                          (if Is_Empty (Box) then P.Rows_Area.x else Box.x + Box.w / 4),
+                          (if Is_Empty (Box) then P.Rows_Area.y else Box.y + Box.h));
+            end;
+         when Columns_Menu =>
+            declare
+               Box : constant Rect := Bars.Button_Area (Tool_Bar, Tool'Pos (Tool_Columns) + 1);
+            begin
+               Open_Columns_Menu (State, Which, Box.x, Box.y + Box.h);
+            end;
+         when Quit => State.Quit := True;
+         when Toggle_Overlay =>
+            State.Overlay := not State.Overlay;
+            Dirty_All (State);
+         when Toggle_Key_Bar =>
+            Key_Bar_Shown := not Key_Bar_Shown;
+            Dirty_All (State);
+         when Help | Edit => null;
+         when others =>
+            Run_Command (State, Item);
+      end case;
+      pragma Unreferenced (Map);
+   end Run;
+
+   --  The viewer's commands.
+   procedure Run_Viewer (State : in out View_State; Item : Command) is
+   begin
+      case Item is
+         when Close_Viewer => Close_Viewer (State);
+         when Viewer_Line_Up => Viewer_Top := (if Viewer_Top > 0 then Viewer_Top - 1 else 0);
+         when Viewer_Line_Down => Viewer_Top := Natural'Min (Viewer_Top + 1, Natural'Max (0, Line_Count - Viewer_Rows));
+         when Viewer_Page_Up => Viewer_Top := Natural'Max (0, Viewer_Top - Viewer_Rows);
+         when Viewer_Page_Down =>
+            Viewer_Top := Natural'Min (Viewer_Top + Viewer_Rows, Natural'Max (0, Line_Count - Viewer_Rows));
+         when Viewer_To_Top => Viewer_Top := 0;
+         when Viewer_To_Bottom => Viewer_Top := Natural'Max (0, Line_Count - Viewer_Rows);
+         when Viewer_Text_Or_Hex =>
+            Viewer_Hex := not Viewer_Hex;
+            Viewer_Top := 0;
+            if Files_Reader.State = Files_Reader.Done then
+               Index_Lines;
+            end if;
+         when others => null;
+      end case;
+      Dirty_All (State);
+   end Run_Viewer;
+
+   --  Where held modifiers' hints changed: the bars and the old and new
+   --  reveal labels repaint.
+   procedure Note_Reveal (State : in out View_State) is
+      Now : constant Keys.Modifier_Set := Revealed_Now;
+   begin
+      if Now /= Shown_Reveal then
+         Dirty (State, Bars.Area_Of (Key_Bar));
+         Dirty (State, Bars.Area_Of (Tool_Bar));
+         Dirty (State, Reveal_Damage);
+         Dirty (State, Bars.Reveal_Area (Tool_Bar, Panes_Map, Now, State.Bounds));
+         --  The key bar's height may follow its layer.
+         if Key_Bar_Shown then
+            Dirty_All (State);
+         end if;
+      end if;
+   end Note_Reveal;
+
    procedure Handle
      (State : in out View_State; Item : Event; Map : in out Controls.Control_Map; Redraw : out Boolean)
    is
       Which : constant Side := State.Current;
-      P : Pane_State renames State.Panes (Which).all;
-      Page : constant Row_Delta := Integer'Max (1, P.View.Rows - 1);
       Before : constant Rect := State.Dirty;
       package PM renames CuBit.UI.Popup_Menus;
       Tip_Damage : Rect;
+      Found : Boolean;
+      Chosen_Command : Command;
+      Flash_Damage : Rect;
    begin
+      --  Every key event: held modifiers reveal their hints after the hold
+      --  delay; any key or click with them held is a chord (no reveal).
+      if Item.Kind in Key_Event | Key_Release then
+         MR.Key_Event (Reveal, Item.Key, Item.Kind = Key_Event, Chord_Of (Item).Modifiers, Now_Ms);
+         Note_Reveal (State);
+         if Item.Kind = Key_Release then
+            Redraw := not Is_Empty (State.Dirty);
+            return;
+         end if;
+      elsif Item.Kind = Pointer_Event and then Item.Action = Controls.Pointer_Press then
+         MR.Note_Use (Reveal);
+         Note_Reveal (State);
+      end if;
+      Note_State (State);
       --  Tooltips follow the pointer and go away on any other input.
       if Item.Kind = Pointer_Event and then Item.Action = Controls.Pointer_Move then
-         Tooltips.Pointer_At (Tip, Tips, Map, Item.X, Item.Y, Now_Us / MICROSECONDS_PER_MILLISECOND, Tip_Damage);
+         Tooltips.Pointer_At (Tip, Tips, Map, Item.X, Item.Y, Now_Ms, Tip_Damage);
       else
          Tooltips.Dismiss (Tip, Tip_Damage);
       end if;
@@ -2512,19 +2805,10 @@ package body Files_View is
          begin
             case Item.Kind is
                when Key_Event =>
-                  case Item.Key is
-                     when Up => PM.Handle_Key (Popup, Menu, PM.Up, Chosen, Handled);
-                     when Down => PM.Handle_Key (Popup, Menu, PM.Down, Chosen, Handled);
-                     when Left => PM.Handle_Key (Popup, Menu, PM.Left, Chosen, Handled);
-                     when Right => PM.Handle_Key (Popup, Menu, PM.Right, Chosen, Handled);
-                     when Home => PM.Handle_Key (Popup, Menu, PM.Home, Chosen, Handled);
-                     when End_Key => PM.Handle_Key (Popup, Menu, PM.End_Key, Chosen, Handled);
-                     when Enter | Space => PM.Handle_Key (Popup, Menu, PM.Enter, Chosen, Handled);
-                     when others => PM.Handle_Key (Popup, Menu, PM.Escape, Chosen, Handled);
-                  end case;
+                  PM.Handle_Chord (Popup, Menu, Chord_Of (Item), Chosen, Handled);
                when Pointer_Event =>
                   PM.Handle_Pointer (Popup, Menu, Item.Action, Item.X, Item.Y, Chosen, Handled);
-               when Wheel | Text_Event =>
+               when Wheel | Text_Event | Key_Release =>
                   PM.Close (Popup);
                when Resize =>
                   PM.Close (Popup);
@@ -2532,8 +2816,8 @@ package body Files_View is
             end case;
             Dirty (State, Was);
             Dirty (State, PM.Covered (Popup));
-            if Chosen /= PM.NO_COMMAND and then Chosen <= Menu_Command'Pos (Menu_Command'Last) then
-               Run_Command (State, Menu_Command'Val (Chosen));
+            if Is_Choice (Chosen) then
+               Run_Command (State, Of_Choice (Chosen));
             end if;
             if Handled or else not PM.Is_Open (Popup) then
                Redraw := not Is_Empty (State.Dirty);
@@ -2544,45 +2828,44 @@ package body Files_View is
       declare
          Used : Boolean;
       begin
-         Prompt_Input (State, Item, Used);
+         Prompt_Input (State, Item, Map, Used);
          if Used then
             Redraw := not Is_Empty (State.Dirty);
             return;
          end if;
       end;
-      --  Escape cancels a running operation first.
-      if Item.Kind = Key_Event and then Item.Key = Escape and then Files_Operations.Busy then
-         Files_Operations.Cancel;
-         Dirty (State, Status_Area);
-         Redraw := True;
-         return;
+      if Item.Kind = Key_Event then
+         --  A pressed key flashes its key bar cell or toolbar button.
+         Bars.Flash (Key_Bar, Bar_Map, Chord_Of (Item), Now_Ms, Flash_Damage);
+         Dirty (State, Flash_Damage);
+         Bars.Flash (Tool_Bar, Panes_Map, Chord_Of (Item), Now_Ms, Flash_Damage);
+         Dirty (State, Flash_Damage);
+         --  The panes' cancel (Esc) stops a running operation first.
+         Maps.Find (Panes_Map, Chord_Of (Item), Found, Chosen_Command);
+         if Found and then Chosen_Command = Clear_Or_Cancel and then Files_Operations.Busy then
+            Files_Operations.Cancel;
+            Dirty (State, Status_Area);
+            Redraw := True;
+            return;
+         end if;
       end if;
       if Viewing then
          if Item.Kind = Key_Event then
-            case Item.Key is
-               when Escape | F3 | F10 | Enter => Close_Viewer (State);
-               when Up => Viewer_Top := (if Viewer_Top > 0 then Viewer_Top - 1 else 0);
-               when Down => Viewer_Top := Natural'Min (Viewer_Top + 1, Natural'Max (0, Line_Count - Viewer_Rows));
-               when Page_Up => Viewer_Top := Natural'Max (0, Viewer_Top - Viewer_Rows);
-               when Page_Down =>
-                  Viewer_Top := Natural'Min (Viewer_Top + Viewer_Rows, Natural'Max (0, Line_Count - Viewer_Rows));
-               when Home => Viewer_Top := 0;
-               when End_Key => Viewer_Top := Natural'Max (0, Line_Count - Viewer_Rows);
-               when F4 =>
-                  Viewer_Hex := not Viewer_Hex;
-                  Viewer_Top := 0;
-                  if Files_Reader.State = Files_Reader.Done then
-                     Index_Lines;
-                  end if;
-               when others => null;
-            end case;
-            Dirty_All (State);
+            Maps.Find (Viewer_Map, Chord_Of (Item), Found, Chosen_Command);
+            if Found then
+               Run_Viewer (State, Chosen_Command);
+            end if;
          elsif Item.Kind = Wheel then
             Viewer_Top := Natural'Max (0, Natural'Min (Viewer_Top - Item.Steps * WHEEL_ROWS,
                                                        Natural'Max (0, Line_Count - Viewer_Rows)));
             Dirty_All (State);
          elsif Item.Kind = Resize then
             Dirty_All (State);
+         elsif Item.Kind = Pointer_Event then
+            Bars.Take_Chosen (Key_Bar, Map, Viewer_Map, Found, Chosen_Command);
+            if Found and then Enabled (Chosen_Command) then
+               Run_Viewer (State, Chosen_Command);
+            end if;
          end if;
          Redraw := not Is_Empty (State.Dirty);
          return;
@@ -2590,196 +2873,15 @@ package body Files_View is
       case Item.Kind is
          when Resize =>
             Dirty_All (State);
+         when Key_Release =>
+            null;
          when Key_Event =>
-            case Item.Key is
-               when Up =>
-                  if Item.Alt then
-                     Go_Parent (State, Which);
-                  else
-                     Move_Cursor (State, Which, -1, Item.Shift);
-                  end if;
-               when Down => Move_Cursor (State, Which, 1, Item.Shift);
-               when Page_Up | Page_Down =>
-                  if Item.Control and then Item.Shift then
-                     Move_Tab (State, Which, P.Current_Tab,
-                               (if Item.Key = Page_Up then Natural'Max (1, P.Current_Tab - 1)
-                                else Natural'Min (P.Tab_Count, P.Current_Tab + 1)));
-                  elsif Item.Control then
-                     if P.Tab_Count > 1 then
-                        Show_Tab (State, Which,
-                                  (if Item.Key = Page_Up then (if P.Current_Tab <= 1 then P.Tab_Count else P.Current_Tab - 1)
-                                   else (if P.Current_Tab >= P.Tab_Count then 1 else P.Current_Tab + 1)));
-                     end if;
-                  else
-                     Move_Cursor (State, Which, (if Item.Key = Page_Up then -Page else Page), Item.Shift);
-                  end if;
-               when Home => Move_Cursor (State, Which, -Row_Count'Last, Item.Shift);
-               when End_Key => Move_Cursor (State, Which, Row_Count'Last, Item.Shift);
-               when Left | Right =>
-                  if Item.Alt then
-                     History_Move (State, Which, Backward => Item.Key = Left);
-                  end if;
-               when Tab =>
-                  if Item.Control then
-                     if P.Tab_Count > 1 then
-                        Show_Tab (State, Which,
-                                  (if Item.Shift then (if P.Current_Tab <= 1 then P.Tab_Count else P.Current_Tab - 1)
-                                   else (if P.Current_Tab >= P.Tab_Count then 1 else P.Current_Tab + 1)));
-                     end if;
-                     return;
-                  end if;
-                  State.Current := Cycle (State, Which, not Item.Shift);
-                  Dirty (State, P.Path_Area);
-                  Dirty (State, Row_Area (P, P.View.Cursor));
-                  Dirty (State, State.Panes (State.Current).Path_Area);
-                  Dirty (State, Row_Area (State.Panes (State.Current).all, State.Panes (State.Current).View.Cursor));
-                  Dirty (State, Status_Area);
-               when Enter => Open_Cursor (State, Which);
-               when Backspace =>
-                  if Files_Filter.Active (P.Filter) then
-                     declare
-                        Query : constant String := Files_Filter.Query (P.Filter);
-                     begin
-                        Type_Filter (State, Which, Query (Query'First .. Query'Last - 1));
-                     end;
-                  else
-                     Go_Parent (State, Which);
-                  end if;
-               when Escape =>
-                  if Files_Filter.Active (P.Filter) then
-                     Type_Filter (State, Which, "");
-                  elsif Files_Marks.Count (P.Marks) > 0 then
-                     Files_Marks.Clear (P.Marks);
-                     Dirty_All (State);
-                  end if;
-               when Insert =>
-                  if P.View.Cursor > 0 then
-                     Set_Mark (P, P.View.Cursor, not Marked_Row (P, P.View.Cursor));
-                     Dirty (State, P.Path_Area);
-                     Dirty (State, Status_Area);
-                     Move_Cursor (State, Which, 1, False);
-                  end if;
-               when Space =>
-                  if P.View.Cursor > 0 then
-                     Set_Mark (P, P.View.Cursor, not Marked_Row (P, P.View.Cursor));
-                     Dirty (State, Row_Area (P, P.View.Cursor));
-                     Dirty (State, P.Path_Area);
-                     Dirty (State, Status_Area);
-                  end if;
-               when Letter_A =>
-                  if Item.Control then
-                     for Row in 1 .. Row_Total (P) loop
-                        Set_Mark (P, Row, not Item.Shift);
-                     end loop;
-                     Dirty_All (State);
-                  end if;
-               when Letter_I =>
-                  if Item.Control then
-                     for Row in 1 .. Row_Total (P) loop
-                        Set_Mark (P, Row, not Marked_Row (P, Row));
-                     end loop;
-                     Dirty_All (State);
-                  end if;
-               when Letter_R =>
-                  if Item.Control then
-                     Refresh (State, Which);
-                  end if;
-               when Letter_U =>
-                  if Item.Control then
-                     declare
-                        Next : constant Side := Other (State, Which);
-                        Swap : constant Pane_Access := State.Panes (Which);
-                     begin
-                        State.Panes (Which) := State.Panes (Next);
-                        State.Panes (Next) := Swap;
-                     end;
-                     Dirty_All (State);
-                  end if;
-               when Letter_B =>
-                  if Item.Control then
-                     Drawer.Open := not Drawer.Open;
-                     Dirty_All (State);
-                  end if;
-               when Letter_D =>
-                  if Item.Control then
-                     Toggle_Bookmark (P.Where);
-                     Dirty_All (State);
-                  end if;
-               when Menu_Key =>
-                  declare
-                     Box : constant Rect := Row_Area (P, P.View.Cursor);
-                  begin
-                     Open_Menu (State, Which, P.View.Cursor,
-                                (if Is_Empty (Box) then P.Rows_Area.x else Box.x + Box.w / 4),
-                                (if Is_Empty (Box) then P.Rows_Area.y else Box.y + Box.h));
-                  end;
-               when Letter_T =>
-                  if Item.Control then
-                     if Item.Shift then
-                        Restore_Tab (State, Which);
-                     else
-                        New_Tab (State, Which);
-                     end if;
-                  end if;
-               when Letter_W =>
-                  if Item.Control then
-                     if Item.Shift then
-                        Close_Pane (State, Which);
-                     else
-                        Close_Tab (State, Which);
-                     end if;
-                  end if;
-               when Letter_N =>
-                  if Item.Control then
-                     Add_Pane (State, Which);
-                  end if;
-               when F9 => Toggle_Single (State);
-               when F1 =>
-                  if Item.Control then
-                     Toggle_Shown (State, Left_Pane);
-                  end if;
-               when F2 =>
-                  if Item.Control then
-                     Toggle_Shown (State, Right_Pane);
-                  else
-                     Refresh (State, Which);
-                  end if;
-               when F3 =>
-                  if Item.Control then
-                     Set_Rule (State, Which, Files_Order.By_Name);
-                  else
-                     Open_Viewer (State, Which);
-                  end if;
-               when F4 =>
-                  if Item.Control then
-                     Set_Rule (State, Which, Files_Order.By_Extension);
-                  end if;
-               when F5 | F6 | F7 | F8 | Delete =>
-                  if Item.Control and then Item.Key = F5 then
-                     Set_Rule (State, Which, Files_Order.By_Modified);
-                  elsif Item.Control and then Item.Key = F6 then
-                     Set_Rule (State, Which, Files_Order.By_Size);
-                  else
-                     Ask (State,
-                          (case Item.Key is
-                              when F5 => Confirm_Copy,
-                              when F6 => (if Item.Shift then Ask_New_Name else Confirm_Move),
-                              when F7 => Ask_Folder_Name,
-                              when others => Confirm_Delete), Which);
-                  end if;
-               when F10 => State.Quit := True;
-               when F12 =>
-                  if Item.Control then
-                     Key_Bar_Shown := not Key_Bar_Shown;
-                  else
-                     State.Overlay := not State.Overlay;
-                  end if;
-                  Dirty_All (State);
-               when others => null;
-            end case;
+            if Found and then Enabled (Chosen_Command) then
+               Run (State, Chosen_Command, Map);
+            end if;
          when Text_Event =>
             if not Item.Control and then not Item.Alt and then Item.Character_Value in '!' .. '~' then
-               Type_Filter (State, Which, Files_Filter.Query (P.Filter) & Item.Character_Value);
+               Type_Filter (State, Which, Files_Filter.Query (State.Panes (Which).Filter) & Item.Character_Value);
             end if;
          when Wheel =>
             for W in Side range 1 .. State.Count loop
@@ -2997,21 +3099,16 @@ package body Files_View is
                         Dirty_All (State);
                      end if;
                   end loop;
-                  --  A clicked key does what pressing it does.
-                  for K in Function_Key loop
-                     if Target = Key_ID (K) and then Controls.Take_Activated (Map, Target) then
-                        declare
-                           Ignore : Boolean;
-                        begin
-                           Handle (State, (Kind => Key_Event, Key => K, others => <>), Map, Ignore);
-                        end;
-                     end if;
-                  end loop;
-                  for T in Tool loop
-                     if Target = Tool_ID (T) and then Controls.Take_Activated (Map, Target) then
-                        Run_Tool (State, T);
-                     end if;
-                  end loop;
+                  --  A clicked key bar cell or toolbar button runs its command.
+                  Bars.Take_Chosen (Key_Bar, Map, Panes_Map, Found, Chosen_Command);
+                  if Found and then Enabled (Chosen_Command) then
+                     Run (State, Chosen_Command, Map);
+                  end if;
+                  Bars.Take_Chosen (Tool_Bar, Map, Panes_Map, Found, Chosen_Command);
+                  if Found and then Enabled (Chosen_Command) then
+                     Run (State, Chosen_Command, Map);
+                     Dirty_All (State);
+                  end if;
                end;
             end if;
       end case;
@@ -3151,7 +3248,7 @@ package body Files_View is
                             UI.pointer.enabled and then Point_In_Rect (UI.pointer.x, UI.pointer.y, Box), False,
                             Caption_Of (Where));
                   if not Is_Empty (Close) then
-                     Tooltips.Set_Region (Tips, Close, "Close tab", "Ctrl+W");
+                     Tooltips.Set_Region (Tips, Close, "Close tab", Maps.Hint (Panes_Map, Close_Tab));
                      if Hot_Close or else P.Close_Press = K then
                         Fill_Rect (C, Close, (if P.Close_Press = K then Colors.shadow else Colors.edge));
                      end if;
@@ -3362,7 +3459,9 @@ package body Files_View is
 
    function Quoted (Text : String) return String is ('"' & Text & '"');
 
-   procedure Draw_Dialog (State : View_State; C : Canvas; Bounds : Rect) is
+   procedure Draw_Dialog
+     (State : View_State; C : Canvas; Bounds : Rect; UI : CuBit.UI.State.UI_State; Map : in out Controls.Control_Map)
+   is
       Colors : constant Theme := Current_Theme;
       Box : constant Rect :=
         (Bounds.x + (if Bounds.w > DIALOG_WIDTH then (Bounds.w - DIALOG_WIDTH) / 2 else 0),
@@ -3396,12 +3495,11 @@ package body Files_View is
         (case Prompt is
             when Confirm_Copy | Confirm_Move => Destination,
             when Confirm_Delete => "This cannot be undone.",
-            when Ask_Conflict => "S: skip  O: overwrite  K: keep both   (capital: for all)   Esc: cancel",
+            when Ask_Conflict => "Shift with a choice: for every name that exists.",
             when others => "");
       Line_3 : constant String :=
         (case Prompt is
-            when Confirm_Copy | Confirm_Move =>
-              "If a name exists: " & Policy_Text (Prompt_Policy) & "  (S skip, O overwrite, K keep both, A ask)",
+            when Confirm_Copy | Confirm_Move => "If a name exists:",
             when others => "");
       Line_Height : constant Natural := UI_Text_Height + 6;
       Y : Natural := Title_Bar.y + PATH_HEIGHT + 10;
@@ -3427,10 +3525,40 @@ package body Files_View is
          Y := Y + Line_Height;
          Draw_UI_Text_Transparent (Inner, Box.x + 16, Y, Line_3, Colors.muted);
       end if;
-      if Prompt /= Ask_Conflict then
-         Draw_UI_Text_Transparent
-           (Inner, Box.x + 16, Box.y + Box.h - Line_Height - 4,
-            "Enter: " & (if Prompt = Confirm_Delete then "delete" else "OK") & "    Esc: cancel", Colors.muted);
+      --  The prompt's choices are toolkit buttons with their keycaps
+      --  (UI-051): "OK [Enter]", "Cancel [Esc]", "Skip [S]".
+      Bars.Clear (Dialog_Bar, DIALOG_FIRST, Bars.Plain_Style, Bars.Align_Right, Bars.Keycap_After);
+      if Prompt = Ask_Conflict then
+         Bars.Add_Command (Dialog_Bar, Skip_Existing);
+         Bars.Add_Command (Dialog_Bar, Overwrite_Existing);
+         Bars.Add_Command (Dialog_Bar, Keep_Both);
+      else
+         Bars.Add_Command (Dialog_Bar, Prompt_Accept);
+      end if;
+      Bars.Add_Command (Dialog_Bar, Prompt_Cancel);
+      declare
+         Row : constant Natural := Bars.Height (Dialog_Bar, Prompt_Map, Box.w - 2 * DIALOG_INSET, Revealed_Now);
+      begin
+         Bars.Draw (Inner, Map, Tips, Dialog_Bar, Prompt_Map,
+                    (Box.x + DIALOG_INSET, Box.y + Box.h - Row - DIALOG_INSET, Box.w - 2 * DIALOG_INSET, Row),
+                    Colors, UI.pointer, Revealed_Now, Now_Ms);
+      end;
+      if Prompt in Confirm_Copy | Confirm_Move then
+         Bars.Clear (Policy_Bar, POLICY_FIRST, Bars.Plain_Style, Bars.Align_Left, Bars.Keycap_After);
+         Bars.Add_Command (Policy_Bar, Skip_Existing);
+         Bars.Add_Command (Policy_Bar, Overwrite_Existing);
+         Bars.Add_Command (Policy_Bar, Keep_Both);
+         Bars.Add_Command (Policy_Bar, Ask_Each);
+         declare
+            Left : constant Natural := Box.x + 16 + UI_Text_Width (Line_3) + M.Space_S;
+            Row : constant Natural :=
+              Bars.Height (Policy_Bar, Prompt_Map, (if Box.x + Box.w > Left then Box.x + Box.w - Left else 0),
+                           Revealed_Now);
+         begin
+            Bars.Draw (Inner, Map, Tips, Policy_Bar, Prompt_Map,
+                       (Left, Y + (UI_Text_Height / 2) - Row / 2, (if Box.x + Box.w > Left then Box.x + Box.w - Left else 0),
+                        Row), Colors, UI.pointer, Revealed_Now, Now_Ms);
+         end;
       end if;
    end Draw_Dialog;
 
@@ -3468,37 +3596,6 @@ package body Files_View is
    end Draw_Overlay;
 
 
-   --  Tooltips: what a tool does, and its key.
-   function Tool_Tip (Item : Tool) return String is
-     (case Item is
-         when Tool_Back => "Back", when Tool_Forward => "Forward", when Tool_Up => "Up to the parent folder",
-         when Tool_Refresh => "Refresh", when Tool_New_Folder => "New folder", when Tool_Copy => "Copy to the other pane",
-         when Tool_Move => "Move to the other pane", when Tool_Delete => "Delete", when Tool_Drawer => "Places",
-         when Tool_Columns => "Columns", when Tool_Viewer => "View the file", when Tool_New_Tab => "New tab",
-         when Tool_Add_Pane => "Add a pane", when Tool_Single_Pane => "One pane");
-   function Tool_Hint (Item : Tool) return String is
-     (case Item is
-         when Tool_Back => "Alt+Left", when Tool_Forward => "Alt+Right", when Tool_Up => "Backspace",
-         when Tool_Refresh => "Ctrl+R", when Tool_New_Folder => "F7", when Tool_Copy => "F5",
-         when Tool_Move => "F6", when Tool_Delete => "F8", when Tool_Drawer => "Ctrl+B", when Tool_Columns => "",
-         when Tool_Viewer => "F3", when Tool_New_Tab => "Ctrl+T", when Tool_Add_Pane => "Ctrl+N",
-         when Tool_Single_Pane => "F9");
-   function Key_Tip (K : Function_Key) return String is
-     (case K is
-         when F1 => "Help", when F2 => "Refresh the folder", when F3 => "View the file", when F4 => "Edit",
-         when F5 => "Copy to the other pane", when F6 => "Move to the other pane", when F7 => "New folder",
-         when F8 => "Delete", when F9 => "One pane or all", when F10 => "Quit");
-
-   function Tool_Icon (Item : Tool) return CuBit.UI.Icons.Icon is
-     (case Item is
-         when Tool_Back => CuBit.UI.Icons.Go_Back, when Tool_Forward => CuBit.UI.Icons.Go_Forward,
-         when Tool_Up => CuBit.UI.Icons.Go_Up, when Tool_Refresh => CuBit.UI.Icons.Refresh,
-         when Tool_New_Folder => CuBit.UI.Icons.New_Folder, when Tool_Copy => CuBit.UI.Icons.Copy,
-         when Tool_Move => CuBit.UI.Icons.Move, when Tool_Delete => CuBit.UI.Icons.Delete,
-         when Tool_Drawer => CuBit.UI.Icons.Drawer, when Tool_Columns => CuBit.UI.Icons.Columns,
-         when Tool_Viewer => CuBit.UI.Icons.Document_File, when Tool_New_Tab => CuBit.UI.Icons.New_Tab,
-         when Tool_Add_Pane => CuBit.UI.Icons.Add_Pane, when Tool_Single_Pane => CuBit.UI.Icons.Close);
-
    procedure Draw_Toolbar
      (State : View_State; C : Canvas; Bar, Damage : Rect; UI : CuBit.UI.State.UI_State;
       Map : in out Controls.Control_Map)
@@ -3511,46 +3608,11 @@ package body Files_View is
         (Bar.x + (if Bar.w > SEARCH_WIDTH + MARGIN then Bar.w - SEARCH_WIDTH - MARGIN else 0),
          Bar.y + (TOOLBAR_HEIGHT - SEARCH_HEIGHT) / 2, Natural'Min (SEARCH_WIDTH, Bar.w), SEARCH_HEIGHT);
       Drawn : constant Boolean := Intersects (Bar, Damage);
-      function Enabled (Item : Tool) return Boolean is
-        (case Item is
-            when Tool_Back => P.Back_Count > 0, when Tool_Forward => P.Forward_Count > 0,
-            when Tool_Up => not At_Root (P),
-            when Tool_New_Folder | Tool_Copy | Tool_Move | Tool_Delete => OPERATIONS_READY,
-            when Tool_Viewer => P.View.Cursor > 0 and then Entry_Of (P, P.View.Cursor) > 0
-                                and then Files_Listing.Kind (P.Listing, Entry_Of (P, P.View.Cursor))
-                                         /= Files_Listing.Directory_Kind,
-            when others => True);
    begin
-      if Drawn then
-         CuBit.UI.Widgets.Toolbar (C, Bar, Colors);
-      end if;
-      for T in Tool loop
-         declare
-            Box : constant Rect := (X, Top, TOOL_SIZE, TOOL_SIZE);
-         begin
-            if Enabled (T) then
-               Controls.Add_Button (Map, Tool_ID (T), Box, Box);
-               Tooltips.Set (Tips, Tool_ID (T), Tool_Tip (T), Tool_Hint (T));
-            end if;
-            if Drawn and then Intersects (Box, Damage) then
-               CuBit.UI.Icons.Draw_Tool_Button
-                 (C, Box, Colors, Tool_Icon (T), Enabled (T),
-                  Hot => UI.pointer.enabled and then Point_In_Rect (UI.pointer.x, UI.pointer.y, Box),
-                  Pressed => Controls.Is_Active (Map, Tool_ID (T)),
-                  Checked => (T = Tool_Drawer and then Drawer.Open) or else (T = Tool_Viewer and then Viewing)
-                    or else (T = Tool_Single_Pane
-                             and then (for all K in Side range 1 .. State.Count =>
-                                         K = State.Current or else not State.Shown (K))));
-            end if;
-            X := X + TOOL_SIZE + TOOL_GAP;
-            if T in Tool_Refresh | Tool_Delete | Tool_Viewer then
-               if Drawn then
-                  CuBit.UI.Widgets.Toolbar_Separator (C, (X, Bar.y + 2, TOOL_GROUP_GAP, TOOLBAR_HEIGHT - 4), Colors);
-               end if;
-               X := X + TOOL_GROUP_GAP;
-            end if;
-         end;
-      end loop;
+      --  The toolbar is a button bar of icon-only buttons (UI-051): their
+      --  shortcuts show in the tooltips, under them while Alt is held and
+      --  as their controls' accessibility data.
+      Bars.Draw (C, Map, Tips, Tool_Bar, Panes_Map, Bar, Colors, UI.pointer, Revealed_Now, Now_Ms);
       Controls.Add (Map, SEARCH_ID, Search, Search, Pointer_Text);
       if Drawn and then Intersects (Search, Damage) then
          declare
@@ -3586,9 +3648,10 @@ package body Files_View is
    is
       Colors : constant Theme := Current_Theme;
       Damage : constant Rect := (if C.clipEnabled then C.clip else Bounds);
-      Keys : constant Rect := (Bounds.x, Bounds.y + Bounds.h - Key_Bar_Height, Bounds.w, Key_Bar_Height);
+      Key_Area : constant Rect :=
+        (Bounds.x, Bounds.y + Bounds.h - Key_Bar_Height (Bounds.w), Bounds.w, Key_Bar_Height (Bounds.w));
       Status : constant Rect :=
-        (Bounds.x + MARGIN, Keys.y - STATUS_HEIGHT, (if Bounds.w > 2 * MARGIN then Bounds.w - 2 * MARGIN else 0),
+        (Bounds.x + MARGIN, Key_Area.y - STATUS_HEIGHT, (if Bounds.w > 2 * MARGIN then Bounds.w - 2 * MARGIN else 0),
          STATUS_HEIGHT);
       Bar : constant Rect := (Bounds.x, Bounds.y, Bounds.w, TOOLBAR_HEIGHT);
       Middle_Top : constant Natural := Bar.y + TOOLBAR_HEIGHT + MARGIN;
@@ -3597,6 +3660,7 @@ package body Files_View is
       Drawer_Box, Content, Edge : Rect;
    begin
       State.Bounds := Bounds;
+      Note_State (State);
       Status_Area := Status;
       Toolbar_Area := Bar;
       CuBit.UI.State.Begin_Frame (UI);
@@ -3679,8 +3743,13 @@ package body Files_View is
                    & (if Files_Filter.Complete (P.Filter) then "" else " ...") & "   "
                  else "")
               & (if Message_Length > 0 then Message (1 .. Message_Length)
-                 elsif Viewing then "Esc: close   F4: text/hex   arrows, PgUp/PgDn: scroll"
-                 else HINT);
+                 elsif Viewing then
+                   Says (Viewer_Map, Close_Viewer, "close") & Says (Viewer_Map, Viewer_Text_Or_Hex, "text/hex")
+                   & Says (Viewer_Map, Viewer_Page_Down, "scroll")
+                 else
+                   Says (Panes_Map, Next_Pane, "other pane") & Says (Panes_Map, Open_Entry, "open")
+                   & Says (Panes_Map, Erase_Or_Parent, "up") & Says (Panes_Map, Mark_And_Next, "mark")
+                   & "type to filter   " & Says (Panes_Map, View, "view") & Says (Panes_Map, Toggle_Overlay, "timing"));
             Root : constant String := Root_Of (P);
             Right_Text : constant String :=
               Volume_Text (Root) & (if Volume_Text (Root)'Length > 0 then "   " else "")
@@ -3702,7 +3771,8 @@ package body Files_View is
                               when Rename_Operation => "Renaming"));
                   Text : constant String :=
                     Verb & Natural'Image (Items_Done) & " /" & Natural'Image (Items_Total) & " items, "
-                    & Size_Text (Bytes_Done) & " / " & Size_Text (Bytes_Total) & "   " & Current & "   Esc: cancel";
+                    & Size_Text (Bytes_Done) & " / " & Size_Text (Bytes_Total) & "   " & Current & "   "
+                    & Says (Panes_Map, Clear_Or_Cancel, "cancel");
                   Bar : constant Rect :=
                     (Status.x + (if Status.w > PROGRESS_WIDTH + MARGIN then Status.w - PROGRESS_WIDTH - MARGIN else 0),
                      Status.y + 4, Natural'Min (PROGRESS_WIDTH, Status.w), STATUS_HEIGHT - 8);
@@ -3714,80 +3784,36 @@ package body Files_View is
                                    (if Bytes_Total > 0 then Bytes_Total else Unsigned_64 (Items_Total))));
                end;
             else
-               Draw_Status_Bar (C, Status, Colors, Left_Text, Right_Text);
+               Draw_Status_Parts (C, Status, Colors, Left_Text, Right_Text);
             end if;
          end;
       end if;
 
-      --  The function-key bar: a keycap badge, then what the key does.
+      --  The function-key bar (UI-051): toolkit buttons sized to their
+      --  captions, wrapping when narrow, showing the held layer's keys.
+      Key_Bar_Area := Key_Area;
       if Key_Bar_Shown then
-         declare
-            COUNT : constant := Function_Key'Pos (F10) - Function_Key'Pos (F1) + 1;
-            Width : constant Natural :=
-              (if Keys.w > (COUNT + 1) * KEY_GAP then (Keys.w - (COUNT + 1) * KEY_GAP) / COUNT else 0);
-         begin
-            if Intersects (Keys, Damage) then
-               Fill_Rect (C, Keys, Colors.panel);
-               Fill_Rect (C, (Keys.x, Keys.y, Keys.w, 1), Colors.edge);
-            end if;
-            for K in Function_Key loop
-               declare
-                  Slot : constant Natural := Key_Name'Pos (K) - Key_Name'Pos (F1);
-                  Box : constant Rect :=
-                    (Keys.x + KEY_GAP + Slot * (Width + KEY_GAP), Keys.y + 2, Width,
-                     (if Keys.h > 3 then Keys.h - 3 else 0));
-                  Badge : constant String := Key_Badge (K);
-                  Badge_Box : constant Rect :=
-                    (Box.x + 2, Box.y + 2, UI_Text_Width (Badge) + 2 * KEY_BADGE_PADDING,
-                     (if Box.h > 4 then Box.h - 4 else 0));
-                  Bound : constant Boolean := Key_Bound (K);
-                  Hot : constant Boolean :=
-                    Bound and then UI.pointer.enabled and then Point_In_Rect (UI.pointer.x, UI.pointer.y, Box);
-                  Pressed : constant Boolean := Bound and then Controls.Is_Active (Map, Key_ID (K));
-                  Text_Y : constant Natural :=
-                    Box.y + (if Box.h > UI_Text_Height then (Box.h - UI_Text_Height) / 2 else 0);
-               begin
-                  if Bound then
-                     Controls.Add_Button (Map, Key_ID (K), Box, Box);
-                     Tooltips.Set (Tips, Key_ID (K), Key_Tip (K), Badge);
-                  end if;
-                  if Intersects (Box, Damage) and then Width > 0 then
-                     declare
-                        Inner : constant Canvas := With_Clip (C, Box);
-                     begin
-                        Fill_Rect (C, Box, (if Pressed then Colors.shadow elsif Hot then Colors.face else Colors.panel));
-                        if Hot or else Pressed then
-                           Stroke_Rect (C, Box, (if Pressed then Colors.shadow else Colors.edge),
-                                        (if Pressed then Colors.edge else Colors.shadow));
-                        end if;
-                        Fill_Rect (C, Badge_Box, (if Bound then Colors.text else Colors.edge));
-                        Draw_UI_Text_Transparent
-                          (Inner, Badge_Box.x + KEY_BADGE_PADDING, Text_Y, Badge,
-                           (if Bound then Colors.panel else Colors.face));
-                        --  A narrow bar shows the keycaps alone (the tooltip and
-                        --  the key's action still tell what it does).
-                        if Badge_Box.w + 2 * KEY_BADGE_PADDING + UI_Text_Width (Key_Caption (K)) <= Box.w then
-                           Draw_UI_Text_Transparent
-                             (Inner, Badge_Box.x + Badge_Box.w + KEY_BADGE_PADDING, Text_Y, Key_Caption (K),
-                              (if Bound then Colors.text else Colors.muted));
-                        end if;
-                     end;
-                  end if;
-               end;
-            end loop;
-         end;
+         Bars.Draw (C, Map, Tips, Key_Bar, Bar_Map, Key_Area, Colors, UI.pointer, Revealed_Now, Now_Ms);
       end if;
       if State.Overlay then
          Draw_Overlay (State, C, Bounds);
       end if;
       if Prompt /= No_Prompt then
-         Draw_Dialog (State, C, Bounds);
+         Draw_Dialog (State, C, Bounds, UI, Map);
       else
          Dialog_Area := (others => 0);
       end if;
       CuBit.UI.Popup_Menus.Draw (C, Map, Popup, Menu, Colors, POPUP_BASE);
       if not CuBit.UI.Popup_Menus.Is_Open (Popup) then
          Tooltips.Draw (C, Tip, Tips, Bounds, Colors);
+      end if;
+      --  Held modifiers' reveal labels, over everything.
+      Shown_Reveal := Revealed_Now;
+      if Prompt = No_Prompt and then not CuBit.UI.Popup_Menus.Is_Open (Popup) then
+         Bars.Draw_Reveal (C, Tool_Bar, Panes_Map, Colors, Shown_Reveal, Bounds);
+         Reveal_Damage := Bars.Reveal_Area (Tool_Bar, Panes_Map, Shown_Reveal, Bounds);
+      else
+         Reveal_Damage := (others => 0);
       end if;
       end;
       State.Frames := State.Frames + 1;
@@ -3824,12 +3850,18 @@ package body Files_View is
 
    function Quit_Requested (State : View_State) return Boolean is (State.Quit);
 
+   function Microseconds_Of (Ms : Unsigned_64) return Unsigned_64 is
+     (if Ms >= Unsigned_64'Last / MICROSECONDS_PER_MILLISECOND then Unsigned_64'Last
+      else Ms * MICROSECONDS_PER_MILLISECOND);
    function Next_Deadline_Us (State : View_State) return Unsigned_64 is
      (Unsigned_64'Min
         (Unsigned_64'Min (Unsigned_64'Min ((if Message_Length > 0 then Message_Until_Us else Unsigned_64'Last),
                                            Files_Reader.Deadline), Files_Operations.Deadline),
-         (if Tooltips.Next_Deadline (Tip) >= Unsigned_64'Last / MICROSECONDS_PER_MILLISECOND then Unsigned_64'Last
-          else Tooltips.Next_Deadline (Tip) * MICROSECONDS_PER_MILLISECOND)));
+         Unsigned_64'Min
+           (Microseconds_Of (Tooltips.Next_Deadline (Tip)),
+            Unsigned_64'Min (Microseconds_Of (MR.Next_Deadline (Reveal)),
+                             Unsigned_64'Min (Microseconds_Of (Bars.Next_Deadline (Key_Bar)),
+                                              Microseconds_Of (Bars.Next_Deadline (Tool_Bar)))))));
    function Waiting_For_IO (State : View_State) return Boolean is
      (Files_Queue.Outstanding > 0
       or else (Files_Operations.Busy and then Files_Operations.Phase /= Files_Operations.Asking)
@@ -3851,6 +3883,23 @@ package body Files_View is
      (Volume_Text (Root_Of (State.Panes (State.Current).all)));
    function Keys_Shown (State : View_State) return Boolean is
      (Key_Bar_Shown);
+   function Key_Index (Key : Keys.Key) return Natural is
+     (if Key in Keys.Function_Key then Keys.Key'Pos (Key) - Keys.Key'Pos (Keys.F1) + 1 else 0);
+   function Key_Cell (State : View_State; Key : Keys.Key) return Rect is
+     (if Key_Index (Key) = 0 or else not Key_Bar_Shown then (others => 0)
+      else Bars.Button_Area (Key_Bar, Key_Index (Key)));
+   function Key_Cell_Caption (State : View_State; Key : Keys.Key) return String is
+     (if Key_Index (Key) = 0 then "" else Bars.Shown_Caption (Key_Bar, Bar_Map, Key_Index (Key), Shown_Reveal));
+   function Key_Cell_Needs (State : View_State; Key : Keys.Key) return Natural is
+     (if Key_Index (Key) = 0 then 0 else Bars.Needed_Width (Key_Bar, Bar_Map, Key_Index (Key), Shown_Reveal));
+   function Key_Bar_Rows (State : View_State) return Natural is (Bars.Rows (Key_Bar));
+   function Menu_Row_Hint (State : View_State; Row : Positive) return Keys.Chord is
+     (if Row <= CuBit.UI.Popup_Menus.Items (Menu, CuBit.UI.Popup_Menus.ROOT)
+      then CuBit.UI.Popup_Menus.Hint (Menu, CuBit.UI.Popup_Menus.ROOT, Row) else Keys.No_Chord);
+   function Tooltip_Hint (State : View_State) return Keys.Chord is (Tooltips.Hint (Tip, Tips));
+   function Revealed (State : View_State) return Keys.Modifier_Set is (Shown_Reveal);
+   function Tool_Revealed (State : View_State; Item : Tool) return Boolean is
+     (Bars.Revealed_At (Tool_Bar, Panes_Map, Tool'Pos (Item) + 1, Shown_Reveal));
    function Path (State : View_State; Pane : Side) return String is (Full_Path (State.Panes (Pane).all));
    function Load (State : View_State; Pane : Side) return Load_State is (State.Panes (Pane).Load);
    function Listed (State : View_State; Pane : Side) return Natural is (State.Panes (Pane).Listing.Count);

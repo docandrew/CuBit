@@ -6,6 +6,8 @@
 --  Stateful widgets that draw themselves and register hit/damage metadata
 ------------------------------------------------------------------------------
 with CuBit.UI.Controls;
+with CuBit.UI.Keys;
+with CuBit.UI.Keycaps;
 with CuBit.UI.State;
 with CuBit.UI_Metrics;
 
@@ -144,7 +146,14 @@ package CuBit.UI.Widgets is
        label : String;
        result : out CuBit.UI.Widget_Result;
        retainedInput : Boolean := False;
-       quiet : Boolean := False);
+       quiet : Boolean := False;
+       hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+       shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral);
+   --  A button's label with its shortcut keycaps after it ("Cancel [Esc]",
+   --  CuBit.UI.Keycaps: the chord comes from the keymap or the toolkit's
+   --  standard keys, never text), and the width that shows both whole.
+   HINT_GAP : constant := CuBit.UI_Metrics.Space_S;
+   function Button_Width (label : String; hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord) return Natural;
 
    type Navigation_Icon is (Navigate_Back, Navigate_Forward, Navigate_Reload);
    procedure Navigation_Button

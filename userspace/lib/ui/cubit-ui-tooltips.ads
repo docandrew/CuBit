@@ -5,10 +5,11 @@
 --  @summary
 --  Hover tooltips for any control: the application gives a control (by its
 --  Control_ID) or a region (a truncated cell) tooltip text and an optional
---  shortcut hint while it renders; the toolkit decides when the tip shows
+--  shortcut (a typed chord, from the keymap's Hint) while it renders; the toolkit decides when the tip shows
 --  (Client_Tooltip_Policy, proved), places it near the pointer on screen
 --  (Client_Popup_Layout, proved) and draws it last: a flat, square box with
---  a 1-pixel theme border, the shortcut hint right-aligned ("Copy    F5").
+--  a 1-pixel theme border, the shortcut's keycaps after the text
+--  (CuBit.UI.Keycaps: "Copy  [F5]").
 --  Keyboard users get the focused control's tip after the same delay,
 --  below the control. It never takes focus or input: the application feeds
 --  pointer motion, focus changes, dismissing events and its clock, and
@@ -17,19 +18,26 @@
 ------------------------------------------------------------------------------
 with Interfaces;
 with CuBit.UI.Controls;
+with CuBit.UI.Keys;
+with CuBit.UI.Keycaps;
 with Client_Tooltip_Policy;
 
 package CuBit.UI.Tooltips is
    MAXIMUM_TIPS : constant := 96;
    MAXIMUM_TEXT : constant := 96;
-   MAXIMUM_HINT : constant := 16;
 
    type Tip_Table is private;
    --  Each frame: Clear, then Set for every control and region that has a
    --  tip (regions are looked up before controls).
    procedure Clear (Table : in out Tip_Table);
-   procedure Set (Table : in out Tip_Table; Id : Controls.Control_ID; Text : String; Hint : String := "");
-   procedure Set_Region (Table : in out Tip_Table; Area : Rect; Text : String; Hint : String := "");
+   procedure Set
+     (Table : in out Tip_Table; Id : Controls.Control_ID; Text : String;
+      Hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+      Shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral);
+   procedure Set_Region
+     (Table : in out Tip_Table; Area : Rect; Text : String;
+      Hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+      Shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral);
 
    type Tooltip is private;
    function Visible (Tip : Tooltip) return Boolean;
@@ -53,6 +61,8 @@ package CuBit.UI.Tooltips is
    procedure Draw (C : Canvas; Tip : in out Tooltip; Table : Tip_Table; Area : Rect; Colors : Theme);
    --  The text of the tip showing (for tests), "" while hidden.
    function Text (Tip : Tooltip; Table : Tip_Table) return String;
+   --  The shortcut of the tip showing (for tests), No_Chord while hidden.
+   function Hint (Tip : Tooltip; Table : Tip_Table) return CuBit.UI.Keys.Chord;
 private
    type Tip_Kind is (Control_Tip, Region_Tip);
    type Tip_Entry is record
@@ -61,8 +71,8 @@ private
       Area : Rect := (others => 0);
       Text : String (1 .. MAXIMUM_TEXT) := [others => ' '];
       Text_Length : Natural range 0 .. MAXIMUM_TEXT := 0;
-      Hint : String (1 .. MAXIMUM_HINT) := [others => ' '];
-      Hint_Length : Natural range 0 .. MAXIMUM_HINT := 0;
+      Hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+      Shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral;
    end record;
    type Tip_Entries is array (1 .. MAXIMUM_TIPS) of Tip_Entry;
    type Tip_Table is record

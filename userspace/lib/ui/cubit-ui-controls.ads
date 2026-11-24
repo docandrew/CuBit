@@ -5,6 +5,7 @@
 --  @summary
 --  Small control map for hit testing and damage lookup
 ------------------------------------------------------------------------------
+with CuBit.UI.Keys;
 package CuBit.UI.Controls is
    subtype Control_ID is Natural;
    NO_CONTROL : constant Control_ID := 0;
@@ -48,6 +49,9 @@ package CuBit.UI.Controls is
       activated    : Boolean := False;
       pendingValue : Boolean := False;
       enabled      : Boolean := False;
+      --  The control's shortcut, as data (like aria-keyshortcuts) for
+      --  screen readers and the modifier reveal: No_Chord for none.
+      shortcut     : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
    end record;
 
    type Control_Entries is array (Control_Index) of Control_Entry;
@@ -157,6 +161,13 @@ package CuBit.UI.Controls is
    function Cursor
       (m : Control_Map; id : Control_ID)
       return CuBit.UI.Pointer_Cursor_Style;
+
+   --  A registered control's shortcut (accessibility data). Set after
+   --  adding the control in the same frame; unknown IDs are ignored.
+   procedure Set_Shortcut
+      (m : in out Control_Map; id : Control_ID; shortcut : CuBit.UI.Keys.Chord);
+   function Shortcut
+      (m : Control_Map; id : Control_ID) return CuBit.UI.Keys.Chord;
 
    function Has_Continuous_Action
       (m : Control_Map; id : Control_ID) return Boolean;

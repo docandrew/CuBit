@@ -1,9 +1,11 @@
 with CuBit.UI_Metrics;
+with CuBit.UI.Keycaps;
 with Ada.Unchecked_Deallocation;
 with System;
 with Client_Canvas_Geometry;
 with CuBit.Fonts;
 with CuBit.UI.Controls;
+with CuBit.UI.Keys;
 with CuBit.UI.Editor;
 with CuBit.UI.Surfaces;
 with Calc_Balls;
@@ -15,6 +17,9 @@ with Calc_Words;
 package body Calc_Shells is
    use CuBit.UI;
    package Menus renames CuBit.UI.Menus;
+   package Keys renames CuBit.UI.Keys;
+   package K renames CuBit.UI.Keys;
+   use type K.Modifier, K.Modifier_Set, K.Key, K.Chord;
    package Controls renames CuBit.UI.Controls;
    package Editor renames CuBit.UI.Editor;
    use type Menus.Text;
@@ -179,22 +184,22 @@ package body Calc_Shells is
          when Octal_Command => "Octal",
          when Binary_Command => "Binary",
          when Help_Command => "Keys and Functions");
-   function Shortcut (Item : Command) return String is
+   function Shortcut (Item : Command) return Keys.Chord is
      (case Item is
-         when Clear_History_Command => "Ctrl+L",
-         when Quit_Command => "Ctrl+Q",
-         when Copy_Result_Command => "Ctrl+C",
-         when Copy_Decimal_Command => "Ctrl+Shift+C",
-         when Paste_Command => "Ctrl+V",
-         when Select_All_Command => "Ctrl+A",
-         when Clear_Entry_Command => "Esc",
-         when Standard_Command => "Ctrl+1",
-         when Scientific_Command => "Ctrl+2",
-         when Programmer_Command => "Ctrl+3",
-         when Fraction_First_Command => "Ctrl+D",
-         when Signed_Command => "Ctrl+S",
-         when Help_Command => "F1",
-         when others => "");
+         when Clear_History_Command => (K.Ctrl + K.L),
+         when Quit_Command => (K.Ctrl + K.Q),
+         when Copy_Result_Command => (K.Ctrl + K.C),
+         when Copy_Decimal_Command => (K.Ctrl + K.Shift + K.C),
+         when Paste_Command => (K.Ctrl + K.V),
+         when Select_All_Command => (K.Ctrl + K.A),
+         when Clear_Entry_Command => (+K.Escape),
+         when Standard_Command => (K.Ctrl + K.Digit_1),
+         when Scientific_Command => (K.Ctrl + K.Digit_2),
+         when Programmer_Command => (K.Ctrl + K.Digit_3),
+         when Fraction_First_Command => (K.Ctrl + K.D),
+         when Signed_Command => (K.Ctrl + K.S),
+         when Help_Command => (+K.F1),
+         when others => Keys.No_Chord);
    function Starts_Group (Item : Command) return Boolean is
      (Item in Quit_Command | Paste_Command | Clear_Entry_Command | Fraction_First_Command | Places_10_Command
             | Bits_8_Command | Signed_Command | Hexadecimal_Command);
@@ -226,7 +231,7 @@ package body Calc_Shells is
 
    type Command_Texts is array (Command) of Menus.Text;
    type Title_Texts is array (Menu_Name) of Menus.Text;
-   Captions, Shortcuts : Command_Texts := [others => null];
+   Captions : Command_Texts := [others => null];
    Titles : Title_Texts := [others => null];
    Menu_Popup_Width : Positive := MENU_MINIMUM_WIDTH;
 
@@ -243,7 +248,6 @@ package body Calc_Shells is
       end loop;
       for C in Command range Clear_History_Command .. Command'Last loop
          Captions (C) := new String'(Caption (C));
-         Shortcuts (C) := (if Shortcut (C)'Length = 0 then null else new String'(Shortcut (C)));
       end loop;
    end Prepare_Menu_Texts;
 
@@ -1179,7 +1183,7 @@ package body Calc_Shells is
                end if;
                Result.Item_Count := Result.Item_Count + 1;
                Result.Items (Result.Item_Count) :=
-                 (Parent => Result.Menu_Count, Caption => Captions (C), Shortcut => Shortcuts (C),
+                 (Parent => Result.Menu_Count, Caption => Captions (C), Hint => Shortcut (C),
                   Mnemonic => Mnemonic_Of (Caption (C)), Command => Command'Pos (C),
                   Enabled => (case C is
                                  when Copy_Result_Command | Copy_Decimal_Command | Copy_Expression_Command
@@ -1197,7 +1201,7 @@ package body Calc_Shells is
                                  when Base_Command => S.Choice.Base = Base_Of (C),
                                  when Help_Command => S.Help_On,
                                  when others => False),
-                  Separator => False);
+                  Separator => False, Shade => CuBit.UI.Keycaps.Neutral);
             end if;
          end loop;
       end loop;

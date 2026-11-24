@@ -1,6 +1,7 @@
 with Ada.Text_IO;
 with Interfaces; use Interfaces;
-with CuBit.UI; use CuBit.UI;
+with CuBit.UI;
+with CuBit.UI.Keys; use CuBit.UI;
 with CuBit.UI_Metrics;
 with CuBit.UI.Menus; use CuBit.UI.Menus;
 with CuBit.UI.Controls;
@@ -10,7 +11,6 @@ procedure Menus_Tests is
    Edit_Text : aliased constant String := "Edit";
    Open_Text : aliased constant String := "Open";
    Settings_Text : aliased constant String := "Settings";
-   Shortcut_Text : aliased constant String := "Ctrl+O";
    D : Model;
    S : Menu_State;
    Map : Controls.Control_Map;
@@ -42,7 +42,7 @@ begin
    D.Menus (1) := (File_Text'Unchecked_Access, 'F');
    D.Menus (2) := (Edit_Text'Unchecked_Access, 'E');
    D.Items (1) := (Parent => 1, Caption => Open_Text'Unchecked_Access,
-     Shortcut => Shortcut_Text'Unchecked_Access, Mnemonic => 'O', Command => 10,
+     Hint => CuBit.UI.Keys."+" (CuBit.UI.Keys.Ctrl, CuBit.UI.Keys.O), Mnemonic => 'O', Command => 10,
      others => <>);
    D.Items (2) := (Parent => 1, Separator => True, others => <>);
    D.Items (3) := (Parent => 1, Command => 11, Enabled => False, others => <>);

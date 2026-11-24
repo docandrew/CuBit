@@ -5,6 +5,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.Appearance;
 with CuBit.UI;
+with CuBit.UI.Keys;
 with CuBit.UI.Menus;
 with Text_Commands; use Text_Commands;
 with Text_Cursors;
@@ -470,8 +471,11 @@ begin
                Wrong_Menu := Wrong_Menu or else not In_Menu (C)
                  or else Bar.Items (K).Parent /= Menu_Name'Pos (Menu_Of (C)) + 1;
                Wrong_Keys := Wrong_Keys or else
-                 (if Keys'Length = 0 then Bar.Items (K).Shortcut /= null
-                  else Bar.Items (K).Shortcut = null or else Bar.Items (K).Shortcut.all /= Keys);
+                 (if Keys'Length = 0 then CuBit.UI.Keys.Is_Chord (Bar.Items (K).Hint)
+                  else not CuBit.UI.Keys.Is_Chord (Bar.Items (K).Hint)
+                    or else Bar.Items (K).Hint.Modifiers (CuBit.UI.Keys.Ctrl) /= Binding (C).Control
+                    or else Bar.Items (K).Hint.Modifiers (CuBit.UI.Keys.Shift) /= Binding (C).Shift
+                    or else Bar.Items (K).Hint.Modifiers (CuBit.UI.Keys.Alt) /= Binding (C).Alt);
             end;
          end if;
       end loop;

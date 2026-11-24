@@ -25,16 +25,16 @@ package body CuBit.UI.Popup_Menus is
 
    procedure Add
      (M : in out Model; Menu : Menu_Index; Caption : String; Choice : Command;
-      Accelerator : String := ""; Enabled : Boolean := True; Checked : Boolean := False;
-      Has_Icon : Boolean := False; Picture : CuBit.UI.Icons.Icon := CuBit.UI.Icons.File)
+      Hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord; Enabled : Boolean := True; Checked : Boolean := False;
+      Has_Icon : Boolean := False; Picture : CuBit.UI.Icons.Icon := CuBit.UI.Icons.File;
+      Shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral)
    is
       Row : Item;
    begin
       Row.Caption_Length := Natural'Min (Caption'Length, MAXIMUM_CAPTION);
       Row.Caption (1 .. Row.Caption_Length) := Caption (Caption'First .. Caption'First + Row.Caption_Length - 1);
-      Row.Accelerator_Length := Natural'Min (Accelerator'Length, MAXIMUM_ACCELERATOR);
-      Row.Accelerator (1 .. Row.Accelerator_Length) :=
-        Accelerator (Accelerator'First .. Accelerator'First + Row.Accelerator_Length - 1);
+      Row.Hint := Hint;
+      Row.Shade := Shade;
       Row.Choice := Choice;
       Row.Enabled := Enabled and then Choice /= NO_COMMAND;
       Row.Checked := Checked;
@@ -66,6 +66,8 @@ package body CuBit.UI.Popup_Menus is
 
    function Items (M : Model; Menu : Menu_Index) return Item_Count is
      (if Menu <= M.Count then M.Menus (Menu).Count else 0);
+   function Hint (M : Model; Menu : Menu_Index; Row : Item_Index) return CuBit.UI.Keys.Chord is
+     (if Row <= Items (M, Menu) then M.Menus (Menu).Rows (Row).Hint else CuBit.UI.Keys.No_Chord);
 
    function Height_Of (Row : Item) return Natural is (if Row.Separator then SEPARATOR_HEIGHT else ROW_HEIGHT);
 
@@ -80,8 +82,8 @@ package body CuBit.UI.Popup_Menus is
             Height := Height + Height_Of (Row);
             Width := Natural'Max
               (Width, ICON_COLUMN + UI_Text_Width (Row.Caption (1 .. Row.Caption_Length))
-                 + (if Row.Accelerator_Length > 0
-                    then ACCELERATOR_GAP + UI_Text_Width (Row.Accelerator (1 .. Row.Accelerator_Length)) else 0)
+                 + (if CuBit.UI.Keys.Is_Chord (Row.Hint)
+                    then ACCELERATOR_GAP + CuBit.UI.Keycaps.Width (Row.Hint) else 0)
                  + ARROW_COLUMN + 2 * FRAME);
          end;
       end loop;
@@ -236,14 +238,15 @@ package body CuBit.UI.Popup_Menus is
                      end if;
                      Draw_UI_Text_Transparent
                        (Clipped, Line.x + ICON_COLUMN, Text_Y, Row.Caption (1 .. Row.Caption_Length), Ink);
-                     if Row.Accelerator_Length > 0 then
-                        declare
-                           Hint : constant String := Row.Accelerator (1 .. Row.Accelerator_Length);
-                        begin
-                           Draw_UI_Text_Transparent
-                             (Clipped, Line.x + Line.w - ARROW_COLUMN - UI_Text_Width (Hint), Text_Y, Hint,
-                              (if Chosen then Colors.selectionText else Colors.muted));
-                        end;
+                     if CuBit.UI.Keys.Is_Chord (Row.Hint) then
+                        CuBit.UI.Keycaps.Draw
+                          (Clipped, Line.x + Line.w - ARROW_COLUMN - CuBit.UI.Keycaps.Width (Row.Hint),
+                           Line.y + (if Line.h > CuBit.UI.Keycaps.Height
+                                     then (Line.h - CuBit.UI.Keycaps.Height) / 2 else 0),
+                           Row.Hint, Colors, Row.Shade,
+                           (if Chosen then CuBit.UI.Keycaps.On_Selection
+                            elsif not Row.Enabled then CuBit.UI.Keycaps.Disabled
+                            else CuBit.UI.Keycaps.Normal));
                      end if;
                      if Row.Submenu > 0 then
                         Draw_UI_Text_Transparent (Clipped, Line.x + Line.w - ARROW_COLUMN + 4, Text_Y, ">", Ink);
@@ -255,6 +258,19 @@ package body CuBit.UI.Popup_Menus is
          end;
       end loop;
    end Draw;
+
+   procedure Handle_Chord (S : in out Popup_State; M : Model; Pressed : CuBit.UI.Keys.Chord; Chosen : out Command;
+                           Handled : out Boolean) is
+      package K renames CuBit.UI.Keys;
+   begin
+      Handle_Key
+        (S, M,
+         (case Pressed.Pressed is
+             when K.Up => Up, when K.Down => Down, when K.Left => Left, when K.Right => Right,
+             when K.Home => Home, when K.End_Key => End_Key, when K.Enter | K.Space => Enter,
+             when others => Escape),
+         Chosen, Handled);
+   end Handle_Chord;
 
    procedure Handle_Key (S : in out Popup_State; M : Model; Pressed : Key; Chosen : out Command;
                          Handled : out Boolean) is

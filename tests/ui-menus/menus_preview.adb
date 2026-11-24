@@ -1,7 +1,8 @@
 with Ada.Streams; use Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Interfaces; use Interfaces;
-with CuBit.UI; use CuBit.UI;
+with CuBit.UI;
+with CuBit.UI.Keys; use CuBit.UI;
 with CuBit.UI.Controls;
 with CuBit.UI.Menus; use CuBit.UI.Menus;
 procedure Menus_Preview is
@@ -24,10 +25,12 @@ procedure Menus_Preview is
    Settings_T : aliased constant String := "Settings...";
    Close_T : aliased constant String := "Close window";
    Tabs_T : aliased constant String := "Restore tabs";
-   Ctrl_T : aliased constant String := "Ctrl+T";
-   Ctrl_N : aliased constant String := "Ctrl+N";
-   Ctrl_S : aliased constant String := "Ctrl+S";
-   Ctrl_W : aliased constant String := "Ctrl+Shift+W";
+   package K renames CuBit.UI.Keys;
+   use type K.Modifier, K.Modifier_Set;
+   Ctrl_T : constant K.Chord := K.Ctrl + K.T;
+   Ctrl_N : constant K.Chord := K.Ctrl + K.N;
+   Ctrl_S : constant K.Chord := K.Ctrl + K.S;
+   Ctrl_W : constant K.Chord := K.Ctrl + K.Shift + K.W;
    F : IO.File_Type;
    RGB : Stream_Element_Array (1 .. 840 * 320 * 3);
    At_Byte : Stream_Element_Offset := 1;
@@ -38,19 +41,19 @@ begin
    D.Menus (3) := (View_T'Unchecked_Access, 'V');
    D.Menus (4) := (Help_T'Unchecked_Access, 'H');
    D.Items (1) := (Caption => New_Tab_T'Unchecked_Access,
-      Shortcut => Ctrl_T'Unchecked_Access, Command => 1, others => <>);
+      Hint => Ctrl_T, Command => 1, others => <>);
    D.Items (2) := (Caption => New_Window_T'Unchecked_Access,
-      Shortcut => Ctrl_N'Unchecked_Access, Command => 2, others => <>);
+      Hint => Ctrl_N, Command => 2, others => <>);
    D.Items (3) := (Separator => True, others => <>);
    D.Items (4) := (Caption => Save_T'Unchecked_Access,
-      Shortcut => Ctrl_S'Unchecked_Access, Command => 3, Enabled => False,
+      Hint => Ctrl_S, Command => 3, Enabled => False,
       others => <>);
    D.Items (5) := (Caption => Tabs_T'Unchecked_Access, Checked => True,
       Command => 4, others => <>);
    D.Items (6) := (Caption => Settings_T'Unchecked_Access, Command => 5, others => <>);
    D.Items (7) := (Separator => True, others => <>);
    D.Items (8) := (Caption => Close_T'Unchecked_Access,
-      Shortcut => Ctrl_W'Unchecked_Access, Command => 6, others => <>);
+      Hint => Ctrl_W, Command => 6, others => <>);
    D.Items (1).Mnemonic := 't';
    D.Items (2).Mnemonic := 'w';
    D.Items (4).Mnemonic := 's';

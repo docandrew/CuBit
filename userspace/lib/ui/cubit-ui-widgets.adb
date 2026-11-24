@@ -542,6 +542,10 @@ package body CuBit.UI.Widgets is
       end if;
    end Scroll_Area;
 
+   function Button_Width (label : String; hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord) return Natural is
+     (2 * CuBit.UI.BUTTON_TEXT_INSET + CuBit.UI.UI_Text_Width (label)
+      + (if CuBit.UI.Keys.Is_Chord (hint) then HINT_GAP + CuBit.UI.Keycaps.Width (hint) else 0));
+
    procedure Button
       (c : CuBit.UI.Canvas;
        st : in out CuBit.UI.State.UI_State;
@@ -553,7 +557,9 @@ package body CuBit.UI.Widgets is
        label : String;
        result : out CuBit.UI.Widget_Result;
        retainedInput : Boolean := False;
-       quiet : Boolean := False)
+       quiet : Boolean := False;
+       hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+       shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral)
    is
       style : CuBit.UI.Button_Style;
       pc : constant CuBit.UI.Canvas := Parent_Canvas (c, damage);
@@ -589,9 +595,27 @@ package body CuBit.UI.Widgets is
             bounds.y + (bounds.h - Natural'Min
               (bounds.h, CuBit.UI.UI_Text_Height)) / 2,
             label, colors.muted, colors.face);
+      elsif CuBit.UI.Keys.Is_Chord (hint) then
+         --  The label and its keycaps, centred together.
+         declare
+            capW : constant Natural := CuBit.UI.Keycaps.Width (hint);
+            textW : constant Natural := CuBit.UI.UI_Text_Width (label);
+            groupW : constant Natural := textW + HINT_GAP + capW;
+            x : constant Natural := bounds.x + (if bounds.w > groupW then (bounds.w - groupW) / 2 else 0);
+            clipped : constant CuBit.UI.Canvas := CuBit.UI.With_Clip (pc, bounds);
+         begin
+            CuBit.UI.Draw_Button_Frame (pc, bounds, colors, style);
+            CuBit.UI.Draw_UI_Text_Transparent
+              (clipped, x, bounds.y + (bounds.h - Natural'Min (bounds.h, CuBit.UI.UI_Text_Height)) / 2, label,
+               colors.text);
+            CuBit.UI.Keycaps.Draw
+              (clipped, x + textW + HINT_GAP,
+               bounds.y + (bounds.h - Natural'Min (bounds.h, CuBit.UI.Keycaps.Height)) / 2, hint, colors, shade);
+         end;
       else
          CuBit.UI.Draw_Button (pc, bounds, colors, style, label);
       end if;
+      CuBit.UI.Controls.Set_Shortcut (controls, id, hint);
 
       --  Retained buttons do not participate in the legacy per-frame
       --  last-widget focus protocol. A fresh UI_State has both keyboardItem

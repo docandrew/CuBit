@@ -26,26 +26,37 @@ package body CuBit.UI.Tooltips is
       end if;
    end Add;
 
-   function Make (Kind : Tip_Kind; Text, Hint : String) return Tip_Entry is
+   function Make
+     (Kind : Tip_Kind; Text : String; Hint : CuBit.UI.Keys.Chord; Shade : CuBit.UI.Keycaps.Tone)
+      return Tip_Entry
+   is
       Item : Tip_Entry;
    begin
       Item.Kind := Kind;
       Item.Text_Length := Natural'Min (Text'Length, MAXIMUM_TEXT);
       Item.Text (1 .. Item.Text_Length) := Text (Text'First .. Text'First + Item.Text_Length - 1);
-      Item.Hint_Length := Natural'Min (Hint'Length, MAXIMUM_HINT);
-      Item.Hint (1 .. Item.Hint_Length) := Hint (Hint'First .. Hint'First + Item.Hint_Length - 1);
+      Item.Hint := Hint;
+      Item.Shade := Shade;
       return Item;
    end Make;
 
-   procedure Set (Table : in out Tip_Table; Id : Controls.Control_ID; Text : String; Hint : String := "") is
-      Item : Tip_Entry := Make (Control_Tip, Text, Hint);
+   procedure Set
+     (Table : in out Tip_Table; Id : Controls.Control_ID; Text : String;
+      Hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+      Shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral)
+   is
+      Item : Tip_Entry := Make (Control_Tip, Text, Hint, Shade);
    begin
       Item.Id := Id;
       Add (Table, Item);
    end Set;
 
-   procedure Set_Region (Table : in out Tip_Table; Area : Rect; Text : String; Hint : String := "") is
-      Item : Tip_Entry := Make (Region_Tip, Text, Hint);
+   procedure Set_Region
+     (Table : in out Tip_Table; Area : Rect; Text : String;
+      Hint : CuBit.UI.Keys.Chord := CuBit.UI.Keys.No_Chord;
+      Shade : CuBit.UI.Keycaps.Tone := CuBit.UI.Keycaps.Neutral)
+   is
+      Item : Tip_Entry := Make (Region_Tip, Text, Hint, Shade);
    begin
       Item.Area := Area;
       Add (Table, Item);
@@ -111,8 +122,8 @@ package body CuBit.UI.Tooltips is
          Item : Tip_Entry renames Table.Entries (K);
          Width : constant Natural :=
            2 * PADDING + UI_Text_Width (Item.Text (1 .. Item.Text_Length))
-           + (if Item.Hint_Length > 0 then HINT_GAP + UI_Text_Width (Item.Hint (1 .. Item.Hint_Length)) else 0);
-         Height : constant Natural := 2 * PADDING + UI_Text_Height;
+           + (if CuBit.UI.Keys.Is_Chord (Item.Hint) then HINT_GAP + CuBit.UI.Keycaps.Width (Item.Hint) else 0);
+         Height : constant Natural := 2 * PADDING + Natural'Max (UI_Text_Height, CuBit.UI.Keycaps.Height);
          --  Below the pointer (or the focused control), else above it.
          Left_X : constant Natural := (if Is_Empty (Tip.Below) then Tip.Policy.X + POINTER_GAP else Tip.Below.x);
          Below_Y : constant Natural :=
@@ -203,6 +214,12 @@ package body CuBit.UI.Tooltips is
       return (if Visible (Tip) and then K > 0 then Table.Entries (K).Text (1 .. Table.Entries (K).Text_Length) else "");
    end Text;
 
+   function Hint (Tip : Tooltip; Table : Tip_Table) return CuBit.UI.Keys.Chord is
+      K : constant Natural := Entry_Of (Table, Tip.Policy.On);
+   begin
+      return (if Visible (Tip) and then K > 0 then Table.Entries (K).Hint else CuBit.UI.Keys.No_Chord);
+   end Hint;
+
    procedure Draw (C : Canvas; Tip : in out Tooltip; Table : Tip_Table; Area : Rect; Colors : Theme) is
       K : constant Natural := Entry_Of (Table, Tip.Policy.On);
    begin
@@ -221,10 +238,10 @@ package body CuBit.UI.Tooltips is
          Stroke_Rect (C, Box, Colors.edge, Colors.edge);
          Draw_UI_Text_Transparent (Inner, Box.x + PADDING, Box.y + PADDING, Item.Text (1 .. Item.Text_Length),
                                    Colors.text);
-         if Item.Hint_Length > 0 then
-            Draw_UI_Text_Transparent
-              (Inner, Box.x + Box.w - PADDING - UI_Text_Width (Item.Hint (1 .. Item.Hint_Length)), Box.y + PADDING,
-               Item.Hint (1 .. Item.Hint_Length), Colors.muted);
+         if CuBit.UI.Keys.Is_Chord (Item.Hint) then
+            CuBit.UI.Keycaps.Draw
+              (Inner, Box.x + Box.w - PADDING - CuBit.UI.Keycaps.Width (Item.Hint),
+               Box.y + (Box.h - CuBit.UI.Keycaps.Height) / 2, Item.Hint, Colors, Item.Shade);
          end if;
       end;
    end Draw;

@@ -3,6 +3,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with CuBit.UI;
 with CuBit.UI.Controls;
+with CuBit.UI.Keys;
 with CuBit.UI.State;
 with Files_Limits;
 with Files_View; use Files_View;
@@ -14,6 +15,7 @@ with Files_Host_Support; use Files_Host_Support;
 --  and type-ahead filtering in a million-entry folder. Run on a quiet host:
 --  tests/files-app/run.sh --bench [largest folder]
 procedure Files_Bench is
+   package K renames CuBit.UI.Keys;
    LARGEST_DEFAULT : constant := 1_000_000;
    Largest : constant Positive :=
      (if Ada.Command_Line.Argument_Count > 0 then Positive'Value (Ada.Command_Line.Argument (1))
@@ -104,7 +106,7 @@ begin
    begin
       Run_Frames (Slowest, Frames);
    end;
-   Handle (View.all, (Kind => Key_Event, Key => Tab, others => <>), Map.all, Redraw);
+   Handle (View.all, (Kind => Key_Event, Key => K.Tab, others => <>), Map.all, Redraw);
 
    for Index in (if Frames_Only then RESOLUTIONS'Last else RESOLUTIONS'First) .. RESOLUTIONS'Last loop
       declare
@@ -119,7 +121,7 @@ begin
                Render (View.all, Canvas (Screen, Damage), Bounds (Screen), UI.all, Map.all);
             end if;
          end Frame;
-         procedure Press (Key : Key_Name; Label : String) is
+         procedure Press (Key : CuBit.UI.Keys.Key; Label : String) is
          begin
             Total := 0;
             Worst := 0;
@@ -169,7 +171,7 @@ begin
             Put_Line (R.Name & " text, a frame of 6 cells per row: " & Ms ((Now_Us - Start) / 50) & " ("
                       & Natural'Image (Glyphs / 50) & " glyphs)");
          end;
-         Handle (View.all, (Kind => Key_Event, Key => Home, others => <>), Map.all, Redraw);
+         Handle (View.all, (Kind => Key_Event, Key => K.Home, others => <>), Map.all, Redraw);
          Frame;
          --  Within the page: Down then Up, the cursor never leaves the view.
          Total := 0;
@@ -185,17 +187,17 @@ begin
          end loop;
          Put_Line (R.Name & " key to frame complete, cursor move in view: mean " & Ms (Total / PRESSES)
                    & ", worst " & Ms (Worst));
-         Press (Page_Down, "key PgDn to frame complete (new page of rows)");
-         Handle (View.all, (Kind => Key_Event, Key => Home, others => <>), Map.all, Redraw);
+         Press (K.Page_Down, "key PgDn to frame complete (new page of rows)");
+         Handle (View.all, (Kind => Key_Event, Key => K.Home, others => <>), Map.all, Redraw);
          Frame;
          for K in 1 .. 60 loop
-            Handle (View.all, (Kind => Key_Event, Key => Down, others => <>), Map.all, Redraw);
+            Handle (View.all, (Kind => Key_Event, Key => K.Down, others => <>), Map.all, Redraw);
             Frame;
          end loop;
-         Press (Down, "key Down at the bottom edge (scrolls one row)");
+         Press (K.Down, "key Down at the bottom edge (scrolls one row)");
          --  The context menu: open (Shift+F10), move, close.
          declare
-            procedure Timed (Key : Key_Name; Label : String; Control : Boolean := False) is
+            procedure Timed (Key : CuBit.UI.Keys.Key; Label : String; Control : Boolean := False) is
                Begin_Us : constant Unsigned_64 := Now_Us;
             begin
                Handle (View.all, (Kind => Key_Event, Key => Key, Control => Control, others => <>), Map.all, Redraw);
@@ -204,14 +206,14 @@ begin
             end Timed;
          begin
             for Round in 1 .. 3 loop
-               Timed (Menu_Key, "context menu open");
-               Timed (Down, "context menu Down");
-               Timed (Escape, "context menu close");
+               Timed (K.Menu, "context menu open");
+               Timed (K.Down, "context menu Down");
+               Timed (K.Escape, "context menu close");
             end loop;
-            Timed (Letter_B, "drawer hide (relayout, full repaint)", Control => True);
-            Timed (Letter_B, "drawer show (relayout, full repaint)", Control => True);
+            Timed (K.B, "drawer hide (relayout, full repaint)", Control => True);
+            Timed (K.B, "drawer show (relayout, full repaint)", Control => True);
             --  Tabs: open one, then close it with its x (press, release).
-            Timed (Letter_T, "tab open (strip appears)", Control => True);
+            Timed (K.T, "tab open (strip appears)", Control => True);
             declare
                Close_Box : constant CuBit.UI.Rect := Tab_Close_Area (View.all, Active (View.all), 2);
                Begin_Us : constant Unsigned_64 := Now_Us;
@@ -241,7 +243,7 @@ begin
       Slowest : Unsigned_64;
       Frames : Natural;
    begin
-      Handle (View.all, (Kind => Key_Event, Key => F6, Control => True, others => <>), Map.all, Redraw);
+      Handle (View.all, (Kind => Key_Event, Key => K.F6, Control => True, others => <>), Map.all, Redraw);
       Run_Frames (Slowest, Frames);
       Put_Line ("sort by size," & Positive'Image (Largest) & " entries: " & Ms (Now_Us - Start) & " over"
                 & Natural'Image (Frames) & " pumps, slowest pump " & Ms (Slowest));

@@ -3,6 +3,7 @@ with Ada.Calendar; use Ada.Calendar;
 with Interfaces; use Interfaces;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.Controls;
+with CuBit.UI.Keys;
 with CuBit.UI.Tooltips; use CuBit.UI.Tooltips;
 with Client_Tooltip_Policy;
 
@@ -47,7 +48,7 @@ procedure Tooltips_Tests is
       Controls.Add_Button (Map, OPEN_ID, (50, 10, 40, 24), (50, 10, 40, 24));
       Controls.Add_Button (Map, PLAIN_ID, (90, 10, 40, 24), (90, 10, 40, 24));
       Clear (Table);
-      Set (Table, SAVE_ID, "Save", "Ctrl+S");
+      Set (Table, SAVE_ID, "Save", CuBit.UI.Keys."+" (CuBit.UI.Keys.Ctrl, CuBit.UI.Keys.S));
       Set (Table, OPEN_ID, "Open");
       Set_Region (Table, (200, 100, 150, 20), "a-very-long-file-name-that-was-cut.txt");
       Draw (C, Tip, Table, Screen, Classic);

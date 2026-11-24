@@ -2,11 +2,13 @@ with Interfaces;
 with CuBit.UI;
 with CuBit.UI.Controls;
 with CuBit.UI.Icons;
+with CuBit.UI.Keys;
 with CuBit.UI.Splits;
 with CuBit.UI.State;
 with Files_Limits;
 with Files_Order;
 with Clipboard_Text;
+with Files_Keymaps;
 
 --  CuBit Files' view (docs/files-app.md): two Commander-style panes over
 --  the filesystem's request queue, drawn with the shared toolkit.
@@ -19,14 +21,13 @@ package Files_View is
    use Interfaces;
    package Controls renames CuBit.UI.Controls;
 
-   type Key_Name is
-     (No_Key, Up, Down, Left, Right, Page_Up, Page_Down, Home, End_Key, Enter, Escape, Backspace, Delete,
-      Insert, Tab, Space, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, Letter_A, Letter_B, Letter_D,
-      Letter_I, Letter_N, Letter_R, Letter_T, Letter_U, Letter_W, Menu_Key);
-   type Event_Kind is (Key_Event, Text_Event, Pointer_Event, Wheel, Resize);
+   --  Keys are the toolkit's (CuBit.UI.Keys); they run commands through
+   --  the keymaps (Files_Commands has the defaults). Key_Release: a key
+   --  went up (the modifier reveal follows held modifiers).
+   type Event_Kind is (Key_Event, Key_Release, Text_Event, Pointer_Event, Wheel, Resize);
    type Event is record
       Kind : Event_Kind := Key_Event;
-      Key : Key_Name := No_Key;
+      Key : CuBit.UI.Keys.Key := CuBit.UI.Keys.Unknown;
       Shift, Control, Alt : Boolean := False;
       Character_Value : Character := ' ';
       Action : Controls.Pointer_Action := Controls.Pointer_Move;
@@ -70,6 +71,9 @@ package Files_View is
    DRAWER_ID : constant Controls.Control_ID := 91;
    DRAWER_EDGE_ID : constant Controls.Control_ID := 92;
    POPUP_BASE : constant Controls.Control_ID := 100;
+   --  A prompt's buttons and its name-conflict policy buttons.
+   DIALOG_FIRST : constant Controls.Control_ID := 110;
+   POLICY_FIRST : constant Controls.Control_ID := 120;
 
    --  The toolbar's buttons, left to right.
    type Tool is
@@ -202,8 +206,28 @@ package Files_View is
    function Tab_Close_Area (State : View_State; Pane : Side; K : Positive) return CuBit.UI.Rect;
    --  The pane's width from the last frame (for split tests).
    function Pane_Width (State : View_State; Pane : Side) return Natural;
-   --  The function-key bar is shown (Ctrl+F12 toggles it).
+   --  The function-key bar is shown (Toggle_Key_Bar: Ctrl+F12).
    function Keys_Shown (State : View_State) return Boolean;
+   --  The key bar's cell for a function key (empty when hidden), the
+   --  caption it shows and the width that caption and its keycap need.
+   function Key_Cell (State : View_State; Key : CuBit.UI.Keys.Key) return CuBit.UI.Rect;
+   function Key_Cell_Caption (State : View_State; Key : CuBit.UI.Keys.Key) return String;
+   function Key_Cell_Needs (State : View_State; Key : CuBit.UI.Keys.Key) return Natural;
+   function Key_Bar_Rows (State : View_State) return Natural;
+   --  The panes' keymap: a command's hint, and the user's remap of one of
+   --  its chords (UI-052: dispatch and every hint follow).
+   function Hint (State : View_State; Item : Files_Keymaps.Command) return CuBit.UI.Keys.Chord;
+   procedure Remap
+     (State : in out View_State; Item : Files_Keymaps.Command; From, To : CuBit.UI.Keys.Chord;
+      Result : out Files_Keymaps.Map.Bind_Result);
+   --  The open context menu's row hint (No_Chord for none), for tests.
+   function Menu_Row_Hint (State : View_State; Row : Positive) return CuBit.UI.Keys.Chord;
+   --  The tooltip's shortcut, No_Chord for none.
+   function Tooltip_Hint (State : View_State) return CuBit.UI.Keys.Chord;
+   --  The modifiers whose hints are revealed now (held past the delay).
+   function Revealed (State : View_State) return CuBit.UI.Keys.Modifier_Set;
+   --  Toolbar button Item's reveal label is showing.
+   function Tool_Revealed (State : View_State; Item : Tool) return Boolean;
    --  The active pane's volume space as the status line shows it ("" until known).
    function Volume_Space (State : View_State) return String;
    --  The tooltip showing, "" for none.

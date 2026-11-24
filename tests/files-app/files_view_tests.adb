@@ -4,6 +4,10 @@ with Ada.Text_IO;
 with CuBit.UI;
 with CuBit.UI.Controls;
 with CuBit.UI.Icons;
+with CuBit.UI.Keys;
+with CuBit.UI.Modifier_Reveal;
+with Files_Keymaps;
+with CuBit.UI_Metrics;
 with CuBit.UI.Tables;
 with CuBit.UI.State;
 with Ada.Strings.Fixed;
@@ -15,6 +19,7 @@ with Clipboard_Text;
 with Files_Host_Support; use Files_Host_Support;
 
 package body Files_View_Tests is
+   package K renames CuBit.UI.Keys;
    use type Files_Order.Sort_Key;
    Total_Checks, Total_Failures : Natural := 0;
    function Checks return Natural is (Total_Checks);
@@ -77,7 +82,7 @@ package body Files_View_Tests is
          Take_Damage (View.all, Damage);
          Render (View.all, Canvas (Screen), Bounds (Screen), UI.all, Map.all);
       end Frame;
-      procedure Key (Name : Key_Name; Shift, Control, Alt : Boolean := False) is
+      procedure Key (Name : K.Key; Shift, Control, Alt : Boolean := False) is
       begin
          Handle (View.all, (Kind => Key_Event, Key => Name, Shift => Shift, Control => Control, Alt => Alt,
                             others => <>), Map.all, Redraw);
@@ -126,20 +131,20 @@ package body Files_View_Tests is
       Save_PPM (Screen, "build/files-start.ppm");
 
       --  Navigation: into alpha and back, landing on alpha.
-      Key (Down);
+      Key (K.Down);
       Check (Cursor_Name (View.all, Left_Pane) = "alpha", "Down moves the cursor");
-      Key (Enter);
+      Key (K.Enter);
       Wait ("enter alpha");
       Check (Path (View.all, Left_Pane) = "@scratch:0/fixture/alpha" and then Names (Left_Pane) = "..|inside.txt|",
              "Enter opens a folder: " & Path (View.all, Left_Pane) & " " & Names (Left_Pane));
-      Key (Backspace);
+      Key (K.Backspace);
       Wait ("back up");
       Check (Path (View.all, Left_Pane) = "@scratch:0/fixture" and then Cursor_Name (View.all, Left_Pane) = "alpha",
              "Backspace goes up and lands on the folder left: " & Cursor_Name (View.all, Left_Pane));
-      Key (Left, Alt => True);
+      Key (K.Left, Alt => True);
       Wait ("history back");
       Check (Path (View.all, Left_Pane) = "@scratch:0/fixture/alpha", "Alt+Left goes back");
-      Key (Right, Alt => True);
+      Key (K.Right, Alt => True);
       Wait ("history forward");
       Check (Path (View.all, Left_Pane) = "@scratch:0/fixture", "Alt+Right goes forward");
 
@@ -151,13 +156,13 @@ package body Files_View_Tests is
       Type_Text ("le1");
       Wait ("refine");
       Check (Names (Left_Pane) = "file10.txt|", "typing more refines");
-      Key (Backspace);
-      Key (Backspace);
-      Key (Backspace);
+      Key (K.Backspace);
+      Key (K.Backspace);
+      Key (K.Backspace);
       Wait ("widen");
       Check (Filter_Text (View.all, Left_Pane) = "fi" and then Names (Left_Pane) = "file2.txt|file10.txt|",
              "Backspace widens the filter");
-      Key (Escape);
+      Key (K.Escape);
       Wait ("clear");
       Check (Filter_Text (View.all, Left_Pane) = "" and then Rows (View.all, Left_Pane) = 7
              and then Cursor_Name (View.all, Left_Pane) = "file2.txt",
@@ -182,12 +187,12 @@ package body Files_View_Tests is
       end;
 
       --  Marks.
-      Key (Insert);
+      Key (K.Insert);
       Check (Marked_Count (View.all, Left_Pane) = 1 and then Cursor_Name (View.all, Left_Pane) = "file10.txt",
              "Insert marks and moves down");
-      Key (Down, Shift => True);
+      Key (K.Down, Shift => True);
       Check (Marked_Count (View.all, Left_Pane) = 2, "Shift+Down marks the row passed");
-      Key (Letter_A, Control => True);
+      Key (K.A, Control => True);
       Check (Marked_Count (View.all, Left_Pane) = 6, "Ctrl+A marks every entry");
       declare
          Text_Form, Literal : Clipboard_Text.Builder (4_096);
@@ -201,9 +206,9 @@ package body Files_View_Tests is
                   "file10.txt" & ASCII.LF & "Zeta.md",
                 "copy: marked entries in the pane's order: " & Clipboard_Text.Image (Literal));
       end;
-      Key (Letter_I, Control => True);
+      Key (K.I, Control => True);
       Check (Marked_Count (View.all, Left_Pane) = 0, "Ctrl+I inverts");
-      Key (Space);
+      Key (K.Space);
       Check (Marked_Count (View.all, Left_Pane) = 1, "Space marks");
       Save_PPM (Screen, "build/files-marked.ppm");
 
@@ -211,26 +216,26 @@ package body Files_View_Tests is
       declare
          Name : constant String := Cursor_Name (View.all, Left_Pane);
       begin
-         Key (F6, Control => True);
+         Key (K.F6, Control => True);
          Wait ("sort by size");
          Check (Rule (View.all, Left_Pane).Key = Files_Order.By_Size, "Ctrl+F6 sorts by size");
          Check (Names (Left_Pane) = "..|alpha|beta|nested|file10.txt|file2.txt|Zeta.md|",
                 "by size: " & Names (Left_Pane));
          Check (Cursor_Name (View.all, Left_Pane) = Name, "the cursor follows its entry through a sort");
-         Key (F6, Control => True);
+         Key (K.F6, Control => True);
          Wait ("size descending");
          Check (Names (Left_Pane) = "..|nested|beta|alpha|Zeta.md|file2.txt|file10.txt|",
                 "again reverses (folders stay first): " & Names (Left_Pane));
-         Key (F3, Control => True);
+         Key (K.F3, Control => True);
          Wait ("by name");
       end;
 
       --  Panes.
-      Key (Tab);
+      Key (K.Tab);
       Check (Active (View.all) = Right_Pane, "Tab switches panes");
-      Key (End_Key);
+      Key (K.End_Key);
       Check (Cursor_Row (View.all, Right_Pane) = Rows (View.all, Right_Pane), "End goes to the last row");
-      Key (Page_Up);
+      Key (K.Page_Up);
       Check (Cursor_Row (View.all, Right_Pane) < Rows (View.all, Right_Pane), "Page Up");
       Save_PPM (Screen, "build/files-right.ppm");
 
@@ -254,9 +259,9 @@ package body Files_View_Tests is
 
       --  Scrollbar thumb drag (regression: the hosted dispatch lost capture
       --  and never repainted, so the thumb did not move).
-      Key (Tab);
+      Key (K.Tab);
       Check (Active (View.all) = Right_Pane, "right pane active for the drag");
-      Key (Home);
+      Key (K.Home);
       declare
          Bar : constant CuBit.UI.Rect := CuBit.UI.Controls.Bounds (Map.all, SCROLL_ID (Right_Pane));
          X : constant Natural := Bar.x + Bar.w / 2;
@@ -277,26 +282,26 @@ package body Files_View_Tests is
                 "dragging the thumb scrolls:" & Natural'Image (Top_Row (View.all, Right_Pane)));
          Check (Cursor_Row (View.all, Right_Pane) = 1, "a drag leaves the cursor");
       end;
-      Key (Tab);
+      Key (K.Tab);
 
       --  The quick viewer: Enter on a file reads it through the queue.
-      Key (Backspace);
+      Key (K.Backspace);
       Wait ("back to the fixture");
-      Key (Home);
+      Key (K.Home);
       for N in 1 .. 4 loop
-         Key (Down);
+         Key (K.Down);
       end loop;
       Check (Cursor_Name (View.all, Left_Pane) = "file2.txt", "cursor on a file: " & Cursor_Name (View.all, Left_Pane));
-      Key (Enter);
+      Key (K.Enter);
       Wait ("viewer");
       Check (Viewer_Open (View.all) and then Viewer_Line (View.all, 1) = [1 .. 300 => 'x'],
              "Enter on a file shows its text");
       Save_PPM (Screen, "build/files-viewer.ppm");
-      Key (Escape);
+      Key (K.Escape);
       Check (not Viewer_Open (View.all), "Escape closes the viewer");
       --  A read that misses its deadline ends visibly, and nothing stays stuck.
       Files_Mock_Service.Set_Latency (2_500_000);
-      Key (Enter);
+      Key (K.Enter);
       declare
          Busy, Changed : Boolean;
          Until_Us : constant Interfaces.Unsigned_64 := Now_Us + 4_000_000;
@@ -313,10 +318,10 @@ package body Files_View_Tests is
              "a slow read times out with a message: " & Status_Message (View.all));
       Files_Mock_Service.Set_Latency (0);
       Check (Settle (View.all, 15_000), "late answers are consumed");
-      Key (Enter);
+      Key (K.Enter);
       Wait ("viewer again");
       Check (Viewer_Open (View.all) and then Viewer_Line (View.all, 1)'Length = 300, "the viewer works after a timeout");
-      Key (Escape);
+      Key (K.Escape);
 
       --  Toolbar, context menu and drawer: the service's places (the mock's
       --  three), then the platform's own shortcuts.
@@ -353,11 +358,11 @@ package body Files_View_Tests is
          Wait ("back to the fixture");
          Check (Path (View.all, Left_Pane) = "@scratch:0/fixture", "back to the fixture: " & Path (View.all, Left_Pane));
          --  Bookmarks.
-         Key (Letter_D, Control => True);
+         Key (K.D, Control => True);
          Check (Bookmarked (View.all, Left_Pane), "Ctrl+D bookmarks the folder");
-         Key (Letter_B, Control => True);
+         Key (K.B, Control => True);
          Check (not Drawer_Open (View.all), "Ctrl+B hides the drawer");
-         Key (Letter_B, Control => True);
+         Key (K.B, Control => True);
          Check (Drawer_Open (View.all), "Ctrl+B shows it again");
          --  Tooltips: resting on a tool shows what it does and its key, after
          --  the delay (the view's deadline says when); a click hides it.
@@ -376,7 +381,7 @@ package body Files_View_Tests is
             Check (Tooltip_Text (View.all) = "Refresh" and then Changed, "resting shows the tooltip: "
                    & Tooltip_Text (View.all));
             Save_PPM (Screen, "build/files-tooltip.ppm");
-            Key (Down);
+            Key (K.Down);
             Check (Tooltip_Text (View.all) = "", "a key hides it");
          end;
          --  The function-key bar: F1 .. F10 all drawn; a key with an action
@@ -388,23 +393,162 @@ package body Files_View_Tests is
          begin
             Check (F1_Box.w = 0, "F1 (no help yet) is greyed, not a control");
             Check (F9_Box.w > 0 and then F10_Box.w > 0 and then F10_Box.x > F9_Box.x
-                   and then F10_Box.y + F10_Box.h <= HEIGHT and then F10_Box.h < 24,
-                   "F9 and F10 are slim keys along the bottom");
+                   and then F10_Box.y + F10_Box.h <= HEIGHT
+                   and then F10_Box.h <= CuBit.UI_Metrics.Compact_Row_Height,
+                   "F9 and F10 are toolkit buttons along the bottom");
             Click (F9_Box.x + F9_Box.w / 2, F9_Box.y + F9_Box.h / 2);
             Check (not Pane_Shown (View.all, Right_Pane), "a click on F9 shows one pane");
             Click (F9_Box.x + F9_Box.w / 2, F9_Box.y + F9_Box.h / 2);
             Check (Pane_Shown (View.all, Right_Pane), "and again shows both");
             Save_PPM (Screen, "build/files-keys.ppm");
-            Key (F12, Control => True);
+            Key (K.F12, Control => True);
             Check (not Keys_Shown (View.all) and then Center (FUNCTION_KEY_FIRST + 8).w = 0,
                    "Ctrl+F12 hides the bar");
-            Key (F12, Control => True);
+            Key (K.F12, Control => True);
             Check (Keys_Shown (View.all) and then Center (FUNCTION_KEY_FIRST + 8).w > 0, "and shows it");
          end;
+         --  UI-051 / UI-052: the key bar's captions are whole (F2's Refresh
+         --  was cut before), hints come from the keymap, a remap moves
+         --  dispatch and every hint at once, held modifiers reveal layers.
+         declare
+            use type K.Chord, K.Modifier, K.Modifier_Set, K.Key;
+            use type Files_Keymaps.Map.Bind_Result;
+            Result : Files_Keymaps.Map.Bind_Result;
+            Busy, Changed : Boolean;
+            T0 : constant Unsigned_64 := 90_000_000;
+            HOLD_US : constant Unsigned_64 := CuBit.UI.Modifier_Reveal.HOLD_DELAY_MS * 1_000;
+            Ctrl_Only : constant K.Modifier_Set := [K.Ctrl => True, others => False];
+            Alt_Only : constant K.Modifier_Set := [K.Alt => True, others => False];
+            procedure Release (Name : K.Key; Shift, Control, Alt : Boolean := False) is
+            begin
+               Handle (View.all, (Kind => Key_Release, Key => Name, Shift => Shift, Control => Control, Alt => Alt,
+                                  others => <>), Map.all, Redraw);
+               Frame;
+            end Release;
+            procedure Hold_Until (Us : Unsigned_64) is
+            begin
+               Pump (View.all, 1_000, Us, Busy, Changed);
+               Frame;
+            end Hold_Until;
+            procedure Bar_Fits (Label : String) is
+            begin
+               for F in K.Function_Key loop
+                  Check (Key_Cell_Needs (View.all, F) > 0
+                         and then Key_Cell (View.all, F).w >= Key_Cell_Needs (View.all, F),
+                         Label & ": " & F'Image & " shows its caption and keycap whole");
+               end loop;
+            end Bar_Fits;
+         begin
+            Bar_Fits ("wide");
+            Check (Key_Cell_Caption (View.all, K.F2) = "Refresh"
+                   and then Key_Cell (View.all, K.F2).w >= CuBit.UI.UI_Text_Width ("Refresh"),
+                   "F2 shows Refresh, measured whole in the real font");
+            Check (Key_Bar_Rows (View.all) = 1, "a wide window: one row of keys");
+            --  The context menu's keycaps are the keymap's hints.
+            Key (K.Menu);
+            Check (Menu_Open (View.all), "the Menu key opens the context menu");
+            Check (Menu_Row_Hint (View.all, 1) /= K.No_Chord, "its first item shows a keycap");
+            Key (K.Escape);
+
+            --  Held Ctrl: after the hold delay the bar shows the Ctrl layer.
+            Set_Clock (View.all, T0);
+            Key (K.Control_Key, Control => True);
+            Check (Revealed (View.all) = K.No_Modifiers, "nothing is revealed at once");
+            Check (Next_Deadline_Us (View.all) <= T0 + HOLD_US, "the view asks to be woken for the reveal");
+            Hold_Until (T0 + HOLD_US);
+            Check (Revealed (View.all) = Ctrl_Only, "holding Ctrl reveals the Ctrl layer");
+            Check (Key_Cell_Caption (View.all, K.F3) = "Name" and then Key_Cell_Caption (View.all, K.F6) = "Size",
+                   "Ctrl+F3 .. F6 sort: " & Key_Cell_Caption (View.all, K.F3));
+            Bar_Fits ("Ctrl layer");
+            Save_PPM (Screen, "build/files-keys-ctrl.ppm");
+            Set_Clock (View.all, T0 + 2 * HOLD_US);
+            Release (K.Control_Key);
+            Check (Revealed (View.all) = K.No_Modifiers and then Key_Cell_Caption (View.all, K.F3) = "View",
+                   "releasing Ctrl goes back to the plain keys");
+            --  Held Shift: Shift+F6 renames.
+            Set_Clock (View.all, T0 + 3 * HOLD_US);
+            Key (K.Left_Shift_Key, Shift => True);
+            Hold_Until (T0 + 4 * HOLD_US);
+            Check (Key_Cell_Caption (View.all, K.F6) = "Rename", "holding Shift shows Shift+F6 Rename");
+            Set_Clock (View.all, T0 + 5 * HOLD_US);
+            Release (K.Left_Shift_Key);
+            --  A quick chord reveals nothing.
+            Set_Clock (View.all, T0 + 6 * HOLD_US);
+            Key (K.Control_Key, Control => True);
+            Key (K.B, Control => True);
+            Hold_Until (T0 + 8 * HOLD_US);
+            Check (Revealed (View.all) = K.No_Modifiers, "a quick Ctrl+B reveals nothing");
+            Release (K.Control_Key);
+            Key (K.B, Control => True);
+            --  Held Alt: the toolbar's icon-only buttons show their keycaps.
+            Set_Clock (View.all, T0 + 9 * HOLD_US);
+            Key (K.Alt_Key, Alt => True);
+            Hold_Until (T0 + 10 * HOLD_US);
+            Check (Revealed (View.all) = Alt_Only, "holding Alt reveals");
+            Check (Tool_Revealed (View.all, Tool_Back) and then Tool_Revealed (View.all, Tool_Refresh),
+                   "Back [Alt][Left] and Refresh [F2] show under the toolbar");
+            Check (not Tool_Revealed (View.all, Tool_Columns), "Columns has no chord: no keycap");
+            Save_PPM (Screen, "build/files-alt-toolbar.ppm");
+            Set_Clock (View.all, T0 + 11 * HOLD_US);
+            Release (K.Alt_Key);
+            Check (not Tool_Revealed (View.all, Tool_Back), "releasing Alt hides them");
+
+            --  A remap: dispatch, the key bar, the menu and the tooltip follow.
+            Check (Hint (View.all, Files_Keymaps.Refresh) = +K.F2, "Refresh's hint is F2");
+            Remap (View.all, Files_Keymaps.Refresh, +K.F2, +K.F11, Result);
+            Frame;
+            Check (Result = Files_Keymaps.Map.Bound, "F2 -> F11 for Refresh");
+            Check (Hint (View.all, Files_Keymaps.Refresh) = +K.F11, "the hint is F11");
+            Check (Key_Cell_Caption (View.all, K.F2) = "", "F2's cell is unbound now");
+            Key (K.F2);
+            Check (Load (View.all, Active (View.all)) = Loaded, "F2 no longer refreshes");
+            Key (K.F11);
+            Check (Load (View.all, Active (View.all)) in Opening | Reading, "F11 refreshes");
+            Wait ("refresh by F11");
+            --  The menu's keycaps follow a remap too (Copy on an entry's menu).
+            Remap (View.all, Files_Keymaps.Copy, +K.F5, K.Shift + K.F5, Result);
+            Check (Result = Files_Keymaps.Map.Bound, "F5 -> Shift+F5 for Copy");
+            Key (K.Menu);
+            declare
+               Found : Boolean := False;
+            begin
+               for Row in 1 .. 12 loop
+                  Found := Found or else Menu_Row_Hint (View.all, Row) = K.Shift + K.F5;
+               end loop;
+               Check (Found, "the context menu's Copy shows Shift+F5");
+            end;
+            Key (K.Escape);
+            Remap (View.all, Files_Keymaps.Copy, K.Shift + K.F5, +K.F5, Result);
+            declare
+               Box : constant CuBit.UI.Rect := Center (Tool_ID (Tool_Refresh));
+               T1 : constant Unsigned_64 := T0 + 20 * HOLD_US;
+            begin
+               Set_Clock (View.all, T1);
+               Pointer (View.all, UI.all, Map.all, CuBit.UI.Controls.Pointer_Move, Box.x + 4, Box.y + 200, 0);
+               Frame;
+               Pointer (View.all, UI.all, Map.all, CuBit.UI.Controls.Pointer_Move, Box.x + 4, Box.y + 4, 0);
+               Frame;
+               Pump (View.all, 1_000, T1 + 600_000, Busy, Changed);
+               Frame;
+               Check (Tooltip_Hint (View.all) = +K.F11, "the toolbar tooltip shows F11");
+               Key (K.Down);
+               Key (K.Up);
+            end;
+            --  Conflicts are refused when made.
+            Remap (View.all, Files_Keymaps.Refresh, +K.F11, +K.F5, Result);
+            Check (Result = Files_Keymaps.Map.Taken, "F5 is Copy's: refused");
+            Remap (View.all, Files_Keymaps.Copy, +K.F5, K.Ctrl + K.C, Result);
+            Check (Result = Files_Keymaps.Map.Reserved_Taken, "Ctrl+C is the clipboard's: refused");
+            Remap (View.all, Files_Keymaps.Copy, +K.F5, K.Super + K.C, Result);
+            Check (Result = Files_Keymaps.Map.Other_Layer, "Super chords are the Desktop's: refused");
+            Remap (View.all, Files_Keymaps.Refresh, +K.F11, +K.F2, Result);
+            Frame;
+            Check (Key_Cell_Caption (View.all, K.F2) = "Refresh", "remapped back");
+         end;
          --  Context menu on a file: View is first; Enter chooses it.
-         Key (Home);
+         Key (K.Home);
          for N in 1 .. 4 loop
-            Key (Down);
+            Key (K.Down);
          end loop;
          declare
             Rows_Box : constant CuBit.UI.Rect := CuBit.UI.Controls.Bounds (Map.all, ROWS_ID (Left_Pane));
@@ -413,25 +557,25 @@ package body Files_View_Tests is
             Click (Rows_Box.x + 60, Y, Secondary => True);
             Check (Menu_Open (View.all), "a right-click opens the context menu");
             Save_PPM (Screen, "build/files-menu.ppm");
-            Key (Down);
+            Key (K.Down);
             Check (Menu_Selected (View.all) = 1, "Down selects the first item");
-            Key (Enter);
+            Key (K.Enter);
             Wait ("menu view");
             Check (not Menu_Open (View.all) and then Viewer_Open (View.all), "Enter on View opens the viewer");
-            Key (Escape);
+            Key (K.Escape);
             --  On empty space: Sort by > Size through the keyboard.
             Click (Rows_Box.x + 60, Rows_Box.y + Rows_Box.h - 10, Secondary => True);
             Check (Menu_Open (View.all), "a right-click on empty space opens a menu");
             for N in 1 .. 4 loop
-               Key (Down);
+               Key (K.Down);
             end loop;
-            Key (Right);
+            Key (K.Right);
             Save_PPM (Screen, "build/files-submenu.ppm");
-            Key (End_Key);
-            Key (Enter);
+            Key (K.End_Key);
+            Key (K.Enter);
             Wait ("menu sort");
             Check (Rule (View.all, Left_Pane).Key = Files_Order.By_Size, "Sort by > Size from the submenu");
-            Key (F3, Control => True);
+            Key (K.F3, Control => True);
             Wait ("by name again");
             --  An outside press closes the menu and is consumed.
             Click (Rows_Box.x + 60, Rows_Box.y + 10, Secondary => True);
@@ -450,7 +594,7 @@ package body Files_View_Tests is
             Click (WIDTH - 5, HEIGHT - 40, Secondary => True);
             Frame;
             if Menu_Open (View.all) then
-               Key (Escape);
+               Key (K.Escape);
             end if;
          end;
       end;
@@ -505,9 +649,9 @@ package body Files_View_Tests is
          Check (Menu_Open (View.all), "a right-click on the header opens the columns menu");
          Save_PPM (Screen, "build/files-columns-menu.ppm");
          for N in 1 .. 6 loop
-            Key (Down);
+            Key (K.Down);
          end loop;
-         Key (Enter);
+         Key (K.Enter);
          Check (Column_Titles (View.all, Left_Pane) = "Name|Size|Modified|Permissions|",
                 "Permissions added: " & Column_Titles (View.all, Left_Pane));
          declare
@@ -546,54 +690,54 @@ package body Files_View_Tests is
       end;
 
       --  Panes: add one, cycle focus, single-pane mode, hide, close.
-      Key (Letter_N, Control => True);
+      Key (K.N, Control => True);
       Wait ("third pane");
       Check (Pane_Count (View.all) = 3 and then Active (View.all) = 2, "Ctrl+N adds a pane after the active one");
       Save_PPM (Screen, "build/files-three-panes.ppm");
-      Key (Tab);
+      Key (K.Tab);
       Check (Active (View.all) = 3, "Tab cycles to the next pane");
-      Key (Tab);
+      Key (K.Tab);
       Check (Active (View.all) = 1, "and wraps");
-      Key (Tab, Shift => True);
+      Key (K.Tab, Shift => True);
       Check (Active (View.all) = 3, "Shift+Tab goes back");
-      Key (F9);
+      Key (K.F9);
       Check (Pane_Shown (View.all, 3) and then not Pane_Shown (View.all, 1) and then not Pane_Shown (View.all, 2),
              "F9: single-pane mode");
       Save_PPM (Screen, "build/files-single-pane.ppm");
-      Key (F9);
+      Key (K.F9);
       Check (Pane_Shown (View.all, 1) and then Pane_Shown (View.all, 2), "F9 again shows them all");
-      Key (F1, Control => True);
+      Key (K.F1, Control => True);
       Check (not Pane_Shown (View.all, 1), "Ctrl+F1 hides the first pane");
-      Key (F1, Control => True);
+      Key (K.F1, Control => True);
       Check (Pane_Shown (View.all, 1), "and shows it again");
-      Key (Letter_W, Control => True, Shift => True);
+      Key (K.W, Control => True, Shift => True);
       Check (Pane_Count (View.all) = 2, "Ctrl+Shift+W closes the active pane");
       if Active (View.all) /= Left_Pane then
-         Key (Tab);
+         Key (K.Tab);
       end if;
 
       --  Tabs.
-      Key (Letter_T, Control => True);
+      Key (K.T, Control => True);
       Check (Tab_Count (View.all, Left_Pane) = 2 and then Current_Tab (View.all, Left_Pane) = 2, "Ctrl+T opens a tab");
-      Key (Down);
-      Key (Down);
-      Key (Enter);
+      Key (K.Down);
+      Key (K.Down);
+      Key (K.Enter);
       Wait ("tab 2 navigates");
       declare
          Tab_Two : constant String := Path (View.all, Left_Pane);
       begin
-         Key (Tab, Control => True);
+         Key (K.Tab, Control => True);
          Wait ("tab 1");
          Check (Current_Tab (View.all, Left_Pane) = 1 and then Path (View.all, Left_Pane) = "@scratch:0/fixture",
                 "Ctrl+Tab switches tabs: " & Path (View.all, Left_Pane));
          Save_PPM (Screen, "build/files-tabs.ppm");
-         Key (Page_Down, Control => True, Shift => True);
+         Key (K.Page_Down, Control => True, Shift => True);
          Check (Current_Tab (View.all, Left_Pane) = 2, "Ctrl+Shift+PgDn moves the tab right");
-         Key (Letter_W, Control => True);
+         Key (K.W, Control => True);
          Wait ("tab closed");
          Check (Tab_Count (View.all, Left_Pane) = 1 and then Path (View.all, Left_Pane) = Tab_Two,
                 "Ctrl+W closes the tab: " & Path (View.all, Left_Pane));
-         Key (Letter_T, Control => True, Shift => True);
+         Key (K.T, Control => True, Shift => True);
          Wait ("tab restored");
          Check (Tab_Count (View.all, Left_Pane) = 2 and then Path (View.all, Left_Pane) = "@scratch:0/fixture",
                 "Ctrl+Shift+T restores it: " & Path (View.all, Left_Pane));
@@ -615,7 +759,7 @@ package body Files_View_Tests is
                    and then Path (View.all, Left_Pane) = "@scratch:0/fixture"
                    and then Listing_Us (View.all, Left_Pane) = Listing_Before,
                    "x on another tab closes it, the current stays: " & Path (View.all, Left_Pane));
-            Key (Letter_T, Control => True, Shift => True);
+            Key (K.T, Control => True, Shift => True);
             Wait ("closed tab restored");
             Check (Tab_Count (View.all, Left_Pane) = 2, "Ctrl+Shift+T brings back an x-closed tab");
             Close_Two := Tab_Close_Area (View.all, Left_Pane, 1);
@@ -632,14 +776,46 @@ package body Files_View_Tests is
                      Close_Two.x - 40, Close_Two.y + Close_Two.h / 2, 7_210, Middle => True);
             Wait ("middle click");
             Check (Tab_Count (View.all, Left_Pane) = 1, "a middle click closes the tab");
-            Key (Letter_T, Control => True, Shift => True);
+            Key (K.T, Control => True, Shift => True);
             Wait ("restored again");
          end;
-         Key (Letter_W, Control => True);
+         Key (K.W, Control => True);
          Wait ("back to one tab");
-         Key (Backspace);
+         Key (K.Backspace);
          Wait ("up to the fixture");
       end;
+
+         --  A narrow window wraps the bar (F1..F4, then F5..F10) and
+         --  never cuts or hides a caption.
+         declare
+            NARROW_WIDTH : constant := 600;
+            Narrow : constant Surface := New_Surface (NARROW_WIDTH, HEIGHT);
+         begin
+            if Viewer_Open (View.all) then
+               Key (K.Escape);
+            end if;
+            Handle (View.all, (Kind => Resize, X => NARROW_WIDTH, Y => HEIGHT, others => <>), Map.all, Redraw);
+            Take_Damage (View.all, Damage);
+            Render (View.all, Canvas (Narrow), Bounds (Narrow), UI.all, Map.all);
+            Check (Key_Bar_Rows (View.all) = 2, "a narrow window wraps the key bar onto two rows:"
+                   & Natural'Image (Key_Bar_Rows (View.all)));
+            for F in K.Function_Key loop
+               Check (Key_Cell_Needs (View.all, F) > 0
+                      and then Key_Cell (View.all, F).w >= Key_Cell_Needs (View.all, F),
+                      "narrow: " & F'Image & " shows its caption and keycap whole");
+            end loop;
+            Check (Key_Cell (View.all, K.F5).y > Key_Cell (View.all, K.F4).y
+                   and then Key_Cell (View.all, K.F5).y = Key_Cell (View.all, K.F10).y,
+                   "F1..F4 on the first row, F5..F10 on the second");
+            for F in K.Function_Key loop
+               Check (Key_Cell (View.all, F).x + Key_Cell (View.all, F).w <= NARROW_WIDTH,
+                      "narrow: " & F'Image & " inside the window");
+            end loop;
+            Save_PPM (Narrow, "build/files-keys-narrow.ppm");
+
+            Handle (View.all, (Kind => Resize, X => WIDTH, Y => HEIGHT, others => <>), Map.all, Redraw);
+            Frame;
+         end;
 
       --  Operations: left the fixture, right an empty folder.
       Close (View.all);
@@ -651,12 +827,12 @@ package body Files_View_Tests is
          function Go_To_Name (Pane : Side; Name : String) return Boolean is
          begin
             if Active (View.all) /= Pane then
-               Key (Tab);
+               Key (K.Tab);
             end if;
-            Key (Home);
+            Key (K.Home);
             for N in 1 .. Rows (View.all, Pane) loop
                exit when Cursor_Name (View.all, Pane) = Name;
-               Key (Down);
+               Key (K.Down);
             end loop;
             return Cursor_Name (View.all, Pane) = Name;
          end Go_To_Name;
@@ -666,70 +842,71 @@ package body Files_View_Tests is
          end Type_Line;
       begin
          --  F7 in the right pane.
-         Key (Tab);
-         Key (F7);
+         Key (K.Tab);
+         Key (K.F7);
          Type_Line ("made");
-         Key (Enter);
+         Key (K.Enter);
          Wait ("mkdir");
          Check (Exists (Out_Root & "/made") and then Kind (Out_Root & "/made") = Directory, "F7 makes a folder");
          Check (Names (Right_Pane) = "..|made|", "the new folder is listed: " & Names (Right_Pane));
          --  F5: a file, then a folder tree.
          Check (Go_To_Name (Left_Pane, "file2.txt"), "cursor on file2.txt");
-         Key (F5);
+         Key (K.F5);
          Save_PPM (Screen, "build/files-confirm-copy.ppm");
-         Key (Enter);
+         Key (K.Enter);
          Wait ("copy file");
          Check (Exists (Out_Root & "/file2.txt") and then Size (Out_Root & "/file2.txt") = 301,
                 "F5 copies a file: " & Status_Message (View.all));
          Check (Go_To_Name (Left_Pane, "alpha"), "cursor on alpha");
-         Key (F5);
-         Key (Enter);
+         Key (K.F5);
+         Key (K.Enter);
          Wait ("copy tree");
          Check (Exists (Out_Root & "/alpha/inside.txt"), "F5 copies a folder tree: " & Status_Message (View.all));
          --  The same file again: the conflict is asked; K keeps both.
          Check (Go_To_Name (Left_Pane, "file2.txt"), "cursor on file2.txt again");
-         Key (F5);
-         Key (Enter);
+         Key (K.F5);
+         Key (K.Enter);
          Wait ("conflict");
          Save_PPM (Screen, "build/files-conflict.ppm");
-         Type_Line ("k");
+         --  The conflict's choices are keys (its keymap: K keeps both).
+         Key (K.K);
          Wait ("keep both");
          Check (Exists (Out_Root & "/file2 (2).txt"), "keep both makes file2 (2).txt: " & Status_Message (View.all));
          --  Overwrite chosen up front.
-         Key (F5);
-         Type_Line ("o");
-         Key (Enter);
+         Key (K.F5);
+         Key (K.O);
+         Key (K.Enter);
          Wait ("overwrite");
          Check (not Exists (Out_Root & "/file2 (3).txt") and then Size (Out_Root & "/file2.txt") = 301,
                 "overwrite replaces: " & Status_Message (View.all));
          --  F6 within a volume renames: Zeta.md leaves the left pane.
          Check (Go_To_Name (Left_Pane, "Zeta.md"), "cursor on Zeta.md");
-         Key (F6);
-         Key (Enter);
+         Key (K.F6);
+         Key (K.Enter);
          Wait ("move");
          Check (Exists (Out_Root & "/Zeta.md") and then not Exists (Scratch_Root & "/" & FIXTURE & "/Zeta.md"),
                 "F6 moves: " & Status_Message (View.all));
          --  Shift+F6 renames in place.
          Check (Go_To_Name (Right_Pane, "Zeta.md"), "cursor on the moved file");
-         Key (F6, Shift => True);
+         Key (K.F6, Shift => True);
          for N in 1 .. 7 loop
-            Key (Backspace);
+            Key (K.Backspace);
          end loop;
          Type_Line ("renamed.md");
-         Key (Enter);
+         Key (K.Enter);
          Wait ("rename");
          Check (Exists (Out_Root & "/renamed.md"), "Shift+F6 renames: " & Status_Message (View.all));
          --  F8 deletes a tree after confirmation.
          Check (Go_To_Name (Right_Pane, "alpha"), "cursor on the copied alpha");
-         Key (F8);
+         Key (K.F8);
          Save_PPM (Screen, "build/files-confirm-delete.ppm");
-         Key (Enter);
+         Key (K.Enter);
          Wait ("delete");
          Check (not Exists (Out_Root & "/alpha"), "F8 deletes a folder tree: " & Status_Message (View.all));
          --  Esc dismisses a prompt without acting.
          Check (Go_To_Name (Right_Pane, "made"), "cursor on made");
-         Key (F8);
-         Key (Escape);
+         Key (K.F8);
+         Key (K.Escape);
          Wait ("dismissed");
          Check (Exists (Out_Root & "/made"), "Escape dismisses the delete prompt");
          --  Cancel: a large copy stopped at once leaves no partial file.
@@ -742,13 +919,13 @@ package body Files_View_Tests is
             end loop;
             Ada.Text_IO.Close (Big);
          end;
-         Key (Tab);
-         Key (Letter_R, Control => True);
+         Key (K.Tab);
+         Key (K.R, Control => True);
          Wait ("big file listed");
          Check (Go_To_Name (Left_Pane, "big.bin"), "cursor on big.bin");
          Files_Mock_Service.Set_Latency (20_000);
-         Key (F5);
-         Key (Enter);
+         Key (K.F5);
+         Key (K.Enter);
          declare
             Busy, Changed : Boolean;
          begin
@@ -757,7 +934,7 @@ package body Files_View_Tests is
                delay 0.02;
             end loop;
          end;
-         Key (Escape);
+         Key (K.Escape);
          Wait ("cancel");
          Files_Mock_Service.Set_Latency (0);
          Check (not Exists (Out_Root & "/big.bin") and then Ada.Strings.Fixed.Index (Status_Message (View.all), "Cancel") > 0,
@@ -767,8 +944,8 @@ package body Files_View_Tests is
          Initialize (View.all, CAPACITY, NAME_BYTES, "@scratch:0/" & FIXTURE, "@host:0/tmp");
          Wait ("read-only target");
          Check (Go_To_Name (Left_Pane, "file10.txt"), "cursor on file10.txt");
-         Key (F5);
-         Key (Enter);
+         Key (K.F5);
+         Key (K.Enter);
          Wait ("read-only copy");
          Check (Ada.Strings.Fixed.Index (Status_Message (View.all), "read-only") > 0,
                 "copying into a read-only place says so: " & Status_Message (View.all));
@@ -812,7 +989,7 @@ package body Files_View_Tests is
 
       --  Authority and hostility: a folder from before that is refused (an
       --  unknown place, '..') is not shown; the pane goes to the first place.
-      Key (Tab);
+      Key (K.Tab);
       Close (View.all);
       Initialize (View.all, CAPACITY, NAME_BYTES, "@nowhere:0/", "@host:0/../../etc");
       Wait ("denied");

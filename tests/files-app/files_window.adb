@@ -8,6 +8,7 @@ with CuBit.Appearance;
 with CuBit.UI;
 with CuBit.UI.Controls;
 with CuBit.UI.Icons;
+with CuBit.UI.Keys;
 with CuBit.UI.State;
 with Files_Limits;
 with Files_Mock_Service;
@@ -22,6 +23,8 @@ with Files_Host_Support; use Files_Host_Support;
 --  Paths are places: @host:0/... (the host's /, read-only), @scratch:0/
 --  (read-write), @synthetic:N/ (N generated entries).
 procedure Files_Window is
+   package K renames CuBit.UI.Keys;
+   use type K.Key;
    use type CuBit.Appearance.Color_Scheme;
    INITIAL_WIDTH : constant := 1400;
    INITIAL_HEIGHT : constant := 860;
@@ -91,18 +94,19 @@ procedure Files_Window is
    HID_DOWN : constant := 81;
    HID_UP : constant := 82;
 
-   function Key_Of (Code : int) return Key_Name is
+   function Key_Of (Code : int) return K.Key is
      (case Code is
-         when HID_A => Letter_A, when HID_B => Letter_B, when HID_D => Letter_D, when HID_APPLICATION => Menu_Key,
-         when HID_N => Letter_N, when HID_T => Letter_T, when HID_W => Letter_W,
-         when HID_I => Letter_I, when HID_R => Letter_R, when HID_U => Letter_U,
-         when HID_RETURN => Enter, when HID_ESCAPE => Escape, when HID_BACKSPACE => Backspace,
-         when HID_TAB => Tab, when HID_SPACE => Space,
-         when HID_F1 .. HID_F12 => Key_Name'Val (Key_Name'Pos (F1) + Integer (Code) - HID_F1),
-         when HID_INSERT => Insert, when HID_HOME => Home, when HID_PAGE_UP => Page_Up,
-         when HID_DELETE => Delete, when HID_END => End_Key, when HID_PAGE_DOWN => Page_Down,
-         when HID_RIGHT => Right, when HID_LEFT => Left, when HID_DOWN => Down, when HID_UP => Up,
-         when others => No_Key);
+         when HID_A => K.A, when HID_B => K.B, when HID_D => K.D, when HID_APPLICATION => K.Menu,
+         when HID_N => K.N, when HID_T => K.T, when HID_W => K.W,
+         when HID_I => K.I, when HID_R => K.R, when HID_U => K.U,
+         when HID_RETURN => K.Enter, when HID_ESCAPE => K.Escape, when HID_BACKSPACE => K.Backspace,
+         when HID_TAB => K.Tab, when HID_SPACE => K.Space,
+         when HID_F1 .. HID_F10 => K.Key'Val (K.Key'Pos (K.F1) + Integer (Code) - HID_F1),
+         when HID_F11 => K.F11, when HID_F12 => K.F12,
+         when HID_INSERT => K.Insert, when HID_HOME => K.Home, when HID_PAGE_UP => K.Page_Up,
+         when HID_DELETE => K.Delete, when HID_END => K.End_Key, when HID_PAGE_DOWN => K.Page_Down,
+         when HID_RIGHT => K.Right, when HID_LEFT => K.Left, when HID_DOWN => K.Down, when HID_UP => K.Up,
+         when others => K.Unknown);
 
    --  Positional arguments (places) after any "--theme light|dark".
    function Option_Shift return Natural is
@@ -188,9 +192,7 @@ procedure Files_Window is
                CuBit.UI.Set_Color_Scheme (Scheme);
                Forced_Full := True;
                Send ((Kind => Resize, others => <>));
-            elsif E.Scancode = HID_F10 and then Shift then
-               Send ((Kind => Key_Event, Key => Menu_Key, others => <>));
-            elsif Key_Of (E.Scancode) /= No_Key then
+            elsif Key_Of (E.Scancode) /= K.Unknown then
                Send ((Kind => Key_Event, Key => Key_Of (E.Scancode), Shift => Shift, Control => Control,
                       Alt => Alt, others => <>));
             end if;
