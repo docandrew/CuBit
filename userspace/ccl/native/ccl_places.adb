@@ -29,7 +29,6 @@ package body CCL_Places is
    PAGES_PER_REQUEST : constant := 16;
    ARENA_BYTES : constant := PAGES_PER_REQUEST * PAGE_BYTES;
    ARENA_PAGES : constant := ARENA_BYTES / PAGE_BYTES;
-   MAXIMUM_REQUESTS : constant := 64;   --  per listing: 512 pages
    ANSWER_SPINS : constant := 256;
 
    --  The queue's channels (FQ): a small transfer arena, then the pair.
@@ -179,9 +178,11 @@ package body CCL_Places is
    end Home;
 
    --  Take one Directory.Page.V2 from the arena: copied, then checked.
+   --  On_Page: the entries it carries.
    procedure Take_Page
      (Index : Natural; Entries : in out Listing; Count : in out Listed_Count;
-      Total : in out Natural; Valid, At_End : out Boolean)
+      Total : in out Natural; Valid, At_End : out Boolean;
+      On_Page : out CuBit.Directory_Pages.Entry_Count)
    is
       package DP renames CuBit.Directory_Pages;
       Shared : constant DP.Page
@@ -198,6 +199,7 @@ package body CCL_Places is
       OK : Boolean;
    begin
       DP.Check (Copy, Valid, Entry_Count, Used, At_End, Resume, Stamp);
+      On_Page := (if Valid then Entry_Count else 0);
       if not Valid then return; end if;
       for Ordinal in 1 .. Entry_Count loop
          DP.Get (Copy, At_Entry, Used, Item, Name, Length, Next, OK);
@@ -239,6 +241,7 @@ package body CCL_Places is
       Status : Unsigned_32;
       Filled : Unsigned_64;
       Valid, At_End : Boolean := False;
+      On_Page : CuBit.Directory_Pages.Entry_Count;
    begin
       Entries := [others => <>];
       Count := 0;
@@ -246,18 +249,27 @@ package body CCL_Places is
       if not Initialize then Result := Unavailable; return; end if;
       Open (Path, Directory, Result);
       if Result /= Listed_All then return; end if;
-      for Request in 1 .. MAXIMUM_REQUESTS loop
+      --  Only a page with Page_End ends the listing (BUG-006). A reply may
+      --  carry fewer pages than asked for without ending the directory (the
+      --  service stops at a page it could not read once it has filled
+      --  some): the next request goes on from the service's cursor, and
+      --  reports that failure if it stays. Every page but the last lists at
+      --  least one entry (the service ends a page only when the next record
+      --  does not fit, and any one record fits an empty page), so an empty
+      --  page that does not end, or a reply of no pages, is the service's
+      --  failure: each round makes progress, and the directory is finite.
+      loop
          Call (FQ.Queue_Read_Directory, Directory, ARENA_BYTES, Status, Filled,
                Options => FQ.Directory_Metadata);
          Result := Outcome (Status);
          exit when Result /= Listed_All;
-         if Filled > PAGES_PER_REQUEST then Result := Failed; exit; end if;
+         if Filled = 0 or else Filled > PAGES_PER_REQUEST then Result := Failed; exit; end if;
          for Index in 0 .. Natural (Filled) - 1 loop
-            Take_Page (Index, Entries, Count, Total, Valid, At_End);
-            if not Valid then Result := Failed; end if;
-            exit when not Valid or else At_End;
+            Take_Page (Index, Entries, Count, Total, Valid, At_End, On_Page);
+            if not Valid or else (On_Page = 0 and then not At_End) then Result := Failed; end if;
+            exit when Result /= Listed_All or else At_End;
          end loop;
-         exit when Result /= Listed_All or else At_End or else Filled < PAGES_PER_REQUEST;
+         exit when Result /= Listed_All or else At_End;
       end loop;
       Close (Directory);
    end List;

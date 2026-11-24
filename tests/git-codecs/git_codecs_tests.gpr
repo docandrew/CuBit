@@ -1,0 +1,18 @@
+--  SELF-003 step 2: hosted tests and proofs of the git codecs
+--  (userspace/lib/git) and the inflater they use. CUBIT_SPARK_CRATES names
+--  the crates (SPARKTLSCrypto's SHA-1; nix develop exports the pinned set).
+with "../../userspace/lib/tls/sparktls_host.gpr";
+project Git_Codecs_Tests is
+   --  GIT_SOURCES: mutate.sh points it at its mutant copies.
+   for Source_Dirs use (".", external ("GIT_SOURCES", "../../userspace/lib/git"), "../../userspace/lib/compress");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("git_tool.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-fno-tree-vrp", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Git_Codecs_Tests;

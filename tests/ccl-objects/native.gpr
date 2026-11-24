@@ -1,6 +1,6 @@
 library project Native is
    for Source_Dirs use ("../../userspace/ccl/src", "../../userspace/services/config");
-   for Source_Files use ("ccl.ads", "ccl-types.ads", "ccl-types.adb",
+   for Source_Files use ("ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-growing_tables.ads", "ccl-growing_tables.adb",
       "ccl-types-correspondence.ads", "ccl-types-correspondence.adb",
       "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
       "ccl-objects-values.ads", "ccl-objects-values.adb",

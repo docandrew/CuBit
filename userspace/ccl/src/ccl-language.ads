@@ -391,6 +391,9 @@ is
       Value_Out_Of_Range,
       Nesting_Too_Deep,
       AST_Full,
+      --  The session's type registry is at its named ceiling
+      --  (CCL.Types.Declaration_Ceiling), or memory ran out.
+      Type_Registry_Full,
       Trailing_Input,
       Unknown_Name,
       Expected_Integer,
@@ -638,7 +641,7 @@ private
 
 
    type Sized_Analysis (Source_Room : CCL.Language.Source_Room; Last_Node : Node_Index) is record
-      Resource_Policies : CCL.Resource_Policies.Policy_Table := [others => (others => <>)];
+      Resource_Policies : CCL.Resource_Policies.Policy_Table;
       Status              : Analysis_Status := Analysis_Parse_Failed;
       Diagnostic          : Diagnostic_Code := No_Diagnostic;
       Diagnostic_Position : Natural range 0 .. SOURCE_CEILING + 1 := 0;

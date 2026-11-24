@@ -33,8 +33,11 @@ procedure Policy_Tests is
    Open_Ref, Closed_Ref, Ref : T.Type_Reference;
    Published : C.Resource_Publication;
    Imported : T.Import_Result;
-   Roots : P.Selection := [others => False];
-   Bindings, Previous_Bindings : P.Binding_Map;
+   --  Nodes in the reverse chains below: past the old fixed registry size.
+   Chain_Length : constant := 216;
+   subtype Reference is T.Type_Reference range 0 .. T.Unit_Type + Chain_Length;
+   Roots : P.Selection (Reference) := [others => False];
+   Bindings, Previous_Bindings : P.Binding_Map (Reference);
    Definitions : O.Type_Table;
    Count : P.Layout_Count;
    Result : P.Layout_Result;
@@ -197,20 +200,38 @@ begin
    -- Reverse chains, cycles and every ownership-tag capacity boundary.
    declare
       Universe : T.Registry;
-      Policies : P.Policy_Table := [others => (others => <>)];
-      type Refs is array (1 .. T.Maximum_Declarations) of T.Type_Reference;
+      Policies : P.Policy_Table;
+      type Refs is array (1 .. Chain_Length) of T.Type_Reference;
       Nodes : Refs;
       function Name (I : Positive) return T.Name is
         (T.Named ("R" & Ada.Strings.Fixed.Trim (I'Image, Ada.Strings.Both)));
+      --  Change Ref's policy in place.
+      procedure Set (Ref : T.Type_Reference; Value : P.Description) is
+         Done : Boolean;
+      begin
+         P.Set_Policy (Policies, Ref, Value, Done); Check (Done and P.Policy (Policies, Ref) = Value);
+      end Set;
+      Policy : P.Description;
    begin
       for I in Nodes'Range loop
          T.Define (Universe, (Identifier => Name (I), Form => T.Resource, others => <>), Nodes (I), Defined);
          Check (Defined = T.Defined);
-         Policies (Nodes (I)) := (Mode => O.Must_Handle, Count => 1, others => <>);
-         Policies (Nodes (I)).Dispositions (0) := (Verb => 1, Effect => O.Consume, others => <>);
-         if I > 1 then Policies (Nodes (I)).Dispositions (0) :=
+         Policy := (Mode => O.Must_Handle, Count => 1, others => <>);
+         Policy.Dispositions (0) := (Verb => 1, Effect => O.Consume, others => <>);
+         if I > 1 then Policy.Dispositions (0) :=
            (Verb => 1, Effect => O.Transition, Next_Type => Name (I - 1)); end if;
+         Set (Nodes (I), Policy);
       end loop;
+      Check (T.Last (Universe) = Reference'Last);
+      --  A root the registry does not have has no policy.
+      declare
+         Wider : P.Selection (0 .. Reference'Last + 1) := [others => False];
+         Wider_Bindings : P.Binding_Map (Wider'Range);
+      begin
+         Wider (Wider'Last) := True;
+         P.Layout (Universe, Policies, Wider, Wider_Bindings, Definitions, Count, Result);
+         Check (Result = P.Missing_Policy and Count = 0 and (for all B of Wider_Bindings => B = 0));
+      end;
       for I in Nodes'Range loop
          Roots := [others => False]; Roots (Nodes (I)) := True;
          P.Layout (Universe, Policies, Roots, Bindings, Definitions, Count, Result);
@@ -223,15 +244,20 @@ begin
             end loop;
          else Check (Result = P.Too_Many_Types and Count = 0 and (for all B of Bindings => B = 0)); end if;
       end loop;
-      Policies (Nodes (1)).Dispositions (0) := (Verb => 1, Effect => O.Transition, Next_Type => Name (2));
+      Policy := P.Policy (Policies, Nodes (1));
+      Policy.Dispositions (0) := (Verb => 1, Effect => O.Transition, Next_Type => Name (2));
+      Set (Nodes (1), Policy);
       Roots := [others => False]; Roots (Nodes (2)) := True;
       P.Layout (Universe, Policies, Roots, Bindings, Definitions, Count, Result);
       Check (Result = P.Ready and Count = 3);
       Check (Definitions (Bindings (Nodes (1))).Dispositions (0).Next_Type = Bindings (Nodes (2)));
-      Policies (Nodes (2)).Dispositions (0).Verb := Interfaces.Unsigned_8'Last;
+      Policy := P.Policy (Policies, Nodes (2));
+      Policy.Dispositions (0).Verb := Interfaces.Unsigned_8'Last;
+      Set (Nodes (2), Policy);
       P.Layout (Universe, Policies, Roots, Bindings, Definitions, Count, Result);
       Check (Result = P.Ready);
-      Policies (Nodes (2)).Dispositions (0).Verb := 0;
+      Policy.Dispositions (0).Verb := 0;
+      Set (Nodes (2), Policy);
       P.Layout (Universe, Policies, Roots, Bindings, Definitions, Count, Result);
       Check (Result = P.Invalid_Policy and Count = 0);
       Roots := [others => False];

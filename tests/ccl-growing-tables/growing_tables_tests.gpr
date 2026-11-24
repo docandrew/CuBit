@@ -1,0 +1,12 @@
+with "../../userspace/ccl/cubit_shared.gpr";
+project Growing_Tables_Tests is
+   for Source_Dirs use (".", "../../userspace/ccl/src");
+   for Source_Files use ("main.adb", "integer_tables.ads", "ccl.ads",
+                         "ccl-growing_tables.ads", "ccl-growing_tables.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Growing_Tables_Tests;

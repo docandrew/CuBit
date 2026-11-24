@@ -10,17 +10,17 @@ procedure Import_Tests is
       if not Good then raise Program_Error with "type import check" & Checks'Image; end if;
    end Check;
    function Label (Prefix : String; Index : Positive) return Name is
-     (Named (Prefix & Character'Val (Character'Pos ('A') + (Index - 1) mod 26) &
-             Character'Val (Character'Pos ('A') + (Index - 1) / 26)));
+     (Named (Prefix & "_" & Index'Image (2 .. Index'Image'Last)));
    procedure Add (Item : in out Registry; D : Description; Ref : out Type_Reference) is
       Result : Definition_Result;
    begin
       Define (Item, D, Ref, Result); Check (Result = Defined);
    end Add;
-   procedure Padding (Item : in out Registry; Count : Natural) is
+   --  Pad_1 .. Pad_Count, after the First - 1 already there.
+   procedure Padding (Item : in out Registry; Count : Natural; First : Positive := 1) is
       Ref : Type_Reference;
    begin
-      for Index in 1 .. Count loop
+      for Index in First .. Count loop
          Add (Item, (Identifier => Label ("Pad", Index), Form => Product, others => <>), Ref);
       end loop;
    end Padding;
@@ -51,38 +51,63 @@ procedure Import_Tests is
          Check (Ref = Invalid_Type and Target = Before);
       end if;
    end Check_Import;
+   --  Chains and fillings around the old fixed size (216) and the ceiling,
+   --  not every pair: a registry grows from what is declared, so filling
+   --  one to the ceiling is the expensive part.
+   Old_Size : constant := 216;
+   Depths : constant array (Positive range <>) of Positive := [1, 2, 3, 16, Old_Size, Old_Size + 1, 300];
 begin
-   for Depth in 1 .. Maximum_Declarations loop
+   for Depth of Depths loop
       declare
-         Source : Registry;
+         Source, Padded : Registry;
          Root : Type_Reference := Integer_Type;
+         Counts : constant array (Positive range <>) of Natural :=
+           [0, 1, Old_Size - Depth / 2, Old_Size, Old_Size + 1,
+            Declaration_Ceiling - Depth - 1, Declaration_Ceiling - Depth,
+            Declaration_Ceiling - Depth + 1, Declaration_Ceiling];
+         Filled : Natural := 0;
       begin
          for Index in 1 .. Depth loop
             Add (Source, (Identifier => Label ("Chain", Index), Form => Product, Count => 1,
               Parts => [1 => (Named ("value"), Root), others => <>]), Root);
          end loop;
-         for Count in 0 .. Maximum_Declarations loop
+         for Count of Counts loop
+            --  Counts rise: pad on from the last filling (a copy shares it).
+            Check (Count >= Filled);
+            Padding (Padded, Count, Filled + 1);
+            Filled := Count;
             declare
-               Target : Registry;
+               Target : Registry := Padded;
             begin
-               Padding (Target, Count);
+               Check (Last (Target) = Unit_Type + Type_Reference (Count));
                Check_Import (Source, Root, Target,
-                 (if Count + Depth <= Maximum_Declarations then Imported else Import_Full));
+                 (if Count + Depth <= Declaration_Ceiling then Imported else Import_Full));
+               --  The import changed the copy, never the registry it shared.
+               Check (Last (Padded) = Unit_Type + Type_Reference (Count));
             end;
          end loop;
       end;
    end loop;
-   for Count in 0 .. Maximum_Declarations loop
-      declare
-         Source, Target : Registry;
-      begin
-         Padding (Target, Count);
-         for Root in Type_Reference loop
-            Check_Import (Source, Root, Target,
-              (if Root in Integer_Type .. Unit_Type then Imported else Invalid_Root));
-         end loop;
-      end;
-   end loop;
+   declare
+      Padded : Registry;
+      Filled : Natural := 0;
+      Fillings : constant array (Positive range <>) of Natural :=
+        [0, 1, Old_Size + 1, Declaration_Ceiling];
+   begin
+      for Count of Fillings loop
+         Padding (Padded, Count, Filled + 1);
+         Filled := Count;
+         declare
+            Source : Registry;
+            Target : Registry := Padded;
+         begin
+            for Root in Type_Reference loop
+               Check_Import (Source, Root, Target,
+                 (if Root in Integer_Type .. Unit_Type then Imported else Invalid_Root));
+            end loop;
+         end;
+      end loop;
+   end;
    for Change in 0 .. 6 loop
       declare
          Source, Target : Registry;

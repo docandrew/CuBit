@@ -2,13 +2,18 @@
 --  come from validated discovery/config bindings; this package neither hashes
 --  descriptions nor authenticates their publishers. The catalog is append-only
 --  so a live key can never silently change the meaning of an existing object.
+private with CCL.Growing_Tables;
+
 package CCL.Objects.Catalog with SPARK_Mode is
-   --  Checked against CCL_Host_Environment.MOST_SCHEMAS at compile time.
-   --  112 (stopgap, DBG-001): debug.* adds 14 schemas. Drop with catalogs
-   --  sized by their input.
-   Maximum_Schemas : constant := 112;
-   subtype Schema_Count is Natural range 0 .. Maximum_Schemas;
-   type Schema_Catalog is private;
+   --  Schemas one catalog may hold: a named ceiling, not a size. The
+   --  entries grow from what is published (CCL.Growing_Tables), as the
+   --  type registry they share does; past the ceiling, or when memory runs
+   --  out, publication is refused (Capacity_Exhausted). Checked against
+   --  CCL_Host_Environment.MOST_SCHEMAS at compile time. 4096: Resolve and
+   --  Publish search the keys linearly.
+   Schema_Ceiling : constant := 4_096;
+   subtype Schema_Count is Natural range 0 .. Schema_Ceiling;
+   type Schema_Catalog is private with Default_Initial_Condition => Length (Schema_Catalog) = 0;
    type Publication_Result is
      (Published, Already_Published, Unbound_Contract, Identity_Conflict,
       Definition_Conflict, Capacity_Exhausted);
@@ -37,17 +42,15 @@ package CCL.Objects.Catalog with SPARK_Mode is
    with Global => null,
      Post => (if Is_Bound (Contract) then Identity (Contract) = Key);
 private
-   subtype Schema_Index is Natural range 0 .. Maximum_Schemas - 1;
    type Entry_Description is record
       Key : Schema_Key := No_Schema;
       Root : CCL.Types.Type_Reference := CCL.Types.Invalid_Type;
    end record;
-   type Entry_Array is array (Schema_Index) of Entry_Description;
+   package Entry_Tables is new CCL.Growing_Tables (Element => Entry_Description, Ceiling => Schema_Ceiling);
    type Schema_Catalog is record
-      Count : Schema_Count := 0;
       Types : CCL.Types.Registry;
-      Entries : Entry_Array := [others => <>];
+      Entries : Entry_Tables.Table;
    end record;
-   function Length (Item : Schema_Catalog) return Schema_Count is (Item.Count);
+   function Length (Item : Schema_Catalog) return Schema_Count is (Entry_Tables.Length (Item.Entries));
    function Visible_Types (Item : Schema_Catalog) return CCL.Types.Registry is (Item.Types);
 end CCL.Objects.Catalog;

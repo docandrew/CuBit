@@ -61,7 +61,13 @@ CHECKS = [
       'GRAPH_KEY': 'Debug_Graph', 'MEMORY_QUERY_KEY': 'Memory_Query', 'MEMORY_KEY': 'Debug_Memory'}),
     (SRC / 'ccl-interfaces-agent.ads',
      {'DIGEST': None, 'REQUEST_KEY': 'Agent_Request', 'SESSION_KEY': 'Agent_Session',
-      'REPLY_KEY': 'Agent_Reply'})]
+      'REPLY_KEY': 'Agent_Reply'}),
+    (SRC / 'ccl-interfaces-net.ads',
+     {'DIGEST': None, 'REQUEST_KEY': 'Fetch_Request', 'FETCH_KEY': 'Fetch', 'REPLY_KEY': 'Fetch_Reply'}),
+    (SRC / 'ccl-interfaces-archive.ads',
+     {'DIGEST': None, 'REQUEST_KEY': 'Unpack_Request', 'REPLY_KEY': 'Unpack_Reply'}),
+    (SRC / 'ccl-interfaces-git.ads',
+     {'DIGEST': None, 'REQUEST_KEY': 'Clone_Request', 'CLONE_KEY': 'Git_Clone', 'REPLY_KEY': 'Git_Reply'})]
 
 
 def constant(text, name):

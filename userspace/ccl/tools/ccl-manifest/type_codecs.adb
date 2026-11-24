@@ -4,6 +4,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Ada.Characters.Handling;
+with Ada.Containers.Vectors;
 with Ada.Strings.Fixed;
 with Ada.Text_IO;
 with Interfaces;
@@ -70,8 +71,10 @@ package body Type_Codecs is
       Registry : T.Registry;
       Root : T.Type_Reference;
       type Category is (Integer_Value, Boolean_Value, String_Value, Range_Value, Enumeration, Product, Variant, Unsupported);
-      Order : array (1 .. T.Maximum_Declarations) of T.Type_Reference := [others => T.Invalid_Type];
-      Ordered : Natural := 0;
+      package Reference_Vectors is new Ada.Containers.Vectors (Positive, T.Type_Reference);
+      --  Each declared type at most once, as many as the declarations make.
+      Order : Reference_Vectors.Vector;
+      function Ordered return Natural is (Natural (Order.Length));
 
       procedure Fail (Text : String) is
       begin
@@ -173,8 +176,7 @@ package body Type_Codecs is
                end loop;
             end if;
          end;
-         Ordered := Ordered + 1;
-         Order (Ordered) := Ref;
+         Order.Append (Ref);
       end Visit;
 
       procedure Line (Into : in out Unbounded_String; Text : String) is

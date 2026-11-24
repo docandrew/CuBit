@@ -1,3 +1,4 @@
+with CCL.Types;
 package body CCL.Diagnostics with SPARK_Mode is
    function Message (Code : CCL.Language.Diagnostic_Code) return String is
       use CCL.Language;
@@ -23,7 +24,8 @@ package body CCL.Diagnostics with SPARK_Mode is
          when Expected_Printable => "to-string expects an Integer or enum member",
          when Expected_Stream => "Expected a stream: (stream T n), or a name bound to one",
          when Expected_Task => "Expected a task: (task T n), or a name bound to one",
-         when Invalid_Type_Declaration => "Invalid type declaration: use 1 to 16 uniquely named alternatives and a unique type name, within the session's type capacity",
+         when Invalid_Type_Declaration => "Invalid type declaration: use 1 to 16 uniquely named alternatives and a unique type name",
+         when Type_Registry_Full => "Too many types: a session holds at most" & Natural'Image (CCL.Types.Declaration_Ceiling) & " declared types, every interface's included",
          when Invalid_Variant_Payload => "Variant payload must match its declared Integer or Boolean type",
          when Invalid_Match_Pattern => "Match patterns must name alternatives of the input type and bind exactly their payloads",
          when Nonexhaustive_Match => "Match must handle every alternative",

@@ -1569,6 +1569,43 @@ ccl-console: user_runtime ccl-manifest ui-fonts-native
 	$(NATIVE_GPRBUILD) -P ../userspace/ccl/apps/ccl-console/ccl_console.gpr
 	cp ../userspace/ccl/apps/ccl-console/build/ccl-console.app isodir/boot/ccl-console.app
 
+# Headless-test variant for net-fetch (SELF-003 step 1): ccl-console with
+# only .cubit.access replaced: the production manifest with its one tls
+# scope rewritten to the fixture's name and port (tests/net-fetch/server.py)
+# instead of "*:443", so nothing else can drift; checked as llm-test is.
+# Only the net-fetch test image installs it; no production image has it.
+CONSOLE_FETCH_SCOPE := (tls "fetch-test.cubit.internal:18496")
+CONSOLE_FETCH_VARIANT := ../tests/net-fetch/build/variant
+CONSOLE_FETCH_APP := ../userspace/ccl/apps/ccl-console/build/ccl-console.app
+.PHONY : ccl-console-fetch-test
+ccl-console-fetch-test: ccl-console
+	mkdir -p $(CONSOLE_FETCH_VARIANT)/build/generated
+	sed 's|(tls "\*:443")|$(CONSOLE_FETCH_SCOPE)|' ../userspace/ccl/apps/ccl-console/manifest.ccl \
+		> $(CONSOLE_FETCH_VARIANT)/manifest.ccl
+	grep -qF '$(CONSOLE_FETCH_SCOPE)' $(CONSOLE_FETCH_VARIANT)/manifest.ccl
+	$(call compile_ccl_manifest,$(CONSOLE_FETCH_VARIANT))
+	cmp $(CONSOLE_FETCH_VARIANT)/build/generated/startup.ads \
+		../userspace/ccl/apps/ccl-console/build/generated/startup.ads
+	$(ALR) objcopy --dump-section .cubit.startup=$(CONSOLE_FETCH_VARIANT)/startup-test.bin \
+		$(CONSOLE_FETCH_VARIANT)/build/manifest.o
+	$(ALR) objcopy --dump-section .cubit.startup=$(CONSOLE_FETCH_VARIANT)/startup-production.bin \
+		$(CONSOLE_FETCH_APP)
+	cmp $(CONSOLE_FETCH_VARIANT)/startup-test.bin $(CONSOLE_FETCH_VARIANT)/startup-production.bin
+	rm -f $(CONSOLE_FETCH_VARIANT)/access-test.bin $(CONSOLE_FETCH_VARIANT)/access-production.bin
+	$(ALR) objcopy --dump-section .cubit.access=$(CONSOLE_FETCH_VARIANT)/access-test.bin \
+		$(CONSOLE_FETCH_VARIANT)/build/manifest.o
+	$(ALR) objcopy --dump-section .cubit.access=$(CONSOLE_FETCH_VARIANT)/access-production.bin \
+		$(CONSOLE_FETCH_APP)
+	test -s $(CONSOLE_FETCH_VARIANT)/access-test.bin
+	test $$(stat -c %s $(CONSOLE_FETCH_VARIANT)/access-test.bin) -eq \
+		$$(stat -c %s $(CONSOLE_FETCH_VARIANT)/access-production.bin)
+	! cmp -s $(CONSOLE_FETCH_VARIANT)/access-test.bin $(CONSOLE_FETCH_VARIANT)/access-production.bin
+	$(ALR) objcopy --update-section .cubit.access=$(CONSOLE_FETCH_VARIANT)/access-test.bin \
+		$(CONSOLE_FETCH_APP) isodir/boot/ccl-console-fetch-test.app
+	$(ALR) objcopy --dump-section .cubit.access=$(CONSOLE_FETCH_VARIANT)/access-installed.bin \
+		isodir/boot/ccl-console-fetch-test.app
+	cmp $(CONSOLE_FETCH_VARIANT)/access-test.bin $(CONSOLE_FETCH_VARIANT)/access-installed.bin
+
 # The Agent app (AGENT-002): the agent's own window over the console's host
 # environment and the agent core.
 .PHONY : agent
@@ -3262,7 +3299,7 @@ iso: cubit_kernel initrd
 # Test programs the headless images pack. world builds them too, so no test
 # runs a binary left over from an older ABI (a stale one passes or fails for
 # the wrong reason).
-TEST_PROGRAMS := logs boot-logs timesync-test llm-test logstore-test ccl-remote-test console-route-check late-intro-check ccl-console log-check \
+TEST_PROGRAMS := logs boot-logs timesync-test llm-test ccl-console-fetch-test logstore-test ccl-remote-test console-route-check late-intro-check ccl-console log-check \
 	log-fields-check log-retention-check log-exit-probe crash-probe stack-probe libc-check cxx-check network-check net-link-check \
 	net-multi-check timesync-check \
 	tls-probe tls-check config-check desktop-check display-check clipboard-check \

@@ -1,0 +1,15 @@
+--  SELF-003 step 2: the git codecs' test driver built as services build
+--  (-gnatp -O3: no run-time checks, the proof stands in for them).
+with "../../userspace/lib/tls/sparktls_host.gpr";
+project Git_Codecs_Fast is
+   for Source_Dirs use (".", external ("GIT_SOURCES", "../../userspace/lib/git"), "../../userspace/lib/compress");
+   for Object_Dir use "build/fast-obj";
+   for Exec_Dir use "build";
+   for Main use ("git_tool.adb");
+   package Builder is
+      for Executable ("git_tool.adb") use "git_tool_fast";
+   end Builder;
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-O3", "-gnatp", "-fno-tree-vrp", "-gnatwa", "-gnatwe");
+   end Compiler;
+end Git_Codecs_Fast;

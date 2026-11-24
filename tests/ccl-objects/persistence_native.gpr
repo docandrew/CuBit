@@ -3,7 +3,7 @@ library project Persistence_Native is
    for Source_Dirs use ("../../userspace/ccl/src", "../../userspace/ccl/persistence", CBOR_Source & "/src");
    for Source_Files use
      ("ccl-types-correspondence.ads", "ccl-types-correspondence.adb") &
-     ("ccl.ads", "ccl-types.ads", "ccl-types.adb",
+     ("ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-growing_tables.ads", "ccl-growing_tables.adb",
       "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
       "ccl-objects.ads", "ccl-objects.adb",
       "ccl-objects-persistence.ads", "ccl-objects-persistence.adb",

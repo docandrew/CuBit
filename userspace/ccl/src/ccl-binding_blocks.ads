@@ -17,12 +17,12 @@ package CCL.Binding_Blocks with Pure, SPARK_Mode is
    type Block is
      (Host_Clock, Config, Log, Images, Console, Files, Processes, Programs,
       Lexicon, Calc, Install, Wifi, Config_Values, Llm, Secrets, Agent, Display, Bible,
-      Machine, Metrics, Debug, Power);
+      Machine, Metrics, Debug, Power, Net, Archive, Git);
    --  20 is reserved for the ACPI Power block. Machine is machine.*
    --  (power.svc's power-off and halt, PWR-003). Metrics is metrics.*
    --  (metrics.svc's series store, MET-002). Debug is debug.* (the debugger
    --  engine, DBG-001). Power is power.* (power.svc's power sources,
-   --  PWR-004).
+   --  PWR-004). Net is net.*, Archive archive.* and Git git.* (SELF-003).
    --  The representation is the block's number; the compiler refuses two
    --  blocks with one number.
    for Block use
@@ -30,7 +30,7 @@ package CCL.Binding_Blocks with Pure, SPARK_Mode is
       Files => 8, Processes => 9, Programs => 10, Lexicon => 11, Calc => 12,
       Install => 13, Wifi => 14, Config_Values => 15, Llm => 16, Secrets => 17,
       Agent => 18, Display => 19, Bible => 21, Machine => 22, Metrics => 23, Debug => 24,
-      Power => 25);
+      Power => 25, Net => 26, Archive => 27, Git => 28);
 
    BLOCK_WIDTH : constant := 16#1_0000#;
 

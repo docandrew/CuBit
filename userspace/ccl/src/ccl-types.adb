@@ -51,10 +51,25 @@ package body CCL.Types with SPARK_Mode is
         C in 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '_' | '-');
    end Valid_Name;
 
+   --  Declared type Ref's slot in the registry's table.
+   function Position (Ref : Declared_Type) return Slot_Tables.Index is
+     (Slot_Tables.Index (Ref - Unit_Type));
+   function Slot_Of (Item : Registry; Ref : Declared_Type) return Slot is
+     (Slot_Tables.Get (Item.Slots, Position (Ref)))
+   with Pre => Ref <= Last (Item);
+
+   function Identifier_Of (Item : Slot) return Name is (Item.Definition.Identifier);
+   --  Same, without building either image (Find compares every name).
+   function Same_Identifier (Left, Right : Name) return Boolean is
+     (Left.Length = Right.Length and then
+      Left.Data (1 .. Left.Length) = Right.Data (1 .. Right.Length));
+   function Search_Identifier is new Slot_Tables.Search
+     (Key => Name, Key_Of => Identifier_Of, Same_Key => Same_Identifier);
+
    function Describe (Item : Registry; Ref : Type_Reference) return Description is
    begin
-      if Ref in Declared_Type and then Ref <= Item.Used then
-         return Item.Definitions (Ref);
+      if Ref in Declared_Type and then Ref <= Last (Item) then
+         return Slot_Of (Item, Ref).Definition;
       end if;
       return
         (Identifier => Named
@@ -68,16 +83,20 @@ package body CCL.Types with SPARK_Mode is
    function Find (Item : Registry; Identifier : Name) return Type_Reference is
    begin
       if not Valid_Name (Identifier) then return Invalid_Type; end if;
-      for Ref in Integer_Type .. Item.Used loop
+      for Ref in Integer_Type .. Unit_Type loop
          if Same (Describe (Item, Ref).Identifier, Identifier) then return Ref; end if;
       end loop;
-      return Invalid_Type;
+      declare
+         Found : constant Slot_Tables.Count := Search_Identifier (Item.Slots, Identifier);
+      begin
+         return (if Found = 0 then Invalid_Type else Unit_Type + Type_Reference (Found));
+      end;
    end Find;
 
    function Cells (Item : Registry; Ref : Type_Reference) return Cell_Count is
    begin
       if not Known (Item, Ref) then return 0;
-      elsif Ref in Declared_Type then return Item.Layouts (Ref);
+      elsif Ref in Declared_Type then return Slot_Of (Item, Ref).Layout;
       else return 1; -- scalar cell or empty-product marker; text is a region reference
       end if;
    end Cells;
@@ -130,6 +149,7 @@ package body CCL.Types with SPARK_Mode is
    is
       Layout : Cell_Count := 1;
       Size : Cell_Count;
+      Added : Boolean;
    begin
       Ref := Invalid_Type;
       Result := Invalid_Name;
@@ -162,11 +182,10 @@ package body CCL.Types with SPARK_Mode is
          end if;
       end loop;
       Result := Registry_Full;
-      if Item.Used = Type_Reference'Last then return; end if;
-      Ref := Item.Used + 1;
-      Item.Definitions (Ref) := Definition;
-      Item.Layouts (Ref) := Layout;
-      Item.Used := Ref;
+      Slot_Tables.Append
+        (Item.Slots, (Definition => Definition, Layout => Layout, others => <>), Added);
+      if not Added then return; end if;
+      Ref := Last (Item);
       Result := Defined;
    end Define;
 
@@ -280,12 +299,12 @@ package body CCL.Types with SPARK_Mode is
    end Specialize_List;
 
    function Is_Range (Item : Registry; Ref : Type_Reference) return Boolean is
-     (Ref in Declared_Type and then Ref <= Item.Used and then
-      Item.Definitions (Ref).Form = Bounded);
+     (Ref in Declared_Type and then Ref <= Last (Item) and then
+      Slot_Of (Item, Ref).Definition.Form = Bounded);
    function Low_Of (Item : Registry; Ref : Type_Reference) return Bound is
-     (if Is_Range (Item, Ref) then Item.Lows (Ref) else Bound'First);
+     (if Is_Range (Item, Ref) then Slot_Of (Item, Ref).Low else Bound'First);
    function High_Of (Item : Registry; Ref : Type_Reference) return Bound is
-     (if Is_Range (Item, Ref) then Item.Highs (Ref) else Bound'Last);
+     (if Is_Range (Item, Ref) then Slot_Of (Item, Ref).High else Bound'Last);
    function Base_Of (Item : Registry; Ref : Type_Reference) return Type_Reference is
      (if Is_Range (Item, Ref) then Integer_Type else Ref);
 
@@ -293,6 +312,7 @@ package body CCL.Types with SPARK_Mode is
      (Item : in out Registry; Identifier : Name; Low, High : Bound;
       Ref : out Type_Reference; Result : out Definition_Result)
    is
+      Added : Boolean;
    begin
       Ref := Invalid_Type;
       Result := Invalid_Name;
@@ -302,13 +322,13 @@ package body CCL.Types with SPARK_Mode is
       Result := Invalid_Shape;
       if Low > High then return; end if;
       Result := Registry_Full;
-      if Item.Used = Type_Reference'Last then return; end if;
-      Ref := Item.Used + 1;
-      Item.Definitions (Ref) := (Identifier => Identifier, Form => Bounded, others => <>);
-      Item.Layouts (Ref) := 1;
-      Item.Lows (Ref) := Low;
-      Item.Highs (Ref) := High;
-      Item.Used := Ref;
+      Slot_Tables.Append
+        (Item.Slots,
+         (Definition => (Identifier => Identifier, Form => Bounded, others => <>),
+          Layout => 1, Low => Low, High => High, others => <>),
+         Added);
+      if not Added then return; end if;
+      Ref := Last (Item);
       Result := Defined;
    end Define_Range;
 
@@ -318,7 +338,7 @@ package body CCL.Types with SPARK_Mode is
    is
    begin
       Completed := False;
-      if Ref not in Declared_Type or else Ref > Item.Used or else
+      if Ref not in Declared_Type or else Ref > Last (Item) or else
         not Known (Item, List_Ref)
       then
          return;
@@ -334,8 +354,12 @@ package body CCL.Types with SPARK_Mode is
             return;
          end if;
       end;
-      Item.Definitions (Ref).Parts (Part).Payload := List_Ref;
-      Completed := True;
+      declare
+         Completed_Slot : Slot := Slot_Of (Item, Ref);
+      begin
+         Completed_Slot.Definition.Parts (Part).Payload := List_Ref;
+         Slot_Tables.Replace (Item.Slots, Position (Ref), Completed_Slot, Completed);
+      end;
    end Complete_Self_List;
 
    function Is_Function (Item : Registry; Ref : Type_Reference) return Boolean is
@@ -420,7 +444,7 @@ package body CCL.Types with SPARK_Mode is
       else Invalid_Type);
 
    function Persistable (Item : Registry; Root : Type_Reference) return Boolean is
-      Allowed : array (Type_Reference) of Boolean := [others => False];
+      Allowed : array (Type_Reference range 0 .. Last (Item)) of Boolean := [others => False];
       D : Description;
    begin
       if not Known (Item, Root) then return False; end if;
@@ -540,28 +564,41 @@ package body CCL.Types with SPARK_Mode is
      (Item : in out Registry; Ref : Type_Reference; Field : Component_Index;
       Default : Field_Default; Result : out Default_Result)
    is
+      Changed : Boolean;
    begin
       Result := Not_A_Field;
-      if Ref not in Declared_Type or else Ref > Item.Used or else
-        Item.Definitions (Ref).Form /= Product or else Field > Item.Definitions (Ref).Count
-      then
+      if Ref not in Declared_Type or else Ref > Last (Item) then
          return;
       end if;
-      Result := Default_Mismatch;
-      if not Default_Fits (Item, Item.Definitions (Ref).Parts (Field).Payload, Default) then return; end if;
-      Item.Defaults (Ref) (Field) := Default;
-      Result := Default_Set;
+      declare
+         Changed_Slot : Slot := Slot_Of (Item, Ref);
+      begin
+         if Changed_Slot.Definition.Form /= Product or else Field > Changed_Slot.Definition.Count then
+            return;
+         end if;
+         Result := Default_Mismatch;
+         if not Default_Fits (Item, Changed_Slot.Definition.Parts (Field).Payload, Default) then
+            return;
+         end if;
+         Result := Default_Registry_Full;
+         Changed_Slot.Defaults (Field) := Default;
+         Slot_Tables.Replace (Item.Slots, Position (Ref), Changed_Slot, Changed);
+         if Changed then Result := Default_Set; end if;
+      end;
    end Set_Default;
 
    function Default_Of (Item : Registry; Ref : Type_Reference; Field : Component_Index) return Field_Default is
-     (if Ref in Declared_Type and then Ref <= Item.Used then Item.Defaults (Ref) (Field) else No_Field_Default);
+     (if Ref in Declared_Type and then Ref <= Last (Item) then Slot_Of (Item, Ref).Defaults (Field)
+      else No_Field_Default);
 
    procedure Import_Definition
      (Source : Registry; Root : Type_Reference; Target : in out Registry;
       Ref : out Type_Reference; Result : out Import_Result)
    is
-      Needed : array (Type_Reference) of Boolean := [others => False];
-      Mapping : array (Type_Reference) of Type_Reference := [others => Invalid_Type];
+      --  Sized by the source: definitions refer only to its own types.
+      Needed : array (Type_Reference range 0 .. Last (Source)) of Boolean := [others => False];
+      Mapping : array (Type_Reference range 0 .. Last (Source)) of Type_Reference :=
+        [others => Invalid_Type];
       Staged : Registry := Target;
       Translated, Existing : Description;
       Candidate : Type_Reference;
@@ -582,7 +619,9 @@ package body CCL.Types with SPARK_Mode is
                D : constant Description := Describe (Source, Index);
             begin
                for Part in 1 .. D.Count loop
-                  Needed (D.Parts (Part).Payload) := True;
+                  if D.Parts (Part).Payload in Needed'Range then
+                     Needed (D.Parts (Part).Payload) := True;
+                  end if;
                end loop;
             end;
          end if;
@@ -593,7 +632,9 @@ package body CCL.Types with SPARK_Mode is
          if Needed (Index) then
             Translated := Describe (Source, Index);
             for Part in 1 .. Translated.Count loop
-               Translated.Parts (Part).Payload := Mapping (Translated.Parts (Part).Payload);
+               Translated.Parts (Part).Payload :=
+                 (if Translated.Parts (Part).Payload in Mapping'Range
+                  then Mapping (Translated.Parts (Part).Payload) else Invalid_Type);
             end loop;
             Candidate := Find (Staged, Translated.Identifier);
             if Candidate = Invalid_Type and then Translated.Form = Bounded then
@@ -610,11 +651,18 @@ package body CCL.Types with SPARK_Mode is
                   return;
                end if;
                --  Defaults travel with the type; they only name constants.
-               for Part in 1 .. Translated.Count loop
-                  if Translated.Form = Product then
-                     Staged.Defaults (Candidate) (Part) := Default_Of (Source, Index, Part);
-                  end if;
-               end loop;
+               if Translated.Form = Product then
+                  declare
+                     Defaulted : Slot := Slot_Of (Staged, Candidate);
+                     Changed : Boolean;
+                  begin
+                     for Part in 1 .. Translated.Count loop
+                        Defaulted.Defaults (Part) := Default_Of (Source, Index, Part);
+                     end loop;
+                     Slot_Tables.Replace (Staged.Slots, Position (Candidate), Defaulted, Changed);
+                     if not Changed then Result := Import_Full; return; end if;
+                  end;
+               end if;
             else
                Existing := Describe (Staged, Candidate);
                if Existing.Form /= Translated.Form or Existing.Count /= Translated.Count then return; end if;

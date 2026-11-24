@@ -19,7 +19,7 @@ library project Native is
       "config_schema_protocol.ads", "config_schema_protocol.adb",
       "config_schema_worker.ads", "config_schema_worker.adb",
       "config_worker_protocol.ads", "config_worker_protocol.adb",
-      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-objects.ads", "ccl-objects.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-growing_tables.ads", "ccl-growing_tables.adb", "ccl-objects.ads", "ccl-objects.adb",
       "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb");
    for Object_Dir use "build/native";
    for Library_Dir use "build/native-lib";

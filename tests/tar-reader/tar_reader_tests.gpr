@@ -1,0 +1,18 @@
+--  SELF-003 step 1: hosted tests and proofs of the tar reader
+--  (userspace/lib/archive).
+project Tar_Reader_Tests is
+   for Source_Dirs use (".", "../../userspace/lib/archive");
+   for Source_Files use
+     ("main.adb", "walk.adb", "unpack.adb", "tar_archives.ads", "tar_archives.adb", "tar_unpack.ads",
+      "tar_unpack.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   for Main use ("main.adb", "walk.adb", "unpack.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-O2", "-gnata", "-gnato", "-gnatwa", "-gnatwe");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on");
+   end Prove;
+end Tar_Reader_Tests;

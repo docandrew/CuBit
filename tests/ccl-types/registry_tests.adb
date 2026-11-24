@@ -1,7 +1,11 @@
 with Ada.Text_IO; use Ada.Text_IO;
+with Ada.Strings; use Ada.Strings;
+with Ada.Strings.Fixed;
 with CCL.Types; use CCL.Types;
 
 procedure Registry_Tests is
+   function Numbered (Number : Type_Reference) return CCL.Types.Name is
+     (Named ("Empty_" & Ada.Strings.Fixed.Trim (Number'Image, Both)));
    R : Registry;
    D : Description;
    Ref, Point, Outcome : Type_Reference;
@@ -68,16 +72,61 @@ begin
    D.Count := 5;
    Define (R, D, Ref, Status);
    pragma Assert (Status = Defined and Cells (R, Ref) = 246);
-   --  Exhaust registry without reusing identities or changing earlier types.
-   while Last (R) < Type_Reference'Last loop
-      D := (Form => Product, others => <>);
-      D.Identifier := Named ("Empty" & Character'Val
-        (Character'Pos ('A') + Integer (Last (R) - Unit_Type) mod 26) &
-        Character'Val (Character'Pos ('A') + Integer (Last (R) - Unit_Type) / 26));
-      Define (R, D, Ref, Status);
-      pragma Assert (Status = Defined);
-   end loop;
-   D.Identifier := Named ("Full"); Reject (Registry_Full);
+   --  The registry grows from what is declared: past the old fixed size
+   --  (216) to the named ceiling, without reusing identities or changing
+   --  earlier types; a copy taken on the way keeps what it had (copies
+   --  share storage until one changes); at the ceiling every way of adding
+   --  a type is refused with its capacity result and the registry unchanged.
+   declare
+      Old_Size : constant := 216;
+      Snapshot : Registry;
+      Snapshot_Last : Type_Reference := Invalid_Type;
+   begin
+      while Last (R) < Type_Reference'Last loop
+         D := (Form => Product, others => <>);
+         D.Identifier := Numbered (Last (R));
+         Define (R, D, Ref, Status);
+         pragma Assert (Status = Defined and Ref = Last (R) and Find (R, D.Identifier) = Ref);
+         if Ref = Unit_Type + Old_Size + 1 then
+            Snapshot := R; Snapshot_Last := Ref;
+         end if;
+      end loop;
+      pragma Assert (Last (R) - Unit_Type = Declaration_Ceiling);
+      pragma Assert (Snapshot_Last > Unit_Type + Old_Size and Last (Snapshot) = Snapshot_Last);
+      pragma Assert (Find (Snapshot, Numbered (Snapshot_Last - 1)) = Snapshot_Last);
+      pragma Assert (Find (Snapshot, Numbered (1_000)) = Invalid_Type);
+      pragma Assert (Find (R, Numbered (1_000)) = 1_001);
+      D.Identifier := Named ("Full"); Reject (Registry_Full);
+      declare
+         Before : constant Registry := R;
+         List_Status : List_Result;
+         Handle_Status : Stream_Result;
+         Function_Status : Function_Result;
+         Resource_Status : Unary_Resource_Result;
+         Range_Status : Definition_Result;
+         Imported_As : Import_Result;
+         Source : Registry;
+      begin
+         Specialize_List (R, Point, Ref, List_Status);
+         pragma Assert (List_Status = List_Registry_Full and Ref = Invalid_Type and R = Before);
+         Specialize_Stream (R, Point, Ref, Handle_Status);
+         pragma Assert (Handle_Status = Stream_Registry_Full and R = Before);
+         Specialize_Task (R, Point, Ref, Handle_Status);
+         pragma Assert (Handle_Status = Stream_Registry_Full and R = Before);
+         Specialize_Function (R, [others => Integer_Type], 1, Point, Ref, Function_Status);
+         pragma Assert (Function_Status = Function_Registry_Full and R = Before);
+         Specialize_Unary_Resource (R, Named ("Box"), Named ("Value"), Point, Ref, Resource_Status);
+         pragma Assert (Resource_Status = Resource_Registry_Full and R = Before);
+         Define_Range (R, Named ("Percent"), 0, 100, Ref, Range_Status);
+         pragma Assert (Range_Status = Registry_Full and R = Before);
+         Define (Source, (Identifier => Named ("Elsewhere"), Form => Product, others => <>),
+                 Ref, Status);
+         pragma Assert (Status = Defined);
+         Import_Definition (Source, Ref, R, Point, Imported_As);
+         pragma Assert (Imported_As = Import_Full and Point = Invalid_Type and R = Before);
+         Point := Find (R, Named ("Point"));
+      end;
+   end;
    pragma Assert (Cells (R, Point) = 3 and Cells (R, Outcome) = 4);
    Put_Line ("CCL type registry: products, sums, bounds, atomic rejection PASS");
 end Registry_Tests;

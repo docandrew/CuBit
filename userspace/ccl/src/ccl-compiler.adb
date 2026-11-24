@@ -76,8 +76,15 @@ is
       Next_Local : CCL.VM.Local_Count := 0;
       Debug : CCL.Debug_Maps.Debug_Map (Last_Entry);
       Linkage : CCL.Catalog.Linkage_Table;
-      Resource_Tags : CCL.Resource_Policies.Binding_Map := [others => 0];
-      Resource_Roots : CCL.Resource_Policies.Selection := [others => False];
+      --  Indexed by the analysis's types, which the program's are.
+      subtype Analysed_Type is CCL.Types.Type_Reference
+        range 0 .. CCL.Types.Last (CCL.Language.Analysis_Types (Analysis));
+      Resource_Tags : CCL.Resource_Policies.Binding_Map (Analysed_Type) := [others => 0];
+      Resource_Roots : CCL.Resource_Policies.Selection (Analysed_Type) := [others => False];
+      --  Kind's resource tag (0, unrestricted, for a type the analysis
+      --  does not have).
+      function Tag_Of (Kind : CCL.Types.Type_Reference) return CCL.Ownership.Type_Id is
+        (if Kind in Analysed_Type then Resource_Tags (Kind) else 0);
       Layout_Result : CCL.Resource_Policies.Layout_Result;
       Checked : CCL.VM.Sized_Validated_Program (Last_Instruction, Last_Constant, Text_Room);
       Validation : CCL.VM.Validation_Error;
@@ -502,7 +509,7 @@ is
                           then CCL.VM.Resource_Value
                           elsif CCL.Types.Is_Scalar_Sum (Program.Data_Types, Initializer.Static_Kind)
                           then CCL.VM.Variant_Value else CCL.VM.Object_Value));
-                  Program.Local_Types (Local) := Resource_Tags (Initializer.Static_Kind);
+                  Program.Local_Types (Local) := Tag_Of (Initializer.Static_Kind);
                   if Initializer.Static_Kind = CCL.Language.Invalid_Type then
                      Fail (Malformed_Typed_Tree, Index, Item.Source_Position);
                   else
@@ -578,7 +585,7 @@ is
                      Program.Dynamic_Locals_Length := Next_Local;
                      Program.Local_Kinds (Local) := CCL.VM.Resource_Value;
                      Program.Local_Data_Types (Local) := Receiver_Node.Static_Kind;
-                     Program.Local_Types (Local) := Resource_Tags (Receiver_Node.Static_Kind);
+                     Program.Local_Types (Local) := Tag_Of (Receiver_Node.Static_Kind);
                      Emit_Node (Item.First, Depth + 1, In_Conditional_Branch, Stack_Base);
                      Emit (CCL.VM.Initialize_Local, Local => Local);
                   end if;
@@ -587,7 +594,7 @@ is
                  (Item.Host_Call.Import, Program.Data_Types,
                   (if Item.Host_Call.Parameters = 0 then CCL.Types.Integer_Type else Argument_Node.Static_Kind),
                   Item.Static_Kind, Bytecode_Import, Import_Lowered,
-                  Result_Type_Tag => Resource_Tags (Item.Static_Kind),
+                  Result_Type_Tag => Tag_Of (Item.Static_Kind),
                   Receiver_Type => (if CCL.Host_Values.Has_Receiver (Item.Host_Call.Import)
                                     then Receiver_Node.Static_Kind else CCL.Types.Invalid_Type));
                if Item.Host_Call.Import.Argument = CCL.Host_Values.Resource_Value or
@@ -1021,7 +1028,9 @@ is
          declare
             Kind : constant CCL.Types.Type_Reference := CCL.Language.Analysis_Node (Analysis, I).Static_Kind;
          begin
-            if CCL.Types.Describe (Program.Data_Types, Kind).Form = CCL.Types.Resource then
+            if Kind in Analysed_Type and then
+              CCL.Types.Describe (Program.Data_Types, Kind).Form = CCL.Types.Resource
+            then
                Resource_Roots (Kind) := True;
             end if;
          end;

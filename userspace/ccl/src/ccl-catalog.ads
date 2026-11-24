@@ -147,12 +147,15 @@ is
    function Resource_Policy
      (Item : Interface_Catalog; Ref : CCL.Types.Type_Reference)
       return CCL.Resource_Policies.Description;
+   --  The policies of every resource type published so far.
+   function Resource_Policies (Item : Interface_Catalog) return CCL.Resource_Policies.Policy_Table;
    procedure Layout_Resources
      (Item : Interface_Catalog; Roots : CCL.Resource_Policies.Selection;
       Bindings : out CCL.Resource_Policies.Binding_Map;
       Definitions : out CCL.Ownership.Type_Table;
       Count : out CCL.Resource_Policies.Layout_Count;
-      Result : out CCL.Resource_Policies.Layout_Result);
+      Result : out CCL.Resource_Policies.Layout_Result)
+   with Pre => Roots'First = 0 and then Bindings'First = 0 and then Bindings'Last = Roots'Last;
    procedure Publish_Schema
      (Item : in out Interface_Catalog; Contract : CCL.Objects.Binding;
       Result : out CCL.Objects.Catalog.Publication_Result);
@@ -301,7 +304,7 @@ private
    type Interface_Catalog is record
       Count       : Interface_Count := 0;
       Data_Types  : CCL.Objects.Catalog.Schema_Catalog;
-      Resource_Policies : CCL.Resource_Policies.Policy_Table := [others => (others => <>)];
+      Resource_Policies : CCL.Resource_Policies.Policy_Table;
       Descriptors : Interface_Array := [others => (others => <>)];
    end record;
 

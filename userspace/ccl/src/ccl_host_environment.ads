@@ -25,6 +25,9 @@ with CCL.Interfaces.Machine;
 with CCL.Interfaces.Power;
 with CCL.Interfaces.Agent;
 with CCL.Interfaces.Metrics;
+with CCL.Interfaces.Net;
+with CCL.Interfaces.Archive;
+with CCL.Interfaces.Git;
 with CCL_Execution;
 
 --  Every system interface a CCL front end offers (the Workbench, the console,
@@ -56,7 +59,9 @@ package CCL_Host_Environment is
      CCL.Interfaces.Llm.PUBLISHED_INTERFACES + CCL.Interfaces.Secrets.PUBLISHED_INTERFACES +
      CCL.Interfaces.Machine.PUBLISHED_INTERFACES + CCL.Interfaces.Power.PUBLISHED_INTERFACES +
      CCL.Interfaces.Agent.PUBLISHED_INTERFACES +
-     CCL.Interfaces.Metrics.PUBLISHED_INTERFACES;
+     CCL.Interfaces.Metrics.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Net.PUBLISHED_INTERFACES + CCL.Interfaces.Archive.PUBLISHED_INTERFACES +
+     CCL.Interfaces.Git.PUBLISHED_INTERFACES;
    MOST_SCHEMAS : constant :=
      CCL.Interfaces.Config.PUBLISHED_SCHEMAS + CCL_Execution.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Logs.PUBLISHED_SCHEMAS + CCL.Interfaces.Images.PUBLISHED_SCHEMAS +
@@ -73,7 +78,9 @@ package CCL_Host_Environment is
      CCL.Interfaces.Llm.PUBLISHED_SCHEMAS + CCL.Interfaces.Secrets.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Machine.PUBLISHED_SCHEMAS + CCL.Interfaces.Power.PUBLISHED_SCHEMAS +
      CCL.Interfaces.Agent.PUBLISHED_SCHEMAS +
-     CCL.Interfaces.Metrics.PUBLISHED_SCHEMAS;
+     CCL.Interfaces.Metrics.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Net.PUBLISHED_SCHEMAS + CCL.Interfaces.Archive.PUBLISHED_SCHEMAS +
+     CCL.Interfaces.Git.PUBLISHED_SCHEMAS;
    MOST_TYPES : constant :=
      CCL.Interfaces.Config.PUBLISHED_TYPES + CCL_Execution.PUBLISHED_TYPES +
      CCL.Interfaces.Logs.PUBLISHED_TYPES + CCL.Interfaces.Images.PUBLISHED_TYPES +
@@ -90,18 +97,21 @@ package CCL_Host_Environment is
      CCL.Interfaces.Llm.PUBLISHED_TYPES + CCL.Interfaces.Secrets.PUBLISHED_TYPES +
      CCL.Interfaces.Machine.PUBLISHED_TYPES + CCL.Interfaces.Power.PUBLISHED_TYPES +
      CCL.Interfaces.Agent.PUBLISHED_TYPES +
-     CCL.Interfaces.Metrics.PUBLISHED_TYPES;
-   --  Room a session keeps in its copy of the registry for its own type
-   --  declarations and the Task, Stream and List types its calls need
-   --  (system.install's Task<Install_Report>, a timer's Stream<Integer>).
+     CCL.Interfaces.Metrics.PUBLISHED_TYPES +
+     CCL.Interfaces.Net.PUBLISHED_TYPES + CCL.Interfaces.Archive.PUBLISHED_TYPES +
+     CCL.Interfaces.Git.PUBLISHED_TYPES;
+   --  Types a session declares beside the interfaces' (its own, and the
+   --  Task, Stream and List types its calls need: system.install's
+   --  Task<Install_Report>, a timer's Stream<Integer>). Not a room: the
+   --  registry grows from what is declared; this only checks the ceiling.
    SESSION_TYPES : constant := 24;
    pragma Compile_Time_Error
      (MOST_INTERFACES > CCL.Catalog.MAX_INTERFACES, "the CCL catalog cannot hold every interface");
    pragma Compile_Time_Error
-     (MOST_TYPES + SESSION_TYPES > CCL.Types.Maximum_Declarations,
-      "the CCL type registry cannot hold every interface's types and a session's own");
+     (MOST_TYPES + SESSION_TYPES > CCL.Types.Declaration_Ceiling,
+      "the CCL type registry's ceiling is below every interface's types and a session's own");
    pragma Compile_Time_Error
-     (MOST_SCHEMAS > CCL.Objects.Catalog.Maximum_Schemas, "the CCL catalog cannot hold every schema");
+     (MOST_SCHEMAS > CCL.Objects.Catalog.Schema_Ceiling, "the CCL catalog cannot hold every schema");
 
    --  config (inspector) and typed Config collections, clock, logs: each
    --  published and granted only where this process may use it.

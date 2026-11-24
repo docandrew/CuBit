@@ -31,7 +31,7 @@ project Durable_Turso is
       "ccl-objects-persistence.ads", "ccl-objects-persistence.adb",
       "cbor.ads", "cbor-model.ads", "cbor-decoding.ads", "cbor-decoding.adb",
       "cbor-encoding.ads", "cbor-encoding.adb",
-      "ccl.ads", "ccl-types.ads", "ccl-types.adb",
+      "ccl.ads", "ccl-types.ads", "ccl-types.adb", "ccl-growing_tables.ads", "ccl-growing_tables.adb",
       "ccl-bounded_stacks.ads", "ccl-bounded_stacks.adb",
       "ccl-objects.ads", "ccl-objects.adb",
       "ccl-objects-schemas.ads", "ccl-objects-schemas.adb",

@@ -1,5 +1,5 @@
-# Headless llm-mock regression: system.ccl plus a tls.hosts entry that
-# maps the mock Messages API's name to the QEMU host. Keep other
+# Headless llm-mock and net-fetch regressions: system.ccl plus tls.hosts entries that
+# map the mock Messages API's and the fetch fixture's names to the QEMU host. Keep other
 # settings in sync with system.ccl.
 # CuBit System Configuration
 # Loaded by devmgr at boot, seeded into config.svc
@@ -81,7 +81,7 @@
   (setting "cubit.config.storage.database" "@system/system-config.sqlite")
   # SNTP servers for timesync.svc (host or host:port). A majority of at least
   # two must agree before the clock is adjusted.
-  (setting "tls.hosts" "llm-mock.cubit.internal=10.0.2.2")
+  (setting "tls.hosts" "llm-mock.cubit.internal=10.0.2.2 fetch-test.cubit.internal=10.0.2.2")
   (setting "time.servers" "time.cloudflare.com 0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org")
   # The least severe log record logstore keeps (a CCL Severity). Debug and
   # Trace records are discarded unless this is lowered; log-control holders

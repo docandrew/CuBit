@@ -14,8 +14,8 @@ package body CCL.Objects.Catalog with SPARK_Mode is
 
    function Root_Of (Item : Schema_Catalog; Key : Schema_Key) return CCL.Types.Type_Reference is
    begin
-      for I in 1 .. Item.Count loop
-         if Item.Entries (I - 1).Key = Key then return Item.Entries (I - 1).Root; end if;
+      for I in 1 .. Length (Item) loop
+         if Entry_Tables.Get (Item.Entries, I).Key = Key then return Entry_Tables.Get (Item.Entries, I).Root; end if;
       end loop;
       return CCL.Types.Invalid_Type;
    end Root_Of;
@@ -25,6 +25,8 @@ package body CCL.Objects.Catalog with SPARK_Mode is
       Result : out Publication_Result)
    is
       Types : CCL.Types.Registry := Item.Types;
+      Entries : Entry_Tables.Table := Item.Entries;
+      Added : Boolean;
       Ref : CCL.Types.Type_Reference;
       Imported_As : CCL.Types.Import_Result;
    begin
@@ -32,19 +34,15 @@ package body CCL.Objects.Catalog with SPARK_Mode is
          Result := Unbound_Contract;
          return;
       end if;
-      for I in 1 .. Item.Count loop
-         if Item.Entries (I - 1).Key = Contract.Key then
+      for I in 1 .. Length (Item) loop
+         if Entry_Tables.Get (Item.Entries, I).Key = Contract.Key then
             Ref := CCL.Types.Correspondence.Resolve
               (Contract.Types, Contract.Root, Item.Types);
-            Result := (if Ref = Item.Entries (I - 1).Root then Already_Published
+            Result := (if Ref = Entry_Tables.Get (Item.Entries, I).Root then Already_Published
                        else Identity_Conflict);
             return;
          end if;
       end loop;
-      if Item.Count = Maximum_Schemas then
-         Result := Capacity_Exhausted;
-         return;
-      end if;
       CCL.Types.Import_Definition
         (Contract.Types, Contract.Root, Types, Ref, Imported_As);
       if Imported_As /= CCL.Types.Imported then
@@ -54,9 +52,13 @@ package body CCL.Objects.Catalog with SPARK_Mode is
       end if;
       --  All fallible work precedes publication; one shared registry stores
       --  the dependency closure, not one registry/image per import or value.
+      Entry_Tables.Append (Entries, (Contract.Key, Ref), Added);
+      if not Added then
+         Result := Capacity_Exhausted;
+         return;
+      end if;
       Item.Types := Types;
-      Item.Entries (Item.Count) := (Contract.Key, Ref);
-      Item.Count := Item.Count + 1;
+      Item.Entries := Entries;
       Result := Published;
    end Publish;
 
@@ -65,11 +67,11 @@ package body CCL.Objects.Catalog with SPARK_Mode is
    is
    begin
       Contract := (others => <>);
-      for I in 1 .. Item.Count loop
-         if Item.Entries (I - 1).Key = Key then
+      for I in 1 .. Length (Item) loop
+         if Entry_Tables.Get (Item.Entries, I).Key = Key then
             --  Publish accepts only bound persistable roots, then translates
             --  their full closure into this append-only registry.
-            Contract := (Types => Item.Types, Root => Item.Entries (I - 1).Root,
+            Contract := (Types => Item.Types, Root => Entry_Tables.Get (Item.Entries, I).Root,
                          Key => Key, Bound => True);
             return;
          end if;

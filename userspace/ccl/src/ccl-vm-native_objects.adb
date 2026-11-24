@@ -23,7 +23,8 @@ package body CCL.VM.Native_Objects with SPARK_Mode is
    Image_Bound : constant Arena_Need :=
      (CCL.Objects.Maximum_Cells, CCL.Objects.Maximum_Cells, CCL.Objects.Maximum_Cells, CCL.Objects.Maximum_Cells);
    function Need_Of (Types : CCL.Types.Registry; Root : CCL.Types.Type_Reference) return Arena_Need is
-      Needs : array (CCL.Types.Type_Reference) of Arena_Need := [others => (others => <>)];
+      Needs : array (CCL.Types.Type_Reference range 0 .. CCL.Types.Type_Reference'Max (Root, CCL.Types.Unit_Type))
+        of Arena_Need := [others => (others => <>)];
       D : CCL.Types.Description;
       --  Saturating: an implausible need never wraps into a small one.
       function Plus (A, B : Natural) return Natural is

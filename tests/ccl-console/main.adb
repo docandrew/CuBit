@@ -21,6 +21,7 @@ with CCL_Wifi_Bindings;
 with Ada.Directories;
 with Ada.Environment_Variables;
 with CCL.Interfaces.Console;
+with CCL.Interfaces.Files;
 with CCL.Interfaces.Power;
 with CCL.Objects;
 with CuBit.Power_Sources;
@@ -620,6 +621,24 @@ begin
       Run ("(fs.list (fs.enter (Child here ""missing"")))");
       Check (Latest_Result (Placed) = "fs.list found nothing there: nothing is at " & Root & "/missing",
              "a missing directory says where it looked: " & Latest_Result (Placed));
+      --  BUG-006: a directory with more entries than one result holds is
+      --  refused with its count, never listed cut short.
+      declare
+         MANY : constant := CCL.Interfaces.Files.MAXIMUM_LISTED + 1;
+         Many_Image : constant String := Natural'Image (MANY);
+      begin
+         Ada.Directories.Create_Path (Root & "/many");
+         for N in 1 .. MANY loop
+            Make_File ("many/entry-" & Natural'Image (N) (2 .. Natural'Image (N)'Last), "");
+         end loop;
+         Run ("(length (fs.list (fs.enter (Child here ""many""))))");
+         Check (Latest_Result (Placed) = "fs.list ran out of room: the listing of " & Root & "/many holds" &
+                Many_Image & " entries; one result holds at most" &
+                Natural'Image (CCL.Interfaces.Files.MAXIMUM_LISTED) & ". Instead: list a directory with " &
+                "fewer entries",
+                "a listing larger than one result is refused, not cut short: " & Latest_Result (Placed));
+         Ada.Directories.Delete_Tree (Root & "/many");
+      end;
       Run (":ls");
       Draw (Placed, Canvas, Bounds);
       Save ("console-places");

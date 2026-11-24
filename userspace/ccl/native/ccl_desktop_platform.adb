@@ -18,6 +18,8 @@ with CCL_Workspace;
 with CCL_Application;
 with CCL_Native_Execution;
 with CCL_Llm_Link;
+with CCL_Fetch_Engine;
+with Git_Clone_Engine;
 with CCL_Native_Bindings;
 with CuBit.Monotonic;
 
@@ -575,7 +577,8 @@ package body CCL_Desktop_Platform is
          After (Dirty, Keep_Running);
       end On_Deadline;
 
-      --  The CCL engine's own completions: llm pulls and host calls.
+      --  The CCL engine's own completions: llm pulls, net.fetch's and
+      --  git.clone's tls.svc calls, and host calls.
       procedure On_Completion
         (Win : in out CuBit.UI.App.Window; Receipt : CompletionEntry;
          Consumed : out Boolean; Dirty : in out CuBit.UI.Rect; Keep_Running : in out Boolean)
@@ -583,6 +586,12 @@ package body CCL_Desktop_Platform is
          pragma Unreferenced (Win);
       begin
          CCL_Llm_Link.Deliver (Receipt, Consumed);
+         if not Consumed then
+            CCL_Fetch_Engine.Deliver (Receipt, Consumed);
+         end if;
+         if not Consumed then
+            Git_Clone_Engine.Deliver (Receipt, Consumed);
+         end if;
          if not Consumed then
             CCL_Native_Execution.Deliver (Receipt, Consumed);
          end if;
