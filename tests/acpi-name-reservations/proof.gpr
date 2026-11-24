@@ -1,0 +1,9 @@
+project Proof is
+ for Source_Dirs use (".","../../userspace/services/acpi/lib","../../shared/firmware");
+ for Object_Dir use external ("ACPI_NAME_PROOF_BUILD", "build") & "/obj";
+ for Exec_Dir use external ("ACPI_NAME_PROOF_BUILD", "build") & "/bin";
+ for Main use ("reservation_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-gnat2022","-gnata","-gnato");
+ end Compiler;
+end Proof;

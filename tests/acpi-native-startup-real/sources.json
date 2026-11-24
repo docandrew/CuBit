@@ -3056,13 +3056,13 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_child_indices.adb",
-      "sha256": "665ab97d24e4aa68f9f2d852904dca8df4edbcae5b99f4ac0c4e808e3edca956",
+      "sha256": "8688a26606615a6123cfc8af0d39d7a7db526a6fc782baa9430a41c4cb8614f8",
       "kind": "ada",
       "boundary": false
     },
     {
       "path": "userspace/services/acpi/lib/aml_child_indices.ads",
-      "sha256": "6753f9846962e00624b2606025b2d2c08be86025a491e8f763ac23f4d8388d16",
+      "sha256": "db03ec1a3c34cb27e6bf72ed0627946c2ee7ef1bb1ba0e57d0ba75f5e1149ccf",
       "kind": "ada",
       "boundary": false
     },

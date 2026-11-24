@@ -30,4 +30,23 @@ package body AML_Child_Indices with SPARK_Mode is
       Index.Following (Node) := Root;
       Index.Previous (Node) := Root;
    end Unlink;
+
+   package body Name_Reservations with SPARK_Mode is
+      procedure Reserve
+        (Item : out Ticket; Count, Owner : Node_ID;
+         Last_Stamp, Owner_Stamp : Incarnation; Definition : Definition_Identity) is
+      begin
+         Item := (Reserved => True, Next_Node => Count + 1,
+           Lifetime_Owner => Owner, Before_Count => Count,
+           Node_Stamp => Last_Stamp + 1, Lifetime_Stamp => Owner_Stamp,
+           Before_Stamp => Last_Stamp, Definition => Definition);
+      end Reserve;
+      procedure Release
+        (Item : in out Ticket; Current_Node, Owner : Node_ID;
+         Current_Stamp, Owner_Stamp : Incarnation; Definition : Definition_Identity) is
+         pragma Unreferenced (Current_Node, Owner, Current_Stamp, Owner_Stamp, Definition);
+      begin
+         Item := (others => <>);
+      end Release;
+   end Name_Reservations;
 end AML_Child_Indices;

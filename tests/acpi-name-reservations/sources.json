@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "inputs": [
+    {
+      "path": "shared/firmware/firmware_tables.adb",
+      "sha256": "7aca727a78cb7c10e67c044db1200401a0c28072d917e6e3718233a620e2d316"
+    },
+    {
+      "path": "shared/firmware/firmware_tables.ads",
+      "sha256": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_child_indices.adb",
+      "sha256": "8688a26606615a6123cfc8af0d39d7a7db526a6fc782baa9430a41c4cb8614f8"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_child_indices.ads",
+      "sha256": "db03ec1a3c34cb27e6bf72ed0627946c2ee7ef1bb1ba0e57d0ba75f5e1149ccf"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_decode.adb",
+      "sha256": "9fee3a0bb3c6aaa12ccc34eb7df4ffcba8488b337b7f8613284d10495006ea87"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_decode.ads",
+      "sha256": "9042edfa8df14222b65fa0aae1b85e6d21b7c8a11bc7182e5412a850377a57f4"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_definition_loads.adb",
+      "sha256": "be0a05d0e33c993cff97eaafec71706fe853a93afab18870f79310b84bda9a47"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_definition_loads.ads",
+      "sha256": "5be30555e28bb0f3fd654227d4f68a050d9ae4374bda95dc04973eccc27bc81b"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_frame_handles.ads",
+      "sha256": "db70ab1e360b3887e8ccd0fd38c1b6a143472fd5309e5fa36d92d640c4a33f37"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_identity.ads",
+      "sha256": "95e1f372b2c7cecef6fcc75119cb616c2aa22eb9398e5997a250a1f6b342785f"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_index_handles.ads",
+      "sha256": "1f16553edbdf3352f20ec56ae0a187b35539b522c47f5245c8f5f0ac9bb2915b"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_names.adb",
+      "sha256": "c38d13f5f5fe640e775a1bdfc3e74eb64ecb58a92f6993cd8f8c3e656537dd61"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_names.ads",
+      "sha256": "e5fca936d4c27a135a61ae102d423d3840b156af3194916ac4e7c180add2d990"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_object_identifiers.ads",
+      "sha256": "b7d4db854f3e2d3c8149e5ccab1f24f46493e6e7cd9b185de51e8b8cf899c356"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_references.ads",
+      "sha256": "245bb7902e4a0ca765028853e18badf6799b8167ae3f0ac7ac52af9c26d1d36c"
+    },
+    {
+      "path": "tests/acpi-name-reservations/README.md",
+      "sha256": "9ef36066497aa4cb57874ba6465046c8d999bb05588f8b3e2f2f8f6d25166815"
+    },
+    {
+      "path": "tests/acpi-name-reservations/proof.gpr",
+      "sha256": "79d7f10aeaf1a945b5057b2dd17ba1acf594802e6f41a43d3e5e3eb5d37d47fd"
+    },
+    {
+      "path": "tests/acpi-name-reservations/reservation_default_proof.adb",
+      "sha256": "f3eb547b172f09b0a4755ef1b3c415659b76ca767d89f167a7b5642e07731ef9"
+    },
+    {
+      "path": "tests/acpi-name-reservations/reservation_default_proof.ads",
+      "sha256": "89e276d67629a69ac806936ec3d53b0b4ceb1c2ad3e8a222919b717683dc0855"
+    },
+    {
+      "path": "tests/acpi-name-reservations/reservation_laptop_proof.adb",
+      "sha256": "c0d9690b20a39d1f20ef6098eb6133d694e7445eef38b3ede204778fa9f51dd5"
+    },
+    {
+      "path": "tests/acpi-name-reservations/reservation_laptop_proof.ads",
+      "sha256": "a23d971b1282db3012706a8be30a873b3d75cb0ebfb474113da5439d53d03a09"
+    },
+    {
+      "path": "tests/acpi-name-reservations/reservation_tests.adb",
+      "sha256": "b20a1710859b1ba921f62b79fa1ff05cf19ff84b6f57c925dd1b9c2411163e35"
+    }
+  ],
+  "tests": [
+    "reservation_tests",
+    "reservation_default_proof",
+    "reservation_laptop_proof"
+  ],
+  "prerequisites": [
+    "Pinned Nix development shell; GNATprove proofs require24GiB user systemd scope, no swap, j2 and90s cap."
+  ]
+}
