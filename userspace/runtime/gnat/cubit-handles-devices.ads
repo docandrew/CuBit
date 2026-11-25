@@ -50,6 +50,14 @@ package CuBit.Handles.Devices is
    function Reserve_Realtime
      (Period_Us, Budget_Us, Flags : Unsigned_64; Authority : Scheduling) return Unsigned_64;
 
+   --  SET_LATENCY_CONTRACT for the interactive class (docs/scheduler.md
+   --  §4): Budget_Us every Period_Us, as Authority covers, pays for the
+   --  urgent turns this thread lends the threads its IPC wakes (the input
+   --  path: input source, Desktop, the focused app). The thread itself runs
+   --  by ordinary deadline. 0, or Unsigned_64'Last.
+   function Reserve_Interactive
+     (Period_Us, Budget_Us : Unsigned_64; Authority : Scheduling) return Unsigned_64;
+
    --  Mark a boot milestone (docs/boot-timeline.md, Boot_Timeline_Layout):
    --  a Call on the owner role's notification handle. True when the kernel
    --  answered Marked. (The timeline itself is a granted publication.)

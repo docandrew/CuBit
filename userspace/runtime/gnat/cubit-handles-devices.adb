@@ -15,6 +15,7 @@ package body CuBit.Handles.Devices is
    package K renames CuBit.Handles.Kernel;
    package BT renames Boot_Timeline_Layout;
 
+   Latency_Interactive : constant Unsigned_64 := 2;   --  kernel LATENCY_INTERACTIVE
    Latency_Realtime : constant Unsigned_64 := 3;   --  kernel LATENCY_REALTIME
 
    function Tag_Word is new Ada.Unchecked_Conversion
@@ -66,6 +67,11 @@ package body CuBit.Handles.Devices is
    function Reserve_Realtime
      (Period_Us, Budget_Us, Flags : Unsigned_64; Authority : Scheduling) return Unsigned_64 is
      (K.Call (K.Set_Latency_Contract, Latency_Realtime, Period_Us, Budget_Us, Flags,
+              K.Word (Authority)));
+
+   function Reserve_Interactive
+     (Period_Us, Budget_Us : Unsigned_64; Authority : Scheduling) return Unsigned_64 is
+     (K.Call (K.Set_Latency_Contract, Latency_Interactive, Period_Us, Budget_Us, 0,
               K.Word (Authority)));
 
    function Mark_Milestone (Milestone : Unsigned_64; Authority : Notification)

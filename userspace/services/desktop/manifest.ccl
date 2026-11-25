@@ -47,8 +47,16 @@
     (service "filesystem" "filesystem")
     (notification "keyboard" Notify_Access.Manage "keyboard")
     (notification "mouse" Notify_Access.Manage "mouse")
-    (notification "desktop" Notify_Access.Manage "registration")]
-  optional => ["mixer-control" "wifi" "netmgr" "power" "power-sources" "clock"]
+    (notification "desktop" Notify_Access.Manage "registration")
+    # Urgency (SCHED-001, docs/scheduler.md §4): 2.5 ms every 10 ms (a
+    # program's bound, devmgr's Program_Realtime_*) pays for the urgent
+    # turns Desktop lends the apps its replies wake, so the focused app
+    # handles its input ahead of CPU-bound work. 1.5 ms ran out while it
+    # repainted (bench-input REPAINTING, 11% of keys over 1 ms beside four
+    # CPU-bound peers): its present path spends the same budget (LAT-002).
+    # Desktop runs without it where no grant covers it (ordinary wakes).
+    (scheduling "urgency" 2500 10000)]
+  optional => ["mixer-control" "wifi" "netmgr" "power" "power-sources" "clock" "urgency"]
   scopes => [
     (config [File_Right.Read File_Right.Write] "desktop.appearance.")
     # The Apps menu entries (Desktop_Launch).

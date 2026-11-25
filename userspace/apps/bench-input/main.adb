@@ -9,6 +9,7 @@ with CuBit.Benchmark_Clock;
 with CuBit.Timing_Histograms;
 with Startup;
 with CuBit.Handles.Tracing;
+with CuBit.Handles.Devices;
 with CuBit.Monotonic;
 
 --  Closed-loop diagnostic, NOT an interrupt-to-app or open-loop SLA test.
@@ -25,6 +26,10 @@ procedure Main is
    Serial, Sequence, Rate, Ignored : Unsigned_64 := 0;
    Passed : Boolean := True;
    Trace_Active : Boolean := False;
+   --  The urgency reservation (manifest "urgency"), and whether it holds.
+   Urgency_Budget_Us : constant := 1_500;
+   Urgency_Period_Us : constant := 10_000;
+   Urgent : Boolean := False;
    Trace_Frozen : Boolean := False;
    package Tracing renames CuBit.Handles.Tracing;
    --  One timeline operation on the kernel trace object (LATENCY_TRACE
@@ -174,9 +179,17 @@ procedure Main is
          exit when Event.Value.Kind = No_Input;
          Serial := Event.Value.Serial;
       end loop;
+      --  The input source's urgency (SCHED-001), as an input driver holds:
+      --  each key it publishes lends Desktop an urgent turn.
+      if Startup.Urgency.Present then
+         Urgent := CuBit.Handles.Devices.Reserve_Interactive
+           (Period_Us => Urgency_Period_Us, Budget_Us => Urgency_Budget_Us,
+            Authority => Startup.Urgency.Value) /= Unsigned_64'Last;
+      end if;
       Clock.Calibrate (Rate);
       if Rate = 0 then Fail ("uncalibrated clock"); return; end if;
-      debugPrint ("INPUT-BENCH: START boundary=publication-to-app closed_loop=1" & ASCII.LF);
+      debugPrint ("INPUT-BENCH: START boundary=publication-to-app closed_loop=1 urgency=" &
+        (if Urgent then "1" else "0") & ASCII.LF);
       --  Done only on LATENCY_TRACE kernels (else Not_In_This_Kernel).
       Trace_Active := Tracing.Done
         (Tracing.Perform (Startup.Trace, Tracing.ABI.Start_Local));

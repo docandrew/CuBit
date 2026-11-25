@@ -206,6 +206,7 @@ with CuBit.Grant_References;
 with CuBit.Memory_Grants;
 with CuBit.Handles;
 with CuBit.Handles.IPC;
+with CuBit.Handles.Devices;
 with CuBit.Handles.Control;
 with CuBit.Handles.Startup;
 with CuBit.Startup_Tables;
@@ -248,6 +249,9 @@ procedure main is
    use type CuBit.Input.Delivery_Class;
 
 
+   --  The urgency reservation the manifest's "urgency" grant covers.
+   Urgency_Budget_Us : constant := 2_500;
+   Urgency_Period_Us : constant := 10_000;
    EVENT_KEYBOARD : constant Unsigned_32 := 1;
    EVENT_MOUSE    : constant Unsigned_32 := 2;
 
@@ -16069,12 +16073,18 @@ begin
    Load_Display_Modeset;
    Desktop_Launch_Refresh.Initialize;
 
-   ret := setLatencyContract
-      (LATENCY_INTERACTIVE,
-       4_167,   --  Advisory 240 Hz target; presentation follows the output.
-       4_000);  --  Budget hint for input dispatch and compositor drawing.
-   if ret = Unsigned_64'Last then
-      debugPrint ("desktop: latency contract rejected" & LF);
+   --  Urgency for the input path (SCHED-001): the urgent turns Desktop's
+   --  replies and events lend the apps they wake are paid from this
+   --  budget, which procmgr granted as the manifest's "urgency".
+   if Startup.Urgency.Present then
+      ret := CuBit.Handles.Devices.Reserve_Interactive
+        (Period_Us => Urgency_Period_Us, Budget_Us => Urgency_Budget_Us,
+         Authority => Startup.Urgency.Value);
+      debugPrint ((if ret = Unsigned_64'Last
+                   then "desktop: urgency refused (input wakes are ordinary)"
+                   else "desktop: urgency reserved for the input path") & LF);
+   else
+      debugPrint ("desktop: no urgency grant (input wakes are ordinary)" & LF);
    end if;
 
    --  Validate the initial output before acquiring presentation buffers and

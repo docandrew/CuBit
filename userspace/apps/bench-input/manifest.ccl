@@ -10,5 +10,8 @@
                (notification "keyboard" Notify_Access.Publish "keyboard")
                (Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Trace "trace"))
     # ABI-002: its debug text (CuBit.Console_Route).
-    (service "logstore" "logstore")]
-  optional => ["logstore"])
+    (service "logstore" "logstore")
+    # Urgency (SCHED-001): as an input driver, it lends Desktop an urgent
+    # turn with each key it publishes, paid from this budget.
+    (scheduling "urgency" 1500 10000)]
+  optional => ["logstore" "urgency"])
