@@ -7,7 +7,7 @@ procedure Load_Tests is
    use NS;
    use type Integer_Value;
    Tree : State := Empty;
-   Before : State;
+   Before : State := Empty_Like (Tree);
    Result : Load_Status;
    Node : Node_ID;
    Added : Insert_Status;

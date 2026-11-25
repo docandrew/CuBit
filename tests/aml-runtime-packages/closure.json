@@ -751,11 +751,11 @@
       },
       "bootstrap_owned_tests.adb": {
         "path": "tests/acpi-integration/bootstrap_owned_tests.adb",
-        "sha256": "6fe9a4af43bb3a72c9493e93dc19489ce1747840c9f753b37873fa107d0d88f4"
+        "sha256": "d5d1fbecb9abb59c3c3f0681ce5c63145442fe8e74bfe608755f69f86583b0f6"
       },
       "copy_value_tests.adb": {
         "path": "tests/acpi-integration/copy_value_tests.adb",
-        "sha256": "dd4a3d9270abe988fe62eea875966172d6468b8eaa0e679e6e7fd8357298f13e"
+        "sha256": "879597b026e603ebaeddd68b003786c3ef4d0adb2661c1ddf306303182e9843f"
       },
       "dmar_query_tests.adb": {
         "path": "tests/acpi-integration/dmar_query_tests.adb",
@@ -775,7 +775,7 @@
       },
       "member_data_tests.adb": {
         "path": "tests/acpi-integration/member_data_tests.adb",
-        "sha256": "0fae5859e8d0745dde09206bb0bf7fc7005380e77ea02359c899b566c6ae8b59"
+        "sha256": "44e205c69f542b6bb04395983dd895064e03a46182d2ce7f7b61076070b4d840"
       },
       "metadata_query_tests.adb": {
         "path": "tests/acpi-integration/metadata_query_tests.adb",
@@ -787,7 +787,7 @@
       },
       "quota_store_tests.adb": {
         "path": "tests/acpi-integration/quota_store_tests.adb",
-        "sha256": "3cf7f5aeee22f00e38ad1be08be5ff082a51e07ee4255e258bd85527ef5c2a1e"
+        "sha256": "b93e8eeba3ed50ce5dd788f6fca4a52a9da5c5618c2a9b8a1568029c81e16251"
       },
       "requests_owned_tests.adb": {
         "path": "tests/acpi-integration/requests_owned_tests.adb",
@@ -799,19 +799,19 @@
       },
       "static_member_tests.adb": {
         "path": "tests/acpi-integration/static_member_tests.adb",
-        "sha256": "fd0841421038b16c6e89288f80a2035a5ee4e2f24816434fc769e054ea699444"
+        "sha256": "28149ba237e3f66effcb43f5f1c21839ab26ef3c44d89e62c72fb7a109960c7a"
       },
       "string_compare_tests.adb": {
         "path": "tests/acpi-integration/string_compare_tests.adb",
-        "sha256": "ed58c6fae352d2f02b44340647bc96fb3d2cc05693ec453d5f8e13eca1b81ec5"
+        "sha256": "7e3fb3af19e8a7f724310ec542167407b8703abe47f0c3ba8c5ea17094b978be"
       },
       "string_replace_tests.adb": {
         "path": "tests/acpi-integration/string_replace_tests.adb",
-        "sha256": "d9314bbcc1c77de23deebd009d209d32044f7c7329185e36855e154cdc57183d"
+        "sha256": "32169b7c54d72dab4f18c8cca23526fcc978dcc374cb39b9062a88aecabbca57"
       },
       "string_store_tests.adb": {
         "path": "tests/acpi-integration/string_store_tests.adb",
-        "sha256": "d852780accc9efcd280d06e38759205960b19a942f18de6885742305e21ad953"
+        "sha256": "d03475aa3dad13d43d1efd00a6b7c6268980f93b10749ea7df24bf286553a578"
       },
       "test_namespace.ads": {
         "path": "tests/acpi-integration/test_namespace.ads",
@@ -2591,11 +2591,11 @@
       },
       "binding_tests.adb": {
         "path": "tests/aml-core/binding_tests.adb",
-        "sha256": "fa9334f3c0b594a5c620642e6de7c8d076262f38755c3c48931c667dfcc2df90"
+        "sha256": "884fefc1db0d7c68db9efa54cea6460505d15ab9cc7dfbba563d50643cad8a86"
       },
       "bootstrap_tests.adb": {
         "path": "tests/aml-core/bootstrap_tests.adb",
-        "sha256": "120087db0a3b1a902080685c0aa66a0e07e957c20a9b178cb42cd6ce3086e790"
+        "sha256": "c9f6ca465fd80bf683d615f73fe43e0764aa8445c7fbb3d5b389b53716b9d1e6"
       },
       "branch_tests.adb": {
         "path": "tests/aml-core/branch_tests.adb",
@@ -2607,7 +2607,7 @@
       },
       "buffer_tests.adb": {
         "path": "tests/aml-core/buffer_tests.adb",
-        "sha256": "a930dbe628c687652fafd2c634b91fb038fcfa45c9a1f44f0558f4fee3210455"
+        "sha256": "3d76cb9bc2d00a950a4e0a8d60029c506a1f72c1afcf53e3f4ad97e6055e336e"
       },
       "byte_reference_tests.adb": {
         "path": "tests/aml-core/byte_reference_tests.adb",
@@ -2619,7 +2619,7 @@
       },
       "call_tests.adb": {
         "path": "tests/aml-core/call_tests.adb",
-        "sha256": "42342f0fccd23b04005b0f43ed978211871e93be2835ffe2b8d8af149d6df4fb"
+        "sha256": "6de1c87132173c79e5f8015a3411de65da2754d3b4adf2e3a4e2fc09a8dc9392"
       },
       "catalog_tests.adb": {
         "path": "tests/aml-core/catalog_tests.adb",
@@ -2631,7 +2631,7 @@
       },
       "coercion_tests.adb": {
         "path": "tests/aml-core/coercion_tests.adb",
-        "sha256": "aa4995248dc2ca83a0809dc12eba7e3cd8c889824f2269224f43233536727852"
+        "sha256": "3fd4b9d1a230444dde5d521ca10940dd22884cc41bf74bd5c56cc43c0c6b0479"
       },
       "conversion_runner.adb": {
         "path": "tests/aml-core/conversion_runner.adb",
@@ -2639,7 +2639,7 @@
       },
       "data_tests.adb": {
         "path": "tests/aml-core/data_tests.adb",
-        "sha256": "34164a3d18d1386a831d95ca75986cefd77098cf681cc5256b4a25c07af5f163"
+        "sha256": "120c2cd9299007a3801891a0f64650bd85201a8016bbe6d5bf64c5fe2ca24572"
       },
       "decode_tests.adb": {
         "path": "tests/aml-core/decode_tests.adb",
@@ -2699,7 +2699,7 @@
       },
       "inspect_tests.adb": {
         "path": "tests/aml-core/inspect_tests.adb",
-        "sha256": "176c877bf92aea19e4c9d945775e2caa48e87f624732a20f81d41fa9e098d836"
+        "sha256": "378302a160b878894a137a5348c21caf725910891086a1047eaace5147e09b46"
       },
       "integer_oracle_tests.adb": {
         "path": "tests/aml-core/integer_oracle_tests.adb",
@@ -2711,7 +2711,7 @@
       },
       "load_tests.adb": {
         "path": "tests/aml-core/load_tests.adb",
-        "sha256": "467054b850892976e1a878e6982fe5e0d46838d20f6f2405aa32d756adcfdc4e"
+        "sha256": "c1c688d4041734c7f1a8cf9ac95c03882af5882ad9bbe44c7ea2851366518e8f"
       },
       "logic_tests.adb": {
         "path": "tests/aml-core/logic_tests.adb",
@@ -2727,7 +2727,7 @@
       },
       "method_tests.adb": {
         "path": "tests/aml-core/method_tests.adb",
-        "sha256": "e0cf149ac9eafe7ba2e4ebf1fb615ee454facd2d4c2ba4419e311bc920d9736f"
+        "sha256": "d35e1cc2d56f46756040e264cac25a97c2af00c79bfcf3cb5b3b05a001563bf4"
       },
       "name_tests.adb": {
         "path": "tests/aml-core/name_tests.adb",
@@ -2735,7 +2735,7 @@
       },
       "namespace_field_tests.adb": {
         "path": "tests/aml-core/namespace_field_tests.adb",
-        "sha256": "6fe57a56813f7ea118f1f65412f2ef20457c08d6a8507168c6fba45a161845f0"
+        "sha256": "73c1c4b40a497ccbfc419362d4b5b5e9513f497bd30c9901f19a1c7cd41eb27b"
       },
       "namespace_instance.ads": {
         "path": "tests/aml-core/namespace_instance.ads",
@@ -2747,15 +2747,15 @@
       },
       "object_tests.adb": {
         "path": "tests/aml-core/object_tests.adb",
-        "sha256": "4dfddd686e77ee5ff14089d4da7fbe93825e79e95e38b27fa5cd7c6b03d31b70"
+        "sha256": "17701058cf7cc58ead85cc8d7adadc0fc325f6bb4bde01cd09b0acf2c3e510db"
       },
       "package_count_tests.adb": {
         "path": "tests/aml-core/package_count_tests.adb",
-        "sha256": "32693af55cb511a9c4695d0cd12f33b99d244e9de6938370a6bf4314939a217f"
+        "sha256": "957339f4be781ac1ce1f0eb8ecd2a68bf12d87cf08cd6b37dc6e6006db430fac"
       },
       "package_reference_tests.adb": {
         "path": "tests/aml-core/package_reference_tests.adb",
-        "sha256": "2b10dc9aa0d7ac33c00c60e67d084c3e32990429d2e5daa257842d443b4fd06a"
+        "sha256": "0e0e83d32f51783a7bb19580535fd45992bd8135f2a6ba969c2dc8cde4a866bb"
       },
       "readonly_input_tests.adb": {
         "path": "tests/aml-core/readonly_input_tests.adb",
@@ -2791,7 +2791,7 @@
       },
       "service_tests.adb": {
         "path": "tests/aml-core/service_tests.adb",
-        "sha256": "6199da33be4cf7bc4b66f9d29d46852bd4de90ea5fb3d585c41e61c6473e8423"
+        "sha256": "39161bca53daabc9bb44b0fa6da6fd6ac279c4f637bbf3553ee74d45abebb3ad"
       },
       "store_tests.adb": {
         "path": "tests/aml-core/store_tests.adb",
@@ -2803,7 +2803,7 @@
       },
       "string_tests.adb": {
         "path": "tests/aml-core/string_tests.adb",
-        "sha256": "d59fa25f8257659afff3e8c6c5cb23c5fbc5679bb7b2e85f7b404341dfbc685f"
+        "sha256": "c05aa4e9919c0a555b92341b2b313d0fe9a88f184d07361bc4d3bea79c60af48"
       },
       "table_find_runner.adb": {
         "path": "tests/aml-core/table_find_runner.adb",
@@ -2839,7 +2839,7 @@
       },
       "typed_tests.adb": {
         "path": "tests/aml-core/typed_tests.adb",
-        "sha256": "60c646a8a6177b99916a302bc624756890f7762580efcb90e7fd118b06e945f0"
+        "sha256": "460d8feda177e1ce20c1ce6a20b7f8381733bfaf080c19cfb61d2219c413dee9"
       },
       "firmware_tables-catalog.adb": {
         "path": "shared/firmware/firmware_tables-catalog.adb",
@@ -3719,11 +3719,11 @@
       },
       "binding_tests.adb": {
         "path": "tests/aml-core/binding_tests.adb",
-        "sha256": "fa9334f3c0b594a5c620642e6de7c8d076262f38755c3c48931c667dfcc2df90"
+        "sha256": "884fefc1db0d7c68db9efa54cea6460505d15ab9cc7dfbba563d50643cad8a86"
       },
       "bootstrap_tests.adb": {
         "path": "tests/aml-core/bootstrap_tests.adb",
-        "sha256": "120087db0a3b1a902080685c0aa66a0e07e957c20a9b178cb42cd6ce3086e790"
+        "sha256": "c9f6ca465fd80bf683d615f73fe43e0764aa8445c7fbb3d5b389b53716b9d1e6"
       },
       "branch_tests.adb": {
         "path": "tests/aml-core/branch_tests.adb",
@@ -3735,7 +3735,7 @@
       },
       "buffer_tests.adb": {
         "path": "tests/aml-core/buffer_tests.adb",
-        "sha256": "a930dbe628c687652fafd2c634b91fb038fcfa45c9a1f44f0558f4fee3210455"
+        "sha256": "3d76cb9bc2d00a950a4e0a8d60029c506a1f72c1afcf53e3f4ad97e6055e336e"
       },
       "byte_reference_tests.adb": {
         "path": "tests/aml-core/byte_reference_tests.adb",
@@ -3747,7 +3747,7 @@
       },
       "call_tests.adb": {
         "path": "tests/aml-core/call_tests.adb",
-        "sha256": "42342f0fccd23b04005b0f43ed978211871e93be2835ffe2b8d8af149d6df4fb"
+        "sha256": "6de1c87132173c79e5f8015a3411de65da2754d3b4adf2e3a4e2fc09a8dc9392"
       },
       "catalog_tests.adb": {
         "path": "tests/aml-core/catalog_tests.adb",
@@ -3759,7 +3759,7 @@
       },
       "coercion_tests.adb": {
         "path": "tests/aml-core/coercion_tests.adb",
-        "sha256": "aa4995248dc2ca83a0809dc12eba7e3cd8c889824f2269224f43233536727852"
+        "sha256": "3fd4b9d1a230444dde5d521ca10940dd22884cc41bf74bd5c56cc43c0c6b0479"
       },
       "conversion_runner.adb": {
         "path": "tests/aml-core/conversion_runner.adb",
@@ -3767,7 +3767,7 @@
       },
       "data_tests.adb": {
         "path": "tests/aml-core/data_tests.adb",
-        "sha256": "34164a3d18d1386a831d95ca75986cefd77098cf681cc5256b4a25c07af5f163"
+        "sha256": "120c2cd9299007a3801891a0f64650bd85201a8016bbe6d5bf64c5fe2ca24572"
       },
       "decode_tests.adb": {
         "path": "tests/aml-core/decode_tests.adb",
@@ -3827,7 +3827,7 @@
       },
       "inspect_tests.adb": {
         "path": "tests/aml-core/inspect_tests.adb",
-        "sha256": "176c877bf92aea19e4c9d945775e2caa48e87f624732a20f81d41fa9e098d836"
+        "sha256": "378302a160b878894a137a5348c21caf725910891086a1047eaace5147e09b46"
       },
       "integer_oracle_tests.adb": {
         "path": "tests/aml-core/integer_oracle_tests.adb",
@@ -3839,7 +3839,7 @@
       },
       "load_tests.adb": {
         "path": "tests/aml-core/load_tests.adb",
-        "sha256": "467054b850892976e1a878e6982fe5e0d46838d20f6f2405aa32d756adcfdc4e"
+        "sha256": "c1c688d4041734c7f1a8cf9ac95c03882af5882ad9bbe44c7ea2851366518e8f"
       },
       "logic_tests.adb": {
         "path": "tests/aml-core/logic_tests.adb",
@@ -3855,7 +3855,7 @@
       },
       "method_tests.adb": {
         "path": "tests/aml-core/method_tests.adb",
-        "sha256": "e0cf149ac9eafe7ba2e4ebf1fb615ee454facd2d4c2ba4419e311bc920d9736f"
+        "sha256": "d35e1cc2d56f46756040e264cac25a97c2af00c79bfcf3cb5b3b05a001563bf4"
       },
       "name_tests.adb": {
         "path": "tests/aml-core/name_tests.adb",
@@ -3863,7 +3863,7 @@
       },
       "namespace_field_tests.adb": {
         "path": "tests/aml-core/namespace_field_tests.adb",
-        "sha256": "6fe57a56813f7ea118f1f65412f2ef20457c08d6a8507168c6fba45a161845f0"
+        "sha256": "73c1c4b40a497ccbfc419362d4b5b5e9513f497bd30c9901f19a1c7cd41eb27b"
       },
       "namespace_instance.ads": {
         "path": "tests/aml-core/namespace_instance.ads",
@@ -3875,15 +3875,15 @@
       },
       "object_tests.adb": {
         "path": "tests/aml-core/object_tests.adb",
-        "sha256": "4dfddd686e77ee5ff14089d4da7fbe93825e79e95e38b27fa5cd7c6b03d31b70"
+        "sha256": "17701058cf7cc58ead85cc8d7adadc0fc325f6bb4bde01cd09b0acf2c3e510db"
       },
       "package_count_tests.adb": {
         "path": "tests/aml-core/package_count_tests.adb",
-        "sha256": "32693af55cb511a9c4695d0cd12f33b99d244e9de6938370a6bf4314939a217f"
+        "sha256": "957339f4be781ac1ce1f0eb8ecd2a68bf12d87cf08cd6b37dc6e6006db430fac"
       },
       "package_reference_tests.adb": {
         "path": "tests/aml-core/package_reference_tests.adb",
-        "sha256": "2b10dc9aa0d7ac33c00c60e67d084c3e32990429d2e5daa257842d443b4fd06a"
+        "sha256": "0e0e83d32f51783a7bb19580535fd45992bd8135f2a6ba969c2dc8cde4a866bb"
       },
       "readonly_input_tests.adb": {
         "path": "tests/aml-core/readonly_input_tests.adb",
@@ -3919,7 +3919,7 @@
       },
       "service_tests.adb": {
         "path": "tests/aml-core/service_tests.adb",
-        "sha256": "6199da33be4cf7bc4b66f9d29d46852bd4de90ea5fb3d585c41e61c6473e8423"
+        "sha256": "39161bca53daabc9bb44b0fa6da6fd6ac279c4f637bbf3553ee74d45abebb3ad"
       },
       "store_tests.adb": {
         "path": "tests/aml-core/store_tests.adb",
@@ -3931,7 +3931,7 @@
       },
       "string_tests.adb": {
         "path": "tests/aml-core/string_tests.adb",
-        "sha256": "d59fa25f8257659afff3e8c6c5cb23c5fbc5679bb7b2e85f7b404341dfbc685f"
+        "sha256": "c05aa4e9919c0a555b92341b2b313d0fe9a88f184d07361bc4d3bea79c60af48"
       },
       "table_find_runner.adb": {
         "path": "tests/aml-core/table_find_runner.adb",
@@ -3967,7 +3967,7 @@
       },
       "typed_tests.adb": {
         "path": "tests/aml-core/typed_tests.adb",
-        "sha256": "60c646a8a6177b99916a302bc624756890f7762580efcb90e7fd118b06e945f0"
+        "sha256": "460d8feda177e1ce20c1ce6a20b7f8381733bfaf080c19cfb61d2219c413dee9"
       },
       "firmware_tables-catalog.adb": {
         "path": "shared/firmware/firmware_tables-catalog.adb",
@@ -4847,11 +4847,11 @@
       },
       "binding_tests.adb": {
         "path": "tests/aml-core/binding_tests.adb",
-        "sha256": "fa9334f3c0b594a5c620642e6de7c8d076262f38755c3c48931c667dfcc2df90"
+        "sha256": "884fefc1db0d7c68db9efa54cea6460505d15ab9cc7dfbba563d50643cad8a86"
       },
       "bootstrap_tests.adb": {
         "path": "tests/aml-core/bootstrap_tests.adb",
-        "sha256": "120087db0a3b1a902080685c0aa66a0e07e957c20a9b178cb42cd6ce3086e790"
+        "sha256": "c9f6ca465fd80bf683d615f73fe43e0764aa8445c7fbb3d5b389b53716b9d1e6"
       },
       "branch_tests.adb": {
         "path": "tests/aml-core/branch_tests.adb",
@@ -4863,7 +4863,7 @@
       },
       "buffer_tests.adb": {
         "path": "tests/aml-core/buffer_tests.adb",
-        "sha256": "a930dbe628c687652fafd2c634b91fb038fcfa45c9a1f44f0558f4fee3210455"
+        "sha256": "3d76cb9bc2d00a950a4e0a8d60029c506a1f72c1afcf53e3f4ad97e6055e336e"
       },
       "byte_reference_tests.adb": {
         "path": "tests/aml-core/byte_reference_tests.adb",
@@ -4875,7 +4875,7 @@
       },
       "call_tests.adb": {
         "path": "tests/aml-core/call_tests.adb",
-        "sha256": "42342f0fccd23b04005b0f43ed978211871e93be2835ffe2b8d8af149d6df4fb"
+        "sha256": "6de1c87132173c79e5f8015a3411de65da2754d3b4adf2e3a4e2fc09a8dc9392"
       },
       "catalog_tests.adb": {
         "path": "tests/aml-core/catalog_tests.adb",
@@ -4887,7 +4887,7 @@
       },
       "coercion_tests.adb": {
         "path": "tests/aml-core/coercion_tests.adb",
-        "sha256": "aa4995248dc2ca83a0809dc12eba7e3cd8c889824f2269224f43233536727852"
+        "sha256": "3fd4b9d1a230444dde5d521ca10940dd22884cc41bf74bd5c56cc43c0c6b0479"
       },
       "conversion_runner.adb": {
         "path": "tests/aml-core/conversion_runner.adb",
@@ -4895,7 +4895,7 @@
       },
       "data_tests.adb": {
         "path": "tests/aml-core/data_tests.adb",
-        "sha256": "34164a3d18d1386a831d95ca75986cefd77098cf681cc5256b4a25c07af5f163"
+        "sha256": "120c2cd9299007a3801891a0f64650bd85201a8016bbe6d5bf64c5fe2ca24572"
       },
       "decode_tests.adb": {
         "path": "tests/aml-core/decode_tests.adb",
@@ -4955,7 +4955,7 @@
       },
       "inspect_tests.adb": {
         "path": "tests/aml-core/inspect_tests.adb",
-        "sha256": "176c877bf92aea19e4c9d945775e2caa48e87f624732a20f81d41fa9e098d836"
+        "sha256": "378302a160b878894a137a5348c21caf725910891086a1047eaace5147e09b46"
       },
       "integer_oracle_tests.adb": {
         "path": "tests/aml-core/integer_oracle_tests.adb",
@@ -4967,7 +4967,7 @@
       },
       "load_tests.adb": {
         "path": "tests/aml-core/load_tests.adb",
-        "sha256": "467054b850892976e1a878e6982fe5e0d46838d20f6f2405aa32d756adcfdc4e"
+        "sha256": "c1c688d4041734c7f1a8cf9ac95c03882af5882ad9bbe44c7ea2851366518e8f"
       },
       "logic_tests.adb": {
         "path": "tests/aml-core/logic_tests.adb",
@@ -4983,7 +4983,7 @@
       },
       "method_tests.adb": {
         "path": "tests/aml-core/method_tests.adb",
-        "sha256": "e0cf149ac9eafe7ba2e4ebf1fb615ee454facd2d4c2ba4419e311bc920d9736f"
+        "sha256": "d35e1cc2d56f46756040e264cac25a97c2af00c79bfcf3cb5b3b05a001563bf4"
       },
       "name_tests.adb": {
         "path": "tests/aml-core/name_tests.adb",
@@ -4991,7 +4991,7 @@
       },
       "namespace_field_tests.adb": {
         "path": "tests/aml-core/namespace_field_tests.adb",
-        "sha256": "6fe57a56813f7ea118f1f65412f2ef20457c08d6a8507168c6fba45a161845f0"
+        "sha256": "73c1c4b40a497ccbfc419362d4b5b5e9513f497bd30c9901f19a1c7cd41eb27b"
       },
       "namespace_instance.ads": {
         "path": "tests/aml-core/namespace_instance.ads",
@@ -5003,15 +5003,15 @@
       },
       "object_tests.adb": {
         "path": "tests/aml-core/object_tests.adb",
-        "sha256": "4dfddd686e77ee5ff14089d4da7fbe93825e79e95e38b27fa5cd7c6b03d31b70"
+        "sha256": "17701058cf7cc58ead85cc8d7adadc0fc325f6bb4bde01cd09b0acf2c3e510db"
       },
       "package_count_tests.adb": {
         "path": "tests/aml-core/package_count_tests.adb",
-        "sha256": "32693af55cb511a9c4695d0cd12f33b99d244e9de6938370a6bf4314939a217f"
+        "sha256": "957339f4be781ac1ce1f0eb8ecd2a68bf12d87cf08cd6b37dc6e6006db430fac"
       },
       "package_reference_tests.adb": {
         "path": "tests/aml-core/package_reference_tests.adb",
-        "sha256": "2b10dc9aa0d7ac33c00c60e67d084c3e32990429d2e5daa257842d443b4fd06a"
+        "sha256": "0e0e83d32f51783a7bb19580535fd45992bd8135f2a6ba969c2dc8cde4a866bb"
       },
       "readonly_input_tests.adb": {
         "path": "tests/aml-core/readonly_input_tests.adb",
@@ -5047,7 +5047,7 @@
       },
       "service_tests.adb": {
         "path": "tests/aml-core/service_tests.adb",
-        "sha256": "6199da33be4cf7bc4b66f9d29d46852bd4de90ea5fb3d585c41e61c6473e8423"
+        "sha256": "39161bca53daabc9bb44b0fa6da6fd6ac279c4f637bbf3553ee74d45abebb3ad"
       },
       "store_tests.adb": {
         "path": "tests/aml-core/store_tests.adb",
@@ -5059,7 +5059,7 @@
       },
       "string_tests.adb": {
         "path": "tests/aml-core/string_tests.adb",
-        "sha256": "d59fa25f8257659afff3e8c6c5cb23c5fbc5679bb7b2e85f7b404341dfbc685f"
+        "sha256": "c05aa4e9919c0a555b92341b2b313d0fe9a88f184d07361bc4d3bea79c60af48"
       },
       "table_find_runner.adb": {
         "path": "tests/aml-core/table_find_runner.adb",
@@ -5095,7 +5095,7 @@
       },
       "typed_tests.adb": {
         "path": "tests/aml-core/typed_tests.adb",
-        "sha256": "60c646a8a6177b99916a302bc624756890f7762580efcb90e7fd118b06e945f0"
+        "sha256": "460d8feda177e1ce20c1ce6a20b7f8381733bfaf080c19cfb61d2219c413dee9"
       },
       "firmware_tables-catalog.adb": {
         "path": "shared/firmware/firmware_tables-catalog.adb",
@@ -5975,11 +5975,11 @@
       },
       "binding_tests.adb": {
         "path": "tests/aml-core/binding_tests.adb",
-        "sha256": "fa9334f3c0b594a5c620642e6de7c8d076262f38755c3c48931c667dfcc2df90"
+        "sha256": "884fefc1db0d7c68db9efa54cea6460505d15ab9cc7dfbba563d50643cad8a86"
       },
       "bootstrap_tests.adb": {
         "path": "tests/aml-core/bootstrap_tests.adb",
-        "sha256": "120087db0a3b1a902080685c0aa66a0e07e957c20a9b178cb42cd6ce3086e790"
+        "sha256": "c9f6ca465fd80bf683d615f73fe43e0764aa8445c7fbb3d5b389b53716b9d1e6"
       },
       "branch_tests.adb": {
         "path": "tests/aml-core/branch_tests.adb",
@@ -5991,7 +5991,7 @@
       },
       "buffer_tests.adb": {
         "path": "tests/aml-core/buffer_tests.adb",
-        "sha256": "a930dbe628c687652fafd2c634b91fb038fcfa45c9a1f44f0558f4fee3210455"
+        "sha256": "3d76cb9bc2d00a950a4e0a8d60029c506a1f72c1afcf53e3f4ad97e6055e336e"
       },
       "byte_reference_tests.adb": {
         "path": "tests/aml-core/byte_reference_tests.adb",
@@ -6003,7 +6003,7 @@
       },
       "call_tests.adb": {
         "path": "tests/aml-core/call_tests.adb",
-        "sha256": "42342f0fccd23b04005b0f43ed978211871e93be2835ffe2b8d8af149d6df4fb"
+        "sha256": "6de1c87132173c79e5f8015a3411de65da2754d3b4adf2e3a4e2fc09a8dc9392"
       },
       "catalog_tests.adb": {
         "path": "tests/aml-core/catalog_tests.adb",
@@ -6015,7 +6015,7 @@
       },
       "coercion_tests.adb": {
         "path": "tests/aml-core/coercion_tests.adb",
-        "sha256": "aa4995248dc2ca83a0809dc12eba7e3cd8c889824f2269224f43233536727852"
+        "sha256": "3fd4b9d1a230444dde5d521ca10940dd22884cc41bf74bd5c56cc43c0c6b0479"
       },
       "conversion_runner.adb": {
         "path": "tests/aml-core/conversion_runner.adb",
@@ -6023,7 +6023,7 @@
       },
       "data_tests.adb": {
         "path": "tests/aml-core/data_tests.adb",
-        "sha256": "34164a3d18d1386a831d95ca75986cefd77098cf681cc5256b4a25c07af5f163"
+        "sha256": "120c2cd9299007a3801891a0f64650bd85201a8016bbe6d5bf64c5fe2ca24572"
       },
       "decode_tests.adb": {
         "path": "tests/aml-core/decode_tests.adb",
@@ -6083,7 +6083,7 @@
       },
       "inspect_tests.adb": {
         "path": "tests/aml-core/inspect_tests.adb",
-        "sha256": "176c877bf92aea19e4c9d945775e2caa48e87f624732a20f81d41fa9e098d836"
+        "sha256": "378302a160b878894a137a5348c21caf725910891086a1047eaace5147e09b46"
       },
       "integer_oracle_tests.adb": {
         "path": "tests/aml-core/integer_oracle_tests.adb",
@@ -6095,7 +6095,7 @@
       },
       "load_tests.adb": {
         "path": "tests/aml-core/load_tests.adb",
-        "sha256": "467054b850892976e1a878e6982fe5e0d46838d20f6f2405aa32d756adcfdc4e"
+        "sha256": "c1c688d4041734c7f1a8cf9ac95c03882af5882ad9bbe44c7ea2851366518e8f"
       },
       "logic_tests.adb": {
         "path": "tests/aml-core/logic_tests.adb",
@@ -6111,7 +6111,7 @@
       },
       "method_tests.adb": {
         "path": "tests/aml-core/method_tests.adb",
-        "sha256": "e0cf149ac9eafe7ba2e4ebf1fb615ee454facd2d4c2ba4419e311bc920d9736f"
+        "sha256": "d35e1cc2d56f46756040e264cac25a97c2af00c79bfcf3cb5b3b05a001563bf4"
       },
       "name_tests.adb": {
         "path": "tests/aml-core/name_tests.adb",
@@ -6119,7 +6119,7 @@
       },
       "namespace_field_tests.adb": {
         "path": "tests/aml-core/namespace_field_tests.adb",
-        "sha256": "6fe57a56813f7ea118f1f65412f2ef20457c08d6a8507168c6fba45a161845f0"
+        "sha256": "73c1c4b40a497ccbfc419362d4b5b5e9513f497bd30c9901f19a1c7cd41eb27b"
       },
       "namespace_instance.ads": {
         "path": "tests/aml-core/namespace_instance.ads",
@@ -6131,15 +6131,15 @@
       },
       "object_tests.adb": {
         "path": "tests/aml-core/object_tests.adb",
-        "sha256": "4dfddd686e77ee5ff14089d4da7fbe93825e79e95e38b27fa5cd7c6b03d31b70"
+        "sha256": "17701058cf7cc58ead85cc8d7adadc0fc325f6bb4bde01cd09b0acf2c3e510db"
       },
       "package_count_tests.adb": {
         "path": "tests/aml-core/package_count_tests.adb",
-        "sha256": "32693af55cb511a9c4695d0cd12f33b99d244e9de6938370a6bf4314939a217f"
+        "sha256": "957339f4be781ac1ce1f0eb8ecd2a68bf12d87cf08cd6b37dc6e6006db430fac"
       },
       "package_reference_tests.adb": {
         "path": "tests/aml-core/package_reference_tests.adb",
-        "sha256": "2b10dc9aa0d7ac33c00c60e67d084c3e32990429d2e5daa257842d443b4fd06a"
+        "sha256": "0e0e83d32f51783a7bb19580535fd45992bd8135f2a6ba969c2dc8cde4a866bb"
       },
       "readonly_input_tests.adb": {
         "path": "tests/aml-core/readonly_input_tests.adb",
@@ -6175,7 +6175,7 @@
       },
       "service_tests.adb": {
         "path": "tests/aml-core/service_tests.adb",
-        "sha256": "6199da33be4cf7bc4b66f9d29d46852bd4de90ea5fb3d585c41e61c6473e8423"
+        "sha256": "39161bca53daabc9bb44b0fa6da6fd6ac279c4f637bbf3553ee74d45abebb3ad"
       },
       "store_tests.adb": {
         "path": "tests/aml-core/store_tests.adb",
@@ -6187,7 +6187,7 @@
       },
       "string_tests.adb": {
         "path": "tests/aml-core/string_tests.adb",
-        "sha256": "d59fa25f8257659afff3e8c6c5cb23c5fbc5679bb7b2e85f7b404341dfbc685f"
+        "sha256": "c05aa4e9919c0a555b92341b2b313d0fe9a88f184d07361bc4d3bea79c60af48"
       },
       "table_find_runner.adb": {
         "path": "tests/aml-core/table_find_runner.adb",
@@ -6223,7 +6223,7 @@
       },
       "typed_tests.adb": {
         "path": "tests/aml-core/typed_tests.adb",
-        "sha256": "60c646a8a6177b99916a302bc624756890f7762580efcb90e7fd118b06e945f0"
+        "sha256": "460d8feda177e1ce20c1ce6a20b7f8381733bfaf080c19cfb61d2219c413dee9"
       },
       "firmware_tables-catalog.adb": {
         "path": "shared/firmware/firmware_tables-catalog.adb",
@@ -7107,11 +7107,11 @@
       },
       "increment_tests.adb": {
         "path": "tests/aml-debug/increment_tests.adb",
-        "sha256": "bb87cc19643085cb95c5719bff113aed5cf53f76e384b9629cfdc9f9095ae6ff"
+        "sha256": "0adcdce6cbe50d68e33866cdb7a212892b162ede656663ee9d06a6b73ac91447"
       },
       "name_member_identity_tests.adb": {
         "path": "tests/aml-debug/name_member_identity_tests.adb",
-        "sha256": "0ff69cdb6a33995fdd6b9972ea0a113b173a706bcd938e23062442c1b5664981"
+        "sha256": "0c6b16c8e46e8e38b5ffd4677896c0c1c073d542fbc0c3c25a1de730a0c377b6"
       },
       "name_member_tests.adb": {
         "path": "tests/aml-debug/name_member_tests.adb",
@@ -7123,7 +7123,7 @@
       },
       "named_store_owner_tests.adb": {
         "path": "tests/aml-debug/named_store_owner_tests.adb",
-        "sha256": "2827ce5ff9a7214706856e37c588faf15b5ff16513f69b8179a0930ee77fd46f"
+        "sha256": "dd82f93fcb4af0b86c7956c90750e231b4c7ed37d395e0d14e58588aa8a3fbda"
       },
       "revision_tests.adb": {
         "path": "tests/aml-debug/revision_tests.adb",
@@ -7131,7 +7131,7 @@
       },
       "slot_copy_tests.adb": {
         "path": "tests/aml-debug/slot_copy_tests.adb",
-        "sha256": "d65738cbf2c64b6cea5a332787b8cefe6d02197e69762a5f82483368db3f7e30"
+        "sha256": "1750180fe3d9b2de942f4f93e95e53849d67d49698df2566cf7ba20e0183b29c"
       },
       "firmware_tables-catalog.adb": {
         "path": "shared/firmware/firmware_tables-catalog.adb",
@@ -12375,15 +12375,15 @@
       },
       "buffer_completion_tests.adb": {
         "path": "tests/aml-references/buffer_completion_tests.adb",
-        "sha256": "13451c9711ea69ee0b4363592677df0bd7cceb3e3fc6ea8c410b58a26ef8e105"
+        "sha256": "e82d684d5cf36cf8e8a02ea5d887b84d115e5b624b462fc3615aa2a48be3e1cc"
       },
       "condref_oracle_tests.adb": {
         "path": "tests/aml-references/condref_oracle_tests.adb",
-        "sha256": "1a1e0bc6389a62ca85ec18cb91d0b0174706669ce4409957283b0e0bcb9b94ea"
+        "sha256": "5edbf4390db6b19ace1121f485ecbfa082be03217b7dbe9fe6ed7d8b5c945a1d"
       },
       "condref_tests.adb": {
         "path": "tests/aml-references/condref_tests.adb",
-        "sha256": "2c5c47b7411c6cbcbf727e389dac8e7afbb644da9de51f98721b189857261e44"
+        "sha256": "ccd9b117e9a90167066d2ce11ff4bd6ec9412091dbd76b19676eb507f09ef75a"
       },
       "copy_boundary_extended_tests.adb": {
         "path": "tests/aml-references/copy_boundary_extended_tests.adb",
@@ -12395,11 +12395,11 @@
       },
       "integer_origin_tests.adb": {
         "path": "tests/aml-references/integer_origin_tests.adb",
-        "sha256": "8156094f5df92ef3b0b64185eb20db40eda66276b5ee0b162c6230d4ba2c8a08"
+        "sha256": "c183984bab3bde4dc0dd9f1c9ba960b360d9d5b52d0858b2ef66ee29f764f1d7"
       },
       "name_reservation_tests.adb": {
         "path": "tests/aml-references/name_reservation_tests.adb",
-        "sha256": "99151eb9fe1245fedf593922a82a9b1ce66e5ec6813e9e0ad2fd9647ca365f80"
+        "sha256": "51685dd985df63aa8ee934f3a1c95ba692f89f1eab72f13639f1f39e17ec2ee4"
       },
       "package_store_atomicity_tests.adb": {
         "path": "tests/aml-references/package_store_atomicity_tests.adb",
@@ -12407,23 +12407,23 @@
       },
       "provisional_write_tests.adb": {
         "path": "tests/aml-references/provisional_write_tests.adb",
-        "sha256": "7f012c85283b2e4fdce15ef08e7b93c22a362af16a7949041a9354e4bc955e51"
+        "sha256": "782238a67cc98d924cc59a2efaf801dea18101002fabc00bf219dc3dc188e539"
       },
       "reference_model_tests.adb": {
         "path": "tests/aml-references/reference_model_tests.adb",
-        "sha256": "95826738d6bd2728b1668a67c9cc1594e999d6223bced6ac28efc6009ab5f8af"
+        "sha256": "f211b549187c3e12ca629dfbdddda0435e02b3804fa9d9d6b26856bcff8d0249"
       },
       "runtime_buffer_oracle_tests.adb": {
         "path": "tests/aml-references/runtime_buffer_oracle_tests.adb",
-        "sha256": "5cc831a676d7c6cfdc04de443970944dc914a3e04266b42f564cd0892448eafa"
+        "sha256": "e1062ed53ceae2392101c236c17498f6fac3eaf36fbaaf5bfa5593ed0707ce8c"
       },
       "runtime_buffer_tests.adb": {
         "path": "tests/aml-references/runtime_buffer_tests.adb",
-        "sha256": "05498aa6ed45e0c067c4b4eb308e58408b517d8cd0e348736c75c5b9cf1fcb97"
+        "sha256": "fee033f8587f3a8462817955099106cc335694aa26c649fedf28e9bad0a91cc9"
       },
       "runtime_name_tests.adb": {
         "path": "tests/aml-references/runtime_name_tests.adb",
-        "sha256": "05c5126a540d6206dbb3c18fd96eb19de5231f92b70b877f3c6b3f3e959050d5"
+        "sha256": "6985b7e7528278680cdf32fd0e61e7ac9310846196aea53e4850f65b5d80b7f6"
       },
       "test_namespace.ads": {
         "path": "tests/aml-references/test_namespace.ads",
@@ -13311,7 +13311,7 @@
       },
       "auth_snapshot_tests.adb": {
         "path": "tests/aml-retention/auth_snapshot_tests.adb",
-        "sha256": "40c983122ed2da25e4ed29efa84dfdb1d130e27fca4fad70cde85d7ba8d5eaf4"
+        "sha256": "6ace7d925e858d278fabde230151cba6c9234fd4f6b372eff646ab16ce0f1994"
       },
       "concat_root_tests.adb": {
         "path": "tests/aml-retention/concat_root_tests.adb",
@@ -13355,7 +13355,7 @@
       },
       "namespace_retirement_tests.adb": {
         "path": "tests/aml-retention/namespace_retirement_tests.adb",
-        "sha256": "1e480f9c475c38aed37d464cb4945099ba18402084d8ff9e98d7fc7ce734f987"
+        "sha256": "b4d7dcd90a1ea80ba8369f6f909a0d014d26d6973bf7ebcb75d7de5fcb2e4dd5"
       },
       "owned_frame_root_tests.adb": {
         "path": "tests/aml-retention/owned_frame_root_tests.adb",
@@ -13395,7 +13395,7 @@
       },
       "snapshot_pool_tests.adb": {
         "path": "tests/aml-retention/snapshot_pool_tests.adb",
-        "sha256": "9b7110b3ceba128c2db667e114ce4a483daf27ff0615e1fa60eb15d9d06c5fc2"
+        "sha256": "908f950cbb47714e4eb604383294a9e1b6c9a31346e1b605079c436cdd737d8d"
       },
       "suspended_root_tests.adb": {
         "path": "tests/aml-retention/suspended_root_tests.adb",
@@ -14275,7 +14275,7 @@
       },
       "auth_snapshot_tests.adb": {
         "path": "tests/aml-retention/auth_snapshot_tests.adb",
-        "sha256": "40c983122ed2da25e4ed29efa84dfdb1d130e27fca4fad70cde85d7ba8d5eaf4"
+        "sha256": "6ace7d925e858d278fabde230151cba6c9234fd4f6b372eff646ab16ce0f1994"
       },
       "concat_root_tests.adb": {
         "path": "tests/aml-retention/concat_root_tests.adb",
@@ -14319,7 +14319,7 @@
       },
       "namespace_retirement_tests.adb": {
         "path": "tests/aml-retention/namespace_retirement_tests.adb",
-        "sha256": "1e480f9c475c38aed37d464cb4945099ba18402084d8ff9e98d7fc7ce734f987"
+        "sha256": "b4d7dcd90a1ea80ba8369f6f909a0d014d26d6973bf7ebcb75d7de5fcb2e4dd5"
       },
       "owned_frame_root_tests.adb": {
         "path": "tests/aml-retention/owned_frame_root_tests.adb",
@@ -14359,7 +14359,7 @@
       },
       "snapshot_pool_tests.adb": {
         "path": "tests/aml-retention/snapshot_pool_tests.adb",
-        "sha256": "9b7110b3ceba128c2db667e114ce4a483daf27ff0615e1fa60eb15d9d06c5fc2"
+        "sha256": "908f950cbb47714e4eb604383294a9e1b6c9a31346e1b605079c436cdd737d8d"
       },
       "suspended_root_tests.adb": {
         "path": "tests/aml-retention/suspended_root_tests.adb",
@@ -15239,7 +15239,7 @@
       },
       "auth_snapshot_tests.adb": {
         "path": "tests/aml-retention/auth_snapshot_tests.adb",
-        "sha256": "40c983122ed2da25e4ed29efa84dfdb1d130e27fca4fad70cde85d7ba8d5eaf4"
+        "sha256": "6ace7d925e858d278fabde230151cba6c9234fd4f6b372eff646ab16ce0f1994"
       },
       "concat_root_tests.adb": {
         "path": "tests/aml-retention/concat_root_tests.adb",
@@ -15283,7 +15283,7 @@
       },
       "namespace_retirement_tests.adb": {
         "path": "tests/aml-retention/namespace_retirement_tests.adb",
-        "sha256": "1e480f9c475c38aed37d464cb4945099ba18402084d8ff9e98d7fc7ce734f987"
+        "sha256": "b4d7dcd90a1ea80ba8369f6f909a0d014d26d6973bf7ebcb75d7de5fcb2e4dd5"
       },
       "owned_frame_root_tests.adb": {
         "path": "tests/aml-retention/owned_frame_root_tests.adb",
@@ -15323,7 +15323,7 @@
       },
       "snapshot_pool_tests.adb": {
         "path": "tests/aml-retention/snapshot_pool_tests.adb",
-        "sha256": "9b7110b3ceba128c2db667e114ce4a483daf27ff0615e1fa60eb15d9d06c5fc2"
+        "sha256": "908f950cbb47714e4eb604383294a9e1b6c9a31346e1b605079c436cdd737d8d"
       },
       "suspended_root_tests.adb": {
         "path": "tests/aml-retention/suspended_root_tests.adb",

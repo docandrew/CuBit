@@ -12,7 +12,7 @@ procedure String_Tests is
    Data : Bytes (11 .. 268) := [others => 65];
    R : String_Result;
    Tree : NS.State := NS.Empty;
-   Before : NS.State;
+   Before : NS.State := NS.Empty_Like (Tree);
    Loaded : NS.Load_Status;
    procedure Check (OK : Boolean) is
    begin

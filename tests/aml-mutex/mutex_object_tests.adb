@@ -13,7 +13,7 @@ procedure Mutex_Object_Tests is
    Store : O.State := O.Empty;
    ID, Target, Parent : O.Object_ID;
    Status : O.Allocation_Status;
-   Witness : O.Copies.Copy_Witness;
+   Witness : O.Copies.Copy_Witness := O.Copies.Empty_Witness (Store.Object_Capacity);
    Checks : Natural := 0;
    procedure Check (Good : Boolean; Text : String) is
    begin Checks := Checks + 1; if not Good then raise Program_Error with Text; end if; end Check;

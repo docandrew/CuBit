@@ -26,7 +26,7 @@ procedure Tointeger_Target_Tests is
    Target : Reference;
    ID : AML_Objects.Object_ID;
    Allocated : AML_Objects.Allocation_Status;
-   Prior : State;
+   Prior : State := Empty;
    NVAR : constant Bytes := [78,86,65,82];
    STR0 : constant Bytes := [83,84,82,48];
    BUF0 : constant Bytes := [66,85,70,48];

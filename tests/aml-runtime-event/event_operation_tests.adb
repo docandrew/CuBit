@@ -26,7 +26,7 @@ procedure Event_Operation_Tests is
    Result : C.Result;
    Desc : C.Value_Description;
    Element, Foreign, Stale, Local_Event : C.Value_Handle;
-   Before : C.Audit_Value;
+   Before : C.Audit_Value := N.Make_Audit (N.Empty, 0, 0);
    Checks : Natural := 0;
    Event_Opcode : constant Bytes := [16#5B#, 16#02#];
    Signal_Opcode : constant Bytes := [16#5B#,16#24#];

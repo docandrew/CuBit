@@ -17,7 +17,7 @@ procedure Buffer_Allocation_Tests is
    use type Integer_Value;
    use type Byte;
    use type AML_Object_Identifiers.Slot_Incarnation;
-   Store, Prior : O.State;
+   Store, Prior : O.State := O.Empty;
    ID, Snapshot, Existing, Reused : O.Object_ID;
    Prior_Stamp : AML_Object_Identifiers.Slot_Incarnation;
    Keep : R.Keep_Set := [others => False];

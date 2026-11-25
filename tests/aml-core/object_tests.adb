@@ -11,7 +11,7 @@ procedure Object_Tests is
    use type NS.State;
    use type AML_Execute.Execution_Status;
    Store : State := Empty;
-   Before : State;
+   Before : State := AML_Objects.Empty_Like (Store);
    ID, Number, Package_ID : Object_ID;
    Status : Allocation_Status;
    Checks : Natural := 0;
@@ -96,7 +96,7 @@ begin
    Check (Status = Allocated and Length (Store, ID) = 0);
    declare
       Tree : NS.State := NS.Empty;
-      Saved : NS.State;
+      Saved : NS.State := NS.Empty_Like (Tree);
       Loaded : NS.Load_Status;
       Data : AML_Decode.Bytes := [8,66,48,48,48,16#11#,4,16#0B#,0,4];
    begin

@@ -5,10 +5,10 @@ with AML_Objects.Copies;
 procedure Integer_Origin_Tests is
    use type Integer_Value;
    A : State := Empty;
-   B : State;
+   B : State := AML_Objects.Empty_Like (A);
    ID, Copy : Object_ID;
    Status : Allocation_Status;
-   Witness : AML_Objects.Copies.Copy_Witness;
+   Witness : AML_Objects.Copies.Copy_Witness := AML_Objects.Copies.Empty_Witness (A.Object_Capacity);
    Checks : Natural := 0;
    procedure Check (Value : Boolean) is
    begin

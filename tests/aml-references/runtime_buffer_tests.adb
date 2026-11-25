@@ -18,7 +18,7 @@ procedure Runtime_Buffer_Tests is
    OK : Boolean;
    Loaded_Status : Load_Status;
    R : Execution_Result;
-   Before : NS.State;
+   Before : NS.State := NS.Empty;
    Checks : Natural := 0;
    Temp : constant Bytes := [84,69,77,80];
    Mark : constant Bytes := [77,65,82,75];

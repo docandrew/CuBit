@@ -32,7 +32,7 @@ procedure Provisional_Write_Tests is
    Token : Name_Reservation;
    Source, Constant_Source, Cloned_Reference : AML_References.Object_Handle;
    Initial_ID : AML_Objects.Object_ID;
-   Before_Call : NS.State;
+   Before_Call : NS.State := NS.Empty;
    S : Execution_Status := No_Return;
    function Segment (Name : String) return Bytes is
       Data : Bytes (1 .. Name'Length);
@@ -123,7 +123,7 @@ procedure Provisional_Write_Tests is
       end case;
    end Prepare_Quota;
    procedure Capture (Value : out Integer_Value; Available : out Boolean) is
-      Prior : NS.State;
+      Prior : NS.State := NS.Empty;
       Item, Copy, Readback : Datum;
       Old_Reference, Package_Reference : Reference;
       Holder : AML_References.Object_Handle;

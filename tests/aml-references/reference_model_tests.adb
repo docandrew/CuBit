@@ -23,7 +23,7 @@ procedure Reference_Model_Tests is
    use type Issuer_NS.State;
    use type Issuer_NS.Load_Status;
    I : Issuer.Arena;
-   I_Prior : Issuer_NS.State;
+   I_Prior : Issuer_NS.State := Issuer_NS.Empty;
    I_Loaded : Issuer_NS.Load_Status;
    Input : aliased AML_Table_Backing.State (1, 32);
    Saved, Current, Bad : Reference := AML_References.No_Reference;
@@ -36,7 +36,7 @@ procedure Reference_Model_Tests is
    S : Execution_Status;
    Invocation_Result : Invocation_Status;
    Domain, Old_Domain : AML_Frame_Handles.Invocation_Domain;
-   Prior : NS.State;
+   Prior : NS.State := NS.Empty;
    procedure Check (Condition : Boolean) is
    begin
       Checks := Checks + 1;

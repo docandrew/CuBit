@@ -34,7 +34,7 @@ procedure Bit_Buffer_Initializer_Tests is
    end Check;
 begin
    declare
-      Store : O.State;
+      Store : O.State := O.Empty;
       Source : aliased constant Fixture_Source (Positive'Last - 1, Positive'Last) :=
         (Positive'Last - 1, Positive'Last, [16#80#, 1]);
       Empty : aliased constant Fixture_Source (17, 16) := (17, 16, [others => 0]);
@@ -53,7 +53,7 @@ begin
       Check (not B.Fits_Source (Source, 0, 2, Natural'Last, 1));
    end;
    declare
-      Store, Prior : O.State;
+      Store, Prior : O.State := O.Empty;
       Source : aliased constant Fixture_Source (7, 6 + O.Max_Bytes) :=
         (7, 6 + O.Max_Bytes, [others => 16#A5#]);
       ID, Sentinel, Existing : O.Object_ID;
@@ -81,7 +81,7 @@ begin
       Check (Status = O.Byte_Limit and then ID = O.No_Object and then Store = Prior);
    end;
    declare
-      Store, Prior : O.State;
+      Store, Prior : O.State := O.Empty;
       Source : aliased constant Fixture_Source (1, O.Max_Bytes) :=
         (1, O.Max_Bytes, [others => 16#A5#]);
       ID, Existing, Snapshot : O.Object_ID;
@@ -109,7 +109,7 @@ begin
         and then O.Metadata_Snapshot_Data (Store, Snapshot) = Device);
    end;
    declare
-      Store : O.State;
+      Store : O.State := O.Empty;
       Source : aliased constant Fixture_Source (7, 8) := (7, 8, [16#80#, 1]);
       ID, Discarded, Existing, Snapshot : O.Object_ID;
       Status : O.Allocation_Status;
@@ -144,7 +144,7 @@ begin
    end;
    declare
       Store : O.State := O.Empty (Max_Incarnation => 1);
-      Prior : O.State;
+      Prior : O.State := O.Empty_Like (Store);
       Source : aliased constant Fixture_Source (1, O.Max_Bytes) :=
         (1, O.Max_Bytes, [others => 16#5A#]);
       ID, Existing, Snapshot : O.Object_ID;

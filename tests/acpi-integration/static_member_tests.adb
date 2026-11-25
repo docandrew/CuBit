@@ -13,7 +13,7 @@ procedure Static_Member_Tests is
    use type AML_Objects.Package_References.Result_Status;
    use type Integer_Value;
    A : Arena;
-   Before : State;
+   Before : State := Empty;
    OK : Boolean;
    Loaded_Result : Load_Status;
    Report : Initialization_Report;

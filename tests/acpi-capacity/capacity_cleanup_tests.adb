@@ -10,7 +10,7 @@ procedure Capacity_Cleanup_Tests is
    use type NS.Load_Status;
    use type Integer_Value;
    Tree : NS.State := NS.Empty;
-   Saved : NS.State;
+   Saved : NS.State := NS.Empty_Like (Tree);
    Status : NS.Load_Status;
    R : Execution_Result;
    Checks : Natural := 0;

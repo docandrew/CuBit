@@ -7,7 +7,7 @@ procedure Data_Tests is
    use type AML_Decode.Bytes;
    use type Integer_Value;
    Store : State := Empty;
-   Before : State;
+   Before : State := AML_Objects.Empty_Like (Store);
    ID : Object_ID;
    Used : Natural;
    Result : Status;

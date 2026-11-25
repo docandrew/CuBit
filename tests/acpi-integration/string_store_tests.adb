@@ -16,7 +16,7 @@ procedure String_Store_Tests is
    Status : Execution_Status;
    Left, Right, Bad, Foreign, Fresh : Datum;
    Target, H : AML_References.Object_Handle;
-   Prior : State;
+   Prior : State := Empty;
    Good_Ref, Lost_Ref : Reference;
    Ref_Status : AML_Objects.Byte_References.Result_Status;
    Octet : Byte;

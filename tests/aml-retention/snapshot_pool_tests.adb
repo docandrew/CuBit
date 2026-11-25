@@ -19,7 +19,7 @@ procedure Snapshot_Pool_Tests is
    Root_Status : R.Result_Status;
    ID : O.Object_ID;
    Alloc : O.Allocation_Status;
-   Keep : O.Reclamation.Keep_Set;
+   Keep : O.Reclamation.Keep_Set := [1 .. Heap.Object_Capacity => False];
    package Pool is new AML_Frame_Roots (Natural, 0, 2);
    use type Pool.State;
    use type Pool.Result_Status;

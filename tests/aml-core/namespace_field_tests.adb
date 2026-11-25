@@ -10,7 +10,7 @@ procedure Namespace_Field_Tests is
    use type AML_Execute.Execution_Status;
    use type AML_Decode.Integer_Value;
    Tree : State := Empty;
-   Before : State;
+   Before : State := Empty_Like (Tree);
    Node, Scope, Region_Node, Field_Node : Node_ID;
    Added : Insert_Status;
    Status : Bind_Status;

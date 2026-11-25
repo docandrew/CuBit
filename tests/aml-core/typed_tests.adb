@@ -42,7 +42,7 @@ procedure Typed_Tests is
         [8] & Enc ("PKG0") & [16#12#,4,2,1,0];
       A : NS.Owned.Arena;
       Input : aliased AML_Table_Backing.State (1, 1);
-      Tree, Before : NS.State;
+      Tree, Before : NS.State := NS.Empty;
       Ready : Boolean;
       Report : NS.Initialization_Report;
       Loaded : NS.Load_Status;

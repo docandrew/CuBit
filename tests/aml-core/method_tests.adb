@@ -10,7 +10,7 @@ procedure Method_Tests is
    use type NS.State;
    use type Integer_Value;
    Tree : NS.State := NS.Empty;
-   Before : NS.State;
+   Before : NS.State := NS.Empty_Like (Tree);
    Loaded : NS.Load_Status;
    R : Execution_Result;
    Args : constant Arguments := [others => 16#1234_5678_9ABC_DEF0#];

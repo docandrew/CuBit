@@ -62,7 +62,7 @@ procedure Buffer_Completion_Tests is
       Check (S = Unsupported_Value and then Snapshot (A) = Before and then Reservation_Matches (A, Token));
    end Reject_Metadata;
    procedure Capture (Value : out Integer_Value; Available : out Boolean) is
-      Before : NS.State;
+      Before : NS.State := NS.Empty;
       Item : Datum;
       ID, Original : AML_Objects.Object_ID;
       Allocation : AML_Objects.Allocation_Status;

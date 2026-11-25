@@ -51,7 +51,7 @@ procedure Member_Data_Tests is
    end Load;
    Code : constant Bytes := [16#12#,10,2,16#53#,16#52#,16#43#,16#30#,16#53#,16#52#,16#43#,16#30#];
    Store : State := Empty;
-   Before : State;
+   Before : State := Empty_Like (Store);
    Source, Root : Object_ID;
    Allocation : Allocation_Status;
    Parsed : AML_Decode.Status;

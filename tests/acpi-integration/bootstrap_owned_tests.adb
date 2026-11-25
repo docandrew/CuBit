@@ -94,7 +94,7 @@ begin
             S : State (2, 256, 128, Load_Capacity => 2, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
             OK : Boolean;
             Status : ACPI_Service.Install_Status;
-            Before : ACPI_Service.Values.Audit_Value;
+            Before : ACPI_Service.Values.Audit_Value := ACPI_Service.Namespace.Make_Audit (ACPI_Service.Namespace.Empty, 0, 0);
          begin
             Check (not Members_Initialized (S) and then Member_Initialization (S) = (0,0,0));
             Start (S, (if Mode = 2 then 1 else 2), OK); Check (OK);

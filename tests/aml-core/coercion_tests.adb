@@ -40,7 +40,7 @@ procedure Coercion_Tests is
         [8] & Enc ("PKG0") & [16#12#,2,1] &
         [16#14#,8] & Enc ("CALI") & [1,16#A4#,16#68#] &
         [16#14#,Byte (6 + Body_Data'Length)] & Enc ("READ") & [0] & Body_Data;
-      Tree, Before : NS.State;
+      Tree, Before : NS.State := NS.Empty;
       Loaded : NS.Load_Status;
       R : Execution_Result;
    begin

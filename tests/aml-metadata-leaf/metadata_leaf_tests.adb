@@ -26,7 +26,7 @@ procedure Metadata_Leaf_Tests is
    Store, Prior : O.State := O.Empty;
    Meta, Named_Meta, Foreign_Meta, Explicit_Ref, Garbage, Package_ID, Copy_ID, Fresh : O.Object_ID;
    Status : O.Allocation_Status;
-   Witness : O.Copies.Copy_Witness;
+   Witness : O.Copies.Copy_Witness := O.Copies.Empty_Witness (Store.Object_Capacity);
    Seeds, Keep : GC.Keep_Set := [others => False];
    Targets : Trace.Reference_Targets := [others => AML_Object_Identifiers.No_Address];
    Trace_Work : Trace.Workspace;

@@ -15,7 +15,7 @@ procedure Auth_Snapshot_Tests is
    use type R.Result_Status;
    use type R.Snapshot_Phase;
    A, B : Arena;
-   Roots : R.Snapshot;
+   Roots : R.Snapshot := R.Empty;
    Expected : Object_Root_Set := [others => False];
    Build : Snapshot_Build_Status;
    Exec : Execution_Status;

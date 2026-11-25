@@ -14,7 +14,7 @@ procedure Name_Member_Identity_Tests is
    S : AML_Objects.State := AML_Objects.Empty;
    Leaf, Package_ID, Copied : AML_Objects.Object_ID;
    Status : AML_Objects.Allocation_Status;
-   Witness : AML_Objects.Copies.Copy_Witness;
+   Witness : AML_Objects.Copies.Copy_Witness := AML_Objects.Copies.Empty_Witness (S.Object_Capacity);
    R : Reference;
    procedure Check (B : Boolean) is
    begin Checks := Checks + 1; if not B then raise Program_Error with Checks'Image; end if; end Check;

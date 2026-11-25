@@ -80,7 +80,7 @@
     {
       "main": "call_tests.adb",
       "path": "tests/aml-core/call_tests.adb",
-      "sha256": "dfcab1a1d7f0bcfdece0a61df51f8bfb99f644b03b435f2466bace2d7d183462"
+      "sha256": "6de1c87132173c79e5f8015a3411de65da2754d3b4adf2e3a4e2fc09a8dc9392"
     },
     {
       "main": "owned_frame_root_tests.adb",

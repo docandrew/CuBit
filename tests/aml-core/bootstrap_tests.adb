@@ -14,7 +14,7 @@ procedure Bootstrap_Tests is
    procedure Free is new Ada.Unchecked_Deallocation (State, State_Access);
    Session_Ptr : State_Access := null;
    Before : State_Model (ACPI_Service.Max_Tables, ACPI_Service.Max_Total_Bytes, Load_Capacity => ACPI_Service.Max_Tables, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements) with Ghost;
-   Before_Tree : ACPI_Service.Values.Audit_Value with Ghost;
+   Before_Tree : ACPI_Service.Values.Audit_Value := ACPI_Service.Namespace.Make_Audit (ACPI_Service.Namespace.Empty, 0, 0) with Ghost;
    procedure Reset_Fixture (Count : Natural) is
       Accepted : Boolean;
    begin

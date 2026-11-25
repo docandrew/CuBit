@@ -29,7 +29,7 @@ procedure Service_Tests is
    end Reset_Fixture;
    Result : Install_Status;
    Data : Firmware_Tables.Bytes (1 .. 42) := [others => 0];
-   Before : Values.Audit_Value;
+   Before : Values.Audit_Value := Namespace.Make_Audit (Namespace.Empty, 0, 0);
    Checks : Natural := 0;
    procedure Check (OK : Boolean) is
    begin
@@ -353,7 +353,7 @@ begin
       S : State (Max_Tables, Max_Total_Bytes, Max_Table_Bytes, Load_Capacity => Max_Tables, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
       Region, Field, Node : Namespace.Node_ID;
       Bound : Namespace.Bind_Status;
-      Prior : Values.Audit_Value;
+      Prior : Values.Audit_Value := Namespace.Make_Audit (Namespace.Empty, 0, 0);
    begin
       Install (S, 1, DSDT, Named_Table (0, 0), Result);
       Check (Result = Installed);

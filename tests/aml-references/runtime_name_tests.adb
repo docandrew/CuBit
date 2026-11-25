@@ -19,7 +19,7 @@ procedure Runtime_Name_Tests is
    OK : Boolean;
    L : Load_Status;
    R : Execution_Result;
-   Prior : NS.State;
+   Prior : NS.State := NS.Empty;
    ID : AML_Objects.Object_ID;
    Alloc : AML_Objects.Allocation_Status;
    Checks : Natural := 0;

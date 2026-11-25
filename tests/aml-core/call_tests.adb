@@ -62,7 +62,7 @@ procedure Call_Tests is
      Method_Data ("SER0", 8, [16#A4#,1]) &
      Method_Data ("SCAL", 0, [16#A4#] & Enc ("SER0")) &
      Method_Data ("BADC", 0, [16#A4#] & Enc ("IDEN"));
-   Tree : NS.State;
+   Tree : NS.State := NS.Empty;
    Loaded : NS.Load_Status;
    R, Fuel_Result : Execution_Result;
    procedure Check (OK : Boolean) is
@@ -126,7 +126,7 @@ begin
       declare
          Temp : constant Bytes := Method_Data ("TEMP", 0, [16#A4#, 16#0A#, 42]);
          Root_Temp : constant Bytes := Method_Data ("\TEMP", 0, [16#A4#, 16#0A#, 7]);
-         Before : NS.State;
+         Before : NS.State := NS.Empty_Like (Tree);
       begin
          Tree := NS.Empty;
          NS.Load_Names (Tree,
@@ -170,7 +170,7 @@ begin
          Check (R.Status = Returned and then R.Value = 9 and then NS.Cleanup_Frame (Tree, Before));
       end;
       declare
-         Before : NS.State;
+         Before : NS.State := NS.Empty_Like (Tree);
          N : String (1 .. 4) := "M000";
          Partial : constant Bytes := [16#14#, 7, 16#54#, 16#45#, 16#4D#, 16#50#, 0];
       begin
@@ -205,7 +205,7 @@ begin
          end loop;
       end;
       declare
-         Before : NS.State;
+         Before : NS.State := NS.Empty_Like (Tree);
       begin
          Tree := NS.Empty;
          NS.Load_Names (Tree, [8] & Enc ("NUM0") & [16#0A#, 9] &

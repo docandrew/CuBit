@@ -39,7 +39,7 @@ procedure Table_Session_Tests is
      Method_Data ("FAIL", 16#29#, [16#78#, 1, 16#68#, 0, 0, 16#A4#, 1]) &
      Method_Data ("VOID", 16#28#, [16#A3#]) &
      Method_Data ("WRIT", 16#28#, [16#70#, 1] & Enc ("FLD0") & [16#A4#, 0]);
-   Tree : NS.State;
+   Tree : NS.State := NS.Empty;
    Loaded : NS.Load_Status;
    Bound : NS.Bind_Status;
    Region_Node, Field_Node : NS.Node_ID;

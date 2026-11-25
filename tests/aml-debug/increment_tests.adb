@@ -118,7 +118,7 @@ begin
       declare
          Foreign : Arena;
          Ref : AML_References.Reference;
-         Before : NS.State with Ghost;
+         Before : NS.State := NS.Empty with Ghost;
          Prior_Invocation : AML_Frame_Handles.Invocation_Serial;
       begin
          Reset (Foreign, OK); Check (OK);

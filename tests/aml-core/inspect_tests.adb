@@ -30,7 +30,7 @@ procedure Inspect_Tests is
         [16#5B#,16#82#,5] & Enc ("DEV0") &
         [16#14#,7] & Enc ("NEVR") & [7,16#FE#] &
         [16#14#,Byte (6 + Body_Data'Length)] & Enc ("READ") & [0] & Body_Data;
-      Tree, Before : NS.State;
+      Tree, Before : NS.State := NS.Empty;
       Loaded : NS.Load_Status;
       Node : NS.Node_ID;
       R : Execution_Result;

@@ -24,7 +24,7 @@ procedure Metadata_Snapshot_Tests is
    Store, Prior : O.State := O.Empty;
    Device, Thermal, Live, Ref, Package_ID, Copy_ID, Garbage, Fresh : O.Object_ID;
    Status : O.Allocation_Status;
-   Witness : O.Copies.Copy_Witness;
+   Witness : O.Copies.Copy_Witness := O.Copies.Empty_Witness (Store.Object_Capacity);
    Owner, Other : AML_Identity.Identity;
    Success : Boolean;
    Named : R.Reference;

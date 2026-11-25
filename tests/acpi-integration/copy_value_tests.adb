@@ -20,7 +20,7 @@ procedure Copy_Value_Tests is
    Allocation : AML_Objects.Allocation_Status;
    Status : Execution_Status;
    OK : Boolean;
-   Before : Test_Namespace.State;
+   Before : Test_Namespace.State := Test_Namespace.Empty;
    Result : Execution_Result;
    Checks : Natural := 0;
    procedure Check (Condition : Boolean) is

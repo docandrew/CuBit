@@ -25,7 +25,7 @@ procedure Event_Collection_Tests is
    Accessed : C.Access_Status;
    Loaded : N.Load_Status;
    Initialized : N.Initialization_Report;
-   Before : C.Audit_Value;
+   Before : C.Audit_Value := N.Make_Audit (N.Empty, 0, 0);
    Metrics : C.Collection_Statistics;
    Saved, Stale : C.Value_Handle;
    Description : C.Value_Description;

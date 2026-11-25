@@ -18,7 +18,7 @@ procedure Namespace_Capacity_Tests is
       use type NS.Load_Status;
       use type NS.State;
       Tree : NS.State := NS.Empty;
-      Saved : NS.State;
+      Saved : NS.State := NS.Empty_Like (Tree);
       Status : NS.Load_Status;
    begin
       NS.Load_Names (Tree, Method ("FULL", Body_Of_Size (Pool)), Bits_64, Status);
@@ -37,7 +37,7 @@ procedure Namespace_Capacity_Tests is
       use type NS.Load_Status;
       use type NS.State;
       Tree : NS.State := NS.Empty;
-      Saved : NS.State;
+      Saved : NS.State := NS.Empty_Like (Tree);
       Status : NS.Load_Status;
       R : Execution_Result;
    begin
@@ -65,7 +65,7 @@ procedure Namespace_Capacity_Tests is
       use type NS.Load_Status;
       use type NS.State;
       Tree : NS.State := NS.Empty;
-      Saved : NS.State;
+      Saved : NS.State := NS.Empty_Like (Tree);
       Status : NS.Load_Status;
       R : Execution_Result;
       Code : constant Bytes := Method ("TEMP", [16#A4#,1]) & [16#A4#,1];

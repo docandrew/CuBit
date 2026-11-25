@@ -10,7 +10,7 @@ procedure Package_Reference_Tests is
  S : Allocation_Status;
  RS : Result_Status;
  R, Alias_R, Bad : Reference;
- Before : State;
+ Before : State := AML_Objects.Empty_Like (Store);
  Checks : Natural := 0;
  procedure Check (C : Boolean) is
  begin if not C then raise Program_Error with Natural'Image (Checks); end if;

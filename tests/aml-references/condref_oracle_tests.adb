@@ -15,7 +15,7 @@ procedure Condref_Oracle_Tests is
    OK : Boolean;
    L : Load_Status;
    R : Execution_Result;
-   Prior : NS.State;
+   Prior : NS.State := NS.Empty;
    Node : Node_ID;
    Bound_Status : Bind_Status;
    Checks : Natural := 0;

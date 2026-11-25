@@ -20,7 +20,7 @@ procedure Alias_Namespace_Tests is
    use type Tiny.State;
    use type Tiny.Load_Status;
    Tree : State := Empty;
-   Prior : State;
+   Prior : State := Empty_Like (Tree);
    Loaded : Load_Status;
    Checks : Natural := 0;
    Original, Alias_Node, Chain_Node, Device_Node, Device_Alias : Node_ID;
@@ -111,7 +111,7 @@ begin
    Reject_Atomically (Alias_Of (Enc ("NUM0"), Bytes'[16#5C#, 0]), "destination rooted NullName rejected");
    declare
       Small : Tiny.State := Tiny.Empty;
-      Saved : Tiny.State;
+      Saved : Tiny.State := Tiny.Empty_Like (Small);
       Outcome : Tiny.Load_Status;
    begin
       Tiny.Load_Names (Small, Base & Alias_Of ("NUM0", "ALS0"), Bits_64, Outcome);

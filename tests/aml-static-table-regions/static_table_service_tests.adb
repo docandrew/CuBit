@@ -180,7 +180,7 @@ begin
    end;
    declare
       Service : aliased State (8, 32_768, 8_192, Load_Capacity => 8, Value_Object_Capacity => AML_Objects.Max_Objects, Value_Byte_Capacity => AML_Objects.Max_Bytes, Value_Element_Capacity => AML_Objects.Max_Elements);
-      Before : Values.Audit_Value;
+      Before : Values.Audit_Value := Namespace.Make_Audit (Namespace.Empty, 0, 0);
       Prior_Metrics : Metrics;
       Prior_Pending : Natural;
       Installed_Result : Install_Status;

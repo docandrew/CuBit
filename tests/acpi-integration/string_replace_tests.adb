@@ -4,7 +4,7 @@ with AML_Objects; use AML_Objects;
 procedure String_Replace_Tests is
    use type AML_Decode.Bytes;
    S : State := Empty;
-   Prior : State;
+   Prior : State := Empty_Like (S);
    ID, Other, Link, Dummy : Object_ID;
    Alloc : Allocation_Status;
    Result : String_Update_Status;

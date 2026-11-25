@@ -10,7 +10,7 @@ procedure Buffer_Data_Tests is
    use type O.Object_Kind;
    use type Integer_Value;
    use type Byte;
-   Store, Prior : O.State;
+   Store, Prior : O.State := O.Empty;
    ID, Child, Sentinel : O.Object_ID;
    Consumed : Natural;
    Status : AML_Decode.Status;

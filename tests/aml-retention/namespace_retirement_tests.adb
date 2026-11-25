@@ -18,7 +18,7 @@ procedure Namespace_Retirement_Tests is
    Width : Integer_Width;
    Calls, Checks : Natural := 0;
    S : Execution_Status;
-   Prior : NS.State;
+   Prior : NS.State := NS.Empty;
    subtype Sample_Index is Positive range 1 .. 5;
    type Name_List is array (Sample_Index) of String (1 .. 4);
    Names : constant Name_List := ["INT0", "STR0", "BUF0", "PKG0", "REF0"];
@@ -72,7 +72,7 @@ procedure Namespace_Retirement_Tests is
       OK : Boolean;
       Found : Lookup_Result;
       Owner : Node_ID;
-      Before : NS.State;
+      Before : NS.State := NS.Empty;
    begin
       Value := 0; Available := True; Calls := Calls + 1;
       if Calls <= 2 then

@@ -29,8 +29,8 @@ procedure Binding_Tests is
       Data : constant Bytes := [8] & Enc ("VAL0") & [16#0A#,33] &
         [8] & Enc ("STR0") & [16#0D#,65,0] &
         [16#5B#,16#82#,Byte (5 + Contents'Length)] & Enc ("DEV0") & Contents;
-      Tree : NS.State;
-      Before : NS.State;
+      Tree : NS.State := NS.Empty;
+      Before : NS.State := NS.Empty_Like (Tree);
       Loaded : NS.Load_Status;
       Node : NS.Node_ID;
       R : Execution_Result;

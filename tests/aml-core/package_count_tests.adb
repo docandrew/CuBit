@@ -8,7 +8,7 @@ procedure Package_Count_Tests is
    package NS renames Namespace_Instance;
    use NS;
    use type Integer_Value;
-   Tree : State;
+   Tree : State := Empty;
    Loaded : Load_Status;
    Checks : Natural := 0;
    procedure Check (OK : Boolean) is

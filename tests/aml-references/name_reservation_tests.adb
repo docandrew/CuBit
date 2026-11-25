@@ -35,7 +35,7 @@ procedure Name_Reservation_Tests is
    S : Execution_Status := No_Return;
    V : Datum;
    R : Execution_Result;
-   Prior : NS.State;
+   Prior : NS.State := NS.Empty;
    Checks : Natural := 0;
    Round : Positive := 1;
    function Path (Name : String) return AML_Names.Name_Result is

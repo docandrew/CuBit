@@ -24,7 +24,7 @@ procedure Core_Capacity_Tests is
    Status : S.Values.Access_Status;
    Result : S.Values.Result;
    Root : S.Values.Value_Handle;
-   Before : S.Values.Audit_Value;
+   Before : S.Values.Audit_Value := S.Namespace.Make_Audit (S.Namespace.Empty, 0, 0);
    Checks : Natural := 0;
    procedure Check (OK : Boolean; Why : String) is
    begin Checks := Checks + 1; if not OK then raise Program_Error with Why; end if; end Check;

@@ -11,7 +11,7 @@ procedure Buffer_Tests is
    Data : Bytes (7 .. 1100) := [others => 0];
    R : Buffer_Result;
    Tree : NS.State := NS.Empty;
-   Before : NS.State;
+   Before : NS.State := NS.Empty_Like (Tree);
    Loaded : NS.Load_Status;
    Checks : Natural := 0;
    Extent : Natural;

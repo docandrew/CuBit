@@ -29,7 +29,7 @@ procedure Metadata_Root_Owner_Tests is
    Object : O.Object_ID;
    Live_Root, Captured, Same_Owner_Metadata, Buffer_Value, Package_Value, Copy, Current : E.Datum;
    Old_B_Capture, Fresh_B_Capture : E.Datum;
-   Before : N.State;
+   Before : N.State := N.Empty;
    Usage_Before : O.Usage;
    Pins_Before : N.Owned.Retained_Root_Count;
    Child : N.Node_ID;

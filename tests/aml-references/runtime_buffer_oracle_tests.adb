@@ -14,7 +14,7 @@ procedure Runtime_Buffer_Oracle_Tests is
    OK : Boolean;
    Loaded_Status : Load_Status;
    R : Execution_Result;
-   Before : NS.State;
+   Before : NS.State := NS.Empty;
    Checks : Natural := 0;
    Mark : constant Bytes := [77,65,82,75];
    Helper_Name : constant Bytes := [67,78,84,48];

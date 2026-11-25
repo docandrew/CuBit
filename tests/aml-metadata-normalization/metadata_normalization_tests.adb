@@ -38,7 +38,7 @@ procedure Metadata_Normalization_Tests is
    Retain_Status : N.Owned.Retain_Status;
    Release_Status : N.Owned.Release_Status;
    Live_Pin, Captured_Pin, Rejected_Pin : N.Owned.Retained_Root;
-   Before : N.State;
+   Before : N.State := N.Empty;
    Usage_Before : O.Usage;
    Pins_Before : N.Owned.Retained_Root_Count;
    Description : E.Reference_Metadata;

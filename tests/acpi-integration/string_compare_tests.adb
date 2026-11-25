@@ -15,7 +15,7 @@ procedure String_Compare_Tests is
    L, R, Bad, Foreign : Datum;
    H : AML_References.Object_Handle;
    V : Integer_Value;
-   Prior : State;
+   Prior : State := Empty;
    Checks : Natural := 0;
    Fixture : constant Bytes :=
      [16#08#,65,65,65,65,16#0D#,97,98,99,0,

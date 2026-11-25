@@ -15,7 +15,7 @@ procedure Mixed_Owner_Tests is
    Text, Buffer_Value, Bad, Foreign, Package_Value : Datum;
    H : AML_References.Object_Handle;
    V : Integer_Value;
-   Prior : State;
+   Prior : State := Empty;
    ID : AML_Objects.Object_ID;
    Allocation : AML_Objects.Allocation_Status;
    Checks : Natural := 0;

@@ -43,7 +43,7 @@ procedure Slot_Copy_Tests is
    Prior : AML_Objects.Usage;
    type Pool_Mode is (Object_Pool, Byte_Pool);
    Pool : Pool_Mode := Object_Pool;
-   Saved_Values : AML_Objects.State;
+   Saved_Values : AML_Objects.State := AML_Objects.Empty;
    procedure Capture (Value : out Integer_Value; Available : out Boolean) is
       ID : AML_Objects.Object_ID;
       Status : AML_Objects.Allocation_Status;

@@ -37,7 +37,7 @@ procedure Arg_Update_Tests is
                   Mark_Value : Integer_Value := 0; Budget : Natural := 100;
                   Helper_Flags : Byte := 0;
                   Helper : Bytes := [16#A4#,0]; Preserve_Namespace : Boolean := False) is
-      Before : NS.State;
+      Before : NS.State := NS.Empty;
    begin
       Reset (A, OK); Check (OK);
       Load (A, Bytes'(1=>16#08#) & NVAR & Bytes'(1=>1)
@@ -130,7 +130,7 @@ begin
       declare
          Foreign : Arena;
          Ref : AML_References.Reference;
-         Before : NS.State with Ghost;
+         Before : NS.State := NS.Empty with Ghost;
          Prior_Invocation : AML_Frame_Handles.Invocation_Serial;
       begin
          Reset (Foreign, OK); Check (OK);

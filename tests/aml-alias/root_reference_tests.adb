@@ -17,7 +17,7 @@ procedure Root_Reference_Tests is
    Success : Boolean;
    A, B : N.Owned.Arena;
    Owned_Root, Fresh_Root : AML_References.Reference;
-   Before : N.State;
+   Before : N.State := N.Empty;
    Write_Status : AML_Execute.Execution_Status;
    Value : AML_Execute.Datum;
    Checks : Natural := 0;

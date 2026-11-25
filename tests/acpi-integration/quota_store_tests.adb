@@ -15,7 +15,7 @@ procedure Quota_Store_Tests is
    Allocation : AML_Objects.Allocation_Status;
    ID : AML_Objects.Object_ID;
    R : Execution_Result;
-   Prior : State;
+   Prior : State := Empty;
    Args : constant Value_Arguments := [others => (Integer_Datum, 42, AML_Decode.Ordinary_Integer)];
    Checks : Natural := 0;
    Names : constant Bytes :=

@@ -22,7 +22,7 @@ procedure Named_Store_Owner_Tests is
    Handle : AML_References.Object_Handle;
    Target, Alias_Ref, Foreign_Target : Reference;
    Ref_Status : AML_Objects.Byte_References.Result_Status;
-   Prior : State;
+   Prior : State := Empty;
    Octet : Byte;
    Saved_ID, Unused : AML_Objects.Object_ID;
    Allocated : AML_Objects.Allocation_Status;

@@ -18,7 +18,7 @@ procedure Event_Declaration_Tests is
    Outcome : E.Execution_Result;
    Loaded : N.Load_Status;
    Good : Boolean;
-   Before : N.State;
+   Before : N.State := N.Empty;
    Checks : Natural := 0;
    Event_Opcode : constant Bytes := [16#5B#, 16#02#];
    function Declare_Event (Name : String) return Bytes is (Event_Opcode & Enc (Name));
