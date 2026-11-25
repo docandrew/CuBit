@@ -11992,6 +11992,19 @@ if [ "$TEST_NAME" = "bench-input" ]; then
         exit 1
     fi
 fi
+# SCHED-001 urgency: beside CPU-bound peers (--load-workers 1..4), keys still
+# reach the app within 1 ms in all but INPUT_LOADED_MISSES_PERCENT of the
+# samples of each scenario. Input driver, Desktop and app each run their part
+# in an urgent turn; before urgency, each waited for a 1.5 ms slice.
+INPUT_LOADED_MISSES_PERCENT=10
+if [ "$TEST_NAME" = "bench-input" ] && [ "$BENCH_LOAD" = 1 ]; then
+    if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" \
+        --load-workers "$LOAD_WORKERS" \
+        --max-input-misses-percent "$INPUT_LOADED_MISSES_PERCENT" >/dev/null; then
+        echo "headless: loaded input missed 1 ms too often (see $SERIAL_LOG)" >&2
+        exit 1
+    fi
+fi
 
 if [ "$TEST_NAME" = "bench-scheduler" ]; then
     if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" \

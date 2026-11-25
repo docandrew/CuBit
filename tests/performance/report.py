@@ -260,6 +260,9 @@ def main():
     parser.add_argument("--require-shadow-budgets", action="store_true")
     parser.add_argument("--require-input-target", action="store_true",
                         help="Require observed <1ms p99 in every input scenario; not an SLA guarantee")
+    parser.add_argument("--max-input-misses-percent", type=float,
+                        help="Require each input scenario to miss 1 ms in at most this percent of "
+                             "its samples, with the load covering the measurement (SCHED-001 urgency)")
     args = parser.parse_args()
     result = serial_report(args.serial.read_text(errors="replace"), args.load_workers)
     if args.wav:
@@ -281,6 +284,20 @@ def main():
         sys.exit("shadow budget observation missing, faulty, or disagrees with execution accounting")
     if args.require_input_target and not result["input_observed_target_met"]:
         sys.exit("input benchmark invalid or observed p99 target missed")
+    if args.max_input_misses_percent is not None:
+        load_ok = "BENCH-LOAD: START" not in args.serial.read_text(errors="replace") or \
+            result["load_covers_measurement"] is True
+        worst = max((item["misses_1ms"] * 100.0 / item["delivered"] for item in result["inputs"]),
+                    default=100.0)
+        for item in result["inputs"]:
+            print("INPUT-MISSES: scenario=%s misses_1ms=%d delivered=%d percent=%.1f limit=%.1f" % (
+                item["scenario"], item["misses_1ms"], item["delivered"],
+                item["misses_1ms"] * 100.0 / item["delivered"], args.max_input_misses_percent),
+                file=sys.stderr)
+        if not result["input_integrity_valid"] or not load_ok or \
+                worst > args.max_input_misses_percent:
+            sys.exit("input benchmark invalid, or a scenario missed 1 ms in %.1f%% of its samples "
+                     "(limit %.1f%%)" % (worst, args.max_input_misses_percent))
 
 
 if __name__ == "__main__":
