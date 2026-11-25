@@ -100,12 +100,15 @@ def main():
             probe = re.findall(r'^PROBE outcome=(\S+) access=(\S+)', text, re.M)
             recovery = re.findall(r'^RECOVERY count=\s*(\d+) kind=(\S+)', text, re.M)
             model = re.findall(r'^MODEL reads=\s*(\d+) writes=\s*(\d+)', text, re.M)
-            matched = (len(module) == len(probe) == len(recovery) == len(model) == 1
-                       and module[0][0] == 'MODULES_COMPLETED' and int(module[0][2]) == 3
-                       and probe[0] == (case['probe'], 'AVAILABLE')
+            expected_probe = [] if case['probe'] is None else [(case['probe'], 'AVAILABLE')]
+            matched = (len(module) == len(recovery) == len(model) == 1
+                       and module[0][0] == case.get('module', 'MODULES_COMPLETED')
+                       and int(module[0][2]) == case.get('completed', 3)
+                       and ('failure' not in case or module[0][1] == case['failure'])
+                       and probe == expected_probe
                        and int(model[0][1]) == case['writes']
                        and int(recovery[0][0]) == case['recoveries']
-                       and (case['recoveries'] == 0 or recovery[0][1] == 'MODULE_FIELD_REGION_UNKNOWN_NAME'))
+                       and (case['recoveries'] == 0 or recovery[0][1] == case.get('recovery_kind', 'MODULE_FIELD_REGION_UNKNOWN_NAME')))
             rows.append(dict(case=case['name'], matched=matched, expected=case, module=module,
                              probe=probe, recovery=recovery, model=model,
                              log=str(output/(case['name']+'.log')), log_sha256=sha(output/(case['name']+'.log'))))

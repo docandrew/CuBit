@@ -286,6 +286,96 @@
       "probe": "RETURNED",
       "writes": 0,
       "recoveries": 2
+    },
+    {
+      "name": "uninitialized_literal",
+      "tables": [
+        "unit_42a20365bd76.asl",
+        "unit_de1b07f239b3.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 3,
+      "recovery_kind": "MODULE_UNINITIALIZED_NUMERIC"
+    },
+    {
+      "name": "uninitialized_right_effect",
+      "tables": [
+        "unit_027af641379c.asl",
+        "unit_d99b093a7e77.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 1,
+      "recoveries": 3,
+      "recovery_kind": "MODULE_UNINITIALIZED_NUMERIC"
+    },
+    {
+      "name": "uninitialized_left_effect",
+      "tables": [
+        "unit_027af641379c.asl",
+        "unit_073aaf8a3ed3.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 1,
+      "recoveries": 3,
+      "recovery_kind": "MODULE_UNINITIALIZED_NUMERIC"
+    },
+    {
+      "name": "uninitialized_nested_stores",
+      "tables": [
+        "unit_027af641379c.asl",
+        "unit_6524826052dc.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 1,
+      "recoveries": 3,
+      "recovery_kind": "MODULE_UNINITIALIZED_NUMERIC"
+    },
+    {
+      "name": "uninitialized_method_propagates",
+      "tables": [
+        "unit_17469f600879.asl",
+        "unit_09486e82ef61.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "UNINITIALIZED",
+      "writes": 0,
+      "recoveries": 2,
+      "recovery_kind": "MODULE_FIELD_REGION_UNKNOWN_NAME"
+    },
+    {
+      "name": "uninitialized_right_fatal",
+      "tables": [
+        "unit_2616746e034c.asl",
+        "unit_d99b093a7e77.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": null,
+      "writes": 1,
+      "recoveries": 2,
+      "recovery_kind": "MODULE_FIELD_REGION_UNKNOWN_NAME",
+      "module": "MODULE_REJECTED",
+      "failure": "FATAL_REQUESTED",
+      "completed": 1
+    },
+    {
+      "name": "uninitialized_incomplete_outer",
+      "tables": [
+        "unit_027af641379c.asl",
+        "unit_6919194d260d.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": null,
+      "writes": 1,
+      "recoveries": 2,
+      "recovery_kind": "MODULE_FIELD_REGION_UNKNOWN_NAME",
+      "module": "MODULE_REJECTED",
+      "failure": "UNINITIALIZED",
+      "completed": 1
     }
   ],
   "units": {
@@ -308,6 +398,13 @@
     "unit_b9d441f2f62e.asl": "b9d441f2f62ec5a2440e0679eb131343aec1c942289f2d5a7006a912e6546a00",
     "unit_f99a0188f83a.asl": "f99a0188f83a315bca10d124af364a8c5a440ea527cc754383c00b67732003c8",
     "unit_68dc62c4079e.asl": "68dc62c4079ed4e8de8778eb57b92c0fc7ab18d367378daa64f19cf02990dcf6",
-    "unit_30233bfe72c6.asl": "30233bfe72c6acc456784659b2149f538733ab852f895966bc9fc7be9ba49054"
+    "unit_30233bfe72c6.asl": "30233bfe72c6acc456784659b2149f538733ab852f895966bc9fc7be9ba49054",
+    "unit_de1b07f239b3.asl": "de1b07f239b3131dc87fe02edca9b81ef5f063c8d6ff7bcdd411a85f46c11129",
+    "unit_d99b093a7e77.asl": "d99b093a7e7773e0c1ce7f326c0aaaa6f720a9c9b61be7d34e6f8872ba82c41f",
+    "unit_073aaf8a3ed3.asl": "073aaf8a3ed31a24717dd147c141e2a406f0180527669d9d7f24e478bcfbb2aa",
+    "unit_6919194d260d.asl": "6919194d260d2be22fcbacc0440bde2d2426ac5ae525eb0e58b16b77a50cf3e7",
+    "unit_2616746e034c.asl": "2616746e034c3f66c37a1d674ba2cb21c86f3100b394a45def680ba4777716c5",
+    "unit_6524826052dc.asl": "6524826052dcc8a23c04d0d807e2be7a87ad4272d3767e5c3545955410d36123",
+    "unit_17469f600879.asl": "17469f600879f07c38f32507f4db9040a733d0f7e0d799ff9d4e101f155b5f70"
   }
 }

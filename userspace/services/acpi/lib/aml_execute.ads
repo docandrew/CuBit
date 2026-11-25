@@ -660,6 +660,21 @@ package AML_Execute with SPARK_Mode, Pure is
          Token : AML_Declaration_Contexts.Operation_Region_Reservation;
          Flags : AML_Decode.Byte; Field_Entries : AML_Decode.Bytes;
          Resume_Offset, Charged : Natural; Continue_Execution : in out Boolean) is null;
+      -- Numeric source operands are collected before resolving their values.
+      -- An owner may defer an invalid field as an authenticated Name_Member;
+      -- no value, storage, field geometry or I/O permission is synthesized.
+      -- Defaults retain the failure. This callback is read-only and cannot
+      -- allocate, collect, reenter AML, or change namespace lifetime.
+      with procedure Defer_Uninitialized_Field
+        (Environment : Context; Lease : AML_Declaration_Contexts.Lease;
+         Scope : Natural; Path : AML_Names.Name_Result;
+         Ref : in out AML_References.Reference; Accepted : in out Boolean) is null;
+      -- Offered only for a fully consumed numeric statement, after ordinary
+      -- expression cleanup. Incomplete/resource/fatal failures never qualify.
+      with procedure Handle_Module_Uninitialized_Error
+        (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease;
+         Scope, Resume_Offset, Charged : Natural;
+         Continue_Execution : in out Boolean) is null;
       -- Context validity is checked around the actual call by Invoke_Delay.
       -- A formal-aspect instantiation triggers GNAT 15.3 decl.cc:479.
       -- Owner-only metadata loading during a restricted bootstrap session.

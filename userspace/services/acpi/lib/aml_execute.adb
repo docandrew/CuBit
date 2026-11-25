@@ -305,7 +305,8 @@ package body AML_Execute with SPARK_Mode is
              Subprogram_Variant => (Decreases => Calls_Left, Decreases => Natural'(3))
       is
       subtype Failure_Status is Execution_Failure;
-      type Resume_Point is (No_Resume_Point, Complete_Divide_Statement);
+      type Resume_Point is (No_Resume_Point, Complete_Divide_Statement,
+         Complete_Uninitialized_Numeric_Statement);
       Failed_Statement : Resume_Point := No_Resume_Point;
       function Failure (Status : Execution_Status; Charged : Natural)
          return Execution_Result is
@@ -902,11 +903,11 @@ package body AML_Execute with SPARK_Mode is
          end record;
          Stack : array (Positive range 1 .. Max_Expression_Depth) of Frame;
          Depth : Natural range 0 .. Max_Expression_Depth := 0;
-         procedure Locate_Divide_Statement_End is
+         procedure Locate_Numeric_Statement_End (Point : Resume_Point) is
             Cursor : Natural := Offset;
             Remaining : Natural := Depth;
          begin
-            -- The failing Divide has already consumed both of its targets.
+            -- The failing numeric operation has consumed its operands and targets.
             -- Only enclosing Stores still awaiting their source are admitted.
             -- Parse their simple named destinations without looking up or
             -- evaluating them. Never replay an expression to find its end.
@@ -931,8 +932,8 @@ package body AML_Execute with SPARK_Mode is
                Remaining := Remaining - 1;
             end loop;
             Offset := Cursor;
-            Failed_Statement := Complete_Divide_Statement;
-         end Locate_Divide_Statement_End;
+            Failed_Statement := Point;
+         end Locate_Numeric_Statement_End;
          procedure Collect_Targets
            (Count : in out Target_Number; Total : Target_Number;
             Targets : in out Target_List; Waiting : out Boolean;
@@ -2794,6 +2795,22 @@ package body AML_Execute with SPARK_Mode is
                      Publish_Live;
                      Lookup (Environment, Input, Current_Lexical_Scope, Path, Width, Evaluate_Binding, Bound);
                   end if;
+                  if Module_Root and then Bound.Status = Failed_Binding
+                    and then Bound.Failure = Uninitialized and then Depth > 0
+                    and then (AML_Integers.Supported (Stack (Depth).Op)
+                      or else AML_Logic.Supported (Stack (Depth).Op))
+                  then
+                     declare
+                        Ref : AML_References.Reference := AML_References.No_Reference;
+                        Accepted : Boolean := False;
+                     begin
+                        Defer_Uninitialized_Field (Environment, Active_Lease,
+                          Current_Lexical_Scope, Path, Ref, Accepted);
+                        if Accepted and then AML_References.Kind (Ref) = AML_References.Name_Member then
+                           Bound := (Reference_Binding, Ref);
+                        end if;
+                     end;
+                  end if;
                   case Bound.Status is
                      when Failed_Binding => S := (if Bound.Failure in Execution_Failure then Bound.Failure else Unsupported_Value); return;
                      when Reference_Binding => V := (Value_Kind => Reference_Datum, Ref => Bound.Ref);
@@ -3932,7 +3949,10 @@ package body AML_Execute with SPARK_Mode is
                   if S /= Returned then
                      if S = Division_By_Zero and then Module_Root
                        and then Stack (Depth).Op = Divide_Op and then Stack (Depth).Targets_Ready
-                     then Locate_Divide_Statement_End;
+                     then Locate_Numeric_Statement_End (Complete_Divide_Statement);
+                     elsif S = Uninitialized and then Module_Root
+                       and then Stack (Depth).Targets_Ready
+                     then Locate_Numeric_Statement_End (Complete_Uninitialized_Numeric_Statement);
                      end if;
                      return;
                   end if;
@@ -5086,6 +5106,13 @@ package body AML_Execute with SPARK_Mode is
                         if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
                         Handle_Module_Divide_Error (Environment, Active_Lease, Offset,
                           Charged, Continue_Execution);
+                     elsif Module_Root and then State = Uninitialized
+                       and then Failed_Statement = Complete_Uninitialized_Numeric_Statement
+                       and then not Pending_Fatal.Present
+                     then
+                        if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
+                        Handle_Module_Uninitialized_Error (Environment, Active_Lease,
+                          Current_Lexical_Scope, Offset, Charged, Continue_Execution);
                      end if;
                      if not Continue_Execution then Body_Result := Failure (State, Charged); return; end if;
                   end;
@@ -5103,6 +5130,13 @@ package body AML_Execute with SPARK_Mode is
                         if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
                         Handle_Module_Divide_Error (Environment, Active_Lease, Offset,
                           Charged, Continue_Execution);
+                     elsif Module_Root and then State = Uninitialized
+                       and then Failed_Statement = Complete_Uninitialized_Numeric_Statement
+                       and then not Pending_Fatal.Present
+                     then
+                        if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
+                        Handle_Module_Uninitialized_Error (Environment, Active_Lease,
+                          Current_Lexical_Scope, Offset, Charged, Continue_Execution);
                      end if;
                      if not Continue_Execution then Body_Result := Failure (State, Charged); return; end if;
                   end;

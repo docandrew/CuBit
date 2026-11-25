@@ -57,3 +57,17 @@ stops the run. These are hosted synthetic regressions, not native hardware,
 the full ACPICA suite, performance parity, or SPARK proof coverage. The private
 candidate still stops later in the T580's same table with Uninitialized; full
 T580 initialization is not established by this packet.
+
+
+Numeric uninitialized-field regressions add independently authored fixtures for
+literal and effectful siblings, both source positions, nested simple Stores,
+method failure propagation, and a Fatal sibling. They check exact synthetic
+write counts and typed module recovery. Invalid fields are never healed or
+replaced with zero. A numeric failure inside an incomplete outer Add remains a
+hard refusal: this deliberately checks the current framing boundary and is not
+a claim of complete ACPICA error-continuation compatibility for that shape.
+Reference observations and their exact tool/AML identities are in the delivery
+receipt. Runtime limits remain12s/24GiB address space/128MiB stack; no hardware
+address is dereferenced. These are hosted tests, not whole-interpreter proof.
+
+Deferral is module-only. An invalid field in a method aborts before later source operands; the method guard requires zero SIDF writes, matching the preserved ACPICA observation.

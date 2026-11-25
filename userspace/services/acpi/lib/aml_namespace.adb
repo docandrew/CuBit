@@ -4300,7 +4300,7 @@ package body Owned with SPARK_Mode is
       and then A.Tree.Items (Node_ID (AML_References.Named_Node (R))).Alive
       and then A.Tree.Items (Node_ID (AML_References.Named_Node (R))).Incarnation = AML_References.Incarnation (R)
       and then A.Tree.Items (Node_ID (AML_References.Named_Node (R))).Object_Type in
-        Integer_Object | String_Object | Buffer_Object | Package_Object | Reference_Object | Metadata_Value_Object | Uninitialized_Name_Object | Buffer_Field_Object);
+        Integer_Object | String_Object | Buffer_Object | Package_Object | Reference_Object | Metadata_Value_Object | Uninitialized_Name_Object | Buffer_Field_Object | Uninitialized_Field_Object);
    procedure Resolve_Name_Member (A : Arena; R : Reference; Value : out AML_Execute.Datum;
      Status : out AML_Execute.Execution_Status) is
       Ignored : AML_Execute.Scalar_Provenance;
@@ -8520,6 +8520,51 @@ package body Owned with SPARK_Mode is
            AML_Declaration_Contexts.Lexical_Top (Execute_Declaration_Lease_Store, Lease))
          and then Natural (AML_Declaration_Contexts.Node_Of
            (AML_Declaration_Contexts.Lexical_Top (Execute_Declaration_Lease_Store, Lease))) = Scope);
+      procedure Defer_Invalid_Field
+        (E : Arena; Lease : AML_Declaration_Contexts.Lease;
+         Scope : Natural; Path : AML_Names.Name_Result;
+         Ref : in out Reference; Accepted : in out Boolean)
+      is
+         Located : Lookup_Result;
+      begin
+         Ref := AML_References.No_Reference;
+         Accepted := False;
+         if E.Token /= Entry_Token
+           or else not AML_Declaration_Contexts.Is_Module (Lease)
+           or else not Execute_Declaration_Lexical_Valid (E, Lease, Scope)
+           or else Scope > E.Tree.Used
+         then return; end if;
+         Located := Resolve_Object (E.Tree.all, Node_ID (Scope), Path);
+         if Located.Status /= Found or else Located.Node = Root
+           or else E.Tree.Items (Located.Node).Object_Type /= Uninitialized_Field_Object
+         then return; end if;
+         Ref := AML_References.Bind_Name_Member (E.Token,
+           AML_References.Node_Position (Located.Node),
+           E.Tree.Items (Located.Node).Incarnation, AML_References.No_Object_Handle);
+         Accepted := Name_Member_Matches (E, Ref);
+      end Defer_Invalid_Field;
+      procedure Recover_Module_Uninitialized
+        (E : in out Arena; Lease : AML_Declaration_Contexts.Lease;
+         Scope, Resume_Offset, Charged : Natural;
+         Continue_Execution : in out Boolean)
+      is
+      begin
+         Continue_Execution := False;
+         if not Module_Recovery_Enabled or else E.Token /= Entry_Token
+           or else not AML_Declaration_Contexts.Is_Module (Lease)
+           or else not Execute_Declaration_Lexical_Valid (E, Lease, Scope)
+           or else not Has_Definition (E.Tree.Current_Definition)
+           or else E.Field_Uncertain.Present or else Charged > Budget
+         then return; end if;
+         if E.Recovered_Module_Errors.Count < Module_Error_Count'Last then
+            E.Recovered_Module_Errors.Count := E.Recovered_Module_Errors.Count + 1;
+         end if;
+         E.Recovered_Module_Errors.Kind := Module_Uninitialized_Numeric;
+         E.Recovered_Module_Errors.Definition := E.Tree.Current_Definition;
+         E.Recovered_Module_Errors.Resume_Offset := Resume_Offset;
+         E.Recovered_Module_Errors.Charged := Charged;
+         Continue_Execution := True;
+      end Recover_Module_Uninitialized;
       procedure Recover_Module_Name
         (E : in out Arena; Lease : AML_Declaration_Contexts.Lease;
          Scope : Natural; Site : AML_Execute.Module_Name_Error_Site;
@@ -10203,6 +10248,8 @@ package body Owned with SPARK_Mode is
          Finish_Load_Table => Finish_Load,
          Handle_Module_Divide_Error => Recover_Module_Divide,
          Handle_Module_Name_Error => Recover_Module_Name,
+         Defer_Uninitialized_Field => Defer_Invalid_Field,
+         Handle_Module_Uninitialized_Error => Recover_Module_Uninitialized,
          Next_Runtime_Package_Field => Next_Runtime_Package_Field,
          Complete_Runtime_Package_Field => Complete_Runtime_Package_Field,
          Read_Field_Context => PCI_Read,
