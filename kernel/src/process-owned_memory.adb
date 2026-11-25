@@ -8,9 +8,7 @@ with TLB_Shootdown;
 with System.Storage_Elements; use System.Storage_Elements;
 with Spinlocks;
 with Process_Pool;
-with Time;
-with x86;
-with System.Machine_Code;
+with Interrupt_Windows;
 with Virtmem.Regions;
 package body Process.Owned_Memory is
    package Policy renames Owned_Reservation_Policy;
@@ -89,27 +87,33 @@ package body Process.Owned_Memory is
    end Physical_Conflict;
 
    -- The run's frames are still a contiguous segment of the owner's frame
-   -- list, in descending address order, and each is what its page maps.
-   function Inventory_Valid (Item : Entry_Record) return Boolean is
+   -- list, in descending address order, and the Pages pages below its
+   -- highest Skip each map their frame; when they reach its lowest page,
+   -- the segment ends at Last_Node. A step checks only the pages it
+   -- changes or frees, so a step of a long release, decommit or access
+   -- change costs its own pages, not the whole run's.
+   function Inventory_Valid (Item : Entry_Record; Skip, Pages : Natural) return Boolean is
       Node : FrameLists.NodePtr := proctab(Item.Owner).frames.head;
       Position : Natural := 0;
    begin
-      if Item.Kind /= Run or Item.Count = 0 or Item.First_Node = null then return False; end if;
+      if Item.Kind /= Run or Item.Count = 0 or Item.First_Node = null
+        or Pages = 0 or Skip > Item.Count or Pages > Item.Count - Skip
+      then return False; end if;
       for I in 1 .. proctab(Item.Owner).frames.length loop
          if Node = Item.First_Node then Position := I; exit; end if;
          Node := Node.next;
       end loop;
       if Position = 0 or else Item.Count > proctab(Item.Owner).frames.length - Position + 1
       then return False; end if;
-      for I in 0 .. Item.Count - 1 loop
-         if not Virtmem.Regions.Matches
+      for I in 0 .. Skip + Pages - 1 loop
+         if I >= Skip and then not Virtmem.Regions.Matches
            (addrtab(proctab(Item.Owner).pgTable),
             Integer_Address (Item.Base) + Integer_Address (Item.Count - I - 1) * 4096,
             Virtmem.PFN (Node.element / 4096)) then return False; end if;
          if I = Item.Count - 1 then return Node = Item.Last_Node; end if;
          Node := Node.next;
       end loop;
-      return False;
+      return True;
    end Inventory_Valid;
 
    -- Policy.Run_Split in the frame-list's terms (a run's Count).
@@ -177,7 +181,7 @@ package body Process.Owned_Memory is
       Success := False;
       if Cut.Dropped = 0 or else Cut.Lower + Cut.Dropped + Cut.Upper /= Item.Count
         or else (Cut.Lower > 0 and Cut.Upper > 0 and Spare = 0)
-        or else not Inventory_Valid (Item)
+        or else not Inventory_Valid (Item, Cut.Upper, Cut.Dropped)
       then
          Item.Status := Quarantined;
          return;
@@ -426,9 +430,11 @@ package body Process.Owned_Memory is
          Changed : Boolean;
       begin
          OK := True;
+         -- Highest page first, as the frame list runs; done below the range.
          for I in reverse 0 .. Item.Count - 1 loop
             Address_Of_Page := Item.Base + Bytes_Of (I);
-            if Address_Of_Page >= Address and then Address_Of_Page - Address < Bytes then
+            exit when Address_Of_Page < Address;
+            if Address_Of_Page - Address < Bytes then
                Virtmem.Regions.Set_Access
                  (addrtab(proctab(PID).pgTable), Integer_Address (Address_Of_Page),
                   Virtmem.PFN (Node.element / 4096), Access_Value, Changed);
@@ -446,7 +452,14 @@ package body Process.Owned_Memory is
          begin
             if Is_Run_Of (Item, Region_Index) and then Cuts (Item, Address, Bytes) then
                if Item.Status /= Live then return; end if;
-               if not Inventory_Valid (Item) then Item.Status := Quarantined; return; end if;
+               declare
+                  Cut : constant Run_Cut := Cut_Of (Item, Address, Bytes);
+               begin
+                  if not Inventory_Valid (Item, Cut.Upper, Cut.Dropped) then
+                     Item.Status := Quarantined;
+                     return;
+                  end if;
+               end;
                Covered := Covered + Cut_Of (Item, Address, Bytes).Dropped;
             end if;
          end;
@@ -471,57 +484,146 @@ package body Process.Owned_Memory is
       end loop;
    end Set_Access;
 
+   -- Before a decommit or access change goes in steps, under the locks:
+   -- what the one-step call checks before it changes anything, over the
+   -- whole range. Every run that cuts the range is live, and for an access
+   -- change (Covered) the runs back every page of it. Steps then fail only
+   -- when another thread of the process changed the range meanwhile.
+   function Range_Acceptable (PID : ProcessID; Region_Index : Slot; Address, Bytes : Unsigned_64;
+                              Covered : Boolean) return Boolean is
+      Backed : Natural := 0;
+   begin
+      for I of Records.Iterate (Tables(PID)'Access) loop
+         declare
+            Item : Entry_Record renames Entries(PID, I).Value.all;
+         begin
+            if Is_Run_Of (Item, Region_Index) and then Cuts (Item, Address, Bytes) then
+               if Item.Status /= Live then return False; end if;
+               Backed := Backed + Cut_Of (Item, Address, Bytes).Dropped;
+            end if;
+         end;
+      end loop;
+      return not Covered or else Bytes_Of (Backed) = Bytes;
+   end Range_Acceptable;
+
    procedure Change_Range (PID : ProcessID; Address, Bytes : Unsigned_64;
                            Operation : Owned_Reservation_Policy.Range_Operation;
                            Success : out Boolean) is
-      Region_Index : Natural := 0;
+      -- A commit whose frames another CPU took between Prepare and the
+      -- locks gives the locks back and prepares again, up to this many
+      -- times; the last attempt goes ahead and may launder or grow under
+      -- the locks (one batch, one region), so the commit still succeeds.
+      Commit_Attempts : constant := 3;
+      -- A decommit or access change of a larger range goes in steps of
+      -- this many pages (16 MiB), highest first, each under the locks with
+      -- one TLB round (two for an access change), the locks given back and
+      -- an interrupt window opened between steps. A step that fails ends
+      -- the call; the steps before it stay done. A step also walks the
+      -- run's frame list down to its pages (Inventory_Valid, Set_Access),
+      -- so fewer, larger steps: a 256 MiB access change held grantLock
+      -- 2-4 ms in one piece; in 512-page steps it took six times longer
+      -- (mostly TLB rounds); in these, each step holds it about 0.5 ms.
+      Pages_Per_Range_Step : constant := 4096;
+      Step_Bytes : constant Unsigned_64 := Pages_Per_Range_Step * Page;
+      Frames : constant Natural :=
+        (if Bytes <= Policy.Maximum_Commit_Bytes then Natural (Bytes / Page) else 0);
+      Is_Commit : constant Boolean := Policy."=" (Operation, Policy.Commit);
+      Short : Boolean := False;
+
+      -- One locked step over [From, From + Length); First_Step: the first
+      -- of several, which checks the whole range first (Range_Acceptable).
+      procedure Locked_Attempt (From, Length : Unsigned_64; Last_Attempt : Boolean;
+                                First_Step : Boolean := False) is
+         Region_Index : Natural := 0;
+      begin
+         Short := False;
+         Success := False;
+         -- Exclude grant acquisition throughout mapping changes and rollback.
+         Spinlocks.enterCriticalSection (grantLock);
+         Lock;
+         lockAddressSpace (PID);
+         if proctab(PID).admitted then
+            for I of Records.Iterate (Tables(PID)'Access) loop
+               declare
+                  Item : Entry_Record renames Entries(PID, I).Value.all;
+               begin
+                  if Item.Status = Live and then Item.Kind = Region and then Item.Owner = PID
+                    and then Item.Generation = generationOf (PID)
+                    and then Policy.Within (Item.Base, Item.Bytes, From, Length)
+                  then Region_Index := I; exit; end if;
+               end;
+            end loop;
+         end if;
+         if Region_Index /= 0 and then First_Step
+           and then not (Policy.Within (Entries(PID, Region_Index).Base, Entries(PID, Region_Index).Bytes,
+                                        Address, Bytes)
+                         and then Range_Acceptable (PID, Region_Index, Address, Bytes,
+                                                    Covered => not Policy."=" (Operation, Policy.Decommit)))
+         then
+            Region_Index := 0;
+         end if;
+         if Region_Index /= 0 then
+            case Operation is
+               when Policy.Commit =>
+                  if not Policy.Commit_Admitted
+                    (Entries(PID, Region_Index).Base, Entries(PID, Region_Index).Bytes, From, Length)
+                  then
+                     null;
+                  elsif not Last_Attempt and then BuddyAllocator.poolCleanFrames < Frames then
+                     -- Laundering or growing here would zero and run a
+                     -- TLB round under grantLock, which every CPU's
+                     -- waits take: try again after preparing unlocked.
+                     Short := True;
+                  else
+                     Commit (PID, Region_Index, From, Length, Success);
+                  end if;
+               when Policy.Decommit =>
+                  Decommit (PID, Region_Index, From, Length, Success);
+               when Policy.Access_Operation =>
+                  Set_Access (PID, Region_Index, From, Length, Policy.Access_Of (Operation), Success);
+            end case;
+         end if;
+         unlockAddressSpace (PID);
+         Unlock;
+         Spinlocks.exitCriticalSection (grantLock);
+      end Locked_Attempt;
+
+      Top, Step_Base : Unsigned_64;
    begin
       Success := False;
       if PID = NO_PROCESS then return; end if;
-      -- A commit's frames are made clean first, with no lock held: the
-      -- laundering and any pool growth (zeroing, TLB rounds) stay out of
-      -- the locked step below, which every CPU's wait path contends for.
-      if Policy."=" (Operation, Policy.Commit) and then Bytes <= Policy.Maximum_Commit_Bytes then
-         Process_Pool.Prepare (Natural (Bytes / Page));
-      end if;
-      -- Exclude grant acquisition throughout mapping changes and rollback.
-      Spinlocks.enterCriticalSection (grantLock);
-      Lock;
-      lockAddressSpace (PID);
-      if proctab(PID).admitted then
-         for I of Records.Iterate (Tables(PID)'Access) loop
-            declare
-               Item : Entry_Record renames Entries(PID, I).Value.all;
-            begin
-               if Item.Status = Live and then Item.Kind = Region and then Item.Owner = PID
-                 and then Item.Generation = generationOf (PID)
-                 and then Policy.Within (Item.Base, Item.Bytes, Address, Bytes)
-               then Region_Index := I; exit; end if;
-            end;
+      if Is_Commit then
+         for Attempt in 1 .. Commit_Attempts loop
+            -- A commit's frames are made clean first, with no lock held:
+            -- the laundering and any pool growth (zeroing, TLB rounds)
+            -- stay out of the locked step, which every CPU's wait path
+            -- contends for.
+            if Frames > 0 then
+               Process_Pool.Prepare (Frames);
+            end if;
+            Locked_Attempt (Address, Bytes, Last_Attempt => Attempt = Commit_Attempts);
+            exit when not Short;
+            Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
+         end loop;
+      elsif Bytes <= Step_Bytes or else Address > Unsigned_64'Last - Bytes
+        or else Address mod Page /= 0 or else Bytes mod Page /= 0
+      then
+         -- One step (or a range the locked step refuses as it is).
+         Locked_Attempt (Address, Bytes, Last_Attempt => True);
+      else
+         Top := Address + Bytes;
+         loop
+            Step_Base := (if Top - Address > Step_Bytes then Top - Step_Bytes else Address);
+            Locked_Attempt (Step_Base, Top - Step_Base, Last_Attempt => True,
+                            First_Step => Top = Address + Bytes);
+            exit when not Success or else Step_Base = Address;
+            Top := Step_Base;
+            Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
          end loop;
       end if;
-      if Region_Index /= 0 then
-         case Operation is
-            when Policy.Commit =>
-               if Policy.Commit_Admitted
-                 (Entries(PID, Region_Index).Base, Entries(PID, Region_Index).Bytes, Address, Bytes)
-               then
-                  Commit (PID, Region_Index, Address, Bytes, Success);
-               end if;
-            when Policy.Decommit =>
-               Decommit (PID, Region_Index, Address, Bytes, Success);
-            when Policy.Access_Operation =>
-               Set_Access (PID, Region_Index, Address, Bytes, Policy.Access_Of (Operation), Success);
-         end case;
-      end if;
-      unlockAddressSpace (PID);
-      Unlock;
-      Spinlocks.exitCriticalSection (grantLock);
    end Change_Range;
 
    procedure Release (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean) is
-      -- How long a lock break lets the spinning waiters in.
-      Break_Us : constant := 2;
       Region_Index : Natural := 0;
       Reclaimed : Boolean;
 
@@ -631,29 +733,18 @@ package body Process.Owned_Memory is
 
       -- Give the locks back and take them again: every CPU's wait and
       -- grant paths take grantLock, so one locked step is the longest a
-      -- release holds them up. The spinlocks are not fair: retaken at
-      -- once, this CPU wins them again before a waiter that is spinning on
-      -- them sees them free (hda.drv and mixer.svc waited 12-14 ms in their
-      -- waits behind a release, 2026-11), so the break lasts Break_Us.
-      -- The break is also this CPU's interrupt window: a system call runs
-      -- with interrupts off (the FMASK MSR), so without it a 64 MiB
-      -- release held off this CPU's interrupts, the audio controller's and
-      -- the timer's, for its whole ~30 ms (MEM-006). As in Vm_Objects' run
-      -- loop, an interrupt taken here may switch this thread away and back,
-      -- perhaps to another CPU: no lock and nothing per-CPU is held across
-      -- it, and Still_Ours checks the region again after.
+      -- release holds them up. The break is an interrupt window of
+      -- Interrupt_Windows.Lock_Break_Us (spinning waiters take the locks;
+      -- without the window a 64 MiB release held off this CPU's
+      -- interrupts, the audio controller's and the timer's, for its whole
+      -- ~30 ms, MEM-006). The thread may be switched away and back there,
+      -- so Still_Ours checks the region again after.
       -- False when another thread releasing the same region finished it
       -- meanwhile.
       function Break return Boolean is
-         Until_TSC : Unsigned_64;
       begin
          Drop_Locks;
-         x86.sti;
-         Until_TSC := x86.rdtsc + Break_Us * Time.tscPerDuration;
-         while x86.rdtsc < Until_TSC loop
-            System.Machine_Code.Asm ("pause", Volatile => True);
-         end loop;
-         x86.cli;
+         Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
          Take_Locks;
          return Still_Ours;
       end Break;

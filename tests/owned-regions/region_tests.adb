@@ -86,13 +86,16 @@ procedure Region_Tests is
       end loop;
    end Prepend;
 
-   --  The kernel's Inventory_Valid: Count nodes from First, descending.
-   function Inventory_Valid (W : World; R : Run_Record) return Boolean is
+   --  The kernel's Inventory_Valid: the Pages pages below the run's
+   --  highest Skip, nodes from First, descending (0, Count: the whole run).
+   function Inventory_Valid (W : World; R : Run_Record; Skip, Pages : Natural) return Boolean is
    begin
-      if R.Count = 0 or else R.First = 0 or else R.First + R.Count - 1 > W.Length then
+      if R.Count = 0 or else R.First = 0 or else R.First + R.Count - 1 > W.Length
+        or else Pages = 0 or else Skip > R.Count or else Pages > R.Count - Skip
+      then
          return False;
       end if;
-      for I in 0 .. R.Count - 1 loop
+      for I in Skip .. Skip + Pages - 1 loop
          if W.List (R.First + I) /= Page_Of (R.Base) + R.Count - 1 - I
            or else not W.Present (Page_Of (R.Base) + R.Count - 1 - I)
          then
@@ -119,7 +122,8 @@ procedure Region_Tests is
       Drop_At : constant Natural := Old.First + Cut.Upper;
       Drop_Page : constant Natural := Page_Of (Old.Base) + Cut.Lower;
    begin
-      Check (Cut.Lower + Cut.Dropped + Cut.Upper = Old.Count and then Inventory_Valid (W, Old),
+      Check (Cut.Lower + Cut.Dropped + Cut.Upper = Old.Count
+             and then Inventory_Valid (W, Old, Cut.Upper, Cut.Dropped),
              "drop of a valid run");
       for P in Drop_Page .. Drop_Page + Cut.Dropped - 1 loop
          W.Present (P) := False;
@@ -158,9 +162,9 @@ procedure Region_Tests is
    function Cuts (R : Run_Record; Address, Bytes : Unsigned_64) return Boolean is
      (R.Used and then R.Count > 0 and then Overlaps (R.Base, Page_Count (R.Count), Address, Bytes));
 
-   --  The kernel's Change_Range on one region, after Decode.
-   function Change (W : in out World; Address, Bytes : Unsigned_64;
-                    Operation : Range_Operation) return Boolean is
+   --  One locked step of the kernel's Change_Range on one region.
+   function Change_Step (W : in out World; Address, Bytes : Unsigned_64;
+                         Operation : Range_Operation) return Boolean is
    begin
       if not Within (Region_Base, Region_Bytes (W), Address, Bytes) then
          return False;
@@ -218,7 +222,9 @@ procedure Region_Tests is
             begin
                for R of W.Runs loop
                   if Cuts (R, Address, Bytes) then
-                     Check (Inventory_Valid (W, R), "access over a valid run");
+                     Check (Inventory_Valid (W, R, Cut_Of (R, Address, Bytes).Upper,
+                                             Cut_Of (R, Address, Bytes).Dropped),
+                            "access over a valid run");
                      Covered := Covered + Cut_Of (R, Address, Bytes).Dropped;
                   end if;
                end loop;
@@ -230,6 +236,45 @@ procedure Region_Tests is
                return True;
             end;
       end case;
+   end Change_Step;
+
+   --  The kernel's Change_Range: a decommit or access change of more than
+   --  Step_Pages pages goes in steps, highest first, after a check of the
+   --  whole range (Range_Acceptable). The kernel's step is 512 pages; the
+   --  model's is small so that its regions take several steps.
+   Step_Pages : constant := 3;
+   function Change (W : in out World; Address, Bytes : Unsigned_64;
+                    Operation : Range_Operation) return Boolean is
+      Step_Bytes : constant Unsigned_64 := Step_Pages * Page_Bytes;
+      Top, Step_Base : Unsigned_64;
+      Covered : Natural := 0;
+   begin
+      if Operation = Commit or else Bytes <= Step_Bytes or else Address > Unsigned_64'Last - Bytes
+        or else Address mod Page_Bytes /= 0 or else Bytes mod Page_Bytes /= 0
+      then
+         return Change_Step (W, Address, Bytes, Operation);
+      end if;
+      if not Within (Region_Base, Region_Bytes (W), Address, Bytes) then
+         return False;
+      end if;
+      if Operation /= Decommit then
+         for R of W.Runs loop
+            if Cuts (R, Address, Bytes) then
+               Covered := Covered + Cut_Of (R, Address, Bytes).Dropped;
+            end if;
+         end loop;
+         if Unsigned_64 (Covered) * Page_Bytes /= Bytes then return False; end if;
+      end if;
+      Top := Address + Bytes;
+      loop
+         Step_Base := (if Top - Address > Step_Bytes then Top - Step_Bytes else Address);
+         if not Change_Step (W, Step_Base, Top - Step_Base, Operation) then
+            return False;
+         end if;
+         exit when Step_Base = Address;
+         Top := Step_Base;
+      end loop;
+      return True;
    end Change;
 
    --  The oracle's answer, and its effect when the call succeeds.
@@ -282,7 +327,7 @@ procedure Region_Tests is
       for R of W.Runs loop
          if R.Used then
             Check (R.Count > 0, What & ": no empty run");
-            Check (Inventory_Valid (W, R), What & ": run inventory");
+            Check (Inventory_Valid (W, R, 0, R.Count), What & ": run inventory");
             for P in Page_Of (R.Base) .. Page_Of (R.Base) + R.Count - 1 loop
                Check (not Covered (P), What & ": runs disjoint (no double mapping)");
                Covered (P) := True;
