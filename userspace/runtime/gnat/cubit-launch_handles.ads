@@ -142,6 +142,12 @@ package CuBit.Launch_Handles with Pure, SPARK_Mode is
    with Pre  => Is_Operation_Label (Label),
         Post => Label_Of (To_Operation'Result) = Label;
 
+   --  OP_LAUNCH's REPLY_OK through a Launch badge (procmgr's
+   --  answerLaunched): (0) the child's identity, (1) the rights word of
+   --  its launch handle, (2) the handle's issuance outcome (Done, Capacity,
+   --  or Not_Accepted when the request accepted no capability).
+   Launched_Reply_Words : constant := 3;
+
    Single_Word_Request : constant := 1;
    Empty_Request       : constant := 0;
 

@@ -137,6 +137,8 @@ with Desktop_Time_Zone_Setting;
 with Time_Zones;
 with Desktop_Launch;
 with Desktop_Launch_Notice;
+with Desktop_Launch_Request;
+with CCL.Configurations;
 with Desktop_Notifications;
 with Desktop_Task_Groups;
 with Desktop_Surface_Limits;
@@ -399,6 +401,15 @@ procedure main is
    --  a failure to start is posted to the Deskbar's notification centre.
    launchWatch : Desktop_Launch_Notice.Watch_Table;
    launchInputAnnounced : Boolean := False;
+   --  When the pending launch was submitted (monotonic ms), and the
+   --  launches Desktop stopped waiting for (Desktop_Launch_Request).
+   launchSubmittedMs : Unsigned_64 := 0;
+   launchStale : Desktop_Launch_Request.Stale_Tokens;
+   --  procmgr may park a launch up to a provider's ready deadline: Desktop
+   --  must wait longer than that before it stops waiting.
+   pragma Compile_Time_Error
+     (Desktop_Launch_Request.Answer_Limit_Ms <= CCL.Configurations.MAX_READY_DEADLINE_MS,
+      "Desktop_Launch_Request.Answer_Limit_Ms must exceed procmgr's longest park");
    doomPid : Process_ID := No_Process;
    psBufAddr : System.Address := System.Null_Address;
 
@@ -3747,29 +3758,91 @@ procedure main is
    procedure postLaunchNotice
      (Notice : Desktop_Launch_Notice.Notice; Process : Process_ID);
 
-   procedure collectLaunch (C : CompletionEntry) is
-      M : Message renames C.msg;
-      --  One word; or, for Request_Withheld, the withheld request's label
-      --  after it (CuBit.Launch_Arguments.Encode_Label).
-      Envelope_OK : constant Boolean := C.valid and C.status = COMPLETION_OK and
-        M.tag.protocol = 0 and M.tag.reserved = 0 and
-        ((M.tag.length = 1 and M.words (1) = 0 and M.words (2) = 0 and M.words (3) = 0) or else
-         (M.tag.length = 4 and M.tag.label = REPLY_ERR and
-          M.words (0) = CuBit.Launch_Arguments.Launch_Failure'Enum_Rep
-                          (CuBit.Launch_Arguments.Request_Withheld)));
-      --  The reply names the new process by its full identity (KERN-003).
-      Success : constant Boolean := Envelope_OK and M.tag.label = REPLY_OK and
-        Is_Process (From_Word (M.words (0)));
-      --  The error reply names why (CuBit.Launch_Arguments.Launch_Failure).
-      Rejected : constant Boolean := Envelope_OK and M.tag.label = REPLY_ERR and
-        CuBit.Launch_Arguments.Is_Failure (M.words (0));
+   --  Desktop's own launch request failed for Name: log it and post it
+   --  (Desktop_Launch_Notice.Show_Problem).
+   procedure postLaunchProblem
+     (Name : String; Why : Desktop_Launch_Notice.Problem; Other : String := "")
+   is
+      Problem : Desktop_Launch_Notice.Notice;
    begin
-      CR.Complete (launchRequest, C.token, Success or Rejected);
-      if not CR.Available (launchRequest) then
-         debugPrint ("desktop: launch completion uncertain; buffer retained" & LF);
+      Desktop_Launch_Notice.Show_Problem (Problem, Name, Why, Other);
+      postLaunchNotice (Problem, No_Process);
+   end postLaunchProblem;
+
+   --  Stop waiting for the launch request (BUG-008): procmgr's hold on the
+   --  request's grant is revoked and that page is never written again (the
+   --  next launch makes a new one, ensureSpawnGrant), and when an answer
+   --  can still come (Answerable), its token is remembered so the answer is
+   --  dropped. Released is False only when too many unanswered launches
+   --  are remembered already; the request then stays as it is.
+   procedure abandonLaunch (Answerable : Boolean; Released : out Boolean) is
+      package LQ renames Desktop_Launch_Request;
+      Token : constant Unsigned_64 := CR.Token (launchRequest);
+      Fresh : CR.State;
+      Revoked : Boolean := False;
+   begin
+      if Answerable and then Token /= 0 then
+         if LQ.Full (launchStale) then
+            debugPrint ("desktop: launch token=" & Decimal (Token) &
+              " kept: too many unanswered launches" & LF);
+            Released := False;
+            return;
+         end if;
+         LQ.Remember (launchStale, Token);
+      end if;
+      if spawnGrantReady then
+         MG.Revoke (spawnGrant, Revoked);
+         spawnGrantReady := False;
+      end if;
+      launchRequest := Fresh;
+      launchSubmittedMs := 0;
+      debugPrint ("desktop: launch token=" & Decimal (Token) & " released; grant revoked=" &
+        (if Revoked then "yes" else "pending") & LF);
+      Released := True;
+   end abandonLaunch;
+
+   --  The pending launch had no answer within its bound: release it and
+   --  say so. Called when a launch is asked for and from the main loop.
+   procedure checkLaunchDeadline is
+      Released : Boolean;
+   begin
+      if CR.Busy (launchRequest) and then
+        Desktop_Launch_Request.Overdue (launchSubmittedMs, nowMs)
+      then
+         debugPrint ("desktop: launch unanswered token=" & Decimal (CR.Token (launchRequest)) &
+           " after" & Natural'Image (Desktop_Launch_Request.Answer_Limit_Ms) & " ms" & LF);
+         abandonLaunch (Answerable => True, Released => Released);
+         if Released then
+            postLaunchProblem (launchLabel (1 .. launchLabelLength), Desktop_Launch_Notice.Unanswered);
+         end if;
+      end if;
+   end checkLaunchDeadline;
+
+   procedure collectLaunch (C : CompletionEntry) is
+      package LQ renames Desktop_Launch_Request;
+      M : Message renames C.msg;
+      use type LQ.Reply_Kind;
+      Kind : constant LQ.Reply_Kind :=
+        LQ.Classify
+          (Delivered => C.valid and C.status = COMPLETION_OK and
+                        M.tag.protocol = 0 and M.tag.reserved = 0,
+           Label => M.tag.label, Length => M.tag.length,
+           Words => [M.words (0), M.words (1), M.words (2), M.words (3)]);
+      Released : Boolean;
+   begin
+      CR.Complete (launchRequest, C.token, Kind /= LQ.Unreadable);
+      if Kind = LQ.Unreadable then
+         --  It may have started; nothing of this request is reused.
+         debugPrint ("desktop: launch reply unreadable token=" & Decimal (C.token) &
+           " status=" & Decimal (C.status) &
+           " label=" & Decimal (Unsigned_64 (M.tag.label)) &
+           " length=" & Decimal (Unsigned_64 (M.tag.length)) & LF);
+         abandonLaunch (Answerable => False, Released => Released);
+         postLaunchProblem (launchLabel (1 .. launchLabelLength), Desktop_Launch_Notice.Unreadable);
          return;
       end if;
-      if Success then
+      launchSubmittedMs := 0;
+      if Kind = LQ.Started then
          -- Menu refresh may reorder entries while the request is pending.
          -- Match the captured program name, not the old menu index.
          for I in 1 .. launchMenu.Count loop
@@ -3782,7 +3855,7 @@ procedure main is
            (launchWatch, From_Word (M.words (0)), launchLabel (1 .. launchLabelLength));
          debugPrint ("desktop: launch complete token=" & Decimal (C.token) &
            " pid=" & Decimal (M.words (0)) & LF);
-      elsif Rejected then
+      else
          debugPrint ("desktop: launch rejected token=" & Decimal (C.token) & LF);
          declare
             Refusal : Desktop_Launch_Notice.Notice;
@@ -3792,10 +3865,16 @@ procedure main is
                CuBit.Launch_Arguments.Failure_Of (M.words (0)));
             postLaunchNotice (Refusal, No_Process);
          end;
-      else
-         debugPrint ("desktop: launch reply malformed token=" & Decimal (C.token) & LF);
       end if;
    end collectLaunch;
+
+   --  The answer to a launch Desktop stopped waiting for: dropped.
+   procedure collectStaleLaunch (C : CompletionEntry) is
+   begin
+      Desktop_Launch_Request.Forget (launchStale, C.token);
+      debugPrint ("desktop: late answer to a released launch token=" & Decimal (C.token) &
+        " label=" & Decimal (Unsigned_64 (C.msg.tag.label)) & " dropped" & LF);
+   end collectStaleLaunch;
 
    procedure collectPresentations is
       completion : CompletionEntry;
@@ -3813,6 +3892,8 @@ procedure main is
       begin
       if CR.Token (launchRequest) /= 0 and then completion.token = CR.Token (launchRequest) then
          collectLaunch (completion);
+      elsif Desktop_Launch_Request.Contains (launchStale, completion.token) then
+         collectStaleLaunch (completion);
       elsif Desktop_Launch_Refresh.Token /= 0 and then
         completion.token = Desktop_Launch_Refresh.Token
       then
@@ -11609,19 +11690,34 @@ procedure main is
    procedure trySpawnApplication (name : String; label : String) is
       msg : Message := NULL_MESSAGE;
       New_Token : Unsigned_64;
-      Accepted : Boolean;
+      Accepted, Released : Boolean;
       len : Natural := name'Length;
    begin
-      if not CR.Available (launchRequest) then
-         debugPrint ("desktop: launch busy or quarantined" & LF);
+      --  Every launch that does not go out says why (BUG-008).
+      checkLaunchDeadline;
+      if CR.Faulted (launchRequest) then
+         abandonLaunch (Answerable => True, Released => Released);
+      end if;
+      if CR.Busy (launchRequest) then
+         debugPrint ("desktop: launch of " & name & " not sent: token=" &
+           Decimal (CR.Token (launchRequest)) & " has no answer yet" & LF);
+         postLaunchProblem (label, Desktop_Launch_Notice.Still_Starting,
+                            launchLabel (1 .. launchLabelLength));
+         return;
+      elsif not CR.Available (launchRequest) then
+         debugPrint ("desktop: launch of " & name & " not sent: no request free" & LF);
+         postLaunchProblem (label, Desktop_Launch_Notice.Not_Sent);
          return;
       end if;
       if len = 0 or else len > 255 then
+         debugPrint ("desktop: launch not sent: program name length" & Natural'Image (len) & LF);
+         postLaunchProblem (label, Desktop_Launch_Notice.Not_Sent);
          return;
       end if;
 
       ensureSpawnGrant;
       if not spawnGrantReady then
+         postLaunchProblem (label, Desktop_Launch_Notice.Not_Sent);
          return;
       end if;
 
@@ -11655,6 +11751,7 @@ procedure main is
       CR.Begin_Request (launchRequest, New_Token, Accepted);
       if not Accepted then
          debugPrint ("desktop: launch identifiers exhausted" & LF);
+         postLaunchProblem (label, Desktop_Launch_Notice.Not_Sent);
          return;
       end if;
       launchName (1 .. len) := name;
@@ -11664,10 +11761,15 @@ procedure main is
         label (label'First .. label'First + launchLabelLength - 1);
       launchInputAnnounced := False;
       if capSubmit (Desktop_Endpoints.Launch, msg, New_Token) then
-         debugPrint ("desktop: launch submitted token=" & Decimal (New_Token) & LF);
+         launchSubmittedMs := nowMs;
+         debugPrint ("desktop: launch submitted token=" & Decimal (New_Token) &
+           " program=" & name & LF);
       else
-         CR.Quarantine (launchRequest);
-         debugPrint ("desktop: launch submission uncertain; buffer retained" & LF);
+         --  Whether it went out is not known: never reuse its grant, and
+         --  drop an answer if one still comes.
+         debugPrint ("desktop: launch submission uncertain token=" & Decimal (New_Token) & LF);
+         abandonLaunch (Answerable => True, Released => Released);
+         postLaunchProblem (label, Desktop_Launch_Notice.Not_Sent);
       end if;
    end trySpawnApplication;
 
@@ -16190,6 +16292,7 @@ begin
          --  this turn's drawing.
          Rings.Wake;
          phaseMark (Phase_Events);
+         checkLaunchDeadline;
          Desktop_Launch_Refresh.Pump (requestSequence);
 
          -- Count and elapsed-time admission both yield a paint opportunity
@@ -16324,6 +16427,7 @@ begin
                null;
             elsif not framePending and then not cursorPresentPending and then
               nextInputDeadline = 0 and then statusDueMs = 0 and then ringlessReapDueMs = 0 and then
+              not CR.Busy (launchRequest) and then
               Desktop_Clipboard.Next_Deadline (Unsigned_64'Last) = Unsigned_64'Last and then
               DN.Toast_Due (notifications) = DN.Never and then
               not Desktop_Capture.Marked and then
@@ -16362,6 +16466,10 @@ begin
                   if ringlessReapDueMs /= 0 and then
                     (nextDueMs = 0 or else ringlessReapDueMs < nextDueMs)
                   then nextDueMs := ringlessReapDueMs; end if;
+                  --  A launch's answer is waited for only so long.
+                  if CR.Busy (launchRequest) and then
+                    (nextDueMs = 0 or else Desktop_Launch_Request.Due (launchSubmittedMs) < nextDueMs)
+                  then nextDueMs := Desktop_Launch_Request.Due (launchSubmittedMs); end if;
                   --  The memory bar, the open panel's scan refresh and a
                   --  join's address wait (refreshNetwork).
                   if trayDueMs /= 0 and then

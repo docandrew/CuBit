@@ -7,6 +7,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with CuBit.Launch_Failure_Text;
+with Desktop_Launch_Request;
 
 package body Desktop_Launch_Notice with SPARK_Mode is
 
@@ -33,11 +34,26 @@ package body Desktop_Launch_Notice with SPARK_Mode is
       Copy_Name (Name, N.Name, N.Length);
    end Show_Refusal;
 
+   procedure Show_Problem
+     (N : out Notice; Name : String; Why : Problem; Other : String := "")
+   is
+   begin
+      N := (Why => Why, others => <>);
+      Copy_Name (Name, N.Name, N.Length);
+      Copy_Name (Other, N.Other, N.Other_Length);
+   end Show_Problem;
+
+   --  Seconds Desktop waits for procmgr's answer, in words.
+   Limit_Seconds : constant String :=
+     Natural'Image (Desktop_Launch_Request.Answer_Limit_Ms / 1_000);
+
    function Title (N : Notice) return String is
      (Name_Of (N) &
       (case N.Why is
-         when Refused     => " could not start",
-         when Ended_Early => " stopped while starting"));
+         when Refused | Not_Sent    => " could not start",
+         when Ended_Early           => " stopped while starting",
+         when Still_Starting        => " did not start",
+         when Unanswered | Unreadable => " may not have started"));
 
    function Detail (N : Notice) return String is
      (case N.Why is
@@ -49,7 +65,17 @@ package body Desktop_Launch_Notice with SPARK_Mode is
                "It was stopped (crashed or killed) before it opened a window.",
              when CuBit.Child_Exits.Exited =>
                "It exited with code" & N.Ending.Code'Image &
-               " before it opened a window."));
+               " before it opened a window."),
+        when Still_Starting =>
+          (if N.Other_Length = 0 then "Another app is" else N.Other (1 .. N.Other_Length) & " is") &
+          " still starting. Try again in a moment.",
+        when Not_Sent =>
+          "Reason: the Desktop could not send the launch request to procmgr.",
+        when Unanswered =>
+          "procmgr did not answer within" & Limit_Seconds &
+          " seconds. The Desktop stopped waiting; you can launch apps again.",
+        when Unreadable =>
+          "The Desktop could not read procmgr's answer. You can launch apps again.");
 
    procedure Watch
      (T : in out Watch_Table; Process : CuBit.Process_IDs.Process_ID;

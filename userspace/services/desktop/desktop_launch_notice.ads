@@ -7,9 +7,13 @@
 --  launched it: the state behind Desktop's launch notice.
 --
 --  @description
---  Two sources, neither a new call:
+--  Three sources, none a new call:
 --  - procmgr's OP_LAUNCH error reply names a typed reason
 --    (CuBit.Launch_Arguments.Launch_Failure): Show_Refusal.
+--  - Desktop's own launch request (Desktop_Launch_Request) could not be
+--    sent, is still waiting for an earlier launch, went unanswered past its
+--    bound, or was answered in a shape Desktop cannot read: Show_Problem.
+--    A launch is never refused or dropped without one (BUG-008).
 --  - A child procmgr started can still end before it is useful. The kernel
 --    tells its parent (Desktop) asynchronously (CuBit.Child_Exits); Desktop
 --    watches each child it launched until it opens a window (Watch,
@@ -39,7 +43,14 @@ package Desktop_Launch_Notice with SPARK_Mode is
    subtype Name_Length is Natural range 0 .. Maximum_Name;
    subtype Name_Text is String (1 .. Maximum_Name);
 
-   type Cause is (Refused, Ended_Early);
+   type Cause is
+     (Refused,          --  procmgr refused it (Failure says why)
+      Ended_Early,      --  it ended before it opened a window (Ending)
+      Still_Starting,   --  the launch before it (Other) has no answer yet
+      Not_Sent,         --  Desktop could not send the request
+      Unanswered,       --  no answer within Desktop_Launch_Request.Answer_Limit_Ms
+      Unreadable);      --  an answer Desktop cannot read
+   subtype Problem is Cause range Still_Starting .. Unreadable;
 
    type Notice is record
       Name    : Name_Text := [others => ' '];
@@ -48,6 +59,9 @@ package Desktop_Launch_Notice with SPARK_Mode is
       Failure : CuBit.Launch_Arguments.Launch_Failure :=
         CuBit.Launch_Arguments.Spawn_Failed;
       Ending  : CuBit.Child_Exits.Report := (others => <>);
+      --  Still_Starting: the app whose launch is still waiting.
+      Other        : Name_Text := [others => ' '];
+      Other_Length : Name_Length := 0;
    end record;
 
    --  procmgr refused to start Name.
@@ -56,10 +70,17 @@ package Desktop_Launch_Notice with SPARK_Mode is
       Failure : CuBit.Launch_Arguments.Launch_Failure)
      with Post => N.Why = Refused;
 
+   --  Desktop's own launch request failed for Name (Other: the app whose
+   --  launch is in the way, for Still_Starting).
+   procedure Show_Problem
+     (N : out Notice; Name : String; Why : Problem; Other : String := "")
+     with Post => N.Why = Why;
+
    --  The app's name (its menu label).
    function Name_Of (N : Notice) return String is (N.Name (1 .. N.Length));
 
-   --  "Penny could not start" / "Penny stopped while starting".
+   --  "Penny could not start" / "Penny stopped while starting" /
+   --  "Penny may not have started".
    function Title (N : Notice) return String;
 
    --  The reason in plain words.

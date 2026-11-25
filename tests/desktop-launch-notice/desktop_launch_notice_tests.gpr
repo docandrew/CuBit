@@ -1,13 +1,18 @@
---  Hosted tests and proofs for Desktop_Launch_Notice (run.sh).
+--  Hosted tests and proofs for Desktop_Launch_Notice and
+--  Desktop_Launch_Request (run.sh).
 project Desktop_Launch_Notice_Tests is
    Runtime_Src := "../../userspace/runtime/gnat";
    Desktop_Src := "../../userspace/services/desktop";
-   for Source_Dirs use (".", Runtime_Src, Desktop_Src);
+   Shared_Src := "../../shared/capabilities";
+   for Source_Dirs use (".", Runtime_Src, Desktop_Src, Shared_Src);
    for Source_Files use ("cubit.ads", "cubit-launch_arguments.ads",
                          "cubit-launch_arguments.adb",
                          "cubit-launch_failure_text.ads",
                          "cubit-child_exits.ads", "cubit-process_ids.ads",
                          "cubit-process_ids.adb",
+                         "cubit-kernel_abi.ads", "wait_abi.ads",
+                         "cubit-launch_handles.ads",
+                         "desktop_launch_request.ads", "desktop_launch_request.adb",
                          "desktop_launch_notice.ads", "desktop_launch_notice.adb",
                          "main.adb");
    for Object_Dir use "build";

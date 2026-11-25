@@ -6742,7 +6742,8 @@ procedure main is
          Records.Values (Known).Session_Child := True;
       end if;
       issue (Child, dest, Rights, 0, HA.Live, (others => <>), Serial);
-      Answer.tag := (label => REPLY_OK, length => 3, protocol => 0, ipc => <>, reserved => 0);
+      Answer.tag := (label => REPLY_OK, length => LH.Launched_Reply_Words, protocol => 0, ipc => <>,
+                     reserved => 0);
       Answer.words := [To_Word (Child), LH.Word_Of (Rights),
                        LH.Outcome_Word (if Serial = 0 then LH.Capacity else LH.Done), 0];
       if Serial = 0 then
