@@ -1,5 +1,6 @@
 with Ada.Containers.Indefinite_Hashed_Maps;
 with Ada.Containers.Indefinite_Hashed_Sets;
+with Ada.Containers.Indefinite_Ordered_Sets;
 with Ada.Directories;
 with Ada.Exceptions;
 with Ada.Strings.Fixed;
@@ -70,6 +71,23 @@ package body Build_Store is
    --  Entries this process found intact ("<kind directory>/<identity>").
    package Name_Sets is new Ada.Containers.Indefinite_Hashed_Sets (String, Ada.Strings.Hash, "=");
    Verified : Name_Sets.Set;
+
+   package Read_Sets is new Ada.Containers.Indefinite_Ordered_Sets (String);
+   Read_Names : Read_Sets.Set;
+
+   procedure Note_Read (Name : String) is
+   begin
+      Read_Names.Include (Name);
+   end Note_Read;
+
+   function Reads return Name_Vectors.Vector is
+      Result : Name_Vectors.Vector;
+   begin
+      for Name of Read_Names loop
+         Result.Append (Name);
+      end loop;
+      return Result;
+   end Reads;
 
    --  The step locks this process holds, by shape.
    package Claim_Maps is new Ada.Containers.Indefinite_Hashed_Maps
@@ -184,6 +202,7 @@ package body Build_Store is
          raise Store_Error with Name & " is not a regular file";
       end if;
       Build_Timing.Count (Build_Timing.Files_Hashed);
+      Note_Read (Name);
       Storehouse.Hashing.Start (Hash);
       Read_All (Name);
       Storehouse.Hashing.Finish (Hash, Result);
@@ -208,6 +227,7 @@ package body Build_Store is
       Listed : constant Name_Vectors.Vector := Members (Name);
       W : Build_Encoding.Writer;
    begin
+      Note_Read (Name);
       W.Add_Array (3);
       W.Add_Text (Tree_Tag);
       W.Add_Unsigned (Tree_Version);

@@ -357,6 +357,7 @@ package body Build_Ada_Programs is
          Need_Relative (Runtime / File, "source");
          Runtime_Inputs.Append (Build_Store.Composite_Part'
            (To_Unbounded_String (Runtime / File), Regular_File, To_Unbounded_String (Host_Path (Runtime / File))));
+         Build_Store.Note_Read (Source_Root / Runtime / File);
          Ada.Text_IO.Open (Input_File, Ada.Text_IO.In_File, Source_Root / Runtime / File);
          while not Ada.Text_IO.End_Of_File (Input_File) loop
             declare
@@ -391,6 +392,8 @@ package body Build_Ada_Programs is
          Item : Directory_Entry_Type;
       begin
          Need_Relative (Source_Directory, "source directory");
+         --  A unit added to or removed from it changes the build.
+         Build_Store.Note_Read (Host_Path (Source_Directory));
          Start_Search (Search, Host_Path (Source_Directory), "", [Ordinary_File => True, others => False]);
          while More_Entries (Search) loop
             Get_Next_Entry (Search, Item);

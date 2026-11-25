@@ -1220,3 +1220,21 @@ reports windows, turns and kernel calls at each power of two windows from
 make -C kernel netstack && tests/net-bench/build-cubit.sh
 bash tests/headless/run.sh --test bench-net --accel kvm --timeout 240
 ```
+
+## noop-rebuild: a rebuild with nothing changed does nothing (BLD-001)
+
+`make -C kernel world` and `make -C kernel desktop-stage` (everything
+run-desktop does before QEMU starts) twice each, right after a full build:
+no ccl-build step runs, nothing is staged or signed, the initrd, the
+development disks, the ISOs and the prepared desktop disk are not remade,
+and nothing in isodir or those images changes in content or time. The
+scratch desktop disk is still reset to the prepared one. Failed before:
+every component target was phony, so each make re-copied every program
+into isodir/boot, re-signed it and rebuilt the initrd, both disks and the
+ISO (run-desktop also re-made the CuBit libc, DOOM and SameBoy from
+scratch).
+
+```sh
+make -C kernel world
+bash tests/noop-rebuild/run.sh
+```

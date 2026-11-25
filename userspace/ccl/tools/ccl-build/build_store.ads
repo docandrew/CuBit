@@ -145,6 +145,14 @@ package Build_Store is
    procedure Delete_Record (S : Store; Name : String);
 
    package Name_Vectors is new Ada.Containers.Indefinite_Vectors (Positive, String);
+
+   --  The host files and directories this process read, by the names it
+   --  was given them: each file Hash_File hashed (so each Put_File source
+   --  too) and each name passed to Note_Read (a directory listed, a file
+   --  read as text). ccl-build --inputs lists the ones in the checkout,
+   --  so make can tell when a component needs building again (BLD-001).
+   procedure Note_Read (Name : String);
+   function Reads return Name_Vectors.Vector;   --  sorted by bytes
    --  The names in a directory under the root, sorted by bytes ("" if
    --  absent: none).
    function Names (S : Store; Directory : String) return Name_Vectors.Vector;

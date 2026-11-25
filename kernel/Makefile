@@ -126,6 +126,71 @@ print-run-cpu:
 
 all: cubit_kernel iso
 
+# A step make cannot see the inputs of runs every time: FORCE. Its tool is
+# its own up-to-date check, and leaves an unchanged output untouched.
+.PHONY: FORCE
+FORCE:
+
+# ccl_program DIR,PROGRAM,PREREQUISITES (BLD-001): a component ccl-build
+# builds from DIR/component.ccl, staged as isodir/boot/PROGRAM.
+#   - ccl-build runs only when one of the component's inputs changed: each
+#     run writes the files and directories in the checkout it read (ccl-build
+#     --inputs), and build/ccl/PROGRAM.d makes them the prerequisites of
+#     the step's stamp. What it reads outside the checkout is named by the
+#     command line (build/ccl-build.args, rewritten only when it changes:
+#     the toolchains' store paths, the signing directory) and the signing
+#     key, or is a Storehouse entry, which never changes. ccl-build stays
+#     the judge: a step whose inputs are unchanged by content is answered
+#     by the cache, and an output whose bytes are the same is left
+#     untouched, so neither DIR/build/PROGRAM nor anything after it is
+#     redone.
+#   - isodir/boot/PROGRAM is a copy, made again only when DIR/build/PROGRAM
+#     changed. The sign step (SIGN_PROGRAMS) strips and signs it in place.
+#   - PREREQUISITES and the phony tool targets are order-only: built first;
+#     the files they write that ccl-build reads are inputs like any other
+#     (CCL_TOOL_OUTPUTS below).
+# The host signing directory (SIGN-001; see SIGN_PROGRAMS below).
+CUBIT_SIGNING ?= $(or $(XDG_CONFIG_HOME),$(HOME)/.config)/cubit/signing
+CCL_STEP_INPUTS = ../userspace/ccl/build/ccl-build/ccl-build build/ccl-build.args \
+	$(wildcard $(CUBIT_SIGNING)/builder.der $(CUBIT_SIGNING)/builder.key)
+define ccl_program
+build/ccl/$(2).stamp: $$(CCL_STEP_INPUTS) | ccl-build user_runtime ccl-manifest $(3)
+	@mkdir -p build/ccl $(1)/build
+	$$(CCL_BUILD) --inputs build/ccl/$(2).inputs $(1)/component.ccl
+	@{ printf '%s: \\\n' $$@; sed 's|.*|  ../& \\|' build/ccl/$(2).inputs; echo; \
+	  sed 's|.*|../&:|' build/ccl/$(2).inputs; } > build/ccl/$(2).d
+	@touch $$@
+-include build/ccl/$(2).d
+$(1)/build/$(2): build/ccl/$(2).stamp ;
+isodir/boot/$(2): $(1)/build/$(2)
+	cp $$< $$@
+endef
+
+# Built by its script (BLD-001 interim): rebuilt, musl included, only when
+# one of its inputs changed: the libc tree, the runtime and allocator units
+# it compiles, the shared units, and the flake (the compilers, the C++
+# runtime it installs). LIBC_STAMP is touched after a build that succeeded.
+LIBC_STAMP := ../userspace/libc/build/.built
+LIBC_INPUTS := $(shell find ../userspace/libc -path ../userspace/libc/build -prune -o -type f -print) \
+	$(wildcard ../userspace/runtime/gnat/*.ad? ../userspace/runtime/start/* \
+		../userspace/allocator/src/*.ad? ../userspace/allocator/process/*.ad? ../shared/*/*.ad?) \
+	../flake.lock ../flake.nix
+CCL_MANIFEST_TOOL := ../userspace/ccl/build/manifest/ccl-manifest
+
+# stage SOURCE,NAME (BLD-001), for programs a phony target builds: put
+# SOURCE in isodir/boot/NAME only when its bytes differ from the ones staged
+# there last (kept as build/staged/NAME), since the sign step strips and
+# signs the staged copy in place. An unchanged program then keeps its
+# signed file and its time, and nothing that contains it is redone.
+# UNSTAGED is where such recipes write a program before it is staged.
+STAGED := build/staged
+UNSTAGED := build/unstaged
+define stage
+@mkdir -p $(STAGED)
+@if [ -e isodir/boot/$(2) ] && cmp -s $(1) $(STAGED)/$(2); then :; else \
+  echo "stage $(2)"; cp $(1) $(STAGED)/$(2).new && cp $(1) isodir/boot/$(2) && mv $(STAGED)/$(2).new $(STAGED)/$(2); fi
+endef
+
 # Runtime library used by the CuBit Kernel itself (not the runtime used by
 # software running on it!)
 build/libcubit.a:
@@ -697,22 +762,16 @@ prove-timesync:
 
 .PHONY: test-timesync prove-timesync
 .PHONY: network-check test-network-authority prove-network-authority
-network-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/network-check/build
-	$(CCL_BUILD) ../userspace/apps/network-check/component.ccl
-	cp ../userspace/apps/network-check/build/network-check.app isodir/boot/network-check.app
+network-check: isodir/boot/network-check.app
+$(eval $(call ccl_program,../userspace/apps/network-check,network-check.app,))
 
 # The net-link and net-multi headless tests' guests (tests/net-link).
 .PHONY: net-link-check net-multi-check
-net-link-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/net-link-check/build
-	$(CCL_BUILD) ../userspace/apps/net-link-check/component.ccl
-	cp ../userspace/apps/net-link-check/build/net-link-check.app isodir/boot/net-link-check.app
+net-link-check: isodir/boot/net-link-check.app
+$(eval $(call ccl_program,../userspace/apps/net-link-check,net-link-check.app,))
 
-net-multi-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/net-multi-check/build
-	$(CCL_BUILD) ../userspace/apps/net-multi-check/component.ccl
-	cp ../userspace/apps/net-multi-check/build/net-multi-check.app isodir/boot/net-multi-check.app
+net-multi-check: isodir/boot/net-multi-check.app
+$(eval $(call ccl_program,../userspace/apps/net-multi-check,net-multi-check.app,))
 
 test-tcp-session:
 	$(ALR) gprbuild -p -P../tests/tcp-session/tcp_session_tests.gpr
@@ -798,60 +857,130 @@ clean:
 
 # DOOM: doomgeneric on the CuBit libc, platform layer in Ada
 # (userspace/ports/doom).
+# The ccl-build command line as a file, rewritten only when it changes.
+build/ccl-build.args: FORCE
+	@mkdir -p build
+	@printf '%s\n' '$(CCL_BUILD)' > $@.new
+	@if cmp -s $@.new $@; then rm $@.new; else mv $@.new $@; fi
+
+# CCL_TOOL_OUTPUTS: files phony targets write that ccl-build steps read
+# (the user runtime, the C start file, the allocator, the font archive).
+# Each depends on the target that writes it, with an empty recipe, so make
+# runs that target before it compares the file's time with a step's stamp.
+../userspace/runtime/adalib/%: user_runtime ;
+../userspace/runtime/build/%: user_runtime ;
+../userspace/c/build/%: user_runtime ;
+../userspace/allocator/build/%: user_runtime ;
+../userspace/rust/build/font-native/%: ui-fonts-native ;
+
+# gpr_component stamps (BLD-001 interim, until these move onto ccl-build):
+# the programs gprbuild still links run their recipe only when an input
+# changed. tools/gpr_inputs.py writes build/gpr/NAME.d after each run from
+# gprls: the Ada sources of the project and its imports, the other files
+# beside them, and their directories. GPR_STEP_INPUTS are the rest: the
+# runtime and its archive, the C start file and linker script, the font
+# archive, the manifest catalogs and tool, the GNAT configuration, the
+# flake (the compilers, the SPARK crates), and build/gpr-step.args, the -X
+# values and compiler paths, rewritten only when they change.
+NATIVE_GPRLS = $(ALR) gprls $(CUBIT_NATIVE_GPRBUILD_CONFIG) -d -s
+GPR_STEP_VARIABLES := CUBIT_GNAT CUBIT_BINUTILS CUBIT_SPARK_CRATES CBOR_ADA_SRC CUBIT_DISPLAY_TEST_MODE \
+	CUBIT_GPU_TEST_MODE CUBIT_COMPOSITOR CUBIT_COMPOSITOR_TIMING CUBIT_COMPOSITOR_STORAGE CUBIT_DESKTOP_FAULT \
+	CUBIT_INPUT_OVERLAY CUBIT_NVME_IO_PROFILE CUBIT_MESA_BUILD CUBIT_MESA_BUNDLE CUBIT_MESA_SOURCE CUBIT_MESA_CACHE
+GPR_STEP_INPUTS = build/gpr-step.args $(wildcard ../userspace/runtime/adalib/*) ../userspace/c/build/crt0.o \
+	../userspace/c/link.ld $(wildcard ../userspace/rust/build/font-native/libcubit_fonts.a) \
+	$(wildcard ../userspace/ccl/catalogs/*.ccl ../userspace/ccl/interfaces/*) $(CCL_MANIFEST_TOOL) \
+	../userspace/toolchain/gnat-15.cgpr ../flake.lock ../flake.nix
+# Desktop's inputs: what tools/build_desktop_vulkan_compositor.py copies
+# into its clean build tree (the same directories serve the other
+# compositor variants), its builders, and the Mesa bundle teapots' build
+# leaves for it (its inputs.json names the Mesa build by content).
+DESKTOP_SOURCE_DIRECTORIES := $(addprefix ../userspace/,services/desktop lib/compositor lib/display lib/image \
+	lib/theme lib/ui lib/input lib/time ccl/src allocator/src services/display/production runtime/gnat mesa) \
+	$(addprefix ../shared/,time interrupts launch publications capabilities boot)
+DESKTOP_STEP_INPUTS = ../tools/desktop_build_variant.py ../tools/build_vulkan_desktop.py \
+	../tools/build_desktop_vulkan_compositor.py ../tools/build_mesa_desktop.py \
+	../tests/compositor/build-vulkan-affine-shaders.py ../userspace/c/cubit_handles.h \
+	$(shell find $(DESKTOP_SOURCE_DIRECTORIES) -type d -name 'build*' -prune -o -type f -print 2>/dev/null) \
+	$(addprefix ../userspace/runtime/,ada_source_path ada_object_path runtime.xml target_properties) $(TIME_ZONE_SOURCES) \
+	$(wildcard ../userspace/mesa/build/combined/*/bundle/inputs.json)
+build/gpr-step.args: FORCE
+	@mkdir -p build
+	@printf '%s\n' $(foreach v,$(GPR_STEP_VARIABLES),'$(v)=$($(v))') > $@.new
+	@if cmp -s $@.new $@; then rm $@.new; else mv $@.new $@; fi
+
+# For images other tools also write in place (the headless tests write
+# test variants of isodir/boot/initrd.img and cubit_kernel.iso): such a
+# rule also depends on FORCE, and its recipe runs only unless_made TARGET
+# says otherwise (BLD-001). That is true when no prerequisite is newer and
+# TARGET is still the file the rule made: its size, inode and times are
+# those made_record TARGET kept in build/made/ after making it.
+define unless_made
+[ -z "$(filter-out FORCE,$?)" ] && [ -e $(1) ] && \
+  [ "$$(stat -c '%s %i %Y %Z' $(1))" = "$$(cat build/made/$(notdir $(1)) 2>/dev/null)" ]
+endef
+define made_record
+mkdir -p build/made && stat -c '%s %i %Y %Z' $(1) > build/made/$(notdir $(1))
+endef
+
+# Built by a script, not ccl-build yet (BLD-001): a file target over its
+# inputs, so it is rebuilt only when one changed (PORT_INPUTS: the CuBit
+# libc, the runtime and shared units the script compiles, the manifest
+# tool, and the flake, which pins the upstream sources and the compilers).
+PORT_INPUTS = $(LIBC_STAMP) $(CCL_MANIFEST_TOOL) ../userspace/ccl/catalogs/native-runtime-services.ccl \
+	$(wildcard ../userspace/runtime/gnat/*.ad? ../userspace/libc/ada/*.ad? ../shared/*/*.ad?) \
+	../userspace/libc/libc-ada.adc ../flake.lock ../flake.nix
 .PHONY : doom
-doom: libc ccl-manifest
-	bash ../userspace/ports/doom/build.sh isodir/boot/doom.elf
+doom: isodir/boot/doom.elf
+$(UNSTAGED)/doom.elf: $(wildcard ../userspace/ports/doom/*) $(PORT_INPUTS) | libc ccl-manifest
+	mkdir -p $(UNSTAGED)
+	bash ../userspace/ports/doom/build.sh $(abspath $@)
+isodir/boot/doom.elf: $(UNSTAGED)/doom.elf
+	cp $< $@
 
 # SameBoy: the upstream core on the CuBit libc, frontend in Ada
 # (userspace/ports/sameboy).
 .PHONY : sameboy
-sameboy: libc ccl-manifest
-	bash ../userspace/ports/sameboy/build.sh isodir/boot/sameboy.app
+sameboy: isodir/boot/sameboy.app
+$(UNSTAGED)/sameboy.app: $(wildcard ../userspace/ports/sameboy/*) $(PORT_INPUTS) | libc ccl-manifest
+	mkdir -p $(UNSTAGED)
+	bash ../userspace/ports/sameboy/build.sh $(abspath $@)
+isodir/boot/sameboy.app: $(UNSTAGED)/sameboy.app
+	cp $< $@
+../userspace/ports/sameboy/build/test.gb: $(UNSTAGED)/sameboy.app ;
 
 .PHONY : sleep
-sleep: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/sleep/build
-	$(CCL_BUILD) ../userspace/apps/sleep/component.ccl
-	cp ../userspace/apps/sleep/build/sleep.app isodir/boot/sleep.app
+sleep: isodir/boot/sleep.app
+$(eval $(call ccl_program,../userspace/apps/sleep,sleep.app,))
 
 .PHONY : capability-test
-capability-test: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/capability-test/build
-	yasm -f elf64 ../userspace/apps/capability-test/syscall_registers.asm \
-		-o ../userspace/apps/capability-test/build/syscall_registers.o
-	$(CCL_BUILD) ../userspace/apps/capability-test/component.ccl
-	cp ../userspace/apps/capability-test/build/capability-test.app isodir/boot/capability-test.app
+capability-test: isodir/boot/capability-test.app
 	$(ALR) python3 ../tests/process-construction/make-fixtures.py \
 		isodir/boot/capability-test.app ../tests/process-construction/build
+$(eval $(call ccl_program,../userspace/apps/capability-test,capability-test.app,../userspace/apps/capability-test/build/syscall_registers.o))
+../userspace/apps/capability-test/build/syscall_registers.o: ../userspace/apps/capability-test/syscall_registers.asm
+	mkdir -p $(@D)
+	yasm -f elf64 $< -o $@
 
 # The launch gate check (CAP-012) and its two children
 # (tests/headless/run.sh --test launch-gate).
 LAUNCH_GATE_APPS := launch-gate-check launch-gate-child launch-gate-greedy
 .PHONY : launch-gate
-launch-gate: ccl-build user_runtime ccl-manifest capability-test
-	for app in $(LAUNCH_GATE_APPS); do \
-		mkdir -p ../userspace/apps/$$app/build && \
-		$(CCL_BUILD) ../userspace/apps/$$app/component.ccl && \
-		cp ../userspace/apps/$$app/build/$$app.app isodir/boot/$$app.app || exit 1; \
-	done
+launch-gate: $(patsubst %,isodir/boot/%.app,$(LAUNCH_GATE_APPS)) capability-test
+$(foreach app,$(LAUNCH_GATE_APPS),$(eval $(call ccl_program,../userspace/apps/$(app),$(app).app,)))
 
 # The SPAWN rules check (CAP-012): runs in procmgr's place from a test
 # initrd only (tests/headless/run.sh --test spawn-rules).
 .PHONY : debug-observe-check
 # The Debug_Observe check (DBG-001): headless --test debug-observe puts it in
 # procmgr's place.
-debug-observe-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/debug-observe-check/build
-	$(CCL_BUILD) ../userspace/apps/debug-observe-check/component.ccl
-	cp ../userspace/apps/debug-observe-check/build/debug-observe-check.app isodir/boot/debug-observe-check.app
+debug-observe-check: isodir/boot/debug-observe-check.app
+$(eval $(call ccl_program,../userspace/apps/debug-observe-check,debug-observe-check.app,))
 
 .PHONY : vm-hello-check
 # The VM mechanism check (VMM-001 slice 1): headless --test vm-hello puts it
 # in procmgr's place.
-vm-hello-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/vm-hello-check/build
-	$(CCL_BUILD) ../userspace/apps/vm-hello-check/component.ccl
-	cp ../userspace/apps/vm-hello-check/build/vm-hello-check.app isodir/boot/vm-hello-check.app
+vm-hello-check: isodir/boot/vm-hello-check.app
+$(eval $(call ccl_program,../userspace/apps/vm-hello-check,vm-hello-check.app,))
 
 .PHONY : vm-linux-check
 # The Linux guest check (VMM-001 slice 1): headless --test vm-linux puts it
@@ -863,10 +992,8 @@ vm-linux-check: ccl-build user_runtime ccl-manifest
 	cp ../userspace/apps/vm-linux-check/build/vm-linux-check.app isodir/boot/vm-linux-check.app
 
 .PHONY : spawn-rules-check
-spawn-rules-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/spawn-rules-check/build
-	$(CCL_BUILD) ../userspace/apps/spawn-rules-check/component.ccl
-	cp ../userspace/apps/spawn-rules-check/build/spawn-rules-check.app isodir/boot/spawn-rules-check.app
+spawn-rules-check: isodir/boot/spawn-rules-check.app
+$(eval $(call ccl_program,../userspace/apps/spawn-rules-check,spawn-rules-check.app,))
 
 # Portable protocol checks and an unprivileged native desktop adversary.
 .PHONY: prepare-stream-policies test-stream-policies prove-stream-policies
@@ -917,10 +1044,8 @@ prove-appearance:
 .PHONY : clipboard-check test-clipboard prove-clipboard
 # Desktop clipboard (docs/clipboard.md): the regression client, the hosted
 # tests and the level-2 proof of the store, gestures, wire codec and menu.
-clipboard-check: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/clipboard-check/build
-	$(CCL_BUILD) ../userspace/apps/clipboard-check/component.ccl
-	cp ../userspace/apps/clipboard-check/build/clipboard-check.app isodir/boot/clipboard-check.app
+clipboard-check: isodir/boot/clipboard-check.app
+$(eval $(call ccl_program,../userspace/apps/clipboard-check,clipboard-check.app,ui-fonts-native))
 
 test-clipboard:
 	bash ../tests/clipboard/run.sh
@@ -929,30 +1054,28 @@ prove-clipboard:
 	bash ../tests/clipboard/run.sh --prove
 
 .PHONY : desktop-check prepare-desktop-protocol test-desktop-protocol prove-desktop-protocol
-desktop-check: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/desktop-check/build
-	$(CCL_BUILD) ../userspace/apps/desktop-check/component.ccl
-	cp ../userspace/apps/desktop-check/build/desktop-check.app isodir/boot/desktop-check.app
+desktop-check: isodir/boot/desktop-check.app
+$(eval $(call ccl_program,../userspace/apps/desktop-check,desktop-check.app,ui-fonts-native))
 
 .PHONY: reap-check
-reap-check: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/reap-check/build
-	$(CCL_BUILD) ../userspace/apps/reap-check/component.ccl
-	cp ../userspace/apps/reap-check/build/reap-check.app isodir/boot/reap-check.app
+reap-check: isodir/boot/reap-check.app
+$(eval $(call ccl_program,../userspace/apps/reap-check,reap-check.app,ui-fonts-native))
 
 # The native font engine's masks, hashed (tests/headless --test font-masks).
 .PHONY: font-masks
-font-masks: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/font-masks/build
-	$(CCL_BUILD) ../userspace/apps/font-masks/component.ccl
-	cp ../userspace/apps/font-masks/build/font-masks.app isodir/boot/font-masks.app
+font-masks: isodir/boot/font-masks.app
+$(eval $(call ccl_program,../userspace/apps/font-masks,font-masks.app,ui-fonts-native))
 
 .PHONY: display-check
-display-check: user_runtime ccl-manifest
+display-check: build/gpr/display-check.stamp
+build/gpr/display-check.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/apps/display-check/manifest.ccl) | user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/display-check/build
 	$(call compile_ccl_manifest,../userspace/apps/display-check)
 	$(NATIVE_GPRBUILD) -p -P ../userspace/apps/display-check/display_check.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE) -XCUBIT_GPU_TEST_MODE=$(CUBIT_GPU_TEST_MODE)
-	cp ../userspace/apps/display-check/$(if $(filter output-rebind,$(CUBIT_DISPLAY_TEST_MODE)),build-output-rebind,$(if $(filter production,$(CUBIT_GPU_TEST_MODE)),build,build-gpu-$(CUBIT_GPU_TEST_MODE)))/display-check.app isodir/boot/display-check.app
+	$(call stage,../userspace/apps/display-check/$(if $(filter output-rebind,$(CUBIT_DISPLAY_TEST_MODE)),build-output-rebind,$(if $(filter production,$(CUBIT_GPU_TEST_MODE)),build,build-gpu-$(CUBIT_GPU_TEST_MODE)))/display-check.app,display-check.app)
+	@python3 ../tools/gpr_inputs.py build/gpr/display-check.d $@ -- $(NATIVE_GPRLS) -P ../userspace/apps/display-check/display_check.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE) -XCUBIT_GPU_TEST_MODE=$(CUBIT_GPU_TEST_MODE)
+	@touch $@
+-include build/gpr/display-check.d
 
 prepare-desktop-protocol:
 	mkdir -p ../tests/desktop-protocol/build/source
@@ -1007,13 +1130,15 @@ prove-ipc-request-ids: prepare-ipc-request-ids
 
 # Deterministic typed input stream publisher used by the headless recovery gate.
 .PHONY : input-stress
-input-stress: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/input-stress/build
-	$(CCL_BUILD) ../userspace/apps/input-stress/component.ccl
-	cp ../userspace/apps/input-stress/build/input-stress.app isodir/boot/input-stress.app
+input-stress: isodir/boot/input-stress.app
+$(eval $(call ccl_program,../userspace/apps/input-stress,input-stress.app,))
 
 .PHONY: grant-forward
-grant-forward: user_runtime ccl-manifest
+# BLD-001 interim: remade only when a fixture source, its manifests, the
+# Mesa headers it compiles against or a shared input changed.
+grant-forward: build/gpr/grant-forward.stamp
+build/gpr/grant-forward.stamp: $(GPR_STEP_INPUTS) $(filter-out %/build,$(wildcard ../tests/grant-forward/native/*)) \
+		$(wildcard ../userspace/mesa/anv/*) | user_runtime ccl-manifest
 	@set -e; for role in owner reader client intermediary_exit owner_exit desktop; do \
 	  dir=../tests/grant-forward/native; \
 	  manifest=$$role; case $$role in *_exit) manifest=client;; esac; \
@@ -1023,29 +1148,32 @@ grant-forward: user_runtime ccl-manifest
 	    > $$dir/build/$$role/manifest.S; \
 	  $(NATIVE_CC) -c $$dir/build/$$role/manifest.S -o $$dir/build/$$role/manifest.o; \
 	  $(NATIVE_GPRBUILD) -p -P $$dir/fixture.gpr -XROLE=$$role; \
-	  cp $$dir/build/$$role/grant-forward-$$role.app isodir/boot/; \
+	  mkdir -p $(STAGED); \
+	  if [ -e isodir/boot/grant-forward-$$role.app ] && cmp -s $$dir/build/$$role/grant-forward-$$role.app $(STAGED)/grant-forward-$$role.app; then :; else \
+	    echo "stage grant-forward-$$role.app"; cp $$dir/build/$$role/grant-forward-$$role.app isodir/boot/ && cp $$dir/build/$$role/grant-forward-$$role.app $(STAGED)/; fi; \
 	done
+	@touch $@
 
 .PHONY : ipctest-server
-ipctest-server: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/ipctest-server/build
-	$(CCL_BUILD) ../userspace/apps/ipctest-server/component.ccl
-	cp ../userspace/apps/ipctest-server/build/ipctest-server.app isodir/boot/ipctest-server.app
+ipctest-server: isodir/boot/ipctest-server.app
+$(eval $(call ccl_program,../userspace/apps/ipctest-server,ipctest-server.app,))
 
 .PHONY : ipctest-client
-ipctest-client: user_runtime ccl-manifest
+ipctest-client: build/gpr/ipctest-client.stamp
+build/gpr/ipctest-client.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/apps/ipctest-client/manifest.ccl) | user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/ipctest-client/build
 	$(call compile_ccl_manifest,../userspace/apps/ipctest-client)
 	$(NATIVE_GPRBUILD) -P ../userspace/apps/ipctest-client/ipctest_client.gpr
-	cp ../userspace/apps/ipctest-client/build/ipctest-client.app isodir/boot/ipctest-client.app
-	cp ../userspace/apps/ipctest-client/build/ipctest-departing.app isodir/boot/ipctest-departing.app
+	$(call stage,../userspace/apps/ipctest-client/build/ipctest-client.app,ipctest-client.app)
+	$(call stage,../userspace/apps/ipctest-client/build/ipctest-departing.app,ipctest-departing.app)
+	@python3 ../tools/gpr_inputs.py build/gpr/ipctest-client.d $@ -- $(NATIVE_GPRLS) -P ../userspace/apps/ipctest-client/ipctest_client.gpr
+	@touch $@
+-include build/gpr/ipctest-client.d
 
 .PHONY : bench-load
 .PHONY : bench-storage
-bench-storage: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/bench-storage/build
-	$(CCL_BUILD) ../userspace/apps/bench-storage/component.ccl
-	cp ../userspace/apps/bench-storage/build/bench-storage.app isodir/boot/bench-storage.app
+bench-storage: isodir/boot/bench-storage.app
+$(eval $(call ccl_program,../userspace/apps/bench-storage,bench-storage.app,))
 
 bench-load: user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/bench-load/build
@@ -1056,28 +1184,20 @@ bench-load: user_runtime ccl-manifest
 	cp ../userspace/apps/bench-load/build/bench-cpu.app isodir/boot/bench-cpu.app
 
 .PHONY : bench-audio
-bench-audio: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/bench-audio/build
-	$(CCL_BUILD) ../userspace/apps/bench-audio/component.ccl
-	cp ../userspace/apps/bench-audio/build/bench-audio.app isodir/boot/bench-audio.app
+bench-audio: isodir/boot/bench-audio.app
+$(eval $(call ccl_program,../userspace/apps/bench-audio,bench-audio.app,))
 
 .PHONY : bench-input
-bench-input: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/bench-input/build
-	$(CCL_BUILD) ../userspace/apps/bench-input/component.ccl
-	cp ../userspace/apps/bench-input/build/bench-input.app isodir/boot/bench-input.app
+bench-input: isodir/boot/bench-input.app
+$(eval $(call ccl_program,../userspace/apps/bench-input,bench-input.app,))
 
 .PHONY : bench-ipc-server
-bench-ipc-server: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/bench-ipc-server/build
-	$(CCL_BUILD) ../userspace/apps/bench-ipc-server/component.ccl
-	cp ../userspace/apps/bench-ipc-server/build/bench-ipc-server.app isodir/boot/bench-ipc-server.app
+bench-ipc-server: isodir/boot/bench-ipc-server.app
+$(eval $(call ccl_program,../userspace/apps/bench-ipc-server,bench-ipc-server.app,))
 
 .PHONY : bench-ipc-client
-bench-ipc-client: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/bench-ipc-client/build
-	$(CCL_BUILD) ../userspace/apps/bench-ipc-client/component.ccl
-	cp ../userspace/apps/bench-ipc-client/build/bench-ipc-client.app isodir/boot/bench-ipc-client.app
+bench-ipc-client: isodir/boot/bench-ipc-client.app
+$(eval $(call ccl_program,../userspace/apps/bench-ipc-client,bench-ipc-client.app,))
 
 # Build the freestanding CuBit Control Language VM self-test app.
 .PHONY : ccl-run
@@ -1085,24 +1205,32 @@ ccl-run:
 	$(ALR) gprbuild -P ../userspace/ccl/ccl_run.gpr -p
 
 .PHONY : ccl-control
-ccl-control: user_runtime ccl-manifest
+ccl-control: build/gpr/ccl-control.stamp
+build/gpr/ccl-control.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/ccl/apps/ccl-control/manifest.ccl) | user_runtime ccl-manifest
 	mkdir -p ../userspace/ccl/apps/ccl-control/build
 	$(call compile_ccl_manifest,../userspace/ccl/apps/ccl-control)
 	$(NATIVE_GPRBUILD) -p -P ../userspace/ccl/apps/ccl-control/ccl_control.gpr
-	cp ../userspace/ccl/apps/ccl-control/build/ccl-control.app isodir/boot/ccl-control.app
+	$(call stage,../userspace/ccl/apps/ccl-control/build/ccl-control.app,ccl-control.app)
 	mkdir -p isodir/licenses
 	cp ../userspace/ccl/remote/CBOR_LICENSE.txt isodir/licenses/cbor_ada.txt
+	@python3 ../tools/gpr_inputs.py build/gpr/ccl-control.d $@ -- $(NATIVE_GPRLS) -P ../userspace/ccl/apps/ccl-control/ccl_control.gpr
+	@touch $@
+-include build/gpr/ccl-control.d
 
 # The LAN remote session (tools/cubit-remote is its host client): off unless
 # its startup entry's arguments say listen => (Remote_Listen.LAN port).
 .PHONY : ccl-remote
-ccl-remote: user_runtime ccl-manifest ui-fonts-native
+ccl-remote: build/gpr/ccl-remote.stamp
+build/gpr/ccl-remote.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/ccl/apps/ccl-remote/manifest.ccl) | user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/ccl/apps/ccl-remote/build
 	$(call compile_ccl_manifest,../userspace/ccl/apps/ccl-remote)
-	# gprbuild does not track the manifest object it links: always relink.
-	rm -f ../userspace/ccl/apps/ccl-remote/build/ccl-remote.app
+	# gprbuild does not track the manifest object it links: relink when it changed.
+	[ ../userspace/ccl/apps/ccl-remote/build/ccl-remote.app -nt ../userspace/ccl/apps/ccl-remote/build/manifest.o ] || rm -f ../userspace/ccl/apps/ccl-remote/build/ccl-remote.app
 	$(NATIVE_GPRBUILD) -p -P ../userspace/ccl/apps/ccl-remote/ccl_remote.gpr
-	cp ../userspace/ccl/apps/ccl-remote/build/ccl-remote.app isodir/boot/ccl-remote.app
+	$(call stage,../userspace/ccl/apps/ccl-remote/build/ccl-remote.app,ccl-remote.app)
+	@python3 ../tools/gpr_inputs.py build/gpr/ccl-remote.d $@ -- $(NATIVE_GPRLS) -P ../userspace/ccl/apps/ccl-remote/ccl_remote.gpr
+	@touch $@
+-include build/gpr/ccl-remote.d
 
 .PHONY : test-ccl-remote ccl-web-preview test-ccl-web-preview
 test-ccl-remote:
@@ -1291,8 +1419,13 @@ test-ui-fonts: ui-fonts-host
 ui-fonts-host:
 	$(MAKE) -C ../userspace/rust fonts-host
 
-ui-fonts-native: user_runtime
+# BLD-001 interim: rebuilt only when a Rust source, the allocator it
+# archives with, or the flake (the Rust toolchain) changed.
+ui-fonts-native: build/gate/ui-fonts-native.stamp
+build/gate/ui-fonts-native.stamp: $(shell find ../userspace/rust ../userspace/allocator -type d \
+		\( -name 'build*' -o -name target \) -prune -o -type f -print) $(HOST_TOOL_INPUTS) | user_runtime
 	$(MAKE) -C ../userspace/rust fonts-native
+	@mkdir -p $(@D) && touch $@
 
 ccl-ui-preview: ui-fonts-host
 	$(ALR) gprbuild -P ../userspace/ccl/ccl_ui_preview.gpr -p
@@ -1365,8 +1498,13 @@ asset-codecs: ccl-manifest
 	../userspace/ccl/build/manifest/ccl-manifest --asset-codecs ../userspace/ccl/src
 
 .PHONY : ccl-manifest
-ccl-manifest:
+ccl-manifest: build/gate/ccl-manifest.stamp
+build/gate/ccl-manifest.stamp: $(HOST_TOOL_INPUTS)
 	$(ALR) gprbuild -p -P ../userspace/ccl/ccl_manifest.gpr
+	@python3 ../tools/gpr_inputs.py build/gate/ccl-manifest.d $@ -- $(HOST_GPRLS) -P ../userspace/ccl/ccl_manifest.gpr
+	@touch $@
+-include build/gate/ccl-manifest.d
+$(CCL_MANIFEST_TOOL): ccl-manifest ;
 
 CCL_CONFIG_TOOL := ../userspace/ccl/build/config/ccl-config
 CONFIG_SOURCES := ../init.ccl ../system.ccl \
@@ -1435,9 +1573,22 @@ endef
 # its .cubit.resources names the slot devmgr installs device interrupts in
 # (docs/msi-interrupts.md), and the bindings give the driver the same slot.
 define compile_driver_manifest
-mkdir -p $(1)/build/generated
-../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/driver-services.ccl $(1)/manifest.ccl --startup-output $(1)/build/generated/startup.ads > $(1)/build/manifest.S
-$(NATIVE_CC) -c $(1)/build/manifest.S -o $(1)/build/manifest.o
+$(call compile_manifest_with,../userspace/ccl/catalogs/driver-services.ccl,$(1))
+endef
+
+# compile_manifest_with CATALOG,DIR: DIR/manifest.ccl's startup binding
+# (DIR/build/generated) and manifest object (DIR/build/manifest.o). The
+# generated files replace the old ones only when they changed, and the
+# object is assembled again only then (BLD-001): gprbuild and the stage
+# step see an unchanged manifest as unchanged.
+define compile_manifest_with
+mkdir -p $(2)/build/generated $(2)/build/generated.new
+../userspace/ccl/build/manifest/ccl-manifest $(1) $(2)/manifest.ccl --startup-output $(2)/build/generated.new/startup.ads > $(2)/build/manifest.S.new
+for f in $(2)/build/generated.new/*; do \
+  if cmp -s $$f $(2)/build/generated/$${f##*/}; then rm $$f; else mv $$f $(2)/build/generated/; fi; done
+if cmp -s $(2)/build/manifest.S.new $(2)/build/manifest.S; then rm $(2)/build/manifest.S.new; \
+  else mv $(2)/build/manifest.S.new $(2)/build/manifest.S; fi
+[ $(2)/build/manifest.o -nt $(2)/build/manifest.S ] || $(NATIVE_CC) -c $(2)/build/manifest.S -o $(2)/build/manifest.o
 endef
 
 # Native CuBit Ada (the user runtime and everything built on it) uses
@@ -1463,9 +1614,21 @@ CCL_BUILD = $(CCL_BUILD_TOOL) build --store $(CCL_BUILD_STORE) --source-root $(a
 	--import gnat-15.3.0-x86_64-linux-musl=$(CUBIT_GNAT) --import binutils-2.46=$(CUBIT_BINUTILS) \
 	--signing $(CUBIT_SIGNING) --out $(abspath ..)
 
+# The host tools gprbuild builds (BLD-001 interim): each recipe runs only
+# when an input changed, the inputs gprls lists after a build
+# (tools/gpr_inputs.py) plus the flake, which pins the compiler and the
+# SPARK crates.
+HOST_GPRLS = $(ALR) gprls -d -s
+HOST_TOOL_INPUTS = ../flake.lock ../flake.nix
 .PHONY: ccl-build
-ccl-build:
+ccl-build: build/gate/ccl-build.stamp
+build/gate/ccl-build.stamp: $(HOST_TOOL_INPUTS)
 	$(ALR) gprbuild -p -q -P ../userspace/ccl/ccl_build.gpr
+	@python3 ../tools/gpr_inputs.py build/gate/ccl-build.d $@ -- $(HOST_GPRLS) -P ../userspace/ccl/ccl_build.gpr
+	@touch $@
+-include build/gate/ccl-build.d
+$(CCL_BUILD_TOOL): ccl-build ;
+
 
 # Signed binaries (SIGN-001, docs/signed-binaries.md section 7): every native
 # program is signed as the last step of its build, after strip. The host key
@@ -1476,12 +1639,16 @@ ccl-build:
 # ccl-image refuses any executable that does not verify (IMAGE_SIGNING).
 # Signing changes no program's behaviour: loaders read the ELF prefix, and
 # nothing verifies on CuBit until procmgr does.
-CUBIT_SIGNING ?= $(or $(XDG_CONFIG_HOME),$(HOME)/.config)/cubit/signing
+# (CUBIT_SIGNING is set near the top: the component rules name its key.)
 SIGNING_NAME ?= $(shell hostname -s)
 CCL_SIGN_TOOL := ../userspace/ccl/build/sign/ccl-sign
 .PHONY: ccl-sign signing-key sign-programs
-ccl-sign:
+ccl-sign: build/gate/ccl-sign.stamp
+build/gate/ccl-sign.stamp: $(HOST_TOOL_INPUTS)
 	$(ALR) gprbuild -p -q -P ../userspace/ccl/ccl_sign.gpr
+	@python3 ../tools/gpr_inputs.py build/gate/ccl-sign.d $@ -- $(HOST_GPRLS) -P ../userspace/ccl/ccl_sign.gpr
+	@touch $@
+-include build/gate/ccl-sign.d
 signing-key: ccl-sign
 	$(CCL_SIGN_TOOL) init --signing $(CUBIT_SIGNING) --name "$(SIGNING_NAME)"
 # Strip, then sign, every program staged in isodir/boot (tools/sign_programs.py);
@@ -1531,9 +1698,7 @@ ccl-manifest-app: ccl-manifest
 # One checked result supplies both the ELF requests and optional Ada bindings.
 # Named fixed bindings in this catalog preserve shared-runtime ABI conventions.
 define compile_ccl_manifest
-mkdir -p $(1)/build/generated
-../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl $(1)/manifest.ccl --startup-output $(1)/build/generated/startup.ads > $(1)/build/manifest.S
-$(NATIVE_CC) -c $(1)/build/manifest.S -o $(1)/build/manifest.o
+$(call compile_manifest_with,../userspace/ccl/catalogs/native-runtime-services.ccl,$(1))
 endef
 
 .PHONY: ccl-migrated-manifests
@@ -1567,7 +1732,8 @@ prove-ccl-startup:
 	$(ALR) gnatprove -P../tests/ccl-manifests/resources.gpr -u ccl-resource_sections.adb --level=1 -j0
 	$(ALR) gnatprove -P../tests/ccl-manifests/startup_grants.gpr -u ccl-startup_grants.adb --level=1 -j0
 
-ccl-vm: user_runtime ccl-manifest
+ccl-vm: build/gpr/ccl-vm.stamp
+build/gpr/ccl-vm.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/ccl/apps/ccl-vm/manifest.ccl) | user_runtime ccl-manifest
 	mkdir -p ../userspace/ccl/apps/ccl-vm/build/generated
 	../userspace/ccl/build/manifest/ccl-manifest \
 		../userspace/ccl/catalogs/bootstrap-services.ccl \
@@ -1577,25 +1743,36 @@ ccl-vm: user_runtime ccl-manifest
 	$(NATIVE_CC) -c ../userspace/ccl/apps/ccl-vm/build/manifest.S \
 		-o ../userspace/ccl/apps/ccl-vm/build/manifest.o
 	$(NATIVE_GPRBUILD) -P ../userspace/ccl/apps/ccl-vm/ccl_vm.gpr
-	cp ../userspace/ccl/apps/ccl-vm/build/ccl-vm.app isodir/boot/ccl-vm.app
+	$(call stage,../userspace/ccl/apps/ccl-vm/build/ccl-vm.app,ccl-vm.app)
+	@python3 ../tools/gpr_inputs.py build/gpr/ccl-vm.d $@ -- $(NATIVE_GPRLS) -P ../userspace/ccl/apps/ccl-vm/ccl_vm.gpr
+	@touch $@
+-include build/gpr/ccl-vm.d
 
 # Native CCL editor/compiler/debugger application.
 .PHONY : ccl-workbench
-ccl-workbench: user_runtime ccl-manifest ui-fonts-native
+ccl-workbench: build/gpr/ccl-workbench.stamp
+build/gpr/ccl-workbench.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/ccl/apps/ccl-workbench/manifest.ccl) | user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/ccl/apps/ccl-workbench/build
 	$(call compile_ccl_manifest,../userspace/ccl/apps/ccl-workbench)
 	$(NATIVE_GPRBUILD) -P ../userspace/ccl/apps/ccl-workbench/ccl_workbench.gpr
-	cp ../userspace/ccl/apps/ccl-workbench/build/ccl-workbench.app isodir/boot/ccl-workbench.app
+	$(call stage,../userspace/ccl/apps/ccl-workbench/build/ccl-workbench.app,ccl-workbench.app)
+	@python3 ../tools/gpr_inputs.py build/gpr/ccl-workbench.d $@ -- $(NATIVE_GPRLS) -P ../userspace/ccl/apps/ccl-workbench/ccl_workbench.gpr
+	@touch $@
+-include build/gpr/ccl-workbench.d
 
 # Native CCL console: a full-window REPL over the Workbench's host environment.
 .PHONY : ccl-console
-ccl-console: user_runtime ccl-manifest ui-fonts-native
+ccl-console: build/gpr/ccl-console.stamp
+build/gpr/ccl-console.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/ccl/apps/ccl-console/manifest.ccl) | user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/ccl/apps/ccl-console/build
 	$(call compile_ccl_manifest,../userspace/ccl/apps/ccl-console)
-	# gprbuild does not track the manifest object it links: always relink.
-	rm -f ../userspace/ccl/apps/ccl-console/build/ccl-console.app
+	# gprbuild does not track the manifest object it links: relink when it changed.
+	[ ../userspace/ccl/apps/ccl-console/build/ccl-console.app -nt ../userspace/ccl/apps/ccl-console/build/manifest.o ] || rm -f ../userspace/ccl/apps/ccl-console/build/ccl-console.app
 	$(NATIVE_GPRBUILD) -P ../userspace/ccl/apps/ccl-console/ccl_console.gpr
-	cp ../userspace/ccl/apps/ccl-console/build/ccl-console.app isodir/boot/ccl-console.app
+	$(call stage,../userspace/ccl/apps/ccl-console/build/ccl-console.app,ccl-console.app)
+	@python3 ../tools/gpr_inputs.py build/gpr/ccl-console.d $@ -- $(NATIVE_GPRLS) -P ../userspace/ccl/apps/ccl-console/ccl_console.gpr
+	@touch $@
+-include build/gpr/ccl-console.d
 
 # Headless-test variant for net-fetch (SELF-003 step 1): ccl-console with
 # only .cubit.access replaced: the production manifest with its one tls
@@ -1603,11 +1780,17 @@ ccl-console: user_runtime ccl-manifest ui-fonts-native
 # instead of "*:443", so nothing else can drift; checked as llm-test is.
 # Only the net-fetch test image installs it; no production image has it.
 CONSOLE_FETCH_SCOPE := (tls "fetch-test.cubit.internal:18496")
+# BLD-001: each test variant below is remade only when its production
+# program, its test manifest, the manifest tool or a catalog changed.
+VARIANT_INPUTS = $(CCL_MANIFEST_TOOL) $(wildcard ../userspace/ccl/catalogs/*.ccl)
 CONSOLE_FETCH_VARIANT := ../tests/net-fetch/build/variant
 CONSOLE_FETCH_APP := ../userspace/ccl/apps/ccl-console/build/ccl-console.app
+$(CONSOLE_FETCH_APP): ccl-console ;
+$(STAGED)/ccl-remote.app: ccl-remote ;
 .PHONY : ccl-console-fetch-test
-ccl-console-fetch-test: ccl-console
-	mkdir -p $(CONSOLE_FETCH_VARIANT)/build/generated
+ccl-console-fetch-test: build/gate/ccl-console-fetch-test.stamp
+build/gate/ccl-console-fetch-test.stamp: $(VARIANT_INPUTS) $(CONSOLE_FETCH_APP) ../userspace/ccl/apps/ccl-console/manifest.ccl | ccl-console
+	mkdir -p $(CONSOLE_FETCH_VARIANT)/build/generated $(UNSTAGED)
 	sed 's|(tls "\*:443")|$(CONSOLE_FETCH_SCOPE)|' ../userspace/ccl/apps/ccl-console/manifest.ccl \
 		> $(CONSOLE_FETCH_VARIANT)/manifest.ccl
 	grep -qF '$(CONSOLE_FETCH_SCOPE)' $(CONSOLE_FETCH_VARIANT)/manifest.ccl
@@ -1617,55 +1800,58 @@ ccl-console-fetch-test: ccl-console
 	$(ALR) objcopy --dump-section .cubit.startup=$(CONSOLE_FETCH_VARIANT)/startup-test.bin \
 		$(CONSOLE_FETCH_VARIANT)/build/manifest.o
 	$(ALR) objcopy --dump-section .cubit.startup=$(CONSOLE_FETCH_VARIANT)/startup-production.bin \
-		$(CONSOLE_FETCH_APP)
+		$(CONSOLE_FETCH_APP) $(CONSOLE_FETCH_VARIANT)/scratch.out
 	cmp $(CONSOLE_FETCH_VARIANT)/startup-test.bin $(CONSOLE_FETCH_VARIANT)/startup-production.bin
 	rm -f $(CONSOLE_FETCH_VARIANT)/access-test.bin $(CONSOLE_FETCH_VARIANT)/access-production.bin
 	$(ALR) objcopy --dump-section .cubit.access=$(CONSOLE_FETCH_VARIANT)/access-test.bin \
 		$(CONSOLE_FETCH_VARIANT)/build/manifest.o
 	$(ALR) objcopy --dump-section .cubit.access=$(CONSOLE_FETCH_VARIANT)/access-production.bin \
-		$(CONSOLE_FETCH_APP)
+		$(CONSOLE_FETCH_APP) $(CONSOLE_FETCH_VARIANT)/scratch.out
 	test -s $(CONSOLE_FETCH_VARIANT)/access-test.bin
 	test $$(stat -c %s $(CONSOLE_FETCH_VARIANT)/access-test.bin) -eq \
 		$$(stat -c %s $(CONSOLE_FETCH_VARIANT)/access-production.bin)
 	! cmp -s $(CONSOLE_FETCH_VARIANT)/access-test.bin $(CONSOLE_FETCH_VARIANT)/access-production.bin
 	$(ALR) objcopy --update-section .cubit.access=$(CONSOLE_FETCH_VARIANT)/access-test.bin \
-		$(CONSOLE_FETCH_APP) isodir/boot/ccl-console-fetch-test.app
+		$(CONSOLE_FETCH_APP) $(UNSTAGED)/ccl-console-fetch-test.app
 	$(ALR) objcopy --dump-section .cubit.access=$(CONSOLE_FETCH_VARIANT)/access-installed.bin \
-		isodir/boot/ccl-console-fetch-test.app
+		$(UNSTAGED)/ccl-console-fetch-test.app
 	cmp $(CONSOLE_FETCH_VARIANT)/access-test.bin $(CONSOLE_FETCH_VARIANT)/access-installed.bin
+	$(call stage,$(UNSTAGED)/ccl-console-fetch-test.app,ccl-console-fetch-test.app)
+	@mkdir -p $(@D) && touch $@
 
 # The Agent app (AGENT-002): the agent's own window over the console's host
 # environment and the agent core.
 .PHONY : agent
-agent: user_runtime ccl-manifest ui-fonts-native
+agent: build/gpr/agent.stamp
+build/gpr/agent.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/ccl/apps/agent/manifest.ccl) | user_runtime ccl-manifest ui-fonts-native
 	mkdir -p ../userspace/ccl/apps/agent/build
 	$(call compile_ccl_manifest,../userspace/ccl/apps/agent)
-	# gprbuild does not track the manifest object it links: always relink.
-	rm -f ../userspace/ccl/apps/agent/build/agent.app
+	# gprbuild does not track the manifest object it links: relink when it changed.
+	[ ../userspace/ccl/apps/agent/build/agent.app -nt ../userspace/ccl/apps/agent/build/manifest.o ] || rm -f ../userspace/ccl/apps/agent/build/agent.app
 	$(NATIVE_GPRBUILD) -P ../userspace/ccl/apps/agent/agent_app.gpr
-	cp ../userspace/ccl/apps/agent/build/agent.app isodir/boot/agent.app
+	$(call stage,../userspace/ccl/apps/agent/build/agent.app,agent.app)
+	@python3 ../tools/gpr_inputs.py build/gpr/agent.d $@ -- $(NATIVE_GPRLS) -P ../userspace/ccl/apps/agent/agent_app.gpr
+	@touch $@
+-include build/gpr/agent.d
 
 # Test-only service used to exercise CCL's typed host-import IPC adapter.
 .PHONY : ccl-test-host
-ccl-test-host: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/ccl/services/test-host/build
-	$(CCL_BUILD) ../userspace/ccl/services/test-host/component.ccl
-	cp ../userspace/ccl/services/test-host/build/ccl-test-host.svc isodir/boot/ccl-test-host.svc
+ccl-test-host: isodir/boot/ccl-test-host.svc
+$(eval $(call ccl_program,../userspace/ccl/services/test-host,ccl-test-host.svc,))
 
 # SNTP time synchronization service.
 .PHONY : timesync timesync-test
-timesync: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/timesync/build
-	$(CCL_BUILD) ../userspace/services/timesync/component.ccl
-	cp ../userspace/services/timesync/build/timesync.svc isodir/boot/timesync.svc
+timesync: isodir/boot/timesync.svc
+$(eval $(call ccl_program,../userspace/services/timesync,timesync.svc,))
 
 # Headless-test variant: the same executable with only .cubit.caps replaced by
 # tests/timesync/manifest-test.ccl (loopback fixture ports instead of 123).
 # Fails unless the startup bindings, the startup table (.cubit.startup) and
 # the capability section size are identical.
 TIMESYNC_VARIANT := ../tests/timesync/build/variant
-timesync-test: timesync
-	mkdir -p $(TIMESYNC_VARIANT)/build/generated
+timesync-test: build/gate/timesync-test.stamp
+build/gate/timesync-test.stamp: $(VARIANT_INPUTS) ../userspace/services/timesync/build/timesync.svc ../tests/timesync/manifest-test.ccl | timesync
+	mkdir -p $(TIMESYNC_VARIANT)/build/generated $(UNSTAGED)
 	cp ../tests/timesync/manifest-test.ccl $(TIMESYNC_VARIANT)/manifest.ccl
 	$(call compile_ccl_manifest,$(TIMESYNC_VARIANT))
 	cmp $(TIMESYNC_VARIANT)/build/generated/startup.ads \
@@ -1673,22 +1859,24 @@ timesync-test: timesync
 	$(ALR) objcopy --dump-section .cubit.startup=$(TIMESYNC_VARIANT)/startup-test.bin \
 		$(TIMESYNC_VARIANT)/build/manifest.o
 	$(ALR) objcopy --dump-section .cubit.startup=$(TIMESYNC_VARIANT)/startup-production.bin \
-		../userspace/services/timesync/build/timesync.svc
+		../userspace/services/timesync/build/timesync.svc $(TIMESYNC_VARIANT)/scratch.out
 	cmp $(TIMESYNC_VARIANT)/startup-test.bin $(TIMESYNC_VARIANT)/startup-production.bin
 	rm -f $(TIMESYNC_VARIANT)/caps-test.bin $(TIMESYNC_VARIANT)/caps-production.bin
 	$(ALR) objcopy --dump-section .cubit.caps=$(TIMESYNC_VARIANT)/caps-test.bin \
 		$(TIMESYNC_VARIANT)/build/manifest.o
 	$(ALR) objcopy --dump-section .cubit.caps=$(TIMESYNC_VARIANT)/caps-production.bin \
-		../userspace/services/timesync/build/timesync.svc
+		../userspace/services/timesync/build/timesync.svc $(TIMESYNC_VARIANT)/scratch.out
 	test -s $(TIMESYNC_VARIANT)/caps-test.bin
 	test $$(stat -c %s $(TIMESYNC_VARIANT)/caps-test.bin) -eq \
 		$$(stat -c %s $(TIMESYNC_VARIANT)/caps-production.bin)
 	! cmp -s $(TIMESYNC_VARIANT)/caps-test.bin $(TIMESYNC_VARIANT)/caps-production.bin
 	$(ALR) objcopy --update-section .cubit.caps=$(TIMESYNC_VARIANT)/caps-test.bin \
-		../userspace/services/timesync/build/timesync.svc isodir/boot/timesync-test.svc
+		../userspace/services/timesync/build/timesync.svc $(UNSTAGED)/timesync-test.svc
 	$(ALR) objcopy --dump-section .cubit.caps=$(TIMESYNC_VARIANT)/caps-installed.bin \
-		isodir/boot/timesync-test.svc
+		$(UNSTAGED)/timesync-test.svc
 	cmp $(TIMESYNC_VARIANT)/caps-test.bin $(TIMESYNC_VARIANT)/caps-installed.bin
+	$(call stage,$(UNSTAGED)/timesync-test.svc,timesync-test.svc)
+	@mkdir -p $(@D) && touch $@
 
 # Headless-test variant of logstore (ABI-002, Test_Console_ABI): logstore.svc
 # with only .cubit.caps and .cubit.startup replaced by
@@ -1701,8 +1889,9 @@ timesync-test: timesync
 LOGSTORE_VARIANT := ../tests/headless/logstore-test/build/variant
 LOGSTORE_SECTIONS_SAME := id access resources devices launch description channels parameters
 .PHONY : logstore-test
-logstore-test: logstore
-	mkdir -p $(LOGSTORE_VARIANT)/build/generated
+logstore-test: build/gate/logstore-test.stamp
+build/gate/logstore-test.stamp: $(VARIANT_INPUTS) ../userspace/services/logstore/build/logstore.svc ../tests/headless/logstore-test/manifest.ccl | logstore
+	mkdir -p $(LOGSTORE_VARIANT)/build/generated $(UNSTAGED)
 	cp ../tests/headless/logstore-test/manifest.ccl $(LOGSTORE_VARIANT)/manifest.ccl
 	$(call compile_ccl_manifest,$(LOGSTORE_VARIANT))
 	set -e; for section in $(LOGSTORE_SECTIONS_SAME); do \
@@ -1725,10 +1914,12 @@ logstore-test: logstore
 	done
 	$(ALR) objcopy --update-section .cubit.caps=$(LOGSTORE_VARIANT)/caps-test.bin \
 		--update-section .cubit.startup=$(LOGSTORE_VARIANT)/startup-test.bin \
-		../userspace/services/logstore/build/logstore.svc isodir/boot/logstore-test.svc
+		../userspace/services/logstore/build/logstore.svc $(UNSTAGED)/logstore-test.svc
 	$(ALR) objcopy --dump-section .cubit.startup=$(LOGSTORE_VARIANT)/startup-installed.bin \
-		isodir/boot/logstore-test.svc $(LOGSTORE_VARIANT)/scratch.svc
+		$(UNSTAGED)/logstore-test.svc $(LOGSTORE_VARIANT)/scratch.svc
 	cmp $(LOGSTORE_VARIANT)/startup-test.bin $(LOGSTORE_VARIANT)/startup-installed.bin
+	$(call stage,$(UNSTAGED)/logstore-test.svc,logstore-test.svc)
+	@mkdir -p $(@D) && touch $@
 
 # Headless-test variant of ccl-remote (ABI-002): ccl-remote.app with only
 # .cubit.caps and .cubit.startup replaced by its manifest plus the test
@@ -1741,8 +1932,9 @@ logstore-test: logstore
 CCL_REMOTE_VARIANT := ../tests/headless/ccl-remote-test/build/variant
 CCL_REMOTE_SECTIONS_SAME := id access resources devices launch description channels parameters
 .PHONY : ccl-remote-test
-ccl-remote-test: ccl-remote
-	mkdir -p $(CCL_REMOTE_VARIANT)/build/generated
+ccl-remote-test: build/gate/ccl-remote-test.stamp
+build/gate/ccl-remote-test.stamp: $(VARIANT_INPUTS) $(STAGED)/ccl-remote.app ../userspace/ccl/apps/ccl-remote/manifest.ccl | ccl-remote
+	mkdir -p $(CCL_REMOTE_VARIANT)/build/generated $(UNSTAGED)
 	sed 's|^requests => \[$$|requests => [\n(Request.Kernel_Object (Kernel_Object_Request Kernel_Object.Test_Console "test-console"))|' \
 		../userspace/ccl/apps/ccl-remote/manifest.ccl > $(CCL_REMOTE_VARIANT)/manifest.ccl
 	grep -q 'Kernel_Object.Test_Console' $(CCL_REMOTE_VARIANT)/manifest.ccl
@@ -1752,7 +1944,7 @@ ccl-remote-test: ccl-remote
 		$(ALR) objcopy --dump-section .cubit.$$section=$(CCL_REMOTE_VARIANT)/$$section-test.bin \
 			$(CCL_REMOTE_VARIANT)/build/manifest.o $(CCL_REMOTE_VARIANT)/scratch.o 2>/dev/null || true; \
 		$(ALR) objcopy --dump-section .cubit.$$section=$(CCL_REMOTE_VARIANT)/$$section-production.bin \
-			isodir/boot/ccl-remote.app $(CCL_REMOTE_VARIANT)/scratch.app 2>/dev/null || true; \
+			$(STAGED)/ccl-remote.app $(CCL_REMOTE_VARIANT)/scratch.app 2>/dev/null || true; \
 		if [ -e $(CCL_REMOTE_VARIANT)/$$section-test.bin ] || [ -e $(CCL_REMOTE_VARIANT)/$$section-production.bin ]; then \
 			cmp $(CCL_REMOTE_VARIANT)/$$section-test.bin $(CCL_REMOTE_VARIANT)/$$section-production.bin; \
 		fi; \
@@ -1763,35 +1955,32 @@ ccl-remote-test: ccl-remote
 	done
 	$(ALR) objcopy --update-section .cubit.caps=$(CCL_REMOTE_VARIANT)/caps-test.bin \
 		--update-section .cubit.startup=$(CCL_REMOTE_VARIANT)/startup-test.bin \
-		isodir/boot/ccl-remote.app isodir/boot/ccl-remote-test.app
+		$(STAGED)/ccl-remote.app $(UNSTAGED)/ccl-remote-test.app
+	$(call stage,$(UNSTAGED)/ccl-remote-test.app,ccl-remote-test.app)
+	@mkdir -p $(@D) && touch $@
 
 # The Messages API client (AGENT-001 slice 1) and the secret store v0
 # (SEC-022) that holds its API key.
 .PHONY : llm secrets llm-test
-llm: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/llm/build
-	$(CCL_BUILD) ../userspace/services/llm/component.ccl
-	cp ../userspace/services/llm/build/llm.svc isodir/boot/llm.svc
+llm: isodir/boot/llm.svc
+$(eval $(call ccl_program,../userspace/services/llm,llm.svc,))
 
-secrets: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/secrets/build
-	$(CCL_BUILD) ../userspace/services/secrets/component.ccl
-	cp ../userspace/services/secrets/build/secrets.svc isodir/boot/secrets.svc
+secrets: isodir/boot/secrets.svc
+$(eval $(call ccl_program,../userspace/services/secrets,secrets.svc,))
 
 # power.svc, the power manager (PWR-003 slice 1, CuBit.Power_Requests).
 .PHONY : power
-power: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/power/build
-	$(CCL_BUILD) ../userspace/services/power/component.ccl
-	cp ../userspace/services/power/build/power.svc isodir/boot/power.svc
+power: isodir/boot/power.svc
+$(eval $(call ccl_program,../userspace/services/power,power.svc,))
 
 # Headless-test variant for llm-mock: llm.svc with only .cubit.access
 # replaced by tests/llm/manifest-test.ccl (the mock's name and port
 # instead of api.anthropic.com:443), checked as timesync-test is. Only the
 # llm-mock test image installs it; no production image has it.
 LLM_VARIANT := ../tests/llm/build/variant
-llm-test: llm
-	mkdir -p $(LLM_VARIANT)/build/generated
+llm-test: build/gate/llm-test.stamp
+build/gate/llm-test.stamp: $(VARIANT_INPUTS) ../userspace/services/llm/build/llm.svc ../tests/llm/manifest-test.ccl | llm
+	mkdir -p $(LLM_VARIANT)/build/generated $(UNSTAGED)
 	cp ../tests/llm/manifest-test.ccl $(LLM_VARIANT)/manifest.ccl
 	$(call compile_ccl_manifest,$(LLM_VARIANT))
 	cmp $(LLM_VARIANT)/build/generated/startup.ads \
@@ -1799,28 +1988,28 @@ llm-test: llm
 	$(ALR) objcopy --dump-section .cubit.startup=$(LLM_VARIANT)/startup-test.bin \
 		$(LLM_VARIANT)/build/manifest.o
 	$(ALR) objcopy --dump-section .cubit.startup=$(LLM_VARIANT)/startup-production.bin \
-		../userspace/services/llm/build/llm.svc
+		../userspace/services/llm/build/llm.svc $(LLM_VARIANT)/scratch.out
 	cmp $(LLM_VARIANT)/startup-test.bin $(LLM_VARIANT)/startup-production.bin
 	rm -f $(LLM_VARIANT)/access-test.bin $(LLM_VARIANT)/access-production.bin
 	$(ALR) objcopy --dump-section .cubit.access=$(LLM_VARIANT)/access-test.bin \
 		$(LLM_VARIANT)/build/manifest.o
 	$(ALR) objcopy --dump-section .cubit.access=$(LLM_VARIANT)/access-production.bin \
-		../userspace/services/llm/build/llm.svc
+		../userspace/services/llm/build/llm.svc $(LLM_VARIANT)/scratch.out
 	test -s $(LLM_VARIANT)/access-test.bin
 	test $$(stat -c %s $(LLM_VARIANT)/access-test.bin) -eq \
 		$$(stat -c %s $(LLM_VARIANT)/access-production.bin)
 	! cmp -s $(LLM_VARIANT)/access-test.bin $(LLM_VARIANT)/access-production.bin
 	$(ALR) objcopy --update-section .cubit.access=$(LLM_VARIANT)/access-test.bin \
-		../userspace/services/llm/build/llm.svc isodir/boot/llm-test.svc
+		../userspace/services/llm/build/llm.svc $(UNSTAGED)/llm-test.svc
 	$(ALR) objcopy --dump-section .cubit.access=$(LLM_VARIANT)/access-installed.bin \
-		isodir/boot/llm-test.svc
+		$(UNSTAGED)/llm-test.svc
 	cmp $(LLM_VARIANT)/access-test.bin $(LLM_VARIANT)/access-installed.bin
+	$(call stage,$(UNSTAGED)/llm-test.svc,llm-test.svc)
+	@mkdir -p $(@D) && touch $@
 
 .PHONY : timesync-check
-timesync-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/timesync-check/build
-	$(CCL_BUILD) ../userspace/apps/timesync-check/component.ccl
-	cp ../userspace/apps/timesync-check/build/timesync-check.app isodir/boot/timesync-check.app
+timesync-check: isodir/boot/timesync-check.app
+$(eval $(call ccl_program,../userspace/apps/timesync-check,timesync-check.app,))
 
 # SPARKTLS and its dependencies are pinned flake inputs; nix develop exports
 # them as one directory in CUBIT_SPARK_CRATES.
@@ -1856,47 +2045,77 @@ tls-test-pki:
 	../tests/tls/make-pki.sh
 
 .PHONY : bench-spread
-bench-spread: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/bench-spread/build
-	$(CCL_BUILD) ../userspace/apps/bench-spread/component.ccl
-	cp ../userspace/apps/bench-spread/build/bench-spread.app isodir/boot/bench-spread.app
+bench-spread: isodir/boot/bench-spread.app
+$(eval $(call ccl_program,../userspace/apps/bench-spread,bench-spread.app,))
 
 # CuBit Teapots (userspace/apps/teapots): the Vulkan teapot gallery on a GPU
 # canvas (CuBit.UI.GPU_Canvas), linked against the Desktop's combined Mesa
 # (ANV) bundle. Also stages the Mesa notice bundle the live images carry.
 .PHONY: teapots
-teapots: libc user_runtime ccl-manifest ui-fonts-native
+# BLD-001 interim: Teapots and Neon Blast are linked against the combined
+# Mesa bundle by their scripts; each runs only when an input changed: its
+# Ada closure (gprls, tools/gpr_inputs.py), its directory, the shared
+# inputs, the CuBit libc and the Mesa bundle selected (current.json).
+MESA_STEP_INPUTS = $(wildcard ../userspace/mesa/build/combined/current.json) \
+	$(wildcard ../userspace/mesa/*.sh ../userspace/mesa/*.py) ../userspace/lib/ui/gpu_canvas_vk.c
+teapots: build/gpr/teapots.stamp
+build/gpr/teapots.stamp: $(GPR_STEP_INPUTS) $(MESA_STEP_INPUTS) $(LIBC_STAMP) ../tools/build_teapots.py \
+		$(filter-out %/build,$(wildcard ../userspace/apps/teapots/*)) | libc user_runtime ccl-manifest ui-fonts-native
 	bash ../userspace/mesa/build.sh
+	@python3 ../tools/gpr_inputs.py build/gpr/teapots.d $@ -- $(NATIVE_GPRLS) -P ../userspace/apps/teapots/teapots.gpr
+	@touch $@
+-include build/gpr/teapots.d
 
 # Neon Blast (userspace/apps/neon-blast, APP-008): the musical vaporwave
 # arena shooter, Vulkan on a GPU canvas with a software fallback, linked
 # against the same combined Mesa (ANV) bundle as Teapots (whose build
 # stages the Mesa notices the images carry).
 .PHONY: neon-blast
-neon-blast: libc user_runtime ccl-manifest ui-fonts-native
-	python3 ../tools/build_neon_blast.py
+neon-blast: build/gpr/neon-blast.stamp
+build/gpr/neon-blast.stamp: $(GPR_STEP_INPUTS) $(MESA_STEP_INPUTS) $(LIBC_STAMP) ../tools/build_neon_blast.py \
+		$(filter-out %/build,$(wildcard ../userspace/apps/neon-blast/*)) | libc user_runtime ccl-manifest ui-fonts-native
+	mkdir -p $(UNSTAGED)
+	python3 ../tools/build_neon_blast.py --output $(UNSTAGED)/neon-blast.app
+	$(call stage,$(UNSTAGED)/neon-blast.app,neon-blast.app)
+	@python3 ../tools/gpr_inputs.py build/gpr/neon-blast.d $@ -- $(NATIVE_GPRLS) -P ../userspace/apps/neon-blast/neon_blast.gpr
+	@touch $@
+-include build/gpr/neon-blast.d
 
 # CuBit libc (userspace/libc): musl over CuBit system calls, and its checks.
 
 .PHONY : libc libc-check cxx-check
-libc:
+libc: $(LIBC_STAMP)
+$(LIBC_STAMP): $(LIBC_INPUTS)
 	bash ../userspace/libc/build.sh
-libc-check: libc ccl-manifest libc-protection-check
+	touch $@
+libc-check: build/gate/libc-check.stamp
+build/gate/libc-check.stamp: $(LIBC_STAMP) $(CCL_MANIFEST_TOOL) $(wildcard ../userspace/ccl/catalogs/*.ccl) ../userspace/ccl/interfaces/executable-manifest.ccl $(wildcard ../userspace/libc/tests/libc-check.c ../userspace/libc/tests/manifest.ccl ../userspace/c/*.h) | libc ccl-manifest libc-protection-check
 	mkdir -p ../userspace/libc/build/libc-check
 	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/manifest.ccl --schema ../userspace/ccl/interfaces/executable-manifest.ccl --c-output ../userspace/libc/build/libc-check/startup.h > ../userspace/libc/build/libc-check-manifest.S
 	as --64 ../userspace/libc/build/libc-check-manifest.S -o ../userspace/libc/build/libc-check-manifest.o
-	../userspace/libc/cubit-cc -O2 -g -pthread -I../userspace/libc/build/libc-check -I../userspace/c -o isodir/boot/libc-check.app ../userspace/libc/tests/libc-check.c --manifest ../userspace/libc/build/libc-check-manifest.o
-cxx-check: libc ccl-manifest
+	../userspace/libc/cubit-cc -O2 -g -pthread -I../userspace/libc/build/libc-check -I../userspace/c -o $(UNSTAGED)/libc-check.app ../userspace/libc/tests/libc-check.c --manifest ../userspace/libc/build/libc-check-manifest.o
+	$(call stage,$(UNSTAGED)/libc-check.app,libc-check.app)
+	@mkdir -p $(@D) && touch $@
+cxx-check: build/gate/cxx-check.stamp
+build/gate/cxx-check.stamp: $(LIBC_STAMP) $(CCL_MANIFEST_TOOL) $(wildcard ../userspace/ccl/catalogs/*.ccl) ../userspace/ccl/interfaces/executable-manifest.ccl $(wildcard ../userspace/libc/tests/cxx-check.cpp ../userspace/libc/tests/cxx-manifest.ccl) | libc ccl-manifest
+	mkdir -p $(UNSTAGED)
 	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/cxx-manifest.ccl --schema ../userspace/ccl/interfaces/executable-manifest.ccl > ../userspace/libc/build/cxx-check-manifest.S
 	as --64 ../userspace/libc/build/cxx-check-manifest.S -o ../userspace/libc/build/cxx-check-manifest.o
-	../userspace/libc/cubit-c++ -O2 -g -pthread -o isodir/boot/cxx-check.app ../userspace/libc/tests/cxx-check.cpp --manifest ../userspace/libc/build/cxx-check-manifest.o
+	../userspace/libc/cubit-c++ -O2 -g -pthread -o $(UNSTAGED)/cxx-check.app ../userspace/libc/tests/cxx-check.cpp --manifest ../userspace/libc/build/cxx-check-manifest.o
+	$(call stage,$(UNSTAGED)/cxx-check.app,cxx-check.app)
+	@mkdir -p $(@D) && touch $@
 
 .PHONY: libc-protection-check
-libc-protection-check: libc ccl-manifest
+libc-protection-check: build/gate/libc-protection-check.stamp
+build/gate/libc-protection-check.stamp: $(LIBC_STAMP) $(CCL_MANIFEST_TOOL) $(wildcard ../userspace/ccl/catalogs/*.ccl) ../userspace/ccl/interfaces/executable-manifest.ccl $(wildcard ../userspace/libc/tests/protection-fault.c ../userspace/libc/tests/protection-manifest.ccl) | libc ccl-manifest
+	mkdir -p $(UNSTAGED)
 	../userspace/ccl/build/manifest/ccl-manifest ../userspace/ccl/catalogs/native-runtime-services.ccl ../userspace/libc/tests/protection-manifest.ccl > ../userspace/libc/build/protection-manifest.S
 	as --64 ../userspace/libc/build/protection-manifest.S -o ../userspace/libc/build/protection-manifest.o
-	../userspace/libc/cubit-cc -O2 -g -o isodir/boot/guard-fault.app ../userspace/libc/tests/protection-fault.c --manifest ../userspace/libc/build/protection-manifest.o
-	../userspace/libc/cubit-cc -O2 -g -DFAULT_READ_ONLY=1 -o isodir/boot/readonly-fault.app ../userspace/libc/tests/protection-fault.c --manifest ../userspace/libc/build/protection-manifest.o
+	../userspace/libc/cubit-cc -O2 -g -o $(UNSTAGED)/guard-fault.app ../userspace/libc/tests/protection-fault.c --manifest ../userspace/libc/build/protection-manifest.o
+	$(call stage,$(UNSTAGED)/guard-fault.app,guard-fault.app)
+	../userspace/libc/cubit-cc -O2 -g -DFAULT_READ_ONLY=1 -o $(UNSTAGED)/readonly-fault.app ../userspace/libc/tests/protection-fault.c --manifest ../userspace/libc/build/protection-manifest.o
+	$(call stage,$(UNSTAGED)/readonly-fault.app,readonly-fault.app)
+	@mkdir -p $(@D) && touch $@
 
 # Rust std on CuBit (docs/rust-std.md): patched std, built with -Zbuild-std.
 .PHONY : rust-std-hello
@@ -1907,205 +2126,145 @@ rust-std-hello: ccl-manifest
 # rtw89's WiFi_Crypto self-test without the device (headless --test
 # wifi-crypto); SPARKNaCl and SPARKTLSCrypto are fetched, pinned trees.
 .PHONY : wifi-crypto-check
-wifi-crypto-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/wifi-crypto-check/build
-	$(CCL_BUILD) ../userspace/apps/wifi-crypto-check/component.ccl
-	cp ../userspace/apps/wifi-crypto-check/build/wifi-crypto-check.app isodir/boot/wifi-crypto-check.app
+wifi-crypto-check: isodir/boot/wifi-crypto-check.app
+$(eval $(call ccl_program,../userspace/apps/wifi-crypto-check,wifi-crypto-check.app,))
 
 .PHONY : avx-check
-avx-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/avx-check/build
-	$(CCL_BUILD) ../userspace/apps/avx-check/component.ccl
-	cp ../userspace/apps/avx-check/build/avx-check.app isodir/boot/avx-check.app
+avx-check: isodir/boot/avx-check.app
+$(eval $(call ccl_program,../userspace/apps/avx-check,avx-check.app,))
 
 # CAP-001 diagnostics check: device memory without authority is refused
 # and recorded (tests/headless: devmem-denials).
 .PHONY : devmem-check
-devmem-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/devmem-check/build
-	$(CCL_BUILD) ../userspace/apps/devmem-check/component.ccl
-	cp ../userspace/apps/devmem-check/build/devmem-check.app isodir/boot/devmem-check.app
+devmem-check: isodir/boot/devmem-check.app
+$(eval $(call ccl_program,../userspace/apps/devmem-check,devmem-check.app,))
 
 # Process-kill diagnostics check: faults on purpose (tests/headless:
 # process-kill).
 .PHONY : stall-check
-stall-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/stall-check/build
-	$(CCL_BUILD) ../userspace/apps/stall-check/component.ccl
-	cp ../userspace/apps/stall-check/build/stall-check.app isodir/boot/stall-check.app
+stall-check: isodir/boot/stall-check.app
+$(eval $(call ccl_program,../userspace/apps/stall-check,stall-check.app,))
 
 .PHONY : fault-check
-fault-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/fault-check/build
-	$(CCL_BUILD) ../userspace/apps/fault-check/component.ccl
-	cp ../userspace/apps/fault-check/build/fault-check.app isodir/boot/fault-check.app
+fault-check: isodir/boot/fault-check.app
+$(eval $(call ccl_program,../userspace/apps/fault-check,fault-check.app,))
 
 # Syscall-entry trap flag regression (SEC-023 #1): headless --test trap-flag.
 .PHONY : trap-flag-check
-trap-flag-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/trap-flag-check/build
-	$(CCL_BUILD) ../userspace/apps/trap-flag-check/component.ccl
-	cp ../userspace/apps/trap-flag-check/build/trap-flag-check.app isodir/boot/trap-flag-check.app
+trap-flag-check: isodir/boot/trap-flag-check.app
+$(eval $(call ccl_program,../userspace/apps/trap-flag-check,trap-flag-check.app,))
 
 # NMI survival regression (SEC-023): headless --test nmi.
 .PHONY : nmi-check
-nmi-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/nmi-check/build
-	$(CCL_BUILD) ../userspace/apps/nmi-check/component.ccl
-	cp ../userspace/apps/nmi-check/build/nmi-check.app isodir/boot/nmi-check.app
+nmi-check: isodir/boot/nmi-check.app
+$(eval $(call ccl_program,../userspace/apps/nmi-check,nmi-check.app,))
 
 # Interrupt-entry direction flag regression (WEB-001 guest resets): headless
 # --test direction-flag.
 .PHONY : direction-flag-check
-direction-flag-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/direction-flag-check/build
-	$(CCL_BUILD) ../userspace/apps/direction-flag-check/component.ccl
-	cp ../userspace/apps/direction-flag-check/build/direction-flag-check.app isodir/boot/direction-flag-check.app
+direction-flag-check: isodir/boot/direction-flag-check.app
+$(eval $(call ccl_program,../userspace/apps/direction-flag-check,direction-flag-check.app,))
 
 # Interrupt-entry alignment-check flag regression (SEC-026): headless
 # --test alignment-flag, with a kernel built SMAP_ENTRY_PROBE=1.
 .PHONY : alignment-flag-check
-alignment-flag-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/alignment-flag-check/build
-	$(CCL_BUILD) ../userspace/apps/alignment-flag-check/component.ccl
-	cp ../userspace/apps/alignment-flag-check/build/alignment-flag-check.app isodir/boot/alignment-flag-check.app
+alignment-flag-check: isodir/boot/alignment-flag-check.app
+$(eval $(call ccl_program,../userspace/apps/alignment-flag-check,alignment-flag-check.app,))
 
 # Kernel-map probe (KERN-014): headless --test kernel-map-probe, with a
 # kernel built KERN014_PROBE=1.
 .PHONY : kernel-map-probe
-kernel-map-probe: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/kernel-map-probe/build
-	$(CCL_BUILD) ../userspace/apps/kernel-map-probe/component.ccl
-	cp ../userspace/apps/kernel-map-probe/build/kernel-map-probe.app isodir/boot/kernel-map-probe.app
+kernel-map-probe: isodir/boot/kernel-map-probe.app
+$(eval $(call ccl_program,../userspace/apps/kernel-map-probe,kernel-map-probe.app,))
 
 # MOV SS / POP SS debug-exception check (DBG-001, CVE-2018-8897 class):
 # headless --test mov-ss-debug, with a kernel built DEBUG_REGISTER_PROBE=1.
 .PHONY : mov-ss-check
-mov-ss-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/mov-ss-check/build
-	$(CCL_BUILD) ../userspace/apps/mov-ss-check/component.ccl
-	cp ../userspace/apps/mov-ss-check/build/mov-ss-check.app isodir/boot/mov-ss-check.app
+mov-ss-check: isodir/boot/mov-ss-check.app
+$(eval $(call ccl_program,../userspace/apps/mov-ss-check,mov-ss-check.app,))
 
 # Timekeeping check (headless clock-keeper): deadlines and msTicks keep going
 # while CPU 0 runs no timer work, with a kernel built CLOCK_STALL_PROBE=1.
 .PHONY : clock-keeper-check
-clock-keeper-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/clock-keeper-check/build
-	$(CCL_BUILD) ../userspace/apps/clock-keeper-check/component.ccl
-	cp ../userspace/apps/clock-keeper-check/build/clock-keeper-check.app isodir/boot/clock-keeper-check.app
+clock-keeper-check: isodir/boot/clock-keeper-check.app
+$(eval $(call ccl_program,../userspace/apps/clock-keeper-check,clock-keeper-check.app,))
 
 # Out-of-memory reclaim check (headless oom-reclaim): teardown allocates nothing.
 .PHONY : oom-check
-oom-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/oom-check/build
-	$(CCL_BUILD) ../userspace/apps/oom-check/component.ccl
-	cp ../userspace/apps/oom-check/build/oom-check.app isodir/boot/oom-check.app
+oom-check: isodir/boot/oom-check.app
+$(eval $(call ccl_program,../userspace/apps/oom-check,oom-check.app,))
 
 .PHONY : wait-check readiness-writer
-wait-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/wait-check/build
-	$(CCL_BUILD) ../userspace/apps/wait-check/component.ccl
-	cp ../userspace/apps/wait-check/build/wait-check.app isodir/boot/wait-check.app
+wait-check: isodir/boot/wait-check.app
+$(eval $(call ccl_program,../userspace/apps/wait-check,wait-check.app,))
 # Shared futexes (IPC-010): headless --test futex-share.
 .PHONY : futex-share
-futex-share: ccl-build user_runtime ccl-manifest
-	for app in futex-share-server futex-share-client futex-share-outsider; do \
-	  mkdir -p ../userspace/apps/$$app/build && \
-	  $(CCL_BUILD) ../userspace/apps/$$app/component.ccl && \
-	  cp ../userspace/apps/$$app/build/$$app.app isodir/boot/$$app.app || exit 1; \
-	done
+FUTEX_SHARE_APPS := futex-share-server futex-share-client futex-share-outsider
+futex-share: $(patsubst %,isodir/boot/%.app,$(FUTEX_SHARE_APPS))
+$(foreach app,$(FUTEX_SHARE_APPS),$(eval $(call ccl_program,../userspace/apps/$(app),$(app).app,)))
 # The debugger preview (DBG-001): its demo target and the engine's native
 # check, headless --test debug-engine.
 .PHONY : debug-demo debug-engine-check
-debug-demo: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/debug-demo/build
-	$(CCL_BUILD) ../userspace/apps/debug-demo/component.ccl
-	cp ../userspace/apps/debug-demo/build/debug-demo.app isodir/boot/debug-demo.app
-debug-engine-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/debug-engine-check/build
-	$(CCL_BUILD) ../userspace/apps/debug-engine-check/component.ccl
-	cp ../userspace/apps/debug-engine-check/build/debug-engine-check.app isodir/boot/debug-engine-check.app
+debug-demo: isodir/boot/debug-demo.app
+$(eval $(call ccl_program,../userspace/apps/debug-demo,debug-demo.app,))
+debug-engine-check: isodir/boot/debug-engine-check.app
+$(eval $(call ccl_program,../userspace/apps/debug-engine-check,debug-engine-check.app,))
 # The debugger engine through the kernel (DBG-001, CAP-012): a target with
 # no stub and the engine's kernel-path check, headless --test debug-kernel.
 DEBUG_KERNEL_APPS := debug-plain debug-kernel-check debug-gate-check
 .PHONY : debug-kernel
-debug-kernel: ccl-build user_runtime ccl-manifest
-	for app in $(DEBUG_KERNEL_APPS); do \
-		mkdir -p ../userspace/apps/$$app/build && \
-		$(CCL_BUILD) ../userspace/apps/$$app/component.ccl && \
-		cp ../userspace/apps/$$app/build/$$app.app isodir/boot/$$app.app || exit 1; \
-	done
+debug-kernel: $(patsubst %,isodir/boot/%.app,$(DEBUG_KERNEL_APPS))
+$(foreach app,$(DEBUG_KERNEL_APPS),$(eval $(call ccl_program,../userspace/apps/$(app),$(app).app,)))
 # The debugger preview's Rust target and the engine's native Rust check,
 # headless --test debug-engine-rs.
 .PHONY : debug-demo-rs debug-engine-rs-check
 debug-demo-rs: ccl-manifest
 	bash ../userspace/apps/debug-demo-rs/build.sh
 	cp ../userspace/rust/build/debug-demo-rs.app isodir/boot/debug-demo-rs.app
-debug-engine-rs-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/debug-engine-rs-check/build
-	$(CCL_BUILD) ../userspace/apps/debug-engine-rs-check/component.ccl
-	cp ../userspace/apps/debug-engine-rs-check/build/debug-engine-rs-check.app isodir/boot/debug-engine-rs-check.app
+debug-engine-rs-check: isodir/boot/debug-engine-rs-check.app
+$(eval $(call ccl_program,../userspace/apps/debug-engine-rs-check,debug-engine-rs-check.app,))
 # The Debugger app (DBG-001 preview): headless --test debugger-gui.
 .PHONY : debugger
-debugger: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/debugger/build
-	$(CCL_BUILD) ../userspace/apps/debugger/component.ccl
-	cp ../userspace/apps/debugger/build/debugger.app isodir/boot/debugger.app
+debugger: isodir/boot/debugger.app
+$(eval $(call ccl_program,../userspace/apps/debugger,debugger.app,ui-fonts-native))
 # Address-space tags (PCIDs): headless --test tlb-tags.
 .PHONY : tlb-tags
-tlb-tags: ccl-build user_runtime ccl-manifest
-	for app in tlb-check tlb-probe; do \
-	  mkdir -p ../userspace/apps/$$app/build && \
-	  $(CCL_BUILD) ../userspace/apps/$$app/component.ccl && \
-	  cp ../userspace/apps/$$app/build/$$app.app isodir/boot/$$app.app || exit 1; \
-	done
-readiness-writer: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/readiness-writer/build
-	$(CCL_BUILD) ../userspace/apps/readiness-writer/component.ccl
-	cp ../userspace/apps/readiness-writer/build/readiness-writer.app isodir/boot/readiness-writer.app
+TLB_TAG_APPS := tlb-check tlb-probe
+tlb-tags: $(patsubst %,isodir/boot/%.app,$(TLB_TAG_APPS))
+$(foreach app,$(TLB_TAG_APPS),$(eval $(call ccl_program,../userspace/apps/$(app),$(app).app,)))
+readiness-writer: isodir/boot/readiness-writer.app
+$(eval $(call ccl_program,../userspace/apps/readiness-writer,readiness-writer.app,))
 
 .PHONY : futex-check
-futex-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/futex-check/build
-	$(CCL_BUILD) ../userspace/apps/futex-check/component.ccl
-	cp ../userspace/apps/futex-check/build/futex-check.app isodir/boot/futex-check.app
+futex-check: isodir/boot/futex-check.app
+$(eval $(call ccl_program,../userspace/apps/futex-check,futex-check.app,))
 
 # Per-thread growable secondary stacks (CuBit.Thread_Areas): headless
 # --test secondary-stacks.
 # User GNAT runtime language features (RT-008; headless --test ada-runtime).
 .PHONY : ada-runtime-check
-ada-runtime-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/ada-runtime-check/build
-	$(CCL_BUILD) ../userspace/apps/ada-runtime-check/component.ccl
-	cp ../userspace/apps/ada-runtime-check/build/ada-runtime-check.app isodir/boot/ada-runtime-check.app
+ada-runtime-check: isodir/boot/ada-runtime-check.app
+$(eval $(call ccl_program,../userspace/apps/ada-runtime-check,ada-runtime-check.app,))
 
 .PHONY : secondary-stack-check
-secondary-stack-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/secondary-stack-check/build
-	$(CCL_BUILD) ../userspace/apps/secondary-stack-check/component.ccl
-	cp ../userspace/apps/secondary-stack-check/build/secondary-stack-check.app isodir/boot/secondary-stack-check.app
+secondary-stack-check: isodir/boot/secondary-stack-check.app
+$(eval $(call ccl_program,../userspace/apps/secondary-stack-check,secondary-stack-check.app,))
 
 # FIRMWARE_SNAPSHOT checks (shared/boot/firmware_snapshot_abi.ads):
 # headless --test firmware-snapshot.
 .PHONY : firmware-check firmware-undeclared
-firmware-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/firmware-check/build
-	$(CCL_BUILD) ../userspace/apps/firmware-check/component.ccl
-	cp ../userspace/apps/firmware-check/build/firmware-check.app isodir/boot/firmware-check.app
+firmware-check: isodir/boot/firmware-check.app
+$(eval $(call ccl_program,../userspace/apps/firmware-check,firmware-check.app,))
 
 # The one acpi.svc (userspace/services/acpi/native; ACPI-ONE-001): AML plus
 # the hardware it holds itself, and the observer metrics client, for
 # headless --test acpi-one-service.
 .PHONY : acpi-native acpi-metrics-check
-acpi-native: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/acpi/native/build
-	$(CCL_BUILD) ../userspace/services/acpi/native/component.ccl
-	cp ../userspace/services/acpi/native/build/acpi.svc isodir/boot/acpi.svc
+acpi-native: isodir/boot/acpi.svc
+$(eval $(call ccl_program,../userspace/services/acpi/native,acpi.svc,))
 
-acpi-metrics-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/acpi-metrics-check/build
-	$(CCL_BUILD) ../userspace/apps/acpi-metrics-check/component.ccl
-	cp ../userspace/apps/acpi-metrics-check/build/acpi-metrics-check.app isodir/boot/acpi-metrics-check.app
+acpi-metrics-check: isodir/boot/acpi-metrics-check.app
+$(eval $(call ccl_program,../userspace/apps/acpi-metrics-check,acpi-metrics-check.app,))
 
 # Test-only stand-in for acpi.svc's "acpi" service (never in world/images).
 .PHONY : acpi-standin
@@ -2116,72 +2275,54 @@ acpi-standin: ccl-build user_runtime ccl-manifest
 # ACPI hardware windows (coordination/acpi-region-boundary.md): headless
 # --test acpi-hardware. Test-only (never in images).
 .PHONY : acpi-hardware-check
-acpi-hardware-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/acpi-hardware-check/build
-	$(CCL_BUILD) ../userspace/apps/acpi-hardware-check/component.ccl
-	cp ../userspace/apps/acpi-hardware-check/build/acpi-hardware-check.app isodir/boot/acpi-hardware-check.app
+acpi-hardware-check: isodir/boot/acpi-hardware-check.app
+$(eval $(call ccl_program,../userspace/apps/acpi-hardware-check,acpi-hardware-check.app,))
 
 # ACPI-PCI-001: the opt-in read-only PCI segment 0 bus 0 window of the ACPI
 # hardware grant (headless --test acpi-pci-config). Test-only (never in
 # world/images).
 .PHONY : acpi-pci-check
-acpi-pci-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/acpi-pci-check/build
-	$(CCL_BUILD) ../userspace/apps/acpi-pci-check/component.ccl
-	cp ../userspace/apps/acpi-pci-check/build/acpi-pci-check.app isodir/boot/acpi-pci-check.app
+acpi-pci-check: isodir/boot/acpi-pci-check.app
+$(eval $(call ccl_program,../userspace/apps/acpi-pci-check,acpi-pci-check.app,))
 
 # Table-named firmware data: devmgr's narrowed, uncached windows over the
 # kernel's Firmware_Data_Tag roots (headless --test acpi-firmware-data).
 # Test-only (never in world/images).
 .PHONY : acpi-data-check
-acpi-data-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/acpi-data-check/build
-	$(CCL_BUILD) ../userspace/apps/acpi-data-check/component.ccl
-	cp ../userspace/apps/acpi-data-check/build/acpi-data-check.app isodir/boot/acpi-data-check.app
+acpi-data-check: isodir/boot/acpi-data-check.app
+$(eval $(call ccl_program,../userspace/apps/acpi-data-check,acpi-data-check.app,))
 
 # The platform-register pool (ACPI-POOL-001): devmgr's pool, mapped once,
 # refused over a bound driver's BAR, revoked when the driver binds after the
 # mapping (headless --test platform-pool). Test-only (never in world/images).
 .PHONY : platform-pool-check
-platform-pool-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/platform-pool-check/build
-	$(CCL_BUILD) ../userspace/apps/platform-pool-check/component.ccl
-	cp ../userspace/apps/platform-pool-check/build/platform-pool-check.app isodir/boot/platform-pool-check.app
+platform-pool-check: isodir/boot/platform-pool-check.app
+$(eval $(call ccl_program,../userspace/apps/platform-pool-check,platform-pool-check.app,))
 
 # The ACPI launch (docs/device-matching.md "ACPI launch"): the stand-in for
 # acpi.svc that asks devmgr to admit the test GPIO controller's spans
 # (headless --test gpio-launch). Test-only (never in world/images).
 .PHONY : gpio-bootstrap-check
-gpio-bootstrap-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../tests/gpio-launch/requester/build
-	$(CCL_BUILD) ../tests/gpio-launch/requester/component.ccl
-	cp ../tests/gpio-launch/requester/build/gpio-bootstrap-check.app isodir/boot/gpio-bootstrap-check.app
+gpio-bootstrap-check: isodir/boot/gpio-bootstrap-check.app
+$(eval $(call ccl_program,../tests/gpio-launch/requester,gpio-bootstrap-check.app,))
 
-firmware-undeclared: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/firmware-undeclared/build
-	$(CCL_BUILD) ../userspace/apps/firmware-undeclared/component.ccl
-	cp ../userspace/apps/firmware-undeclared/build/firmware-undeclared.app isodir/boot/firmware-undeclared.app
+firmware-undeclared: isodir/boot/firmware-undeclared.app
+$(eval $(call ccl_program,../userspace/apps/firmware-undeclared,firmware-undeclared.app,))
 
 # Clock publication checks (docs/fast-clock.md): headless --test clock.
 .PHONY : clock-check
-clock-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/clock-check/build
-	$(CCL_BUILD) ../userspace/apps/clock-check/component.ccl
-	cp ../userspace/apps/clock-check/build/clock-check.app isodir/boot/clock-check.app
+clock-check: isodir/boot/clock-check.app
+$(eval $(call ccl_program,../userspace/apps/clock-check,clock-check.app,))
 
 # The per-CPU times publication (KERN-002, run.sh --test cpu-times).
 .PHONY : cpu-times-check
-cpu-times-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/cpu-times-check/build
-	$(CCL_BUILD) ../userspace/apps/cpu-times-check/component.ccl
-	cp ../userspace/apps/cpu-times-check/build/cpu-times-check.app isodir/boot/cpu-times-check.app
+cpu-times-check: isodir/boot/cpu-times-check.app
+$(eval $(call ccl_program,../userspace/apps/cpu-times-check,cpu-times-check.app,))
 
 # Boot timeline reader (BOOT-001, docs/boot-timeline.md)
 .PHONY : boot-timeline
-boot-timeline: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/boot-timeline/build
-	$(CCL_BUILD) ../userspace/apps/boot-timeline/component.ccl
-	cp ../userspace/apps/boot-timeline/build/boot-timeline.app isodir/boot/boot-timeline.app
+boot-timeline: isodir/boot/boot-timeline.app
+$(eval $(call ccl_program,../userspace/apps/boot-timeline,boot-timeline.app,))
 
 # Boot timeline bookkeeping proof (kernel/src/boot_timeline_records.ad?) and
 # the reader's analysis (userspace/apps/boot-timeline): tests/boot-timeline.
@@ -2190,16 +2331,12 @@ prove-boot-timeline:
 	$(ALR) bash ../tests/boot-timeline/run.sh --prove
 
 .PHONY : thread-check
-thread-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/thread-check/build
-	$(CCL_BUILD) ../userspace/apps/thread-check/component.ccl
-	cp ../userspace/apps/thread-check/build/thread-check.app isodir/boot/thread-check.app
+thread-check: isodir/boot/thread-check.app
+$(eval $(call ccl_program,../userspace/apps/thread-check,thread-check.app,))
 
 .PHONY : tls-check
-tls-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/tls-check/build
-	$(CCL_BUILD) ../userspace/apps/tls-check/component.ccl
-	cp ../userspace/apps/tls-check/build/tls-check.app isodir/boot/tls-check.app
+tls-check: isodir/boot/tls-check.app
+$(eval $(call ccl_program,../userspace/apps/tls-check,tls-check.app,))
 
 # SPARKTLS's FIPS 140-3 post-link step (the pinned crate's tools/fips_inject,
 # built for the host): writes the software integrity test's HMACs into a
@@ -2207,23 +2344,34 @@ tls-check: ccl-build user_runtime ccl-manifest
 # Without it SPARKTLS.RBG.Init fails its FIPS self-test and no session starts.
 FIPS_INJECT := ../tools/fips-inject/build/fips_inject
 .PHONY : fips-inject
-fips-inject: tls-crates
+fips-inject: build/gate/fips-inject.stamp
+build/gate/fips-inject.stamp: $(HOST_TOOL_INPUTS) | tls-crates
 	$(ALR) gprbuild -p -j8 -P ../tools/fips-inject/fips_inject.gpr \
 		-XCUBIT_SPARK_CRATES=$(CUBIT_SPARK_CRATES)
+	@python3 ../tools/gpr_inputs.py build/gate/fips-inject.d $@ -- $(HOST_GPRLS) -P ../tools/fips-inject/fips_inject.gpr \
+		-XCUBIT_SPARK_CRATES=$(CUBIT_SPARK_CRATES)
+	@touch $@
+-include build/gate/fips-inject.d
+$(FIPS_INJECT): fips-inject ;
 
 # TLS client service.
 .PHONY : tls
-tls: user_runtime ccl-manifest tls-crates fips-inject
+tls: build/gpr/tls.stamp
+build/gpr/tls.stamp: $(FIPS_INJECT) $(GPR_STEP_INPUTS) $(wildcard ../userspace/services/tls/manifest.ccl) | user_runtime ccl-manifest tls-crates fips-inject
 	mkdir -p ../userspace/services/tls/build
 	$(call compile_ccl_manifest,../userspace/services/tls)
 	$(NATIVE_GPRBUILD) -j8 -P ../userspace/services/tls/tls.gpr \
 		-XCUBIT_SPARK_CRATES=$(CUBIT_SPARK_CRATES)
 	$(FIPS_INJECT) ../userspace/services/tls/build/tls.svc
-	cp ../userspace/services/tls/build/tls.svc isodir/boot/tls.svc
+	$(call stage,../userspace/services/tls/build/tls.svc,tls.svc)
+	@python3 ../tools/gpr_inputs.py build/gpr/tls.d $@ -- $(NATIVE_GPRLS) -P ../userspace/services/tls/tls.gpr -XCUBIT_SPARK_CRATES=$(CUBIT_SPARK_CRATES)
+	@touch $@
+-include build/gpr/tls.d
 
 # Native SPARKTLS probe for the headless tls-probe regression; embeds the
 # generated test root.
-tls-probe: user_runtime ccl-manifest tls-crates tls-test-pki fips-inject
+tls-probe: build/gpr/tls-probe.stamp
+build/gpr/tls-probe.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/apps/tls-probe/manifest.ccl) | user_runtime ccl-manifest tls-crates tls-test-pki fips-inject
 	mkdir -p ../userspace/apps/tls-probe/build/generated
 	$(call compile_ccl_manifest,../userspace/apps/tls-probe)
 	python3 ../tools/der_to_ada.py TLS_Probe_Roots DER ../tests/tls/build/pki/ca.der \
@@ -2231,19 +2379,27 @@ tls-probe: user_runtime ccl-manifest tls-crates tls-test-pki fips-inject
 	$(NATIVE_GPRBUILD) -j8 -P ../userspace/apps/tls-probe/tls_probe.gpr \
 		-XCUBIT_SPARK_CRATES=$(CUBIT_SPARK_CRATES)
 	$(FIPS_INJECT) ../userspace/apps/tls-probe/build/tls-probe.app
-	cp ../userspace/apps/tls-probe/build/tls-probe.app isodir/boot/tls-probe.app
+	$(call stage,../userspace/apps/tls-probe/build/tls-probe.app,tls-probe.app)
+	@python3 ../tools/gpr_inputs.py build/gpr/tls-probe.d $@ -- $(NATIVE_GPRLS) -P ../userspace/apps/tls-probe/tls_probe.gpr -XCUBIT_SPARK_CRATES=$(CUBIT_SPARK_CRATES)
+	@touch $@
+-include build/gpr/tls-probe.d
 
 # Capability-addressed monotonic clock service.
 .PHONY : clock
-clock: user_runtime ../userspace/ccl/interfaces/clock.ccl-interface ccl-manifest time-zones
-	mkdir -p ../userspace/services/clock/build
+clock: build/gpr/clock.stamp
+build/gpr/clock.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/services/clock/manifest.ccl) | user_runtime ../userspace/ccl/interfaces/clock.ccl-interface ccl-manifest time-zones
+	mkdir -p ../userspace/services/clock/build $(UNSTAGED)
 	$(call compile_ccl_manifest,../userspace/services/clock)
 	$(call generate_clock_floor,../userspace/services/clock/build/generated/clock_floor.ads)
 	$(NATIVE_GPRBUILD) -P ../userspace/services/clock/clock.gpr
 	$(ALR) objcopy \
 		--add-section .cubit.interfaces=../userspace/ccl/interfaces/clock.ccl-interface \
 		--set-section-flags .cubit.interfaces=readonly,data \
-		../userspace/services/clock/build/clock.svc isodir/boot/clock.svc
+		../userspace/services/clock/build/clock.svc $(UNSTAGED)/clock.svc
+	$(call stage,$(UNSTAGED)/clock.svc,clock.svc)
+	@python3 ../tools/gpr_inputs.py build/gpr/clock.d $@ -- $(NATIVE_GPRLS) -P ../userspace/services/clock/clock.gpr
+	@touch $@
+-include build/gpr/clock.d
 
 # The bundled IANA zones: names (Time_Zones: clock, Settings) and offset
 # rules (Time_Zone_Rules: clock only).
@@ -2258,8 +2414,13 @@ $(TIME_ZONE_SOURCES) &: ../tools/generate_time_zones.py ../flake.lock ../flake.n
 UNWINDER_OBJECTS := unwind-dw2.o unwind-dw2-fde-dip.o
 
 # Build userspace Ada runtime (needed by filesystem server)
+# BLD-001 interim: rebuilt only when one of its sources (the runtime, the
+# allocator, the shared units, the C start code) or the flake changed.
 .PHONY : user_runtime
-user_runtime:
+user_runtime: build/gate/user_runtime.stamp
+build/gate/user_runtime.stamp: $(shell find ../userspace/runtime ../userspace/allocator ../shared ../userspace/c -type d \
+		\( -name 'build*' -o -name adalib \) -prune -o -type f -print) \
+		../userspace/toolchain/gnat-15.cgpr $(HOST_TOOL_INPUTS)
 	$(ALR) $(MAKE) -C ../userspace/c build/crt0.o
 	mkdir -p ../userspace/runtime/build
 	mkdir -p ../userspace/runtime/adalib
@@ -2267,7 +2428,10 @@ user_runtime:
 	# CuAlloc, the process heap System.Memory allocates from: the same
 	# objects as in libc.a and libcubit_allocator.a.
 	$(NATIVE_GPRBUILD) -p -P ../userspace/allocator/allocator_native.gpr
-	ar rcs ../userspace/runtime/adalib/libgnat-user.a ../userspace/allocator/build/native-objects/*.o
+	# Assembled as a copy, which replaces the archive only when its
+	# contents changed (BLD-001): nothing that links it looks newer than it is.
+	cp ../userspace/runtime/adalib/libgnat-user.a ../userspace/runtime/adalib/libgnat-user.a.new
+	ar rcs ../userspace/runtime/adalib/libgnat-user.a.new ../userspace/allocator/build/native-objects/*.o
 	# Zero-cost exceptions (EXC-001). GNAT's personality routine, upstream's
 	# raise-gcc.c unchanged, compiled as libgnat does (IN_RTS), with no
 	# libgcc configuration headers (STANDALONE: runtime.h), no C++
@@ -2277,7 +2441,7 @@ user_runtime:
 	  -ffile-prefix-map=$(abspath ..)=. -DIN_RTS -DSTANDALONE -DGXX_EH_INTEROP=0 \
 	  -Dabort=__cubit_unwind_abort -I../userspace/runtime/gnat \
 	  ../userspace/runtime/gnat/raise-gcc.c -o ../userspace/runtime/build/unwinder/raise-gcc.o
-	ar rcs ../userspace/runtime/adalib/libgnat-user.a ../userspace/runtime/build/unwinder/raise-gcc.o
+	ar rcs ../userspace/runtime/adalib/libgnat-user.a.new ../userspace/runtime/build/unwinder/raise-gcc.o
 	# libgcc's DWARF unwinder, for zero-cost exceptions and tracebacks: the
 	# pinned compiler's own objects, unchanged except that their libc calls
 	# are renamed to CuBit.Unwinder_Support's
@@ -2287,95 +2451,99 @@ user_runtime:
 	  $(CUBIT_BINUTILS)/bin/objcopy --redefine-syms=../userspace/runtime/unwinder-symbols.txt \
 	    ../userspace/runtime/build/unwinder/$$object ../userspace/runtime/build/unwinder/cubit-$$object || exit 1; \
 	done
-	ar rcs ../userspace/runtime/adalib/libgnat-user.a $(addprefix ../userspace/runtime/build/unwinder/cubit-,$(UNWINDER_OBJECTS))
+	ar rcs ../userspace/runtime/adalib/libgnat-user.a.new $(addprefix ../userspace/runtime/build/unwinder/cubit-,$(UNWINDER_OBJECTS))
+	if cmp -s ../userspace/runtime/adalib/libgnat-user.a.new ../userspace/runtime/adalib/libgnat-user.a; then \
+	  rm ../userspace/runtime/adalib/libgnat-user.a.new; else \
+	  mv ../userspace/runtime/adalib/libgnat-user.a.new ../userspace/runtime/adalib/libgnat-user.a; fi
+	@mkdir -p $(@D) && touch $@
 
 # RAM storage uses the same block-device protocol as hardware drivers.
 .PHONY : ramdisk
-ramdisk: user_runtime ccl-manifest
+ramdisk: build/gpr/ramdisk.stamp
+build/gpr/ramdisk.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/services/ramdisk/manifest.ccl) | user_runtime ccl-manifest
 	mkdir -p ../userspace/services/ramdisk/build
 	$(call compile_driver_manifest,../userspace/services/ramdisk)
 	$(NATIVE_GPRBUILD) -P ../userspace/services/ramdisk/ramdisk.gpr
-	cp ../userspace/services/ramdisk/build/ramdisk.drv isodir/boot/ramdisk.drv
+	$(call stage,../userspace/services/ramdisk/build/ramdisk.drv,ramdisk.drv)
+	@python3 ../tools/gpr_inputs.py build/gpr/ramdisk.d $@ -- $(NATIVE_GPRLS) -P ../userspace/services/ramdisk/ramdisk.gpr
+	@touch $@
+-include build/gpr/ramdisk.d
 
 # Build the userspace filesystem server
 .PHONY : filesystem
-filesystem: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/filesystem/build
-	$(CCL_BUILD) ../userspace/services/filesystem/component.ccl
-	cp ../userspace/services/filesystem/build/filesystem.svc isodir/boot/filesystem.svc
+filesystem: isodir/boot/filesystem.svc
+$(eval $(call ccl_program,../userspace/services/filesystem,filesystem.svc,))
 
 # Build the userspace ATA driver
 .PHONY : ata
-ata: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/ata/build
-	$(CCL_BUILD) ../userspace/services/ata/component.ccl
-	cp ../userspace/services/ata/build/ata.drv isodir/boot/ata.drv
+ata: isodir/boot/ata.drv
+$(eval $(call ccl_program,../userspace/services/ata,ata.drv,))
 
 # Build the userspace UFS host controller driver (HW-001)
 .PHONY : ufs
-ufs: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/ufs/build
-	$(CCL_BUILD) ../userspace/services/ufs/component.ccl
-	cp ../userspace/services/ufs/build/ufs.drv isodir/boot/ufs.drv
+ufs: isodir/boot/ufs.drv
+$(eval $(call ccl_program,../userspace/services/ufs,ufs.drv,))
 
 # Build the userspace NVMe driver
 .PHONY : nvme
-nvme: user_runtime ccl-manifest
+nvme: build/gpr/nvme.stamp
+build/gpr/nvme.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/services/nvme/manifest.ccl) | user_runtime ccl-manifest
 	mkdir -p ../userspace/services/nvme/build
 	$(call compile_driver_manifest,../userspace/services/nvme)
 	$(NATIVE_GPRBUILD) -P ../userspace/services/nvme/nvme_drv.gpr
-	cp ../userspace/services/nvme/build/nvme.drv isodir/boot/nvme.drv
+	$(call stage,../userspace/services/nvme/build/nvme.drv,nvme.drv)
+	@python3 ../tools/gpr_inputs.py build/gpr/nvme.d $@ -- $(NATIVE_GPRLS) -P ../userspace/services/nvme/nvme_drv.gpr
+	@touch $@
+-include build/gpr/nvme.d
 
 # Build the userspace virtio-net driver
 .PHONY : virtio-net
-virtio-net: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/virtio-net/build
-	$(CCL_BUILD) ../userspace/services/virtio-net/component.ccl
-	cp ../userspace/services/virtio-net/build/virtio-net.drv isodir/boot/virtio-net.drv
+virtio-net: isodir/boot/virtio-net.drv
+$(eval $(call ccl_program,../userspace/services/virtio-net,virtio-net.drv,))
 
 # Build the userspace virtio-gpu driver
 CUBIT_GPU_TEST_MODE ?= production
 GPU_BUILD_DIR = $(if $(filter production,$(CUBIT_GPU_TEST_MODE)),build,build-$(CUBIT_GPU_TEST_MODE))
 .PHONY : virtio-gpu
-virtio-gpu: user_runtime ccl-manifest
+virtio-gpu: build/gpr/virtio-gpu.stamp
+build/gpr/virtio-gpu.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/services/virtio-gpu/manifest.ccl) | user_runtime ccl-manifest
 	mkdir -p ../userspace/services/virtio-gpu/build
 	$(call compile_driver_manifest,../userspace/services/virtio-gpu)
 	$(NATIVE_GPRBUILD) -p -P ../userspace/services/virtio-gpu/virtio_gpu.gpr -XCUBIT_GPU_TEST_MODE=$(CUBIT_GPU_TEST_MODE)
-	cp ../userspace/services/virtio-gpu/$(GPU_BUILD_DIR)/virtio-gpu.drv isodir/boot/virtio-gpu.drv
+	$(call stage,../userspace/services/virtio-gpu/$(GPU_BUILD_DIR)/virtio-gpu.drv,virtio-gpu.drv)
+	@python3 ../tools/gpr_inputs.py build/gpr/virtio-gpu.d $@ -- $(NATIVE_GPRLS) -P ../userspace/services/virtio-gpu/virtio_gpu.gpr -XCUBIT_GPU_TEST_MODE=$(CUBIT_GPU_TEST_MODE)
+	@touch $@
+-include build/gpr/virtio-gpu.d
 
 # Build the userspace network stack service
 .PHONY : netstack
-netstack: user_runtime ccl-manifest
+netstack: build/gpr/netstack.stamp
+build/gpr/netstack.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/services/netstack/manifest.ccl) | user_runtime ccl-manifest
 	mkdir -p ../userspace/services/netstack/build
 	$(call compile_driver_manifest,../userspace/services/netstack)
 	$(NATIVE_GPRBUILD) -P ../userspace/services/netstack/netstack.gpr
-	cp ../userspace/services/netstack/build/netstack.svc isodir/boot/netstack.svc
+	$(call stage,../userspace/services/netstack/build/netstack.svc,netstack.svc)
+	@python3 ../tools/gpr_inputs.py build/gpr/netstack.d $@ -- $(NATIVE_GPRLS) -P ../userspace/services/netstack/netstack.gpr
+	@touch $@
+-include build/gpr/netstack.d
 
 # Build the userspace wget app
 .PHONY : wget
-wget: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/wget/build
-	$(CCL_BUILD) ../userspace/apps/wget/component.ccl
-	cp ../userspace/apps/wget/build/wget.app isodir/boot/wget.app
+wget: isodir/boot/wget.app
+$(eval $(call ccl_program,../userspace/apps/wget,wget.app,))
 
 # Build the unified hardware inventory and diagnostics app
 .PHONY : devices
 .PHONY : config-inspector
 .PHONY: intel-gpu
-intel-gpu: ccl-build user_runtime ccl-manifest intel-buffer-layout-check
-	mkdir -p ../userspace/services/intel-gpu/build
-	$(CCL_BUILD) ../userspace/services/intel-gpu/component.ccl
-	cp ../userspace/services/intel-gpu/build/intel-gpu.drv isodir/boot/intel-gpu.drv
+intel-gpu: isodir/boot/intel-gpu.drv
+$(eval $(call ccl_program,../userspace/services/intel-gpu,intel-gpu.drv,intel-buffer-layout-check))
 
-config-inspector: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/config-inspector/build
-	$(CCL_BUILD) ../userspace/apps/config-inspector/component.ccl
-	cp ../userspace/apps/config-inspector/build/config-inspector.app isodir/boot/config-inspector.app
+config-inspector: isodir/boot/config-inspector.app
+$(eval $(call ccl_program,../userspace/apps/config-inspector,config-inspector.app,ui-fonts-native))
 
-devices: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/devices/build
-	$(CCL_BUILD) ../userspace/apps/devices/component.ccl
-	cp ../userspace/apps/devices/build/devices.app isodir/boot/devices.app
+devices: isodir/boot/devices.app
+$(eval $(call ccl_program,../userspace/apps/devices,devices.app,ui-fonts-native))
 
 .PHONY: render-launch-policy
 render-launch-policy: user_runtime ccl-manifest
@@ -2414,59 +2582,43 @@ gpu-viewer-test: user_runtime ccl-manifest
 	done
 
 .PHONY: gpu-viewer
-gpu-viewer: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/gpu-viewer/build
-	$(CCL_BUILD) ../userspace/apps/gpu-viewer/component.ccl
-	cp ../userspace/apps/gpu-viewer/build/gpu-viewer.app isodir/boot/gpu-viewer.app
+gpu-viewer: isodir/boot/gpu-viewer.app
+$(eval $(call ccl_program,../userspace/apps/gpu-viewer,gpu-viewer.app,))
 
 .PHONY : logs
 # The Logs app (docs/logs-app.md): every service's records, live.
-logs: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/logs/build
-	$(CCL_BUILD) ../userspace/apps/logs/component.ccl
-	cp ../userspace/apps/logs/build/logs.app isodir/boot/logs.app
+logs: isodir/boot/logs.app
+$(eval $(call ccl_program,../userspace/apps/logs,logs.app,ui-fonts-native))
 
 .PHONY : boot-logs
-boot-logs: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/boot-logs/build
-	$(CCL_BUILD) ../userspace/apps/boot-logs/component.ccl
-	cp ../userspace/apps/boot-logs/build/boot-logs.app isodir/boot/boot-logs.app
+boot-logs: isodir/boot/boot-logs.app
+$(eval $(call ccl_program,../userspace/apps/boot-logs,boot-logs.app,ui-fonts-native))
 
-files: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/files/build
-	$(CCL_BUILD) ../userspace/apps/files/component.ccl
-	cp ../userspace/apps/files/build/files.app isodir/boot/files.app
+files: isodir/boot/files.app
+$(eval $(call ccl_program,../userspace/apps/files,files.app,ui-fonts-native))
 
 # The text editor (docs/text-editor.md): the editor core in userspace/lib/text.
 .PHONY : text
-text: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/text/build
-	$(CCL_BUILD) ../userspace/apps/text/component.ccl
-	cp ../userspace/apps/text/build/text.app isodir/boot/text.app
+text: isodir/boot/text.app
+$(eval $(call ccl_program,../userspace/apps/text,text.app,ui-fonts-native))
 
 # A test window animating every refresh (LAT-002; display-latency with
 # CUBIT_DISPLAY_LATENCY_ANIMATION=1 runs it beside the Calculator).
 .PHONY : frame-ticker
-frame-ticker: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/frame-ticker/build
-	$(CCL_BUILD) ../userspace/apps/frame-ticker/component.ccl
-	cp ../userspace/apps/frame-ticker/build/frame-ticker.app isodir/boot/frame-ticker.app
+frame-ticker: isodir/boot/frame-ticker.app
+$(eval $(call ccl_program,../userspace/apps/frame-ticker,frame-ticker.app,ui-fonts-native))
 
 # The calculator (docs/calculator.md): the calculator core in userspace/lib/calc.
 # The UI latency probe (tests/headless --test ui-latency).
 .PHONY : ui-latency-probe
-ui-latency-probe: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/ui-latency-probe/build
-	$(CCL_BUILD) ../userspace/apps/ui-latency-probe/component.ccl
-	cp ../userspace/apps/ui-latency-probe/build/ui-latency-probe.app isodir/boot/ui-latency-probe.app
+ui-latency-probe: isodir/boot/ui-latency-probe.app
+$(eval $(call ccl_program,../userspace/apps/ui-latency-probe,ui-latency-probe.app,ui-fonts-native))
 
 .PHONY : calculator
 # On gprbuild until CCL capacity M1: its declaration exceeds the program
 # size cap (docs/ccl-build.md), like text's.
-calculator: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/calculator/build
-	$(CCL_BUILD) ../userspace/apps/calculator/component.ccl
-	cp ../userspace/apps/calculator/build/calculator.app isodir/boot/calculator.app
+calculator: isodir/boot/calculator.app
+$(eval $(call ccl_program,../userspace/apps/calculator,calculator.app,ui-fonts-native))
 
 .PHONY : vmm
 # vmm (VMM-001): the per-VM monitor as a desktop app, with the pinned guest.
@@ -2481,57 +2633,39 @@ vmm: ccl-build user_runtime ccl-manifest ui-fonts-native
 .PHONY : metricsview
 # Metrics (MET-002's app): dashboards over metrics.svc's series; the charts
 # core in userspace/lib/charts.
-metricsview: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/metricsview/build
-	$(CCL_BUILD) ../userspace/apps/metricsview/component.ccl
-	cp ../userspace/apps/metricsview/build/metricsview.app isodir/boot/metricsview.app
-
-isodir/boot/metricsview.app: metricsview
-	@test -s $@
+metricsview: isodir/boot/metricsview.app
+$(eval $(call ccl_program,../userspace/apps/metricsview,metricsview.app,ui-fonts-native))
 
 # The dictionary, thesaurus and spelling service (docs/lexicon.md): it reads
 # the lexicon asset package and answers Lexicon_Channel channels.
 .PHONY : lexicon
-lexicon: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/lexicon/build
-	rm -f ../userspace/services/lexicon/build/lexicon.svc
-	$(CCL_BUILD) ../userspace/services/lexicon/component.ccl
-	cp ../userspace/services/lexicon/build/lexicon.svc isodir/boot/lexicon.svc
+lexicon: isodir/boot/lexicon.svc
+$(eval $(call ccl_program,../userspace/services/lexicon,lexicon.svc,))
 
 # Dictionary (docs/lexicon.md), with Dictionary and Thesaurus modes, asking
 # lexicon.svc.
 .PHONY : dictionary
-dictionary: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/dictionary/build
-	rm -f ../userspace/apps/dictionary/build/dictionary.app
-	$(CCL_BUILD) ../userspace/apps/dictionary/component.ccl
-	cp ../userspace/apps/dictionary/build/dictionary.app isodir/boot/dictionary.app
+dictionary: isodir/boot/dictionary.app
+$(eval $(call ccl_program,../userspace/apps/dictionary,dictionary.app,ui-fonts-native))
 
 # The Bible (APP-005): its proved core in userspace/lib/bible, the reading
 # face (Literata) linked in from its pinned download, the texts read from
 # the cubit-bible asset package (bible-assets).
 .PHONY : bible
-bible: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/bible/build
-	rm -f ../userspace/apps/bible/build/bible.app
-	$(CCL_BUILD) ../userspace/apps/bible/component.ccl
-	cp ../userspace/apps/bible/build/bible.app isodir/boot/bible.app
+bible: isodir/boot/bible.app
+$(eval $(call ccl_program,../userspace/apps/bible,bible.app,ui-fonts-native))
 
 # Build the live writable-storage diagnostic app.
 # HW-001 step 4: whole-disk writes behind the block write grant (headless
 # ufs-write); the installer's stand-in, holding disk-install.
 .PHONY : disk-write-check
-disk-write-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/disk-write-check/build
-	$(CCL_BUILD) ../userspace/apps/disk-write-check/component.ccl
-	cp ../userspace/apps/disk-write-check/build/disk-write-check.app isodir/boot/disk-write-check.app
+disk-write-check: isodir/boot/disk-write-check.app
+$(eval $(call ccl_program,../userspace/apps/disk-write-check,disk-write-check.app,))
 
 # SYS-001: the installed system's boot check (headless install-reboot).
 .PHONY : install-boot-check
-install-boot-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/install-boot-check/build
-	$(CCL_BUILD) ../userspace/apps/install-boot-check/component.ccl
-	cp ../userspace/apps/install-boot-check/build/install-boot-check.app isodir/boot/install-boot-check.app
+install-boot-check: isodir/boot/install-boot-check.app
+$(eval $(call ccl_program,../userspace/apps/install-boot-check,install-boot-check.app,))
 
 # SYS-001: the install payload's pieces. The UEFI fallback loader is GRUB,
 # the same loader the live medium uses, standalone with its configuration
@@ -2550,89 +2684,69 @@ installed-initrd: $(INITRD_SERVICES) ccl-image ccl-sign ../images/installed-init
 
 # SYS-001: installer.svc, system.disks and system.install (holds disk-install).
 .PHONY : installer
-installer: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/installer/build
-	$(CCL_BUILD) ../userspace/services/installer/component.ccl
-	cp ../userspace/services/installer/build/installer.svc isodir/boot/installer.svc
+installer: isodir/boot/installer.svc
+$(eval $(call ccl_program,../userspace/services/installer,installer.svc,))
 
 .PHONY : storage-check
-storage-check: ccl-build user_runtime filesystem-scope-check ccl-manifest
-	mkdir -p ../userspace/apps/storage-check/build
-	$(CCL_BUILD) ../userspace/apps/storage-check/component.ccl
-	cp ../userspace/apps/storage-check/build/storage-check.app isodir/boot/storage-check.app
+storage-check: isodir/boot/storage-check.app
+$(eval $(call ccl_program,../userspace/apps/storage-check,storage-check.app,filesystem-scope-check))
 
 .PHONY : filesystem-scope-check
-filesystem-scope-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/filesystem-scope-check/build
-	$(CCL_BUILD) ../userspace/apps/filesystem-scope-check/component.ccl
-	cp ../userspace/apps/filesystem-scope-check/build/filesystem-scope-check.app isodir/boot/filesystem-scope-check.app
+filesystem-scope-check: isodir/boot/filesystem-scope-check.app
+$(eval $(call ccl_program,../userspace/apps/filesystem-scope-check,filesystem-scope-check.app,))
 
 # Build the first desktop shell client
 .PHONY : desktop-shell
-desktop-shell: ccl-build user_runtime ccl-manifest ui-fonts-native
-	mkdir -p ../userspace/apps/desktop-shell/build
-	$(CCL_BUILD) ../userspace/apps/desktop-shell/component.ccl
-	cp ../userspace/apps/desktop-shell/build/desktop-shell.app isodir/boot/desktop-shell.app
+desktop-shell: isodir/boot/desktop-shell.app
+$(eval $(call ccl_program,../userspace/apps/desktop-shell,desktop-shell.app,ui-fonts-native))
 
 # Build the userspace process manager service
 .PHONY : procmgr
-procmgr: ccl-build user_runtime
-	mkdir -p ../userspace/services/procmgr/build
-	$(CCL_BUILD) ../userspace/services/procmgr/component.ccl
-	cp ../userspace/services/procmgr/build/procmgr.svc isodir/boot/procmgr.svc
+procmgr: isodir/boot/procmgr.svc
+$(eval $(call ccl_program,../userspace/services/procmgr,procmgr.svc,))
 
 # Typed program parameters (docs/ccl-launch-parameters.md): the headless
 # program-parameters test's programs, one that declares parameters and one
 # that declares none.
 .PHONY : program-parameters-test
-program-parameters-test: ccl-build user_runtime ccl-manifest
-	$(CCL_BUILD) ../tests/program-parameters/check/component.ccl
-	$(CCL_BUILD) ../tests/program-parameters/plain/component.ccl
-	cp ../tests/program-parameters/check/build/parameters-check.app isodir/boot/parameters-check.app
-	cp ../tests/program-parameters/plain/build/parameters-plain.app isodir/boot/parameters-plain.app
+program-parameters-test: isodir/boot/parameters-check.app isodir/boot/parameters-plain.app
+$(eval $(call ccl_program,../tests/program-parameters/check,parameters-check.app,))
+$(eval $(call ccl_program,../tests/program-parameters/plain,parameters-plain.app,))
 
 # LIVE-002: the headless exit-status test's program, which ends as its typed
 # parameter says (tests/exit-status).
 .PHONY : exit-status-test
-exit-status-test: ccl-build user_runtime ccl-manifest
-	$(CCL_BUILD) ../tests/exit-status/check/component.ccl
-	cp ../tests/exit-status/check/build/exit-status-check.app isodir/boot/exit-status-check.app
+exit-status-test: isodir/boot/exit-status-check.app
+$(eval $(call ccl_program,../tests/exit-status/check,exit-status-check.app,))
 
 # PWR-003 slice 1: the headless shutdown tests' fixtures: a TEST STAND-IN
 # for acpi.svc's side of CuBit.Power_Event_Exchange (button watch, S5 on
 # q35), a service that obeys Stop and one that does not.
 .PHONY : shutdown-test
-shutdown-test: ccl-build user_runtime ccl-manifest
-	$(CCL_BUILD) ../tests/shutdown/standin/component.ccl
-	$(CCL_BUILD) ../tests/shutdown/cooperative/component.ccl
-	$(CCL_BUILD) ../tests/shutdown/stubborn/component.ccl
-	cp ../tests/shutdown/standin/build/shutdown-standin.app isodir/boot/shutdown-standin.app
-	cp ../tests/shutdown/cooperative/build/shutdown-cooperative.app isodir/boot/shutdown-cooperative.app
-	cp ../tests/shutdown/stubborn/build/shutdown-stubborn.app isodir/boot/shutdown-stubborn.app
+shutdown-test: isodir/boot/shutdown-standin.app isodir/boot/shutdown-cooperative.app isodir/boot/shutdown-stubborn.app
+$(eval $(call ccl_program,../tests/shutdown/standin,shutdown-standin.app,))
+$(eval $(call ccl_program,../tests/shutdown/cooperative,shutdown-cooperative.app,))
+$(eval $(call ccl_program,../tests/shutdown/stubborn,shutdown-stubborn.app,))
 
 # PWR-004 slice 1 (headless power-sources): the TEST STAND-IN for acpi.svc's
 # AC adapter and battery observer pages (tests/power-sources/standin). Test-only.
 .PHONY : power-sources-test
-power-sources-test: ccl-build user_runtime ccl-manifest
-	$(CCL_BUILD) ../tests/power-sources/standin/component.ccl
-	cp ../tests/power-sources/standin/build/power-standin.app isodir/boot/power-standin.app
+power-sources-test: isodir/boot/power-standin.app
+$(eval $(call ccl_program,../tests/power-sources/standin,power-standin.app,))
 
 # Start_Child (SUP-001): the headless supervision test's supervisor and
 # the child it starts with typed parameters. Test-only.
 .PHONY : supervision-test
-supervision-test: ccl-build user_runtime ccl-manifest
-	$(CCL_BUILD) ../tests/supervision/supervisor/component.ccl
-	$(CCL_BUILD) ../tests/supervision/child/component.ccl
-	cp ../tests/supervision/supervisor/build/supervision-check.app isodir/boot/supervision-check.app
-	cp ../tests/supervision/child/build/supervision-child.app isodir/boot/supervision-child.app
+supervision-test: isodir/boot/supervision-check.app isodir/boot/supervision-child.app
+$(eval $(call ccl_program,../tests/supervision/supervisor,supervision-check.app,))
+$(eval $(call ccl_program,../tests/supervision/child,supervision-child.app,))
 
 # HID launch fixture (SUP-001): a test driver declaring ACPI_ID PNP0C50 and
 # hid-i2c's HID_Parameters, which devmgr starts through Start_Child in the
 # headless gpio-launch test. Test-only (never in world/images).
 .PHONY : hid-launch-check
-hid-launch-check: ccl-build user_runtime ccl-manifest
-	$(CCL_BUILD) ../tests/gpio-launch/hid-driver/component.ccl
-	cp ../tests/gpio-launch/hid-driver/build/hid-launch-check.drv isodir/boot/hid-launch-check.drv
+hid-launch-check: isodir/boot/hid-launch-check.drv
+$(eval $(call ccl_program,../tests/gpio-launch/hid-driver,hid-launch-check.drv,))
 
 # The laptop touchpad (SUP-001): the INTC1057 GPIO driver (ACPI launch),
 # the DesignWare I2C controller driver (generic PCI launch, 8086:54E8/54E9)
@@ -2640,214 +2754,172 @@ hid-launch-check: ccl-build user_runtime ccl-manifest
 # procmgr's Start_Child). Hardware images only (LAPTOP_LIVE_STAGE1); the
 # development image keeps hid-launch-check as its PNP0C50 driver.
 .PHONY : gpio i2c-dw hid-i2c
-gpio: ccl-build user_runtime ccl-manifest
-	$(CCL_BUILD) ../userspace/services/gpio/component.ccl
-	cp ../userspace/services/gpio/build/gpio.drv isodir/boot/gpio.drv
-i2c-dw: ccl-build user_runtime ccl-manifest
-	$(CCL_BUILD) ../userspace/services/i2c-dw/component.ccl
-	cp ../userspace/services/i2c-dw/build/i2c-dw.drv isodir/boot/i2c-dw.drv
-hid-i2c: ccl-build user_runtime ccl-manifest
-	$(CCL_BUILD) ../userspace/services/hid-i2c/component.ccl
-	cp ../userspace/services/hid-i2c/build/hid-i2c.drv isodir/boot/hid-i2c.drv
+gpio: isodir/boot/gpio.drv
+$(eval $(call ccl_program,../userspace/services/gpio,gpio.drv,))
+i2c-dw: isodir/boot/i2c-dw.drv
+$(eval $(call ccl_program,../userspace/services/i2c-dw,i2c-dw.drv,))
+hid-i2c: isodir/boot/hid-i2c.drv
+$(eval $(call ccl_program,../userspace/services/hid-i2c,hid-i2c.drv,))
 
 # The headless large-manifest test's program: a typed manifest well past the
 # CCL limits the manifest compiler had (tests/large-manifest-probe).
 .PHONY : large-manifest-probe
-large-manifest-probe: ccl-build user_runtime ccl-manifest
-	$(CCL_BUILD) ../tests/large-manifest-probe/component.ccl
-	cp ../tests/large-manifest-probe/build/large-manifest-probe.app isodir/boot/large-manifest-probe.app
+large-manifest-probe: isodir/boot/large-manifest-probe.app
+$(eval $(call ccl_program,../tests/large-manifest-probe,large-manifest-probe.app,))
 
 # procmgr's startup waits (CAP-003): the headless startup-wait test's late
 # provider of the test-only startup-wait-test service and its client.
 .PHONY : startup-wait-test
-startup-wait-test: ccl-build user_runtime ccl-manifest
-	$(CCL_BUILD) ../tests/startup-wait/provider/component.ccl
-	$(CCL_BUILD) ../tests/startup-wait/client/component.ccl
-	cp ../tests/startup-wait/provider/build/startup-wait-provider.app isodir/boot/startup-wait-provider.app
-	cp ../tests/startup-wait/client/build/startup-wait-client.app isodir/boot/startup-wait-client.app
+startup-wait-test: isodir/boot/startup-wait-provider.app isodir/boot/startup-wait-client.app
+$(eval $(call ccl_program,../tests/startup-wait/provider,startup-wait-provider.app,))
+$(eval $(call ccl_program,../tests/startup-wait/client,startup-wait-client.app,))
 
 # Build the userspace HDA audio driver
 .PHONY : hda
-hda: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/hda/build
-	$(CCL_BUILD) ../userspace/services/hda/component.ccl
-	cp ../userspace/services/hda/build/hda.drv isodir/boot/hda.drv
+hda: isodir/boot/hda.drv
+$(eval $(call ccl_program,../userspace/services/hda,hda.drv,))
 
 # Build the Realtek RTL8852BE Wi-Fi bring-up driver (docs/wifi.md). Its
 # firmware is embedded at build time from firmware/rtw89 (D6).
 .PHONY : rtw89
-rtw89: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/rtw89/build
-	$(CCL_BUILD) ../userspace/services/rtw89/component.ccl
-	cp ../userspace/services/rtw89/build/rtw89.drv isodir/boot/rtw89.drv
+rtw89: isodir/boot/rtw89.drv
+$(eval $(call ccl_program,../userspace/services/rtw89,rtw89.drv,))
 
 # Build the userspace audio mixer service
 .PHONY : mixer
-mixer: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/mixer/build
-	$(CCL_BUILD) ../userspace/services/mixer/component.ccl
-	cp ../userspace/services/mixer/build/mixer.svc isodir/boot/mixer.svc
+mixer: isodir/boot/mixer.svc
+$(eval $(call ccl_program,../userspace/services/mixer,mixer.svc,))
 
 # Build the userspace PS/2 keyboard + mouse driver
 .PHONY : ps2
-ps2: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/ps2/build
-	$(CCL_BUILD) ../userspace/services/ps2/component.ccl
-	cp ../userspace/services/ps2/build/ps2.drv isodir/boot/ps2.drv
+ps2: isodir/boot/ps2.drv
+$(eval $(call ccl_program,../userspace/services/ps2,ps2.drv,))
 
 # Build the userspace virtio-input driver (QEMU virtio-tablet absolute pointer)
 .PHONY : virtio-input
 # The generic PCI launch's fixture driver (HW-002): bound only when a test
 # adds QEMU's edu device (tests/headless/run.sh --test generic-launch).
 .PHONY: generic-check
-generic-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../tests/generic-launch/driver/build
-	$(CCL_BUILD) ../tests/generic-launch/driver/component.ccl
-	cp ../tests/generic-launch/driver/build/generic-check.drv isodir/boot/generic-check.drv
+generic-check: isodir/boot/generic-check.drv
+$(eval $(call ccl_program,../tests/generic-launch/driver,generic-check.drv,))
 
 # The ACPI launch's fixture driver (docs/device-matching.md "ACPI launch"):
 # launched only when devmgr admits an ACPI device with _HID CBIT1057 (the
 # headless gpio-launch profile's test controller).
 .PHONY: gpio-launch-check
-gpio-launch-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../tests/gpio-launch/driver/build
-	$(CCL_BUILD) ../tests/gpio-launch/driver/component.ccl
-	cp ../tests/gpio-launch/driver/build/gpio-launch-check.drv isodir/boot/gpio-launch-check.drv
+gpio-launch-check: isodir/boot/gpio-launch-check.drv
+$(eval $(call ccl_program,../tests/gpio-launch/driver,gpio-launch-check.drv,))
 
-virtio-input: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/virtio-input/build
-	$(CCL_BUILD) ../userspace/services/virtio-input/component.ccl
-	cp ../userspace/services/virtio-input/build/virtio-input.drv isodir/boot/virtio-input.drv
+virtio-input: isodir/boot/virtio-input.drv
+$(eval $(call ccl_program,../userspace/services/virtio-input,virtio-input.drv,))
 
 # Build the userspace xHCI controller driver
 .PHONY : xhci
-xhci: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/xhci/build
-	$(CCL_BUILD) ../userspace/services/xhci/component.ccl
-	cp ../userspace/services/xhci/build/xhci.drv isodir/boot/xhci.drv
+xhci: isodir/boot/xhci.drv
+$(eval $(call ccl_program,../userspace/services/xhci,xhci.drv,))
 
 # Build the userspace config store service
 .PHONY : config
 .PHONY: config-check
-config-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/config-check/build
-	$(CCL_BUILD) ../userspace/apps/config-check/component.ccl
-	cp ../userspace/apps/config-check/build/config-check.app isodir/boot/config-check.app
+config-check: isodir/boot/config-check.app build/gpr/config-check.stamp
+$(eval $(call ccl_program,../userspace/apps/config-check,config-check.app,))
+build/gpr/config-check.stamp: $(GPR_STEP_INPUTS) $(filter-out %/build,$(wildcard ../userspace/apps/config-denied/*)) | user_runtime ccl-manifest
 	mkdir -p ../userspace/apps/config-denied/build
 	$(call compile_ccl_manifest,../userspace/apps/config-denied)
 	$(NATIVE_GPRBUILD) -P ../userspace/apps/config-denied/config_denied.gpr
-	cp ../userspace/apps/config-denied/build/config-denied.app isodir/boot/config-denied.app
+	$(call stage,../userspace/apps/config-denied/build/config-denied.app,config-denied.app)
+	@python3 ../tools/gpr_inputs.py build/gpr/config-check.d $@ -- $(NATIVE_GPRLS) -P ../userspace/apps/config-denied/config_denied.gpr
+	@touch $@
+-include build/gpr/config-check.d
 
-config: user_runtime ccl-manifest
-	mkdir -p ../userspace/services/config/build
+config: build/gpr/config.stamp
+build/gpr/config.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/services/config/manifest.ccl) | user_runtime ccl-manifest
+	mkdir -p ../userspace/services/config/build $(UNSTAGED)
 	$(call compile_driver_manifest,../userspace/services/config)
 	$(NATIVE_GPRBUILD) -P ../userspace/services/config/config.gpr
 	$(ALR) objcopy \
 		--add-section .cubit.interfaces=../userspace/ccl/interfaces/config.ccl-interface \
 		--set-section-flags .cubit.interfaces=readonly,data \
-		../userspace/services/config/build/config.svc isodir/boot/config.svc
+		../userspace/services/config/build/config.svc $(UNSTAGED)/config.svc
+	$(call stage,$(UNSTAGED)/config.svc,config.svc)
+	@python3 ../tools/gpr_inputs.py build/gpr/config.d $@ -- $(NATIVE_GPRLS) -P ../userspace/services/config/config.gpr
+	@touch $@
+-include build/gpr/config.d
 
 # Build the userspace log store service
 .PHONY : log-check
 .PHONY : log-retire
-log-retire: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/log-retire/build
-	$(CCL_BUILD) ../userspace/apps/log-retire/component.ccl
-	cp ../userspace/apps/log-retire/build/log-retire.app isodir/boot/log-retire.app
+log-retire: isodir/boot/log-retire.app
+$(eval $(call ccl_program,../userspace/apps/log-retire,log-retire.app,))
 
 # ABI-002: a program whose debug text reaches the serial console only
 # through test builds' logstore mirror (tests/headless console-route).
 .PHONY : console-route-check
-console-route-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/console-route-check/build
-	$(CCL_BUILD) ../userspace/apps/console-route-check/component.ccl
-	cp ../userspace/apps/console-route-check/build/console-route-check.app isodir/boot/console-route-check.app
+console-route-check: isodir/boot/console-route-check.app
+$(eval $(call ccl_program,../userspace/apps/console-route-check,console-route-check.app,))
 
 .PHONY : late-intro-check
-late-intro-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/late-intro-check/build
-	$(CCL_BUILD) ../userspace/apps/late-intro-check/component.ccl
-	cp ../userspace/apps/late-intro-check/build/late-intro-check.app isodir/boot/late-intro-check.app
+late-intro-check: isodir/boot/late-intro-check.app
+$(eval $(call ccl_program,../userspace/apps/late-intro-check,late-intro-check.app,))
 
-log-check: ccl-build user_runtime ccl-manifest log-retire
-	mkdir -p ../userspace/apps/log-check/build
-	$(CCL_BUILD) ../userspace/apps/log-check/component.ccl
-	cp ../userspace/apps/log-check/build/log-check.app isodir/boot/log-check.app
+log-check: isodir/boot/log-check.app
+$(eval $(call ccl_program,../userspace/apps/log-check,log-check.app,log-retire))
 
 .PHONY : logstore
-logstore: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/logstore/build
-	$(CCL_BUILD) ../userspace/services/logstore/component.ccl
-	cp ../userspace/services/logstore/build/logstore.svc isodir/boot/logstore.svc
+logstore: isodir/boot/logstore.svc
+$(eval $(call ccl_program,../userspace/services/logstore,logstore.svc,))
 
 # Observability (docs/metrics-service.md). metrics.svc is not yet in world or
 # generic world images; desktop sessions explicitly include it below.
 .PHONY : metricsvc
-metricsvc: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/metricsvc/build
-	$(CCL_BUILD) ../userspace/services/metricsvc/component.ccl
-	cp ../userspace/services/metricsvc/build/metrics.svc isodir/boot/metrics.svc
+metricsvc: isodir/boot/metrics.svc
+$(eval $(call ccl_program,../userspace/services/metricsvc,metrics.svc,))
 
 .PHONY : metrics-check
-metrics-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/metrics-check/build
-	$(CCL_BUILD) ../userspace/apps/metrics-check/component.ccl
-	cp ../userspace/apps/metrics-check/build/metrics-check.app isodir/boot/metrics-check.app
+metrics-check: isodir/boot/metrics-check.app
+$(eval $(call ccl_program,../userspace/apps/metrics-check,metrics-check.app,))
 
 .PHONY : log-fields-check
-log-fields-check: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/log-fields-check/build
-	$(CCL_BUILD) ../userspace/apps/log-fields-check/component.ccl
-	cp ../userspace/apps/log-fields-check/build/log-fields-check.app isodir/boot/log-fields-check.app
+log-fields-check: isodir/boot/log-fields-check.app
+$(eval $(call ccl_program,../userspace/apps/log-fields-check,log-fields-check.app,))
 
 # LOG-002: per-source log retention (headless --test log-retention).
 .PHONY : log-flood
-log-flood: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/log-flood/build
-	$(CCL_BUILD) ../userspace/apps/log-flood/component.ccl
-	cp ../userspace/apps/log-flood/build/log-flood.app isodir/boot/log-flood.app
+log-flood: isodir/boot/log-flood.app
+$(eval $(call ccl_program,../userspace/apps/log-flood,log-flood.app,))
 
 .PHONY : log-retention-check
-log-retention-check: ccl-build user_runtime ccl-manifest log-flood
-	mkdir -p ../userspace/apps/log-retention-check/build
-	$(CCL_BUILD) ../userspace/apps/log-retention-check/component.ccl
-	cp ../userspace/apps/log-retention-check/build/log-retention-check.app isodir/boot/log-retention-check.app
+log-retention-check: isodir/boot/log-retention-check.app
+$(eval $(call ccl_program,../userspace/apps/log-retention-check,log-retention-check.app,log-flood))
 
 # LOG-003: an exited service's records keep its name (headless
 # CCL_CONSOLE_DEMO=log-exited --test ccl-console).
 .PHONY : log-exit-probe
-log-exit-probe: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/log-exit-probe/build
-	$(CCL_BUILD) ../userspace/apps/log-exit-probe/component.ccl
-	cp ../userspace/apps/log-exit-probe/build/log-exit-probe.app isodir/boot/log-exit-probe.app
+log-exit-probe: isodir/boot/log-exit-probe.app
+$(eval $(call ccl_program,../userspace/apps/log-exit-probe,log-exit-probe.app,))
 
 # LOG-005: a bring-up's worth of records, then more than its retention
 # ceiling (headless CCL_CONSOLE_DEMO=log-burst --test ccl-console).
 .PHONY : log-burst-probe
-log-burst-probe: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/log-burst-probe/build
-	$(CCL_BUILD) ../userspace/apps/log-burst-probe/component.ccl
-	cp ../userspace/apps/log-burst-probe/build/log-burst-probe.app isodir/boot/log-burst-probe.app
+log-burst-probe: isodir/boot/log-burst-probe.app
+$(eval $(call ccl_program,../userspace/apps/log-burst-probe,log-burst-probe.app,))
 
 # LOG-004: dies of an unhandled exception; its last words reach logstore
 # through the kernel log ring (run.sh --test ccl-console, CCL_CONSOLE_DEMO=kernel-log).
 .PHONY : crash-probe
-crash-probe: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/crash-probe/build
-	$(CCL_BUILD) ../userspace/apps/crash-probe/component.ccl
-	cp ../userspace/apps/crash-probe/build/crash-probe.app isodir/boot/crash-probe.app
+crash-probe: isodir/boot/crash-probe.app
+$(eval $(call ccl_program,../userspace/apps/crash-probe,crash-probe.app,))
 
 # LOG-004: overflows its stack; the kernel's typed fault report must reach
 # logstore under its name (CCL_CONSOLE_DEMO=kernel-log).
 .PHONY : stack-probe
-stack-probe: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/stack-probe/build
-	$(CCL_BUILD) ../userspace/apps/stack-probe/component.ccl
-	cp ../userspace/apps/stack-probe/build/stack-probe.app isodir/boot/stack-probe.app
+stack-probe: isodir/boot/stack-probe.app
+$(eval $(call ccl_program,../userspace/apps/stack-probe,stack-probe.app,))
 
 # Build the userspace desktop compositor/session service prototype
 .PHONY : desktop
-desktop: user_runtime ccl-manifest ui-fonts-native time-zones
+desktop: build/gpr/desktop.stamp
+build/gpr/desktop.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/services/desktop/manifest.ccl) $(DESKTOP_STEP_INPUTS) | user_runtime ccl-manifest ui-fonts-native time-zones
 	mkdir -p ../userspace/services/desktop/build
 	$(call compile_ccl_manifest,../userspace/services/desktop)
 	@python3 ../tools/desktop_build_variant.py >/dev/null
@@ -2859,7 +2931,8 @@ desktop: user_runtime ccl-manifest ui-fonts-native time-zones
 	else \
 	  $(NATIVE_GPRBUILD) -p -P ../userspace/services/desktop/desktop.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE); \
 	fi
-	cp ../userspace/services/desktop/$$(python3 ../tools/desktop_build_variant.py)/desktop.svc isodir/boot/desktop.svc
+	$(call stage,../userspace/services/desktop/$$(python3 ../tools/desktop_build_variant.py)/desktop.svc,desktop.svc)
+	@touch $@
 
 # Read-only asset packages (docs/assets.md): Assets/<name>/<version>/ on each
 # image's system volume. ASSET_ROOT is the one place the root is spelled for
@@ -2935,38 +3008,42 @@ CUBIT_DISPLAY_TEST_MODE ?= production
 export CUBIT_MESA_BUILD CUBIT_MESA_BUNDLE CUBIT_MESA_SOURCE CUBIT_MESA_CACHE
 # Both libraries must be complete before the combined Mesa bundle is selected.
 ifeq ($(CUBIT_COMPOSITOR),vulkan)
-desktop: libc
+build/gpr/desktop.stamp: $(LIBC_STAMP) | libc
 endif
 # Test only: the headless desktop-restart test's desktop fails once (BUG-001).
 CUBIT_DESKTOP_FAULT ?= off
 export CUBIT_COMPOSITOR CUBIT_COMPOSITOR_TIMING CUBIT_COMPOSITOR_STORAGE CUBIT_DISPLAY_TEST_MODE CUBIT_DESKTOP_FAULT
 PRESENTATION_BUILD_DIR = $(if $(filter output-rebind,$(CUBIT_DISPLAY_TEST_MODE)),build-output-rebind,$(if $(filter delayed,$(CUBIT_DISPLAY_TEST_MODE)),build-delayed,build))
-display: user_runtime ccl-manifest
+display: build/gpr/display.stamp
+build/gpr/display.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/services/display/manifest.ccl) | user_runtime ccl-manifest
 	mkdir -p ../userspace/services/display/build
 	$(call compile_ccl_manifest,../userspace/services/display)
 	$(NATIVE_GPRBUILD) -p -P ../userspace/services/display/display.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE)
-	cp ../userspace/services/display/$(PRESENTATION_BUILD_DIR)/display.svc isodir/boot/display.svc
+	$(call stage,../userspace/services/display/$(PRESENTATION_BUILD_DIR)/display.svc,display.svc)
+	@python3 ../tools/gpr_inputs.py build/gpr/display.d $@ -- $(NATIVE_GPRLS) -P ../userspace/services/display/display.gpr -XCUBIT_DISPLAY_TEST_MODE=$(CUBIT_DISPLAY_TEST_MODE)
+	@touch $@
+-include build/gpr/display.d
 
 # Build the userspace network manager service
 .PHONY : netmgr
-netmgr: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/netmgr/build
-	$(CCL_BUILD) ../userspace/services/netmgr/component.ccl
-	cp ../userspace/services/netmgr/build/netmgr.svc isodir/boot/netmgr.svc
+netmgr: isodir/boot/netmgr.svc
+$(eval $(call ccl_program,../userspace/services/netmgr,netmgr.svc,))
 
 # wifi.svc: the Wi-Fi connection manager and supplicant (docs/wifi.md).
 .PHONY : wifi
-wifi: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/services/wifi/build
-	$(CCL_BUILD) ../userspace/services/wifi/component.ccl
-	cp ../userspace/services/wifi/build/wifi.svc isodir/boot/wifi.svc
+wifi: isodir/boot/wifi.svc
+$(eval $(call ccl_program,../userspace/services/wifi,wifi.svc,))
 
 # Build the userspace device manager
 .PHONY : devmgr
-devmgr: user_runtime intel-buffer-layout-check
+devmgr: build/gpr/devmgr.stamp
+build/gpr/devmgr.stamp: $(GPR_STEP_INPUTS) $(wildcard ../userspace/services/devmgr/manifest.ccl) | user_runtime intel-buffer-layout-check
 	mkdir -p ../userspace/services/devmgr/build
 	$(NATIVE_GPRBUILD) -P ../userspace/services/devmgr/devmgr.gpr
-	cp ../userspace/services/devmgr/build/devmgr.svc isodir/boot/devmgr.svc
+	$(call stage,../userspace/services/devmgr/build/devmgr.svc,devmgr.svc)
+	@python3 ../tools/gpr_inputs.py build/gpr/devmgr.d $@ -- $(NATIVE_GPRLS) -P ../userspace/services/devmgr/devmgr.gpr
+	@touch $@
+-include build/gpr/devmgr.d
 
 .PHONY: intel-buffer-layout-check
 intel-buffer-layout-check:
@@ -2974,16 +3051,20 @@ intel-buffer-layout-check:
 
 # Build the userspace shell app
 .PHONY : shell
-shell: ccl-build user_runtime ccl-manifest
-	mkdir -p ../userspace/apps/shell/build
-	$(CCL_BUILD) ../userspace/apps/shell/component.ccl
-	cp ../userspace/apps/shell/build/shell.app isodir/boot/shell.app
+shell: isodir/boot/shell.app
+$(eval $(call ccl_program,../userspace/apps/shell,shell.app,))
 
 # The Rust/Turso worker is a stage-2 service, not part of the boot initrd.
 .PHONY : config-storage
-config-storage: user_runtime ccl-manifest
+# BLD-001 interim: its script (gprbuild, the Turso crate, cargo, ld) runs
+# only when one of its sources, the Rust std port or a shared input changed.
+config-storage: build/gpr/config-storage.stamp
+build/gpr/config-storage.stamp: $(GPR_STEP_INPUTS) $(shell find ../userspace/services/config-storage \
+		../tests/config-turso/native ../userspace/rust/std -type d \( -name 'build*' -o -name target \) -prune \
+		-o -type f -print) $(wildcard ../userspace/allocator/build/native-lib/libcubit_allocator.a) | user_runtime ccl-manifest
 	bash ../userspace/services/config-storage/build.sh
-	cp ../userspace/services/config-storage/build/config-storage.svc isodir/boot/config-storage.svc
+	$(call stage,../userspace/services/config-storage/build/config-storage.svc,config-storage.svc)
+	@touch $@
 
 # Files that live on ext2 disk images (stage-2 content).
 # Disk images rebuild automatically when any of these change.
@@ -3036,17 +3117,63 @@ DESKTOP_SAMPLE_ARGS = $(foreach sample,$(DESKTOP_CONFIG_SAMPLES),--file "work/$(
 # The session's startup profile (the Bible demo starts the Bible too).
 DESKTOP_INIT ?= ../tests/headless/init-desktop-session.ccl
 
+DESKTOP_DISK_ARGS = --boot $(DESKTOP_OVERLAY) \
+		--file "init.ccl=$(DESKTOP_INIT)" $(DESKTOP_SAMPLE_ARGS) \
+		$(DESKTOP_ASSET_DISK_FILES)
+
+# The launchers that never build (run-desktop-fast, run-desktop-inspect):
+# overlay what is staged now onto a fresh copy of the base.
 .PHONY : prepare-desktop-disk
 prepare-desktop-disk: $(DESKTOP_ASSETS)
 	python3 ../tools/prepare_desktop_disk.py "$(DESKTOP_BASE_DISK)" "$(DESKTOP_SCRATCH_DISK)" --replace \
-		--boot $(DESKTOP_OVERLAY) \
-		--file "init.ccl=$(DESKTOP_INIT)" $(DESKTOP_SAMPLE_ARGS) \
-		$(DESKTOP_ASSET_DISK_FILES)
+		$(DESKTOP_DISK_ARGS)
+
+# run-desktop (BLD-001): the same overlay, made once into
+# DESKTOP_PREPARED_DISK and again only when the base, a payload or the
+# overlay's arguments (build/desktop-disk.args, rewritten only when they
+# change) changed. Every launch still resets the scratch disk, to a copy of
+# that prepared disk: nothing persists between runs.
+DESKTOP_PREPARED_DISK ?= $(basename $(DESKTOP_SCRATCH_DISK))-prepared.img
+build/desktop-disk.args: FORCE $(DESKTOP_ASSETS)
+	@mkdir -p build
+	@printf '%s\n' '$(DESKTOP_BASE_DISK) $(strip $(DESKTOP_DISK_ARGS))' > $@.new
+	@if cmp -s $@.new $@; then rm $@.new; else mv $@.new $@; fi
+$(DESKTOP_PREPARED_DISK): $(DESKTOP_BASE_DISK) $(DESKTOP_OVERLAY) $(DESKTOP_INIT) $(DESKTOP_CONFIG_SAMPLES) \
+		$(DESKTOP_ASSETS) ../tools/prepare_desktop_disk.py build/desktop-disk.args
+	python3 ../tools/prepare_desktop_disk.py "$(DESKTOP_BASE_DISK)" "$@" --replace $(DESKTOP_DISK_ARGS)
+.PHONY : desktop-disk-reset
+desktop-disk-reset: $(DESKTOP_PREPARED_DISK)
+	cp --sparse=always $(DESKTOP_PREPARED_DISK) $(DESKTOP_SCRATCH_DISK).new
+	mv $(DESKTOP_SCRATCH_DISK).new $(DESKTOP_SCRATCH_DISK)
+	@echo "Desktop scratch disk: reset from $(DESKTOP_PREPARED_DISK)"
 
 .PHONY : servo
 servo: libc ccl-manifest
 	bash ../userspace/servo/build-cubitshell.sh
 	cp ../userspace/rust/build/cubitshell.app isodir/boot/cubitshell.app
+
+# Programs still staged by a phony target (gprbuild or a build script, not
+# ccl-build; BLD-001): each staged file names its target, with an empty
+# recipe, so make runs the target before it compares the file's time with
+# an image's. The targets stage content-stably (stage above).
+# Their own up-to-date checks (gprbuild, the scripts) run on every make.
+isodir/boot/ccl-console.app: ccl-console ;
+isodir/boot/ccl-vm.app: ccl-vm ;
+isodir/boot/ccl-workbench.app: ccl-workbench ;
+isodir/boot/clock.svc: clock ;
+isodir/boot/config-storage.svc: config-storage ;
+isodir/boot/config.svc: config ;
+isodir/boot/desktop.svc: desktop ;
+isodir/boot/devmgr.svc: devmgr ;
+isodir/boot/display.svc: display ;
+isodir/boot/ipctest-client.app: ipctest-client ;
+isodir/boot/ipctest-departing.app: ipctest-client ;
+isodir/boot/neon-blast.app: neon-blast ;
+isodir/boot/netstack.svc: netstack ;
+isodir/boot/nvme.drv: nvme ;
+isodir/boot/ramdisk.drv: ramdisk ;
+isodir/boot/tls.svc: tls ;
+isodir/boot/virtio-gpu.drv: virtio-gpu ;
 
 # Every stage-1 binary copied into initrd.img.  Keep this dependency list next
 # to the staging targets: copying an old service beside a newly rebuilt driver
@@ -3065,7 +3192,8 @@ desktop-session-content: $(INITRD_SERVICES) desktop metricsvc display logstore \
 # Create ext2 ATA disk image containing doom1.wad, doom.elf, init.ccl, shell.app
 # Requires: mke2fs, debugfs (from e2fsprogs)
 # Both generated development disks use the same verified payload builder.
-ata_disk.img nvme_disk.img: $(DISK_CONTENTS) $(DESKTOP_CONFIG_SAMPLES) ../tools/build_development_disk.py ccl-sign
+# ccl-sign is order-only: a rebuilt signer makes the same signatures.
+ata_disk.img nvme_disk.img: $(DISK_CONTENTS) $(DESKTOP_CONFIG_SAMPLES) ../tools/build_development_disk.py | ccl-sign
 	$(SIGN_PROGRAMS)
 	$(ALR) python3 ../tools/build_development_disk.py $@ \
 		--boot $(filter isodir/boot/%,$(DISK_CONTENTS)) \
@@ -3114,11 +3242,22 @@ capability-security-image: cubit_kernel $(CAPABILITY_SECURITY_STAGE1) $(CAPABILI
 # Create CPIO newc initrd image containing stage-1 service binaries.
 # The kernel parses this at boot and loads services from it.
 # Stage-2 content (shell.app, doom.elf, motd.txt, etc.) lives on disk.
+# A file target (BLD-001): the realizer writes build/initrd.img.d, a
+# rule naming every file the archive was made from, so the archive is made
+# again only when one of them changed. The services are also order-only
+# prerequisites: built first, even before the first archive names them.
 .PHONY : initrd
-initrd: $(INITRD_SERVICES) ccl-image ccl-sign ../images/development-initrd.ccl $(CCL_IMAGE_CATALOG) ../system.ccl
-	$(SIGN_PROGRAMS)
-	$(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/development-initrd.ccl $(IMAGE_SIGNING) \
-		--debug-dir debug --output isodir/boot/initrd.img
+initrd: isodir/boot/initrd.img
+-include build/initrd.img.d
+isodir/boot/initrd.img: ../images/development-initrd.ccl $(CCL_IMAGE_CATALOG) ../system.ccl \
+		$(CCL_IMAGE_REALIZER) ../tools/image_debug.py $(CCL_IMAGE_TOOL) $(CCL_CONFIG_TOOL) FORCE \
+		| $(INITRD_SERVICES) ccl-image ccl-sign
+	@if $(call unless_made,$@); then :; else set -e; \
+	  echo "image: $@ (realize.py)"; mkdir -p build; \
+	  $(SIGN_PROGRAMS); \
+	  $(ALR) python3 $(CCL_IMAGE_REALIZER) ../images/development-initrd.ccl $(IMAGE_SIGNING) \
+	    --debug-dir debug --output $@ --depfile build/initrd.img.d; \
+	  $(call made_record,$@); fi
 
 # Self-contained, read-only userspace image for real-hardware bring-up.  Keep
 # this separate from the normal two-stage image: the laptop must reach a
@@ -3318,11 +3457,38 @@ run-laptop-fast:
 run-laptop-interactive-fast:
 	$(MAKE) run-laptop-fast LAPTOP_INPUT_DEVICES=""
 
-iso: cubit_kernel initrd
-	cp cubit_kernel isodir/boot/
-	grub-mkrescue -o cubit_kernel.iso isodir
+# The ISOs (BLD-001): grub-mkrescue packs the whole isodir, so each depends
+# on build/isodir.stamp, a listing of isodir by content that is rewritten
+# only when a file in it was added, removed or changed (tools/content_stamp.py;
+# the headless tests copy the kernel in and edit grub.cfg and restore it,
+# which changes times, not content). cubit_kernel.iso boots GRUB's first
+# entry; RUN_ISO, which the run targets boot, the NVMe entry (4): the same
+# isodir with a grub.cfg grafted in its place, so the shared grub.cfg is
+# never edited.
+RUN_ISO := cubit_run.iso
+RUN_GRUB_ENTRY := 4
+.PHONY : iso
+iso: cubit_kernel.iso
+# The headless tests copy the same kernel in: copied only when it differs.
+isodir/boot/cubit_kernel: cubit_kernel FORCE
+	@cmp -s $< $@ || { echo "stage cubit_kernel"; cp $< $@; }
+# Signed first: an ISO never packs a program the sign step has not seen.
+build/isodir.stamp: FORCE isodir/boot/cubit_kernel isodir/boot/initrd.img | ccl-sign
+	@$(SIGN_PROGRAMS)
+	@python3 ../tools/content_stamp.py $@ isodir
+cubit_kernel.iso: build/isodir.stamp FORCE
+	@if $(call unless_made,$@); then :; else set -e; \
+	  echo "grub-mkrescue -o $@ isodir"; grub-mkrescue -o $@ isodir; \
+	  $(call made_record,$@); fi
+$(RUN_ISO): build/isodir.stamp FORCE
+	@if $(call unless_made,$@); then :; else set -e; \
+	  echo "grub-mkrescue -o $@ (isodir, GRUB entry $(RUN_GRUB_ENTRY))"; \
+	  sed 's/^set default=.*/set default=$(RUN_GRUB_ENTRY)/' isodir/boot/grub/grub.cfg > build/run-grub.cfg; \
+	  grub-mkrescue -o $@ isodir boot/grub/grub.cfg=build/run-grub.cfg; \
+	  $(call made_record,$@); fi
 
-# Build everything including DOOM, then create ISO and disk images
+# Build everything including DOOM, then create ISO and disk images (last, so
+# they hold every program world stages: BLD-001)
 .PHONY : world
 # Test programs the headless images pack. world builds them too, so no test
 # runs a binary left over from an older ABI (a stale one passes or fails for
@@ -3346,10 +3512,19 @@ IMAGE_ONLY_BINARIES := ramdisk intel-gpu gpu-viewer teapots neon-blast gpio i2c-
 # CAP-002: capabilities are named by handles, never numbers. Runs first in
 # world; --self-test shows it rejecting each forbidden form.
 .PHONY : check-declarations
-check-declarations:
+# BLD-001: the checks run again only when a file they read changed: the
+# tree's sources of the kinds check_declarations.py reads (as git lists
+# them, tracked or not), the staged executables check-shipped.py reads,
+# and the scripts themselves.
+DECLARATION_INPUTS := $(wildcard $(addprefix ../,$(shell git -C .. ls-files --cached --others --exclude-standard -- \
+	'*.ads' '*.adb' '*.c' '*.h' '*.rs' '*.ccl' '*.S' '*.s' '*.asm' '*.patch' '*.diff' 2>/dev/null)))
+check-declarations: build/gate/check-declarations.stamp
+build/gate/check-declarations.stamp: $(DECLARATION_INPUTS) $(wildcard isodir/boot/*) \
+		../tools/check_declarations.py ../tests/test-console/check-shipped.py
 	python3 ../tools/check_declarations.py --self-test
 	python3 ../tools/check_declarations.py --root ..
 	python3 ../tests/test-console/check-shipped.py
+	@mkdir -p $(@D) && touch $@
 
 # No shipped manifest, plan or image declares, approves or contains the test
 # console object (Test_Console_ABI); after world, every image's executables
@@ -3358,7 +3533,7 @@ check-declarations:
 test-console-shipped: world
 	python3 ../tests/test-console/check-shipped.py
 
-world: check-declarations test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check readiness-writer futex-share secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check font-masks trap-flag-check nmi-check direction-flag-check alignment-flag-check kernel-map-probe mov-ss-check clock-keeper-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview tlb-tags ccl-sign
+world: check-declarations test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check readiness-writer futex-share secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check font-masks trap-flag-check nmi-check direction-flag-check alignment-flag-check kernel-map-probe mov-ss-check clock-keeper-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview tlb-tags ccl-sign initrd ata_disk.img nvme_disk.img iso
 	$(SIGN_PROGRAMS)
 
 .PHONY : headless-test
@@ -3378,18 +3553,15 @@ headless-test: world
 
 # Run QEMU with NVMe + virtio-net + HDA audio, shell (everything)
 .PHONY : run
-run: nvme_disk.img
+run: nvme_disk.img $(RUN_ISO)
 	@rm -f serial_output.log net.pcap
-	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
-	grub-mkrescue -o cubit_kernel.iso isodir
-	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu $(QEMU_RUN_CPU) \
 		-smp 4 \
 		-m 128M \
-		-cdrom cubit_kernel.iso \
+		-cdrom $(RUN_ISO) \
 		-serial file:serial_output.log \
 		-display gtk,zoom-to-fit=on \
 		-drive file=nvme_disk.img,if=none,id=nvme0,format=raw \
@@ -3425,33 +3597,35 @@ run-desktop-dual: run-desktop
 test-desktop-mixed: desktop display virtio-gpu display-check ccl-workbench
 	CUBIT_TEST_MIXED_OUTPUTS=1 ../tests/headless/run.sh --test desktop-dual-output --accel kvm --cpus 4 --timeout 60 --keep-logs
 
-.PHONY : run-desktop
+# Everything run-desktop does before QEMU starts (BLD-001), as one target
+# that can be timed and tested headless (tests/build-noop): build and stage
+# what changed, remake the images that contain it, and reset the scratch
+# disk from the prepared base.
+#
 # CONSOLE_MIRROR=1 (development diagnosis only, BUG-008): boot logstore's
 # test variant (logstore-test, with the test console object that
 # DESKTOP_INIT's (test-console approve-declared) approves), so every
 # program's console text, Desktop's launch lines included, is mirrored
-# onto serial_output.log. Shipped images never carry it (tests/test-console).
+# onto serial_output.log. It is written onto the freshly reset scratch disk
+# only; the prepared base and every shipped image are unchanged
+# (tests/test-console).
 CONSOLE_MIRROR ?= 0
-run-desktop: cubit_kernel desktop-session-content
-	$(MAKE) nvme_disk.img
-	$(if $(filter 1,$(CONSOLE_MIRROR)),$(MAKE) logstore-test)
-	$(MAKE) initrd
-	cp cubit_kernel isodir/boot/cubit_kernel
-	@rm -f serial_output.log net.pcap
-	$(MAKE) prepare-desktop-disk
-	$(if $(filter 1,$(CONSOLE_MIRROR)),debugfs -w -R "rm logstore.svc" $(DESKTOP_SCRATCH_DISK) >/dev/null 2>&1; \
+.PHONY : run-desktop desktop-stage
+desktop-stage: desktop-session-content isodir/boot/cubit_kernel nvme_disk.img isodir/boot/initrd.img \
+		$(RUN_ISO) desktop-disk-reset
+run-desktop: desktop-stage
+	$(if $(filter 1,$(CONSOLE_MIRROR)),$(MAKE) logstore-test && \
+		debugfs -w -R "rm logstore.svc" $(DESKTOP_SCRATCH_DISK) >/dev/null 2>&1; \
 		debugfs -w -R "write isodir/boot/logstore-test.svc logstore.svc" $(DESKTOP_SCRATCH_DISK) && \
 		echo "run-desktop: CONSOLE_MIRROR=1: console text is mirrored to serial_output.log")
-	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
-	grub-mkrescue -o cubit_kernel.iso isodir
-	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
+	@rm -f serial_output.log net.pcap
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu $(QEMU_RUN_CPU) \
 		-smp 4 \
 		-m $(DESKTOP_MEMORY) \
-		-cdrom cubit_kernel.iso \
+		-cdrom $(RUN_ISO) \
 		-serial file:serial_output.log \
 		-vga none \
 		-device $(QEMU_DESKTOP_DEVICE) \
@@ -3473,20 +3647,20 @@ run-desktop: cubit_kernel desktop-session-content
 # image. Use run-desktop when binaries need to be rebuilt first.
 .PHONY : run-desktop-fast
 run-desktop-fast:
-	@test -f cubit_kernel.iso || (echo "missing cubit_kernel.iso; run make -C kernel run-desktop once first" && false)
+	@test -f $(RUN_ISO) || (echo "missing $(RUN_ISO); run make -C kernel run-desktop once first" && false)
 	@test -f nvme_disk.img || (echo "missing nvme_disk.img; run make -C kernel run-desktop once first" && false)
 	@rm -f net.pcap
 	$(MAKE) prepare-desktop-disk
 	GDK_BACKEND=x11 python3 ../tools/run_logged_qemu.py \
 		--log-root desktop-logs --latest serial_output.log \
 		--hash isodir/boot/cubitshell.app --hash isodir/boot/desktop.svc \
-		--hash cubit_kernel.iso -- qemu-system-x86_64 \
+		--hash $(RUN_ISO) -- qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu $(QEMU_RUN_CPU) \
 		-smp 4 \
 		-m $(DESKTOP_MEMORY) \
-		-cdrom cubit_kernel.iso \
+		-cdrom $(RUN_ISO) \
 		-serial stdio \
 		-vga none \
 		-device virtio-vga,xres=1024,yres=768 \
@@ -3511,7 +3685,7 @@ QEMU_SCREENSHOT ?= /tmp/cubit-screen.ppm
 
 .PHONY : run-desktop-inspect
 run-desktop-inspect:
-	@test -f cubit_kernel.iso || (echo "missing cubit_kernel.iso; run make -C kernel run-desktop once first" && false)
+	@test -f $(RUN_ISO) || (echo "missing $(RUN_ISO); run make -C kernel run-desktop once first" && false)
 	@test -f nvme_disk.img || (echo "missing nvme_disk.img; run make -C kernel run-desktop once first" && false)
 	@rm -f serial_output.log net.pcap $(QEMU_QMP) $(QEMU_MONITOR) $(QEMU_SCREENSHOT)
 	$(MAKE) prepare-desktop-disk
@@ -3521,7 +3695,7 @@ run-desktop-inspect:
 		-cpu $(QEMU_RUN_CPU) \
 		-smp 4 \
 		-m $(DESKTOP_MEMORY) \
-		-cdrom cubit_kernel.iso \
+		-cdrom $(RUN_ISO) \
 		-serial file:serial_output.log \
 		-vga none \
 		-device virtio-vga,xres=1024,yres=768 \
@@ -3550,18 +3724,15 @@ capture-desktop:
 # virtio-gpu display backend, but it is not the default run target yet because
 # this path can currently wedge QEMU hard on some hosts.
 .PHONY : run-virtio-vga
-run-virtio-vga: nvme_disk.img
+run-virtio-vga: nvme_disk.img $(RUN_ISO)
 	@rm -f serial_output.log net.pcap
-	sed -i 's/^set default=.*/set default=4/' isodir/boot/grub/grub.cfg
-	grub-mkrescue -o cubit_kernel.iso isodir
-	sed -i 's/^set default=.*/set default=0/' isodir/boot/grub/grub.cfg
 	GDK_BACKEND=x11 qemu-system-x86_64 \
 		$(QEMU_ACCEL_ARGS) \
 		-machine q35 \
 		-cpu $(QEMU_RUN_CPU) \
 		-smp 4 \
 		-m 128M \
-		-cdrom cubit_kernel.iso \
+		-cdrom $(RUN_ISO) \
 		-serial file:serial_output.log \
 		-vga none \
 		-device virtio-vga,xres=1024,yres=768 \

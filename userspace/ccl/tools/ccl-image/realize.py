@@ -169,7 +169,11 @@ def refuse_unsigned(files, anchors, sign_tool):
 
 
 def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROOT,
-            imports=None, sign_tool=SIGN_TOOL):
+            imports=None, sign_tool=SIGN_TOOL, read=None):
+    """read, when given, is a list that gets every host file the image is
+    made from (for --depfile)."""
+    read = [] if read is None else read
+    read.extend([Path(catalog), Path(profile)])
     header, rows, builders, sources = compile_plan_with_builders(catalog, profile)
     anchors = load_anchors(builders, imports or {})
     if release and private_roms is not None:
@@ -223,6 +227,7 @@ def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROO
                     raise ValueError("symlinks are not supported in supplied trees")
                 if child.is_dir():
                     continue
+                read.append(child)
                 add(region, role, artifact,
                     destination + "/" + child.relative_to(path).as_posix(),
                     read_regular(child))
@@ -230,7 +235,9 @@ def prepare(catalog, profile, inputs, private_roms=None, release=False, root=ROO
             if not count:
                 raise ValueError("empty tree input")
         else:
+            read.append(path)
             add(region, role, artifact, destination, read_regular(path))
+    read.extend(anchors)
     if set(inputs) != used:
         raise ValueError("unused supplied inputs: " + ", ".join(sorted(set(inputs) - used)))
     refuse_unsigned(files, anchors, sign_tool)
@@ -670,6 +677,19 @@ def realize_staged(directory, files, report, output, optical_layout, audit_usb, 
           f"build-ids: {manifest}")
 
 
+def write_depfile(depfile, output, read):
+    """A make rule: OUTPUT depends on every file it was made from, named
+    relative to make's directory, so make can tell when to make it again
+    (BLD-001). The tools (ccl-image, ccl-config, ccl-sign) are the caller's."""
+    def name(path):
+        return os.path.relpath(Path(path).resolve()).replace(" ", "\\ ")
+    names = sorted({name(path) for path in read})
+    pending = depfile.with_name(depfile.name + f".{os.getpid()}.tmp")
+    pending.write_text(f"{name(output)}: " + " \\\n  ".join(names) + "\n"
+                       + "".join(f"{entry}:\n" for entry in names))
+    os.replace(pending, depfile)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("profile", type=Path)
@@ -683,6 +703,8 @@ def main():
     parser.add_argument("--release", action="store_true")
     parser.add_argument("--check-only", action="store_true")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--depfile", type=Path,
+                        help="also write a make rule naming every file the image was made from")
     parser.add_argument("--audit-usb", action="store_true")
     parser.add_argument("--debug-dir", type=Path,
                         help="host directory for separated debug files (default: debug/ next to the output)")
@@ -715,15 +737,18 @@ def main():
             imports[name] = Path(path)
         if not args.check_only and args.output is None:
             raise ValueError("--output is required for realization")
+        read = []
         files, report = prepare(args.catalog, args.profile, inputs,
                                 args.private_rom_dir, args.release,
-                                imports=imports, sign_tool=args.sign_tool)
+                                imports=imports, sign_tool=args.sign_tool, read=read)
         if args.check_only:
             print(json.dumps(report, indent=2, sort_keys=True))
         else:
             realize(files, report, args.output, args.audit_usb, args.grub_directory, args.debug_dir,
                     args.install_efi, args.install_initrd, args.install_startup,
                     args.install_live_root, args.keep_staging)
+            if args.depfile is not None:
+                write_depfile(args.depfile, args.output, read)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         parser.exit(1, f"ccl-image: {error}\n")
 
