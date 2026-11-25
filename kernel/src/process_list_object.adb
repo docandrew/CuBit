@@ -34,7 +34,8 @@ package body Process_List_Object is
     -- The class its main thread runs in (Process.runKeyOf's bands).
     function Class_Of (P : Process.ProcessID) return ABI.Scheduling_Class is
       (if Process.threadOf (P).idle then ABI.Idle
-       elsif Process.threadOf (P).rtAdmitted then ABI.Realtime
+       elsif Process.threadOf (P).rtAdmitted and then
+         Process.threadOf (P).latency.class = Process.LATENCY_REALTIME then ABI.Realtime
        elsif Process.threadOf (P).latency.class = Process.LATENCY_BACKGROUND then ABI.Background
        else ABI.Normal);
 

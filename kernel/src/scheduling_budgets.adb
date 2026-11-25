@@ -73,6 +73,21 @@ package body Scheduling_Budgets with SPARK_Mode is
       Result := Updated;
    end Account;
 
+   procedure Lend (S : in out State; Amount : Time_Units; Accepted : out Boolean) is
+   begin
+      Accepted := Eligible (S) and then Amount > 0 and then S.Left >= Amount;
+      if Accepted then
+         S.Left := S.Left - Amount;
+      end if;
+   end Lend;
+
+   procedure Repay (S : in out State; Amount, Lent_Window : Time_Units) is
+   begin
+      if Lent_Window = S.Timestamp / S.Interval then
+         S.Left := Time_Units'Min (S.Ceiling, S.Left + Time_Units'Min (Amount, S.Ceiling));
+      end if;
+   end Repay;
+
    procedure Prove_Split_Charge
      (Original : State; Middle, Finish : Time_Units)
    is

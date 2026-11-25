@@ -245,6 +245,45 @@ begin
    Account (S, Time_Units'Last, False, Result);
    pragma Assert (Result = Updated and not Overrun (S));
    Put_Line ("SCHEDULER-BUDGETS: PASS exhaustion, wake spam, boundaries, late stop, clock reversal, clock limit");
+
+   -- Urgency loans: paid up front from this window, repaid only within it
+   -- and never above the limit; refused when the budget cannot pay.
+   declare
+      Accepted : Boolean;
+      Lent_In : Time_Units;
+   begin
+      S := Create (200, 2_000);
+      Lend (S, 150, Accepted);
+      pragma Assert (Accepted and Remaining (S) = 50);
+      Lend (S, 60, Accepted);
+      pragma Assert (not Accepted and Remaining (S) = 50);
+      Lend (S, 0, Accepted);
+      pragma Assert (not Accepted and Remaining (S) = 50);
+      Lent_In := Window_Index (S);
+      Repay (S, 140, Lent_In);
+      pragma Assert (Remaining (S) = 190);
+      Repay (S, 500, Lent_In);
+      pragma Assert (Remaining (S) = 200);
+      Lend (S, 200, Accepted);
+      pragma Assert (Accepted and Remaining (S) = 0 and not Eligible (S));
+      Lend (S, 1, Accepted);
+      pragma Assert (not Accepted);
+      -- The next window refills; a late repayment from the old one is void.
+      Account (S, 4_000, False, Result);
+      pragma Assert (Remaining (S) = 200);
+      Lend (S, 100, Accepted);
+      pragma Assert (Accepted and Remaining (S) = 100);
+      Repay (S, 200, Lent_In);
+      pragma Assert (Remaining (S) = 100);
+      -- An overrun ledger lends nothing.
+      S := Create (200, 0);
+      Account (S, 0, True, Result);
+      Account (S, 500, False, Result);
+      pragma Assert (Overrun (S));
+      Lend (S, 1, Accepted);
+      pragma Assert (not Accepted);
+   end;
+   Put_Line ("SCHEDULER-BUDGETS: PASS urgency loans (lend within budget, repay within window and limit)");
    Check_Reference;
    Check_Shared_Ceiling;
    Check_Dispatch_Storm;

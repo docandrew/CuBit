@@ -773,7 +773,12 @@ package body Process.IPC is
 
     -- Caller holds mailtab(owner).lock AND Process.lock. Queue membership is
     -- stable under these locks; detach before making a waiter runnable.
-    procedure wakeActivityWaitersLocked (owner : ProcessID; sync : Boolean := False) is
+    -- lend: the waker (the calling thread, in its system call) lends each
+    -- woken thread an urgent turn if it holds INTERACTIVE budget
+    -- (Process.lendUrgency). Never from an interrupt: the thread it
+    -- interrupted did not wake anyone.
+    procedure wakeActivityWaitersLocked
+      (owner : ProcessID; sync : Boolean := False; lend : Boolean := False) is
         waiter : ThreadID := mailtab(owner).recvQueue.head;
         following : ThreadID;
         -- Only the first waiter woken takes the waker's CPU (readySync).
@@ -787,6 +792,9 @@ package body Process.IPC is
                 Queues.detach (mailtab(owner).recvQueue, waiter);
                 threadtab (waiter).receiveDeadlineActive := False;
                 noteWake (owner);
+                if lend then
+                    lendUrgency (waiter);
+                end if;
                 if handOver then
                     readySync (waiter);
                     handOver := False;
@@ -800,18 +808,18 @@ package body Process.IPC is
 
     -- Caller holds the mailbox lock. The common no-waiter path does not
     -- acquire the scheduler lock just to discover an empty receive queue.
-    procedure wakeActivityWaiters (owner : ProcessID) is
+    procedure wakeActivityWaiters (owner : ProcessID; lend : Boolean := False) is
     begin
         if not Queues.isEmpty (mailtab(owner).recvQueue) then
             Spinlocks.enterCriticalSection (lock);
-            wakeActivityWaitersLocked (owner);
+            wakeActivityWaitersLocked (owner, lend => lend);
             Spinlocks.exitCriticalSection (lock);
         end if;
     end wakeActivityWaiters;
 
     -- Caller holds mailtab(owner).lock and Process.lock. Every thread waiting
     -- for an event or completion rechecks its condition when it runs.
-    procedure wakeNotifyWaitersLocked (owner : ProcessID) is
+    procedure wakeNotifyWaitersLocked (owner : ProcessID; lend : Boolean := False) is
         waiter : ThreadID;
     begin
         while not Queues.isEmpty (mailtab(owner).notifyQueue) loop
@@ -820,17 +828,20 @@ package body Process.IPC is
                and then not Process_Lifetime.Closing (threadtab (waiter).lifetime)
             then
                 noteWake (owner);
+                if lend then
+                    lendUrgency (waiter);
+                end if;
                 ready (waiter);
             end if;
         end loop;
     end wakeNotifyWaitersLocked;
 
     -- Caller holds mailtab(owner).lock.
-    procedure wakeNotifyWaiters (owner : ProcessID) is
+    procedure wakeNotifyWaiters (owner : ProcessID; lend : Boolean := False) is
     begin
         if not Queues.isEmpty (mailtab(owner).notifyQueue) then
             Spinlocks.enterCriticalSection (lock);
-            wakeNotifyWaitersLocked (owner);
+            wakeNotifyWaitersLocked (owner, lend);
             Spinlocks.exitCriticalSection (lock);
         end if;
     end wakeNotifyWaiters;
@@ -838,7 +849,8 @@ package body Process.IPC is
     -- Caller holds mailtab(owner).lock. Unsolicited work (an event, IRQ
     -- doorbell or one-way message) wakes one blocked receiver, which may
     -- consume it, and every event waiter.
-    procedure wakeForUnsolicitedWork (owner : ProcessID; sync : Boolean := False) is
+    procedure wakeForUnsolicitedWork
+      (owner : ProcessID; sync : Boolean := False; lend : Boolean := False) is
         receiver : ThreadID;
         -- A sync wake hands the waker's CPU to one thread; any others are
         -- readied as usual.
@@ -854,6 +866,9 @@ package body Process.IPC is
                not Process_Lifetime.Closing (threadtab (receiver).lifetime)
             then
                 noteWake (owner);
+                if lend then
+                    lendUrgency (receiver);
+                end if;
                 if sync then
                     readySync (receiver);
                     handed := True;
@@ -862,8 +877,8 @@ package body Process.IPC is
                 end if;
             end if;
         end if;
-        wakeNotifyWaitersLocked (owner);
-        wakeActivityWaitersLocked (owner, sync and then not handed);
+        wakeNotifyWaitersLocked (owner, lend);
+        wakeActivityWaitersLocked (owner, sync and then not handed, lend);
         Spinlocks.exitCriticalSection (lock);
     end wakeForUnsolicitedWork;
 
@@ -1623,6 +1638,7 @@ package body Process.IPC is
             Spinlocks.enterCriticalSection (lock);
             threadtab (replyThread).replyMsg := sanitizedReply (replyMsg, Capability_ABI.No_IPC_Flags);
             unlockMailboxes (mypid, replyTo);
+            lendUrgency (replyThread);
             directSwitch (me, replyThread);
             Spinlocks.exitCriticalSection (lock);
 
@@ -1810,6 +1826,7 @@ package body Process.IPC is
             if threadtab (receiver).cpu = PerCPUData.getCPUNumber then
                 Spinlocks.enterCriticalSection (lock);
                 Spinlocks.exitCriticalSection (mailtab(dest).lock);
+                lendUrgency (receiver);
                 directSwitch (me, receiver);
                 Spinlocks.exitCriticalSection (lock);
 
@@ -1822,6 +1839,7 @@ package body Process.IPC is
                 -- enqueue receiver, release Process.lock.
                 Spinlocks.enterCriticalSection (lock);
                 Spinlocks.exitCriticalSection (mailtab(dest).lock);
+                lendUrgency (receiver);
                 ready (receiver);
                 Spinlocks.exitCriticalSection (lock);
             end if;
@@ -1895,7 +1913,7 @@ package body Process.IPC is
         --  receive() is the intentional mixed-lane wait primitive: it may
         --  consume events as well as requests. Wake both event-specific and
         --  mixed waiters whenever unsolicited work is published.
-        wakeForUnsolicitedWork (dest);
+        wakeForUnsolicitedWork (dest, lend => True);
 
         Spinlocks.exitCriticalSection (mailtab(dest).lock);
     end trySendEvent;
@@ -2035,6 +2053,7 @@ package body Process.IPC is
             end if;
             Spinlocks.enterCriticalSection (lock);
             threadtab (replyThread).replyMsg := msg;
+            lendUrgency (replyThread);
             if threadtab (replyThread).cpu = PerCPUData.getCPUNumber then
                 ready (me);
                 Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
@@ -2062,8 +2081,8 @@ package body Process.IPC is
             if not ok then
                 raise ProcessException with "Missing reserved completion slot";
             end if;
-            wakeNotifyWaiters (replyTo);
-            wakeActivityWaiters (replyTo);
+            wakeNotifyWaiters (replyTo, lend => True);
+            wakeActivityWaiters (replyTo, lend => True);
             Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
         end if;
         return 1;
@@ -3117,7 +3136,9 @@ package body Process.IPC is
                 proctab(owner).wakeWordPending := True;
                 noteQueued (owner, Readiness_Publication.Events);
             end if;
-            wakeForUnsolicitedWork (owner, sync);
+            -- Raised by a thread's own system call (a futex or channel
+            -- wake), so the waker may lend urgency.
+            wakeForUnsolicitedWork (owner, sync, lend => True);
         end if;
         Spinlocks.exitCriticalSection (mailtab(owner).lock);
         return matched;

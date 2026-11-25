@@ -825,6 +825,17 @@ package Process is
         rtAdmitted          : Boolean := False;
         rtShare             : Realtime_Admission.Utilization := 0;
         rtLedger            : Scheduling_Budgets.State;
+        -- An urgent turn lent to this thread (docs/scheduler.md §4) by the
+        -- INTERACTIVE thread whose IPC woke it (lendUrgency): it runs at
+        -- deadline loanDeadline, ahead of later ordinary deadlines, for at
+        -- most the lent turn, paid from the lender's ledger (window
+        -- loanWindow); its own slice waits in loanOwnTurn meanwhile. The
+        -- loan ends when the thread blocks or the turn is used up (endLoan).
+        loanLender          : ThreadID := NO_THREAD;
+        loanGeneration      : Capabilities.Generation := 0;
+        loanWindow          : Scheduling_Budgets.Time_Units := 0;
+        loanDeadline        : Virtual_Deadlines.Deadline := 0;
+        loanOwnTurn         : Scheduling_Turns.State;
 
         context             : System.Address;   -- Pointer to the saved state
         kernelStack         : ProcessKernelStackPtr;
@@ -1105,6 +1116,17 @@ package Process is
        budgetUs : Unsigned_32;
        periodUs : Unsigned_32;
        granted  : out Boolean);
+
+    -- Give up thread tid's reservation, if it holds one (a contract of a
+    -- class that needs none). Caller holds no Process lock.
+    procedure releaseReservation (tid : ThreadID);
+
+    -- Urgency (docs/scheduler.md §4): the calling thread, if it holds an
+    -- admitted INTERACTIVE reservation with budget left, lends wakee, which
+    -- its IPC is waking, an urgent turn of Urgent_Turn_Microseconds paid
+    -- from that budget. Call before readying or switching to wakee, in the
+    -- waker's system call, with Process.lock held.
+    procedure lendUrgency (wakee : ThreadID);
 
     -- Where ready thread tid should join a ready list
     -- (Virtual_Deadlines.Place over every CPU's running and first queued

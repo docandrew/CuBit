@@ -57,6 +57,42 @@ package Scheduling_Budgets with Pure, SPARK_Mode is
          (if Accepted then Dispatches_Left (S'Old) - 1
           else Dispatches_Left (S'Old));
 
+   -- Urgency loans (docs/scheduler.md §4): a holder's budget pays for the
+   -- urgent turns of the threads it wakes. Lend takes Amount from this
+   -- window's budget, up front, only while the ledger is eligible and has
+   -- Amount left; Repay returns what a loan did not use, only within the
+   -- window it was lent from (Window_Index, the window of Last_Update at the
+   -- Lend) and never above the window's limit. So the urgent time lent from
+   -- one window never exceeds what the window's budget paid for it.
+   function Window_Index (S : State) return Time_Units is
+     (Last_Update (S) / Window (S));
+
+   procedure Lend (S : in out State; Amount : Time_Units; Accepted : out Boolean)
+     with Post =>
+       Window (S) = Window (S'Old) and then
+       Limit (S) = Limit (S'Old) and then
+       Last_Update (S) = Last_Update (S'Old) and then
+       Running (S) = Running (S'Old) and then Overrun (S) = Overrun (S'Old) and then
+       Dispatch_Limit (S) = Dispatch_Limit (S'Old) and then
+       Dispatches_Left (S) = Dispatches_Left (S'Old) and then
+       Accepted = (Eligible (S'Old) and then Amount > 0 and then
+                   Remaining (S'Old) >= Amount) and then
+       Remaining (S) =
+         (if Accepted then Remaining (S'Old) - Amount else Remaining (S'Old));
+
+   procedure Repay (S : in out State; Amount, Lent_Window : Time_Units)
+     with Post =>
+       Window (S) = Window (S'Old) and then
+       Limit (S) = Limit (S'Old) and then
+       Last_Update (S) = Last_Update (S'Old) and then
+       Running (S) = Running (S'Old) and then Overrun (S) = Overrun (S'Old) and then
+       Dispatch_Limit (S) = Dispatch_Limit (S'Old) and then
+       Dispatches_Left (S) = Dispatches_Left (S'Old) and then
+       Remaining (S) =
+         (if Lent_Window = Window_Index (S'Old) then
+            Time_Units'Min (Limit (S'Old), Remaining (S'Old) + Time_Units'Min (Amount, Limit (S'Old)))
+          else Remaining (S'Old));
+
    -- Charge the PREVIOUS expedited-execution state through Now, then change it.
    -- Sleeping, waking, dispatch and handoff never replenish a ledger.
    -- Only crossing a CPU-clock-aligned period boundary does. Call at EVERY

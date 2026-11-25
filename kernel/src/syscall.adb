@@ -619,17 +619,19 @@ package body Syscall is
                 elsif arg1 /= 0 and then arg2 > arg1 then
                     retval := Unsigned_64'Last;
                 else
-                    -- REALTIME is enforced: admitted only with a covering
-                    -- CAP_SCHEDULING and within the system's real-time
-                    -- share (Process.reserveRealtime). Other classes are
-                    -- recorded as advisory hints.
+                    -- REALTIME and INTERACTIVE are enforced: admitted only
+                    -- with a covering CAP_SCHEDULING and within the
+                    -- system's real-time share (Process.reserveRealtime);
+                    -- an INTERACTIVE budget pays for the urgent turns its
+                    -- holder lends (docs/scheduler.md §4). The other
+                    -- classes need no authority and give up a reservation.
                     declare
                         use type Process.LatencyClass;
                         class : constant Process.LatencyClass :=
                           Process.LatencyClass'Val (Natural (arg0));
                         granted : Boolean := True;
                     begin
-                        if class = Process.LATENCY_REALTIME then
+                        if class in Process.LATENCY_REALTIME | Process.LATENCY_INTERACTIVE then
                             -- arg4 names the CAP_SCHEDULING relied on.
                             Process.reserveRealtime
                               (caller,
@@ -638,6 +640,8 @@ package body Syscall is
                                budgetUs => Unsigned_32 (arg2),
                                periodUs => Unsigned_32 (arg1),
                                granted  => granted);
+                        else
+                            Process.releaseReservation (caller);
                         end if;
                         if granted then
                             Process.setLatencyContract (

@@ -18,6 +18,10 @@ package Scheduler_Timing with Pure, SPARK_Mode is
    -- CPU's timer) lands before the budget is overrun.
    Realtime_Dispatches : constant := 16;
    Realtime_Guard_Microseconds : constant := 50;
+   -- An urgent turn (docs/scheduler.md §4): how long a thread woken by an
+   -- INTERACTIVE holder's IPC runs ahead of ordinary deadlines, paid from
+   -- the holder's budget up front; what it does not use is repaid.
+   Urgent_Turn_Microseconds : constant := 500;
    Wakeup_Microseconds : constant := 100;
    OneShot_Ticks_Per_Millisecond : constant := 1_000 / Wakeup_Microseconds;
    -- A monotonic clock is ordered, not modular arithmetic. Native timestamps

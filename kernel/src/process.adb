@@ -141,8 +141,11 @@ package body Process is
 
     -- Real time while budget and switches remain this period, with a guard
     -- left so the budget stop lands before an overrun.
+    -- An INTERACTIVE reservation's budget pays only for the urgent turns
+    -- it lends (lendUrgency); the holder itself runs by ordinary deadline.
     function realtimeEligible (tid : ThreadID) return Boolean is
       (threadtab (tid).rtAdmitted and then
+       threadtab (tid).latency.class = LATENCY_REALTIME and then
        Scheduling_Budgets.Eligible (threadtab (tid).rtLedger) and then
        Scheduling_Budgets.Remaining (threadtab (tid).rtLedger) >
          Scheduler_Timing.Realtime_Guard_Microseconds);
@@ -159,6 +162,8 @@ package body Process is
     function runKeyOf (tid : ThreadID) return Unsigned_64 is
       (if threadtab (tid).idle then Virtual_Deadlines.Idle_Key
        elsif realtimeEligible (tid) then realtimeKey (tid)
+       elsif threadtab (tid).loanLender /= NO_THREAD then NORMAL_BAND + Unsigned_64'Min
+              (threadtab (tid).loanDeadline, Virtual_Deadlines.Idle_Key - 1 - NORMAL_BAND)
        else NORMAL_BAND + Unsigned_64'Min
               (threadtab (tid).runDeadline, Virtual_Deadlines.Idle_Key - 1 - NORMAL_BAND));
 
@@ -201,6 +206,62 @@ package body Process is
         threadtab (tid).runDeadline :=
           Virtual_Deadlines.Refill (nowDeadline, sliceTicks);
     end refillSlice;
+
+    -- End tid's urgent turn, whose unused part is in Turn: repay that to
+    -- the lender (still the same thread, still in the window it lent from),
+    -- and put tid's own slice back in Turn.
+    procedure endLoan (tid : ThreadID; Turn : in out Scheduling_Turns.State) is
+        lender : constant ThreadID := threadtab (tid).loanLender;
+    begin
+        if lender = NO_THREAD then
+            return;
+        end if;
+        if threadtab (lender).rtAdmitted and then
+           threadtab (lender).latency.class = LATENCY_INTERACTIVE and then
+           threadGenerationOf (lender) = threadtab (tid).loanGeneration and then
+           Time.tscPerDuration > 0
+        then
+            Scheduling_Budgets.Repay
+              (threadtab (lender).rtLedger,
+               Scheduling_Budgets.Time_Units (Unsigned_64'Min
+                 (Scheduling_Turns.Remaining (Turn) / Time.tscPerDuration,
+                  Scheduler_Timing.Urgent_Turn_Microseconds)),
+               threadtab (tid).loanWindow);
+        end if;
+        threadtab (tid).loanLender := NO_THREAD;
+        Scheduling_Turns.Move (threadtab (tid).loanOwnTurn, Turn);
+    end endLoan;
+
+    procedure lendUrgency (wakee : ThreadID) is
+        lender : constant ThreadID := PerCPUData.getCurrentThread;
+        accepted : Boolean;
+    begin
+        if lender = NO_THREAD or else lender = wakee or else
+           not threadtab (lender).rtAdmitted or else
+           threadtab (lender).latency.class /= LATENCY_INTERACTIVE or else
+           threadtab (wakee).idle or else
+           threadtab (wakee).loanLender /= NO_THREAD or else
+           realtimeEligible (wakee) or else
+           Time.tscPerDuration = 0
+        then
+            return;
+        end if;
+        -- Bring the lender's ledger to this window (it is running: the
+        -- waker in its system call); its own running is never charged.
+        accountRealtime (lender, Running => True);
+        Scheduling_Budgets.Lend
+          (threadtab (lender).rtLedger, Scheduler_Timing.Urgent_Turn_Microseconds, accepted);
+        if accepted then
+            threadtab (wakee).loanLender := lender;
+            threadtab (wakee).loanGeneration := threadGenerationOf (lender);
+            threadtab (wakee).loanWindow :=
+              Scheduling_Budgets.Window_Index (threadtab (lender).rtLedger);
+            threadtab (wakee).loanDeadline := nowDeadline;
+            Scheduling_Turns.Move (threadtab (wakee).savedTurn, threadtab (wakee).loanOwnTurn);
+            threadtab (wakee).savedTurn :=
+              Scheduling_Turns.Fresh (ticksOf (Scheduler_Timing.Urgent_Turn_Microseconds));
+        end if;
+    end lendUrgency;
 
     -- While others wait on this CPU, end the running thread's slice on time.
     procedure armSliceAlarm is
@@ -298,6 +359,15 @@ package body Process is
                     Trace.Emit (Trace.EVENT_IPC_HANDOFF,
                       Unsigned_64(From_PID), Unsigned_64(To_PID));
                     Accounting.Dispatch (threadtab (To_PID).execution, Accounting.Direct_IPC);
+                    -- The CPU's turn runs on into the thread switched to,
+                    -- except an urgent one: a loan ends as its thread
+                    -- blocks here, and a thread lent one runs that, while
+                    -- the switching thread keeps its own slice.
+                    endLoan (From_PID, CPU.Turn);
+                    if threadtab (To_PID).loanLender /= NO_THREAD then
+                        Scheduling_Turns.Move (CPU.Turn, threadtab (From_PID).savedTurn);
+                        Scheduling_Turns.Move (threadtab (To_PID).savedTurn, CPU.Turn);
+                    end if;
                     accountRealtime (From_PID, Running => False);
                     accountRealtime (To_PID, Running => True);
                 when Scheduler_Stop =>
@@ -311,11 +381,27 @@ package body Process is
                     -- slice is refilled now, moving the deadline on before
                     -- the thread rejoins a ready list.
                     Scheduling_Turns.Move (CPU.Turn, threadtab (From_PID).savedTurn);
+                    -- An urgent turn ends when used up or when its thread
+                    -- blocks; a preempted thread keeps the rest of it.
+                    if threadtab (From_PID).loanLender /= NO_THREAD and then
+                      (Scheduling_Turns.Remaining (threadtab (From_PID).savedTurn) = 0 or else
+                       threadtab (From_PID).state not in READY | RUNNING)
+                    then
+                        endLoan (From_PID, threadtab (From_PID).savedTurn);
+                    end if;
                     if Scheduling_Turns.Remaining (threadtab (From_PID).savedTurn) = 0 then
                         refillSlice (From_PID);
                     end if;
                     accountRealtime (From_PID, Running => False);
                 when Accounting_Checkpoint =>
+                    -- An urgent turn used up while running: on with its
+                    -- own slice and key.
+                    if threadtab (From_PID).loanLender /= NO_THREAD and then
+                       Scheduling_Turns.Remaining (CPU.Turn) = 0
+                    then
+                        endLoan (From_PID, CPU.Turn);
+                        cpuRunningKey (CPU_Number) := runKeyOf (From_PID);
+                    end if;
                     accountRealtime (From_PID, Running => True);
             end case;
             if Build.OneShot_Scheduling and then To_PID /= NO_THREAD then
@@ -1663,6 +1749,17 @@ package body Process is
         end if;
         Spinlocks.exitCriticalSection (lock);
     end reserveRealtime;
+
+    procedure releaseReservation (tid : ThreadID) is
+    begin
+        Spinlocks.enterCriticalSection (lock);
+        if threadtab (tid).rtAdmitted then
+            Realtime_Admission.Release (realtimeAdmitted, threadtab (tid).rtShare);
+            threadtab (tid).rtAdmitted := False;
+            threadtab (tid).rtShare := 0;
+        end if;
+        Spinlocks.exitCriticalSection (lock);
+    end releaseReservation;
 
     procedure setLatencyContract
         (tid      : ThreadID;
