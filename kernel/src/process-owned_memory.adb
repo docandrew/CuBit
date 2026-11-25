@@ -635,16 +635,25 @@ package body Process.Owned_Memory is
       -- once, this CPU wins them again before a waiter that is spinning on
       -- them sees them free (hda.drv and mixer.svc waited 12-14 ms in their
       -- waits behind a release, 2026-11), so the break lasts Break_Us.
+      -- The break is also this CPU's interrupt window: a system call runs
+      -- with interrupts off (the FMASK MSR), so without it a 64 MiB
+      -- release held off this CPU's interrupts, the audio controller's and
+      -- the timer's, for its whole ~30 ms (MEM-006). As in Vm_Objects' run
+      -- loop, an interrupt taken here may switch this thread away and back,
+      -- perhaps to another CPU: no lock and nothing per-CPU is held across
+      -- it, and Still_Ours checks the region again after.
       -- False when another thread releasing the same region finished it
       -- meanwhile.
       function Break return Boolean is
          Until_TSC : Unsigned_64;
       begin
          Drop_Locks;
+         x86.sti;
          Until_TSC := x86.rdtsc + Break_Us * Time.tscPerDuration;
          while x86.rdtsc < Until_TSC loop
             System.Machine_Code.Asm ("pause", Volatile => True);
          end loop;
+         x86.cli;
          Take_Locks;
          return Still_Ours;
       end Break;
