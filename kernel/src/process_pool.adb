@@ -11,6 +11,11 @@ package body Process_Pool is
 
    Region_Frames : constant := 512;
    Max_Batch : constant := 64;
+   -- What Alloc_Run may grow by when it finds nothing clean: its callers
+   -- hold spinlocks with interrupts off (tryAddPage under grantLock or an
+   -- address-space lock, DMA under a mailbox lock), so one region's zeroing
+   -- is the most it adds to their hold. Prepare grows before the locks.
+   Locked_Grow_Regions : constant := 1;
 
    Pool_Regions : Natural := 0 with Atomic;
 
@@ -27,16 +32,17 @@ package body Process_Pool is
       end if;
    end Round;
 
-   -- Take up to an eighth of the pool's size (at least one region) from
-   -- the kernel's lists; Grew when any joined.
-   procedure Grow (Grew : out Boolean; Ceiling : Unsigned_64 := 0) is
-      Wanted : constant Positive :=
-        Positive'Min (Max_Batch, Positive'Max (1, Pool_Regions / 8));
+   -- Take Wanted regions (at most Max_Batch) from the kernel's lists, one
+   -- TLB round for the batch; Grew when any joined. takeRegion zeroes each
+   -- region through the linear map (2 MiB each), so callers that hold a
+   -- spinlock ask for one region at most: the batch is the time the lock
+   -- (and interrupts) stay held.
+   procedure Grow (Grew : out Boolean; Ceiling : Unsigned_64; Wanted : Positive) is
       Bases : array (1 .. Max_Batch) of Virtmem.PhysAddress := [others => 0];
       Saved : array (1 .. Max_Batch) of Virtmem.PageTableEntry := [others => Virtmem.EMPTY_PTE];
       Count : Natural := 0;
    begin
-      for I in 1 .. Wanted loop
+      for I in 1 .. Positive'Min (Wanted, Max_Batch) loop
          BuddyAllocator.takeRegion (Bases (I), Ceiling);
          exit when Bases (I) = 0;
          Mem_mgr.detachLinearRegion (Bases (I), Saved (I));
@@ -53,15 +59,20 @@ package body Process_Pool is
       Pool_Regions := Pool_Regions + Count;
    end Grow;
 
-   -- Zero up to Launder_Batch free dirty frames through this CPU's window,
+   -- Zero up to Batch free dirty frames through this CPU's window,
    -- then one TLB round, then they go back clean: no CPU can still
    -- translate one through its window slot when a process gets it
    -- (Kernel_Map_Ownership: Window_Zero, Window_Unmap, Complete_Round,
    -- Mark_Clean). Laundered when any were.
    Launder_Batch : constant := 64;
+   -- Prepare's batch (no lock held): one TLB round per this many frames.
+   -- Each round interrupts every CPU, and under a busy host it can take
+   -- milliseconds, so fewer rounds matter more than the batch's zeroing
+   -- time. The list is on the kernel stack: 8 bytes a frame.
+   Prepare_Launder_Batch : constant := 256;
 
-   procedure Launder (Laundered : out Boolean) is
-      Frames : BuddyAllocator.Frame_List (1 .. Launder_Batch);
+   procedure Launder (Laundered : out Boolean; Batch : Positive := Launder_Batch) is
+      Frames : BuddyAllocator.Frame_List (1 .. Batch);
       Count : Natural;
    begin
       BuddyAllocator.takeDirty (Frames, Count);
@@ -77,6 +88,25 @@ package body Process_Pool is
          BuddyAllocator.returnClean (Frames (I));
       end loop;
    end Launder;
+
+   procedure Prepare (Frames : Natural) is
+      More : Boolean := True;
+   begin
+      -- Each pass launders one batch or grows by what is still missing;
+      -- it ends when enough is clean or nothing more can be made clean.
+      while More and then BuddyAllocator.poolCleanFrames < Frames loop
+         if BuddyAllocator.poolFreeFrameCount > BuddyAllocator.poolCleanFrames then
+            Launder (More, Prepare_Launder_Batch);
+         else
+            More := False;
+         end if;
+         if not More then
+            Grow (More, 0, Positive'Max
+                    (1, (Frames - Natural'Min (Frames, BuddyAllocator.poolCleanFrames)
+                         + Region_Frames - 1) / Region_Frames));
+         end if;
+      end loop;
+   end Prepare;
 
    procedure Alloc_Run
      (Order : Natural; Ceiling : Unsigned_64; Base : out Virtmem.PhysAddress)
@@ -96,10 +126,10 @@ package body Process_Pool is
          if Attempt = 1 then
             Launder (More);
             if not More then
-               Grow (More, Ceiling);
+               Grow (More, Ceiling, Locked_Grow_Regions);
             end if;
          else
-            Grow (More, Ceiling);
+            Grow (More, Ceiling, Locked_Grow_Regions);
          end if;
          exit when not More;
       end loop;
@@ -111,15 +141,15 @@ package body Process_Pool is
       Alloc_Run (0, 0, Frame);
    end Alloc_Frame;
 
-   -- Wholly free regions back to the kernel: dirty frames zeroed through
+   -- Up to Regions wholly free regions back to the kernel: dirty frames zeroed through
    -- the window first, so the kernel's map never shows process data.
-   procedure Reclaim (Released : out Boolean) is
+   procedure Reclaim (Regions : Positive; Released : out Boolean) is
       Base : Virtmem.PhysAddress;
       Saved : Virtmem.PageTableEntry;
       Found : Boolean;
    begin
       Released := False;
-      loop
+      for Count in 1 .. Regions loop
          BuddyAllocator.leavePool (Base, Saved, Found);
          exit when not Found;
          for I in 0 .. Region_Frames - 1 loop

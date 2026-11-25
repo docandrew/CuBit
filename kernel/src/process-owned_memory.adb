@@ -7,6 +7,10 @@ with Region_Release;
 with TLB_Shootdown;
 with System.Storage_Elements; use System.Storage_Elements;
 with Spinlocks;
+with Process_Pool;
+with Time;
+with x86;
+with System.Machine_Code;
 with Virtmem.Regions;
 package body Process.Owned_Memory is
    package Policy renames Owned_Reservation_Policy;
@@ -128,7 +132,8 @@ package body Process.Owned_Memory is
    -- reserved, takes the upper part of a middle cut. On failure the run is
    -- quarantined with all its frames, and Spare is left for the caller.
    procedure Drop (PID : ProcessID; Index : Slot; Cut : Run_Cut;
-                   Spare : Natural; Success : out Boolean) is
+                   Spare : Natural; Success : out Boolean;
+                   Unmapped : Boolean := False) is
       Item : Entry_Record renames Entries(PID, Index).Value.all;
       Drop_Base : constant Unsigned_64 := Item.Base + Bytes_Of (Cut.Lower);
       Upper_Base : constant Unsigned_64 := Drop_Base + Bytes_Of (Cut.Dropped);
@@ -136,13 +141,24 @@ package body Process.Owned_Memory is
       Upper_Last, Drop_First, Drop_Last, Lower_First : FrameLists.NodePtr := null;
       Node : FrameLists.NodePtr;
       Freed : FrameLists.List := (null, null, 0, 0);
+      -- Unmapped: the caller already cleared the pages' entries and
+      -- completed a TLB round since (Release); only the frames go.
       procedure Unmap (Page_Index : Natural; OK : out Boolean) is
       begin
+         if Unmapped then
+            OK := True;
+            return;
+         end if;
          Virtmem.unmapPage (Integer_Address (Drop_Base) + Integer_Address (Page_Index) * 4096,
                             addrtab(proctab(PID).pgTable), OK);
       end Unmap;
       procedure Synchronize (OK : out Boolean) is
-      begin TLB_Shootdown.Invalidate_All; OK := True; end Synchronize;
+      begin
+         if not Unmapped then
+            TLB_Shootdown.Invalidate_All;
+         end if;
+         OK := True;
+      end Synchronize;
       procedure Free (OK : out Boolean) is
       begin
          FrameLists.detachRange (proctab(PID).frames, Drop_First, Drop_Last,
@@ -462,6 +478,12 @@ package body Process.Owned_Memory is
    begin
       Success := False;
       if PID = NO_PROCESS then return; end if;
+      -- A commit's frames are made clean first, with no lock held: the
+      -- laundering and any pool growth (zeroing, TLB rounds) stay out of
+      -- the locked step below, which every CPU's wait path contends for.
+      if Policy."=" (Operation, Policy.Commit) and then Bytes <= Policy.Maximum_Commit_Bytes then
+         Process_Pool.Prepare (Natural (Bytes / Page));
+      end if;
       -- Exclude grant acquisition throughout mapping changes and rollback.
       Spinlocks.enterCriticalSection (grantLock);
       Lock;
@@ -498,6 +520,8 @@ package body Process.Owned_Memory is
    end Change_Range;
 
    procedure Release (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean) is
+      -- How long a lock break lets the spinning waiters in.
+      Break_Us : constant := 2;
       Region_Index : Natural := 0;
       Reclaimed : Boolean;
 
@@ -524,21 +548,68 @@ package body Process.Owned_Memory is
          Spinlocks.exitCriticalSection (grantLock);
       end Drop_Locks;
 
-      -- Under the locks: retire at most Pages_Per_Locked_Step pages of the
-      -- region's runs, the highest pages of one run first. Done when no run
-      -- is left (the region record is then released); Failed when a run's
-      -- retirement failed (it stays quarantined, with the region).
-      procedure Step (Done, Failed : out Boolean) is
-         Child : Natural := 0;
+      -- The region's run with the lowest base at or above From, or 0.
+      function Run_From (From : Unsigned_64) return Natural is
+         Found : Natural := 0;
+      begin
+         for I of Records.Iterate (Tables(PID)'Access) loop
+            if Is_Run_Of (Entries(PID, I).Value.all, Region_Index)
+              and then Entries(PID, I).Base >= From
+              and then (Found = 0 or else Entries(PID, I).Base < Entries(PID, Found).Base)
+            then
+               Found := I;
+            end if;
+         end loop;
+         return Found;
+      end Run_From;
+
+      -- Phase 1, under the locks: clear the entries of at most
+      -- Pages_Per_Locked_Step pages, continuing at (Next_Base, Next_Page);
+      -- the frames stay the process's. Done when every run is unmapped.
+      Next_Base : Unsigned_64 := 0;
+      Next_Page : Natural := 0;
+      procedure Unmap_Step (Done, Failed : out Boolean) is
+         Child : constant Natural := Run_From (Next_Base);
+         OK : Boolean;
+         Last : Natural;
+      begin
+         Done := Child = 0;
+         Failed := False;
+         if Done then return; end if;
+         if Entries(PID, Child).Base /= Next_Base then
+            Next_Base := Entries(PID, Child).Base;
+            Next_Page := 0;
+         end if;
+         Last := Natural'Min (Entries(PID, Child).Count,
+                              Next_Page + Policy.Pages_Per_Locked_Step);
+         for Page_Index in Next_Page .. Last - 1 loop
+            Virtmem.unmapPage (Integer_Address (Next_Base) + Integer_Address (Page_Index) * 4096,
+                               addrtab(proctab(PID).pgTable), OK);
+            if not OK then
+               Entries(PID, Child).Status := Quarantined;
+               Failed := True;
+               return;
+            end if;
+         end loop;
+         if Last >= Entries(PID, Child).Count then
+            -- This run is done: the next one has a higher base.
+            Next_Base := Next_Base + 1;
+            Next_Page := 0;
+         else
+            Next_Page := Last;
+         end if;
+      end Unmap_Step;
+
+      -- Phase 3, under the locks: free at most Pages_Per_Locked_Step frames
+      -- of the (unmapped, flushed) runs, the highest pages of one run
+      -- first. Done when no run is left (the region record is then
+      -- released); Failed when a run's retirement failed (it stays
+      -- quarantined, with the region).
+      procedure Free_Step (Done, Failed : out Boolean) is
+         Child : constant Natural := Run_From (0);
       begin
          Done := False;
          Failed := False;
-         for I of Records.Iterate (Tables(PID)'Access) loop
-            if Is_Run_Of (Entries(PID, I).Value.all, Region_Index) then
-               Child := I;
-               exit;
-            end if;
-         end loop;
          if Child = 0 then
             Records.Release (Tables(PID), Region_Index);
             Done := True;
@@ -552,19 +623,40 @@ package body Process.Owned_Memory is
                Records.Release (Tables(PID), Child);
                return;
             end if;
-            Drop (PID, Child, (Lower => Count - Taken, Dropped => Taken, Upper => 0), 0, Reclaimed);
+            Drop (PID, Child, (Lower => Count - Taken, Dropped => Taken, Upper => 0), 0, Reclaimed,
+                  Unmapped => True);
             Failed := not Reclaimed;
          end;
-      end Step;
+      end Free_Step;
+
+      -- Give the locks back and take them again: every CPU's wait and
+      -- grant paths take grantLock, so one locked step is the longest a
+      -- release holds them up. The spinlocks are not fair: retaken at
+      -- once, this CPU wins them again before a waiter that is spinning on
+      -- them sees them free (hda.drv and mixer.svc waited 12-14 ms in their
+      -- waits behind a release, 2026-11), so the break lasts Break_Us.
+      -- False when another thread releasing the same region finished it
+      -- meanwhile.
+      function Break return Boolean is
+         Until_TSC : Unsigned_64;
+      begin
+         Drop_Locks;
+         Until_TSC := x86.rdtsc + Break_Us * Time.tscPerDuration;
+         while x86.rdtsc < Until_TSC loop
+            System.Machine_Code.Asm ("pause", Volatile => True);
+         end loop;
+         Take_Locks;
+         return Still_Ours;
+      end Break;
 
       Done, Failed : Boolean := False;
    begin
       Success := False;
       if PID = NO_PROCESS or else not Policy.Valid_Capacity (Bytes) then return; end if;
       -- Quarantine the region (no commit, access change or grant reaches it
-      -- again), then retire its pages in bounded steps, giving the locks
-      -- back between steps: every CPU's wait and grant paths take grantLock,
-      -- so one locked step is the longest a release holds them up.
+      -- again); unmap its pages in bounded steps; one TLB round for the
+      -- whole region (a round interrupts every CPU, so one per region, not
+      -- one per step); then free its frames in bounded steps.
       Take_Locks;
       for I of Records.Iterate (Tables(PID)'Access) loop
          if Entries(PID, I).Status in Live | Quarantined and then Entries(PID, I).Kind = Region
@@ -582,12 +674,28 @@ package body Process.Owned_Memory is
          return;
       end if;
       loop
-         Step (Done, Failed);
+         Unmap_Step (Done, Failed);
          exit when Done or else Failed;
+         if not Break then
+            Drop_Locks;
+            return;
+         end if;
+      end loop;
+      Drop_Locks;
+      if Failed then
+         return;
+      end if;
+      -- No CPU may still translate an unmapped page when its frame is freed.
+      TLB_Shootdown.Invalidate_All;
+      Take_Locks;
+      if not Still_Ours then
          Drop_Locks;
-         Take_Locks;
-         -- Another thread releasing the same region may have finished it.
-         if not Still_Ours then
+         return;
+      end if;
+      loop
+         Free_Step (Done, Failed);
+         exit when Done or else Failed;
+         if not Break then
             Drop_Locks;
             return;
          end if;

@@ -33,6 +33,13 @@ package Process_Pool is
    -- After the buddy allocator, before any process frame is allocated.
    procedure Setup;
 
+   -- Before taking any lock: make Frames clean frames available (launder
+   -- dirty ones, else grow by the regions still missing), so the
+   -- allocations that follow under spinlocks find them and do no zeroing
+   -- or TLB rounds of their own. Best effort: another CPU may take them
+   -- first, and Alloc_Frame still launders or grows (one region) then.
+   procedure Prepare (Frames : Natural);
+
    -- One zeroed frame for a process; 0 when memory is exhausted.
    procedure Alloc_Frame (Frame : out Virtmem.PhysAddress);
 

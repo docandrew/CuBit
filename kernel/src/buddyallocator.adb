@@ -72,10 +72,15 @@ is
     -- region is joined.
     ---------------------------------------------------------------------------
     Region_Frames : constant := Pool_Region_Maps.Frames_Per_Region;
+    -- A pool region is one block of this order (2 MiB).
+    Pool_Region_Order : constant Order := Order (Pool_Region_Maps.Max_Run_Order);
     No_Region : constant Unsigned_32 := Unsigned_32'Last;
     type Pool_Record is record
         Map         : Pool_Region_Maps.Region_Map;
         Free_Frames : Natural range 0 .. Region_Frames := 0;
+        -- How many of Map.Clean are set: a region without enough is skipped
+        -- when a clean run is wanted.
+        Clean_Frames : Natural range 0 .. Region_Frames := 0;
         Hint        : Pool_Region_Maps.Frame_Offset := 0;
         Joined      : Boolean := False;
         Listed      : Boolean := False;   -- on the with-free list
@@ -361,6 +366,7 @@ is
                         item.Map.Clean (f) := False;
                     end loop;
                     item.Free_Frames := 0;
+                    item.Clean_Frames := 0;
                     item.Hint := 0;
                     item.Joined := False;
                     item.Listed := False;
@@ -1000,7 +1006,11 @@ is
                 released : Boolean;
             begin
                 reclaiming := True;
-                poolReclaim (released);
+                -- A region is an order-9 block: what a larger order needs,
+                -- if the regions are neighbours; one for anything smaller.
+                poolReclaim
+                  ((if ord > Pool_Region_Order then 2 ** Natural (ord - Pool_Region_Order) else 1),
+                   released);
                 reclaiming := False;
                 if released then
                     allocBlock (ord, addr, Zero_It, May_Reclaim => False);
@@ -1139,6 +1149,7 @@ is
             item.Map.Clean (f) := True;
         end loop;
         item.Free_Frames := Region_Frames;
+        item.Clean_Frames := Region_Frames;
         item.Hint := 0;
         item.Joined := True;
         item.Listed := True;
@@ -1146,6 +1157,7 @@ is
         item.Saved := Saved;
         poolFreeList := Unsigned_32 (region);
         poolFreeFrameCount := poolFreeFrameCount + Region_Frames;
+        poolCleanFrameCount := poolCleanFrameCount + Region_Frames;
         poolRegions := poolRegions + 1;
         Spinlocks.exitCriticalSection (lock);
     end joinPool;
@@ -1186,7 +1198,9 @@ is
                         end;
                     end if;
                 else
-                    if item.Free_Frames >= frames then
+                    if item.Free_Frames >= frames
+                      and then (not onlyClean or else item.Clean_Frames >= frames)
+                    then
                         Pool_Region_Maps.Find
                           ((if onlyClean then item.Map.Clean else item.Map.Free),
                            Pool_Region_Maps.Run_Order (ord), item.Hint, first, found);
@@ -1194,11 +1208,19 @@ is
                           (ceiling = 0 or else regionBase + Unsigned_64 (first + frames) *
                              Unsigned_64 (Virtmem.FRAME_SIZE) <= ceiling)
                         then
-                            clean := True;
-                            for i in 0 .. frames - 1 loop
-                                clean := clean and then item.Map.Clean (first + i);
-                            end loop;
-                            Pool_Region_Maps.Take (item.Map, first, Pool_Region_Maps.Run_Order (ord));
+                            declare
+                                taken_clean : Natural := 0;
+                            begin
+                                for i in 0 .. frames - 1 loop
+                                    if item.Map.Clean (first + i) then
+                                        taken_clean := taken_clean + 1;
+                                    end if;
+                                end loop;
+                                clean := taken_clean = frames;
+                                Pool_Region_Maps.Take (item.Map, first, Pool_Region_Maps.Run_Order (ord));
+                                item.Clean_Frames := item.Clean_Frames - taken_clean;
+                                poolCleanFrameCount := poolCleanFrameCount - taken_clean;
+                            end;
                             item.Free_Frames := item.Free_Frames - frames;
                             poolFreeFrameCount := poolFreeFrameCount - frames;
                             item.Hint := (first + frames) mod Region_Frames;
@@ -1248,6 +1270,8 @@ is
                     item.Listed := False;
                     item.Next := No_Region;
                     poolFreeFrameCount := poolFreeFrameCount - Region_Frames;
+                    poolCleanFrameCount := poolCleanFrameCount - item.Clean_Frames;
+                    item.Clean_Frames := 0;
                     poolRegions := poolRegions - 1;
                     base := Virtmem.PhysAddress (Unsigned_64 (region) * Region_Frames) *
                       Virtmem.PhysAddress (Virtmem.FRAME_SIZE);
@@ -1303,9 +1327,14 @@ is
             item : Pool_Record with Import, Address => poolRecordAddress (pfn / Region_Frames);
         begin
             Pool_Region_Maps.Mark_Clean (item.Map, offset);
+            item.Clean_Frames := item.Clean_Frames + 1;
+            poolCleanFrameCount := poolCleanFrameCount + 1;
         end;
         Spinlocks.exitCriticalSection (lock);
     end returnClean;
+
+    function poolCleanFrames return Natural is
+      (poolCleanFrameCount) with SPARK_Mode => Off;
 
     function poolFrameClean (addr : Virtmem.PhysAddress) return Boolean with SPARK_Mode => Off is
         pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));

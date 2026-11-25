@@ -135,6 +135,11 @@ is
 
     -- Free frames in the process pool (KERN-014), counted as free memory.
     poolFreeFrameCount : Natural := 0;
+    -- Of those, the clean ones (zeroed, a TLB round since): what the pool
+    -- can hand out without laundering. A hint for Process_Pool.Prepare and
+    -- the region search; which frames are handed out is decided by the
+    -- regions' Clean maps alone.
+    poolCleanFrameCount : Natural := 0 with Atomic;
 
     lockName : aliased constant String := "buddy";
     lock : Spinlocks.Spinlock;
@@ -313,9 +318,14 @@ is
        found : out Boolean) with SPARK_Mode => Off;
     function poolFrameClean (addr : Virtmem.PhysAddress) return Boolean
       with SPARK_Mode => Off;
+    -- Clean frames in the pool now (poolCleanFrameCount).
+    function poolCleanFrames return Natural with SPARK_Mode => Off;
     -- Called (outside the lock) when a kernel allocation finds no block:
-    -- give wholly free pool regions back; Released when any went.
-    type Pool_Reclaim_Handler is access procedure (Released : out Boolean);
+    -- give at most Regions wholly free pool regions back (enough for the
+    -- allocation that failed, no more: the caller may hold spinlocks with
+    -- interrupts off, and each region's dirty frames are zeroed first);
+    -- Released when any went.
+    type Pool_Reclaim_Handler is access procedure (Regions : Positive; Released : out Boolean);
     procedure installPoolReclaimHandler (Handler : not null Pool_Reclaim_Handler)
       with SPARK_Mode => Off;
 
