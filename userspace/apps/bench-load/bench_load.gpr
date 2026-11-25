@@ -2,7 +2,8 @@ project Bench_Load is
    for Languages use ("Ada");
    for Object_Dir use "build";
    for Source_Dirs use (".", "build/generated");
-   for Main use ("main.adb", "input_load.adb", "cpu_control.adb", "heap_load.adb", "sbrk_load.adb", "burn_load.adb");
+   for Main use ("main.adb", "input_load.adb", "cpu_control.adb", "heap_load.adb", "sbrk_load.adb", "burn_load.adb",
+                 "lock_self.adb", "lock_mutual.adb");
    for Runtime ("Ada") use "../../runtime";
    for Library_Dir use "";
 
@@ -13,6 +14,8 @@ project Bench_Load is
       for Executable ("heap_load.adb") use "bench-heap-load.app";
       for Executable ("sbrk_load.adb") use "bench-sbrk-load.app";
       for Executable ("burn_load.adb") use "bench-burn.app";
+      for Executable ("lock_self.adb") use "bench-lock-self.app";
+      for Executable ("lock_mutual.adb") use "bench-lock-mutual.app";
       for Default_Switches ("Ada") use
         ("-g", "-gnatwa", "-gnatw.X", "-s", "-v", "-nostdlib");
    end Builder;

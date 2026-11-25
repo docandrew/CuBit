@@ -1,0 +1,7 @@
+# IDIOT-001: an ordinary program names itself as the target of RESUME,
+# INSTALL_LAUNCH_ARGUMENTS and ENABLE_IRQ (bench-lock-self.app); each is
+# refused, and the kernel keeps running.
+(startup v1
+  (start "logstore.svc" (test-console approve-declared))
+  (start "bench-lock-self.app" (trace approve-declared))
+)

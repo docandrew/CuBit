@@ -407,7 +407,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch|screen-settle)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|mailbox-self|mailbox-mutual|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch|screen-settle)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -1010,6 +1010,12 @@ with open(sys.argv[1], "wb") as f:
         # IPC-010: shared futexes across processes (wake, wait, FIFO,
         # revocation, a refused outsider, wake-plus-wait, starvation).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-futex-share.ccl"
+        ;;
+    mailbox-self|mailbox-mutual)
+        # IDIOT-001: system calls that lock a target's mailbox, aimed at
+        # the caller itself (mailbox-self) or at each other by two
+        # processes at once (mailbox-mutual): refused, no halt, no deadlock.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-$TEST_NAME.ccl"
         ;;
     debug-engine)
         # DBG-001: the debugger engine attaches to debug-demo (cooperative,
@@ -2832,6 +2838,20 @@ if [ -n "$INIT_PROFILE" ]; then
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$WAIT_IMAGE $WAIT_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
                 echo "headless: failed to install $WAIT_IMAGE (make -C kernel wait-check readiness-writer)" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "mailbox-self" ] || [ "$TEST_NAME" = "mailbox-mutual" ]; then
+        if ! make -s -C "$KERNEL_DIR" bench-load >/dev/null; then
+            echo "headless: failed to build bench-load" >&2
+            exit 1
+        fi
+        for LOCK_IMAGE in logstore.svc bench-lock-self.app bench-lock-mutual.app; do
+            debugfs -w -R "rm $LOCK_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$LOCK_IMAGE $LOCK_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $LOCK_IMAGE (make -C kernel bench-load)" >&2
                 exit 1
             fi
         done
@@ -7098,6 +7118,14 @@ if [ "$TEST_NAME" = "debug-observe" ]; then
         "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "debug-observe: done PASS" "debug-observe: done FAIL" &
     INPUT_INJECTOR_PID=$!
 fi
+if [ "$TEST_NAME" = "mailbox-self" ]; then
+    # Quit at the check's last line (the timeout is only the bound).
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "MAILBOX-SELF: done PASS" "MAILBOX-SELF: done FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "spawn-rules" ]; then
     # Quit at the check's last line (the timeout is only the bound).
     QMP_SOCKET="$(qemu_socket qmp)"
@@ -9682,6 +9710,19 @@ platform-pool-check: touching the revoked mapping
             exit 1
         fi
         ;;
+    mailbox-self)
+        required_markers="
+MAILBOX-SELF: RESUME of itself refused PASS
+MAILBOX-SELF: INSTALL_LAUNCH_ARGUMENTS on itself refused PASS
+MAILBOX-SELF: ENABLE_IRQ to itself refused PASS
+MAILBOX-SELF: done PASS
+"
+        ;;
+    mailbox-mutual)
+        required_markers="
+MAILBOX-MUTUAL: done PASS
+"
+        ;;
     futex-share)
         required_markers="
 futex-share: two pages granted PASS
@@ -11505,6 +11546,21 @@ EOF
 if [ "$missing" -ne 0 ]; then
     echo "headless: serial log: $SERIAL_LOG" >&2
     exit 1
+fi
+
+if [ "$TEST_NAME" = "mailbox-self" ] || [ "$TEST_NAME" = "mailbox-mutual" ]; then
+    # The source rule the run exercises: no own-table lookup under another
+    # process's mailbox lock (checked after the run, so a kernel without
+    # the rule still shows what it does).
+    python3 -I "$ROOT_DIR/tests/mailbox-locks/check_own_lookups.py" "$KERNEL_DIR/src" || exit 1
+fi
+if [ "$TEST_NAME" = "mailbox-mutual" ]; then
+    # Both copies finished their rounds, every RESUME refused (IDIOT-001).
+    MUTUAL_DONE="$(grep -ac 'MAILBOX-MUTUAL: done PASS' "$SERIAL_LOG")"
+    if [ "$MUTUAL_DONE" -ne 2 ]; then
+        echo "headless: $MUTUAL_DONE of 2 mutual RESUME copies finished (deadlock?)" >&2
+        exit 1
+    fi
 fi
 
 if [ "$TEST_NAME" = "console-route" ]; then

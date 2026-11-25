@@ -1,0 +1,7 @@
+# IDIOT-001: two copies of bench-lock-mutual.app RESUME each other at once,
+# 4000 rounds each; every call is refused and neither CPU deadlocks.
+(startup v1
+  (start "logstore.svc" (test-console approve-declared))
+  (start "bench-lock-mutual.app" (trace approve-declared))
+  (start "bench-lock-mutual.app" (trace approve-declared))
+)
