@@ -234,8 +234,15 @@ package body Syscall is
                              arg6 : in Unsigned_64)           -- second on stack
                              return Unsigned_64
     is
-        percpu : PerCPUData.PerCPUData with
-            Import, Volatile, Address => PerCPUData.getPerCPUDataAddr;
+        -- The calling thread, read once: it is the same thread throughout
+        -- the call, but not on the same CPU. An interrupt window (spawn,
+        -- sbrk, owned-memory changes: Interrupt_Windows) or a block may
+        -- move it to another CPU, so no per-CPU data may be read through an
+        -- overlay taken at entry: after a move, that CPU runs another
+        -- thread (an sbrk locked one process's address space and unlocked
+        -- another's, and the kernel stopped on "Spinlock release without
+        -- CPU ownership").
+        caller : constant Process.ThreadID := PerCPUData.getCurrentThread;
 
         retval     : Unsigned_64 := 0;
         traceActive : constant Boolean := Trace.IsEnabled;
@@ -247,14 +254,14 @@ package body Syscall is
         waitKind   : Boot_Timeline_Layout.Wait_Kind := Boot_Timeline_Layout.No_Wait;
         waitStart  : Unsigned_64 := 0;
         -- Captured before dispatch: a blocked thread may resume on another
-        -- CPU, where percpu no longer describes it.
+        -- CPU.
         waitPID    : Process.ProcessID := Process.NO_PROCESS;
     begin
         -- The thread's own line in its process's thread-count pages
         -- (Readiness_Publication; only this thread writes it).
         declare
             calls : Unsigned_64 with Import, Volatile,
-                Address => Process.threadtab (percpu.currentThread).callCounter;
+                Address => Process.threadtab (caller).callCounter;
         begin
             calls := calls + 1;
         end;
@@ -265,12 +272,12 @@ package body Syscall is
 
         decodeSyscall (syscallNumRaw, syscallNum, validSyscall);
         if Build.Syscall_Census and then validSyscall then
-            Syscall_Census.Note (Process.processOf (percpu.currentThread),
+            Syscall_Census.Note (Process.processOf (caller),
                                  SyscallNumber'Pos (syscallNum), syscallNumRaw);
         end if;
         if not validSyscall then
             print ("Unknown syscall: "); printd (syscallNumRaw);
-            print (" from PID: "); println (Process.processOf (percpu.currentThread));
+            print (" from PID: "); println (Process.processOf (caller));
             if traceActive then
                 Trace.ObserveDuration (Trace.EVENT_SYSCALL_TIME,
                                        x86.rdtsc - startTSC);
@@ -286,7 +293,7 @@ package body Syscall is
                 -- the process's Ready (its request loop).
                 when SYSCALL_REPLY_WAIT =>
                     Boot_Timeline.Note_Event
-                      (Natural (Process.processOf (percpu.currentThread)),
+                      (Natural (Process.processOf (caller)),
                        Boot_Timeline.Received);
                     waitKind := Boot_Timeline_Layout.Receive;
                 -- Entering a receive: the first one after registration is
@@ -296,7 +303,7 @@ package body Syscall is
                         when Wait_Policy.Messages_Forever | Wait_Policy.Messages_Until
                            | Wait_Policy.Ready | Wait_Policy.Ready_Word =>
                             Boot_Timeline.Note_Event
-                              (Natural (Process.processOf (percpu.currentThread)),
+                              (Natural (Process.processOf (caller)),
                                Boot_Timeline.Received);
                             waitKind := Boot_Timeline_Layout.Receive;
                         when Wait_Policy.Timer =>
@@ -312,18 +319,18 @@ package body Syscall is
                     null;
             end case;
             if Boot_Timeline_Layout."/=" (waitKind, Boot_Timeline_Layout.No_Wait) then
-                waitPID := Process.processOf (percpu.currentThread);
+                waitPID := Process.processOf (caller);
                 waitStart := Boot_Timeline.Now;
             end if;
         end if;
 
         case syscallNum is
             when SYSCALL_EXIT =>
-                exitp (Process.processOf (percpu.currentThread), arg0);
+                exitp (Process.processOf (caller), arg0);
 
             when SYSCALL_KILL =>
                 Admin.handleKill (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+                    Process.processOf (caller), arg0, arg1, retval);
 
             when SYSCALL_WRITE =>
                 retval := write (
@@ -375,17 +382,17 @@ package body Syscall is
                                                Sbrk_Prepare_Pages)));
                 end if;
                 -- Serialized against sibling threads' faults and sbrk.
-                Process.lockAddressSpace (Process.processOf (percpu.currentThread));
+                Process.lockAddressSpace (Process.processOf (caller));
                 IPC.handleSbrk (
-                    Process.processOf (percpu.currentThread), arg0, retval);
-                Process.unlockAddressSpace (Process.processOf (percpu.currentThread));
+                    Process.processOf (caller), arg0, retval);
+                Process.unlockAddressSpace (Process.processOf (caller));
 
             -- Owned memory (Process.Owned_Memory, ABI-002): three calls,
             -- no flags. Reserve: arg0 page-aligned bytes (up to 2 GiB),
             -- arg1 the base's alignment (0: a page); the base, or zero.
             when SYSCALL_RESERVE_OWNED_REGION =>
                 Process.Owned_Memory.Reserve
-                  (Process.processOf (percpu.currentThread), arg0, arg1, retval);
+                  (Process.processOf (caller), arg0, arg1, retval);
 
             -- arg0 address, arg1 bytes (a page range of one region), arg2
             -- the operation (Owned_Reservation_Policy.Range_Operation:
@@ -399,7 +406,7 @@ package body Syscall is
                     Owned_Reservation_Policy.Decode (arg2, Operation, Known);
                     if Known then
                         Process.Owned_Memory.Change_Range
-                          (Process.processOf (percpu.currentThread), arg0, arg1,
+                          (Process.processOf (caller), arg0, arg1,
                            Operation, Changed);
                     end if;
                     retval := (if Changed then 0 else Unsigned_64'Last);
@@ -416,10 +423,10 @@ package body Syscall is
                     Released : Boolean;
                 begin
                     Process.Owned_Memory.Release
-                      (Process.processOf (percpu.currentThread), arg0, arg1, Released);
+                      (Process.processOf (caller), arg0, arg1, Released);
                     if not Released then
                         Modules.Release_View
-                          (Process.processOf (percpu.currentThread), arg0, arg1, Released);
+                          (Process.processOf (caller), arg0, arg1, Released);
                     end if;
                     retval := (if Released then 0 else Unsigned_64'Last);
                 end;
@@ -432,7 +439,7 @@ package body Syscall is
 
             when SYSCALL_MAPFB =>
                 IPC.handleMapFB (
-                    Process.processOf (percpu.currentThread), arg0, retval);
+                    Process.processOf (caller), arg0, retval);
 
             when SYSCALL_REPLY =>
                 IPC.handleReply (
@@ -444,17 +451,17 @@ package body Syscall is
 
             when SYSCALL_SEND_EVENT =>
                 IPC.handleSendEvent (
-                    Process.processOf (percpu.currentThread),
+                    Process.processOf (caller),
                     arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
             when SYSCALL_CREATE_SHARED_MEMORY_GRANT_FOR_PROCESS_ID =>
                 IPC.handleGrant (
-                    Process.processOf (percpu.currentThread),
+                    Process.processOf (caller),
                     arg0, arg1, arg2, arg3, retval);
 
             when SYSCALL_REVOKE_SHARED_MEMORY_GRANT =>
                 IPC.handleRevoke (
-                    Process.processOf (percpu.currentThread), arg0, retval);
+                    Process.processOf (caller), arg0, retval);
 
             when SYSCALL_GET_OWNED_SHARED_MEMORY_GRANT_GENERATION =>
                 IPC.handleGetOwnedGrantGeneration (arg0, retval);
@@ -471,44 +478,44 @@ package body Syscall is
 
             when SYSCALL_ACQUIRE_SHARED_MEMORY_GRANT_VIA_CAPABILITY =>
                 IPC.handleAcquireGrantViaCap
-                  (Process.processOf (percpu.currentThread),
+                  (Process.processOf (caller),
                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_DERIVE_SHARED_MEMORY_GRANT_VIA_CAPABILITY =>
                 IPC.handleDeriveGrantViaCap
-                  (Process.processOf (percpu.currentThread),
+                  (Process.processOf (caller),
                    arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_PUBLISH =>
                 Admin.handlePublish (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+                    Process.processOf (caller), arg0, arg1, retval);
 
             when SYSCALL_REGISTER_DRIVER =>
                 Admin.handleRegisterDriver (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+                    Process.processOf (caller), arg0, arg1, retval);
 
             when SYSCALL_INP8 | SYSCALL_OUTP8 |
                  SYSCALL_INP16 | SYSCALL_OUTP16 |
                  SYSCALL_INP32 | SYSCALL_OUTP32 =>
                 Admin.handlePortIO (
-                    Process.processOf (percpu.currentThread), syscallNum,
+                    Process.processOf (caller), syscallNum,
                     arg0, arg1, arg2, retval);
 
             when SYSCALL_MOVE_REPLY_CAPABILITY =>
                 Admin.handleSaveReplyCap (
-                    Process.processOf (percpu.currentThread), retval);
+                    Process.processOf (caller), retval);
 
             when SYSCALL_CLOSE_HANDLE =>
                 Admin.handleCloseHandle (
-                    Process.processOf (percpu.currentThread), arg0, retval);
+                    Process.processOf (caller), arg0, retval);
 
             when SYSCALL_INSTALL_CAPABILITY =>
                 Admin.handleInstallCap (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+                    Process.processOf (caller), arg0, arg1, retval);
 
             when SYSCALL_DERIVE_CAPABILITY =>
                 Admin.handleDeriveCap (
-                    Process.processOf (percpu.currentThread), arg0, retval);
+                    Process.processOf (caller), arg0, retval);
 
             -- arg0 authority handle, arg1 operation, arg2 table, arg3
             -- offset, arg4 destination, arg5 capacity, arg6 reply record.
@@ -519,24 +526,24 @@ package body Syscall is
 
             when SYSCALL_REPLY_WITH_CAPABILITY =>
                 IPC.handleReplyWithCap (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
+                    Process.processOf (caller), arg0, arg1, arg2, retval);
 
             when SYSCALL_CALL_OFFERING_CAPABILITY =>
                 Admin.handleCapCallOffering (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, retval);
+                    Process.processOf (caller), arg0, arg1, arg2, arg3, retval);
 
             when SYSCALL_REPLY_SAVED_WITH_CAPABILITY =>
                 IPC.handleReplySavedWithCap (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
+                    Process.processOf (caller), arg0, arg1, arg2, retval);
 
             when SYSCALL_SEND_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapSend (
-                    Process.processOf (percpu.currentThread),
+                    Process.processOf (caller),
                     arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
             when SYSCALL_CALL_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapCall (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
+                    Process.processOf (caller), arg0, arg1, arg2, retval);
 
             when SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY =>
                 Admin.handleCapSubmit (
@@ -547,56 +554,56 @@ package body Syscall is
 
             when SYSCALL_SPAWN =>
                 IPC.handleSpawn (
-                    Process.processOf (percpu.currentThread),
+                    Process.processOf (caller),
                     arg0, arg1, arg2, retval);
 
             when SYSCALL_MAP_DEVICE =>
                 IPC.handleMapDevice (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, arg5, retval);
+                    Process.processOf (caller), arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_INSPECT_CAPABILITY =>
                 Admin.handleInspectCap (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+                    Process.processOf (caller), arg0, arg1, retval);
 
             when SYSCALL_RESUME =>
                 Admin.handleResume (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, retval);
+                    Process.processOf (caller), arg0, arg1, arg2, arg3, retval);
 
             when SYSCALL_SEND_CONTROL =>
                 Admin.handleSendControl (
-                    Process.processOf (percpu.currentThread),
+                    Process.processOf (caller),
                     arg0, arg1, arg2, retval);
 
             when SYSCALL_INSTALL_LAUNCH_ARGUMENTS =>
                 Admin.handleInstallLaunchArguments (
-                    Process.processOf (percpu.currentThread),
+                    Process.processOf (caller),
                     arg0, arg1, arg2, arg3, arg4, retval);
 
             when SYSCALL_ALLOC_DMA =>
                 IPC.handleAllocDma (
-                    Process.processOf (percpu.currentThread),
+                    Process.processOf (caller),
                     arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
             when SYSCALL_ENABLE_IRQ =>
                 Admin.handleEnableIrq (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, arg3, arg4, retval);
+                    Process.processOf (caller), arg0, arg1, arg2, arg3, arg4, retval);
 
             when SYSCALL_ALLOCATE_DEVICE_VECTORS =>
                 Admin.handleAllocateDeviceVectors (
-                    Process.processOf (percpu.currentThread),
+                    Process.processOf (caller),
                     arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_RELEASE_DEVICE_VECTORS =>
                 Admin.handleReleaseDeviceVectors (
-                    Process.processOf (percpu.currentThread), arg0, arg1, retval);
+                    Process.processOf (caller), arg0, arg1, retval);
 
             when SYSCALL_READ_DEVICE_VECTOR =>
                 Admin.handleReadDeviceVector (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
+                    Process.processOf (caller), arg0, arg1, arg2, retval);
 
             when SYSCALL_MAP_INTO =>
                 IPC.handleMapInto (
-                    Process.processOf (percpu.currentThread),
+                    Process.processOf (caller),
                     arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
             when SYSCALL_SET_LATENCY_CONTRACT =>
@@ -625,16 +632,16 @@ package body Syscall is
                         if class = Process.LATENCY_REALTIME then
                             -- arg4 names the CAP_SCHEDULING relied on.
                             Process.reserveRealtime
-                              (Process.processOf (percpu.currentThread),
+                              (Process.processOf (caller),
                                authority => schedulingAuthority
-                                 (Process.processOf (percpu.currentThread), arg4),
+                                 (Process.processOf (caller), arg4),
                                budgetUs => Unsigned_32 (arg2),
                                periodUs => Unsigned_32 (arg1),
                                granted  => granted);
                         end if;
                         if granted then
                             Process.setLatencyContract (
-                                pid      => Process.processOf (percpu.currentThread),
+                                pid      => Process.processOf (caller),
                                 class    => class,
                                 periodUs => Unsigned_32 (arg1),
                                 budgetUs => Unsigned_32 (arg2),
@@ -648,7 +655,7 @@ package body Syscall is
 
             when SYSCALL_CREATE_SHARED_MEMORY_GRANT_VIA_CAPABILITY =>
                 IPC.handleGrantViaCap (
-                    Process.processOf (percpu.currentThread),
+                    Process.processOf (caller),
                     arg0, arg1, arg2, arg3, retval);
 
         end case;
