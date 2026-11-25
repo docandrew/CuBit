@@ -1658,6 +1658,9 @@ if [ "$BENCH_LOAD" = 1 ]; then
     elif [ "$LOAD_KIND" = windows ]; then
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-${TEST_NAME}-windows.ccl"
         QEMU_MEMORY="${QEMU_MEMORY:-1G}"
+        # The source rule the load below exercises at run time: no per-CPU
+        # overlay where a window may move the thread.
+        python3 -I "$ROOT_DIR/tests/interrupt-windows/check_overlays.py" "$KERNEL_DIR/src" || exit 1
     fi
     if [ "$LOAD_WORKERS" -gt 1 ]; then
         TEMP_LOAD_PROFILE="$(mktemp "${TMPDIR:-/tmp}/cubit-input-load.XXXXXX.ccl")"
