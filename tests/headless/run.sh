@@ -60,6 +60,8 @@ INPUT_BACKEND=linear
 VCPU_CPUS=""
 BENCH_LOAD=0
 LOAD_WORKERS=1
+# Heap loads init-bench-audio-heap.ccl starts (--load-kind heap).
+HEAP_LOADS_EXPECTED=3
 LOAD_KIND=cpu
 TEMP_LOAD_PROFILE=""
 SERIAL_LOG=""
@@ -110,8 +112,8 @@ Options:
   --load               Add one busy peer (bench-ipc / bench-audio / bench-input)
   --load-workers COUNT Add 1..4 busy peers (bench-input only)
   --load-kind KIND     With --load: cpu (default, spinning peers) or heap
-                       (bench-heap-load.app: commit and release 64 MiB in a
-                       loop; bench-audio only)
+                       (three bench-heap-load.app: each commits and releases
+                       32 MiB in a loop; bench-audio only)
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
@@ -11888,6 +11890,15 @@ if [ "$TEST_NAME" = "neon-blast" ]; then
         exit 1
     fi
 fi
+if [ "$LOAD_KIND" = heap ]; then
+    # Every heap load (init-bench-audio-heap.ccl) ran to the end, no
+    # commit or release refused: the guest really held all three heaps.
+    HEAP_LOADS_CLEAN="$(grep -Eac 'BENCH-LOAD: COMPLETE heap_rounds= *[1-9][0-9]* failures= 0 ' "$SERIAL_LOG")"
+    if [ "$HEAP_LOADS_CLEAN" -ne "$HEAP_LOADS_EXPECTED" ]; then
+        echo "headless: $HEAP_LOADS_CLEAN of $HEAP_LOADS_EXPECTED heap loads completed without a failure" >&2
+        exit 1
+    fi
+fi
 if [ "$TEST_NAME" = "neon-blast" ] || [ "$TEST_NAME" = "bench-audio" ]; then
     # Every audio period met its deadline (tests/headless/check-audio-periods.py).
     if ! python3 -I "$ROOT_DIR/tests/headless/check-audio-periods.py" "$SERIAL_LOG"; then
@@ -11906,8 +11917,12 @@ if [ "$TEST_NAME" = "desktop-doom" ]; then
 fi
 
 if [ "$BENCH_LOAD" = 1 ]; then
+    REPORT_LOAD_WORKERS="$LOAD_WORKERS"
+    if [ "$LOAD_KIND" = heap ]; then
+        REPORT_LOAD_WORKERS="$HEAP_LOADS_EXPECTED"
+    fi
     if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" \
-        --require-load --load-workers "$LOAD_WORKERS" >/dev/null; then
+        --require-load --load-workers "$REPORT_LOAD_WORKERS" >/dev/null; then
         echo "headless: INVALID loaded benchmark (see $SERIAL_LOG)" >&2
         exit 1
     fi

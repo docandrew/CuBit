@@ -1,8 +1,12 @@
-# bench-audio with a growing heap beside it (--load-kind heap, MEM-006):
-# bench-heap-load.app commits and releases 64 MiB in a loop, the kernel
-# work that once held grantLock with interrupts off for tens of ms.
+# bench-audio with growing heaps beside it (--load-kind heap, MEM-006):
+# three bench-heap-load.app copies each commit and release 32 MiB in a
+# loop, the kernel work that once held grantLock with interrupts off for
+# tens of ms. Three copies on four CPUs: one shares the audio interrupt's
+# CPU, whose interrupts a release once held off for its whole length.
 (startup v1
   (start "logstore.svc" (test-console approve-declared))
+  (start "bench-heap-load.app" (trace approve-declared))
+  (start "bench-heap-load.app" (trace approve-declared))
   (start "bench-heap-load.app" (trace approve-declared))
   (start "bench-audio.app")
 )

@@ -192,7 +192,8 @@ def load_overlaps_measurement(text, expected_workers=1):
         end_ids = {fields(e.group()).get("pid") for e in ends}
         return (None not in start_ids and len(start_ids) == expected_workers and
                 start_ids == end_ids and
-                all(fields(e.group()).get("batches", 0) > 0 for e in ends))
+                all(fields(e.group()).get("batches", fields(e.group()).get("heap_rounds", 0)) > 0
+                    for e in ends))
     return True
 
 
