@@ -65,7 +65,9 @@ fonts-native:
 	RUSTC_BOOTSTRAP=1 $(CARGO) --config 'target.x86_64-unknown-cubit.rustflags=["--remap-path-prefix=$(REPO_ROOT)=."]' \
 	  build --locked --offline --profile fonts -p cubit-fonts --features native --target $(FONT_TARGET) -Zjson-target-spec -Zbuild-std=core,alloc
 	mkdir -p build/font-native
-	printf '%s\n' 'CREATE build/font-native/libcubit_fonts.a' 'ADDLIB build/cargo/x86_64-unknown-cubit/fonts/libcubit_fonts.a' 'ADDLIB ../allocator/build/native-lib/libcubit_allocator.a' 'SAVE' 'END' | ar -M
+	# Assembled as a copy, which replaces the archive only when its
+	# contents changed (BLD-001): what links it is not rebuilt for nothing.
+	printf '%s\n' 'CREATE build/font-native/libcubit_fonts.a.new' 'ADDLIB build/cargo/x86_64-unknown-cubit/fonts/libcubit_fonts.a' 'ADDLIB ../allocator/build/native-lib/libcubit_allocator.a' 'SAVE' 'END' | ar -M
 	# memcpy, memmove, memset and memcmp are the runtime's (CuBit.String),
 	# for the Rust code too. Rust's core brings weak copies of them
 	# (compiler_builtins, one per archive member); this archive is linked
@@ -73,8 +75,11 @@ fonts-native:
 	# Each starts three string instructions where the runtime's starts one
 	# (PERF-011: 63 cycles against 26 for a 16-byte copy). Their members go;
 	# the program then has one definition of each (tests/runtime-string/linked.sh).
-	ar d build/font-native/libcubit_fonts.a $$(nm -A --defined-only build/font-native/libcubit_fonts.a 2>/dev/null \
+	ar d build/font-native/libcubit_fonts.a.new $$(nm -A --defined-only build/font-native/libcubit_fonts.a.new 2>/dev/null \
 	  | sed -n 's/^[^:]*:\([^:]*\):[0-9a-f]* [TW] \(memcpy\|memmove\|memset\|memcmp\)$$/\1/p' | sort -u)
+	if cmp -s build/font-native/libcubit_fonts.a.new build/font-native/libcubit_fonts.a; then \
+	  rm build/font-native/libcubit_fonts.a.new; \
+	else mv build/font-native/libcubit_fonts.a.new build/font-native/libcubit_fonts.a; fi
 
 fonts-test:
 	$(CARGO) test --locked --offline --release --target x86_64-unknown-linux-gnu -p cubit-fonts

@@ -140,12 +140,12 @@ Troubleshooting
 
 Debugging with GDB
 ------------------
-After `run-desktop` has built `kernel/cubit_kernel.iso` and
+After `run-desktop` has built `kernel/cubit_run.iso` and
 `kernel/nvme_disk.img`, start QEMU paused, with a GDB stub on port 1234:
 
     cd kernel
     qemu-system-x86_64 -accel kvm -machine q35 -cpu Broadwell -smp 4 -m 2G \
-        -cdrom cubit_kernel.iso -serial stdio -vga none -device virtio-vga \
+        -cdrom cubit_run.iso -serial stdio -vga none -device virtio-vga \
         -drive file=nvme_disk.img,if=none,id=nvme0,format=raw \
         -device nvme,serial=cubitnvme,drive=nvme0 -s -S
 
