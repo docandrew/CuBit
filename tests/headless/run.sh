@@ -60,6 +60,7 @@ INPUT_BACKEND=linear
 VCPU_CPUS=""
 BENCH_LOAD=0
 LOAD_WORKERS=1
+LOAD_KIND=cpu
 TEMP_LOAD_PROFILE=""
 SERIAL_LOG=""
 NET_PCAP=""
@@ -108,6 +109,9 @@ Options:
   --vcpu-cpus LIST     Pin vCPU 0,1,... to distinct Linux CPUs (e.g. 2,3,4,5; KVM only)
   --load               Add one busy peer (bench-ipc / bench-audio / bench-input)
   --load-workers COUNT Add 1..4 busy peers (bench-input only)
+  --load-kind KIND     With --load: cpu (default, spinning peers) or heap
+                       (bench-heap-load.app: commit and release 64 MiB in a
+                       loop; bench-audio only)
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
@@ -235,6 +239,13 @@ while [ "$#" -gt 0 ]; do
         --load)
             BENCH_LOAD=1
             shift
+            ;;
+        --load-kind)
+            case "${2:-}" in
+                cpu|heap) LOAD_KIND="$2"; BENCH_LOAD=1 ;;
+                *) echo "headless: --load-kind must be cpu or heap" >&2; exit 2 ;;
+            esac
+            shift 2
             ;;
         --load-workers)
             if [ "$#" -lt 2 ]; then
@@ -1626,8 +1637,15 @@ if [ "${CUBIT_TEST_IDLE_DPI:-0}" = 1 ]; then
     QEMU_MEMORY="${QEMU_MEMORY:-1G}"
 fi
 
+if [ "$LOAD_KIND" = heap ] && [ "$TEST_NAME" != bench-audio ]; then
+    echo "headless: --load-kind heap only supports bench-audio" >&2
+    exit 2
+fi
 if [ "$BENCH_LOAD" = 1 ]; then
     INIT_PROFILE="$ROOT_DIR/tests/headless/init-${TEST_NAME}-load.ccl"
+    if [ "$LOAD_KIND" = heap ]; then
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-${TEST_NAME}-heap.ccl"
+    fi
     if [ "$LOAD_WORKERS" -gt 1 ]; then
         TEMP_LOAD_PROFILE="$(mktemp "${TMPDIR:-/tmp}/cubit-input-load.XXXXXX.ccl")"
         awk -v count="$LOAD_WORKERS" '
@@ -1876,6 +1894,8 @@ if [ -n "$INIT_PROFILE" ]; then
         if [ "$BENCH_LOAD" = 1 ]; then
             if [ "$TEST_NAME" = "bench-input" ]; then
                 BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-input-load.app"
+            elif [ "$LOAD_KIND" = heap ]; then
+                BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-heap-load.app"
             else
                 BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-load.app"
             fi

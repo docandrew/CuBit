@@ -1,5 +1,5 @@
 # Requested authority only; the existing launch path remains in control.
-# One manifest for bench-load, bench-input-load and bench-cpu. The kernel
+# One manifest for bench-load, bench-input-load, bench-cpu and bench-heap-load. The kernel
 # trace object (Trace_ABI) is for bench-cpu's summary after its run (the
 # ACCOUNTING lines bench-scheduler checks); every benchmark profile that
 # starts one of them approves it, (trace approve-declared).
