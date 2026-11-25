@@ -1605,7 +1605,7 @@ package body Process is
     -- setLatencyContract
     ---------------------------------------------------------------------------
     procedure reserveRealtime
-      (pid      : ProcessID;
+      (tid      : ThreadID;
        authority : Capabilities.Capability;
        budgetUs : Unsigned_32;
        periodUs : Unsigned_32;
@@ -1613,7 +1613,6 @@ package body Process is
     is
         package RA renames Realtime_Admission;
         package SB renames Scheduling_Budgets;
-        tid : constant ThreadID := mainThreadOf (pid);
         covered : Boolean := False;
         onlineCPUs : Natural := 0;
         share : RA.Utilization;
@@ -1666,7 +1665,7 @@ package body Process is
     end reserveRealtime;
 
     procedure setLatencyContract
-        (pid      : ProcessID;
+        (tid      : ThreadID;
          class    : LatencyClass;
          periodUs : Unsigned_32;
          budgetUs : Unsigned_32;
@@ -1674,7 +1673,7 @@ package body Process is
 
     is
     begin
-        threadOf (pid).latency :=
+        threadtab (tid).latency :=
             (class    => class,
              periodUs => periodUs,
              budgetUs => budgetUs,

@@ -607,8 +607,8 @@ package body Syscall is
                     arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
             when SYSCALL_SET_LATENCY_CONTRACT =>
-                -- Process-local scheduler contract, validated at the syscall
-                -- boundary.
+                -- The calling thread's scheduler contract, validated at the
+                -- syscall boundary.
                 if arg0 > Unsigned_64 (Process.LatencyClass'Pos (
                    Process.LatencyClass'Last)) or else
                    arg1 > Unsigned_64 (Unsigned_32'Last) or else
@@ -632,7 +632,7 @@ package body Syscall is
                         if class = Process.LATENCY_REALTIME then
                             -- arg4 names the CAP_SCHEDULING relied on.
                             Process.reserveRealtime
-                              (Process.processOf (caller),
+                              (caller,
                                authority => schedulingAuthority
                                  (Process.processOf (caller), arg4),
                                budgetUs => Unsigned_32 (arg2),
@@ -641,7 +641,7 @@ package body Syscall is
                         end if;
                         if granted then
                             Process.setLatencyContract (
-                                pid      => Process.processOf (caller),
+                                tid      => caller,
                                 class    => class,
                                 periodUs => Unsigned_32 (arg1),
                                 budgetUs => Unsigned_32 (arg2),

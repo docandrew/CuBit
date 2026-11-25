@@ -1093,12 +1093,14 @@ package Process is
     -- Real-time reservations admitted across the system (Realtime_Admission).
     realtimeAdmitted : Realtime_Admission.Total := 0;
 
-    -- Reserve real-time CPU for pid's main thread: Budget microseconds every
-    -- Period, if authority (the CAP_SCHEDULING its handle named) covers it
-    -- and the system total stays within Realtime_Admission's share. A previous
-    -- reservation is released first. Caller holds no Process lock.
+    -- Reserve real-time CPU for thread tid (the caller of
+    -- SET_LATENCY_CONTRACT: an app's audio thread, a driver's main thread):
+    -- Budget microseconds every Period, if authority (the CAP_SCHEDULING its
+    -- handle named) covers it and the system total stays within
+    -- Realtime_Admission's share. The thread's previous reservation is
+    -- released first. Caller holds no Process lock.
     procedure reserveRealtime
-      (pid      : ProcessID;
+      (tid      : ThreadID;
        authority : Capabilities.Capability;
        budgetUs : Unsigned_32;
        periodUs : Unsigned_32;
@@ -1321,7 +1323,7 @@ package Process is
     -- single place where future real-time admission and accounting will live.
     ---------------------------------------------------------------------------
     procedure setLatencyContract
-        (pid      : ProcessID;
+        (tid      : ThreadID;
          class    : LatencyClass;
          periodUs : Unsigned_32;
          budgetUs : Unsigned_32;
