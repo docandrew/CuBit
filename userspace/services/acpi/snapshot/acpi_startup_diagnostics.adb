@@ -48,6 +48,7 @@ package body ACPI_Startup_Diagnostics is
         when AML_Execute.Mutex_Not_Acquired => "MUTEX_NOT_ACQUIRED",
         when AML_Execute.Invalid_Table_Length => "INVALID_TABLE_LENGTH",
         when AML_Execute.Field_Indeterminate => "FIELD_INDETERMINATE",
+        when AML_Execute.Missing_Operand => "MISSING_OPERAND",
         when AML_Execute.Fatal_Requested => "FATAL_REQUESTED",
         when AML_Execute.Module_Completed => "MODULE_COMPLETED");
 

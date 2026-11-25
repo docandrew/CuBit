@@ -169,7 +169,7 @@ package ACPI_Requests with SPARK_Mode is
       Error_Buffer_Field_Limit,
       Error_Notify_Limit,
       Error_Module_Completed,
-      Error_Mutex_Not_Acquired, Error_Fatal_Requested, Error_Field_Indeterminate, Error_Invalid_Table_Length);
+      Error_Mutex_Not_Acquired, Error_Fatal_Requested, Error_Field_Indeterminate, Error_Invalid_Table_Length, Error_Missing_Operand);
    for Startup_Error_Code use
      (Error_Returned => 0,
       Error_Object_Returned => 1,
@@ -212,7 +212,8 @@ package ACPI_Requests with SPARK_Mode is
       Error_Notify_Limit => 38,
       Error_Module_Completed => 39,
       Error_Mutex_Not_Acquired => 40, Error_Fatal_Requested => 41,
-      Error_Field_Indeterminate => 42, Error_Invalid_Table_Length => 43);
+      Error_Field_Indeterminate => 42, Error_Invalid_Table_Length => 43,
+      Error_Missing_Operand => 44);
    Start_Snapshot : constant Unsigned_32 := 1;
    Begin_Table : constant Unsigned_32 := 2;
    Write_Chunk : constant Unsigned_32 := 3;

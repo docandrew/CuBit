@@ -1,0 +1,313 @@
+{
+  "provenance": "Own synthetic ASL only; no captured bytes or laptop metadata",
+  "cases": [
+    {
+      "name": "scalar_before",
+      "tables": [
+        "unit_42a20365bd76.asl",
+        "unit_12ea6a8afb64.asl",
+        "unit_09486e82ef61.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 0
+    },
+    {
+      "name": "scalar_after",
+      "tables": [
+        "unit_42a20365bd76.asl",
+        "unit_09486e82ef61.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 2
+    },
+    {
+      "name": "field_before",
+      "tables": [
+        "unit_42a20365bd76.asl",
+        "unit_1912a8ff369f.asl",
+        "unit_09486e82ef61.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 0
+    },
+    {
+      "name": "field_after",
+      "tables": [
+        "unit_42a20365bd76.asl",
+        "unit_09486e82ef61.asl",
+        "unit_1912a8ff369f.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 2
+    },
+    {
+      "name": "absent_provider",
+      "tables": [
+        "unit_42a20365bd76.asl",
+        "unit_09486e82ef61.asl",
+        "unit_9b2b30b10c78.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 2
+    },
+    {
+      "name": "effect_before",
+      "tables": [
+        "unit_027af641379c.asl",
+        "unit_12ea6a8afb64.asl",
+        "unit_c726bd3fa610.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 1,
+      "recoveries": 0
+    },
+    {
+      "name": "effect_after",
+      "tables": [
+        "unit_027af641379c.asl",
+        "unit_c726bd3fa610.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 1,
+      "recoveries": 2
+    },
+    {
+      "name": "ordered_before",
+      "tables": [
+        "unit_a1cdf2a65350.asl",
+        "unit_12ea6a8afb64.asl",
+        "unit_c726bd3fa610.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 1,
+      "recoveries": 0
+    },
+    {
+      "name": "ordered_after",
+      "tables": [
+        "unit_a1cdf2a65350.asl",
+        "unit_c726bd3fa610.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 1,
+      "recoveries": 2
+    },
+    {
+      "name": "deliberately_moved_marker_negative",
+      "tables": [
+        "unit_a1cdf2a65350.asl",
+        "unit_12ea6a8afb64.asl",
+        "unit_14d6b9350c3f.asl"
+      ],
+      "probe": "FATAL_REQUESTED",
+      "writes": 2,
+      "recoveries": 0
+    },
+    {
+      "name": "missing_left_then_call",
+      "tables": [
+        "unit_027af641379c.asl",
+        "unit_4ada82e3ba97.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 1,
+      "recoveries": 2
+    },
+    {
+      "name": "missing_right_then_length_call",
+      "tables": [
+        "unit_027af641379c.asl",
+        "unit_de89b0f233b7.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "FATAL_REQUESTED",
+      "writes": 2,
+      "recoveries": 2
+    },
+    {
+      "name": "missing_address_then_length_call",
+      "tables": [
+        "unit_027af641379c.asl",
+        "unit_987baac181bc.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 1,
+      "recoveries": 2
+    },
+    {
+      "name": "nested_missing_then_call",
+      "tables": [
+        "unit_027af641379c.asl",
+        "unit_16b00d7a31d2.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "FATAL_REQUESTED",
+      "writes": 2,
+      "recoveries": 2
+    },
+    {
+      "name": "read-before",
+      "tables": [
+        "unit_953ceeba2945.asl",
+        "unit_12ea6a8afb64.asl",
+        "unit_09486e82ef61.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 0
+    },
+    {
+      "name": "read-after",
+      "tables": [
+        "unit_953ceeba2945.asl",
+        "unit_09486e82ef61.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "UNINITIALIZED",
+      "writes": 0,
+      "recoveries": 2
+    },
+    {
+      "name": "condref-before",
+      "tables": [
+        "unit_f4e98b64825b.asl",
+        "unit_12ea6a8afb64.asl",
+        "unit_09486e82ef61.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 0
+    },
+    {
+      "name": "condref-after",
+      "tables": [
+        "unit_f4e98b64825b.asl",
+        "unit_09486e82ef61.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 2
+    },
+    {
+      "name": "opaque_ref-before",
+      "tables": [
+        "unit_77db5cbe9a58.asl",
+        "unit_12ea6a8afb64.asl",
+        "unit_09486e82ef61.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 0
+    },
+    {
+      "name": "opaque_ref-after",
+      "tables": [
+        "unit_77db5cbe9a58.asl",
+        "unit_09486e82ef61.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 2
+    },
+    {
+      "name": "write-before",
+      "tables": [
+        "unit_b9d441f2f62e.asl",
+        "unit_12ea6a8afb64.asl",
+        "unit_09486e82ef61.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 1,
+      "recoveries": 0
+    },
+    {
+      "name": "write-after",
+      "tables": [
+        "unit_b9d441f2f62e.asl",
+        "unit_09486e82ef61.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "MISSING_OPERAND",
+      "writes": 0,
+      "recoveries": 2
+    },
+    {
+      "name": "wide_access-before",
+      "tables": [
+        "unit_f99a0188f83a.asl",
+        "unit_12ea6a8afb64.asl",
+        "unit_68dc62c4079e.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 0
+    },
+    {
+      "name": "wide_access-after",
+      "tables": [
+        "unit_f99a0188f83a.asl",
+        "unit_68dc62c4079e.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "UNINITIALIZED",
+      "writes": 0,
+      "recoveries": 2
+    },
+    {
+      "name": "rooted_before",
+      "tables": [
+        "unit_42a20365bd76.asl",
+        "unit_12ea6a8afb64.asl",
+        "unit_30233bfe72c6.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 0
+    },
+    {
+      "name": "rooted_after",
+      "tables": [
+        "unit_42a20365bd76.asl",
+        "unit_30233bfe72c6.asl",
+        "unit_12ea6a8afb64.asl"
+      ],
+      "probe": "RETURNED",
+      "writes": 0,
+      "recoveries": 2
+    }
+  ],
+  "units": {
+    "unit_42a20365bd76.asl": "42a20365bd769727933c1708656f98653a9882e7e048d3458277b04816915a34",
+    "unit_12ea6a8afb64.asl": "12ea6a8afb64e8581cd0bd8bdf22285d6f9cd2425537793ef71328094c6843bc",
+    "unit_09486e82ef61.asl": "09486e82ef610539c71393ab1d1b97dff162f864ea586a1ee73291609fe35750",
+    "unit_1912a8ff369f.asl": "1912a8ff369f203ab8a437c6b10d96e89445e29d271f716ae5b27510671d24a6",
+    "unit_9b2b30b10c78.asl": "9b2b30b10c78f5eba54c0c7314cfa14062409e1264749da7b3a8595c02864951",
+    "unit_027af641379c.asl": "027af641379c91e26b823bca7dbee510be8b435d442e6cb2a46a03c3addc6597",
+    "unit_c726bd3fa610.asl": "c726bd3fa610f9c793ce9e7e9e4ceac5d881efe286eaaaeb26e148b5332681ee",
+    "unit_a1cdf2a65350.asl": "a1cdf2a653506b8cc4cc58c7b1e6de2cb06756dafadd281b407ccb75a5e81a87",
+    "unit_14d6b9350c3f.asl": "14d6b9350c3f231c12cb4e1ecd5f5cf5ccce89f3cf99eb34cf79f380e2546155",
+    "unit_4ada82e3ba97.asl": "4ada82e3ba97b78f2a6292d70b59aa25dbc15959156dc31c90ed7fcc8e2f04f4",
+    "unit_de89b0f233b7.asl": "de89b0f233b78a20e40e63373b7b647c56de1d5ea0a2c0dbb24ad9d3deae5cf2",
+    "unit_987baac181bc.asl": "987baac181bc099cf796761c4decb13c5e1c928fe799438c40086108252c08ef",
+    "unit_16b00d7a31d2.asl": "16b00d7a31d285ee9585f8848565b71b7fd200c40cdb9dd7735cef477a560e58",
+    "unit_953ceeba2945.asl": "953ceeba29456595770b20cd32039f4e9dd7c1ab73ca44e2ceed34746bdf5f67",
+    "unit_f4e98b64825b.asl": "f4e98b64825bc99f475a582e28c3a2ac4658dfe0040dcd26350ffd73ba6d300e",
+    "unit_77db5cbe9a58.asl": "77db5cbe9a5818d8bfaf5e03a46a100d103c5356d2fe9700f8ec8b071546f04b",
+    "unit_b9d441f2f62e.asl": "b9d441f2f62ec5a2440e0679eb131343aec1c942289f2d5a7006a912e6546a00",
+    "unit_f99a0188f83a.asl": "f99a0188f83a315bca10d124af364a8c5a440ea527cc754383c00b67732003c8",
+    "unit_68dc62c4079e.asl": "68dc62c4079ed4e8de8778eb57b92c0fc7ab18d367378daa64f19cf02990dcf6",
+    "unit_30233bfe72c6.asl": "30233bfe72c6acc456784659b2149f538733ab852f895966bc9fc7be9ba49054"
+  }
+}

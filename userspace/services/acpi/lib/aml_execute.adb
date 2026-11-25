@@ -484,7 +484,7 @@ package body AML_Execute with SPARK_Mode is
                        elsif Stored = Frames.Generation_Limit then Value_Limit else Unsupported_Value);
          else
             Store_Reference (Environment, Ref, Width, Item, Status, Mode);
-            if Status not in Returned | Unsupported_Value | Value_Limit | Empty_Buffer | Buffer_Field_Limit | Field_Indeterminate then Status := Unsupported_Value; end if;
+            if Status not in Returned | Unsupported_Value | Value_Limit | Empty_Buffer | Buffer_Field_Limit | Field_Indeterminate | Missing_Operand then Status := Unsupported_Value; end if;
          end if;
       end Write_Reference_Value;
       procedure Observe_Owned_Census
@@ -590,7 +590,7 @@ package body AML_Execute with SPARK_Mode is
                               Store_Source : Scalar_Location := 0)
         with Pre => Offset <= Bound and then Bound <= Code'Length and then Context_Valid (Environment),
           Post => Context_Valid (Environment) and then Offset <= Bound and then Offset >= Offset'Old
-            and then Status in Returned | Truncated | Unsupported | Unsupported_Value | Unknown_Name | Value_Limit | Empty_Buffer | Buffer_Field_Limit | Field_Indeterminate
+            and then Status in Returned | Truncated | Unsupported | Unsupported_Value | Unknown_Name | Value_Limit | Empty_Buffer | Buffer_Field_Limit | Field_Indeterminate | Missing_Operand
             and then (if Status /= Returned then
               Offset = Offset'Old and then Registry = Registry'Old)
             and then (if Status = Returned then Offset > Offset'Old)
@@ -605,7 +605,7 @@ package body AML_Execute with SPARK_Mode is
          if Target in 16#60# .. 16#6E# then
             Write_Slot (Target, Item, Status, Store_Source => Store_Source);
             if Status /= Returned then
-               if Status not in Value_Limit | Unsupported_Value | Field_Indeterminate then Status := Unsupported; end if;
+               if Status not in Value_Limit | Unsupported_Value | Field_Indeterminate | Missing_Operand then Status := Unsupported; end if;
                return;
             end if;
          elsif Target = Extended_Op then
@@ -634,6 +634,7 @@ package body AML_Execute with SPARK_Mode is
                when Write_Buffer_Field_Limit => Status := Buffer_Field_Limit; return;
                when Write_Empty_Buffer => Status := Empty_Buffer; return;
                when Write_Field_Indeterminate => Status := Field_Indeterminate; return;
+               when Write_Missing_Operand => Status := Missing_Operand; return;
                when Write_Unsupported => Status := Unsupported; return;
                when Written => null;
             end case;
@@ -1061,7 +1062,7 @@ package body AML_Execute with SPARK_Mode is
                                  Mode : Reference_Store_Mode := Direct_Target)
            with Pre => Context_Valid (Environment),
                 Post => Context_Valid (Environment)
-                  and then Status in Returned | Unsupported | Unknown_Name | Unsupported_Value | Value_Limit | Empty_Buffer | Buffer_Field_Limit | Field_Indeterminate
+                  and then Status in Returned | Unsupported | Unknown_Name | Unsupported_Value | Value_Limit | Empty_Buffer | Buffer_Field_Limit | Field_Indeterminate | Missing_Operand
          is
             Written_Status : Write_Status;
             Binding : Binding_Result;
@@ -1100,11 +1101,12 @@ package body AML_Execute with SPARK_Mode is
                      when Write_Buffer_Field_Limit => Status := Buffer_Field_Limit;
                      when Write_Empty_Buffer => Status := Empty_Buffer;
                      when Write_Field_Indeterminate => Status := Field_Indeterminate;
+                     when Write_Missing_Operand => Status := Missing_Operand;
                      when Write_Unsupported => Status := Unsupported;
                   end case;
                when Reference_Target =>
                   Write_Reference_Value (T.Ref, Item, Status, Mode => Mode);
-                  if Status not in Returned | Unsupported_Value | Value_Limit | Empty_Buffer | Buffer_Field_Limit | Field_Indeterminate then Status := Unsupported_Value; end if;
+                  if Status not in Returned | Unsupported_Value | Value_Limit | Empty_Buffer | Buffer_Field_Limit | Field_Indeterminate | Missing_Operand then Status := Unsupported_Value; end if;
             end case;
          end Apply_Target;
          function Root_Value (Value : Concatenation_Operand) return Datum is
@@ -3874,7 +3876,7 @@ package body AML_Execute with SPARK_Mode is
                         else
                            S := Returned;
                         end if;
-                        if S not in Returned | Unsupported_Value | Value_Limit | Empty_Buffer | Buffer_Field_Limit | Field_Indeterminate then S := Unsupported_Value; end if;
+                        if S not in Returned | Unsupported_Value | Value_Limit | Empty_Buffer | Buffer_Field_Limit | Field_Indeterminate | Missing_Operand then S := Unsupported_Value; end if;
                         if S /= Returned then return; end if;
                         V := Left_Item;
                      elsif Offset < Parse_Limit and then Code (Code'First + Offset) in 16#71# | 16#83# | 16#88# then
@@ -4687,9 +4689,22 @@ package body AML_Execute with SPARK_Mode is
                           (Integer_Datum, 0, Ordinary_Integer));
                      end loop;
                      if Declared_Status /= Returned then
-                        Body_Result := Failure
-                          ((if Declared_Status in Failure_Status then Declared_Status else Unsupported_Value), Charged);
-                        return;
+                        declare Continue_Execution : Boolean := False; begin
+                           if Module_Root and then Declared_Status = Unknown_Name
+                             and then Token /= AML_Declaration_Contexts.No_Operation_Region
+                             and then not Pending_Fatal.Present
+                           then
+                              if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
+                              Handle_Module_Name_Error (Environment, Active_Lease,
+                                Current_Lexical_Scope, Operation_Region_Name_Error,
+                                Token, 0, [], Offset, Charged, Continue_Execution);
+                           end if;
+                           if not Continue_Execution then
+                              Body_Result := Failure
+                                ((if Declared_Status in Failure_Status then Declared_Status else Unsupported_Value), Charged);
+                              return;
+                           end if;
+                        end;
                      end if;
                   end;
                elsif Code (Code'First + Offset) = 16#88# then
@@ -4813,9 +4828,24 @@ package body AML_Execute with SPARK_Mode is
                        Code (Code'First + Offset .. Code'First + (Finish - 1)), Declared_Status);
                   end if;
                   if Declared_Status /= Returned then
-                     Body_Result := Failure
-                       ((if Declared_Status in Failure_Status then Declared_Status else Unsupported), Charged);
-                     return;
+                     declare Continue_Execution : Boolean := False; begin
+                        if Module_Root and then Declared_Status = Unknown_Name
+                          and then not Pending_Fatal.Present
+                        then
+                           Handle_Module_Name_Error (Environment, Active_Lease,
+                             Current_Lexical_Scope, Field_Region_Name_Error,
+                             AML_Declaration_Contexts.No_Operation_Region,
+                             Flags,
+                             (if Offset = Finish then [] else
+                                Code (Code'First + Offset .. Code'First + (Finish - 1))),
+                             Finish, Charged, Continue_Execution);
+                        end if;
+                        if not Continue_Execution then
+                           Body_Result := Failure
+                             ((if Declared_Status in Failure_Status then Declared_Status else Unsupported), Charged);
+                           return;
+                        end if;
+                     end;
                   end if;
                   Offset := Finish;
                end;

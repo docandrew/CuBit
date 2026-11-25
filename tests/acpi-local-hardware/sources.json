@@ -568,12 +568,12 @@
     },
     {
       "path": "userspace/services/acpi/acpi_requests.adb",
-      "sha256": "a54a0c8524c53eab494ee6ad79f957e638a61f7831f8dd2911665fc84ad901e1",
+      "sha256": "2402395d0109879a53747ee4822fe79d3b0b1a26a245510cfe18b44d0e549544",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/acpi_requests.ads",
-      "sha256": "2c3f42dd7188134aa277ea380142b862fe63ab2823b0f7b9a06f5c7430949136",
+      "sha256": "939409de0674acd9f9f9567e074c3371b78f49f6130f3826354ce5a43b7370ca",
       "kind": "ada"
     },
     {
@@ -2333,7 +2333,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.adb",
-      "sha256": "348bc3f027cc3bd15e4caed0c0abd28ccd741e14c726f07df59f635178f4c8bd",
+      "sha256": "00bf1a7a3615ad3c7d776bce20edc73fc9d215e85b767872d17fdab2e63ac5b2",
       "kind": "ada"
     },
     {
@@ -3773,7 +3773,7 @@
     },
     {
       "path": "userspace/services/acpi/snapshot/acpi_startup_diagnostics.adb",
-      "sha256": "75554970ef0356899df1d7c81a60efae39a87a2e42f114909487cb6a933d1442",
+      "sha256": "fe995e37eb08e284de9c24a88a7f5acaeaeaef6a77fd876a720a66c2fafcca0d",
       "kind": "ada"
     },
     {

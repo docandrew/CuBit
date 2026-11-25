@@ -798,7 +798,7 @@ package body AML_Namespace with SPARK_Mode is
       elsif Located.Node = Root then
          return (Status => AML_Execute.Non_Integer_Binding,
            Object => (Type_Code => AML_Execute.Named_Metadata_Type'Enum_Rep (AML_Execute.Device_Metadata), others => <>));
-      elsif Kind (Tree, Located.Node) in Uninitialized_Region_Object | Uninitialized_Table_Field_Object | Uninitialized_Name_Object then
+      elsif Kind (Tree, Located.Node) in Uninitialized_Region_Object | Uninitialized_Table_Field_Object | Uninitialized_Field_Object | Uninitialized_Name_Object then
          return (Status => AML_Execute.Failed_Binding, Failure => AML_Execute.Uninitialized);
       elsif Kind (Tree, Located.Node) in Operation_Region_Object | Region_Field_Object then
          -- Purpose-less legacy readers cannot turn metadata into a value.
@@ -4219,6 +4219,9 @@ package body Owned with SPARK_Mode is
       if not Named_Identity_Matches (A, R) then
          Resolve_Value (A, R, Value, Provenance, Status); return;
       end if;
+      if AML_References.Kind (R) = AML_References.Named_Cell
+        and then A.Tree.Items (Node_ID (AML_References.Named_Node (R))).Object_Type = Uninitialized_Field_Object
+      then Status := AML_Execute.Uninitialized; return; end if;
       Describe_Named_Identity (A, R, Description);
       if Description.Kind = AML_Execute.Metadata_Only then
          Value := (AML_Execute.Metadata_Datum, (AML_Execute.Live_Namespace, R));
@@ -5671,6 +5674,10 @@ package body Owned with SPARK_Mode is
    is
    begin
       Status := AML_Execute.Unsupported_Value;
+      if AML_References.Kind (R) = AML_References.Named_Cell
+        and then Named_Identity_Matches (A, R)
+        and then A.Tree.Items (Node_ID (AML_References.Named_Node (R))).Object_Type = Uninitialized_Field_Object
+      then Status := AML_Execute.Missing_Operand; return; end if;
       if not Matches (A, R) then
          -- A method has no ordinary value-arena object. A current named
          -- cell can still receive a replacement after its calls retire.
@@ -6917,7 +6924,7 @@ package body Owned with SPARK_Mode is
          when Metadata_Value_Object =>
             Result := (Metadata_Only, AML_Objects.Metadata_Snapshot_Data (A.Tree.Values,
               A.Tree.Items (Node_ID (AML_References.Named_Node (Ref))).Object_Ref).Object_Type);
-         when Integer_Object | String_Object | Buffer_Object | Package_Object | Reference_Object | Uninitialized_Name_Object =>
+         when Integer_Object | String_Object | Buffer_Object | Package_Object | Reference_Object | Uninitialized_Name_Object | Uninitialized_Field_Object =>
             Result := (Kind => Continue_Reference);
          when Scope_Object => Result := (Metadata_Only, Scope_Metadata);
          when Alias_Object => null;
@@ -7772,6 +7779,9 @@ package body Owned with SPARK_Mode is
          if Scope <= E.Tree.Used then
             Located := Resolve_Object (E.Tree.all, Node_ID (Scope), Path);
             if Located.Status = Found and then Located.Node /= Root
+              and then E.Tree.Items (Located.Node).Object_Type = Uninitialized_Field_Object
+            then Status := AML_Execute.Write_Missing_Operand; return; end if;
+            if Located.Status = Found and then Located.Node /= Root
               and then E.Tree.Items (Located.Node).Object_Type = Region_Field_Object then
                Make_Named_Identity (E, Natural (Located.Node), Ref, OK);
                if not OK then Status := AML_Execute.Write_Unsupported; return; end if;
@@ -8510,6 +8520,114 @@ package body Owned with SPARK_Mode is
            AML_Declaration_Contexts.Lexical_Top (Execute_Declaration_Lease_Store, Lease))
          and then Natural (AML_Declaration_Contexts.Node_Of
            (AML_Declaration_Contexts.Lexical_Top (Execute_Declaration_Lease_Store, Lease))) = Scope);
+      procedure Recover_Module_Name
+        (E : in out Arena; Lease : AML_Declaration_Contexts.Lease;
+         Scope : Natural; Site : AML_Execute.Module_Name_Error_Site;
+         Token : AML_Declaration_Contexts.Operation_Region_Reservation;
+         Flags : AML_Decode.Byte; Field_Entries : AML_Decode.Bytes;
+         Resume_Offset, Charged : Natural; Continue_Execution : in out Boolean)
+      is
+         use type AML_Execute.Module_Name_Error_Site;
+         use type AML_Declaration_Contexts.Operation_Region_Reservation;
+         Node : constant Natural := AML_Declaration_Contexts.Node_Of (Token);
+         procedure Retain_Failed_Fields (Accepted : out Boolean) is
+            use type AML_Decode.Status;
+            use type AML_Fields.Entry_Kind;
+            Names : array (Positive range 1 .. Capacity) of AML_Names.Segment :=
+              [others => "____"];
+            Count : Node_ID := 0;
+            Initial_Count : constant Node_ID := E.Tree.Used;
+            Cursor : Natural := 0;
+            Position : Field_Bit_Position := 0;
+            Item : AML_Fields.Entry_Result;
+         begin
+            Accepted := False;
+            -- Parse and admit the whole FieldList before publishing any name.
+            -- These entries have no region geometry, address, or I/O authority.
+            while Cursor < Field_Entries'Length loop
+               Item := AML_Fields.Read_Entry
+                 (Field_Entries (Field_Entries'First + Cursor .. Field_Entries'Last));
+               if Item.Status /= AML_Decode.Accepted then return; end if;
+               case Item.Kind is
+                  when AML_Fields.Named_Field | AML_Fields.Reserved_Field =>
+                     if Field_Bit_Position (Item.Bits) > Field_Bit_Position'Last - Position
+                     then return; end if;
+                     if Item.Kind = AML_Fields.Named_Field then
+                        if Child (E.Tree.all, Node_ID (Scope), Item.Name) /= Root
+                          or else Count = Capacity - Initial_Count
+                        then return; end if;
+                        for I in 1 .. Count loop
+                           if Names (I) = Item.Name then return; end if;
+                        end loop;
+                        Count := Count + 1; Names (Count) := Item.Name;
+                     end if;
+                     Position := Position + Field_Bit_Position (Item.Bits);
+                  when AML_Fields.Access_Field | AML_Fields.Extended_Access_Field => null;
+                  when AML_Fields.Name_Connection | AML_Fields.Buffer_Connection => return;
+               end case;
+               Cursor := Cursor + Item.Consumed;
+            end loop;
+            if AML_References.Node_Incarnation (Count) > Max_Node_Incarnation - E.Tree.Last_Stamp
+            then return; end if;
+            for I in 1 .. Count loop
+               E.Tree.Used := E.Tree.Used + 1;
+               E.Tree.Last_Stamp := E.Tree.Last_Stamp + 1;
+               E.Tree.Items (E.Tree.Used) :=
+                 (Incarnation => E.Tree.Last_Stamp, Definition => E.Tree.Current_Definition,
+                  Up => Node_ID (Scope), Owner => Root, Part => Names (I),
+                  Object_Type => Uninitialized_Field_Object, others => <>);
+               Index_Insert (E.Tree.all, E.Tree.Used);
+            end loop;
+            Accepted := True;
+         end Retain_Failed_Fields;
+      begin
+         Continue_Execution := False;
+         if not Module_Recovery_Enabled or else E.Token /= Entry_Token
+           or else not AML_Declaration_Contexts.Is_Module (Lease)
+           or else not Execute_Declaration_Lexical_Valid (E, Lease, Scope)
+           or else not Has_Definition (E.Tree.Current_Definition)
+           or else E.Field_Uncertain.Present or else Charged > Budget
+         then return; end if;
+         if Site = AML_Execute.Operation_Region_Name_Error then
+            if Flags /= 0 or else Field_Entries'Length /= 0 then return; end if;
+            if not AML_Declaration_Contexts.Issued_By (Token, Lease)
+              or else Node = 0 or else Node > E.Tree.Used
+            then return; end if;
+            if not E.Tree.Items (Node_ID (Node)).Alive
+              or else E.Tree.Items (Node_ID (Node)).Object_Type /= Uninitialized_Region_Object
+              or else E.Tree.Items (Node_ID (Node)).Owner /= Root
+              or else Natural (E.Tree.Items (Node_ID (Node)).Incarnation) /=
+                AML_Declaration_Contexts.Stamp_Of (Token)
+              or else not E.Tree.Items (Node_ID (Node)).Initializing
+              or else E.Tree.Items (Node_ID (Node)).Initializer_Frame /=
+                AML_Declaration_Contexts.Frame_Of (Lease)
+              or else E.Tree.Items (Node_ID (Node)).Definition /= E.Tree.Current_Definition
+            then return; end if;
+            -- Refuse an unexpected subtree instead of retiring live children.
+            for I in 1 .. E.Tree.Used loop
+               if E.Tree.Items (I).Alive and then E.Tree.Items (I).Up = Node_ID (Node)
+               then return; end if;
+            end loop;
+            Retire_Node (E.Tree.all, Node_ID (Node));
+         elsif Token /= AML_Declaration_Contexts.No_Operation_Region then
+            return;
+         else
+            declare Retained : Boolean; begin
+               Retain_Failed_Fields (Retained);
+               if not Retained then return; end if;
+            end;
+         end if;
+         if E.Recovered_Module_Errors.Count < Module_Error_Count'Last then
+            E.Recovered_Module_Errors.Count := E.Recovered_Module_Errors.Count + 1;
+         end if;
+         E.Recovered_Module_Errors.Kind :=
+           (if Site = AML_Execute.Operation_Region_Name_Error then
+              Module_Operation_Region_Unknown_Name else Module_Field_Region_Unknown_Name);
+         E.Recovered_Module_Errors.Definition := E.Tree.Current_Definition;
+         E.Recovered_Module_Errors.Resume_Offset := Resume_Offset;
+         E.Recovered_Module_Errors.Charged := Charged;
+         Continue_Execution := True;
+      end Recover_Module_Name;
       procedure Execute_Container_Enter
         (Environment : in out Arena; Lease : AML_Declaration_Contexts.Lease;
          Scope : Natural; Path : AML_Names.Name_Result;
@@ -9055,6 +9173,17 @@ package body Owned with SPARK_Mode is
       begin
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then
             Status := AML_Execute.Unsupported_Value; return;
+         end if;
+         if Module_Recovery_Enabled and then AML_Declaration_Contexts.Is_Module (Lease) then
+            declare Located : constant Lookup_Result :=
+              Resolve_Object (Environment.Tree.all, Node_ID (Scope), Region);
+            begin
+               -- Missing hardware regions must not take the DataTable-only
+               -- flag rejection path before typed module recovery is offered.
+               if Located.Status /= Found then
+                  Status := AML_Execute.Unknown_Name; return;
+               end if;
+            end;
          end if;
          Define_Fields_For_Context (Environment.Tree.all, Scope, AML_Declaration_Contexts.Scope_Of (Lease), Region, Flags, Entries, Status, AML_Declaration_Contexts.Is_Module (Lease));
       end Execute_Declaration_Fields;
@@ -10073,6 +10202,7 @@ package body Owned with SPARK_Mode is
          Begin_Load_Table_Module => Begin_Load,
          Finish_Load_Table => Finish_Load,
          Handle_Module_Divide_Error => Recover_Module_Divide,
+         Handle_Module_Name_Error => Recover_Module_Name,
          Next_Runtime_Package_Field => Next_Runtime_Package_Field,
          Complete_Runtime_Package_Field => Complete_Runtime_Package_Field,
          Read_Field_Context => PCI_Read,
@@ -12515,7 +12645,7 @@ package body Owned with SPARK_Mode is
             end if;
             Outcome := (Status => AML_Execute.Unsupported_Value, Charged => Named_Evaluation_Charge);
             if Owned.Kind (A.Inner.all, Node) not in Buffer_Field_Object | Table_Field_Object |
-              Region_Field_Object | Uninitialized_Table_Field_Object
+              Region_Field_Object | Uninitialized_Table_Field_Object | Uninitialized_Field_Object
             then return; end if;
             Located := Resolve_Object (A.Inner.Tree.all, Item.Parent_Node, Path);
             if Located.Status /= Found or else Located.Node /= Node then

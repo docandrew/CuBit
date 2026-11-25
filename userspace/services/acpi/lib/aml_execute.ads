@@ -92,7 +92,9 @@ package AML_Execute with SPARK_Mode, Pure is
    type Execution_Status is
      (Returned, Object_Returned, Reference_Returned, Metadata_Returned, No_Return, Truncated, Unsupported, Uninitialized,
       Missing_Argument, Budget_Exceeded, Invalid_Method, Argument_Mismatch, Mutex_Order, Duplicate_Name, Namespace_Limit, Expression_Limit, Block_Limit, Bad_Package, Invalid_Control,
-      Unknown_Name, Unsupported_Value, Bad_Name, Call_Limit, Division_By_Zero, Empty_Buffer, Missing_Result, Value_Limit, Numeric_Overflow, Invalid_Delay, Delay_Failed, Package_Limit, Invalid_Match_Operation, No_Resource_End_Tag, Invalid_Resource_Type, Bad_Resource_Length, Resource_Buffer_Length, Invalid_Field_Length, Buffer_Field_Limit, Notify_Limit, Mutex_Not_Acquired, Invalid_Table_Length, Field_Indeterminate, Fatal_Requested, Module_Completed);
+      Unknown_Name, Unsupported_Value, Bad_Name, Call_Limit, Division_By_Zero, Empty_Buffer, Missing_Result, Value_Limit, Numeric_Overflow, Invalid_Delay, Delay_Failed, Package_Limit, Invalid_Match_Operation, No_Resource_End_Tag, Invalid_Resource_Type, Bad_Resource_Length, Resource_Buffer_Length, Invalid_Field_Length, Buffer_Field_Limit, Notify_Limit, Mutex_Not_Acquired, Invalid_Table_Length, Missing_Operand, Field_Indeterminate, Fatal_Requested, Module_Completed);
+   -- Recovery sites describe the failed declaration; they grant no authority.
+   type Module_Name_Error_Site is (Operation_Region_Name_Error, Field_Region_Name_Error);
    -- Module_Completed is success only at authenticated root EOF, never failure.
    subtype Execution_Failure is Execution_Status range No_Return .. Fatal_Requested;
    -- Status-only adapters cannot fabricate a fatal request without its payload.
@@ -208,7 +210,7 @@ package AML_Execute with SPARK_Mode, Pure is
    end record;
 
 
-   type Write_Status is (Written, Write_Missing, Write_Unsupported, Write_Value_Limit, Write_Empty_Buffer, Write_Buffer_Field_Limit, Write_Field_Indeterminate);
+   type Write_Status is (Written, Write_Missing, Write_Unsupported, Write_Value_Limit, Write_Empty_Buffer, Write_Buffer_Field_Limit, Write_Field_Indeterminate, Write_Missing_Operand);
    type Declaration_Status is (Declared, Declaration_Duplicate, Declaration_Missing,
                                Declaration_Full, Declaration_Unsupported);
    type Literal_Kind is (String_Literal, Buffer_Literal, Package_Literal);
@@ -647,6 +649,16 @@ package AML_Execute with SPARK_Mode, Pure is
       -- and failures inside incomplete expressions are never offered.
       with procedure Handle_Module_Divide_Error
         (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease;
+         Resume_Offset, Charged : Natural; Continue_Execution : in out Boolean) is null;
+      -- After declaration/expression cleanup, offer a missing-name error at
+      -- the current parser cursor. The owner authenticates the module lease,
+      -- retires an incomplete region token, and records a typed observation.
+      -- It must not rewind, evaluate AML, allocate, collect, or grant I/O.
+      with procedure Handle_Module_Name_Error
+        (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease;
+         Scope : Natural; Site : Module_Name_Error_Site;
+         Token : AML_Declaration_Contexts.Operation_Region_Reservation;
+         Flags : AML_Decode.Byte; Field_Entries : AML_Decode.Bytes;
          Resume_Offset, Charged : Natural; Continue_Execution : in out Boolean) is null;
       -- Context validity is checked around the actual call by Invoke_Delay.
       -- A formal-aspect instantiation triggers GNAT 15.3 decl.cc:479.

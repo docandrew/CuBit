@@ -190,7 +190,7 @@ package AML_Namespace with SPARK_Mode is
                   Name (Tree, I) = Name (Tree'Old, I))
              else Tree = Tree'Old and then Node = Root);
    type Object_Kind is (Scope_Object, Device_Object, Integer_Object, String_Object, Buffer_Object, Package_Object, Method_Object,
-                       Table_Region_Object, Table_Field_Object, Uninitialized_Region_Object, Reference_Object, Uninitialized_Name_Object, Event_Object, Mutex_Object, Power_Resource_Object, Processor_Object, Thermal_Zone_Object, Operation_Region_Object, Region_Field_Object, Buffer_Field_Object, Alias_Object, Metadata_Value_Object, Uninitialized_Table_Field_Object);
+                       Table_Region_Object, Table_Field_Object, Uninitialized_Region_Object, Reference_Object, Uninitialized_Name_Object, Event_Object, Mutex_Object, Power_Resource_Object, Processor_Object, Thermal_Zone_Object, Operation_Region_Object, Region_Field_Object, Buffer_Field_Object, Alias_Object, Metadata_Value_Object, Uninitialized_Table_Field_Object, Uninitialized_Field_Object);
    function Kind (Tree : State; Node : Node_ID) return Object_Kind
      with Pre => Node <= Count (Tree),
           Post => (if Node = Root then Kind'Result = Scope_Object);
@@ -564,7 +564,8 @@ package Owned with SPARK_Mode is
    function Retention_Model (A : Arena) return Retention_State with Pre => Valid (A), Ghost;
    function Fatal_Observation (A : Arena) return AML_Fatal.Observation with Pre => Valid (A);
    type Module_Error_Count is range 0 .. 2 ** 32 - 1;
-   type Module_Error_Kind is (Module_Division_By_Zero);
+   type Module_Error_Kind is (Module_Division_By_Zero,
+      Module_Operation_Region_Unknown_Name, Module_Field_Region_Unknown_Name);
    -- Descriptive history only. Definition identities never confer authority.
    -- Count saturates; the last observation survives namespace rollback/Reset.
    -- Offset and charge are local to the failing module execution.
