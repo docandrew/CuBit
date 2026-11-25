@@ -6722,6 +6722,36 @@ procedure main is
       end case;
    end drawShutdownDialog;
 
+   --  The Apps menu's rows (or, with a category open, its entries) as
+   --  drawn, logged whenever that changes: tests click them through the
+   --  tablet (tests/desktop-launch). Natural'Last: the menu is closed.
+   loggedMenuOpen : Natural := Natural'Last;
+
+   procedure logMenuGeometry is
+      function Place (Item : Rect) return String is
+        (" at" & Natural'Image (Item.x) & "," & Natural'Image (Item.y) &
+         " size" & Natural'Image (Item.w) & " x" & Natural'Image (Item.h));
+   begin
+      if launchMenuState.Open = 0 then
+         for row in 1 .. launchRows loop
+            debugPrint ("desktop: apps menu row" & Natural'Image (row) & " " &
+              LM.Category_Name (LM.Category_Of (launchMenu, row)) & Place (launchItemRect (row)) & LF);
+         end loop;
+      else
+         for index in 1 .. LM.Items (launchMenu, launchMenuState.Open) loop
+            declare
+               entryIndex : constant Natural := LM.Entry_Of (launchMenu, launchMenuState.Open, index);
+            begin
+               if entryIndex in 1 .. launchMenu.Count then
+                  debugPrint ("desktop: apps menu entry" & Natural'Image (index) & " " &
+                    Desktop_Launch.Label_Of (launchMenu.Entries (entryIndex)) &
+                    Place (launchSubItemRect (index)) & LF);
+               end if;
+            end;
+         end loop;
+      end if;
+   end logMenuGeometry;
+
    procedure drawLaunchMenu is
       r : constant Rect := launchMenuRect;
 
@@ -6757,7 +6787,12 @@ procedure main is
       end drawRow;
    begin
       if not launchMenuOpen or else isEmpty (r) then
+         loggedMenuOpen := Natural'Last;
          return;
+      end if;
+      if loggedMenuOpen /= launchMenuState.Open then
+         loggedMenuOpen := launchMenuState.Open;
+         logMenuGeometry;
       end if;
 
       drawDappledShadow (r.x, r.y, r.w, r.h);
@@ -11088,6 +11123,18 @@ procedure main is
                      store.Surfaces (SurfaceIndex (idx)).serial + 1;
                   store.Surfaces (SurfaceIndex (idx)).dirty := True;
                   newBounds := surfaceRect (store.Surfaces (SurfaceIndex (idx)));
+                  --  Where its close button is, for tests that close it
+                  --  with the pointer (tests/desktop-launch).
+                  declare
+                     Close : constant Rect := closeButtonRect (store.Surfaces (SurfaceIndex (idx)));
+                  begin
+                     if not isEmpty (Close) then
+                        debugPrint ("desktop: surface" &
+                          Natural'Image (Natural (store.Surfaces (SurfaceIndex (idx)).id mod 2 ** 31)) &
+                          " close button at" & Natural'Image (Close.x) & "," & Natural'Image (Close.y) &
+                          " size" & Natural'Image (Close.w) & " x" & Natural'Image (Close.h) & LF);
+                     end if;
+                  end;
 
                   queueConfigure (store.Surfaces (SurfaceIndex (idx)).id,
                                   Unsigned_64 (newBounds.w),
