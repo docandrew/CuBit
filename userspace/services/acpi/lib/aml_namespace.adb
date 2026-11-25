@@ -8633,7 +8633,13 @@ package body Owned with SPARK_Mode is
            or else not Has_Definition (E.Tree.Current_Definition)
            or else E.Field_Uncertain.Present or else Charged > Budget
          then return; end if;
-         if Site = AML_Execute.Operation_Region_Name_Error then
+         if Site = AML_Execute.Parsed_Name_Term_Error then
+            -- Only the parser cursor and diagnostic change. There is no new
+            -- name, value, field, method call, address or I/O authority here.
+            if Token /= AML_Declaration_Contexts.No_Operation_Region
+              or else Flags /= 0 or else Field_Entries'Length /= 0
+            then return; end if;
+         elsif Site = AML_Execute.Operation_Region_Name_Error then
             if Flags /= 0 or else Field_Entries'Length /= 0 then return; end if;
             if not AML_Declaration_Contexts.Issued_By (Token, Lease)
               or else Node = 0 or else Node > E.Tree.Used
@@ -8667,7 +8673,9 @@ package body Owned with SPARK_Mode is
          end if;
          E.Recovered_Module_Errors.Kind :=
            (if Site = AML_Execute.Operation_Region_Name_Error then
-              Module_Operation_Region_Unknown_Name else Module_Field_Region_Unknown_Name);
+              Module_Operation_Region_Unknown_Name
+            elsif Site = AML_Execute.Parsed_Name_Term_Error then Module_Parsed_Name_Unknown
+            else Module_Field_Region_Unknown_Name);
          E.Recovered_Module_Errors.Definition := E.Tree.Current_Definition;
          E.Recovered_Module_Errors.Resume_Offset := Resume_Offset;
          E.Recovered_Module_Errors.Charged := Charged;

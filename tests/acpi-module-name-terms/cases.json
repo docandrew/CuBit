@@ -1,0 +1,235 @@
+{
+  "base": "unit_42a20365bd76.asl",
+  "provider": "unit_12ea6a8afb64.asl",
+  "units": {
+    "unit_42a20365bd76.asl": "42a20365bd769727933c1708656f98653a9882e7e048d3458277b04816915a34",
+    "unit_12ea6a8afb64.asl": "12ea6a8afb64e8581cd0bd8bdf22285d6f9cd2425537793ef71328094c6843bc"
+  },
+  "cases": [
+    {
+      "name": "control",
+      "module": "MODULES_COMPLETED",
+      "completed": 3,
+      "probe": "RETURNED",
+      "writes": 2,
+      "recoveries": 0,
+      "category": "module-continuation",
+      "reference": {
+        "probe_integers": [
+          0
+        ],
+        "probe_failures": [],
+        "cons": 1,
+        "side": 2
+      }
+    },
+    {
+      "name": "existing-root-name",
+      "module": "MODULES_COMPLETED",
+      "completed": 3,
+      "probe": "RETURNED",
+      "writes": 2,
+      "recoveries": 0,
+      "category": "module-continuation",
+      "reference": {
+        "probe_integers": [
+          0
+        ],
+        "probe_failures": [],
+        "cons": 1,
+        "side": 2
+      }
+    },
+    {
+      "name": "missing-root-name",
+      "module": "MODULES_COMPLETED",
+      "completed": 3,
+      "probe": "RETURNED",
+      "writes": 2,
+      "recoveries": 1,
+      "category": "module-continuation",
+      "reference": {
+        "probe_integers": [
+          0
+        ],
+        "probe_failures": [],
+        "cons": 1,
+        "side": 2
+      }
+    },
+    {
+      "name": "missing-nested-name",
+      "module": "MODULES_COMPLETED",
+      "completed": 3,
+      "probe": "RETURNED",
+      "writes": 2,
+      "recoveries": 1,
+      "category": "module-continuation",
+      "reference": {
+        "probe_integers": [
+          0
+        ],
+        "probe_failures": [],
+        "cons": 1,
+        "side": 2
+      }
+    },
+    {
+      "name": "missing-store-source",
+      "module": "MODULES_COMPLETED",
+      "completed": 3,
+      "probe": "RETURNED",
+      "writes": 2,
+      "recoveries": 1,
+      "category": "module-continuation",
+      "reference": {
+        "probe_integers": [
+          0
+        ],
+        "probe_failures": [],
+        "cons": 1,
+        "side": 2
+      }
+    },
+    {
+      "name": "missing-nested-stores",
+      "module": "MODULES_COMPLETED",
+      "completed": 3,
+      "probe": "RETURNED",
+      "writes": 2,
+      "recoveries": 1,
+      "category": "module-continuation",
+      "reference": {
+        "probe_integers": [
+          0
+        ],
+        "probe_failures": [],
+        "cons": 1,
+        "side": 2
+      }
+    },
+    {
+      "name": "missing-zero-arg-body",
+      "module": "MODULE_REJECTED",
+      "completed": 1,
+      "probe": null,
+      "writes": 1,
+      "recoveries": 0,
+      "category": "called-method-table-abort",
+      "reference": {
+        "probe_integers": [],
+        "probe_failures": [
+          "AE_ERROR"
+        ],
+        "cons": 0,
+        "side": 1
+      },
+      "failure": "UNKNOWN_NAME"
+    },
+    {
+      "name": "missing-one-arg-body",
+      "module": "MODULE_REJECTED",
+      "completed": 1,
+      "probe": null,
+      "writes": 2,
+      "recoveries": 0,
+      "category": "called-method-table-abort",
+      "reference": {
+        "probe_integers": [],
+        "probe_failures": [
+          "AE_ERROR"
+        ],
+        "cons": 0,
+        "side": 2
+      },
+      "failure": "UNKNOWN_NAME"
+    },
+    {
+      "name": "missing-last-argument",
+      "module": "MODULES_COMPLETED",
+      "completed": 3,
+      "probe": "RETURNED",
+      "writes": 2,
+      "recoveries": 1,
+      "category": "module-continuation",
+      "reference": {
+        "probe_integers": [
+          0
+        ],
+        "probe_failures": [],
+        "cons": 1,
+        "side": 2
+      }
+    },
+    {
+      "name": "missing-first-of-two-arguments",
+      "module": "MODULES_COMPLETED",
+      "completed": 3,
+      "probe": "RETURNED",
+      "writes": 3,
+      "recoveries": 1,
+      "category": "module-continuation",
+      "reference": {
+        "probe_integers": [
+          0
+        ],
+        "probe_failures": [],
+        "cons": 1,
+        "side": 3
+      }
+    },
+    {
+      "name": "method-probe-unknown",
+      "module": "MODULES_COMPLETED",
+      "completed": 3,
+      "probe": "UNKNOWN_NAME",
+      "writes": 2,
+      "recoveries": 0,
+      "category": "method-probe-propagation",
+      "reference": {
+        "probe_integers": [],
+        "probe_failures": [
+          "AE_NOT_FOUND"
+        ],
+        "cons": 1,
+        "side": 2
+      }
+    },
+    {
+      "name": "missing-store-method-target",
+      "module": "MODULES_COMPLETED",
+      "completed": 3,
+      "probe": "RETURNED",
+      "writes": 3,
+      "recoveries": 1,
+      "category": "module-continuation",
+      "reference": {
+        "probe_integers": [
+          0
+        ],
+        "probe_failures": [],
+        "cons": 1,
+        "side": 3
+      }
+    },
+    {
+      "name": "missing-arithmetic-left",
+      "module": "MODULES_COMPLETED",
+      "completed": 3,
+      "probe": "RETURNED",
+      "writes": 3,
+      "recoveries": 1,
+      "category": "module-continuation",
+      "reference": {
+        "probe_integers": [
+          0
+        ],
+        "probe_failures": [],
+        "cons": 1,
+        "side": 3
+      }
+    }
+  ],
+  "reference_tool_sha256": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe",
+  "scope": "Own module continuation/effects and method propagation guards; abort cases do not establish catalog rollback parity"
+}

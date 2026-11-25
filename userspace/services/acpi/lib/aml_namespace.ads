@@ -566,7 +566,7 @@ package Owned with SPARK_Mode is
    type Module_Error_Count is range 0 .. 2 ** 32 - 1;
    type Module_Error_Kind is (Module_Division_By_Zero,
       Module_Operation_Region_Unknown_Name, Module_Field_Region_Unknown_Name,
-      Module_Uninitialized_Numeric);
+      Module_Uninitialized_Numeric, Module_Parsed_Name_Unknown);
    -- Descriptive history only. Definition identities never confer authority.
    -- Count saturates; the last observation survives namespace rollback/Reset.
    -- Offset and charge are local to the failing module execution.

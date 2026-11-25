@@ -306,7 +306,7 @@ package body AML_Execute with SPARK_Mode is
       is
       subtype Failure_Status is Execution_Failure;
       type Resume_Point is (No_Resume_Point, Complete_Divide_Statement,
-         Complete_Uninitialized_Numeric_Statement);
+         Complete_Uninitialized_Numeric_Statement, Consumed_Missing_Name_Term);
       Failed_Statement : Resume_Point := No_Resume_Point;
       function Failure (Status : Execution_Status; Charged : Natural)
          return Execution_Result is
@@ -903,6 +903,26 @@ package body AML_Execute with SPARK_Mode is
          end record;
          Stack : array (Positive range 1 .. Max_Expression_Depth) of Frame;
          Depth : Natural range 0 .. Max_Expression_Depth := 0;
+         function Name_Term_Recovery_Allowed return Boolean is
+         begin
+            -- A failed lookup consumed this NameString, not the rest of its
+            -- expression. Unwind only these ordinary operand families, then
+            -- let the module dispatch the remaining bytes in their order.
+            -- A dispatched method has its own non-module Run and cannot set
+            -- the caller's marker. Packages, buffer extents, complex targets
+            -- and authenticated table loads keep their ordinary failures.
+            for I in 1 .. Depth loop
+               if Stack (I).Is_Load_Table or else Stack (I).Is_Load_Source
+                 or else Stack (I).Is_Package or else Stack (I).Is_Buffer_Count
+                 or else Stack (I).Collecting_Targets
+                 or else (if Stack (I).Is_Call then Stack (I).Method_ID = 0
+                   else Stack (I).Op /= 16#70#
+                     and then not AML_Integers.Supported (Stack (I).Op)
+                     and then not AML_Logic.Supported (Stack (I).Op))
+               then return False; end if;
+            end loop;
+            return True;
+         end Name_Term_Recovery_Allowed;
          procedure Locate_Numeric_Statement_End (Point : Resume_Point) is
             Cursor : Natural := Offset;
             Remaining : Natural := Depth;
@@ -2834,7 +2854,11 @@ package body AML_Execute with SPARK_Mode is
                              others => <>);
                            Have_Value := False;
                         end if;
-                     when Missing_Binding => S := Unknown_Name; return;
+                     when Missing_Binding =>
+                        if Module_Root and then Name_Term_Recovery_Allowed then
+                           Failed_Statement := Consumed_Missing_Name_Term;
+                        end if;
+                        S := Unknown_Name; return;
                      when Non_Integer_Binding =>
                         if Bound.Object.Type_Code not in String_Type_Code | Buffer_Type_Code | Package_Type_Code | Event_Type_Code | AML_Mutexes.Object_Type_Code
                           or else Bound.Object.ID = 0 then
@@ -5113,6 +5137,15 @@ package body AML_Execute with SPARK_Mode is
                         if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
                         Handle_Module_Uninitialized_Error (Environment, Active_Lease,
                           Current_Lexical_Scope, Offset, Charged, Continue_Execution);
+                     elsif Module_Root and then State = Unknown_Name
+                       and then Failed_Statement = Consumed_Missing_Name_Term
+                       and then not Pending_Fatal.Present
+                     then
+                        if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
+                        Handle_Module_Name_Error (Environment, Active_Lease,
+                          Current_Lexical_Scope, Parsed_Name_Term_Error,
+                          AML_Declaration_Contexts.No_Operation_Region, 0, [],
+                          Offset, Charged, Continue_Execution);
                      end if;
                      if not Continue_Execution then Body_Result := Failure (State, Charged); return; end if;
                   end;
@@ -5137,6 +5170,15 @@ package body AML_Execute with SPARK_Mode is
                         if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
                         Handle_Module_Uninitialized_Error (Environment, Active_Lease,
                           Current_Lexical_Scope, Offset, Charged, Continue_Execution);
+                     elsif Module_Root and then State = Unknown_Name
+                       and then Failed_Statement = Consumed_Missing_Name_Term
+                       and then not Pending_Fatal.Present
+                     then
+                        if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
+                        Handle_Module_Name_Error (Environment, Active_Lease,
+                          Current_Lexical_Scope, Parsed_Name_Term_Error,
+                          AML_Declaration_Contexts.No_Operation_Region, 0, [],
+                          Offset, Charged, Continue_Execution);
                      end if;
                      if not Continue_Execution then Body_Result := Failure (State, Charged); return; end if;
                   end;
@@ -5145,7 +5187,19 @@ package body AML_Execute with SPARK_Mode is
                Offset := Offset - 1;
                Operand (Value, State, Allow_No_Return => True);
                if State /= Returned and State /= No_Return then
-                  Body_Result := Failure (State, Charged); return;
+                  declare Continue_Execution : Boolean := False; begin
+                     if Module_Root and then State = Unknown_Name
+                       and then Failed_Statement = Consumed_Missing_Name_Term
+                       and then not Pending_Fatal.Present
+                     then
+                        if Tracking then Clear_If_Present (Pending_Location (Call_Frame)); end if;
+                        Handle_Module_Name_Error (Environment, Active_Lease,
+                          Current_Lexical_Scope, Parsed_Name_Term_Error,
+                          AML_Declaration_Contexts.No_Operation_Region, 0, [],
+                          Offset, Charged, Continue_Execution);
+                     end if;
+                     if not Continue_Execution then Body_Result := Failure (State, Charged); return; end if;
+                  end;
                end if;
             when others => Body_Result := Failure (Unsupported, Charged); return;
          end case;
