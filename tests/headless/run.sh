@@ -1582,6 +1582,11 @@ with open(sys.argv[1], "wb") as f:
         # Neon Blast (APP-008): the game on the desktop, its soundtrack
         # through mixer.svc and QEMU's HDA into a WAV (tests/neon-blast).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-neon-blast.ccl"
+        # CUBIT_NEON_BURN=1: two CPU-hungry programs beside the game (SCHED-001,
+        # app audio threads); its frames drop, its music must not underrun.
+        if [ "${CUBIT_NEON_BURN:-0}" = 1 ]; then
+            INIT_PROFILE="$ROOT_DIR/tests/headless/init-neon-blast-burn.ccl"
+        fi
         ;;
     display-latency)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-latency.ccl"
@@ -1936,6 +1941,15 @@ if [ -n "$INIT_PROFILE" ]; then
         debugfs -w -R "rm neon-blast.app" "$TEMP_DISK" >/dev/null 2>&1
         debugfs -w -R "write $KERNEL_DIR/isodir/boot/neon-blast.app neon-blast.app" \
             "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        if [ "$TEST_NAME" = "neon-blast" ] && [ "${CUBIT_NEON_BURN:-0}" = 1 ]; then
+            if [ ! -f "$KERNEL_DIR/isodir/boot/bench-burn.app" ]; then
+                echo "headless: build bench-burn first (make -C kernel bench-load)" >&2
+                exit 1
+            fi
+            debugfs -w -R "rm bench-burn.app" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/bench-burn.app bench-burn.app" \
+                "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        fi
     fi
     if [ "$TEST_NAME" = "desktop-doom" ]; then
         DOOM_IMAGE="$KERNEL_DIR/isodir/boot/doom.elf"
@@ -11901,6 +11915,13 @@ if [ "$IOMMU_CHECK" != none ] && ! python3 -I "$ROOT_DIR/tests/headless/check-io
     exit 1
 fi
 
+if [ "$TEST_NAME" = "neon-blast" ] && [ "${CUBIT_NEON_BURN:-0}" = 1 ]; then
+    # Beside the burners: frames dropped, and not one underrun after the
+    # music started (tests/neon-blast/check_underruns.py).
+    if ! python3 -I "$ROOT_DIR/tests/neon-blast/check_underruns.py" "$SERIAL_LOG"; then
+        exit 1
+    fi
+fi
 if [ "$TEST_NAME" = "neon-blast" ]; then
     # The soundtrack QEMU's HDA wrote: present, continuous, at a sane level.
     if ! python3 -I "$ROOT_DIR/tests/neon-blast/check_wav.py" "$TEMP_AUDIO"; then
