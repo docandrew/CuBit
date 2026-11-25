@@ -1,0 +1,8 @@
+# GPU-014 (tests/headless graphics-report-desktop-down): reads devmgr's
+# renderer report through its graphics-observer endpoint (startup plan
+# only), once a second, and says each entry, until Desktop's output entry
+# is there and stale (Desktop has exited) or a minute has passed.
+(Executable_Manifest
+  identity => "com.cubit.test.graphics-report-check"
+  version => "0.1.0"
+  requests => [(service "logstore" "logstore") (service "graphics-observer" "graphics-observer")])

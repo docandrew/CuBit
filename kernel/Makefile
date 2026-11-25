@@ -982,6 +982,12 @@ $(eval $(call ccl_program,../userspace/apps/debug-observe-check,debug-observe-ch
 vm-hello-check: isodir/boot/vm-hello-check.app
 $(eval $(call ccl_program,../userspace/apps/vm-hello-check,vm-hello-check.app,))
 
+.PHONY : graphics-report-check
+# GPU-014: reads devmgr's renderer report once a second (headless
+# graphics-report-desktop-down).
+graphics-report-check: isodir/boot/graphics-report-check.app
+$(eval $(call ccl_program,../userspace/apps/graphics-report-check,graphics-report-check.app,))
+
 .PHONY : vm-linux-check
 # The Linux guest check (VMM-001 slice 1): headless --test vm-linux puts it
 # in procmgr's place. The guest image is pinned (tests/vm-linux).

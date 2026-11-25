@@ -7,4 +7,8 @@ package GPU_Test_Policy is
    --  next point of a virtual Vblank_Period_Us grid, with hardware-latch
    --  timing, as intel-gpu answers at the latch it observed. 0: off.
    Vblank_Period_Us : constant Interfaces.Unsigned_64 := 0;
+   --  Test mode "init-failure" (GPU-014): stop at start-up, as a driver
+   --  whose device will not initialize does, so the renderer report must
+   --  say Driver_Failed. False in every other build.
+   Fail_At_Init : constant Boolean := False;
 end GPU_Test_Policy;

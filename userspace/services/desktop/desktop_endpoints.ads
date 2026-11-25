@@ -50,6 +50,10 @@ package Desktop_Endpoints with SPARK_Mode => Off is
    --  Desktop_Power_Refresh); null without power.svc or the grant.
    Power_Sources   : constant CuBit.Handles.Endpoint :=
      (if Startup.Power_Sources.Present then Startup.Power_Sources.Value else CuBit.Handles.No_Endpoint);
+   --  devmgr's renderer report, badged to post (GPU-014,
+   --  Desktop_Renderer_Report); null without the grant.
+   Graphics_Poster : constant CuBit.Handles.Endpoint :=
+     (if Startup.Graphics_Poster.Present then Startup.Graphics_Poster.Value else CuBit.Handles.No_Endpoint);
 
    --  The admitted render session, or the null handle (software start).
    function Render return CuBit.Handles.Endpoint with Global => null;

@@ -17,6 +17,7 @@ with CCL_Llm_Bindings;
 with CCL_Secrets_Bindings;
 with CCL_Machine_Bindings;
 with CCL_Power_Bindings;
+with CCL_Graphics_Bindings;
 with CCL_Metric_Bindings;
 with CCL_Agent_Bindings;
 with CCL_Process_Bindings;
@@ -67,6 +68,7 @@ package body CCL_Host_Environment is
       if Success then CCL_Secrets_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Machine_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Power_Bindings.Install (Catalog, Grants, Success); end if;
+      if Success then CCL_Graphics_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Metric_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Net_Bindings.Install (Catalog, Grants, Success); end if;
       if Success then CCL_Git_Bindings.Install (Catalog, Grants, Success); end if;
@@ -104,6 +106,7 @@ package body CCL_Host_Environment is
       CCL_Install_Bindings.Handles (Binding) or else CCL_Llm_Bindings.Handles (Binding) or else
       CCL_Secrets_Bindings.Handles (Binding) or else CCL_Machine_Bindings.Handles (Binding) or else
       CCL_Power_Bindings.Handles (Binding) or else
+      CCL_Graphics_Bindings.Handles (Binding) or else
       CCL_Metric_Bindings.Handles (Binding) or else CCL_Net_Bindings.Handles (Binding) or else
       CCL_Git_Bindings.Handles (Binding) or else
       CCL_Agent_Bindings.Handles (Binding));
@@ -154,6 +157,8 @@ package body CCL_Host_Environment is
          CCL_Machine_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Power_Bindings.Handles (Binding) then
          CCL_Power_Bindings.Invoke (Binding, Argument, Reply);
+      elsif CCL_Graphics_Bindings.Handles (Binding) then
+         CCL_Graphics_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Metric_Bindings.Handles (Binding) then
          CCL_Metric_Bindings.Invoke (Binding, Argument, Reply);
       elsif CCL_Net_Bindings.Handles (Binding) then

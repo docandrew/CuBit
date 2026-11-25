@@ -45,14 +45,17 @@
     # (power.sources): power.svc's power sources, read only
     # (CuBit.Power_Sources, PWR-004; startup plan only).
     (service "power-sources" "power-sources")
+    # (graphics.report): devmgr's renderer report, read only
+    # (CuBit.Graphics_Report, GPU-014; startup plan only).
+    (service "graphics-observer" "graphics-observer")
     # debug.*: the debugger engine (DBG-001), Observe only: procmgr mints
     # Debug_Observe within the user session's debug envelope.
     (service "debug-session" "debug-session")]
   # Without these the console runs; lexicon.*, system.*, wifi.*, llm.*,
-  # secrets.*, net.* and machine.* say why not (machine.* and power.* are
-  # then absent).
+  # secrets.*, net.* and machine.* say why not (machine.*, power.* and
+  # graphics.* are then absent).
   optional => ["series" "lexicon" "installer" "network-stack" "wifi" "llm" "secrets" "tls" "power" "power-sources"
-               "debug-session"]
+               "graphics-observer" "debug-session"]
   scopes => [
     (config-all [File_Right.Read])
     # Every series, read only.

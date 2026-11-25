@@ -9,6 +9,7 @@ with Desktop_Startup_Clock;
 with CuBit.Boot_Milestones;
 with Compositor_Transfer_Delta;
 with Desktop_Renderer_Startup;
+with Desktop_Renderer_Report;
 with Desktop_Renderer_Worker;
 with Desktop_Startup_Progress;
 with Desktop_Input_Overlay;
@@ -4667,6 +4668,8 @@ procedure main is
                     " ms, cause=" & Desktop_Compositor.Retry_Cause'Image (gpuStallCause) &
                     " peak_layers=" & Natural'Image (Desktop_Compositor.Peak_Scene_Layers) &
                     "; switched at runtime)" & LF);
+                  Desktop_Renderer_Report.Post (Desktop_Renderer_Report.Fallback_Entry
+                    (Desktop_Renderer_Report.GR.Scene_Stalled, 0, Desktop_Renderer_Report.GR.Milliseconds (nowMs)));
                when Desktop_Compositor.Recovery_Pending => null;
                when Desktop_Compositor.Recovery_Unsafe =>
                   debugPrint ("desktop: renderer recovery uncertain; backing retained" & LF);
@@ -5773,6 +5776,8 @@ procedure main is
                -- Startup and runtime selections announce their own cause.
                debugPrint ("desktop: software rendering (renderer declined client surface)" & LF);
                softwareAnnounced := True;
+               Desktop_Renderer_Report.Post (Desktop_Renderer_Report.Fallback_Entry
+                 (Desktop_Renderer_Report.GR.Surface_Declined, 0, Desktop_Renderer_Report.GR.Milliseconds (nowMs)));
             end if;
             -- Opaque 1:1 client pixels need no per-pixel division. The SPARK
             -- planner clips both mappings; grants and nonaliasing remain the
@@ -16019,6 +16024,15 @@ procedure main is
                          else "desktop: software rendering (GPU not started; bootstrap unconfirmed)") & LF);
          end if;
       end if;
+      --  GPU-014: the output's path in devmgr's renderer report.
+      Desktop_Renderer_Report.Post (Desktop_Renderer_Report.Output_Entry
+        ((Full_Output => Desktop_Compositor.Full_Output,
+          CPU_Policy => uiComposition = Selection.CPU_Composition,
+          Abandoned => Abandoned, Allowed => Allow_GPU, Evidence => Evidence,
+          VK_Result => (if Diagnostic_Pipeline_Valid then Desktop_Renderer_Report.GR.Detail_Value'Max
+                          (-Desktop_Renderer_Report.GR.Maximum_Detail, Diagnostic_Pipeline_Result)
+                        else 0)),
+         0, Desktop_Renderer_Report.GR.Milliseconds (nowMs)));
    end Start_Renderer;
 
    ret      : Unsigned_64;
@@ -16069,6 +16083,12 @@ begin
    Load_Key_Repeat;
    Load_GPU_Power;
    Load_Composition;
+   --  GPU-014: composing on the CPU by policy is known now, before any
+   --  frame: the report has Desktop's path even if Desktop dies early.
+   if Desktop_Renderer_Report.Composes_On_CPU (uiComposition) then
+      Desktop_Renderer_Report.Post (Desktop_Renderer_Report.Output_Entry
+        ((CPU_Policy => True, others => <>), 0, Desktop_Renderer_Report.GR.Milliseconds (nowMs)));
+   end if;
    Load_Display_Scale;
    Load_Display_Modeset;
    Desktop_Launch_Refresh.Initialize;

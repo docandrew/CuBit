@@ -1,0 +1,16 @@
+--  Linux-hosted checks of the renderer report (GPU-014,
+--  tests/graphics-report/run.sh): the wire and devmgr's copy. Not a CuBit
+--  result.
+project Graphics_Report_Host is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/ccl/runtime-shared", "../../userspace/services/devmgr");
+   for Source_Files use ("graphics_report_tests.adb", "cubit.ads", "cubit-graphics_report.ads",
+                         "cubit-graphics_report.adb", "devmgr_graphics_report.ads",
+                         "devmgr_graphics_report.adb");
+   for Main use ("graphics_report_tests.adb");
+   for Object_Dir use "build/obj";
+   for Exec_Dir use "build";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatwa", "-gnatwJ", "-g", "-gnata");
+   end Compiler;
+end Graphics_Report_Host;

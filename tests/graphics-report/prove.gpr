@@ -1,0 +1,11 @@
+--  SPARK proof of the renderer report (GPU-014, tests/graphics-report/prove.sh):
+--  the wire contract and devmgr's copy.
+project Prove is
+   for Source_Dirs use ("../../userspace/runtime/gnat", "../../userspace/services/devmgr");
+   for Source_Files use ("cubit.ads", "cubit-graphics_report.ads", "cubit-graphics_report.adb",
+                         "devmgr_graphics_report.ads", "devmgr_graphics_report.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Prove;

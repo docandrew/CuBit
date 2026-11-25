@@ -1,0 +1,12 @@
+# GPU-014 (tests/headless graphics-report-nodriver and -failing): the
+# desktop and the CCL console, which reads devmgr's renderer report
+# (graphics.report) through its graphics-observer endpoint; Desktop posts
+# its output's path through its graphics-poster endpoint (both startup plan
+# only).
+(startup v1
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "ccl-console.app")
+)

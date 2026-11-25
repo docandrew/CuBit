@@ -1,0 +1,1 @@
+../../runtime/gnat/cubit-graphics_report.ads

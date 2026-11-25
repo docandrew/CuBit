@@ -103,6 +103,9 @@ with Device_Vector_ABI;
 with CCL.Resource_Sections;
 with Driver_Manifests;
 with Devmgr_Bindings;
+with Devmgr_Graphics_Report;
+with CuBit.Process_IDs;
+with CuBit.Graphics_Report;
 with Devmgr_Windows;
 with CCL.Device_Sections;
 with CCL.Device_Index;
@@ -520,6 +523,9 @@ procedure main is
    netmgrPID     : Process_ID := No_Process;
    wifiPID       : Process_ID := No_Process;
    virtioGpuPID  : Process_ID := No_Process;
+   --  GPU-014: the renderer report (Devmgr_Graphics_Report).
+   graphicsReport : Devmgr_Graphics_Report.Report := Devmgr_Graphics_Report.Empty;
+   graphicsHalves : Devmgr_Graphics_Report.Pending := Devmgr_Graphics_Report.No_Pending;
    virtioInputPID : Process_ID := No_Process;
    --  Their launches (Devmgr_Launches).
    filesystemChild, ataChild, ramdiskChild, netstackChild,
@@ -1570,6 +1576,47 @@ procedure main is
    Next_Exit_Check : Unsigned_64 := 0;
    --  An xhci.drv instance ended: its USB disks go (FS-034).
    procedure USB_Driver_Ended (Child : Process_ID);
+
+   --  GPU-014: devmgr's own entry in the renderer report, the GPU and its
+   --  driver, once the GPU drivers have started (Devmgr_Graphics_Report).
+   procedure Report_GPU is
+      package DGR renames Devmgr_Graphics_Report;
+      Facts : DGR.GPU_Facts;
+      Bound : constant PCIDeviceInfo := (if intelDev.found then intelDev else gpuDev);
+      Location : PCIDeviceInfo;
+   begin
+      Facts.Since := CuBit.Graphics_Report.Milliseconds'Min
+        (CuBit.Monotonic.Milliseconds, CuBit.Graphics_Report.Maximum_Milliseconds);
+      if intelDev.found then
+         Facts.Driver := DGR.Intel_GPU;
+         Facts.Running := Intel_Inspection_PID /= No_Process;
+      elsif gpuDev.found then
+         Facts.Driver := DGR.Virtio_GPU;
+         Facts.Running := virtioGpuPID /= No_Process;
+      end if;
+      for I in 1 .. inventoryCount loop
+         if inventory (I).kind = CuBit.Devices.Display_Controller
+           and then (not Facts.Display_Present or else Same_Location (inventory (I).location, Bound))
+         then
+            Facts.Display_Present := True;
+            Facts.Vendor := inventory (I).vendorID;
+            Facts.Device := inventory (I).deviceID;
+            Location := inventory (I).location;
+            Facts.Location := Shift_Left (CuBit.Graphics_Report.Subject_Id (Location.bus), 8)
+              or Shift_Left (CuBit.Graphics_Report.Subject_Id (Location.slot), 3)
+              or CuBit.Graphics_Report.Subject_Id (Location.func);
+         end if;
+      end loop;
+      declare
+         Item : constant CuBit.Graphics_Report.Report_Entry := DGR.GPU_Entry (Facts);
+      begin
+         DGR.Post (graphicsReport, Item, DGR.No_Poster);
+         debugPrint ("devmgr: renderer report gpu " & CuBit.Graphics_Report.Image (Item.Subject) & " "
+                     & CuBit.Graphics_Report.Image (Item.Device) & " "
+                     & CuBit.Graphics_Report.Path_Name (Item.Path) & " "
+                     & CuBit.Graphics_Report.Reason_Name (Item.Why) & LF);
+      end;
+   end Report_GPU;
 
    procedure Log_Child_Exits (Now : Unsigned_64) is
       Child  : Process_ID;
@@ -8911,6 +8958,7 @@ begin
       DL.Abandon (GPU_Viewer_Child);
       GPU_Viewer_Ready := False;
    end if;
+   Report_GPU;
    debugPrint ("devmgr: startup complete, entering service loop" & LF);
 
    loop
@@ -9887,6 +9935,26 @@ begin
               (tag => (label => 16#F001#, length => 0,
                        protocol => 0, ipc => <>, reserved => 0), authorityTag => 0, words => [others => 0])));
          end if;
+      elsif CuBit.Graphics_Report.Is_Report_Label (msg.tag.label) then
+         --  GPU-014: posts (sends: no reply), observers' reads, and
+         --  procmgr's Gone notices.
+         declare
+            Result : Devmgr_Graphics_Report.Answer;
+            Handled : Boolean;
+         begin
+            Devmgr_Graphics_Report.Handle
+              (graphicsReport, graphicsHalves, msg.tag.label, Natural (msg.tag.length),
+               Devmgr_Graphics_Report.Words (msg.words), msg.authorityTag,
+               Devmgr_Graphics_Report.Poster_Id (CuBit.Process_IDs.To_Word (from)),
+               procmgrPID /= No_Process and then from = procmgrPID, Result, Handled);
+            if Handled and then Result.Reply then
+               ret := Unsigned_64
+                 (reply (from,
+                   (tag => (label => Result.Label, length => Unsigned_8 (Result.Length),
+                            protocol => 0, ipc => <>, reserved => 0),
+                    authorityTag => 0, words => MessageWords (Result.Values))));
+            end if;
+         end;
       elsif msg.tag.label = CuBit.Devices.OP_INVENTORY_COUNT then
          ret := Unsigned_64
            (reply

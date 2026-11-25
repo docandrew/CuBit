@@ -1,0 +1,12 @@
+# GPU-014 (tests/headless graphics-report-desktop-down): Desktop fails after
+# its first frame (a CUBIT_DESKTOP_FAULT=exit-once build) and nothing
+# restarts it, as Desktop died at start on the T580 (BUG-009).
+# graphics-report-check reads devmgr's renderer report meanwhile: it must
+# still answer, with the GPU's entry and Desktop's last entry, stale.
+(startup v1
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "graphics-report-check.app")
+)

@@ -20,6 +20,9 @@
     # The status area's Battery item (PWR-004): power.svc's power sources,
     # read only (CuBit.Power_Sources; startup plan only).
     (service "power-sources" "power-sources")
+    # The renderer report (GPU-014): devmgr's endpoint, badged to post this
+    # output's path (Desktop_Renderer_Report; startup plan only).
+    (service "graphics-poster" "graphics-poster")
     # The status area's CPU and memory bars (UI-027): the kernel's per-CPU
     # times page, mapped read-only (KERN-002); read without a system call.
     (Request.Publication "cpu-times")
@@ -56,7 +59,7 @@
     # CPU-bound peers): its present path spends the same budget (LAT-002).
     # Desktop runs without it where no grant covers it (ordinary wakes).
     (scheduling "urgency" 2500 10000)]
-  optional => ["mixer-control" "wifi" "netmgr" "power" "power-sources" "clock" "urgency"]
+  optional => ["mixer-control" "wifi" "netmgr" "power" "power-sources" "graphics-poster" "clock" "urgency"]
   scopes => [
     (config [File_Right.Read File_Right.Write] "desktop.appearance.")
     # The Apps menu entries (Desktop_Launch).

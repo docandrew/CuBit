@@ -38,6 +38,8 @@ package CCL_Native_Bindings is
    function Power            return CuBit.Handles.Endpoint;   --  "power"
    --  power.svc's power sources, read only (CuBit.Power_Sources): power.*.
    function Power_Sources    return CuBit.Handles.Endpoint;   --  "power-sources"
+   --  devmgr's renderer report, read only (CuBit.Graphics_Report): graphics.*.
+   function Graphics_Observer return CuBit.Handles.Endpoint;  --  "graphics-observer"
    --  procmgr's badge "debug-observe for the user session" (DBG-001,
    --  CuBit.Launch_Handles): debug.attach.
    function Debug_Session    return CuBit.Handles.Endpoint;   --  "debug-session"

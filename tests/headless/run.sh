@@ -347,7 +347,7 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-session|desktop-session-no-invtsc|desktop-protocol|files|text|calculator|ui-latency|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart|desktop-reap|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|power-sources)
+        desktop-display|desktop-session|desktop-session-no-invtsc|desktop-protocol|files|text|calculator|ui-latency|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart|desktop-reap|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|power-sources|graphics-report-nodriver|graphics-report-failing|graphics-report-desktop-down)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         desktop-launch)
             # Five launches and three closes; the driver quits when done.
@@ -407,7 +407,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|mailbox-self|mailbox-mutual|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch|screen-settle)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|mailbox-self|mailbox-mutual|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|graphics-report-nodriver|graphics-report-failing|graphics-report-desktop-down|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch|screen-settle)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -1362,6 +1362,22 @@ with open(sys.argv[1], "wb") as f:
         # console's own requester badge on power.svc; the same stop, with
         # the Desktop session, ending in S5 through the stand-in.
         INIT_PROFILE="$ROOT_DIR/tests/shutdown/init-console.ccl"
+        ;;
+    graphics-report-nodriver|graphics-report-failing)
+        # GPU-014: the renderer report through the console's
+        # (graphics.report). nodriver: only QEMU's std VGA, which no GPU
+        # driver binds. failing: run with CUBIT_GPU_TEST_MODE=init-failure,
+        # so the boot image's virtio-gpu.drv is the build that stops at
+        # start-up (make -C kernel virtio-gpu initrd afterwards puts the
+        # production driver back).
+        INIT_PROFILE="$ROOT_DIR/tests/graphics-report/init.ccl"
+        ;;
+    graphics-report-desktop-down)
+        # GPU-014: Desktop (a CUBIT_DESKTOP_IMAGE built
+        # CUBIT_DESKTOP_FAULT=exit-once) exits after its first frame and is
+        # not restarted, as on the T580 (BUG-009); the report must still
+        # answer, with Desktop's last entry stale (graphics-report-check).
+        INIT_PROFILE="$ROOT_DIR/tests/graphics-report/init-desktop-down.ccl"
         ;;
     power-sources)
         # PWR-004 slice 1: the battery and AC adapter through power.svc to
@@ -3456,6 +3472,31 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
+    if [ "$TEST_NAME" = "graphics-report-nodriver" ] || [ "$TEST_NAME" = "graphics-report-failing" ] ||
+       [ "$TEST_NAME" = "graphics-report-desktop-down" ]; then
+        # GPU-014: the current console, Desktop and check on the test disk;
+        # CUBIT_DESKTOP_IMAGE (a test build) stands in for desktop.svc.
+        if [ "$TEST_NAME" = "graphics-report-failing" ] &&
+           [ "${CUBIT_GPU_TEST_MODE:-production}" != init-failure ]; then
+            echo "headless: graphics-report-failing needs CUBIT_GPU_TEST_MODE=init-failure" >&2
+            exit 1
+        fi
+        if [ "$TEST_NAME" = "graphics-report-desktop-down" ] && [ -z "${CUBIT_DESKTOP_IMAGE:-}" ]; then
+            echo "headless: graphics-report-desktop-down needs CUBIT_DESKTOP_IMAGE (CUBIT_DESKTOP_FAULT=exit-once)" >&2
+            exit 1
+        fi
+        for GRAPHICS_IMAGE in ccl-console.app desktop.svc display.svc clock.svc graphics-report-check.app; do
+            GRAPHICS_SOURCE="$KERNEL_DIR/isodir/boot/$GRAPHICS_IMAGE"
+            if [ "$GRAPHICS_IMAGE" = desktop.svc ] && [ -n "${CUBIT_DESKTOP_IMAGE:-}" ]; then
+                GRAPHICS_SOURCE="$CUBIT_DESKTOP_IMAGE"
+            fi
+            debugfs -w -R "rm $GRAPHICS_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $GRAPHICS_SOURCE $GRAPHICS_IMAGE" "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $GRAPHICS_IMAGE from $GRAPHICS_SOURCE" >&2
+                exit 1
+            fi
+        done
+    fi
     if [ "$TEST_NAME" = "power-sources" ]; then
         if ! make -C "$KERNEL_DIR" power-sources-test power >/dev/null; then
             echo "headless: failed to build power.svc and the power-sources stand-in" >&2
@@ -4363,6 +4404,10 @@ if [ "$TEST_NAME" = bench-input ] && [ "$INPUT_BACKEND" = virtio ]; then
     VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768)
 fi
 if [ "$TEST_NAME" = "display-discovery-boot-only" ]; then
+    VIDEO_ARGS=()
+fi
+# GPU-014 graphics-report-nodriver: only the std VGA (no virtio-gpu-pci).
+if [ "$TEST_NAME" = "graphics-report-nodriver" ]; then
     VIDEO_ARGS=()
 fi
 if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
@@ -6912,6 +6957,38 @@ if [ "$TEST_NAME" = "acpi-hardware" ] || [ "$TEST_NAME" = "acpi-sci" ]; then
     INPUT_INJECTOR_PID=$!
 fi
 
+# GPU-014 graphics-report-*: once the console has a frame, (graphics.report)
+# is typed at it; the listing's line is checked with the markers.
+if [ "$TEST_NAME" = "graphics-report-nodriver" ] || [ "$TEST_NAME" = "graphics-report-failing" ]; then
+    if ! command -v nc >/dev/null 2>&1; then
+        echo "headless: $TEST_NAME requires nc" >&2
+        exit 127
+    fi
+    MONITOR_SOCKET="$(qemu_socket monitor)"
+    rm -f "$MONITOR_SOCKET"
+    MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
+    (
+        for ((attempt = 0; attempt < TIMEOUT_SECONDS * 10; attempt++)); do
+            if grep -aqF "ccl-console: first frame presented" "$SERIAL_LOG" 2>/dev/null &&
+               grep -aqF "desktop: renderer report output-0" "$SERIAL_LOG" 2>/dev/null &&
+               [ -S "$MONITOR_SOCKET" ]; then
+                break
+            fi
+            sleep 0.1
+        done
+        sleep 1
+        python3 -I "$ROOT_DIR/tests/ccl-console/send-text.py" "$MONITOR_SOCKET" '(graphics.report)' 0.05
+        for ((attempt = 0; attempt < 300; attempt++)); do
+            grep -aqF "ccl-console: REPL completed: List<Gfx_Entry>:" "$SERIAL_LOG" 2>/dev/null && break
+            sleep 0.1
+        done
+        sleep 1
+        printf 'quit\n' | nc -N -U "$MONITOR_SOCKET" >/dev/null 2>&1
+        exit 0
+    ) &
+    INPUT_INJECTOR_PID=$!
+fi
+
 # PWR-004 power-sources: nothing is typed until Desktop has shown the
 # discharging battery AND then the charging one: both reach it by acpi.svc's
 # watch alone (the stand-in's first publication, then its Notify), with no
@@ -8414,6 +8491,35 @@ procmgr: supervisor com.cubit.test.supervision-check pid
             echo "headless: supervision: the running child was not stopped after its supervisor ended" >&2
             exit 1
         fi
+        ;;
+    graphics-report-nodriver)
+        # devmgr's own entry: the std VGA (1234:1111) has no GPU driver;
+        # Desktop composes on the CPU by its default policy; the console
+        # reads both back typed.
+        required_markers="
+devmgr: renderer report gpu 1234:1111 cpu software no-driver-bound
+desktop: renderer report output-0 software policy detail 1 (posted)
+ccl-console: REPL completed: List<Gfx_Entry>:
+Gfx_Why.No_Driver_Bound
+(Gfx_Why.Policy Gfx_Policy.Composition_CPU)
+"
+        ;;
+    graphics-report-desktop-down)
+        required_markers="
+devmgr: renderer report gpu
+desktop: renderer report output-0 software policy detail 1 (posted)
+GRAPHICS-CHECK: PASS the report answers with Desktop gone
+"
+        ;;
+    graphics-report-failing)
+        # virtio-gpu (init-failure build) stops at start-up (before its own
+        # lines reach logstore): devmgr's entry says Driver_Failed at Init,
+        # and the console reads it back.
+        required_markers="
+devmgr: renderer report gpu 1af4:1050 virtio-gpu software driver-failed
+ccl-console: REPL completed: List<Gfx_Entry>:
+(Gfx_Why.Driver_Failed Gfx_Stage.Init)
+"
         ;;
     power-sources)
         # The order the logstore mirror gives program lines is not theirs:

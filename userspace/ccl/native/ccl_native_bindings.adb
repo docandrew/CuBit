@@ -31,6 +31,7 @@ package body CCL_Native_Bindings is
    Tls_Entry              : constant CuBit.Handles.Endpoint := Named ("tls");
    Power_Entry            : constant CuBit.Handles.Endpoint := Named ("power");
    Power_Sources_Entry    : constant CuBit.Handles.Endpoint := Named ("power-sources");
+   Graphics_Observer_Entry : constant CuBit.Handles.Endpoint := Named ("graphics-observer");
    Debug_Session_Entry    : constant CuBit.Handles.Endpoint := Named ("debug-session");
 
    function Clock            return CuBit.Handles.Endpoint is (Clock_Entry);
@@ -51,5 +52,6 @@ package body CCL_Native_Bindings is
    function Tls              return CuBit.Handles.Endpoint is (Tls_Entry);
    function Power            return CuBit.Handles.Endpoint is (Power_Entry);
    function Power_Sources    return CuBit.Handles.Endpoint is (Power_Sources_Entry);
+   function Graphics_Observer return CuBit.Handles.Endpoint is (Graphics_Observer_Entry);
    function Debug_Session    return CuBit.Handles.Endpoint is (Debug_Session_Entry);
 end CCL_Native_Bindings;

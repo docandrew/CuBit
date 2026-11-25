@@ -142,6 +142,8 @@ with Shutdown_Sequences;
 with CuBit.System_Stops;
 with CuBit.Power_Requests;
 with CuBit.Power_Sources;
+with CuBit.Graphics_Report;
+with CuBit.Graphics_Report.Posting;
 with CuBit.Debug_Protocol;
 with CuBit.Power_Event_Exchange;
 with CCL.Device_Sections;
@@ -191,6 +193,46 @@ procedure main is
    package Render_Launch is new Intel_Render_Launch_Client
      (Render_Broker, 16#4750_2000#, 16#4750_2FFF#);
    Render_Launcher : Render_Launch.Launcher;
+
+   --  GPU-014: the path a program that asked for a render session takes,
+   --  posted to devmgr's renderer report: Hardware when its session was
+   --  admitted; else Software, Policy (Render_GPU_Off) when its plan or
+   --  desktop.render.gpu said no, or Admission_Refused with the broker's
+   --  outcome (a retry in software keeps the withdrawn attempt's outcome).
+   Withdrawn_Render_Outcome : Render_Launch.Phase := Render_Launch.Absent;
+   procedure Report_Render_Path
+     (Pid : Process_ID; Name : String; Admitted, Approved, Retried : Boolean;
+      Outcome : Render_Launch.Phase)
+   is
+      package GR renames CuBit.Graphics_Report;
+      Seen : constant Render_Launch.Phase := (if Retried then Withdrawn_Render_Outcome else Outcome);
+      Item : GR.Report_Entry :=
+        (Kind => GR.Program, Id => GR.Subject_Id (CuBit.Process_IDs.To_Word (Pid) and GR.Maximum_Word), Subject => GR.To_Name (Name),
+         Path => GR.Hardware, Why => GR.None, Detail => 0, Device => GR.To_Name ("intel-gpu"),
+         Since => GR.Milliseconds'Min (CuBit.Monotonic.Milliseconds, GR.Maximum_Milliseconds),
+         Stale => False);
+      Delivered : Boolean;
+   begin
+      if not Admitted then
+         Item.Device := GR.To_Name ("cpu");
+         if not Approved then
+            Item := (Item with delta Path => GR.Software, Why => GR.Policy,
+                                     Detail => GR.Policy_Setting'Pos (GR.Render_GPU_Off));
+         else
+            Item := (Item with delta Path => GR.Software, Why => GR.Admission_Refused,
+                       Detail => (case Seen is
+                                    when Render_Launch.Rejected | Render_Launch.Absent =>
+                                      GR.Admission_Outcome'Pos (GR.Rejected),
+                                    when Render_Launch.Pending => GR.Admission_Outcome'Pos (GR.Unanswered),
+                                    when Render_Launch.Admitted | Render_Launch.Uncertain =>
+                                      GR.Admission_Outcome'Pos (GR.Uncertain)));
+         end if;
+      end if;
+      CuBit.Graphics_Report.Posting.Post (PH.Device_Manager, Item, Delivered);
+      if not Delivered then
+         debugPrint ("procmgr: renderer report post for " & Name & " not delivered" & ASCII.LF);
+      end if;
+   end Report_Render_Path;
    type Render_Request is record
       Requested, Valid : Boolean := False;
       Demand : CuBit.Render_Startup.Requirement := CuBit.Render_Startup.Required;
@@ -1893,7 +1935,10 @@ procedure main is
         or else Role = Session_Launch.Remote_Launch_Role
         or else Role = CuBit.Launch_Handles.Session_Debug_Role then DRIVER_PROCMGR
       elsif Role = CuBit.Disk_Install.Service_Role
-        or else Role = ACPI_PCI_Window_Exchange.Service_Role then DRIVER_DEVMGR
+        or else Role = ACPI_PCI_Window_Exchange.Service_Role
+        --  GPU-014: devmgr holds the renderer report.
+        or else Role = CuBit.Graphics_Report.Observer_Role
+        or else Role = CuBit.Graphics_Report.Poster_Role then DRIVER_DEVMGR
       --  A read-only copy of the composed frame: Desktop composes it.
       elsif Role = CuBit.Display_Capture.Service_Role then DRIVER_DESKTOP
       --  PWR-003: power.svc's requesters, and power.svc's own endpoint to
@@ -1982,6 +2027,8 @@ procedure main is
            or else Role = CuBit.Power_Requests.Desktop_Role
            or else Role = CuBit.Power_Requests.Console_Role
            or else Role = CuBit.Power_Sources.Observer_Role
+           or else Role = CuBit.Graphics_Report.Observer_Role
+           or else Role = CuBit.Graphics_Report.Poster_Role
            or else Role = CuBit.Power_Event_Exchange.Service_Role
            or else Role = ACPI_PCI_Window_Exchange.Service_Role
          then
@@ -3750,6 +3797,9 @@ procedure main is
          --  PWR-004: the power-source observers (read only) likewise.
          if Role = CuBit.Power_Requests.Desktop_Role or else Role = CuBit.Power_Requests.Console_Role
            or else Role = CuBit.Power_Sources.Observer_Role
+           --  GPU-014: the renderer report's readers and posters likewise.
+           or else Role = CuBit.Graphics_Report.Observer_Role
+           or else Role = CuBit.Graphics_Report.Poster_Role
          then
             return not systemStartup;
          elsif Role = CuBit.Power_Event_Exchange.Service_Role then
@@ -3866,6 +3916,10 @@ procedure main is
             Issued_Tag := CuBit.Power_Requests.Console_Tag;
          elsif Role = CuBit.Power_Sources.Observer_Role then
             Issued_Tag := CuBit.Power_Sources.Observer_Tag;
+         elsif Role = CuBit.Graphics_Report.Observer_Role then
+            Issued_Tag := CuBit.Graphics_Report.Observer_Tag;
+         elsif Role = CuBit.Graphics_Report.Poster_Role then
+            Issued_Tag := CuBit.Graphics_Report.Poster_Tag;
          elsif Role = CuBit.Power_Event_Exchange.Service_Role then
             Issued_Tag := CuBit.Power_Event_Exchange.Authority_Tag;
          elsif isACPI then
@@ -5509,6 +5563,7 @@ procedure main is
                        when Render_Launch.Admitted => "admitted",
                        when Render_Launch.Uncertain => "uncertain");
                begin
+                  Withdrawn_Render_Outcome := Render_Launch.State (Render_Launcher, Render_Ticket);
                   Discard_Authorized_Child;
                   Retry := CuBit.Render_Startup.Retry_Software (Next, Stop_Accepted);
                   Warnings.Inform
@@ -5519,6 +5574,9 @@ procedure main is
                Failure := LA.Render_Denied;
                return No_Process;
             end if;
+            Report_Render_Path (newPID, name, Next = CuBit.Render_Startup.Resume_Render,
+                                approveRender, Mode = CuBit.Render_Startup.Software_Only,
+                                Render_Launch.State (Render_Launcher, Render_Ticket));
             if Next = CuBit.Render_Startup.Resume_Render then
                debugPrint ("procmgr: render admission complete" & LF);
                Warnings.Inform ("procmgr: stage render-admission ok " & name & " GPU session admitted");
@@ -9743,6 +9801,17 @@ begin
                      clearAuthorityForPID (Exited);
                      releaseNetworkOwner (Exited);
                      releaseFilesystemOwner (Exited);
+                     --  GPU-014: what it posted to the renderer report, and
+                     --  its own entry, turn stale (devmgr keeps them).
+                     declare
+                        Delivered : Boolean;
+                     begin
+                        CuBit.Graphics_Report.Posting.Gone
+                          (PH.Device_Manager,
+                           CuBit.Graphics_Report.Subject_Id
+                             (CuBit.Process_IDs.To_Word (Exited) and CuBit.Graphics_Report.Maximum_Word),
+                           Delivered);
+                     end;
                      superviseExit
                        (Exited, Report.Kind = CuBit.Child_Exits.Stopped or else Report.Code /= 0);
                      switchExited

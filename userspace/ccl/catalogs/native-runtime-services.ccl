@@ -79,6 +79,11 @@
   # PWR-004: power.svc's power sources, read only (CuBit.Power_Sources):
   # procmgr badges power.svc's endpoint Observer_Tag, startup plan only.
   (service power-sources 49 read-write)
+  # GPU-014: devmgr's renderer report (CuBit.Graphics_Report), startup plan
+  # only: graphics-observer reads it (Observer_Tag), graphics-poster posts
+  # an entry (Poster_Tag; Desktop for its outputs).
+  (service graphics-observer 50 read-write)
+  (service graphics-poster 51 read-write)
   (notification keyboard 1 publish-and-manage)
   (notification mouse 10 publish-and-manage)
   (notification ipc-test-registration 14 publish-and-manage)

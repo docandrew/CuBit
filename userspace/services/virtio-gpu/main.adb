@@ -657,6 +657,10 @@ procedure main is
       trace ("clear DMA");
       zeroDma;
       trace ("DMA clear complete");
+      if GPU_Test_Policy.Fail_At_Init then
+         fail ("injected init failure (test build init-failure)");
+         return;
+      end if;
 
       --  Every MMIO access below is logged before it happens. Primary
       --  virtio-vga bring-up can currently wedge the emulator, so the last

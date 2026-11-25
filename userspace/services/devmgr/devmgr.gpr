@@ -21,6 +21,8 @@ project Devmgr is
        "source_notices.ads", "source_notices.adb",
        --  Children by name, for their exit lines.
        "devmgr_children.ads", "devmgr_children.adb",
+       --  The renderer report (GPU-014): devmgr's copy (the wire is the runtime's).
+       "devmgr_graphics_report.ads", "devmgr_graphics_report.adb",
        --  The root stop's driver stage (PWR-003).
        "devmgr_driver_stops.ads", "devmgr_driver_stops.adb",
        --  Message-signaled interrupts (docs/msi-interrupts.md).

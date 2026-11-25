@@ -49,6 +49,8 @@ CHECKS = [
     (SRC / 'ccl-interfaces-machine.ads', {'DIGEST': None, 'ANSWER_KEY': 'Power_Answer'}),
     (SRC / 'ccl-interfaces-power.ads',
      {'DIGEST': None, 'SOURCE_KEY': 'Power_Source', 'SOURCES_KEY': 'List-Power_Source'}),
+    (SRC / 'ccl-interfaces-graphics.ads',
+     {'DIGEST': None, 'ENTRY_KEY': 'Gfx_Entry', 'ENTRIES_KEY': 'List-Gfx_Entry'}),
     (SRC / 'ccl-interfaces-metrics.ads',
      {'DIGEST': None, 'SERIES_KEY': 'List-Metric_Series', 'ITEMS_KEY': 'List-Metric_Item',
       'SELECTOR_KEY': 'Metric_Selector', 'RANGE_KEY': 'Metric_Range', 'WINDOW_KEY': 'Metric_Window',

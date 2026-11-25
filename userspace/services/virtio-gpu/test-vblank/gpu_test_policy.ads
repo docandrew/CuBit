@@ -8,4 +8,8 @@ package GPU_Test_Policy is
    --  with CUBIT_GPU_TEST_MODE=vblank reproduces the laptop's
    --  one-frame-in-flight-until-latch pacing).
    Vblank_Period_Us : constant Interfaces.Unsigned_64 := 16_667;
+   --  Test mode "init-failure" (GPU-014): stop at start-up, as a driver
+   --  whose device will not initialize does, so the renderer report must
+   --  say Driver_Failed. False in every other build.
+   Fail_At_Init : constant Boolean := False;
 end GPU_Test_Policy;
