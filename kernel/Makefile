@@ -3602,14 +3602,16 @@ test-desktop-mixed: desktop display virtio-gpu display-check ccl-workbench
 # what changed, remake the images that contain it, and reset the scratch
 # disk from the prepared base.
 #
-# CONSOLE_MIRROR=1 (development diagnosis only, BUG-008): boot logstore's
-# test variant (logstore-test, with the test console object that
+# CONSOLE_MIRROR=1, the default (development sessions, BUG-008): boot
+# logstore's test variant (logstore-test, with the test console object that
 # DESKTOP_INIT's (test-console approve-declared) approves), so every
-# program's console text, Desktop's launch lines included, is mirrored
-# onto serial_output.log. It is written onto the freshly reset scratch disk
-# only; the prepared base and every shipped image are unchanged
-# (tests/test-console).
-CONSOLE_MIRROR ?= 0
+# program's console text, Desktop's launch lines and notices included, is
+# mirrored onto serial_output.log, and a failed launch can be read there.
+# Programs reach serial only through the test console (ABI-002), so this is
+# the way. It is written onto the freshly reset scratch disk only; the
+# prepared base and every shipped image are unchanged (tests/test-console).
+# CONSOLE_MIRROR=0 boots the shipped logstore.
+CONSOLE_MIRROR ?= 1
 .PHONY : run-desktop desktop-stage
 desktop-stage: desktop-session-content isodir/boot/cubit_kernel nvme_disk.img isodir/boot/initrd.img \
 		$(RUN_ISO) desktop-disk-reset
