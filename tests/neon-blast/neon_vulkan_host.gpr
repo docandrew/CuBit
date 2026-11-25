@@ -9,7 +9,7 @@ project Neon_Vulkan_Host is
                         "../../userspace/apps/neon-blast",
                         "../../userspace/lib/ui", "../../userspace/lib/theme",
                         "../../userspace/lib/compositor", "../../userspace/lib/display");
-   for Excluded_Source_Files use ("main.adb", "neon_audio_host.adb", "neon_replay_host.adb",
+   for Excluded_Source_Files use ("main.adb", "neon_audio.ads", "neon_audio.adb", "neon_audio_host.adb", "neon_replay_host.adb",
                                   "wave_files.adb", "wave_files.ads");
    for Object_Dir use "build/vk-obj";
    for Exec_Dir use "build";

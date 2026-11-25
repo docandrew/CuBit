@@ -12,4 +12,9 @@
   # One "started" record (CuBit.Logging.Announce) and its stats lines.
   (request-service logstore read-write logstore)
   (request-service desktop read-write desktop)
-  (request-service-optional mixer read-write mixer))
+  (request-service-optional mixer read-write mixer)
+  # Real-time CPU for the soundtrack's thread (SCHED-001, app audio
+  # threads; Neon_Audio): 2 ms of every 10 ms, so a slow frame drops a
+  # frame and never an audio period. Without it the thread runs ordinary.
+  (request-scheduling synth realtime (budget-us 2000) (period-us 10000))
+  (optional synth))

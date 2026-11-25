@@ -45,6 +45,7 @@ with CuBit.UI.GPU_Canvas;
 with CuBit.UI.Input;
 with CuBit.UI.State;
 with Startup;
+with Neon_Audio;
 with Neon_Autopilot;
 with Neon_Game;
 with Neon_Replay;
@@ -71,12 +72,6 @@ procedure Main is
    SEED : constant := 1987;
    --  Software frames: one every 1/60 s at most.
    SOFT_FRAME_US : constant := 16_667;
-   --  Audio: keep this many frames queued in the ring (37.3 ms at 48 kHz,
-   --  of its 2048): enough to ride out a software frame (12-16 ms under
-   --  QEMU) plus the loop's wake-ups; 1024 underran under QEMU.
-   AUDIO_TARGET_FRAMES : constant := 1_792;
-   --  How often the device queue depth is asked of the mixer (an IPC call).
-   PLAYBACK_POLL_US : constant := 50_000;
    --  Song clock: further than this from the audio estimate snaps; nearer,
    --  it is pulled by CLOCK_PULL a turn.
    CLOCK_SNAP_SAMPLES : constant := 2_400;
@@ -106,9 +101,8 @@ procedure Main is
               else CuBit.Monotonic.Milliseconds * 1_000);
    end Now_Us_Early;
 
-   type Game_Access is access Neon_Game.Game;
    type Frame_Access is access Neon_Scene.Frame;
-   G : constant Game_Access := new Neon_Game.Game;
+   G : constant Neon_Audio.Game_Ref := new Neon_Game.Game;
    Scene : constant Frame_Access := new Neon_Scene.Frame;
    Soft : Neon_Soft.Renderer;
 
@@ -129,34 +123,22 @@ procedure Main is
    Last_Input_Us : Unsigned_64 := 0;
 
    --  Audio.
-   Stream : CuBit.Audio.StreamHandle;
-   Audio_On : Boolean := False;
+   --  The stream and refill state live in Neon_Audio (its audio thread
+   --  refills under the game lock); the names here are its.
+   Stream : CuBit.Audio.StreamHandle renames Neon_Audio.Stream;
+   Audio_On : Boolean renames Neon_Audio.Audio_On;
    Audio_Attempts : Natural := 0;
    Next_Audio_Try_Us : Unsigned_64 := 0;
-   Device_Frames : Natural := 0;
-   Last_Playback_Us : Unsigned_64 := 0;
+   Device_Frames : Natural renames Neon_Audio.Device_Frames;
    Underruns_Start : Unsigned_32 := 0;
-   Underruns_Now : Unsigned_32 := 0;
-   Queued_Now : Natural := 0;
-   Mix_Left, Mix_Right : Neon_Synth.Block;
-   --  Synthesis cost: microseconds spent rendering and frames rendered
-   --  since the last stats line, and the worst call scaled to a full block.
-   Synth_Us, Synth_Frames : Unsigned_64 := 0;
-   Synth_Worst_Us_Per_Block : Float := 0.0;
-
-   procedure Synthesize (Frames : Natural) is
-      Began : constant Unsigned_64 := Now_Us_Early;
-      Spent : Unsigned_64;
-   begin
-      Neon_Game.Render_Audio (G.all, Mix_Left, Mix_Right, Frames);
-      Spent := Now_Us_Early - Began;
-      Synth_Us := Synth_Us + Spent;
-      Synth_Frames := Synth_Frames + Unsigned_64 (Frames);
-      if Frames > 0 then
-         Synth_Worst_Us_Per_Block :=
-           Max (Synth_Worst_Us_Per_Block, Float (Spent) * Float (Neon_Synth.Maximum_Block) / Float (Frames));
-      end if;
-   end Synthesize;
+   Underruns_Now : Unsigned_32 renames Neon_Audio.Underruns_Now;
+   Queued_Now : Natural renames Neon_Audio.Queued_Now;
+   Synth_Us : Unsigned_64 renames Neon_Audio.Synth_Us;
+   Synth_Frames : Unsigned_64 renames Neon_Audio.Synth_Frames;
+   Synth_Worst_Us_Per_Block : Float renames Neon_Audio.Synth_Worst_Us_Per_Block;
+   procedure Synthesize (Frames : Natural) renames Neon_Audio.Synthesize;
+   --  The audio thread runs (Neon_Audio.Start); else this thread refills.
+   Audio_Thread : Boolean := False;
 
    --  The song clock: Song_At (Us) = Base_Song + (Us - Base_Us) * 0.048.
    Base_Us : Unsigned_64 := 0;
@@ -214,29 +196,13 @@ procedure Main is
    --  Audio
    ---------------------------------------------------------------------------
 
-   procedure Fill (Span : CuBit.Audio.BufferSpan; From : Positive) is
-      function PCM (Sample : Float) return Integer_16 renames Neon_Replay.PCM;
-   begin
-      for Frame in 0 .. Span.frames - 1 loop
-         declare
-            Pair : array (0 .. 1) of Integer_16
-              with Import, Address => Span.address + Storage_Offset (Frame * 4);
-         begin
-            Pair (0) := PCM (Mix_Left (From + Frame));
-            Pair (1) := PCM (Mix_Right (From + Frame));
-         end;
-      end loop;
-   end Fill;
 
    --  Open the mixer stream (at start, and retried while the mixer's device
    --  comes up). The stream starts with a full ring.
    procedure Open_Audio (Now : Unsigned_64);
 
    procedure Refill_Audio (Now : Unsigned_64) is
-      Status : CuBit.Audio.Stream_Statistics;
-      Reservation : CuBit.Audio.WriteReservation;
-      Wanted, Frames : Natural;
-      Committed : Boolean;
+      Frames : Natural;
    begin
       if not Audio_On then
          --  No device: the synthesizer still runs (the composer is the
@@ -257,32 +223,7 @@ procedure Main is
          end;
          return;
       end if;
-      for Round in 1 .. 4 loop
-         Status := CuBit.Audio.Statistics (Stream);
-         exit when not Status.Valid;
-         Queued_Now := Status.Queued_Frames;
-         Underruns_Now := Status.Underruns;
-         exit when Status.Queued_Frames >= AUDIO_TARGET_FRAMES;
-         Wanted := Natural'Min (Neon_Synth.Maximum_Block, AUDIO_TARGET_FRAMES - Status.Queued_Frames);
-         Reservation := CuBit.Audio.reserveWrite (Stream, Wanted);
-         exit when not CuBit.Audio.isReservationValid (Reservation);
-         Frames := CuBit.Audio.reservedFrames (Reservation);
-         Synthesize (Frames);
-         Fill (CuBit.Audio.firstSpan (Reservation), 1);
-         Fill (CuBit.Audio.secondSpan (Reservation), 1 + CuBit.Audio.firstSpan (Reservation).frames);
-         CuBit.Audio.commitWrite (Stream, Reservation, Frames, Committed);
-         exit when not Committed;
-      end loop;
-      if Now - Last_Playback_Us >= PLAYBACK_POLL_US then
-         Last_Playback_Us := Now;
-         declare
-            P : constant CuBit.Audio.Playback_Status := CuBit.Audio.Playback (Stream);
-         begin
-            if P.Valid then
-               Device_Frames := P.Device_Frames;
-            end if;
-         end;
-      end if;
+      Neon_Audio.Refill (Now);
    end Refill_Audio;
 
    procedure Open_Audio (Now : Unsigned_64) is
@@ -498,14 +439,18 @@ procedure Main is
       elsif Window_Canvas.width > 0 and then Window_Canvas.height > 0
         and then Window_Canvas.pitch >= 4 * Window_Canvas.width
       then
+         Neon_Audio.Lock;
          Neon_Scene.Build (Scene.all, G.all, Window_Canvas.width, Window_Canvas.height);
+         Painted_Song := Float (G.Sim.Clock);
+         Neon_Audio.Unlock;
          Neon_Soft.Render (Soft, Scene.all, Window_Canvas.addr, Window_Canvas.width, Window_Canvas.height,
                            Window_Canvas.pitch / 4);
          Note (Render_Time, Float (Now_Us - Started_Us) / 1000.0);
-         Painted_Song := Float (G.Sim.Clock);
       end if;
       if Overlay then
+         Neon_Audio.Lock;
          Draw_Overlay (Window_Canvas);
+         Neon_Audio.Unlock;
       end if;
       Painted_At_Us := Started_Us;
       Painted_Input_Us := Pending_Input_Us;
@@ -709,13 +654,17 @@ procedure Main is
       pragma Unreferenced (Running);
       Now : constant Unsigned_64 := Now_Us;
    begin
+      --  The game lock for the turn (the audio thread refills under it).
+      Neon_Audio.Lock;
       if Benchmark_Requested then
          Benchmark_Requested := False;
          Run_Benchmark;
       end if;
       Note_Publish;
       Open_Audio (Now);
-      Refill_Audio (Now);
+      if not (Audio_Thread and then Audio_On) then
+         Refill_Audio (Now);
+      end if;
       Update_Clock (Now);
       Step_Game (Now);
       if GPU_Started then
@@ -747,6 +696,7 @@ procedure Main is
          Dirty := CuBit.UI.App.Full_Rect (Win);
       end if;
       Report_Stats (Now);
+      Neon_Audio.Unlock;
    end Tick;
 
    procedure Run is new CuBit.UI.App.Run
@@ -777,8 +727,16 @@ begin
    CuBit.UI.App.Trace_Wakes := True;   --  publish times for the latency overlay
 
    Neon_Game.Start (G.all, SEED);
+   Neon_Audio.Game := G;
 
    Open_Audio (Now_Us);
+   --  The soundtrack on its own thread, in the manifest's real-time share
+   --  when granted (SCHED-001): frames may drop, periods may not.
+   Neon_Audio.Start (Startup.Synth.Value, Startup.Synth.Present, Audio_Thread);
+   debugPrint ("neon-blast: audio thread " &
+     (if not Audio_Thread then "not started (the window's thread refills)"
+      elsif Startup.Synth.Present then "started (real-time share requested)"
+      else "started (no real-time share)") & ASCII.LF);
    if not Startup.Mixer.Present then
       debugPrint ("neon-blast: audio off (no mixer endpoint)" & ASCII.LF);
    end if;

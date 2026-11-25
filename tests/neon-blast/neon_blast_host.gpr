@@ -4,7 +4,8 @@
 project Neon_Blast_Host is
    for Languages use ("Ada");
    for Source_Dirs use (".", "../../userspace/apps/neon-blast");
-   for Excluded_Source_Files use ("main.adb");
+   --  main and its audio thread need the CuBit runtime (threads, the mixer).
+   for Excluded_Source_Files use ("main.adb", "neon_audio.ads", "neon_audio.adb");
    for Object_Dir use "build/obj";
    for Exec_Dir use "build";
    type Build_Mode is ("checked", "release");
