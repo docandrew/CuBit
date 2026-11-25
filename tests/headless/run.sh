@@ -1719,9 +1719,9 @@ LARGE_MODULE="$KERNEL_DIR/isodir/boot/large-module.img"
 if [ "$TEST_NAME" = desktop-vm ] || [ "$TEST_NAME" = desktop-session ]; then
     QEMU_MEMORY="${QEMU_MEMORY:-2G}"
 fi
-# CUBIT_TEST_VIDEO_SIZE=WxH (desktop-display, calculator, remote-screenshot): the firmware mode, as
+# CUBIT_TEST_VIDEO_SIZE=WxH (desktop-display, calculator, remote-screenshot, neon-blast): the firmware mode, as
 # WIDTHxHEIGHT; larger modes need room for Desktop's output buffers.
-if { [ "$TEST_NAME" = desktop-display ] || [ "$TEST_NAME" = calculator ] || [ "$TEST_NAME" = remote-screenshot ]; } && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
+if { [ "$TEST_NAME" = desktop-display ] || [ "$TEST_NAME" = calculator ] || [ "$TEST_NAME" = remote-screenshot ] || [ "$TEST_NAME" = neon-blast ]; } && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
     if ! [[ "$CUBIT_TEST_VIDEO_SIZE" =~ ^([0-9]+)x([0-9]+)$ ]]; then
         echo "headless: CUBIT_TEST_VIDEO_SIZE must be WIDTHxHEIGHT" >&2
         exit 1
@@ -4198,7 +4198,7 @@ fi
 rm -f "$SERIAL_LOG" "$NET_PCAP"
 
 sed -i 's/^set default=.*/set default=4/' "$GRUB_CFG"
-if { [ "$TEST_NAME" = desktop-display ] || [ "$TEST_NAME" = calculator ] || [ "$TEST_NAME" = remote-screenshot ]; } && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
+if { [ "$TEST_NAME" = desktop-display ] || [ "$TEST_NAME" = calculator ] || [ "$TEST_NAME" = remote-screenshot ] || [ "$TEST_NAME" = neon-blast ]; } && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
     # The firmware mode Desktop starts at (VIDEO_ARGS below sizes the VGA).
     sed -i "s/set gfxpayload=1024x768x32/set gfxpayload=${VIDEO_WIDTH}x${VIDEO_HEIGHT}x32/" "$GRUB_CFG"
 fi
@@ -4352,7 +4352,7 @@ VIDEO_ARGS=(-device virtio-gpu-pci)
 # primary, using linear-fb"), so the size goes to GRUB's gfxpayload (set
 # above) on the primary std VGA, with video memory for the mode. SeaBIOS
 # VBE lists 1920x1080, 2560x1440, 2560x1600 and 3840x2160 among others.
-if { [ "$TEST_NAME" = desktop-display ] || [ "$TEST_NAME" = calculator ] || [ "$TEST_NAME" = remote-screenshot ]; } && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
+if { [ "$TEST_NAME" = desktop-display ] || [ "$TEST_NAME" = calculator ] || [ "$TEST_NAME" = remote-screenshot ] || [ "$TEST_NAME" = neon-blast ]; } && [ -n "${CUBIT_TEST_VIDEO_SIZE:-}" ]; then
     VGA_MEMORY_MB=16
     while [ $((VGA_MEMORY_MB * 1024 * 1024)) -lt $((VIDEO_WIDTH * VIDEO_HEIGHT * 4)) ]; do
         VGA_MEMORY_MB=$((VGA_MEMORY_MB * 2))
@@ -12008,6 +12008,14 @@ fi
 if [ "$TEST_NAME" = "neon-blast" ]; then
     # The soundtrack QEMU's HDA wrote: present, continuous, at a sane level.
     if ! python3 -I "$ROOT_DIR/tests/neon-blast/check_wav.py" "$TEMP_AUDIO"; then
+        exit 1
+    fi
+    # The software path's dynamic resolution (APP-008): each stats line
+    # names its window and internal size. CUBIT_NEON_DYNRES=constrained
+    # (with a big CUBIT_TEST_VIDEO_SIZE) also requires the resolution to
+    # drop, the frames to come back inside the budget, and a raise.
+    if ! python3 -I "$ROOT_DIR/tests/neon-blast/check_resolution.py" "$SERIAL_LOG" \
+        "${CUBIT_NEON_DYNRES:-plain}"; then
         exit 1
     fi
 fi
