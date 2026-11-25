@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with BuddyAllocator;
+with Interrupt_Windows;
 with Kernel_Window;
 with Mem_mgr;
 with Process_Frames;
@@ -10,13 +11,6 @@ package body Process_Pool is
    use type Virtmem.PhysAddress;
 
    Region_Frames : constant := 512;
-   Max_Batch : constant := 64;
-   -- What Alloc_Run may grow by when it finds nothing clean: its callers
-   -- hold spinlocks with interrupts off (tryAddPage under grantLock or an
-   -- address-space lock, DMA under a mailbox lock), so one region's zeroing
-   -- is the most it adds to their hold. Prepare grows before the locks.
-   Locked_Grow_Regions : constant := 1;
-
    Pool_Regions : Natural := 0 with Atomic;
 
    function Regions return Natural is (Pool_Regions);
@@ -32,31 +26,26 @@ package body Process_Pool is
       end if;
    end Round;
 
-   -- Take Wanted regions (at most Max_Batch) from the kernel's lists, one
-   -- TLB round for the batch; Grew when any joined. takeRegion zeroes each
-   -- region through the linear map (2 MiB each), so callers that hold a
-   -- spinlock ask for one region at most: the batch is the time the lock
-   -- (and interrupts) stay held.
-   procedure Grow (Grew : out Boolean; Ceiling : Unsigned_64; Wanted : Positive) is
-      Bases : array (1 .. Max_Batch) of Virtmem.PhysAddress := [others => 0];
-      Saved : array (1 .. Max_Batch) of Virtmem.PageTableEntry := [others => Virtmem.EMPTY_PTE];
-      Count : Natural := 0;
+   -- Take one region from the kernel's lists (takeRegion zeroes its 2 MiB
+   -- through the linear map), clear its linear-map entries, one TLB round,
+   -- then its frames join the pool clean; Grew when one joined. One region
+   -- at a time: Alloc_Run calls this under its callers' spinlocks
+   -- (tryAddPage under an address-space lock, or grantLock on a commit's
+   -- last attempt; DMA under a mailbox lock), and Prepare opens an
+   -- interrupt window between regions.
+   procedure Grow (Grew : out Boolean; Ceiling : Unsigned_64) is
+      Base : Virtmem.PhysAddress := 0;
+      Saved : Virtmem.PageTableEntry := Virtmem.EMPTY_PTE;
    begin
-      for I in 1 .. Positive'Min (Wanted, Max_Batch) loop
-         BuddyAllocator.takeRegion (Bases (I), Ceiling);
-         exit when Bases (I) = 0;
-         Mem_mgr.detachLinearRegion (Bases (I), Saved (I));
-         Count := I;
-      end loop;
-      Grew := Count > 0;
+      BuddyAllocator.takeRegion (Base, Ceiling);
+      Grew := Base /= 0;
       if not Grew then
          return;
       end if;
+      Mem_mgr.detachLinearRegion (Base, Saved);
       Round;
-      for I in 1 .. Count loop
-         BuddyAllocator.joinPool (Bases (I), Saved (I));
-      end loop;
-      Pool_Regions := Pool_Regions + Count;
+      BuddyAllocator.joinPool (Base, Saved);
+      Pool_Regions := Pool_Regions + 1;
    end Grow;
 
    -- Zero up to Batch free dirty frames through this CPU's window,
@@ -91,9 +80,11 @@ package body Process_Pool is
 
    procedure Prepare (Frames : Natural) is
       More : Boolean := True;
+      Pace : Interrupt_Windows.Pace := Interrupt_Windows.Start;
    begin
-      -- Each pass launders one batch or grows by what is still missing;
-      -- it ends when enough is clean or nothing more can be made clean.
+      -- Each pass launders one batch or grows by one region; it ends when
+      -- enough is clean or nothing more can be made clean. No lock is
+      -- held, so this CPU's interrupts get a window between passes.
       while More and then BuddyAllocator.poolCleanFrames < Frames loop
          if BuddyAllocator.poolFreeFrameCount > BuddyAllocator.poolCleanFrames then
             Launder (More, Prepare_Launder_Batch);
@@ -101,10 +92,9 @@ package body Process_Pool is
             More := False;
          end if;
          if not More then
-            Grow (More, 0, Positive'Max
-                    (1, (Frames - Natural'Min (Frames, BuddyAllocator.poolCleanFrames)
-                         + Region_Frames - 1) / Region_Frames));
+            Grow (More, 0);
          end if;
+         Interrupt_Windows.Point (Pace);
       end loop;
    end Prepare;
 
@@ -126,10 +116,10 @@ package body Process_Pool is
          if Attempt = 1 then
             Launder (More);
             if not More then
-               Grow (More, Ceiling, Locked_Grow_Regions);
+               Grow (More, Ceiling);
             end if;
          else
-            Grow (More, Ceiling, Locked_Grow_Regions);
+            Grow (More, Ceiling);
          end if;
          exit when not More;
       end loop;
