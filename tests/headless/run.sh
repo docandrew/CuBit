@@ -165,6 +165,10 @@ Two-output presentation: display-dual-output (build devmgr, virtio-gpu, display,
 and display-check first). Native IPC plus pixel checks on both QEMU heads.
 Native extended Desktop: desktop-dual-output (build desktop, display, devmgr,
 virtio-gpu and ccl-workbench first). Checks drag, maximize, taskbar and cleanup on both heads.
+screen-settle: Files on the desktop; a held Super, then one key at a time, each on
+  the screen within 0.5 s with no further input (BUG-007; tests/screen-settle/settle.py,
+  --accel kvm). SCREEN_SETTLE_HOLD=sendkey holds with QEMU's sendkey hold time instead,
+  which delays the next keys in QEMU's own queue.
 The threads test defaults to one vCPU (both instances must share a CPU).
 bench-spread: four CPU-bound instances; compare WORK_STEALING=0/1 kernels.
 network-authority defaults to 100 s: it includes an intentional 30-second
@@ -383,7 +387,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch|screen-settle)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -406,6 +410,14 @@ DESKTOP_SESSION_LAUNCH=0
 if [ "$TEST_NAME" = "desktop-launch" ]; then
     TEST_NAME=desktop-session
     DESKTOP_SESSION_LAUNCH=1
+fi
+# screen-settle (BUG-007): the files test's boot and Files, then one key at
+# a time with no further input; each result must reach the screen (QEMU's
+# screendump of the scanout) within a bound (tests/screen-settle/settle.py).
+SCREEN_SETTLE=0
+if [ "$TEST_NAME" = "screen-settle" ]; then
+    TEST_NAME=files
+    SCREEN_SETTLE=1
 fi
 
 PIN_ARGS=()
@@ -4250,6 +4262,12 @@ if [ "$TEST_NAME" = "virtio-vga-primary" ] ||
    [ "$TEST_NAME" = "desktop-doom" ]; then
     VIDEO_ARGS=(-vga none -device virtio-vga,xres=1024,yres=768)
 fi
+# DISP-015: display-latency on the std VGA linear framebuffer (display.svc
+# copies each frame into the firmware scanout; no refresh grid is known)
+# with DISPLAY_LATENCY_VIDEO=vga, instead of the virtio-gpu primary.
+if [ "$TEST_NAME" = "display-latency" ] && [ "${DISPLAY_LATENCY_VIDEO:-virtio}" = vga ]; then
+    VIDEO_ARGS=(-device virtio-gpu-pci)
+fi
 # UI-039 (CCL_CONSOLE_DEMO=large): a 1080p output, where a new window opens
 # taller than the 1280x720 the CCL apps used to be capped at.
 if [ "$TEST_NAME" = "ccl-console" ] && [ "${CCL_CONSOLE_DEMO:-}" = large ]; then
@@ -6133,6 +6151,14 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             # first category open (the taskbar and its logo show in both).
             sleep 0.5
             printf 'screendump "%s"\n' "${SERIAL_LOG%.log}-files.ppm" | nc -U -q 1 "$MONITOR_SOCKET" >/dev/null
+            if [ "$SCREEN_SETTLE" -eq 1 ]; then
+                settle_status=0
+                python3 -I "$ROOT_DIR/tests/screen-settle/settle.py" "$MONITOR_SOCKET" \
+                  "$QMP_SOCKET" "${SERIAL_LOG%.log}" || settle_status=$?
+                files_keys f10
+                files_wait "files: closed"
+                exit "$settle_status"
+            fi
             # UI-051/052: held modifiers reveal their keys after the hold
             # delay (500 ms): Ctrl shows the key bar's Ctrl layer, Alt the
             # toolbar's keycaps, Super the Desktop's hints. sendkey's hold
@@ -11171,6 +11197,13 @@ files: pane 1 listed @nvme:0/lost+found/nested entries=
 files: active pane 2
 files: closed
 "
+        if [ "$SCREEN_SETTLE" -eq 1 ]; then
+            required_markers="
+files: first frame presented
+files: pane 1 listed @nvme:0/ entries=
+files: closed
+"
+        fi
         ;;
     desktop-virtio-vga)
         required_markers="
@@ -11896,7 +11929,7 @@ if [ "$TEST_NAME" = "clipboard" ]; then
     fi
 fi
 
-if [ "$TEST_NAME" = "files" ]; then
+if [ "$TEST_NAME" = "files" ] && [ "$SCREEN_SETTLE" -eq 0 ]; then
     # The read-only grant: making a folder must have been refused.
     if ! grep -aE 'files: status Stopped at x: (not granted|the place is read-only)' \
         "$SERIAL_LOG" >/dev/null; then

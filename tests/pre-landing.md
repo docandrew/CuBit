@@ -1238,3 +1238,21 @@ scratch).
 make -C kernel world
 bash tests/noop-rebuild/run.sh
 ```
+
+## screen-settle: a key's result is on the screen within 0.5 s (BUG-007)
+
+After a held Super, then one key at a time (Esc, Super, Shift+F10, Down,
+Up) with no further input, QEMU's screendump must show each result within
+0.5 s (tests/screen-settle/settle.py). The kernel's stuck-call panel and
+the Deskbar's live rows are left out of the comparison.
+
+Failed before (as the keys scenario held keys): QEMU's own hold time
+(`sendkey KEY MS`) queues the release and then another MS of delay, so the
+next keys reached the guest up to 16 s late and every screenshot looked one
+step behind. CuBit itself showed each key within a millisecond of its
+arrival. `SCREEN_SETTLE_HOLD=sendkey` still holds that way and fails.
+
+```sh
+make -C kernel world
+bash tests/headless/run.sh --test screen-settle --accel kvm --timeout 150
+```
