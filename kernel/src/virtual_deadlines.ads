@@ -62,6 +62,18 @@ package Virtual_Deadlines with Pure, SPARK_Mode => On is
    -- Placement over CPUs
    ---------------------------------------------------------------------------
 
+   -- The running key a CPU keeps after a reschedule opportunity (a reschedule
+   -- IPI or a timer tick) at which its thread stays: an idle thread that
+   -- keeps the CPU runs at Idle_Key. A placement elsewhere may have claimed
+   -- the idle CPU meanwhile by writing the claimed thread's key; if that
+   -- thread went to another CPU (or it would have been taken here), the
+   -- claim is stale, and a later wake comparing against it would wait for
+   -- the next tick instead of preempting the idle thread.
+   function Settled_Key (Keeps_Idle : Boolean; Current : Ticks) return Ticks is
+     (if Keeps_Idle then Idle_Key else Current)
+     with Post => (if Keeps_Idle then Settled_Key'Result = Idle_Key
+                   else Settled_Key'Result = Current);
+
    Maximum_CPUs : constant := 256;
    type CPU is range 0 .. Maximum_CPUs - 1;
    type CPU_Keys is array (CPU range <>) of Ticks;

@@ -2,7 +2,7 @@
 # its debug-target service (cooperative, read-only grants).
 (startup v1
   # ABI-002: services' debug text reaches serial only through logstore's mirror.
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "debug-demo.app" (priority 5))
-  (start "debug-engine-check.app" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "debug-demo.app")
+  (start "debug-engine-check.app")
 )

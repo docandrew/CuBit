@@ -155,11 +155,6 @@ is
                              arg0, arg1 : Unsigned_64;
                              retval     : out Unsigned_64);
 
-    -- arg2 = a process handle with RIGHT_GRANT for the target.
-    procedure handleSetCpu (callerPID  : Process.ProcessID;
-                            arg0, arg1, arg2 : Unsigned_64;
-                            retval     : out Unsigned_64);
-
     -- MOVE_REPLY_CAPABILITY: the calling thread's current reply authority
     -- becomes a kernel-placed CAP_REPLY handle (returned), or a refusal.
     procedure handleSaveReplyCap (callerPID : Process.ProcessID;

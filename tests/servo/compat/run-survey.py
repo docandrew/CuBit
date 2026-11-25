@@ -64,9 +64,9 @@ GUEST_BOOT_SECONDS = 180
 POLL_SECONDS = 0.5
 RECORD = re.compile(r"PENNY-COMPAT (\S+) (\S+) (\S+) (\d+)/(\d+) ?(.*)")
 PANIC = re.compile(r"CUBITSHELL: panic[^\n]*|USER-MEMORY-FAULT[^\n]*|PENNY-ABORT:[^\n]*|EXCEPTION:[^\n]*")
-INIT = ('(startup v1 (start "logstore.svc" (priority 5)) (start "clock.svc" (priority 5)) '
-        '(start "display.svc" (priority 5)) (start "desktop.svc" (priority 4)) '
-        '(start "cubitshell.app" (priority 3) (network approve-declared)))')
+INIT = ('(startup v1 (start "logstore.svc") (start "clock.svc") '
+        '(start "display.svc") (start "desktop.svc") '
+        '(start "cubitshell.app" (network approve-declared)))')
 # The development system's configured resolver (system.ccl net.dns.primary,
 # QEMU user networking's forwarder); it takes precedence over the DHCP
 # lease's, so passt answers that address with the host's resolver.

@@ -2,6 +2,6 @@
 # secondary-stack-check process, its main thread and two extra threads at
 # once, then a deliberate reservation exhaustion that must end it cleanly.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "secondary-stack-check.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "secondary-stack-check.app")
 )

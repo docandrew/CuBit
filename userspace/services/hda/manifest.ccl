@@ -1,8 +1,10 @@
 # hda.drv's authority (docs/ccl-driver-manifests.md, CAP-002). devmgr
 # answers every binding when it launches the driver: the register window,
-# the interrupt (an allocated vector, or the legacy line), its registration,
-# the mixer's endpoint and its endpoint to devmgr. devmgr starts one driver
-# per controller; only the mixer's output gets the HDA role's registration.
+# the interrupt (an allocated vector, or the legacy line), real-time CPU to
+# take each period interrupt (250 us of every 5 ms, docs/scheduler.md "Soft
+# real time"), its registration, the mixer's endpoint and its endpoint to
+# devmgr. devmgr starts one driver per controller; only the mixer's output
+# gets the HDA role's registration.
 (Executable_Manifest
   identity => "com.cubit.hda"
   version => "0.1.0"
@@ -12,6 +14,7 @@
   requests => [
     (device-memory "registers" 0 16384 Access.Read_Write)
     (interrupt "controller" Interrupt_Mode.MSI 1)
+    (scheduling "scheduling" 250 5000)
     (dma "streams" 8388608)
     (notification "hda" Notify_Access.Manage "registration")
     (service "mixer" "mixer")

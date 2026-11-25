@@ -108,7 +108,7 @@ package body CuBit.Launching is
       Msg.words :=
         [CuBit.Grant_References.Encode (Lent_Reference),
          Unsigned_64 (Program'Length), Unsigned_64 (Arguments'Length),
-         LG.Request_Word (0, Grants'Length, Ring_Bytes)];
+         LG.Request_Word (Grants'Length, Ring_Bytes)];
       declare
          Received : CuBit.Handles.IPC.Carried;
       begin

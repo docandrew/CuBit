@@ -3,13 +3,13 @@
 # are linked in (the disk has none); the host serves one page over HTTP and
 # one over HTTPS (trusted through the test CA installed as the trust store).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
   # Services Penny's manifest requires (CAP-003 refuses its launch without
   # them): the desktop session, as in init-servo-desktop.ccl. The batch
   # pages still run (servo/batch-test), in Penny's window.
-  (start "display.svc" (priority 5))
-  (start "metrics.svc" (priority 2))
-  (start "desktop.svc" (priority 4))
-  (start "cubitshell.app" (priority 3) (network approve-declared))
+  (start "display.svc")
+  (start "metrics.svc")
+  (start "desktop.svc")
+  (start "cubitshell.app" (network approve-declared))
 )

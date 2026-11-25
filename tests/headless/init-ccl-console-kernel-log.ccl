@@ -6,12 +6,12 @@
 # (logs.recent "<program>") at the console returns each, and
 # (logs.recent "kernel") returns kernel lines from before logstore started.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "crash-probe.app" (priority 5))
-  (start "fault-check.app" (priority 5))
-  (start "stack-probe.app" (priority 5))
-  (start "clock.svc" (priority 5))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "ccl-console.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "crash-probe.app")
+  (start "fault-check.app")
+  (start "stack-probe.app")
+  (start "clock.svc")
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "ccl-console.app")
 )

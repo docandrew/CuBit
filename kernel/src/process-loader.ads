@@ -33,7 +33,6 @@ package Process.Loader is
                    size         : System.Storage_Elements.Storage_Count;
                    strAddr      : System.Address;
                    requestedPID : ProcessID := NO_PROCESS;
-                   priority     : ProcessPriority := 1;
                    ppid         : ProcessID := NO_PROCESS;
                    sourcePID    : ProcessID := NO_PROCESS;
                    handleLimit  : Process_Capabilities.Tables.Handle_Limit :=

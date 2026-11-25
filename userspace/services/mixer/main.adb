@@ -35,6 +35,9 @@ procedure main is
    package Clock renames CuBit.Benchmark_Clock;
    package Timing renames CuBit.Timing_Histograms;
    Mix_Timing, Publication_Timing : Timing.Histogram;
+   --  Each period's handling, from its notification's receipt to the
+   --  mixed periods written (the mixer's CPU time per period).
+   Period_Timing : Timing.Histogram;
    Received_At : Unsigned_64;
 
    --  IPC labels
@@ -230,6 +233,7 @@ procedure main is
       --  Before the device starts, every period belongs to the mixer.  Prime
       Mix_Timing := Timing.Empty;
       Publication_Timing := Timing.Empty;
+      Period_Timing := Timing.Empty;
       --  the complete cyclic buffer so the first sample can play immediately.
       for slot in 0 .. periodCount - 1 loop
          mixIntoPeriod (slot);
@@ -269,6 +273,7 @@ procedure main is
          -- The measured stream has stopped; no per-sample serial output.
          Clock.Report ("audio-mix-and-copy", Mix_Timing);
          Clock.Report ("audio-driver-publication-to-mixer", Publication_Timing);
+         Clock.Report ("audio-mixer-period-handling", Period_Timing);
       end if;
    end stopHardware;
 
@@ -426,6 +431,13 @@ begin
                then
                   Timing.Add (Publication_Timing, Received_At - msg.words (3));
                end if;
+               declare
+                  Handled_At : constant Unsigned_64 := Clock.Read_Counter;
+               begin
+                  if Handled_At >= Received_At then
+                     Timing.Add (Period_Timing, Handled_At - Received_At);
+                  end if;
+               end;
 
             end if;
          end if;

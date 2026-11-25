@@ -1,5 +1,5 @@
 # tests/fs-coherence case readdir-after-other-create (headless: fs-coherence-readdir-after-other-create).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "fs-coherence-readdir-after-other-create.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "fs-coherence-readdir-after-other-create.app")
 )

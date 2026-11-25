@@ -8,7 +8,7 @@ how much work the background load got done. One C source (`sched-latency.c`,
 POSIX plus futexes) runs on CuBit and on Linux.
 
 Everything is an ordinary application: the probe and its IPC peer start at
-priority 3 (what desktop.svc gives a launched app), nothing is pinned, and
+in the ordinary class (as a launched app), nothing is pinned, and
 nothing holds scheduling authority. Background loads and the waker are
 threads of the probe process, from a pool of CPUs + 2 threads created at
 start.

@@ -2,9 +2,9 @@
 # desktop starts; the kernel's kill record must reach logstore, procmgr's
 # exit line and the Desktop bootstrap screen.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "fault-check.app" (priority 5))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "fault-check.app")
+  (start "display.svc")
+  (start "desktop.svc")
 )

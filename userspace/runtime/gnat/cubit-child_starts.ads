@@ -56,7 +56,6 @@ package CuBit.Child_Starts is
      (Program    : String;
       Restart    : CS.Restart_Kind;
       Stop_Grace : CS.Grace_Ms;
-      Priority   : CS.Priority_Value;
       Kind       : CS.Child_Kind := CS.Worker;
       Intensity  : CS.Intensity_Count := 0;
       Window     : CS.Window_Ms := 0;

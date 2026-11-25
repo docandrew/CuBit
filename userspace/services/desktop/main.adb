@@ -696,8 +696,6 @@ procedure main is
    --  display IPC. Output retirement still governs transfer-buffer writes.
    cursorPresentPending : Boolean := False;
 
-   --  Priority for applications launched from Apps (see trySpawnApplication).
-   APP_PRIORITY : constant Unsigned_64 := 3;
 
    function memcpy
       (dest : System.Address;
@@ -11741,10 +11739,9 @@ procedure main is
       msg.words (0) := CuBit.Grant_References.Encode (spawnGrant);
       msg.words (1) := Unsigned_64 (len);
       msg.words (2) := 0;
-      --  Scheduling priority: higher runs first. Launched applications run
-      --  below desktop.svc (4) so a busy app cannot starve the compositor,
-      --  which also draws the software cursor.
-      msg.words (3) := CuBit.Launch_Grants.Request_Word (Unsigned_32 (APP_PRIORITY), 0);
+      --  No delegated places. (Scheduling is not the launcher's to choose:
+      --  every app runs in the ordinary class unless granted another.)
+      msg.words (3) := CuBit.Launch_Grants.Request_Word (0);
       CR.Allocate (requestSequence, New_Token);
       CR.Begin_Request (launchRequest, New_Token, Accepted);
       if not Accepted then

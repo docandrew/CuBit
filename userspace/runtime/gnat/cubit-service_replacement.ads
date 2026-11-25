@@ -14,7 +14,7 @@
 --  the new program: procmgr's Switch_Operation below. procmgr stops the
 --  running instance (Stop, then ends it after the caller's grace), starts
 --  the program as the same startup-plan entry (the same identity,
---  approvals, parameters, priority and supervision), and watches it for
+--  approvals, parameters and supervision), and watches it for
 --  the caller's health window. A program that does not start, ends, or
 --  has not registered its service role when the window closes is ended
 --  and the program the entry ran before is started again (Rolled_Back).

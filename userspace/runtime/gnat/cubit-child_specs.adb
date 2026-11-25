@@ -77,7 +77,7 @@ package body CuBit.Child_Specs with SPARK_Mode is
       Put (Restart_Kind'Enum_Rep (S.Restart), 1);
       Put (Child_Kind'Enum_Rep (S.Kind), 1);
       Put (Supervisor_Choice'Enum_Rep (S.Supervisor), 1);
-      Put (Unsigned_64 (S.Priority), 1);
+      Put (0, 1);   --  reserved
       Put (Parameter_Source'Enum_Rep (S.Source), 1);
       Put (Unsigned_64 (S.Facts), 1);
       Put (Unsigned_64 (S.Bindings), 1);
@@ -225,10 +225,9 @@ package body CuBit.Child_Specs with SPARK_Mode is
       end if;
       S.Supervisor := Caller;
       Take (1, Word, Ok);
-      if Word not in Minimum_Priority .. Maximum_Priority then
-         Status := Bad_Number; return;
+      if Word /= 0 then
+         Status := Bad_Reserved; return;
       end if;
-      S.Priority := Priority_Value (Word);
       Take (1, Word, Ok);
       case Word is
          when 0 => S.Source := No_Parameters;

@@ -1,5 +1,5 @@
 # tests/fs-coherence case lock-close (headless: fs-coherence-lock-close).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "fs-coherence-lock-close.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "fs-coherence-lock-close.app")
 )

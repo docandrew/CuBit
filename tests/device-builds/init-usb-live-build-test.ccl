@@ -3,20 +3,20 @@
 # differs, the kernel console (serial), so the host side can pair
 # (tests/device-builds/run-live.sh checks that nothing else does).
 (startup v1
-  (start "logstore.svc" (priority 5))
+  (start "logstore.svc")
   # MET-002: the metrics store, before every program that declares a
   # com.cubit-os.stdmetric outlet (Desktop), so their outlets are wired at launch.
-  (start "metrics.svc" (priority 5))
-  (start "clock.svc" (priority 5))
+  (start "metrics.svc")
+  (start "clock.svc")
   # The agent path (AGENT-002): tls.svc holds the trust store (tls/roots.der)
   # and connects for llm.svc, whose one tls-scope is the Messages API host.
   # timesync keeps the wall clock certificate validation needs.
-  (start "tls.svc" (priority 5) (network approve-declared))
+  (start "tls.svc" (network approve-declared))
   # (replace transparent): timesync has no clients and keeps nothing (the
   # next instance polls again); it exits on Stop between polls.
-  (start "timesync.svc" (priority 5) (network approve-declared) (replace transparent))
-  (start "config-storage.svc" (priority 5) (role config-storage))
-  (start "display.svc" (priority 5))
+  (start "timesync.svc" (network approve-declared) (replace transparent))
+  (start "config-storage.svc" (role config-storage))
+  (start "display.svc")
   # ACPI (ACPI-ONE-001): the one acpi.svc holds the hardware grant (FADT
   # fixed blocks, FACS/NVS memory), the platform-register pool through
   # its firmware-data endpoint and the read-only PCI configuration
@@ -30,7 +30,7 @@
   # the program before runs again. Startup is re-run, device _INI included,
   # not handed over (no firmware-state handover yet, LIVE-001): a
   # development path while bring-up stops before _INI on the laptop.
-  (start "acpi.svc" (priority 5) (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Known_Windows))
+  (start "acpi.svc" (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Known_Windows))
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (platform-power approve-declared)
     (acpi-firmware-data approve-declared) (acpi-pci-config approve-declared)
     (replace graceful)
@@ -44,7 +44,7 @@
   # stop grace of every entry without (stop-grace-ms ...) and of the apps
   # Desktop launched: at least CuBit.UI.Recovery's 1500 ms, so Text writes
   # its recovery copies before it is ended.
-  (start "power.svc" (priority 5)
+  (start "power.svc"
     (arguments (Power_Parameters undeclared_grace_ms => 2000 storage_deadline_ms => 10000
                                  driver_grace_ms => 1000 button => Button_Policy.Power_Off
                                  reading_age_ms => 60000)))
@@ -91,7 +91,7 @@
   # firmware state; clients reconnect). acpi.svc above and desktop.svc
   # below are graceful; entries without (replace ...) keep the default
   # contract, reboot.
-  (start "lexicon.svc" (priority 4) (replace transparent))
+  (start "lexicon.svc" (replace transparent))
   # GPU rendering is a settings grant (desktop.render.gpu, default on);
   # without a supported GPU devmgr refuses the session and Desktop renders
   # in software. One image for every machine (HW-002).
@@ -101,16 +101,16 @@
   # within the stop grace; the new program takes the display (headless
   # desktop-live-replace). Windows are not handed over yet (UI-037): the
   # apps Desktop hosts lose them.
-  (start "desktop.svc" (priority 4) (render setting "desktop.render.gpu")
+  (start "desktop.svc" (render setting "desktop.render.gpu")
     (restart on-failure) (replace graceful))
-  (start "boot-logs.app" (priority 4))
+  (start "boot-logs.app")
   # tls.svc has registered by now (llm.svc's TLS scope needs it). The API
   # key is the named secret anthropic-api-key, typed into agent.app's
   # masked entry; only llm.svc's registered role may use it (SEC-022).
-  (start "secrets.svc" (priority 5)
+  (start "secrets.svc"
     (arguments (Secrets_Parameters
       grant => (Secret_Grant secret => "anthropic-api-key" holder => Secret_Holder.Llm_Service))))
-  (start "llm.svc" (priority 5) (network approve-declared)
+  (start "llm.svc" (network approve-declared)
     (arguments (Llm_Service_Parameters
       endpoint => "api.anthropic.com:443" api_key_secret => "anthropic-api-key")))
   # The LAN remote session (tools/cubit-remote) with builds granted
@@ -121,7 +121,7 @@
   # other. An app built here replaces the running one only while the
   # person turns on "Allow app replacement" (the Deskbar's Remote access
   # section, off at boot); screenshots likewise ("Allow screen capture").
-  (start "ccl-remote.app" (priority 4) (network approve-declared) (test-console approve-declared) (display-capture approve-declared)
+  (start "ccl-remote.app" (network approve-declared) (test-console approve-declared) (display-capture approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
       display => Pairing_Display.Test_Console work => "@system/work"
       files => true builds => true mail => true)))
@@ -130,6 +130,6 @@
   # (system.install ...) are typed there. The install payload
   # (@cd:0/install) carries the image closure and this live RAM root's
   # device-build payload onto the installed root.
-  (start "installer.svc" (priority 4))
-  (start "ccl-console.app" (priority 3))
+  (start "installer.svc")
+  (start "ccl-console.app")
 )

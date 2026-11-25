@@ -40,7 +40,7 @@ url = f'http://10.0.2.2:{server.server_port}/'
 (d / 'pages').write_text(url + '\n')
 (d / 'empty').write_text('')
 profile = d / 'init.ccl'
-profile.write_text('(startup v1 (start "logstore.svc" (priority 5)) (start "clock.svc" (priority 5)) (start "display.svc" (priority 5)) (start "desktop.svc" (priority 4)) (start "cubitshell.app" (priority 3) (network approve-declared)))')
+profile.write_text('(startup v1 (start "logstore.svc") (start "clock.svc") (start "display.svc") (start "desktop.svc") (start "cubitshell.app" (network approve-declared)))')
 stage = root / 'kernel/isodir/boot'
 app = root / 'userspace/rust/build/cubitshell.app'
 fonts = Path(os.environ['IBM_PLEX_SANS_FONT']).parent

@@ -4,10 +4,10 @@
 # series and its own through its metrics-observer endpoint and scopes
 # (tests/headless/run.sh --test metricsview --accel kvm).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "metrics.svc" (priority 5))
-  (start "clock.svc" (priority 5))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "metricsview.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "metrics.svc")
+  (start "clock.svc")
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "metricsview.app")
 )

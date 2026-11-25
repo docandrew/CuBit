@@ -4,12 +4,12 @@
 # is the ccl-console-fetch-test variant: only its tls scope differs from
 # production's "*:443" (the fixture's name and port), approved here.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "tls.svc" (priority 5) (network approve-declared))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "tls.svc" (network approve-declared))
   # tls.svc must have registered before the console launches, or procmgr
   # installs no TLS scope for it: the display and desktop start between.
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "ccl-console.app" (priority 3) (network approve-declared))
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "ccl-console.app" (network approve-declared))
 )

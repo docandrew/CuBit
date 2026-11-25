@@ -33,18 +33,18 @@ class Configurations(unittest.TestCase):
             self.assertIn(diagnostic, result.stderr)
 
     def test_render_requires_explicit_approval(self):
-        base = '(startup v1 (start "render.app" (priority 5) %s))'
+        base = '(startup v1 (start "render.app" %s))'
         for clause in ('', '(render deny)'):
             result = self.compile(base % clause)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, 'render.app pri=5\n')
+            self.assertEqual(result.stdout, 'render.app\n')
         result = self.compile(base % '(render approve-declared)')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, 'render.app pri=5 render=declared\n')
+        self.assertEqual(result.stdout, 'render.app render=declared\n')
         # HW-002: the approval delegated to a GPU_Rendering catalog setting.
         result = self.compile(base % '(render setting "desktop.render.gpu")')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, 'render.app pri=5 render=setting:desktop.render.gpu\n')
+        self.assertEqual(result.stdout, 'render.app render=setting:desktop.render.gpu\n')
         for clause in ('(render all)', '(render true)', '(render 1)',
                        '(render)', '(render approve-declared extra)',
                        '(render setting)', '(render setting "gpu.power.waitboost")',
@@ -56,14 +56,14 @@ class Configurations(unittest.TestCase):
                             'DUPLICATE_FIELD')
 
     def test_firmware_snapshot_requires_explicit_approval(self):
-        base = '(startup v1 (start "acpi.svc" (priority 5) %s))'
+        base = '(startup v1 (start "acpi.svc" %s))'
         for clause in ('', '(firmware-snapshot deny)'):
             result = self.compile(base % clause)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, 'acpi.svc pri=5\n')
+            self.assertEqual(result.stdout, 'acpi.svc\n')
         result = self.compile(base % '(firmware-snapshot approve-declared)')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, 'acpi.svc pri=5 firmware-snapshot=approved\n')
+        self.assertEqual(result.stdout, 'acpi.svc firmware-snapshot=approved\n')
         for clause in ('(firmware-snapshot)', '(firmware-snapshot all)',
                        '(firmware-snapshot approve-declared extra)', '(firmware-snapshot "tables")'):
             self.reject(base % clause)
@@ -75,15 +75,15 @@ class Configurations(unittest.TestCase):
         with the firmware snapshot reader's approval on one entry. The one
         acpi.svc (ACPI-ONE-001) holds the hardware itself; the former
         role-35 (acpi-registers ...) approval no longer exists."""
-        base = '(startup v1 (start "acpi.svc" (priority 5) %s))'
+        base = '(startup v1 (start "acpi.svc" %s))'
         for clause in ('', '(acpi-hardware deny)'):
             result = self.compile(base % clause)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, 'acpi.svc pri=5\n')
+            self.assertEqual(result.stdout, 'acpi.svc\n')
         result = self.compile(base % '(firmware-snapshot approve-declared) (acpi-hardware approve-declared)')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
+                         'acpi.svc firmware-snapshot=approved acpi-hardware=approved\n')
         for clause in ('(acpi-hardware)', '(acpi-hardware all)', '(acpi-hardware approve-declared extra)',
                        '(acpi-hardware "hardware")'):
             self.reject(base % clause)
@@ -94,15 +94,15 @@ class Configurations(unittest.TestCase):
     def test_trace_approval_is_explicit(self):
         """(trace approve-declared) (Trace_ABI): off unless written, once;
         the manifest's Request.Trace alone never installs the object."""
-        base = '(startup v1 (start "bench-ipc-client.app" (priority 5) %s))'
+        base = '(startup v1 (start "bench-ipc-client.app" %s))'
         for clause in ('', '(trace deny)'):
             result = self.compile(base % clause)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, 'bench-ipc-client.app pri=5\n')
+            self.assertEqual(result.stdout, 'bench-ipc-client.app\n')
         result = self.compile(base % '(platform-power approve-declared) (trace approve-declared)')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'bench-ipc-client.app pri=5 platform-power=approved trace=approved\n')
+                         'bench-ipc-client.app platform-power=approved trace=approved\n')
         for clause in ('(trace)', '(trace all)', '(trace approve-declared extra)', '(trace "trace")'):
             self.reject(base % clause)
         self.reject(base % '(trace deny) (trace approve-declared)', 'DUPLICATE_FIELD')
@@ -111,14 +111,14 @@ class Configurations(unittest.TestCase):
         """(test-console approve-declared) (Test_Console_ABI, ABI-002): off
         unless written, once; the manifest's request alone never installs
         the object (test plans approve it for logstore's test variant)."""
-        base = '(startup v1 (start "logstore.svc" (priority 5) %s))'
+        base = '(startup v1 (start "logstore.svc" %s))'
         for clause in ('', '(test-console deny)'):
             result = self.compile(base % clause)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, 'logstore.svc pri=5\n')
+            self.assertEqual(result.stdout, 'logstore.svc\n')
         result = self.compile(base % '(test-console approve-declared)')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, 'logstore.svc pri=5 test-console=approved\n')
+        self.assertEqual(result.stdout, 'logstore.svc test-console=approved\n')
         for clause in ('(test-console)', '(test-console all)', '(test-console approve-declared extra)',
                        '(test-console "test-console")'):
             self.reject(base % clause)
@@ -129,17 +129,17 @@ class Configurations(unittest.TestCase):
         unless written, once, beside the entry's other approvals; the
         manifest's Kernel_Object.VM_Create request alone never installs the
         authority, and the approval alone installs nothing undeclared."""
-        base = '(startup v1 (start "vmm.app" (priority 5) %s))'
+        base = '(startup v1 (start "vmm.app" %s))'
         for clause in ('', '(vm-create deny)'):
             result = self.compile(base % clause)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, 'vmm.app pri=5\n')
+            self.assertEqual(result.stdout, 'vmm.app\n')
         result = self.compile(base % '(vm-create approve-declared)')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, 'vmm.app pri=5 vm-create=approved\n')
+        self.assertEqual(result.stdout, 'vmm.app vm-create=approved\n')
         result = self.compile(base % '(test-console approve-declared) (vm-create approve-declared)')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, 'vmm.app pri=5 test-console=approved vm-create=approved\n')
+        self.assertEqual(result.stdout, 'vmm.app test-console=approved vm-create=approved\n')
         for clause in ('(vm-create)', '(vm-create all)', '(vm-create approve-declared extra)',
                        '(vm-create "vm-create")', '(vm approve-declared)'):
             self.reject(base % clause)
@@ -149,14 +149,14 @@ class Configurations(unittest.TestCase):
         """(platform-power approve-declared) (KERN-004): off unless written,
         once, beside the entry's other approvals; the manifest's
         Request.Platform_Power alone never installs the object."""
-        base = '(startup v1 (start "acpi.svc" (priority 5) %s))'
+        base = '(startup v1 (start "acpi.svc" %s))'
         for clause in ('', '(platform-power deny)'):
             result = self.compile(base % clause)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, 'acpi.svc pri=5\n')
+            self.assertEqual(result.stdout, 'acpi.svc\n')
         result = self.compile(base % '(acpi-hardware approve-declared) (platform-power approve-declared)')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, 'acpi.svc pri=5 acpi-hardware=approved platform-power=approved\n')
+        self.assertEqual(result.stdout, 'acpi.svc acpi-hardware=approved platform-power=approved\n')
         for clause in ('(platform-power)', '(platform-power all)',
                        '(platform-power approve-declared extra)', '(platform-power "power")'):
             self.reject(base % clause)
@@ -166,7 +166,7 @@ class Configurations(unittest.TestCase):
         """(display-capture approve-declared) (REMOTE-001 screenshots): off
         unless written, once, beside the entry's other approvals; the
         manifest's request alone never grants Desktop's capture badge."""
-        base = ('(startup v1 (start "ccl-remote.app" (priority 4) (network approve-declared) %s))')
+        base = ('(startup v1 (start "ccl-remote.app" (network approve-declared) %s))')
         for clause in ('', '(display-capture deny)'):
             result = self.compile(base % clause)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -183,7 +183,7 @@ class Configurations(unittest.TestCase):
         """(acpi-pci-config approve-declared) (ACPI-PCI-001): explicit, once,
         and only beside (acpi-hardware approve-declared): alone it would
         approve a window of a grant the entry does not have."""
-        base = '(startup v1 (start "acpi.svc" (priority 5) %s))'
+        base = '(startup v1 (start "acpi.svc" %s))'
         hardware = '(firmware-snapshot approve-declared) (acpi-hardware approve-declared)'
         result = self.compile(base % hardware)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -191,11 +191,11 @@ class Configurations(unittest.TestCase):
         result = self.compile(base % (hardware + ' (acpi-pci-config deny)'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
+                         'acpi.svc firmware-snapshot=approved acpi-hardware=approved\n')
         result = self.compile(base % (hardware + ' (acpi-pci-config approve-declared)'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
+                         'acpi.svc firmware-snapshot=approved acpi-hardware=approved'
                          ' acpi-pci-config=approved\n')
         self.reject(base % '(acpi-pci-config approve-declared)', 'INVALID_APPROVAL')
         self.reject(base % '(acpi-hardware deny) (acpi-pci-config approve-declared)',
@@ -210,7 +210,7 @@ class Configurations(unittest.TestCase):
         """(acpi-firmware-data approve-declared) (table-named firmware data,
         CuBit.Firmware_Data_Exchange): explicit, once, and only beside
         (acpi-hardware approve-declared), like acpi-pci-config."""
-        base = '(startup v1 (start "acpi.svc" (priority 5) %s))'
+        base = '(startup v1 (start "acpi.svc" %s))'
         hardware = '(firmware-snapshot approve-declared) (acpi-hardware approve-declared)'
         result = self.compile(base % hardware)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -218,17 +218,17 @@ class Configurations(unittest.TestCase):
         result = self.compile(base % (hardware + ' (acpi-firmware-data deny)'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved\n')
+                         'acpi.svc firmware-snapshot=approved acpi-hardware=approved\n')
         result = self.compile(base % (hardware + ' (acpi-firmware-data approve-declared)'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
+                         'acpi.svc firmware-snapshot=approved acpi-hardware=approved'
                          ' acpi-firmware-data=approved\n')
         result = self.compile(base % (hardware + ' (acpi-pci-config approve-declared)'
                                       ' (acpi-firmware-data approve-declared)'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'acpi.svc pri=5 firmware-snapshot=approved acpi-hardware=approved'
+                         'acpi.svc firmware-snapshot=approved acpi-hardware=approved'
                          ' acpi-pci-config=approved acpi-firmware-data=approved\n')
         self.reject(base % '(acpi-firmware-data approve-declared)', 'INVALID_APPROVAL')
         self.reject(base % '(acpi-hardware deny) (acpi-firmware-data approve-declared)',
@@ -291,15 +291,15 @@ class Configurations(unittest.TestCase):
                             'clock.time-zone=UTC\ntime.servers=time.cloudflare.com 0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org\n')
                 elif relative.as_posix() in ('init.conf', 'tests/headless/init-desktop-session.conf'):
                     # Explicit, reviewed post-migration service additions.
-                    added = ('timesync.svc pri=5 network=declared\n'
+                    added = ('timesync.svc network=declared\n'
                              if relative.as_posix() == 'init.conf' else '')
-                    expected = expected.replace('clock.svc pri=5\n',
-                        'clock.svc pri=5\n' + added + 'tls.svc pri=5 network=declared\n')
+                    expected = expected.replace('clock.svc\n',
+                        'clock.svc\n' + added + 'tls.svc network=declared\n')
                 elif relative.as_posix() == 'tests/headless/init-capability-security.conf':
                     # The committed construction-failure tests intentionally
                     # extended this profile after the original migration.
-                    expected = ('bad-phdr.app pri=5\nbad-segment.app pri=5\n'
-                                'bad-stack.app pri=5\n' + 'overlap.app pri=5\n' * 8 + expected)
+                    expected = ('bad-phdr.app\nbad-segment.app\n'
+                                'bad-stack.app\n' + 'overlap.app\n' * 8 + expected)
                 result = self.compile(source.read_text())
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout, expected)
@@ -350,11 +350,11 @@ class Configurations(unittest.TestCase):
 
     def test_explicit_approval_and_order(self):
         result = self.compile('''(startup v1
-          (start "a.app" (priority (+ 2 3)))
-          (start "a.app" (network approve-declared) (priority 5))
-          (start "b.svc" (priority 4) (network deny)))''')
+          (start "a.app")
+          (start "a.app" (network approve-declared))
+          (start "b.svc" (network deny)))''')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, 'a.app pri=5\na.app pri=5 network=declared\nb.svc pri=4\n')
+        self.assertEqual(result.stdout, 'a.app\na.app network=declared\nb.svc\n')
 
     def test_rejected_config(self):
         for text, diagnostic in [
@@ -377,30 +377,29 @@ class Configurations(unittest.TestCase):
                 self.reject(text, diagnostic)
 
     def test_storage_role_is_explicit_and_unique(self):
-        start = '(start "store.svc" (priority 5) (role config-storage))'
+        start = '(start "store.svc" (role config-storage))'
         result = self.compile(f'(startup v1 {start})')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, 'store.svc pri=5 role=config-storage\n')
+        self.assertEqual(result.stdout, 'store.svc role=config-storage\n')
         self.reject(f'(startup v1 {start} {start})', 'INVALID_ROLE')
         self.reject(f'(startup v1 {start.replace("config-storage", "root")})', 'INVALID_ROLE')
-        self.reject('(startup v1 (start "store.svc" (priority 5) (role application) (role config-storage)))', 'DUPLICATE_FIELD')
+        self.reject('(startup v1 (start "store.svc" (role application) (role config-storage)))', 'DUPLICATE_FIELD')
 
     def test_rejected_launches(self):
-        base = '(startup v1 (start "a.app" (priority 5)))'
+        base = '(startup v1 (start "a.app" (network deny)))'
         for name in ('../evil.app', '/a.app', 'a.app network=declared', '@mem:0/a.app', '.app', 'a.'):
             self.reject(base.replace('a.app', name), 'INVALID_EXECUTABLE')
-        for priority in ('0', '11', '-1', 'true', '"5"'):
-            self.reject(base.replace('priority 5', f'priority {priority}'), 'INVALID_PRIORITY')
-        self.reject('(startup v1 (start "a.app"))', 'MISSING_FIELD')
-        self.reject(base.replace('(priority 5)', '(priority 5) (priority 4)'), 'DUPLICATE_FIELD')
-        self.reject(base.replace('(priority 5)', '(priority 5) (network yes)'), 'INVALID_APPROVAL')
-        self.reject(base.replace('(priority 5)', '(priority 5) (network deny) (network approve-declared)'),
+        # Fixed priorities are retired (docs/scheduler.md): scheduling is a
+        # granted class, never a number a plan picks.
+        self.reject(base.replace('(network deny)', '(priority 5)'), 'UNKNOWN_DECLARATION')
+        self.reject(base.replace('(network deny)', '(network yes)'), 'INVALID_APPROVAL')
+        self.reject(base.replace('(network deny)', '(network deny) (network approve-declared)'),
                     'DUPLICATE_FIELD')
-        self.reject(base.replace('(priority 5)', '(priority 5) (grant everything)'), 'UNKNOWN_DECLARATION')
+        self.reject(base.replace('(network deny)', '(network deny) (grant everything)'), 'UNKNOWN_DECLARATION')
 
     def test_symbolic_format_versions(self):
         for kind, fields in (("system-config", '(setting "x" 1)'),
-                             ("startup", '(start "a.app" (priority 5))')):
+                             ("startup", '(start "a.app")')):
             for token in ("1", "2", "v2", "V1", '"v1"', "(+ 0 1)"):
                 with self.subTest(kind=kind, token=token):
                     self.reject(f"({kind} {token} {fields})")
@@ -415,8 +414,8 @@ class Configurations(unittest.TestCase):
                 self.reject(source, 'INVALID_KEY')
         self.reject('(system-config v1 ' + ' '.join(f'(setting "k{i}" 1)' for i in range(129)) + ')',
                     'TOO_MANY_ENTRIES')
-        self.assertEqual(self.compile('(startup v1 ' + '(start "a.app" (priority 5))' * 32 + ')').returncode, 0)
-        self.reject('(startup v1 ' + '(start "a.app" (priority 5))' * 33 + ')', 'TOO_MANY_ENTRIES')
+        self.assertEqual(self.compile('(startup v1 ' + '(start "a.app")' * 32 + ')').returncode, 0)
+        self.reject('(startup v1 ' + '(start "a.app")' * 33 + ')', 'TOO_MANY_ENTRIES')
         value = 'x5'
         for i in reversed(range(1, 6)):
             value = f'(let ((x{i} (concat x{i-1} x{i-1}))) {value})'
@@ -426,13 +425,13 @@ class Configurations(unittest.TestCase):
         self.assertEqual(self.compile(source).returncode, 0)
 
     def test_preflight_is_silent(self):
-        self.source.write_text('(startup v1 (start "a.app" (priority 5)))')
+        self.source.write_text('(startup v1 (start "a.app"))')
         result = subprocess.run([TOOL, self.source], text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, '')
 
     def test_malformed_inputs_do_not_raise(self):
-        source = '(startup v1 (start "a.app" (priority (let ((n 4)) (+ n 1))) (network deny)))'
+        source = '(startup v1 (start "a.app" (stop-grace-ms (let ((n 4)) (* n 1000))) (network deny)))'
         for end in range(len(source)):
             self.reject(source[:end])
         rng = random.Random(1729)
@@ -443,20 +442,20 @@ class Configurations(unittest.TestCase):
 
     def test_startup_policy_fields(self):
         policy = '''(startup v1
-          (start "logstore.svc" (priority 5))
-          (start "ps2.drv" (priority 5) (launch per-device) (approve-device)
+          (start "logstore.svc")
+          (start "ps2.drv" (launch per-device) (approve-device)
             (after "logstore.svc") (ready-deadline-ms 2000) (stop-grace-ms 750))
-          (start "hda.drv" (priority 5) (launch per-device) (approve-device))
-          (start "mixer.svc" (priority 5) (stop-stage power-tail) (after "logstore.svc" "hda.drv")
+          (start "hda.drv" (launch per-device) (approve-device))
+          (start "mixer.svc" (stop-stage power-tail) (after "logstore.svc" "hda.drv")
             (approve-scheduling realtime (budget-us 1500) (period-us 5000))))'''
         result = self.compile(policy)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout,
-                         'logstore.svc pri=5\n'
-                         'ps2.drv pri=5 launch=per-device device=approved after=1 ready-ms=2000'
+                         'logstore.svc\n'
+                         'ps2.drv launch=per-device device=approved after=1 ready-ms=2000'
                          ' stop-grace-ms=750\n'
-                         'hda.drv pri=5 launch=per-device device=approved\n'
-                         'mixer.svc pri=5 after=1,3 scheduling=1500/5000 stop-stage=power-tail\n')
+                         'hda.drv launch=per-device device=approved\n'
+                         'mixer.svc after=1,3 scheduling=1500/5000 stop-stage=power-tail\n')
         for old, bad, diagnostic in [
                 # Dependencies name an earlier, unique entry: acyclic by construction.
                 ('(after "logstore.svc" "hda.drv")', '(after "mixer.svc")', 'INVALID_DEPENDENCY'),
@@ -500,21 +499,21 @@ class Configurations(unittest.TestCase):
         self.assertEqual(self.compile(policy.replace('(budget-us 1500)', '(budget-us 3500)')).returncode, 0)
         # A name started twice is an ambiguous dependency.
         # (restart on-failure): procmgr's own entries only; once.
-        restart = policy.replace('(start "logstore.svc" (priority 5))',
-                                 '(start "logstore.svc" (priority 5) (restart on-failure))')
+        restart = policy.replace('(start "logstore.svc")',
+                                 '(start "logstore.svc" (restart on-failure))')
         result = self.compile(restart)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(result.stdout.startswith('logstore.svc pri=5 restart=on-failure\n'), result.stdout)
+        self.assertTrue(result.stdout.startswith('logstore.svc restart=on-failure\n'), result.stdout)
         self.assertEqual(self.compile(policy.replace(
-            '(start "logstore.svc" (priority 5))',
-            '(start "logstore.svc" (priority 5) (restart never))')).stdout, result.stdout.replace(
+            '(start "logstore.svc")',
+            '(start "logstore.svc" (restart never))')).stdout, result.stdout.replace(
                 ' restart=on-failure', ''))
         for bad, diagnostic in [
                 ('(restart sometimes)', 'INVALID_LAUNCH_MODE'),
                 ('(restart on-failure) (restart never)', 'DUPLICATE_FIELD')]:
             with self.subTest(bad=bad):
-                self.reject(policy.replace('(start "logstore.svc" (priority 5))',
-                                           '(start "logstore.svc" (priority 5) ' + bad + ')'), diagnostic)
+                self.reject(policy.replace('(start "logstore.svc")',
+                                           '(start "logstore.svc" ' + bad + ')'), diagnostic)
         self.reject(policy.replace('(launch per-device) (approve-device))',
                                    '(launch per-device) (approve-device) (restart on-failure))'),
                     'INVALID_LAUNCH_MODE')
@@ -522,26 +521,26 @@ class Configurations(unittest.TestCase):
         # in the trusted plan; procmgr's own entries only; once
         # (CuBit.Service_Replacement).
         for contract in ("transparent", "graceful"):
-            replace = policy.replace('(start "logstore.svc" (priority 5))',
-                                     '(start "logstore.svc" (priority 5) (replace %s))' % contract)
+            replace = policy.replace('(start "logstore.svc")',
+                                     '(start "logstore.svc" (replace %s))' % contract)
             result = self.compile(replace)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertTrue(result.stdout.startswith('logstore.svc pri=5 replace=%s\n' % contract), result.stdout)
+            self.assertTrue(result.stdout.startswith('logstore.svc replace=%s\n' % contract), result.stdout)
             self.assertEqual(self.compile(policy.replace(
-                '(start "logstore.svc" (priority 5))',
-                '(start "logstore.svc" (priority 5) (replace reboot))')).stdout, result.stdout.replace(
+                '(start "logstore.svc")',
+                '(start "logstore.svc" (replace reboot))')).stdout, result.stdout.replace(
                     ' replace=%s' % contract, ''))
         for bad, diagnostic in [
                 ('(replace staged)', 'INVALID_LAUNCH_MODE'),
                 ('(replace graceful) (replace reboot)', 'DUPLICATE_FIELD')]:
             with self.subTest(bad=bad):
-                self.reject(policy.replace('(start "logstore.svc" (priority 5))',
-                                           '(start "logstore.svc" (priority 5) ' + bad + ')'), diagnostic)
+                self.reject(policy.replace('(start "logstore.svc")',
+                                           '(start "logstore.svc" ' + bad + ')'), diagnostic)
         self.reject(policy.replace('(launch per-device) (approve-device))',
                                    '(launch per-device) (approve-device) (replace transparent))'),
                     'INVALID_LAUNCH_MODE')
-        twice = policy.replace('(start "logstore.svc" (priority 5))',
-                               '(start "logstore.svc" (priority 5)) (start "logstore.svc" (priority 5))')
+        twice = policy.replace('(start "logstore.svc")',
+                               '(start "logstore.svc") (start "logstore.svc")')
         self.reject(twice, 'INVALID_DEPENDENCY')
         for end in range(len(policy)):
             self.reject(policy[:end])

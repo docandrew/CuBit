@@ -35,6 +35,24 @@ begin
    Check (Preempts (Deadline'Last, Idle_Key, Margin), "anything preempts idle");
    Check (not Preempts (0, 50, Margin), "no underflow below the margin");
 
+   --  A stale claim on an idle CPU (Settled_Key). Another CPU's placement
+   --  wrote a claimed thread's key into this idle CPU's running key; that
+   --  thread then ran elsewhere. Unsettled, a later wake here with a later
+   --  deadline does not preempt the idle thread and waits for a tick.
+   declare
+      Claimed : constant Ticks := 5_000;
+      Wakee   : constant Ticks := 6_000;
+   begin
+      Check (not Preempts (Wakee, Claimed, Margin),
+             "a stale claim hides an idle CPU from a later wake");
+      Check (Settled_Key (True, Claimed) = Idle_Key,
+             "an idle CPU that stays idle settles at Idle_Key");
+      Check (Preempts (Wakee, Settled_Key (True, Claimed), Margin),
+             "after settling, the wake preempts the idle thread");
+      Check (Settled_Key (False, Claimed) = Claimed,
+             "a running thread's key is left as it is");
+   end;
+
    declare
       All_CPUs : constant CPU_Flags (0 .. 3) := [others => True];
       Running  : CPU_Keys (0 .. 3) := [5_000, 6_000, Idle_Key, 7_000];

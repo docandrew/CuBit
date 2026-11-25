@@ -96,7 +96,6 @@ procedure Supervision_Tests is
       S.Restart := CS.Permanent;
       S.Intensity := 3;
       S.Window := 5_000;
-      S.Priority := 5;
       S.Stop_Grace := 2_000;
       S.Name_Bytes := 11;
       S.Name (1 .. 11) := "hid-i2c.drv";
@@ -165,12 +164,12 @@ procedure Supervision_Tests is
          Check (Decode (Longer) = CS.Bad_Length, "a trailing byte is BAD_LENGTH");
       end;
       Check (Decode (Changed (1, 0)) = CS.Bad_Magic, "magic");
-      Check (Decode (Changed (5, 1)) = CS.Bad_Version, "version 1 (the retired layout)");
+      Check (Decode (Changed (5, 1)) = CS.Bad_Version, "version 1 (a retired layout)");
+      Check (Decode (Changed (5, 2)) = CS.Bad_Version, "version 2 (the layout with a priority)");
       Check (Decode (Changed (7, 4)) = CS.Bad_Enumeration, "restart kind 4");
       Check (Decode (Changed (8, 0)) = CS.Bad_Enumeration, "child kind 0");
       Check (Decode (Changed (9, 2)) = CS.Bad_Enumeration, "supervisor choice 2");
-      Check (Decode (Changed (10, 0)) = CS.Bad_Number, "priority 0");
-      Check (Decode (Changed (10, 11)) = CS.Bad_Number, "priority 11");
+      Check (Decode (Changed (10, 5)) = CS.Bad_Reserved, "the retired priority byte is reserved (zero)");
       Check (Decode (Changed (11, 3)) = CS.Bad_Enumeration, "parameter source 3");
       Check (Decode (Changed (12, CS.Maximum_Facts + 1)) = CS.Bad_Count, "fact count past its ceiling");
       Check (Decode (Changed (15, 3)) = CS.Bad_Enumeration, "start mode 3");
@@ -493,7 +492,7 @@ procedure Supervision_Tests is
    end Class_Tests;
 
    procedure Plan_Tests is
-      Start : constant String := "(startup v1 (start ""logstore.svc"" (priority 5)) ";
+      Start : constant String := "(startup v1 (start ""logstore.svc"") ";
       Value : constant String := Launch_Of ("""descriptor_register""", Policy);
       Good : constant CCL.Configurations.Compilation_Result :=
         Compiled (Start & "(driver-class ""PNP0C50"" " & Value & "))");

@@ -2,7 +2,7 @@
 (startup v1
   (policy (System_Policy debugging => Debugging.Production))
   # ABI-002: services' debug text reaches serial only through logstore's mirror.
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "debug-gate-check.app" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "debug-gate-check.app")
 )

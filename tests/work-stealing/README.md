@@ -5,8 +5,8 @@
 `Work_Stealing` (`kernel/src/work_stealing.ads`) is the pure SPARK rule the
 kernel's steal path uses (`Process.Queues.stealFrom`). An idle CPU may take a
 ready entry from another CPU's list only when it is:
-- ordinary work (priority >= 0, never an idle thread);
-- not pinned (`SET_CPU`, kernel threads);
+- ordinary work (never an idle thread);
+- not pinned (kernel threads: idle, reaper, workers);
 - not being retired;
 - not still executing (switching out) on another CPU;
 - queued for at least `Scheduler_Timing.Steal_Age_Microseconds`.

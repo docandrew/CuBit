@@ -18,8 +18,8 @@ with tempfile.TemporaryDirectory(prefix="ccl-startup-rejection.") as temporary:
     serial = directory / "serial.log"
     shutil.copyfile(root / "kernel/nvme_disk.img", disk)
     source.write_text('''(startup v1
-      (start "shell.app" (priority (+ 2 3)))
-      (start "sleep.app" (priority 0)))
+      (start "shell.app")
+      (start "sleep.app" (priority 5)))
 ''')
     for operation in ("rm init.ccl", f"write {source} init.ccl"):
         result = subprocess.run(["debugfs", "-w", "-R", operation, disk],
@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix="ccl-startup-rejection.") as temporary:
         text=True, capture_output=True, timeout=90)
     log = serial.read_text(errors="replace") if serial.exists() else ""
     expected = ("devmgr: system.ccl seeded into config",
-                "procmgr: init.ccl rejected", "INVALID_PRIORITY")
+                "procmgr: init.ccl rejected", "UNKNOWN_DECLARATION")
     if (run.returncode != 1 or not all(marker in log for marker in expected)
             or "procmgr: init spawn:" in log or "EXCEPTION" in log):
         print(run.stdout, run.stderr, log)

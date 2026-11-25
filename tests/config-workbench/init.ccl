@@ -1,7 +1,7 @@
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "config-storage.svc" (priority 5) (role config-storage))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "ccl-workbench.app" (priority 3)))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "config-storage.svc" (role config-storage))
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "ccl-workbench.app"))

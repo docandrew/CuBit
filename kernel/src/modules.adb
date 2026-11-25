@@ -500,8 +500,7 @@ package body Modules with SPARK_Mode => Off is
     -- it as a new process (suspended). Returns the new PID.
     ---------------------------------------------------------------------------
     function loadFromCpio (ar       : in out Cpio.Archive;
-                           name     : String;
-                           priority : Process.ProcessPriority := 1)
+                           name     : String)
         return Process.ProcessID
 
     is
@@ -542,8 +541,7 @@ package body Modules with SPARK_Mode => Off is
                 elfHeader => hdr,
                 objStart  => elfAddr,
                 size      => elfSize,
-                strAddr   => name'Address,
-                priority  => priority);
+                strAddr   => name'Address);
         end;
 
         if pid = Process.NO_PROCESS then
@@ -825,8 +823,7 @@ package body Modules with SPARK_Mode => Off is
                "devmgr/acpi-backend refused: ROOT_INVENTORY_CAPACITY");
             return;
         end if;
-        devmgrPID := loadFromCpio (cpioArchive, "devmgr.svc",
-                                   priority => 5);
+        devmgrPID := loadFromCpio (cpioArchive, "devmgr.svc");
         if devmgrPID = Process.NO_PROCESS then
             println ("Modules: devmgr.svc not found, falling back.");
             return;

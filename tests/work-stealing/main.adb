@@ -10,7 +10,7 @@ procedure Main is
    function Reference (C : Candidate; Now, Rate, Age : Unsigned_64) return Boolean is
       Min : Unsigned_64;
    begin
-      if C.Priority < 0 or else C.Pinned or else C.Closing or else C.Executing
+      if C.Idle or else C.Pinned or else C.Closing or else C.Executing
         or else Rate = 0
       then
          return False;
@@ -30,9 +30,9 @@ procedure Main is
    Rates : constant array (1 .. 4) of Unsigned_64 := [0, 1, 2, Unsigned_64'Last];
    Ages  : constant array (1 .. 4) of Unsigned_64 := [0, 1, 500, Unsigned_64'Last];
 begin
-   --  Exhaustive over flags, priorities around the idle boundary, and time,
-   --  rate and age boundaries (including clock reversal and saturation).
-   for Priority in -2 .. 2 loop
+   --  Exhaustive over the idle flag, the other flags, and time, rate and
+   --  age boundaries (including clock reversal and saturation).
+   for Idle in Boolean loop
       for Flags in 0 .. 7 loop
          for Queued of Times loop
             for Now of Times loop
@@ -40,7 +40,7 @@ begin
                   for Age of Ages loop
                      declare
                         C : constant Candidate :=
-                          (Priority  => Priority,
+                          (Idle      => Idle,
                            Pinned    => Flags mod 2 = 1,
                            Closing   => (Flags / 2) mod 2 = 1,
                            Executing => (Flags / 4) mod 2 = 1,
@@ -60,11 +60,11 @@ begin
    --  Clock reversal: a stamp from a CPU whose TSC reads ahead is not aged.
    pragma Assert (not Aged (Queued_At => 1_000, Now => 999, Min => 0));
    --  A freshly woken entry (age below the threshold) stays put.
-   pragma Assert (not Eligible ((5, False, False, False, 1_000), 1_499, 1, 500));
-   pragma Assert (Eligible ((5, False, False, False, 1_000), 1_500, 1, 500));
-   --  Idle threads (priority -1) and pinned work never move.
-   pragma Assert (not Eligible ((-1, False, False, False, 0), 10_000, 1, 500));
-   pragma Assert (not Eligible ((5, True, False, False, 0), 10_000, 1, 500));
+   pragma Assert (not Eligible ((False, False, False, False, 1_000), 1_499, 1, 500));
+   pragma Assert (Eligible ((False, False, False, False, 1_000), 1_500, 1, 500));
+   --  Idle threads and pinned work never move.
+   pragma Assert (not Eligible ((True, False, False, False, 0), 10_000, 1, 500));
+   pragma Assert (not Eligible ((False, True, False, False, 0), 10_000, 1, 500));
 
    --  Selection model: first eligible in a sorted list is the best eligible.
    declare

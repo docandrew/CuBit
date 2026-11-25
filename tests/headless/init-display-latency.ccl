@@ -2,8 +2,8 @@
 # key presses at swept refresh phases (tests/headless/run.sh --test
 # display-latency --accel kvm).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "calculator.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "calculator.app")
 )

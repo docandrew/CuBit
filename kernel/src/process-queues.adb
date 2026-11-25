@@ -55,7 +55,7 @@ package body Process.Queues is
     -- age is required.
     function isStealable (pid : ThreadID) return Boolean is
       (Work_Stealing.Eligible
-         ((Priority  => threadtab (pid).priority,
+         ((Idle      => threadtab (pid).idle,
            Pinned    => threadtab (pid).pinned,
            Closing   => Process_Lifetime.Closing (threadtab (pid).lifetime),
            Executing => Process_Lifetime.Executing (threadtab (pid).lifetime),

@@ -20,8 +20,8 @@ import sys
 import time
 
 # QMP qcodes for the characters typed (US layout); shifted ones press shift.
-QCODES = {" ": "spc", "-": "minus", "=": "equal", "\r": "ret"}
-SHIFTED = {"$": "4", "(": "9", ")": "0", "*": "8", "+": "equal"}
+QCODES = {" ": "spc", "-": "minus", "=": "equal", "\r": "ret", "/": "slash", ".": "dot"}
+SHIFTED = {"$": "4", "(": "9", ")": "0", "*": "8", "+": "equal", ">": "dot", "&": "7"}
 HOLD_MS = 30          # each key's press-to-release, below the desktop's repeat delay
 SAMPLES = 10          # timed keys
 ECHO_LINE = b"vmm: key to echo "
@@ -141,6 +141,42 @@ with socket.socket(socket.AF_UNIX) as connection:
                f"greatest {max(times):.1f} ms")
     print(summary, flush=True)
 
+    # CUBIT_VM_LOAD_SECONDS (headless vm-desktop with CUBIT_VM_LOAD=1): both
+    # guest vCPUs then spin (`yes > /dev/null` twice) that long while the
+    # rest of the desktop (Neon Blast's music and frames, input) runs; the
+    # serial log's offsets at the start and end bound the loaded window.
+    load_seconds = float(__import__("os").environ.get("CUBIT_VM_LOAD_SECONDS", "0"))
+    if load_seconds > 0:
+        def offset():
+            try:
+                return log.stat().st_size
+            except FileNotFoundError:
+                return 0
+        print(f"vm-load: idle window ends offset={offset()}", flush=True)
+        type_text("yes>/dev/null&yes>/dev/null&\r")
+        time.sleep(2.0)
+        spin_start = f"vm-load: spin window starts offset={offset()}"
+        print(spin_start, flush=True)
+        loaded = []
+        end = time.monotonic() + load_seconds
+        while time.monotonic() < end:
+            before = echo_lines()
+            start = time.monotonic()
+            key("x")
+            while echo_lines() == before:
+                if time.monotonic() - start > 10:
+                    break
+                time.sleep(0.001)
+            loaded.append((time.monotonic() - start) * 1000)
+            key("backspace")
+            time.sleep(1.0)
+        spin_end = f"vm-load: spin window ends offset={offset()}"
+        print(spin_end, flush=True)
+        load_summary = (f"vm-load: key to echo while the guest spins over {len(loaded)} keys: "
+                        f"least {min(loaded):.1f} ms, median {statistics.median(loaded):.1f} ms, "
+                        f"greatest {max(loaded):.1f} ms")
+        print(load_summary, flush=True)
+
     # Ctrl+C on a foreground sleep: the shell has the serial port as its
     # controlling terminal, so SIGINT ends the sleep.
     type_text("sleep 100\r")
@@ -167,7 +203,19 @@ with socket.socket(socket.AF_UNIX) as connection:
         "- 04-ctrl-c.png: `sleep 100`, Ctrl+C (the guest's ^C), and the next\n"
         "  command answered at once.\n")
     print("vm-desktop-shots: done PASS", flush=True)
-    with open(serial, "a") as f:
-        f.write(summary + "\n")
-        f.write("vm-desktop-shots: done PASS\n")
-    command("quit")
+    # QEMU writes the serial log at its own offset, so a line appended while
+    # it runs can be overwritten by later guest output: quit first, wait
+    # for QEMU to close the connection (it has exited), then append.
+    stream.write(json.dumps({"execute": "quit"}).encode() + b"\n")
+    stream.flush()
+    connection.settimeout(30)
+    try:
+        while stream.readline():
+            pass
+    except OSError:
+        pass
+with open(serial, "a") as f:
+    f.write(summary + "\n")
+    if load_seconds > 0:
+        f.write(spin_start + "\n" + spin_end + "\n" + load_summary + "\n")
+    f.write("vm-desktop-shots: done PASS\n")

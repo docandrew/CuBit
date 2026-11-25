@@ -3,6 +3,6 @@
 # CCL limits the compiler had (8 KiB of program source, 512 syntax nodes,
 # 256 instructions, 32 constants). procmgr loads its sections and launches it.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "large-manifest-probe.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "large-manifest-probe.app")
 )

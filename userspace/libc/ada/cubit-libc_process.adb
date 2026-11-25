@@ -352,7 +352,7 @@ package body CuBit.Libc_Process is
          M : aliased Message :=
            (Label => LA.Launch_Operation, Length => LA.Launch_Request_Words,
             Words => [Request_Grant, Unsigned_64 (Name'Length),
-                      Unsigned_64 (Length), LG.Request_Word (0, Given'Length, Ring_Length)],
+                      Unsigned_64 (Length), LG.Request_Word (Given'Length, Ring_Length)],
             others => <>);
          Label : Unsigned_32;
       begin

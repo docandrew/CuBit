@@ -1,10 +1,10 @@
 # Same Rust code, different manifest authority ceilings; no desktop needed.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "ccl-test-host.svc" (priority 5))
-  (start "clock.svc" (priority 5))
-  (start "rust-probe.app" (priority 5))
-  (start "rust-probe-denied.app" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "ccl-test-host.svc")
+  (start "clock.svc")
+  (start "rust-probe.app")
+  (start "rust-probe-denied.app")
   # Code built for rust-probe's manifest, linked with the denied one: its
   # startup check stops it before it runs (CAP-003).
-  (start "rust-probe-mismatch.app" (priority 5)))
+  (start "rust-probe-mismatch.app"))

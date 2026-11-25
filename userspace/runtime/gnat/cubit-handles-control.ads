@@ -52,7 +52,6 @@ package CuBit.Handles.Control is
      (Authority : Process;
       Image     : System.Address;
       Bytes     : Unsigned_64;
-      Priority  : Unsigned_64;
       Name      : String;
       Parent    : Process_ID;
       Limit     : CuBit.Startup_Tables.Handle_Limit) return Spawn_Result;
@@ -92,8 +91,6 @@ package CuBit.Handles.Control is
      (Target : Process_ID; Authority : Process;
       Block : System.Address; Bytes : Unsigned_64;
       Publications : Unsigned_64 := System_Publications.No_Publications) return Boolean;
-   function Set_CPU (Target : Process_ID; Authority : Process; CPU : Unsigned_64)
-     return Boolean;
    --  SEND_CONTROL: 0 accepted, Busy_Word busy, else refused. Authority
    --  may be No_Process for the target's own launcher.
    Busy_Word : constant Unsigned_64 := Unsigned_64'Last - 1;

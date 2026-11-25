@@ -25,10 +25,17 @@ package Owned_Reservation_Policy with SPARK_Mode => On is
    use Interfaces;
    Page_Bytes : constant Unsigned_64 := 4096;
    Maximum_Reserved_Bytes : constant Unsigned_64 := 2 * 1024 * 1024 * 1024;
-   -- One commit backs at most this much: it zeroes every page under the
-   -- owned-memory and address-space locks, so the time a call holds them
-   -- is bounded. Larger regions are committed in steps.
-   Maximum_Commit_Bytes : constant Unsigned_64 := 16 * 1024 * 1024;
+   -- The most pages one locked step backs or retires. A commit zeroes and
+   -- maps every page, and a release unmaps and frees them, under grantLock
+   -- and the owned-memory and address-space locks with interrupts off;
+   -- every CPU's wait and grant paths take grantLock. So this bounds how
+   -- long one process's heap growth can hold up the whole system (audio
+   -- periods, input). 16 MiB steps (4096 pages) held them for up to
+   -- 141 ms under nested KVM (2026-11).
+   Pages_Per_Locked_Step : constant := 64;
+   -- One commit backs at most this much; larger ranges are committed in
+   -- steps (CuBit.Owned_Reservations, libc's mmap, CuAlloc).
+   Maximum_Commit_Bytes : constant Unsigned_64 := Pages_Per_Locked_Step * Page_Bytes;
    Maximum_Region_Pages : constant := 2 * 1024 * 1024 * 1024 / 4096;
    subtype Page_Count is Unsigned_64 range 0 .. Maximum_Region_Pages;
 

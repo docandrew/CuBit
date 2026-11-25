@@ -147,13 +147,13 @@ def screenshot(name):
         return frame
 try:
     profile = output / "init.ccl"
-    profile.write_text('(startup v1 (start "logstore.svc" (priority 5)) '
-                       '(start "clock.svc" (priority 5)) '
-                       '(start "display.svc" (priority 5)) ' +
-                       ('(start "' + metric_names[0] + '" (priority 2)) ' if metrics_on else '') +
-                       '(start "desktop.svc" (priority 4)' +
+    profile.write_text('(startup v1 (start "logstore.svc") '
+                       '(start "clock.svc") '
+                       '(start "display.svc") ' +
+                       ('(start "' + metric_names[0] + '") ' if metrics_on else '') +
+                       '(start "desktop.svc"' +
                        (' (render approve-declared)' if args.approve_render else '') + ')' +
-                       (' (start "desktop-metrics-observer.app" (priority 3))' if metrics_on and not args.metrics_stall else '') + ' (start "desktop-log-observer.app" (priority 3)) (start "native-mesa-window.app" (priority 3)))')
+                       (' (start "desktop-metrics-observer.app")' if metrics_on and not args.metrics_stall else '') + ' (start "desktop-log-observer.app") (start "native-mesa-window.app"))')
     run("python3", str(builder), str(output / "desktop.img"), "--boot",
         *[str(stage / n) for n in ("logstore.svc", "clock.svc", "display.svc", "desktop.svc", observer.name, client_name, *metric_names)],
         "--file", "init.ccl=" + str(profile))

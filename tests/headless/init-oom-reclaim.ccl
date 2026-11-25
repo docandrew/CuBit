@@ -3,6 +3,6 @@
 # grant) with no page free, and procmgr must report the exit.
 (startup v1
   # ABI-002: services' debug text reaches serial only through logstore's mirror.
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "oom-check.app" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "oom-check.app")
 )

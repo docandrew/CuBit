@@ -69,7 +69,7 @@ package Devmgr_Launches is
    --  Spawn the ELF image at Image (Bytes long) suspended. No_Child when
    --  refused or when no launch record is free.
    function Spawn
-     (Name : String; Image : System.Address; Bytes, Priority : Unsigned_64) return Child;
+     (Name : String; Image : System.Address; Bytes : Unsigned_64) return Child;
 
    function PID (Item : Child) return Process_ID
    with Pre => Item /= No_Child;

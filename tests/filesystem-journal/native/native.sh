@@ -33,7 +33,7 @@ as --64 "$out/manifest.S" -o "$out/manifest.o"
 disk=$out/ext3.img
 cp "$root/kernel/nvme_disk.img" "$disk"
 debugfs -R "cat init.ccl" "$disk" 2>/dev/null |
-    sed '$ s/^)$/  (start "journal-check.app" (priority 3))\n)/' > "$out/init.ccl"
+    sed '$ s/^)$/  (start "journal-check.app")\n)/' > "$out/init.ccl"
 grep -q journal-check "$out/init.ccl"
 debugfs -w -R "rm init.ccl" "$disk" >/dev/null 2>&1
 debugfs -w -R "write $out/init.ccl init.ccl" "$disk" >/dev/null 2>&1

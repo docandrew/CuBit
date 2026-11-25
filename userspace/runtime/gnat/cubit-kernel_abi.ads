@@ -64,8 +64,6 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    --  This process's statistics and free memory (System_Publications).
    --  A value published through the kernel (System_Publications).
    Publish                      : constant System_Call := 135;
-   --  The most one commit may back (kernel Owned_Reservation_Policy).
-   Maximum_Owned_Commit_Bytes : constant := 16 * 1024 * 1024;
    --  CHANGE_OWNED_RANGE's operation; the wire value is the position
    --  (kernel Owned_Reservation_Policy.Range_Operation). Commit: fresh zero
    --  pages, read/write, over a range with no committed page. Decommit:
@@ -134,6 +132,12 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Generation_Shift : constant := 32;   --  wire form: generation << 32 | slot
 
    Page_Bytes : constant := 4_096;
+
+   --  The most one commit may back (kernel Owned_Reservation_Policy:
+   --  Pages_Per_Locked_Step pages, which bounds how long a commit holds
+   --  the kernel's grant lock). Larger ranges are committed in steps.
+   Owned_Commit_Step_Pages : constant := 64;
+   Maximum_Owned_Commit_Bytes : constant := Owned_Commit_Step_Pages * Page_Bytes;
 
    --  SYSCALL_WRITE's console device.
    Console : constant := 1;

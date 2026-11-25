@@ -169,7 +169,6 @@ package body Syscall is
             when 74   => number := SYSCALL_ALLOC_DMA;
             when 75   => number := SYSCALL_ENABLE_IRQ;
             when 76   => number := SYSCALL_MAP_INTO;
-            when 78   => number := SYSCALL_SET_CPU;
             when 81   => number := SYSCALL_SET_LATENCY_CONTRACT;
             when 84   => number := SYSCALL_INSPECT_CAPABILITY;
             when 90   => number := SYSCALL_THREAD_CREATE;
@@ -585,10 +584,6 @@ package body Syscall is
                 IPC.handleMapInto (
                     Process.processOf (percpu.currentThread),
                     arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
-
-            when SYSCALL_SET_CPU =>
-                Admin.handleSetCpu (
-                    Process.processOf (percpu.currentThread), arg0, arg1, arg2, retval);
 
             when SYSCALL_SET_LATENCY_CONTRACT =>
                 -- Process-local scheduler contract, validated at the syscall

@@ -22,7 +22,7 @@ from native_artifacts import NativeArtifacts
 artifacts=NativeArtifacts(d,options.keep_images)
 shutil.copyfile(__file__,d/'runner.py')
 profile=(seed/'init.ccl').read_text().rstrip();assert profile.endswith(')')
-(d/'init.ccl').write_text(profile[:-1]+' (start "cubitshell.app" (priority 3) (network approve-declared))\n)\n')
+(d/'init.ccl').write_text(profile[:-1]+' (start "cubitshell.app" (network approve-declared))\n)\n')
 page="data:text/html,<body style='background:%23fff'><title>GradientRegression</title><div style='width:600px;height:350px;background:linear-gradient(33deg,red,blue,green)'></div></body>"
 (d/'pages').write_text((page+'\n')*3)
 subprocess.run(['cp','--reflink=auto','--sparse=always',str(seed/'desktop.img'),str(d/'base.img')],check=True)

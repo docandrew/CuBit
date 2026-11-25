@@ -85,10 +85,8 @@ begin
                   begin
                      return Text (Text'First + 1 .. Text'Last);
                   end Image;
-                  Pri : constant String := Item.Priority'Image;
                begin
                   Put (Item.Executable.Data (1 .. Item.Executable.Length) &
-                       " pri=" & Pri (Pri'First + 1 .. Pri'Last) &
                        (if Item.Approval = Approve_Declared
                         then " network=declared" else "") &
                        (if Item.Role = Config_Storage then " role=config-storage" else ""));

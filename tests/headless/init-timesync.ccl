@@ -1,8 +1,8 @@
 # timesync regression: the test variant of timesync.svc (loopback fixture
 # scope), approved like the default image, then an ordinary clock client.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "timesync.svc" (priority 5) (network approve-declared))
-  (start "timesync-check.app" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "timesync.svc" (network approve-declared))
+  (start "timesync-check.app")
 )

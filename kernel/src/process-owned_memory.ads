@@ -45,8 +45,11 @@ package Process.Owned_Memory is
                            Operation : Owned_Reservation_Policy.Range_Operation;
                            Success : out Boolean);
 
-   -- Exact base and capacity of a live region. A failed run retirement
-   -- retains the region and that run's backing.
+   -- Exact base and capacity of a live region. The region is quarantined
+   -- at once, then its pages retired in steps of at most
+   -- Owned_Reservation_Policy.Pages_Per_Locked_Step, the locks given back
+   -- between steps. A failed run retirement retains the region and the
+   -- backing not yet retired.
    procedure Release (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean);
 
    -- Legacy physical mappers must hold this lock from alias admission through

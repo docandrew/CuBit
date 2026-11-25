@@ -3,8 +3,8 @@
 # logstore runs. boot-logs prints what logstore keeps, so the driver's
 # bring-up lines are seen arriving through logstore.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "boot-logs.app" (priority 2))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "boot-logs.app")
 )

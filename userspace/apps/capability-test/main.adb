@@ -542,11 +542,11 @@ begin
    declare
       Ambient : constant CuBit.Handles.Control.Spawn_Result :=
         CuBit.Handles.Control.Spawn
-          (CuBit.Handles.No_Process, System.Null_Address, 0, 0, "", Own_Process,
+          (CuBit.Handles.No_Process, System.Null_Address, 0, "", Own_Process,
            (Kind => ST.Standard_Limit));
       By_Self : constant CuBit.Handles.Control.Spawn_Result :=
         CuBit.Handles.Control.Spawn
-          (Self_Process, System.Null_Address, 0, 0, "", Own_Process,
+          (Self_Process, System.Null_Address, 0, "", Own_Process,
            (Kind => ST.Standard_Limit));
    begin
       Check (not Ambient.Spawned, "ambient spawn denied");

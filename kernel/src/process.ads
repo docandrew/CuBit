@@ -151,8 +151,6 @@ package Process is
     -- each thread's is in its own owned-memory region (Owned_Memory
     -- Reserve/Change_Range), which the runtime makes and grows itself.
 
-    subtype ProcessPriority is Integer range -1..100;
-
     -- Latency contracts are scheduler-facing intent, not authority by
     -- themselves. They let services tell the kernel what kind of wakeup and
     -- budget behavior they need before we commit to a hard real-time policy.
@@ -731,7 +729,9 @@ package Process is
                                 Process_Lifetime.Initial_State with Atomic;
         mode                : ProcessMode;
 
-        priority            : ProcessPriority;
+        -- A CPU's idle thread: it runs at Idle_Key, only when nothing else
+        -- is ready there, and never moves.
+        idle                : Boolean := False;
 
         -- Physical address of the guard page below this process' kernel
         -- stack. Zero if no guard page (shouldn't happen after creation).
@@ -768,7 +768,7 @@ package Process is
         -- there (Virtual_Deadlines.Choose) unless it is pinned.
         cpu                 : Natural := 0;
         -- Pinned processes never move between CPUs: kernel threads (each CPU's
-        -- idle thread, the reaper) and processes placed with SET_CPU.
+        -- idle thread, the reaper, kernel workers).
         pinned              : Boolean := False;
 
         -- TSC timestamp from the most recent transition into READY. This is
@@ -1210,7 +1210,7 @@ package Process is
     procedure startKernelThread (procStart  : in System.Address;
                                  name       : in ProcessName;
                                  pid        : in ProcessID;
-                                 priority   : in ProcessPriority;
+                                 idle       : in Boolean := False;
                                  homeCPU    : in Natural := 0);
 
     ---------------------------------------------------------------------------
@@ -1267,7 +1267,6 @@ package Process is
     function create (procStart    : in System.Address;
                      ppid         : in ProcessID;
                      name         : in ProcessName;
-                     priority     : in ProcessPriority;
                      procStack    : in System.Address;
                      stackSize    : in UserStackSize;
                      imageFrames  : in Natural;

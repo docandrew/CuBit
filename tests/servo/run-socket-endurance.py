@@ -37,7 +37,7 @@ url='about:blank'
 (d / 'pages').write_text(url + '\n')
 (d / 'empty').write_text('')
 profile = d / 'init.ccl'
-profile.write_text('(startup v1 (start "logstore.svc" (priority 5)) (start "clock.svc" (priority 5)) (start "display.svc" (priority 5)) (start "desktop.svc" (priority 4)) (start "cubitshell.app" (priority 3) (network approve-declared)))')
+profile.write_text('(startup v1 (start "logstore.svc") (start "clock.svc") (start "display.svc") (start "desktop.svc") (start "cubitshell.app" (network approve-declared)))')
 stage = root / 'kernel/isodir/boot'
 app = root / 'userspace/rust/build/cubitshell.app'
 (d/'inputs.sha256').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p)+'\n' for p in [app, *[stage/n for n in ('cubit_kernel','initrd.img','desktop.svc','display.svc')]]))

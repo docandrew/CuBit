@@ -1501,8 +1501,7 @@ procedure main is
    --  filesystem) suspended: No_Child on failure. What it is given is
    --  decided before it runs (Devmgr_Launches).
    ---------------------------------------------------------------------------
-   function spawnFromBootStorage (name     : String;
-                                  priority : Unsigned_64) return DL.Child
+   function spawnFromBootStorage (name : String) return DL.Child
    is
       idx  : Natural;
       addr : Unsigned_64;
@@ -1526,7 +1525,7 @@ procedure main is
                  Unsigned_64 (cpioArchive.files (idx).dataOff);
          size := Unsigned_64 (cpioArchive.files (idx).dataSize);
       end if;
-      Spawned := DL.Spawn (name, To_Address (Integer_Address (addr)), size, priority);
+      Spawned := DL.Spawn (name, To_Address (Integer_Address (addr)), size);
       --  A driver's own .cubit.devices must say what the image's driver
       --  index bound it by (HW-002): an index cannot bind a driver to a
       --  device the driver never declared.
@@ -1879,10 +1878,10 @@ procedure main is
 
 
    ---------------------------------------------------------------------------
-   -- Assign CPU affinity based on service type
+   -- Interrupt steering by driver role
    ---------------------------------------------------------------------------
-   --  The CPU a service or driver is pinned to. A driver's message
-   --  interrupts are delivered to the same CPU (docs/msi-interrupts.md).
+   --  The CPU a driver's message interrupts are delivered to
+   --  (docs/msi-interrupts.md), spread by role. No thread is pinned there.
    function cpuFor (name : String) return Natural is
       cpu : Unsigned_64 := 0;
    begin
@@ -1890,7 +1889,7 @@ procedure main is
          return 0;
       end if;
 
-      --  Storage/FS/input services pinned to CPU 0
+      --  Storage and input interrupts on CPU 0
       if strEq (name, "filesystem.svc") or strEq (name, "ata.drv") or
          strEq (name, "nvme.drv") or strEq (name, "ramdisk.drv") or
          strEq (name, "procmgr.svc") or
@@ -1929,8 +1928,7 @@ procedure main is
       return Natural (cpu);
    end cpuFor;
 
-   --  Where each placed process was pinned, so its device vectors can be
-   --  delivered to the same CPU (cpuOf).
+   --  The CPU each driver's device vectors are steered to (cpuOf).
    type Placement is record
       PID : Process_ID := No_Process;
       CPU : Natural := 0;
@@ -1939,10 +1937,12 @@ procedure main is
    placements : array (1 .. MAX_PLACEMENTS) of Placement;
    placementCount : Natural range 0 .. MAX_PLACEMENTS := 0;
 
-   procedure assignCPU (child : DL.Child;
-                        name  : String)
+   --  The CPU a driver's message interrupts are steered to, spread over the
+   --  CPUs by role (cpuFor). The driver's threads are not pinned there: the
+   --  scheduler places every thread (docs/scheduler.md: no devmgr pinning).
+   procedure steerInterrupts (child : DL.Child;
+                              name  : String)
    is
-      ignore : Boolean;
       cpu : Natural;
       pid : constant Process_ID := PID_Of (child);
    begin
@@ -1950,14 +1950,13 @@ procedure main is
          return;
       end if;
       cpu := cpuFor (name);
-      ignore := HC.Set_CPU (pid, DL.Control (child), Unsigned_64 (cpu));
       if placementCount < MAX_PLACEMENTS then
          placementCount := placementCount + 1;
          placements (placementCount) := (pid, cpu);
       end if;
-   end assignCPU;
+   end steerInterrupts;
 
-   --  The CPU pid was pinned to; CPU 0 for an unplaced process.
+   --  The CPU pid's vectors are steered to; CPU 0 when none was chosen.
    function cpuOf (pid : Process_ID) return Natural is
    begin
       for I in reverse 1 .. placementCount loop
@@ -1972,10 +1971,28 @@ procedure main is
    --  IPC ready protocol constants
    OP_READY       : constant Unsigned_32 := CuBit.Driver_Readiness.Ready_Label;
    OP_NOT_PRESENT : constant Unsigned_32 := CuBit.Driver_Readiness.Not_Present_Label;
-   --  mixer.svc may reserve real-time CPU for one audio period: 1.5 ms of
-   --  every 5 ms (docs/scheduler.md, "Soft real time").
-   MIXER_REALTIME_BUDGET_US : constant Unsigned_64 := 1_500;
-   MIXER_REALTIME_PERIOD_US : constant Unsigned_64 := 5_000;
+   --  Real-time CPU for the audio pair (docs/scheduler.md, "Soft real
+   --  time"): the reservation its manifest's (scheduling ...) request
+   --  declares, narrowed from devmgr's root; the kernel's admission still
+   --  bounds the system total. mixer.svc mixes each period in it, and
+   --  hda.drv takes each period interrupt in it, so neither waits behind
+   --  ordinary work for a slice to end. False: it declares none.
+   function Give_Declared_Scheduling (Item : DL.Child) return Boolean is
+      package RS renames CCL.Resource_Sections;
+      use type RS.Resource_Kind;
+      Plan : constant RS.Section_Plan := DL.Resources_Of (Item);
+   begin
+      for I in 1 .. Plan.Count loop
+         if Plan.Entries (I).Kind = RS.Scheduling then
+            return DL.Give_First
+              (Item, ST.Scheduling,
+               H.Narrowed (Root.Scheduling_Root,
+                           Budget => Plan.Entries (I).Amount,
+                           Period => Plan.Entries (I).Extra));
+         end if;
+      end loop;
+      return False;
+   end Give_Declared_Scheduling;
 
    --  Our PID (discovered via registerDriver)
    myPID : Process_ID := No_Process;
@@ -2354,7 +2371,7 @@ procedure main is
    --  in the slot the manifest named. devmgr then programs the function:
    --  every MSI-X entry written masked with the function masked, then
    --  unmasked once the driver is ready (PCI_Message_Functions). Vectors go
-   --  to the local APIC of the CPU the driver is pinned to (cpuOf). A block
+   --  to the local APIC of the CPU the driver's vectors are steered to (cpuOf). A block
    --  is released only after the function is masked and disabled.
    ---------------------------------------------------------------------------
    --  Memory BARs up to Limit bytes (xHCI's arena bound by default).
@@ -4503,7 +4520,7 @@ procedure main is
       --  driver block on event-ring changes instead of polling on the
       --  millisecond tick. MSI-X (QEMU's controller) stays masked until the
       --  driver has enabled its interrupter.
-      assignCPU (child, "xhci.drv");
+      steerInterrupts (child, "xhci.drv");
       Setup_Message_Interrupts (dev, child, Name, instances (I).Interrupts);
       interruptMode :=
         (case instances (I).Interrupts.Mode is
@@ -4798,7 +4815,7 @@ procedure main is
       end Refuse;
    begin
       Launch_Deferred := False;
-      Child := spawnFromBootStorage (Name, 5);
+      Child := spawnFromBootStorage (Name);
       if Child = DL.No_Child then
          Warnings.Warn ("devmgr: " & Name & " bound to " & Location_Text (dev) & " but not spawned");
          return;
@@ -4815,7 +4832,7 @@ procedure main is
       Config.Class_Code := Shift_Left (Unsigned_64 (Item.classCode), 8) or Unsigned_64 (Item.progIf);
       pciWriteConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND,
         pciReadConfig16 (dev.bus, dev.slot, dev.func, PCI_COMMAND) or PCI_COMMAND_MEMORY_BUS_MASTER);
-      assignCPU (Child, Name);
+      steerInterrupts (Child, Name);
       if H.Valid (Logstore_Endpoint) then
          DL.Give_Service (Child, Unsigned_32 (DRIVER_LOGSTORE),
            H.Badged (Logstore_Endpoint, H.Read_Write,
@@ -4935,8 +4952,17 @@ procedure main is
                   end if;
                when RS.IO_Ports =>
                   Refuse ("I/O port BARs are not given by the generic launch");
-               when RS.Interrupt | RS.Scheduling =>
+               when RS.Interrupt =>
                   null;
+               when RS.Scheduling =>
+                  --  Real-time CPU, exactly as its manifest declares
+                  --  (budget, period); the kernel's admission caps the total.
+                  if not DL.Give_First
+                    (Child, ST.Scheduling,
+                     H.Narrowed (Root.Scheduling_Root, Budget => R.Amount, Period => R.Extra))
+                  then
+                     Refuse ("its scheduling request has no binding");
+                  end if;
             end case;
          end;
       end loop;
@@ -6645,7 +6671,7 @@ procedure main is
             Refuse ("devmgr has a dedicated setup for it, not an ACPI launch");
             return;
          end if;
-         Child := spawnFromBootStorage (Name, 5);
+         Child := spawnFromBootStorage (Name);
          if Child = DL.No_Child then
             Refuse ("not spawned");
             return;
@@ -6740,7 +6766,7 @@ procedure main is
             DL.Abandon (Child);
             return;
          end if;
-         assignCPU (Child, Name);
+         steerInterrupts (Child, Name);
          if H.Valid (Logstore_Endpoint) then
             DL.Give_Service (Child, Unsigned_32 (DRIVER_LOGSTORE),
               H.Badged (Logstore_Endpoint, H.Read_Write,
@@ -7195,10 +7221,8 @@ procedure main is
    --  graph stays a DAG); the GPIO driver never calls devmgr after its
    --  readiness report.
    HID_Sink_Admission_Ms : constant := 1_500;
-   --  The driver's graceful-stop window, and its priority (as the generic
-   --  ACPI launch's drivers).
+   --  The driver's graceful-stop window.
    HID_Stop_Grace_Ms : constant CuBit.Child_Specs.Grace_Ms := 5_000;
-   HID_Driver_Priority : constant CuBit.Child_Specs.Priority_Value := 5;
    --  The fact and binding names hid-i2c's manifest declares
    --  (HID_Parameters.descriptor_register; (service "i2c" "i2c"),
    --  (service "gpio" "gpio")).
@@ -7300,7 +7324,7 @@ procedure main is
    procedure Start_HID_Driver (Item : in out HID_Offer; K : Positive; Name : String; Who : String) is
       package CST renames CuBit.Child_Starts;
       Spec : CuBit.Child_Specs.Spec :=
-        CST.Child (Name, CuBit.Child_Specs.Temporary, HID_Stop_Grace_Ms, HID_Driver_Priority);
+        CST.Child (Name, CuBit.Child_Specs.Temporary, HID_Stop_Grace_Ms);
       Sent : Boolean := False;
       I2C_Provider : constant Unsigned_64 := Controller_Provider (Item.Controller);
       GPIO_Driver : constant Unsigned_64 := GPIO_Provider (Item.GPIO);
@@ -7723,7 +7747,7 @@ begin
    --  A writable live image is served by a separate Block.Device.V1 driver.
    --  It starts before FS, so FS never calls a not-yet-running provider.
    if Cpio.findFile (cpioArchive, "live-rw.ext2") < cpioArchive.count then
-      ramdiskChild := spawnFromBootStorage ("ramdisk.drv", 5);
+      ramdiskChild := spawnFromBootStorage ("ramdisk.drv");
       ramdiskPID := PID_Of (ramdiskChild);
       if ramdiskPID /= No_Process then
          initrdPages := (initrdSize + 4095) / 4096;
@@ -7749,7 +7773,6 @@ begin
          end;
          DL.Set_Payload
            (ramdiskChild, LC.Encode (LC.Boot_Image_Configuration'(Boot_Image => initrdSize)));
-         assignCPU (ramdiskChild, "ramdisk.drv");
          Give_Logstore (ramdiskChild, Next_Log_Issuance);
          if not DL.Start (ramdiskChild) or else not waitReady (ramdiskPID) then
             ret := syscall (SYSCALL_EXIT);
@@ -7843,7 +7866,7 @@ begin
    -----------------------------------------------------------------------
    -- Phase 1: Spawn filesystem server (auto-assign PID)
    -----------------------------------------------------------------------
-   filesystemChild := spawnFromBootStorage ("filesystem.svc", 5);
+   filesystemChild := spawnFromBootStorage ("filesystem.svc");
    filesystemPID := PID_Of (filesystemChild);
    if filesystemPID = No_Process then
       debugPrint ("devmgr: filesystem.svc spawn failed" & LF);
@@ -7902,7 +7925,6 @@ begin
       else
          DL.Withhold (filesystemChild, "ramdisk");
       end if;
-      assignCPU (filesystemChild, "filesystem.svc");
       Give_Logstore (filesystemChild, DLI.Fixed (DLI.Filesystem));
       if DL.Start (filesystemChild) then
          debugPrint ("devmgr: filesystem server started" & LF);
@@ -7927,12 +7949,12 @@ begin
 
    --  ATA driver, for a present primary channel it declares.
    if ataPrimaryPresent and then Platform_Bound ("ata.drv", CCL.Resource_Sections.ATA_Primary) then
-      ataChild := spawnFromBootStorage ("ata.drv", 5);
+      ataChild := spawnFromBootStorage ("ata.drv");
    end if;
    ataPID := PID_Of (ataChild);
    if ataPID /= No_Process then
       setupAta;
-      assignCPU (ataChild, "ata.drv");
+      steerInterrupts (ataChild, "ata.drv");
       Give_Logstore (ataChild, Next_Log_Issuance);
       if DL.Start (ataChild) then
          debugPrint ("devmgr: ATA driver started" & LF);
@@ -7965,13 +7987,13 @@ begin
                child : DL.Child;
                PID : Process_ID;
             begin
-               child := spawnFromBootStorage ("nvme.drv", 5);
+               child := spawnFromBootStorage ("nvme.drv");
                instances (I).Child := child;
                instances (I).PID := PID_Of (child);
                PID := instances (I).PID;
                if PID /= No_Process then
-                  --  Placed first: its completion vectors go to the CPU it runs on.
-                  assignCPU (child, "nvme.drv");
+                  --  Chosen first: its completion vectors are steered to that CPU.
+                  steerInterrupts (child, "nvme.drv");
                   setupNvme (I);
                   if Role_Taken then
                      DL.Withhold (child, "registration");
@@ -8034,12 +8056,12 @@ begin
    -- Phase 2b: Spawn PS/2 keyboard + mouse driver
    -----------------------------------------------------------------------
    if ps2Present and then Platform_Bound ("ps2.drv", CCL.Resource_Sections.PS2_Controller) then
-      ps2Child := spawnFromBootStorage ("ps2.drv", 5);
+      ps2Child := spawnFromBootStorage ("ps2.drv");
    end if;
    ps2PID := PID_Of (ps2Child);
    if ps2PID /= No_Process then
       setupPS2;
-      assignCPU (ps2Child, "ps2.drv");
+      steerInterrupts (ps2Child, "ps2.drv");
       Give_Logstore (ps2Child, DLI.Fixed (DLI.PS2));
       if DL.Start (ps2Child) then
          debugPrint ("devmgr: PS/2 driver started" & LF);
@@ -8055,11 +8077,11 @@ begin
    -- Phase 2b': Spawn the virtio-input driver for a virtio tablet.
    -----------------------------------------------------------------------
    if inputDev.found then
-      virtioInputChild := spawnFromBootStorage ("virtio-input.drv", 5);
+      virtioInputChild := spawnFromBootStorage ("virtio-input.drv");
       virtioInputPID := PID_Of (virtioInputChild);
       if virtioInputPID /= No_Process then
-         --  Placed first: its vector goes to the CPU it runs on.
-         assignCPU (virtioInputChild, "virtio-input.drv");
+         --  Chosen first: its vector is steered to that CPU.
+         steerInterrupts (virtioInputChild, "virtio-input.drv");
          setupVirtioInput;
          Give_Logstore (virtioInputChild, Next_Log_Issuance);
       end if;
@@ -8107,7 +8129,7 @@ begin
    -----------------------------------------------------------------------
    for I in 1 .. inventoryCount loop
       if Bound_To (I, "xhci.drv") then
-         instances (I).Child := spawnFromBootStorage ("xhci.drv", 5);
+         instances (I).Child := spawnFromBootStorage ("xhci.drv");
          instances (I).PID := PID_Of (instances (I).Child);
          if instances (I).PID /= No_Process then
             setupXHCI (I);
@@ -8118,10 +8140,9 @@ begin
    -----------------------------------------------------------------------
    -- Phase 2d: Spawn config store service
    -----------------------------------------------------------------------
-   configChild := spawnFromBootStorage ("config.svc", 5);
+   configChild := spawnFromBootStorage ("config.svc");
    configPID := PID_Of (configChild);
    if configPID /= No_Process then
-      assignCPU (configChild, "config.svc");
       Give_Logstore (configChild, DLI.Fixed (DLI.Config));
       if DL.Start (configChild) then
          debugPrint ("devmgr: config server started" & LF);
@@ -8311,12 +8332,12 @@ begin
    --  Only for a device PCI discovery found: with nothing to give its
    --  required "registers", a launch would only be refused.
    if gpuDev.found then
-      virtioGpuChild := spawnFromBootStorage ("virtio-gpu.drv", 5);
+      virtioGpuChild := spawnFromBootStorage ("virtio-gpu.drv");
    end if;
    virtioGpuPID := PID_Of (virtioGpuChild);
    if virtioGpuPID /= No_Process then
-      --  Placed first: its vector goes to the CPU it runs on.
-      assignCPU (virtioGpuChild, "virtio-gpu.drv");
+      --  Chosen first: its vector is steered to that CPU.
+      steerInterrupts (virtioGpuChild, "virtio-gpu.drv");
       setupVirtioGpu;
       Give_Logstore (virtioGpuChild, DLI.Fixed (DLI.Virtio_GPU));
       if DL.Start (virtioGpuChild) then
@@ -8338,10 +8359,9 @@ begin
 
    --  Netstack service. Drivers attach to it whenever they come up
    --  (docs/net-link.md); it holds no endpoint to any of them.
-   netstackChild := spawnFromBootStorage ("netstack.svc", 5);
+   netstackChild := spawnFromBootStorage ("netstack.svc");
    netstackPID := PID_Of (netstackChild);
    if netstackPID /= No_Process then
-      assignCPU (netstackChild, "netstack.svc");
       Give_Logstore (netstackChild, DLI.Fixed (DLI.Netstack));
       if DL.Start (netstackChild) then
          debugPrint ("devmgr: netstack started" & LF);
@@ -8362,13 +8382,13 @@ begin
             virtioNetChild : DL.Child;
             virtioNetPID : Process_ID;
          begin
-            virtioNetChild := spawnFromBootStorage ("virtio-net.drv", 5);
+            virtioNetChild := spawnFromBootStorage ("virtio-net.drv");
             virtioNetPID := PID_Of (virtioNetChild);
             instances (I).Child := virtioNetChild;
             instances (I).PID := virtioNetPID;
             if virtioNetPID /= No_Process then
-               --  Placed first: its vector goes to the CPU it runs on.
-               assignCPU (virtioNetChild, "virtio-net.drv");
+               --  Chosen first: its vector is steered to that CPU.
+               steerInterrupts (virtioNetChild, "virtio-net.drv");
                setupVirtioNet (I);
 
                --  The driver reaches netstack through an endpoint badged as
@@ -8429,7 +8449,7 @@ begin
    -----------------------------------------------------------------------
    -- Phase 3b: Spawn network manager service
    -----------------------------------------------------------------------
-   netmgrChild := spawnFromBootStorage ("netmgr.svc", 5);
+   netmgrChild := spawnFromBootStorage ("netmgr.svc");
    netmgrPID := PID_Of (netmgrChild);
    if netmgrPID /= No_Process then
       --  Its endpoint to netstack (configuration and raw UDP), badged as
@@ -8445,7 +8465,6 @@ begin
       --  Its declared Config scope (net., read only).
       sendDeclaredConfigScopes (netmgrChild, "netmgr.svc");
 
-      assignCPU (netmgrChild, "netmgr.svc");
       Give_Logstore (netmgrChild, Netmgr_Log_Issuance);
       if DL.Start (netmgrChild) then
          debugPrint ("devmgr: netmgr started" & LF);
@@ -8466,11 +8485,10 @@ begin
    -- drivers (generic launch, later) attach to it; the console calls it.
    -- Its Config scope is the Secret family wifi.secret. (passphrases).
    -----------------------------------------------------------------------
-   wifiChild := spawnFromBootStorage ("wifi.svc", 5);
+   wifiChild := spawnFromBootStorage ("wifi.svc");
    wifiPID := PID_Of (wifiChild);
    if wifiPID /= No_Process then
       sendDeclaredConfigScopes (wifiChild, "wifi.svc");
-      assignCPU (wifiChild, "wifi.svc");
       Give_Logstore (wifiChild, Wifi_Log_Issuance);
       if DL.Start (wifiChild) then
          debugPrint ("devmgr: wifi started" & LF);
@@ -8538,7 +8556,7 @@ begin
          if Plan.Status = Intel_GPU_Resources.Admitted and then
            Power = Intel_GPU_PCI_Power.D0
          then
-            Intel_Child := spawnFromBootStorage ("intel-gpu.drv", 4);
+            Intel_Child := spawnFromBootStorage ("intel-gpu.drv");
             if Intel_Child /= DL.No_Child then
                Child := DL.PID (Intel_Child);
                Intel_Inspection_PID := Child;
@@ -8579,7 +8597,7 @@ begin
                -- Optional boot diagnostic, created suspended. It reaches the
                -- driver and devmgr only through endpoints badged with the
                -- viewer tag; the desktop endpoint comes later by request.
-               GPU_Viewer_Child := spawnFromBootStorage ("gpu-viewer.app", 5);
+               GPU_Viewer_Child := spawnFromBootStorage ("gpu-viewer.app");
                if GPU_Viewer_Child /= DL.No_Child then
                   GPU_Viewer_PID := DL.PID (GPU_Viewer_Child);
                   DL.Give (GPU_Viewer_Child, "gpu-probe",
@@ -8646,7 +8664,7 @@ begin
    end if;
 
    --  Mixer service
-   mixerChild := spawnFromBootStorage ("mixer.svc", 5);
+   mixerChild := spawnFromBootStorage ("mixer.svc");
    mixerPID := PID_Of (mixerChild);
    if mixerPID /= No_Process then
       --  hda.drv reaches the mixer through the mixer's role.
@@ -8664,11 +8682,15 @@ begin
             declare
                Name : constant String := Instance_Text (I, "hda.drv");
             begin
-               instances (I).Child := spawnFromBootStorage ("hda.drv", 5);
+               instances (I).Child := spawnFromBootStorage ("hda.drv");
                instances (I).PID := PID_Of (instances (I).Child);
                if instances (I).PID /= No_Process then
-                  --  Placed first: its vector goes to the CPU it runs on.
-                  assignCPU (instances (I).Child, "hda.drv");
+                  --  Chosen first: its vector is steered to that CPU.
+                  steerInterrupts (instances (I).Child, "hda.drv");
+                  --  Each period interrupt is taken in real time.
+                  if not Give_Declared_Scheduling (instances (I).Child) then
+                     Warnings.Warn ("devmgr: " & Name & " declares no real-time reservation");
+                  end if;
                   setupHDA (I);
                   if Mixer_Output /= 0 then
                      DL.Withhold (instances (I).Child, "registration");
@@ -8707,11 +8729,10 @@ begin
    end;
 
    if mixerPID /= No_Process then
-      --  mixer.svc may reserve real-time CPU for one audio period: 1.5 ms
-      --  of every 5 ms (docs/scheduler.md, "Soft real time").
-      DL.Give (mixerChild, "scheduling",
-        H.Narrowed (Root.Scheduling_Root, MIXER_REALTIME_BUDGET_US, MIXER_REALTIME_PERIOD_US));
-      assignCPU (mixerChild, "mixer.svc");
+      --  mixer.svc may reserve real-time CPU for one audio period.
+      if not Give_Declared_Scheduling (mixerChild) then
+         Warnings.Warn ("devmgr: mixer.svc declares no real-time reservation");
+      end if;
       Give_Logstore (mixerChild, DLI.Fixed (DLI.Mixer));
       if DL.Start (mixerChild) then
          debugPrint ("devmgr: mixer started" & LF);
@@ -8739,7 +8760,7 @@ begin
    -----------------------------------------------------------------------
    --  procmgr's programs may be on USB storage (the live images' @cd:0).
    Await_XHCI_Bring_Ups;
-   procmgrChild := spawnFromBootStorage ("procmgr.svc", 5);
+   procmgrChild := spawnFromBootStorage ("procmgr.svc");
    procmgrPID := PID_Of (procmgrChild);
    if procmgrPID /= No_Process then
       --  procmgr's handles (Launch_Configuration.Process_Manager_Handles),
@@ -8840,7 +8861,6 @@ begin
    if procmgrPID /= No_Process then
       sendWildcardACL (procmgrPID);
       sendWildcardACLConfig (procmgrPID);
-      assignCPU (procmgrChild, "procmgr.svc");
       if DL.Start (procmgrChild) then
          debugPrint ("devmgr: procmgr started" & LF);
          CMOS_Bootstrap_Open := True;

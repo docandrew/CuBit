@@ -89,9 +89,9 @@ def run(*args):
 (d / "pages").write_text(page + "\n")
 (d / "empty").write_text("")
 profile = d / "init.ccl"
-profile.write_text('(startup v1 (start "logstore.svc" (priority 5)) (start "clock.svc" (priority 5)) '
-                   '(start "display.svc" (priority 5)) (start "desktop.svc" (priority 4)) '
-                   '(start "cubitshell.app" (priority 3) (network approve-declared)))')
+profile.write_text('(startup v1 (start "logstore.svc") (start "clock.svc") '
+                   '(start "display.svc") (start "desktop.svc") '
+                   '(start "cubitshell.app" (network approve-declared)))')
 stage = root / "kernel/isodir/boot"
 app = root / "userspace/rust/build/cubitshell.app"
 run("python3", "tools/build_development_disk.py", str(d / "desktop.img"), "--boot",

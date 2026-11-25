@@ -1,7 +1,7 @@
 # Isolated three-party fixture, reusing only the existing test registration roles.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "grant-forward-owner.app" (priority 5))
-  (start "grant-forward-reader.app" (priority 5))
-  (start "grant-forward-client.app" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "grant-forward-owner.app")
+  (start "grant-forward-reader.app")
+  (start "grant-forward-client.app")
 )

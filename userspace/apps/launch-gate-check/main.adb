@@ -78,7 +78,8 @@ procedure Main is
    Request_Withheld_Code  : constant Unsigned_64 := 18;
    Withheld_Label_Bytes   : constant := 24;
    Answer_Ms : constant := 10_000;
-   Priority  : constant := 3;
+   --  The retired spawn request's second word (any value; it is refused).
+   Retired_Word : constant := 3;
 
    Passed : Boolean := True;
 
@@ -113,12 +114,12 @@ procedure Main is
       end if;
       if Label = Retired_Spawn_Label then
          Response.tag := (label => Label, length => Name'Length, protocol => 0, ipc => <>, reserved => 0);
-         Response.words := [CuBit.Grant_References.Encode (Grant), Priority, 0, 0];
+         Response.words := [CuBit.Grant_References.Encode (Grant), Retired_Word, 0, 0];
       else
          Response.tag := (label => Label, length => LA.Launch_Request_Words,
                        protocol => 0, ipc => <>, reserved => 0);
          Response.words := [CuBit.Grant_References.Encode (Grant), Name'Length, 0,
-                         CuBit.Launch_Grants.Request_Word (Priority, 0)];
+                         CuBit.Launch_Grants.Request_Word (0)];
       end if;
       if Accepting then
          Answer := IPC.Call_Accepting (To, Response, Deadline_After (Answer_Ms), Received);

@@ -11,14 +11,14 @@
 # reading_age_ms is short (2 s) so the console's read finds the battery's
 # sample too old and asks for a fresh one.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "power.svc" (priority 5)
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "power.svc"
     (arguments (Power_Parameters undeclared_grace_ms => 300 storage_deadline_ms => 10000
                                  driver_grace_ms => 1000 button => Button_Policy.Ignore
                                  reading_age_ms => 2000)))
-  (start "power-standin.app" (priority 5))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "ccl-console.app" (priority 3))
+  (start "power-standin.app")
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "ccl-console.app")
 )

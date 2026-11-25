@@ -32,7 +32,6 @@ private package CuBit.Handles.Kernel is
    Allocate_DMA                : constant Unsigned_64 := 74;
    Enable_IRQ                  : constant Unsigned_64 := 75;
    Map_Into                    : constant Unsigned_64 := 76;
-   Set_CPU                     : constant Unsigned_64 := 78;
    Set_Latency_Contract        : constant Unsigned_64 := 81;
    Inspect                     : constant Unsigned_64 := 84;
    Create_Grant_Via_Capability : constant Unsigned_64 := 106;

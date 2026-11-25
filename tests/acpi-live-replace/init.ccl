@@ -9,15 +9,15 @@
 # - clock.svc (ccl-remote requires it), ccl-remote with builds granted and a desktop, so the person's "Allow
 #   app replacement" switch can be turned on by a click (as service-switch).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "acpi.svc" (priority 4) (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Neutral))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "acpi.svc" (arguments (ACPI_Firmware_Profile kind => ACPI_Profile.Neutral))
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (platform-power approve-declared)
     (acpi-firmware-data approve-declared) (acpi-pci-config approve-declared)
     (replace graceful))
-  (start "ccl-remote.app" (priority 4) (network approve-declared) (display-capture approve-declared)
+  (start "ccl-remote.app" (network approve-declared) (display-capture approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
       display => Pairing_Display.Kernel_Console work => "@system/work"
       files => true builds => true mail => true)))

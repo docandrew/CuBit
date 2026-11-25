@@ -19,7 +19,7 @@ package body Work_Stealing with SPARK_Mode => On is
                        Age_Microseconds      : Unsigned_64) return Boolean
     is
     begin
-        return C.Priority >= 0 and then not C.Pinned and then
+        return not C.Idle and then not C.Pinned and then
                not C.Closing and then not C.Executing and then
                Ticks_Per_Microsecond /= 0 and then
                Aged (C.Queued_At, Now,

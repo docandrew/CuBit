@@ -7,8 +7,8 @@
 # launched once logstore runs) binds and claims the BAR, which revokes the
 # mapping.
 (startup v1
-  (start "platform-pool-check.app" (priority 3)
+  (start "platform-pool-check.app"
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
     (acpi-pci-config approve-declared) (acpi-firmware-data approve-declared))
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "logstore.svc" (test-console approve-declared))
 )

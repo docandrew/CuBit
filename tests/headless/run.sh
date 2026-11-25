@@ -70,6 +70,7 @@ TURSO_EXPORT=""
 CONFIG_EXPORT=""
 CONFIG_STORAGE_TEST=0
 TEMP_AUDIO=""
+AUDIO_KEPT_DIR=""
 TEMP_SECOND_NVME=""
 TEMP_OPTICAL_TREE=""
 TEMP_STORAGE_FIXTURE=""
@@ -543,9 +544,15 @@ cleanup() {
     if [ -n "$TEMP_AUDIO" ] && [ "$KEEP_LOGS" -eq 0 ] &&
        [ "${HEADLESS_TEST_FAILED:-0}" -eq 0 ]; then
         rm -f "$TEMP_AUDIO"
+    elif [ -n "$TEMP_AUDIO" ] && [ -f "$TEMP_AUDIO" ]; then
+        # Kept (--keep-logs, or a failed run) beside the serial log.
+        mv -f "$TEMP_AUDIO" "$AUDIO_KEPT_DIR/" 2>/dev/null || true
     fi
     if [ "$KEEP_LOGS" -eq 0 ] && [ "${HEADLESS_TEST_FAILED:-0}" -eq 0 ]; then
         rm -f "$NET_PCAP"
+    fi
+    if [ -n "${SERIAL_FIFO_DIR:-}" ]; then
+        rm -rf "$SERIAL_FIFO_DIR"
     fi
 }
 trap cleanup EXIT INT TERM
@@ -1160,6 +1167,12 @@ with open(sys.argv[1], "wb") as f:
         fi
         QEMU_CPU_MODEL="host,+svm"
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-vm-desktop.ccl"
+        # CUBIT_VM_LOAD=1: Neon Blast plays beside the vmm while both guest
+        # vCPUs spin for CUBIT_VM_LOAD_SECONDS (vm-desktop-shots.py), to see
+        # whether a busy guest delays input, frames or audio periods.
+        if [ "${CUBIT_VM_LOAD:-0}" = 1 ]; then
+            INIT_PROFILE="$ROOT_DIR/tests/headless/init-vm-desktop-load.ccl"
+        fi
         # The guest's 128 MiB, beside the desktop.
         QEMU_MEMORY="${QEMU_MEMORY:-1G}"
         ;;
@@ -1618,7 +1631,7 @@ if [ "$BENCH_LOAD" = 1 ]; then
     if [ "$LOAD_WORKERS" -gt 1 ]; then
         TEMP_LOAD_PROFILE="$(mktemp "${TMPDIR:-/tmp}/cubit-input-load.XXXXXX.ccl")"
         awk -v count="$LOAD_WORKERS" '
-            /^[[:space:]]*[(]start "bench-input-load[.]app" [(]priority 4[)][)]$/ {
+            /^[[:space:]]*[(]start "bench-input-load[.]app"[ )]/ {
                 for (i=1; i<=count; i++) print;
                 next
             }
@@ -1669,6 +1682,16 @@ fi
 # heap commits fail after a few hundred KiB and the probe fails to load.
 if [ "$CONFIG_STORAGE_TEST" = 1 ] || [ "$TEST_NAME" = turso-native-std ] || [ "$TEST_NAME" = turso-native ]; then
     QEMU_MEMORY="${QEMU_MEMORY:-512M}"
+fi
+# A plan procmgr would refuse starts nothing (not even logstore), and every
+# driver then waits on devmgr for an introduction that never comes: the
+# boot hangs with no message (usb-eject's plans kept the removed
+# (priority N), 2026-11-25). Refuse it here, with the compiler's reason.
+if [ -n "$INIT_PROFILE" ] && [ -x "$ROOT_DIR/userspace/ccl/build/config/ccl-config" ]; then
+    if ! PLAN_CHECK="$("$ROOT_DIR/userspace/ccl/build/config/ccl-config" "$INIT_PROFILE" 2>&1 >/dev/null)"; then
+        echo "headless: $INIT_PROFILE does not compile: $PLAN_CHECK" >&2
+        exit 1
+    fi
 fi
 if [ -n "$INIT_PROFILE" ]; then
     TEMP_DISK="$(mktemp "${TMPDIR:-/tmp}/cubit-${TEST_NAME}-disk.XXXXXX.img")"
@@ -1866,7 +1889,7 @@ if [ -n "$INIT_PROFILE" ]; then
             debugfs -w -R "write $KERNEL_DIR/isodir/boot/$benchmark_image $benchmark_image" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
     fi
-    if [ "$TEST_NAME" = "neon-blast" ]; then
+    if [ "$TEST_NAME" = "neon-blast" ] || { [ "$TEST_NAME" = "vm-desktop" ] && [ "${CUBIT_VM_LOAD:-0}" = 1 ]; }; then
         # An image-only program (like Teapots): staged onto this run's disk.
         if [ ! -f "$KERNEL_DIR/isodir/boot/neon-blast.app" ]; then
             echo "headless: build neon-blast first (make -C kernel neon-blast)" >&2
@@ -4532,7 +4555,19 @@ if [ "$TEST_NAME" = "usb-hotplug" ]; then
         -device usb-mouse,bus=xhcib.0,port=1,id=bootmouse)
 fi
 if [ "$TEST_NAME" = "desktop-doom" ] || [ "$TEST_NAME" = "bench-audio" ] || [ "$TEST_NAME" = "neon-blast" ]; then
-    TEMP_AUDIO="$(mktemp "$(dirname "$SERIAL_LOG")/cubit-${TEST_NAME}-audio.XXXXXX.wav")"
+    # The WAV is captured in RAM and moved beside the serial log at the end.
+    # QEMU writes it from its main loop, the thread that also runs the HDA
+    # model's DMA timer: a write that waits on the host file system (ext4
+    # commits every 5 s; measured stalls of 10-30 ms on Chungus) holds back
+    # the guest's period interrupts as long, and the mixer then sees missed
+    # periods that no guest scheduling can prevent. CUBIT_AUDIO_CAPTURE_DIR
+    # overrides the directory.
+    AUDIO_CAPTURE_DIR="${CUBIT_AUDIO_CAPTURE_DIR:-${XDG_RUNTIME_DIR:-/dev/shm}}"
+    if [ ! -d "$AUDIO_CAPTURE_DIR" ] || [ ! -w "$AUDIO_CAPTURE_DIR" ]; then
+        AUDIO_CAPTURE_DIR=/dev/shm
+    fi
+    AUDIO_KEPT_DIR="$(dirname "$SERIAL_LOG")"
+    TEMP_AUDIO="$(mktemp "$AUDIO_CAPTURE_DIR/cubit-${TEST_NAME}-audio.XXXXXX.wav")"
     AUDIO_ARGS=(-audiodev "wav,id=snd0,path=$TEMP_AUDIO")
 fi
 
@@ -7292,6 +7327,23 @@ if [ "$TEST_NAME" = "gpio-launch" ]; then
     MACHINE_ARGS[1]="${MACHINE_ARGS[1]},x-oem-id=CBTEST,x-oem-table-id=GPIOBOOT"
 fi
 
+# The audio tests' serial log comes through a FIFO and a relay
+# (tests/headless/serial_relay.py), so QEMU never waits on the host file
+# system while it holds the lock its main loop and the HDA model's DMA
+# timer need; every other test writes the log directly. The FIFO lives in
+# RAM beside the WAV: even a FIFO's write updates its inode's times, which
+# on ext4 waits out a journal commit as a file write does.
+SERIAL_ARGS=(-serial "file:$SERIAL_LOG")
+SERIAL_RELAY_PID=""
+SERIAL_FIFO_DIR=""
+if [ -n "$TEMP_AUDIO" ]; then
+    SERIAL_FIFO_DIR="$(mktemp -d "$AUDIO_CAPTURE_DIR/cubit-serial-fifo.XXXXXX")"
+    mkfifo "$SERIAL_FIFO_DIR/serial.in" "$SERIAL_FIFO_DIR/serial.out"
+    python3 -I "$ROOT_DIR/tests/headless/serial_relay.py" \
+        "$SERIAL_FIFO_DIR/serial.out" "$SERIAL_LOG" &
+    SERIAL_RELAY_PID=$!
+    SERIAL_ARGS=(-serial "pipe:$SERIAL_FIFO_DIR/serial")
+fi
 # The benchmark runs without a packet capture, as its Linux reference does.
 PCAP_ARGS=(-object "filter-dump,id=f0,netdev=net0,file=$NET_PCAP")
 if [ "$TEST_NAME" = "bench-net" ] && [ -z "${BENCH_NET_PCAP:-}" ]; then PCAP_ARGS=(); fi   # BENCH_NET_PCAP=1 keeps the capture
@@ -7305,7 +7357,7 @@ if [ "$TEST_NAME" = "bench-net" ] && [ -z "${BENCH_NET_PCAP:-}" ]; then PCAP_ARG
         -smp "$QEMU_CPUS" \
         -m "${QEMU_MEMORY:-256M}" \
         -cdrom cubit_kernel.iso \
-        -serial "file:$SERIAL_LOG" \
+        "${SERIAL_ARGS[@]}" \
         -display "$QEMU_DISPLAY" \
         "${MONITOR_ARGS[@]}" \
         "${QMP_ARGS[@]}" \
@@ -7324,6 +7376,16 @@ if [ "$TEST_NAME" = "bench-net" ] && [ -z "${BENCH_NET_PCAP:-}" ]; then PCAP_ARG
         -no-reboot
 )
 qemu_status=$?
+if [ -n "$SERIAL_RELAY_PID" ]; then
+    # QEMU has closed its end. A relay still waiting for QEMU to open the
+    # FIFO (QEMU failed to start) is released by an empty writer.
+    if kill -0 "$SERIAL_RELAY_PID" 2>/dev/null; then
+        timeout 2 bash -c ': > "$1"' _ "$SERIAL_FIFO_DIR/serial.out" 2>/dev/null
+    fi
+    wait "$SERIAL_RELAY_PID"
+    SERIAL_RELAY_PID=""
+    rm -rf "$SERIAL_FIFO_DIR"
+fi
 
 if [ -n "$CLOCK_OBSERVER_PID" ]; then
     if ! wait "$CLOCK_OBSERVER_PID"; then
@@ -8783,6 +8845,12 @@ vm-desktop-shots: done PASS
         if grep -aq 'vmm guest: .*sleep 100' "$SERIAL_LOG" &&
            ! grep -aq 'vmm guest: .*\^C' "$SERIAL_LOG"; then
             echo "headless: vm-desktop: no ^C after the typed Ctrl+C" >&2
+            exit 1
+        fi
+        # CUBIT_VM_LOAD=1: a busy guest stalled neither audio, the game's
+        # frames, the desktop nor keys to the guest (check-vm-load.py).
+        if [ "${CUBIT_VM_LOAD:-0}" = 1 ] &&
+           ! python3 -I "$ROOT_DIR/tests/headless/check-vm-load.py" "$SERIAL_LOG"; then
             exit 1
         fi
         ;;
@@ -11795,6 +11863,12 @@ if [ "$TEST_NAME" = "neon-blast" ]; then
         exit 1
     fi
 fi
+if [ "$TEST_NAME" = "neon-blast" ] || [ "$TEST_NAME" = "bench-audio" ]; then
+    # Every audio period met its deadline (tests/headless/check-audio-periods.py).
+    if ! python3 -I "$ROOT_DIR/tests/headless/check-audio-periods.py" "$SERIAL_LOG"; then
+        exit 1
+    fi
+fi
 if [ "$TEST_NAME" = "desktop-doom" ]; then
     if [ "${CUBIT_DOOM_MULTIAPP:-0}" = 1 ] &&
        [ "$(grep -Ec 'desktop: ptr hit-down [0-9]+ [0-9]+ 6$' "$SERIAL_LOG")" -lt 1 ]; then
@@ -12241,4 +12315,10 @@ if [ "$TEST_NAME" = "turso-native" ]; then
 fi
 echo "headless: PASS $TEST_NAME"
 echo "headless: serial log: $SERIAL_LOG"
-if [ -n "$TEMP_AUDIO" ]; then echo "headless: audio capture: $TEMP_AUDIO"; fi
+if [ -n "$TEMP_AUDIO" ]; then
+    if [ "$KEEP_LOGS" -eq 1 ]; then
+        echo "headless: audio capture: $AUDIO_KEPT_DIR/$(basename "$TEMP_AUDIO")"
+    else
+        echo "headless: audio capture: removed (--keep-logs keeps it)"
+    fi
+fi

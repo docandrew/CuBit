@@ -38,7 +38,7 @@ if options.load:
     inputs.append(root/'tests/observatory-metrics/load/main.adb')
     load_profile=d/'init-load.ccl'
     original=profile.read_text();end=original.rfind(')')
-    load_profile.write_text(original[:end]+('  (start "observatory-load.app" (priority 3))\n'*4)+original[end:])
+    load_profile.write_text(original[:end]+('  (start "observatory-load.app")\n'*4)+original[end:])
     profile=load_profile
     inputs.append(profile)
 inputs += service_paths

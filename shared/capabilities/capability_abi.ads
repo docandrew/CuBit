@@ -235,9 +235,9 @@ package Capability_ABI with Pure, SPARK_Mode is
    for Limit_Kind use (Bounded => 1, Kernel_Limit => 2);
 
    type Spawn_Request_Field is
-     (Image, Image_Bytes, Priority, Name, Parent, Limit, Limit_Count);
+     (Image, Image_Bytes, Name, Parent, Limit, Limit_Count);
    type Spawn_Request is array (Spawn_Request_Field) of Unsigned_64;
-   Spawn_Request_Bytes : constant := 7 * 8;
+   Spawn_Request_Bytes : constant := 6 * 8;
 
    --  Child: the new process's identity. Process, Endpoint, Cspace: the
    --  spawner's new handles for it (control, an untagged endpoint, and

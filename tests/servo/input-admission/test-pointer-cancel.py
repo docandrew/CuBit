@@ -16,7 +16,7 @@ from native_artifacts import NativeArtifacts
 artifacts=NativeArtifacts(d,options.keep_images)
 shutil.copyfile(__file__,d/'runner.py')
 profile=(seed/'init.ccl').read_text().rstrip();assert profile.endswith(')')
-(d/'init.ccl').write_text(profile[:-1]+' (start "cubitshell.app" (priority 3) (network approve-declared))\n)\n')
+(d/'init.ccl').write_text(profile[:-1]+' (start "cubitshell.app" (network approve-declared))\n)\n')
 from urllib.parse import quote
 capture = not options.no_capture
 iframe = options.iframe

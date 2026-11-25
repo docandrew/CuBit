@@ -13,12 +13,14 @@
 with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Benchmark_Clock;
+with CuBit.Timing_Histograms;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants; use CuBit.Memory_Grants;
 with HDA;
 with CuBit.Audio_Periods;
+with CuBit.Handles.Devices;
 with Startup;
 
 procedure main is
@@ -45,6 +47,10 @@ procedure main is
    streamRunning  : Boolean := False;
    periodSequence : Unsigned_64 := 0;
    previousSlot : Natural := HDA.NUM_BDL_ENTRIES - 1;
+   --  Each period interrupt's handling, from its event's receipt to the
+   --  mixer's notification submitted (hda.drv's CPU time per period).
+   Period_Timing : CuBit.Timing_Histograms.Histogram;
+   Received_At : Unsigned_64;
 
    procedure sendReply (label : Unsigned_32;
                         w0    : Unsigned_64 := 0;
@@ -71,6 +77,22 @@ begin
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;
    debugPrint ("hda: starting" & ASCII.LF);
+
+   --  The real-time reservation its manifest's scheduling binding covers:
+   --  each period interrupt is taken within it, ahead of ordinary work.
+   declare
+      Realtime_Period_Us : constant := 5_000;  --  About one 256-frame period.
+      Realtime_Budget_Us : constant := 250;    --  Acknowledge and notify.
+   begin
+      ret := CuBit.Handles.Devices.Reserve_Realtime
+        (Period_Us => Realtime_Period_Us,
+         Budget_Us => Realtime_Budget_Us,
+         Flags     => 0,
+         Authority => Startup.Scheduling);
+      if ret = Unsigned_64'Last then
+         debugPrint ("hda: latency contract rejected" & ASCII.LF);
+      end if;
+   end;
 
    --  Initialize HDA controller
    HDA.initController;
@@ -120,6 +142,7 @@ begin
    --  Service loop: handle IPC from mixer
    loop
       receive (from, msg);
+      Received_At := CuBit.Benchmark_Clock.Read_Counter;
 
       if from = No_Process then
          --  Hardware IRQs arrive as one-way kernel events.  Acknowledge the
@@ -155,6 +178,13 @@ begin
                   if not submitted then
                      debugPrint ("hda: mixer period notification dropped" & LF);
                   end if;
+                  declare
+                     Handled_At : constant Unsigned_64 := CuBit.Benchmark_Clock.Read_Counter;
+                  begin
+                     if Handled_At >= Received_At then
+                        CuBit.Timing_Histograms.Add (Period_Timing, Handled_At - Received_At);
+                     end if;
+                  end;
                end if;
             end if;
          end irqEvent;
@@ -189,6 +219,7 @@ begin
 
          when OP_AUDIO_HW_START =>
             if buffersGranted then
+               Period_Timing := CuBit.Timing_Histograms.Empty;
                previousSlot := HDA.NUM_BDL_ENTRIES - 1;
                HDA.startStream;
                streamRunning := True;
@@ -203,6 +234,7 @@ begin
             HDA.stopStream;
             streamRunning := False;
             sendReply (REPLY_OK);
+            CuBit.Benchmark_Clock.Report ("audio-hda-period-handling", Period_Timing);
 
          when OP_AUDIO_HW_FILL =>
             --  Payload copying is intentionally unsupported.  The mixer owns

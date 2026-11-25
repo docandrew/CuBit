@@ -2,7 +2,7 @@
 # both started by procmgr and so sharing one CPU, interleave through every
 # context switch.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "thread-check.app" (priority 3))
-  (start "thread-check.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "thread-check.app")
+  (start "thread-check.app")
 )

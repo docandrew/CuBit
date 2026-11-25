@@ -791,8 +791,7 @@ procedure main is
                         Put (R + PO.Pid_Offset, To_Word (Pid), PO.Pid_Bytes);
                         Page (R + PO.State_Offset) := Item.State;
                         Page (R + PO.CPU_Offset) := Item.CPU;
-                        Put (R + PO.Priority_Offset,
-                             Unsigned_64 (Unsigned_16'Mod (Item.Priority)), 2);
+                        Page (R + PO.Class_Offset) := Item.Class;
                         Put (R + PO.Frames_Offset, Unsigned_64 (Item.Frames), 4);
                         Page (R + PO.Name_Length_Offset) := Unsigned_8 (Name_Length);
                         for J in 1 .. Name_Length loop
@@ -3457,7 +3456,6 @@ procedure main is
       Identity : out Process_ID;
       Failure : out CuBit.Launch_Arguments.Launch_Failure;
       name        : String;
-      priority    : Unsigned_64;
       requester   : Process_ID := No_Process;
       approveNetwork : Network_Approval := No_Network;
       approveRender : Boolean := False;
@@ -3488,7 +3486,6 @@ procedure main is
       newPID        : Process_ID := No_Process;
       --  What SPAWN gave procmgr for the child.
       Child         : HC.Spawned_Child;
-      pri           : Unsigned_64 := priority;
       t0, t1        : Unsigned_64;
       --  Where a slow launch spent its time (logged at Slow_Spawn_Ms):
       --  the file read, the kernel spawn, the policy resets, the access
@@ -4793,10 +4790,6 @@ procedure main is
       printDec (Unsigned_32 (t1 - t0));
       debugPrint ("ms" & LF);
 
-      if pri = 0 or pri > 10 then
-         pri := 5;
-      end if;
-
       --  The manifest first: its handle limit sizes the child's table.
       readManifest (elfSize, View, Reading);
       if Reading in Manifest_Malformed then
@@ -4833,7 +4826,6 @@ procedure main is
       declare
          Spawned : constant HC.Spawn_Result := HC.Spawn
            (Authority => PH.Process_Root, Image => imageBuf, Bytes => elfSize,
-            Priority => pri,
             Name => name (name'First .. name'First + Natural'Min (name'Length, 16) - 1),
             --  Launch-into-S: the child's supervisor is the session S, a
             --  node in procmgr, so procmgr is its kernel parent; the
@@ -5755,7 +5747,6 @@ procedure main is
 
    function spawnByName
      (name        : String;
-      priority    : Unsigned_64;
       requester   : Process_ID := No_Process;
       approveNetwork : Network_Approval := No_Network;
       approveRender : Boolean := False;
@@ -5788,7 +5779,7 @@ procedure main is
          return No_Process;
       end if;
       Result := Spawn_Attempt
-        (False, No_Process, Retry, Identity, Failure, name, priority, requester,
+        (False, No_Process, Retry, Identity, Failure, name, requester,
          approveNetwork, approveRender, systemStartup, startupRole, approveFirmwareSnapshot,
          approveACPIHardware, approvePCIConfig, approveFirmwareData,
          approveDisplayCapture, approvePlatformPower, approveTrace, approveTestConsole,
@@ -5799,7 +5790,7 @@ procedure main is
          -- first got past its waits, so this one never waits.
          debugPrint ("procmgr: render retry software with fresh child" & LF);
          Result := Spawn_Attempt
-           (True, Identity, Retry, Retry_Identity, Failure, name, priority, requester,
+           (True, Identity, Retry, Retry_Identity, Failure, name, requester,
             approveNetwork, approveRender, systemStartup, startupRole,
             approveFirmwareSnapshot, approveACPIHardware, approvePCIConfig,
             approveFirmwareData, approveDisplayCapture, approvePlatformPower, approveTrace,
@@ -6794,8 +6785,6 @@ procedure main is
       use type LA.Validation;
       Name_Bytes     : constant Unsigned_64 := msg.words (1);
       Argument_Bytes : constant Unsigned_64 := msg.words (2);
-      Priority       : constant Unsigned_64 :=
-        Unsigned_64 (CuBit.Launch_Grants.Request_Priority (msg.words (3)));
       Grant_Bytes    : constant Unsigned_64 :=
         CuBit.Launch_Grants.Request_Grant_Bytes (msg.words (3));
       Ring_Bytes     : constant Unsigned_64 :=
@@ -6815,6 +6804,7 @@ procedure main is
    begin
       if msg.tag.length /= LA.Launch_Request_Words
         or else not LA.Request_Valid (Name_Bytes, Argument_Bytes)
+        or else not CuBit.Launch_Grants.Request_Reserved_Clear (msg.words (3))
         or else not CuBit.Launch_Grants.Grant_Bytes_Valid (Grant_Bytes)
         or else Ring_Bytes > CuBit.Outlet_Rings.Maximum_Bytes
         or else not CuBit.Grant_References.Valid_Wire (msg.words (0))
@@ -6963,7 +6953,7 @@ procedure main is
          attenuationRefused := False;
          directoryRefused := False;
          newPID := spawnByName
-           (Name, Priority, sender,
+           (Name, sender,
             approveRender => Session_Launch.Within
               (Session_Launch.User_Session, Session_Launch.Render, 0),
             readyDeadlineMs => Unplanned_Ready_Deadline,
@@ -7354,7 +7344,7 @@ procedure main is
       debugPrint ("/" & Unsigned_32'Image (Unsigned_32 (Startup_Plan.Plan.Launch_Count)) & ": " & Name & LF);
       pendingParameters := Item.Arguments;
       PID := spawnByName
-        (Name, Unsigned_64 (Item.Priority), systemStartup => True, startupRole => Item.Role,
+        (Name, systemStartup => True, startupRole => Item.Role,
          approveRender => Render_Granted (Item, Name),
          approveFirmwareSnapshot => Item.Approve_Firmware_Snapshot,
          approveACPIHardware => Item.Approve_ACPI_Hardware,
@@ -8485,7 +8475,7 @@ procedure main is
          --  Never parked: the receipt is bounded. A provider still starting
          --  refuses it (the supervisor may ask again).
          newPID := spawnByName
-           (Name, Unsigned_64 (Spec.Priority), sender,
+           (Name, sender,
             approveRender => not From_Device_Manager and then launchIndex (sender) /= 0
                              and then Launches.Values (launchIndex (sender)).Render_Approved,
             readyDeadlineMs => Unplanned_Ready_Deadline,

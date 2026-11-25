@@ -3,13 +3,13 @@
 # Every executable in this profile is loaded from the read-only CPIO initrd.
 # No block device is required to reach the desktop.
 (startup v1
-  (start "storage-check.app" (priority 5))
-  (start "logstore.svc" (priority 5))
+  (start "storage-check.app")
+  (start "logstore.svc")
   # MET-002: the metrics store, before every program that declares a
   # com.cubit-os.stdmetric outlet (Desktop), so their outlets are wired at launch.
-  (start "metrics.svc" (priority 5))
-  (start "clock.svc" (priority 5))
-  (start "display.svc" (priority 5))
+  (start "metrics.svc")
+  (start "clock.svc")
+  (start "display.svc")
   # PWR-003: power.svc, the power manager, before Desktop: Desktop's
   # requester badge (power-desktop, Shut Down...) resolves at launch from
   # this trusted plan. This plan has no acpi.svc, so a power-off ends
@@ -17,12 +17,12 @@
   # off) and there is no button watch. undeclared_grace_ms is the stop
   # grace of every entry without (stop-grace-ms ...) and of the apps
   # Desktop launched: at least CuBit.UI.Recovery's 1500 ms.
-  (start "power.svc" (priority 5)
+  (start "power.svc"
     (arguments (Power_Parameters undeclared_grace_ms => 2000 storage_deadline_ms => 10000
                                  driver_grace_ms => 1000 button => Button_Policy.Power_Off
                                  reading_age_ms => 60000)))
   # BUG-001: a desktop that fails is started again (procmgr, growing delay).
-  (start "desktop.svc" (priority 4) (restart on-failure))
+  (start "desktop.svc" (restart on-failure))
   # The touchpad (SUP-001): devmgr starts the HID-over-I2C driver for each
   # PNP0C50 device acpi.svc offers, through procmgr's Start_Child. The
   # launch is one typed value, a Device_Class_Launch: policy is hid-i2c's

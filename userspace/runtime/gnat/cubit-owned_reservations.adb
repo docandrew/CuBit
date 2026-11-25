@@ -53,8 +53,19 @@ package body CuBit.Owned_Reservations is
 
    function Reserve_From_C (Bytes : Unsigned_64) return Unsigned_64 is
      (Reserve (Bytes));
+   --  All or nothing, as one kernel commit was before commits were bounded
+   --  to Maximum_Commit_Bytes: steps already committed are dropped again.
    function Commit_From_C (Address, Bytes : Unsigned_64) return Unsigned_64 is
-     (if Change (Address, Bytes, Commit) then 0 else 1);
+   begin
+      if Commit_Steps (Address, Bytes) then
+         return 0;
+      end if;
+      declare
+         Ignore : constant Boolean := Change (Address, Bytes, Decommit);
+      begin
+         return 1;
+      end;
+   end Commit_From_C;
    function Release_From_C (Base, Bytes : Unsigned_64) return Unsigned_64 is
      (if Release (Base, Bytes) then 0 else 1);
 end CuBit.Owned_Reservations;

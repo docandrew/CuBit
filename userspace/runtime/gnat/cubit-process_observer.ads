@@ -38,7 +38,7 @@ package CuBit.Process_Observer with Pure, SPARK_Mode is
    --     0  u64 process identity (KERN-003, docs/process-objects.md)
    --     8  u64 launcher's process identity (0: unknown)
    --    16  u8  state (the kernel's ProcessState position)
-   --    17  u8  cpu              18  i16 priority
+   --    17  u8  cpu              18  u8  scheduling class (19: zero)
    --    20  u32 frames (4 KiB pages)
    --    24  u64 started (monotonic ms; 0: unknown)
    --    32  u8  name length      33..48  name (16 bytes)
@@ -54,7 +54,7 @@ package CuBit.Process_Observer with Pure, SPARK_Mode is
    Launcher_Offset : constant := 8;
    State_Offset : constant := 16;
    CPU_Offset : constant := 17;
-   Priority_Offset : constant := 18;
+   Class_Offset : constant := 18;
    Frames_Offset : constant := 20;
    Started_Offset : constant := 24;
    Name_Length_Offset : constant := 32;

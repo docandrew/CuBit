@@ -1,7 +1,7 @@
 # Headless kernel-map-probe test (KERN-014): kernel-map-probe asks a probe
 # kernel (KERN014_PROBE=1) to read its page through the kernel's linear map.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "kernel-map-probe.app" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "kernel-map-probe.app")
 )

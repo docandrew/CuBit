@@ -15,7 +15,7 @@ from native_artifacts import NativeArtifacts
 artifacts=NativeArtifacts(d,options.keep_images)
 shutil.copyfile(__file__,d/'runner.py')
 profile=(seed/'init.ccl').read_text().rstrip();assert profile.endswith(')')
-(d/'init.ccl').write_text(profile[:-1]+' (start "cubitshell.app" (priority 3) (network approve-declared))\n)\n')
+(d/'init.ccl').write_text(profile[:-1]+' (start "cubitshell.app" (network approve-declared))\n)\n')
 subprocess.run(['cp','--reflink=auto','--sparse=always',str(seed/'desktop.img'),str(d/'base.img')],check=True)
 with (d/'fsck.log').open('w') as log:
  result=subprocess.run(['e2fsck','-fy',str(d/'base.img')],stdout=log,stderr=subprocess.STDOUT)

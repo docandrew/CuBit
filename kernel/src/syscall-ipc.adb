@@ -191,7 +191,6 @@ package body Syscall.IPC is
         result   : aliased ABI.Spawn_Result := [others => 0];
         elfAddr  : System.Address;
         elfSize  : Storage_Count;
-        priority : Process.ProcessPriority;
         elfHeader : aliased ELF.ELFFileHeader;
         name : aliased Process.ProcessName := [others => ASCII.NUL];
         copied : Boolean;
@@ -275,14 +274,6 @@ package body Syscall.IPC is
             return;
         end if;
 
-        if request (ABI.Priority) > 10 then
-            priority := 5;
-        elsif request (ABI.Priority) = 0 then
-            priority := 1;
-        else
-            priority := Process.ProcessPriority (request (ABI.Priority));
-        end if;
-
         -- The name (0 = default "spawned").
         if request (ABI.Name) /= 0 then
             Process.User_Memory.Copy_Name (callerPID, request (ABI.Name), name, copied);
@@ -300,7 +291,6 @@ package body Syscall.IPC is
             size         => elfSize,
             strAddr      => name'Address,
             requestedPID => Process.NO_PROCESS,
-            priority     => priority,
             ppid         => parent,
             sourcePID    => callerPID,
             handleLimit  => limit);

@@ -34,7 +34,6 @@ procedure Main is
    --  Time for the lingering child to start before its supervisor ends.
    Linger_Start_Ms : constant := 1_000;
    Stop_Grace_Ms : constant CS.Grace_Ms := 1_000;
-   Child_Priority : constant CS.Priority_Value := 3;
 
    Through : constant CST.Starter := CST.Using (Startup.Process_Manager);
    Failures : Natural := 0;
@@ -56,7 +55,7 @@ procedure Main is
    end Check;
 
    function Temporary_Child (Value : String) return CS.Spec is
-      S : CS.Spec := CST.Child (Child_Program, CS.Temporary, Stop_Grace_Ms, Child_Priority);
+      S : CS.Spec := CST.Child (Child_Program, CS.Temporary, Stop_Grace_Ms);
    begin
       CST.Give_Value (S, Value);
       return S;
@@ -108,11 +107,11 @@ begin
 
    --  3. A program outside this supervisor's start-children scope.
    declare
-      S : CS.Spec := CST.Child ("parameters-plain.app", CS.Temporary, Stop_Grace_Ms, Child_Priority);
+      S : CS.Spec := CST.Child ("parameters-plain.app", CS.Temporary, Stop_Grace_Ms);
    begin
       Expect_Refusal (S, CS.Not_Granted, "a program its may_launch does not name is NOT_GRANTED");
       --  4. A device-class start: only the device manager makes those.
-      S := CST.Child (Child_Program, CS.Temporary, Stop_Grace_Ms, Child_Priority);
+      S := CST.Child (Child_Program, CS.Temporary, Stop_Grace_Ms);
       CST.Give_Class (S, "PNP0C50");
       CST.Add_Fact (S, "descriptor_register", 32);
       Expect_Refusal (S, CS.Class_Not_Granted, "a device-class start from a program is CLASS_NOT_GRANTED");

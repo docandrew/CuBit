@@ -1,8 +1,8 @@
 # UI latency probe (tests/headless/run.sh --test ui-latency): the desktop
 # and one toolkit window that counts its system calls per frame and per key.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "ui-latency-probe.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "ui-latency-probe.app")
 )

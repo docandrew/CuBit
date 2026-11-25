@@ -56,7 +56,6 @@ procedure Main is
    REPLY_FAILED : constant Unsigned_32 := 16#F002#;
    Mode_Exit   : constant Unsigned_64 := 0;
    Mode_Revoke  : constant Unsigned_64 := 1;
-   Spawn_Priority : constant := 5;
    Pattern : constant Unsigned_64 := 16#7AB1_E5C0_FFEE_0001#;
 
    Lives : constant := 12;
@@ -130,7 +129,7 @@ procedure Main is
                   length => CuBit.Launch_Arguments.Launch_Request_Words,
                   protocol => 0, ipc => <>, reserved => 0);
       Msg.words := [GR.Encode (Grant), Filename'Length, 0,
-                    CuBit.Launch_Grants.Request_Word (Spawn_Priority, 0)];
+                    CuBit.Launch_Grants.Request_Word (0)];
       Tag := capCall (Launch, Msg, Deadline_After (Answer_Ms));
       G.Revoke (Grant, Revoked);
       return Tag.label = REPLY_OK;

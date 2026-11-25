@@ -4,6 +4,6 @@
 # child's exit event, checks procmgr's typed refusals, then ends with a
 # child still running, which procmgr must reap.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "supervision-check.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "supervision-check.app")
 )

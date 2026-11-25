@@ -31,6 +31,12 @@ package Process_List_ABI with Pure, SPARK_Mode is
    for Operation use (List => 1);
 
    Entry_Bytes      : constant := 32;
+
+   --  Each entry's scheduling class (docs/scheduler.md), the u8 at offset
+   --  10 (11 is zero): an idle thread; one that runs only on an otherwise
+   --  idle CPU; ordinary virtual-deadline work; admitted real time.
+   type Scheduling_Class is (Idle, Background, Normal, Realtime);
+   for Scheduling_Class use (Idle => 1, Background => 2, Normal => 3, Realtime => 4);
    Destination_Word : constant := 0;
    Capacity_Word    : constant := 1;
    Request_Words    : constant := 2;

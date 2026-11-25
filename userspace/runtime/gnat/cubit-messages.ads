@@ -488,12 +488,6 @@ package CuBit.Messages is
       authority : CuBit.Handles.Process;
       region    : CuBit.Handles.Device_Memory) return Unsigned_64;
 
-   --  Set CPU affinity for a process.
-   function setCpu
-     (targetPID : Process_ID;
-      cpu       : Unsigned_64;
-      authority : CuBit.Handles.Process) return Unsigned_64;
-
    --  Declare this process' scheduler latency contract. The kernel records
    --  the class, period, and budget now; later scheduler work will use the
    --  same ABI for admission control, deadline ordering, and telemetry.

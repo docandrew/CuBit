@@ -10,10 +10,10 @@
 # procmgr's Start_Child (SUP-001) with the class block below: the laptop
 # plans' policy values, and the descriptor register devmgr gives as a fact.
 (startup v1
-  (start "gpio-bootstrap-check.app" (priority 3)
+  (start "gpio-bootstrap-check.app"
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared)
     (acpi-firmware-data approve-declared))
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
+  (start "logstore.svc" (test-console approve-declared))
   (driver-class "PNP0C50"
     (Device_Class_Launch
       facts => ["descriptor_register"]

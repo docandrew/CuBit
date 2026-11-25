@@ -469,13 +469,13 @@ class Images(unittest.TestCase):
             self.prepare()
 
     def test_config_and_startup_checked_before_realization(self):
-        (self.root / "settings.ccl").write_text('(startup v1 (start "a.app" (priority 5)))')
+        (self.root / "settings.ccl").write_text('(startup v1 (start "a.app"))')
         with self.assertRaisesRegex(ValueError, "profile kind mismatch"):
             self.prepare()
         (self.root / "settings.ccl").write_text('(system-config v1 (setting "x" 1))')
         self.catalog.write_text(CATALOG[:-1] + '(artifact "start" repository "start.ccl"))')
         self.profile.write_text(PROFILE[:-1] + '(startup "start"))')
-        (self.root / "start.ccl").write_text('(startup v1 (start "missing.app" (priority 5)))')
+        (self.root / "start.ccl").write_text('(startup v1 (start "missing.app"))')
         with self.assertRaisesRegex(ValueError, "executable absent"):
             self.prepare()
 
@@ -531,7 +531,7 @@ class Images(unittest.TestCase):
           (kernel "a") (boot-menu "a") (startup "start")
           (file optical "sample" "apps/sameboy/00.gb")
           (file optical "notices" "licenses/notices"))''')
-        (self.root / "start.ccl").write_text('(startup v1 (start "a.app" (priority 5)))')
+        (self.root / "start.ccl").write_text('(startup v1 (start "a.app"))')
         (self.root / "sample.gb").write_bytes(b"T" * 0x200)
         notices = self.root / "notices"
         notices.mkdir()

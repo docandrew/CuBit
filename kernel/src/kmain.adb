@@ -635,7 +635,7 @@ begin
     Process.startKernelThread (procStart => Services.Idle.start'Address,
                                name      => "Idle            ",
                                pid       => Config.SERVICE_IDLE_PID,
-                               priority  => -1,
+                               idle      => True,
                                homeCPU   => 0);
 
     -- println (testKThread1'Address);
@@ -743,7 +743,7 @@ begin
         procStart => Services.Idle.start'Address,
         name      => "Idle            ",
         pid       => idlePID,
-        priority  => -1,
+        idle      => True,
         homeCPU   => Natural(cpuNum));
 
     TLB_Shootdown.Register_CPU (Natural (cpuNum));

@@ -85,8 +85,6 @@ procedure main is
    O_WRONLY   : constant Unsigned_64 := 1;
    O_CREAT    : constant Unsigned_64 := 64;
    O_TRUNC    : constant Unsigned_64 := 512;
-   --  Launched programs' scheduling priority.
-   Launch_Priority : constant Unsigned_32 := 5;
    REPLY_OK   : constant Unsigned_32 := 16#F000#;
    REPLY_ERR  : constant Unsigned_32 := 16#F001#;
 
@@ -838,7 +836,7 @@ procedure main is
       Request.words (0) := CuBit.Grant_References.Encode (spawnGrant);
       Request.words (1) := Unsigned_64 (Length);
       Request.words (2) := 0;
-      Request.words (3) := CuBit.Launch_Grants.Request_Word (Launch_Priority, 0);
+      Request.words (3) := CuBit.Launch_Grants.Request_Word (0);
       return Request;
    end Launch_Request;
 
@@ -1356,17 +1354,6 @@ procedure main is
    end putHex32;
 
    ---------------------------------------------------------------------------
-   --  putDecSigned - print a signed integer in decimal
-   ---------------------------------------------------------------------------
-   procedure putDecSigned (val : Integer) is
-   begin
-      if val < 0 then
-         putChar ('-');
-         putDec (Unsigned_32 (-(val)));
-      else
-         putDec (Unsigned_32 (val));
-      end if;
-   end putDecSigned;
 
    ---------------------------------------------------------------------------
    --  putPadded - print a string right-padded to a given width
@@ -1672,7 +1659,7 @@ procedure main is
       end if;
 
       --  Print header
-      putStr ((1 .. PID_COLUMN - 3 => ' ') & "PID  NAME              STATE      CPU  PRI   MEM" & LF);
+      putStr ((1 .. PID_COLUMN - 3 => ' ') & "PID  NAME              STATE      CPU  CLASS     MEM" & LF);
       putStr ((1 .. PID_COLUMN - 3 => ' ') & "---  ----              -----      ---  ---   ---" & LF);
 
       --  Parse entries, skip unnamed SUSPENDED processes
@@ -1691,7 +1678,6 @@ procedure main is
 
             stateIdx : Natural;
             nameEnd  : Natural := 0;
-            pri      : Integer;
             memKB    : Unsigned_32;
          begin
             --  Name: find end (trim spaces/nulls)
@@ -1732,9 +1718,8 @@ procedure main is
             putDecRight (Unsigned_64 (cpuVal), 2);
             putStr ("  ");
 
-            --  Priority (signed)
-            pri := Integer (Item.Priority);
-            putDecSigned (pri);
+            --  Scheduling class (Process_List_ABI.Scheduling_Class)
+            putStr (CuBit.Process_List.Class_Name (Item));
 
             --  Memory (frames * 4 = KB)
             memKB := framesVal * 4;

@@ -210,7 +210,7 @@ begin
 
    declare
       Spawned : constant HC.Spawn_Result :=
-        HC.Spawn (Roots.Process_Root, Image'Address, Image_Bytes, 1, "debug-target",
+        HC.Spawn (Roots.Process_Root, Image'Address, Image_Bytes, "debug-target",
                   CuBit.Process_IDs.No_Process, (Kind => ST.Standard_Limit));
    begin
       Check (Spawned.Spawned, "the target spawns");

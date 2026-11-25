@@ -1,5 +1,4 @@
 pragma Ada_2022;
-with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with Process_Identities;
 with Process.User_Memory;
@@ -8,16 +7,16 @@ with Process_List_ABI;
 package body Process_List_Object is
     package ABI renames Process_List_ABI;
     use type Process.ProcessState;
+    use type Process.LatencyClass;
     use type ABI.Outcome;
-
-    function Priority_Bits is new Ada.Unchecked_Conversion (Integer_16, Unsigned_16);
 
     -- One entry, as CuBit.Process_List decodes it.
     type Proc_Entry is record
         identity : Unsigned_64;
         state    : Unsigned_8;
         cpu      : Unsigned_8;
-        priority : Unsigned_16;
+        class    : Unsigned_8;
+        reserved : Unsigned_8;
         frames   : Unsigned_32;
         name     : String (1 .. 16);
     end record;
@@ -25,11 +24,19 @@ package body Process_List_Object is
         identity at 0 range 0 .. 63;
         state    at 8 range 0 .. 7;
         cpu      at 9 range 0 .. 7;
-        priority at 10 range 0 .. 15;
+        class    at 10 range 0 .. 7;
+        reserved at 11 range 0 .. 7;
         frames   at 12 range 0 .. 31;
         name     at 16 range 0 .. 127;
     end record;
     for Proc_Entry'Size use ABI.Entry_Bytes * 8;
+
+    -- The class its main thread runs in (Process.runKeyOf's bands).
+    function Class_Of (P : Process.ProcessID) return ABI.Scheduling_Class is
+      (if Process.threadOf (P).idle then ABI.Idle
+       elsif Process.threadOf (P).rtAdmitted then ABI.Realtime
+       elsif Process.threadOf (P).latency.class = Process.LATENCY_BACKGROUND then ABI.Background
+       else ABI.Normal);
 
     procedure Call (Caller   : Process.ProcessID;
                     Readable : Boolean;
@@ -53,7 +60,8 @@ package body Process_List_Object is
                           (identity => Process_Identities.To_Word (Process.identityOf (I)),
                            state    => Process.ProcessState'Pos (Process.threadOf (I).state),
                            cpu      => Unsigned_8 (Process.threadOf (I).cpu),
-                           priority => Priority_Bits (Integer_16 (Process.threadOf (I).priority)),
+                           class    => ABI.Scheduling_Class'Enum_Rep (Class_Of (I)),
+                           reserved => 0,
                            frames   => Unsigned_32 (Process.proctab (I).frames.length),
                            name     => Process.proctab (I).name);
                         Copied : Boolean;

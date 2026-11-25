@@ -49,9 +49,9 @@ PAGES = {
     "js-benchmark": "js-benchmark.html?autorun=1",
 }
 FAILURES = re.compile(r"USER-MEMORY-FAULT|CUBITSHELL: panic|PENNY-ABORT:|CUBITSHELL: FAIL|EXCEPTION:")
-INIT = ('(startup v1 (start "logstore.svc" (priority 5)) (start "clock.svc" (priority 5)) '
-        '(start "display.svc" (priority 5)) (start "desktop.svc" (priority 4)) '
-        '(start "cubitshell.app" (priority 3) (network approve-declared)))')
+INIT = ('(startup v1 (start "logstore.svc") (start "clock.svc") '
+        '(start "display.svc") (start "desktop.svc") '
+        '(start "cubitshell.app" (network approve-declared)))')
 
 
 FRAMES = ("top", "keys", "scrolled")

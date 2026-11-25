@@ -258,7 +258,6 @@ package body Process.Loader is
                    strAddr      : System.Address;
                    headersAddr  : System.Address;
                    requestedPID : ProcessID := NO_PROCESS;
-                   priority     : ProcessPriority := 1;
                    ppid         : ProcessID := NO_PROCESS;
                    sourcePID    : ProcessID;
                    handleLimit  : Process_Capabilities.Tables.Handle_Limit) return ProcessID with
@@ -374,7 +373,6 @@ package body Process.Loader is
                 pid := create (procStart    => elfHeader.e_entry,
                                ppid         => ppid,
                                name         => procName,
-                               priority     => priority,
                                procStack    => PROCESS_STACK_TOP_VIRT,
                                stackSize    => UserStackSize (requestedStackSize),
                                imageFrames  => imagePages,
@@ -412,7 +410,6 @@ package body Process.Loader is
                    size : System.Storage_Elements.Storage_Count;
                    strAddr : System.Address;
                    requestedPID : ProcessID := NO_PROCESS;
-                   priority : ProcessPriority := 1;
                    ppid : ProcessID := NO_PROCESS;
                    sourcePID : ProcessID := NO_PROCESS;
                    handleLimit : Process_Capabilities.Tables.Handle_Limit :=
@@ -443,7 +440,7 @@ package body Process.Loader is
           snapshot, sourcePID, copied);
         if copied then
             pid := loadSnapshot (header, objStart, size, strAddr, snapshot,
-                                 requestedPID, priority, ppid, sourcePID,
+                                 requestedPID, ppid, sourcePID,
                                  handleLimit);
         else
             println ("Process.Loader: program-header source unreadable");

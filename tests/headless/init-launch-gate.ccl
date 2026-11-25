@@ -2,7 +2,7 @@
 # what its launch table names, each child with at most its launcher's
 # authority, rights included (userspace/apps/launch-gate-check).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "launch-gate-check.app" (priority 4))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "launch-gate-check.app")
 )

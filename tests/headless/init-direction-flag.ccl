@@ -2,7 +2,7 @@
 # while interrupts and page faults enter the kernel; the kernel must clear DF
 # on entry and survive, and the process must finish every round.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "direction-flag-check.app" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "direction-flag-check.app")
 )

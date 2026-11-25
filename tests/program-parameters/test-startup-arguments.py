@@ -15,10 +15,10 @@ CONFIG_TOOL = ROOT / 'userspace/ccl/build/config/ccl-config'
 CATALOG = ROOT / 'userspace/ccl/catalogs/native-runtime-services.ccl'
 SCHEMA = ROOT / 'userspace/ccl/interfaces/executable-manifest.ccl'
 GOOD = '''(startup v1
-  (start "parameters-check.app" (priority 3)
+  (start "parameters-check.app"
     (arguments (Check_Parameters count => 64 deadline => (Check_Deadline.Within 2500))))
-  (start "parameters-plain.app" (priority 3))
-  (start "elsewhere.app" (priority 3))
+  (start "parameters-plain.app")
+  (start "elsewhere.app")
 )
 '''
 
@@ -64,12 +64,12 @@ class StartupArguments(unittest.TestCase):
                  'field count: This field has no default'),
                 ('count => 64', 'count => 64 colour => 1', 'line 3, column 46: parameters-check.app: not a Check_Parameters: field colour: This record has no field'),
                 ('(Check_Deadline.Within 2500)', 'Check_Deadline.Never', 'not a Check_Parameters'),
-                ('(start "parameters-plain.app" (priority 3))',
-                 '(start "parameters-plain.app" (priority 3) (arguments (Check_Parameters count => 1 '
+                ('(start "parameters-plain.app")',
+                 '(start "parameters-plain.app" (arguments (Check_Parameters count => 1 '
                  'deadline => Check_Deadline.Forever)))',
                  'line 4, column 57: parameters-plain.app declares no parameters, so it takes no arguments'),
-                ('(start "elsewhere.app" (priority 3))',
-                 '(start "elsewhere.app" (priority 3) (arguments (X a => 1)))',
+                ('(start "elsewhere.app")',
+                 '(start "elsewhere.app" (arguments (X a => 1)))',
                  'line 5, column 50: elsewhere.app has arguments, but')]:
             with self.subTest(new=new):
                 profile = GOOD.replace(old, new, 1)

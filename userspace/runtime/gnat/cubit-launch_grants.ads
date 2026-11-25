@@ -114,20 +114,19 @@ package CuBit.Launch_Grants with Pure, SPARK_Mode is
                 and then Name_Last <= Item'Last
                 and then Position = Name_Last + 1;
 
-   --  OP_LAUNCH's fourth word: the priority in the low half; in the high
+   --  OP_LAUNCH's fourth word: the low half reserved (zero); in the high
    --  half, the length of the grants region (after the name and the launch
    --  block in the lent grant) in bits 32 .. 47, and the length of the connector
    --  ring table after it (CuBit.Outlet_Rings) in bits 48 .. 63. Zero grant
    --  bytes: no delegation; zero ring bytes: no launcher-owned rings.
    pragma Compile_Time_Error (Maximum_Bytes > 16#FFFF#, "grants length exceeds 16 bits");
    function Request_Word
-     (Priority : Unsigned_32; Grant_Bytes : Byte_Count; Ring_Bytes : Natural := 0)
-     return Unsigned_64 is
-     (Unsigned_64 (Priority) or Shift_Left (Unsigned_64 (Grant_Bytes), 32)
-      or Shift_Left (Unsigned_64 (Ring_Bytes), 48))
+     (Grant_Bytes : Byte_Count; Ring_Bytes : Natural := 0) return Unsigned_64 is
+     (Shift_Left (Unsigned_64 (Grant_Bytes), 32) or Shift_Left (Unsigned_64 (Ring_Bytes), 48))
    with Pre => Ring_Bytes <= 16#FFFF#;
-   function Request_Priority (Word : Unsigned_64) return Unsigned_32 is
-     (Unsigned_32 (Word and 16#FFFF_FFFF#));
+   --  The reserved low half is zero (a request with any bit set is refused).
+   function Request_Reserved_Clear (Word : Unsigned_64) return Boolean is
+     ((Word and 16#FFFF_FFFF#) = 0);
    function Request_Grant_Bytes (Word : Unsigned_64) return Unsigned_64 is
      (Shift_Right (Word, 32) and 16#FFFF#);
    function Request_Ring_Bytes (Word : Unsigned_64) return Unsigned_64 is

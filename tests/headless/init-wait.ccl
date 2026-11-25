@@ -1,7 +1,7 @@
 # WAIT (ABI-002 slice 2) and the readiness page (KERN-013): the forms, the
 # counters, and a store to the read-only page that must fault.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "wait-check.app" (priority 3))
-  (start "readiness-writer.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "wait-check.app")
+  (start "readiness-writer.app")
 )

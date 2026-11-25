@@ -510,13 +510,6 @@ package body CuBit.Messages is
            (targetPID, authority, region, physAddr, virtAddr, numPages, flags)
       then 0 else Unsigned_64'Last);
 
-   function setCpu
-     (targetPID : Process_ID;
-      cpu       : Unsigned_64;
-      authority : CuBit.Handles.Process) return Unsigned_64 is
-     (if CuBit.Handles.Control.Set_CPU (targetPID, authority, cpu)
-      then 0 else Unsigned_64'Last);
-
    function setLatencyContract
      (latencyClass : Unsigned_64;
       periodUs     : Unsigned_64;

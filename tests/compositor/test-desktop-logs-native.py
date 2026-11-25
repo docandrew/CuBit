@@ -11,7 +11,7 @@ with (r/'coordination/build.lock').open('a') as lock:
  (w/'result.json').write_text(json.dumps({'status':'LINKED','gpu_enabled':False,'backend':'legacy','binary_sha256':hashlib.sha256(exe.read_bytes()).hexdigest()},indent=2))
  s=(r/'tests/compositor/test-desktop-vulkan-boot.py').read_text().replace('root = Path(__file__).resolve().parents[2]',f"root = Path({str(r)!r})")
  s=s.replace('"clock.svc", "logstore.svc")','"clock.svc", "logstore.svc", "boot-logs.app")')
- s=s.replace("+ '))')", "+ ') (start \"boot-logs.app\" (priority 3)))')")
+ s=s.replace("+ '))')", "+ ') (start \"boot-logs.app\"))')")
  s=s.replace('"display.svc", "desktop.svc")],','"display.svc", "desktop.svc", "boot-logs.app")],')
  a=s.index('    time.sleep(2)\n    baseline = screenshot');b=s.index('\nfinally:',a)
  s=s[:a]+'''    wait(lambda: 'boot-logs: desktop: retained software text active' in text(), 60)

@@ -172,7 +172,7 @@ package body Devmgr_Launches is
      (if Role <= Maximum_Role then Services (Role) else H.No_Endpoint);
 
    function Spawn
-     (Name : String; Image : System.Address; Bytes, Priority : Unsigned_64) return Child
+     (Name : String; Image : System.Address; Bytes : Unsigned_64) return Child
    is
       Slot : Child := No_Child;
    begin
@@ -203,7 +203,7 @@ package body Devmgr_Launches is
          end if;
          declare
             Answer : constant HC.Spawn_Result :=
-              HC.Spawn (Spawner, Image, Bytes, Priority, Name, CuBit.Process_IDs.No_Process,
+              HC.Spawn (Spawner, Image, Bytes, Name, CuBit.Process_IDs.No_Process,
                         L.Manifest.Declared.Limit);
          begin
             if not Answer.Spawned then

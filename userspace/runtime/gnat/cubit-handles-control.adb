@@ -28,7 +28,6 @@ package body CuBit.Handles.Control is
      (Authority : Process;
       Image     : System.Address;
       Bytes     : Unsigned_64;
-      Priority  : Unsigned_64;
       Name      : String;
       Parent    : Process_ID;
       Limit     : CuBit.Startup_Tables.Handle_Limit) return Spawn_Result
@@ -44,7 +43,6 @@ package body CuBit.Handles.Control is
       Request :=
         [ABI.Image       => Address_Word (Image),
          ABI.Image_Bytes => Bytes,
-         ABI.Priority    => Priority,
          ABI.Name        => (if Name'Length = 0 then 0 else Address_Word (Text'Address)),
          ABI.Parent      => CuBit.Process_IDs.To_Word (Parent),
          ABI.Limit       =>
@@ -127,10 +125,6 @@ package body CuBit.Handles.Control is
       Publications : Unsigned_64 := System_Publications.No_Publications) return Boolean is
      (K.Call (K.Install_Launch_Arguments, CuBit.Process_IDs.To_Word (Target),
               Address_Word (Block), Bytes, K.Word (Authority), Publications) = 0);
-
-   function Set_CPU (Target : Process_ID; Authority : Process; CPU : Unsigned_64)
-     return Boolean is
-     (K.Call (K.Set_CPU, CuBit.Process_IDs.To_Word (Target), CPU, K.Word (Authority)) = 0);
 
    function Send_Control
      (Target : Process_ID; Kind : Unsigned_64; Authority : Process) return Unsigned_64 is

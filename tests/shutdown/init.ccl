@@ -5,14 +5,14 @@
 # (hangs: forced after 500 ms), shutdown-cooperative (obeys Stop), logstore
 # (undeclared: power.svc's grace). Every grace is written here.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "shutdown-standin.app" (priority 5) (stop-stage power-tail)
+  (start "logstore.svc" (test-console approve-declared))
+  (start "shutdown-standin.app" (stop-stage power-tail)
     (firmware-snapshot approve-declared) (acpi-hardware approve-declared) (platform-power approve-declared)
     (arguments (Standin_Parameters s5_sleep_type => 0)))
-  (start "shutdown-cooperative.app" (priority 3) (stop-grace-ms 2000)
+  (start "shutdown-cooperative.app" (stop-grace-ms 2000)
     (arguments (Cooperative_Parameters quiesce_ms => 200)))
-  (start "shutdown-stubborn.app" (priority 3) (stop-grace-ms 500))
-  (start "power.svc" (priority 5)
+  (start "shutdown-stubborn.app" (stop-grace-ms 500))
+  (start "power.svc"
     (arguments (Power_Parameters undeclared_grace_ms => 300 storage_deadline_ms => 10000
                                  driver_grace_ms => 1000 button => Button_Policy.Power_Off
                                  reading_age_ms => 60000)))

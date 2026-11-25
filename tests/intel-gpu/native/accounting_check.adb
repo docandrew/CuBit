@@ -140,7 +140,7 @@ begin
    declare
       Result : constant CuBit.Handles.Control.Spawn_Result :=
         CuBit.Handles.Control.Spawn
-          (Roots.Process_Root, ELF, ELF_Size, 5, "accounting-child",
+          (Roots.Process_Root, ELF, ELF_Size, "accounting-child",
            CuBit.Process_IDs.No_Process, (Kind => CuBit.Startup_Tables.Standard_Limit));
    begin
       Check (Result.Spawned, "spawn");

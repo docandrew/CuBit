@@ -2,6 +2,6 @@
 # hello.c with cc1 and assembles it with as.app, then has the gcc driver do
 # both (gcc -c), and compares every output with Linux's.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "gcc-check.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "gcc-check.app")
 )

@@ -2,10 +2,10 @@
 # --test debugger-gui-rs): the desktop, debug-demo-rs and the Debugger,
 # attached to it through the engine (cooperative attach, Observe only).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "debug-demo-rs.app" (priority 3))
-  (start "debugger.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "debug-demo-rs.app")
+  (start "debugger.app")
 )

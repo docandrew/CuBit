@@ -2,6 +2,6 @@
 # stream over the second and probes by the default route, while the host
 # pulls each cable in turn.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "net-multi-check.app" (priority 3) (network approve-declared))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "net-multi-check.app" (network approve-declared))
 )

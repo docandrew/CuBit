@@ -35,7 +35,7 @@ package body CCL_Lexicon_Source is
          when Lexicon_Client.Not_Granted =>
             "the program's manifest must request the lexicon service (service ""lexicon"" ""lexicon"")",
          when Lexicon_Client.Not_Opened =>
-            "start lexicon.svc (init profile: (start ""lexicon.svc"" (priority 4)))",
+            "start lexicon.svc (init profile: (start ""lexicon.svc""))",
          when Lexicon_Client.No_Image =>
             "install the cubit-lexicon asset package (Assets/cubit-lexicon/1/english.lexicon)");
 end CCL_Lexicon_Source;

@@ -203,7 +203,7 @@ package body Scheduler is
             Trace.Emit
                 (Trace.EVENT_SCHEDULE_RUN,
                  Unsigned_64 (pid),
-                 Unsigned_64 (Process.threadtab (tid).priority));
+                 Boolean'Pos (Process.threadtab (tid).idle));
 
             runStartTSC := x86.rdtsc;
 

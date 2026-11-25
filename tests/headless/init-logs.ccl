@@ -3,10 +3,10 @@
 # procmgr refused its required "ntp" entry; the test now fails on any
 # refusal (check-refusals.py, CAP-003).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "timesync.svc" (priority 5) (network approve-declared))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "logs.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "timesync.svc" (network approve-declared))
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "logs.app")
 )

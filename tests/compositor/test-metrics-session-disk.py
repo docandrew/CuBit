@@ -35,8 +35,8 @@ with tempfile.TemporaryDirectory(prefix='cubit-metrics-session-disk-') as tmp:
         run('debugfs','-R',f'dump /{name} {extracted}',str(out))
         assert digest(extracted)==digest(source),(name,'wrong staged payload')
     startup=(d/'init.ccl').read_text()
-    collector='(start "metrics.svc" (priority 2))'
-    desktop='(start "desktop.svc" (priority 4))'
+    collector='(start "metrics.svc")'
+    desktop='(start "desktop.svc")'
     assert startup.count(collector)==startup.count(desktop)==1
     assert startup.index(collector)<startup.index(desktop)
     run('e2fsck','-fn',str(out))

@@ -1,5 +1,5 @@
 # console-route (ABI-002): a program's debug text reaches the serial console
 # only through logstore's test console mirror (Test_Console_ABI).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "console-route-check.app" (priority 5)))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "console-route-check.app"))

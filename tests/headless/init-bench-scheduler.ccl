@@ -1,6 +1,6 @@
-# Two instances, same ordinary priority and no device/scheduling authority.
+# Two instances, both ordinary (NORMAL class), with no device or scheduling authority.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "bench-cpu.app" (priority 4) (trace approve-declared))
-  (start "bench-cpu.app" (priority 4) (trace approve-declared))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "bench-cpu.app" (trace approve-declared))
+  (start "bench-cpu.app" (trace approve-declared))
 )

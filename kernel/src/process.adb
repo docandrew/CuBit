@@ -156,7 +156,7 @@ package body Process is
     end realtimeKey;
 
     function runKeyOf (tid : ThreadID) return Unsigned_64 is
-      (if threadtab (tid).priority < 0 then Virtual_Deadlines.Idle_Key
+      (if threadtab (tid).idle then Virtual_Deadlines.Idle_Key
        elsif realtimeEligible (tid) then realtimeKey (tid)
        else NORMAL_BAND + Unsigned_64'Min
               (threadtab (tid).runDeadline, Virtual_Deadlines.Idle_Key - 1 - NORMAL_BAND));
@@ -634,7 +634,7 @@ package body Process is
     function createKernelThread (procStart  : in System.Address;
                                  name       : in ProcessName;
                                  pid        : in ProcessID;
-                                 priority   : in ProcessPriority) return ProcessID
+                                 idle       : in Boolean) return ProcessID
     is
         newPID : ProcessID;
     begin
@@ -658,7 +658,7 @@ package body Process is
             proc.name     := name;
             thr.mode      := KERNEL;
             thr.state     := SUSPENDED;
-            thr.priority  := priority;
+            thr.idle      := idle;
 
             -- One 4-page block: guard, kernel stack, FP/SIMD state page.
             allocGuardedStack : declare
@@ -706,11 +706,11 @@ package body Process is
     procedure startKernelThread (procStart  : in System.Address;
                                  name       : in ProcessName;
                                  pid        : in ProcessID;
-                                 priority   : in ProcessPriority;
+                                 idle       : in Boolean := False;
                                  homeCPU    : in Natural := 0)
     is
         newPID : constant ProcessID :=
-          createKernelThread (procStart, name, pid, priority);
+          createKernelThread (procStart, name, pid, idle);
     begin
         threadOf(newPID).cpu := homeCPU;
         threadOf(newPID).pinned := True;
@@ -721,7 +721,7 @@ package body Process is
     -- retiring application.
     procedure startReaper is
         newPID : constant ProcessID := createKernelThread
-          (retirementWorker'Address, "Reaper          ", NO_PROCESS, 5);
+          (retirementWorker'Address, "Reaper          ", NO_PROCESS, idle => False);
     begin
         threadOf(newPID).cpu := 0;
         threadOf(newPID).pinned := True;
@@ -731,7 +731,7 @@ package body Process is
 
     procedure startWorker (procStart : System.Address; name : ProcessName) is
         newPID : constant ProcessID := createKernelThread
-          (procStart, name, NO_PROCESS, 5);
+          (procStart, name, NO_PROCESS, idle => False);
     begin
         threadOf(newPID).cpu := 0;
         threadOf(newPID).pinned := True;
@@ -916,7 +916,6 @@ package body Process is
     function create (procStart    : in System.Address;
                      ppid         : in ProcessID;
                      name         : in ProcessName;
-                     priority     : in ProcessPriority;
                      procStack    : in System.Address;
                      stackSize    : in UserStackSize;
                      imageFrames  : in Natural;
@@ -1006,7 +1005,6 @@ package body Process is
             discardUnpublished (pid);
             return NO_PROCESS;
         end if;
-        threadOf (pid).priority     := priority;
         threadOf (pid).latency      :=
             (class    => LATENCY_NORMAL,
              periodUs => 0,
@@ -1180,12 +1178,25 @@ package body Process is
     function shouldYieldCPU (tid : ThreadID; cpu : Natural) return Boolean is
         Local : constant Unsigned_64 := Queues.headKey (cpuReadyLists (cpu));
     begin
-        if threadtab (tid).priority < 0 then
+        if threadtab (tid).idle then
             return Local /= Virtual_Deadlines.Idle_Key or else
               (Build.Work_Stealing and then stealableWorkElsewhere (cpu));
         end if;
         return Virtual_Deadlines.Preempts (Local, runKeyOf (tid), marginTicks);
     end shouldYieldCPU;
+
+    -- An idle CPU that stays idle runs at Idle_Key. A placement elsewhere
+    -- may have claimed it (placeOn sets the claimed thread's key and sends
+    -- the reschedule IPI) for a thread another CPU then took; the claim
+    -- must not outlive that, or every later wake here compares against
+    -- the claimed key, does not preempt the idle thread and waits for the
+    -- next timer tick (measured: about 1 in 100 hda.drv period interrupts
+    -- waited 0.25-1.8 ms on an idle CPU). Caller holds lock.
+    procedure settleIdleKey (tid : ThreadID; cpu : Natural) is
+    begin
+        cpuRunningKey (cpu) := Virtual_Deadlines.Settled_Key
+          (Keeps_Idle => threadtab (tid).idle, Current => cpuRunningKey (cpu));
+    end settleIdleKey;
 
     procedure serviceReschedule is
         cpuData : PerCPUData.PerCPUData with Import, Volatile,
@@ -1200,6 +1211,8 @@ package body Process is
         then
             cpuAccounting(cpuData.cpuNum).Reason := Higher_Priority;
             Scheduler.enter;
+        elsif cpuData.currentThread /= NO_THREAD then
+            settleIdleKey (cpuData.currentThread, cpuData.cpuNum);
         end if;
         Spinlocks.exitCriticalSection (lock);
     end serviceReschedule;
@@ -1216,7 +1229,9 @@ package body Process is
         if shouldYieldCPU (me, CPU) then
             cpuAccounting(CPU).Reason := Higher_Priority;
             Scheduler.enter;
-        elsif threadtab (me).priority >= 0 and then
+        elsif threadtab (me).idle then
+            settleIdleKey (me, CPU);
+        elsif not threadtab (me).idle and then
           Scheduling_Turns.Remaining (cpuAccounting(CPU).Turn) = 0
         then
             -- Slice used up: the new deadline goes behind anything queued
@@ -1255,7 +1270,7 @@ package body Process is
            Wakee   => Unsigned_64'Min (runKeyOf (tid), VD.Deadline'Last),
            -- A thread still switching out on its CPU (woken as it blocks)
            -- must not run elsewhere before it has stopped there.
-           Pinned  => threadtab (tid).pinned or else threadtab (tid).priority < 0 or else
+           Pinned  => threadtab (tid).pinned or else threadtab (tid).idle or else
                       Process_Lifetime.Executing (threadtab (tid).lifetime),
            Running => Running,
            Queued  => Queued,
@@ -1338,7 +1353,7 @@ package body Process is
         then
             return;
         end if;
-        if threadtab (tid).pinned or else threadtab (tid).priority < 0 or else
+        if threadtab (tid).pinned or else threadtab (tid).idle or else
            Process_Lifetime.Executing (threadtab (tid).lifetime) or else
            not cpuOnline (here)
         then
@@ -1878,7 +1893,6 @@ package body Process is
         pid := create (procStart   => To_Address(0),
                        ppid        => 1,
                        name        => "init            ",
-                       priority    => 3,
                        procStack   => PROCESS_STACK_TOP_VIRT,
                        stackSize   => INIT_PROCESS_STACK_SIZE,
                        imageFrames => 1,
@@ -2440,7 +2454,7 @@ package body Process is
         main := mainThreadOf (pid);
         threadtab (tid).process := pid;
         threadtab (tid).mode := USER;
-        threadtab (tid).priority := threadtab (main).priority;
+        threadtab (tid).idle := False;
         threadtab (tid).latency := threadtab (main).latency;
         -- Start on this CPU; an idle CPU may steal it once it has aged.
         threadtab (tid).cpu := PerCPUData.getCPUNumber;

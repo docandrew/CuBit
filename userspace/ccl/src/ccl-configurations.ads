@@ -11,7 +11,6 @@ package CCL.Configurations with SPARK_Mode => On is
    type Network_Approval is (Deny, Approve_Declared);
    --  Trusted startup wiring, not a role an executable may claim for itself.
    type Startup_Role is (Application, Config_Storage);
-   subtype Startup_Priority is Positive range 1 .. 10;
    --  At_Startup launches once at boot; Per_Device launches a driver for
    --  each discovered device its manifest matches (docs/ccl-driver-manifests.md).
    type Launch_Mode is (At_Startup, Per_Device);
@@ -76,7 +75,6 @@ package CCL.Configurations with SPARK_Mode => On is
    end record;
    type Launch_Entry is record
       Executable : Executable_Text;
-      Priority : Startup_Priority := 5;
       Approval : Network_Approval := Deny;
       -- Trusted startup approval, not authority claimed by the executable.
       -- Still requires its declared render endpoint and broker admission.
@@ -209,7 +207,7 @@ package CCL.Configurations with SPARK_Mode => On is
    type Diagnostic_Code is
      (No_Error, Invalid_Syntax, Unsupported_Version, Unknown_Declaration,
       Invalid_Key, Invalid_Value, Duplicate_Key, Too_Many_Entries,
-      Invalid_Executable, Invalid_Priority, Invalid_Approval, Invalid_Role, Duplicate_Field,
+      Invalid_Executable, Invalid_Approval, Invalid_Role, Duplicate_Field,
       Missing_Field, Trailing_Input, Invalid_Dependency, Invalid_Launch_Mode,
       Invalid_Scheduling, Invalid_Deadline, Invalid_Typed_Value,
       --  (arguments ...) given twice, or longer than a Value_Text.

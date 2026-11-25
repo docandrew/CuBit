@@ -6,15 +6,15 @@
 # fixture runs twice, once with the outlet declared and once without
 # (tests/metrics-latency/outlet-fixture).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "metrics.svc" (priority 5))
-  (start "clock.svc" (priority 5))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "calculator.app" (priority 3))
-  (start "metrics-declared.app" (priority 3))
-  (start "metrics-undeclared.app" (priority 3))
-  (start "ccl-remote.app" (priority 4) (network approve-declared) (test-console approve-declared)
+  (start "logstore.svc" (test-console approve-declared))
+  (start "metrics.svc")
+  (start "clock.svc")
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "calculator.app")
+  (start "metrics-declared.app")
+  (start "metrics-undeclared.app")
+  (start "ccl-remote.app" (network approve-declared) (test-console approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
       display => Pairing_Display.Test_Console work => "@system/work"
       files => false builds => false mail => false)))

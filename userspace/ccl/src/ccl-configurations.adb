@@ -20,7 +20,6 @@ package body CCL.Configurations with SPARK_Mode => On is
          when Duplicate_Key => return "DUPLICATE_KEY";
          when Too_Many_Entries => return "TOO_MANY_ENTRIES";
          when Invalid_Executable => return "INVALID_EXECUTABLE";
-         when Invalid_Priority => return "INVALID_PRIORITY";
          when Invalid_Approval => return "INVALID_APPROVAL";
          when Invalid_Role => return "INVALID_ROLE";
          when Duplicate_Field => return "DUPLICATE_FIELD";
@@ -180,7 +179,7 @@ package body CCL.Configurations with SPARK_Mode => On is
 
       procedure Launch is
          Executable : Key_Text;
-         Have_Priority, Have_Network, Have_Role, Have_Mode, Have_Device, Have_Restart, Have_Replace,
+         Have_Network, Have_Role, Have_Mode, Have_Device, Have_Restart, Have_Replace,
            Have_Scheduling, Have_Deadline, Have_Render, Have_Firmware, Have_Arguments,
            Have_Stop_Grace, Have_Stop_Stage : Boolean := False;
          Have_ACPI_Hardware, Have_ACPI_PCI_Config,
@@ -198,7 +197,6 @@ package body CCL.Configurations with SPARK_Mode => On is
             end if;
             Seen := True;
          end Declared_Approval;
-         Priority : Integer_64 := 5;
          Approval : Network_Approval := Deny;
          Role : Startup_Role := Application;
          Item : Launch_Entry;
@@ -239,12 +237,7 @@ package body CCL.Configurations with SPARK_Mode => On is
          while not Stopped and then not At_Close (Reader) and then not At_End (Reader) loop
             Open_Form (Reader);
             Read_Symbol (Reader, Name);
-            if Matches (Name, "priority") then
-               if Have_Priority then Fail (Duplicate_Field); end if;
-               Integer_Field (1, 10, Priority);
-               if Result.Diagnostic = Invalid_Value then Result.Diagnostic := Invalid_Priority; end if;
-               Have_Priority := True;
-            elsif Matches (Name, "network") then
+            if Matches (Name, "network") then
                if Have_Network then Fail (Duplicate_Field); end if;
                Read_Symbol (Reader, Name);
                if Matches (Name, "deny") then Approval := Deny;
@@ -415,7 +408,6 @@ package body CCL.Configurations with SPARK_Mode => On is
             end if;
             Close_Form (Reader);
          end loop;
-         if not Have_Priority then Fail (Missing_Field); end if;
          --  The PCI configuration window is part of the ACPI hardware grant:
          --  approving it alone grants nothing, so it is refused.
          if Item.Approve_ACPI_PCI_Config and then not Item.Approve_ACPI_Hardware then
@@ -439,7 +431,6 @@ package body CCL.Configurations with SPARK_Mode => On is
          Count := Count + 1;
          Result.Plan.Launch_Count := Count;
          Item.Executable := (Length => Executable.Length, Data => Executable.Data (1 .. 64));
-         Item.Priority := Startup_Priority (Priority);
          Item.Approval := Approval;
          Item.Role := Role;
          Result.Plan.Launches (Count) := Item;

@@ -173,6 +173,9 @@ package body Process.Owned_Memory is
          if Position = Cut.Upper then Drop_First := Node; end if;
          if Position + 1 = Cut.Upper + Cut.Dropped then Drop_Last := Node; end if;
          if Position = Cut.Upper + Cut.Dropped then Lower_First := Node; end if;
+         -- Nothing below the first kept lower page is needed: a release
+         -- steps down a long run from its top (Release), one step each.
+         exit when Position = Cut.Upper + Cut.Dropped;
          Node := Node.next;
       end loop;
       Item.Status := Quarantined;
@@ -203,10 +206,6 @@ package body Process.Owned_Memory is
       Item.Bytes := Bytes_Of (Item.Count);
       Item.Status := Live;
    end Drop;
-
-   -- Every page of the run, for retirement with its region.
-   function Whole (Item : Entry_Record) return Run_Cut is
-     ((Lower => 0, Dropped => Item.Count, Upper => 0));
 
    function Is_Run_Of (Item : Entry_Record; Region_Index : Slot) return Boolean is
      (Item.Status /= Empty and then Item.Kind = Run and then Item.Parent = Region_Index);
@@ -499,13 +498,74 @@ package body Process.Owned_Memory is
    end Change_Range;
 
    procedure Release (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean) is
+      Region_Index : Natural := 0;
       Reclaimed : Boolean;
+
+      -- Region_Index still names this release's quarantined region (another
+      -- thread of PID may have finished releasing it while no lock was held).
+      function Still_Ours return Boolean is
+        (Entries(PID, Region_Index).Status = Quarantined
+         and then Entries(PID, Region_Index).Kind = Region
+         and then Entries(PID, Region_Index).Owner = PID
+         and then Entries(PID, Region_Index).Generation = generationOf (PID)
+         and then Entries(PID, Region_Index).Base = Base
+         and then Entries(PID, Region_Index).Bytes = Bytes);
+
+      procedure Take_Locks is
+      begin
+         Spinlocks.enterCriticalSection (grantLock);
+         Lock;
+         lockAddressSpace (PID);
+      end Take_Locks;
+      procedure Drop_Locks is
+      begin
+         unlockAddressSpace (PID);
+         Unlock;
+         Spinlocks.exitCriticalSection (grantLock);
+      end Drop_Locks;
+
+      -- Under the locks: retire at most Pages_Per_Locked_Step pages of the
+      -- region's runs, the highest pages of one run first. Done when no run
+      -- is left (the region record is then released); Failed when a run's
+      -- retirement failed (it stays quarantined, with the region).
+      procedure Step (Done, Failed : out Boolean) is
+         Child : Natural := 0;
+      begin
+         Done := False;
+         Failed := False;
+         for I of Records.Iterate (Tables(PID)'Access) loop
+            if Is_Run_Of (Entries(PID, I).Value.all, Region_Index) then
+               Child := I;
+               exit;
+            end if;
+         end loop;
+         if Child = 0 then
+            Records.Release (Tables(PID), Region_Index);
+            Done := True;
+            return;
+         end if;
+         declare
+            Count : constant Natural := Entries(PID, Child).Count;
+            Taken : constant Natural := Natural'Min (Count, Policy.Pages_Per_Locked_Step);
+         begin
+            if Count = 0 then
+               Records.Release (Tables(PID), Child);
+               return;
+            end if;
+            Drop (PID, Child, (Lower => Count - Taken, Dropped => Taken, Upper => 0), 0, Reclaimed);
+            Failed := not Reclaimed;
+         end;
+      end Step;
+
+      Done, Failed : Boolean := False;
    begin
       Success := False;
       if PID = NO_PROCESS or else not Policy.Valid_Capacity (Bytes) then return; end if;
-      Spinlocks.enterCriticalSection (grantLock);
-      Lock;
-      lockAddressSpace (PID);
+      -- Quarantine the region (no commit, access change or grant reaches it
+      -- again), then retire its pages in bounded steps, giving the locks
+      -- back between steps: every CPU's wait and grant paths take grantLock,
+      -- so one locked step is the longest a release holds them up.
+      Take_Locks;
       for I of Records.Iterate (Tables(PID)'Access) loop
          if Entries(PID, I).Status in Live | Quarantined and then Entries(PID, I).Kind = Region
            and then Entries(PID, I).Owner = PID and then
@@ -513,24 +573,27 @@ package body Process.Owned_Memory is
            Entries(PID, I).Base = Base and then Entries(PID, I).Bytes = Bytes
          then
             Entries(PID, I).Status := Quarantined;
-            Success := True;
-            for Child of Records.Iterate (Tables(PID)'Access) loop
-               if Is_Run_Of (Entries(PID, Child).Value.all, I) then
-                  if Entries(PID, Child).Count = 0 then
-                     Records.Release (Tables(PID), Child);
-                  else
-                     Drop (PID, Child, Whole (Entries(PID, Child).Value.all), 0, Reclaimed);
-                     Success := Success and Reclaimed;
-                  end if;
-               end if;
-            end loop;
-            if Success then Records.Release (Tables(PID), I); end if;
+            Region_Index := I;
             exit;
          end if;
       end loop;
-      unlockAddressSpace (PID);
-      Unlock;
-      Spinlocks.exitCriticalSection (grantLock);
+      if Region_Index = 0 then
+         Drop_Locks;
+         return;
+      end if;
+      loop
+         Step (Done, Failed);
+         exit when Done or else Failed;
+         Drop_Locks;
+         Take_Locks;
+         -- Another thread releasing the same region may have finished it.
+         if not Still_Ours then
+            Drop_Locks;
+            return;
+         end if;
+      end loop;
+      Drop_Locks;
+      Success := Done;
    end Release;
 
    procedure Forget_Exited (PID : ProcessID; Retired : out Natural) is

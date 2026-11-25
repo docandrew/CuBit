@@ -1,9 +1,9 @@
 # VMM-001 slice 1: the desktop with vmm, which boots the pinned Linux guest
 # and shows its serial console in a window (headless --test vm-desktop).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "vmm.app" (priority 3) (vm-create approve-declared))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "vmm.app" (vm-create approve-declared))
 )

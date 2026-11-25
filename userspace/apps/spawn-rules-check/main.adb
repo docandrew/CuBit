@@ -118,7 +118,7 @@ procedure Main is
    function Spawn (Authority : CuBit.Handles.Process;
                    Parent : CuBit.Process_IDs.Process_ID := CuBit.Process_IDs.No_Process)
                    return HC.Spawn_Result is
-     (HC.Spawn (Authority, Image'Address, Image_Bytes, 1, "spawn-probe", Parent,
+     (HC.Spawn (Authority, Image'Address, Image_Bytes, "spawn-probe", Parent,
                 (Kind => ST.Standard_Limit)));
 
    --  Stop a child the probe spawned, through the root.

@@ -66,7 +66,7 @@ procedure Lifetime is
    procedure Start (Spawned : out CuBit.Handles.Control.Spawned_Child) is
       Result : constant CuBit.Handles.Control.Spawn_Result :=
         CuBit.Handles.Control.Spawn
-          (Roots.Process_Root, ELF, ELF_Size, 5, "grant-child",
+          (Roots.Process_Root, ELF, ELF_Size, "grant-child",
            CuBit.Process_IDs.No_Process, (Kind => CuBit.Startup_Tables.Standard_Limit));
    begin
       Check (Result.Spawned, "child spawned");

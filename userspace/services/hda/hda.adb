@@ -774,24 +774,18 @@ package body HDA is
       position  : out Unsigned_32;
       completed : out Boolean)
    is
-      status   : Unsigned_8;
       nextSlot : Natural;
    begin
-      slot := 0;
       position := readReg32 (outputStreamBase + SD_LPIB);
-      status := readReg8 (outputStreamBase + SD_STS);
-      streamErrors := streamErrors or (status and 16#18#);
-      completed := (status and SD_STS_BCIS) /= 0;
-
-      --  Acknowledge error-only IRQs too, otherwise a level line can stay
-      --  asserted forever. Preserve the error bits in our diagnostic state.
-      if (status and 16#1C#) /= 0 then
-         writeReg8 (outputStreamBase + SD_STS, status and 16#1C#);
-      end if;
-
-      if not completed then
-         return;
-      end if;
+      --  startStream enables only the completion interrupt (IOCE), so the
+      --  interrupt is a completion: clear BCIS without reading the status
+      --  first, one register access per period fewer (each is a VM exit
+      --  under a hypervisor). The error bits raise no interrupt; they stay
+      --  latched for stopStream's diagnostic. Writing 1 to a clear BCIS
+      --  changes nothing, so a spurious interrupt is harmless: the position
+      --  has not moved and the caller's advance is zero.
+      writeReg8 (outputStreamBase + SD_STS, SD_STS_BCIS);
+      completed := True;
 
       if completedPeriods = 0 then
          firstCompletedPosition := position;

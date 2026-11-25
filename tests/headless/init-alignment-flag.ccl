@@ -2,7 +2,7 @@
 # while interrupts and page faults enter the kernel; the entry stubs must
 # clear AC so that SMAP holds in every interrupt handler (SEC-026).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "alignment-flag-check.app" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "alignment-flag-check.app")
 )

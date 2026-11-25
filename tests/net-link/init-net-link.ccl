@@ -1,6 +1,6 @@
 # The net-link headless test (tests/net-link): the guest that keeps a TCP
 # stream and pings over UDP while the host pulls the virtual cable.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "net-link-check.app" (priority 3) (network approve-declared))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "net-link-check.app" (network approve-declared))
 )

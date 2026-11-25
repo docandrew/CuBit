@@ -98,12 +98,12 @@ def screenshot(name):
         return frame
 try:
     profile = output / "init.ccl"
-    profile.write_text('(startup v1 (start "logstore.svc" (priority 5)) '
-                       '(start "clock.svc" (priority 5)) '
-                       '(start "display.svc" (priority 5)) '
-                       '(start "desktop.svc" (priority 4)' +
+    profile.write_text('(startup v1 (start "logstore.svc") '
+                       '(start "clock.svc") '
+                       '(start "display.svc") '
+                       '(start "desktop.svc"' +
                        (' (render approve-declared)' if args.approve_render else '') + ')'
-                       ' (start "focus.app" (priority 3)))')
+                       ' (start "focus.app"))')
     run("python3", str(builder), str(output / "desktop.img"), "--boot",
         *[str(stage / n) for n in ("logstore.svc", "clock.svc", "display.svc", "desktop.svc", "focus.app")],
         "--file", "init.ccl=" + str(profile))

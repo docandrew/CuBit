@@ -1,7 +1,7 @@
 # Development lab only: explicit listen declaration approval; no remote admin.
 (startup v1
   # ABI-002: services' debug text reaches serial only through logstore's mirror.
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "ccl-control.app" (priority 5) (network approve-declared))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "ccl-control.app" (network approve-declared))
 )

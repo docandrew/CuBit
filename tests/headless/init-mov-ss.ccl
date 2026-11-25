@@ -3,7 +3,7 @@
 # loads SS from it right before SYSCALL and INT3. The kernel must take each
 # deferred #DB on its own stack with its own GS base and survive.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "mov-ss-check.app" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "mov-ss-check.app")
 )

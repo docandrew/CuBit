@@ -48,7 +48,7 @@ procedure DMA_Retirement_Native is
    --  (for instance while a dead owner's cleanup is still pending).
    function Spawn return Boolean is
       Answer : constant HC.Spawn_Result :=
-        HC.Spawn (Roots.Process_Root, ELF, ELF_Size, 5, "dma-owner",
+        HC.Spawn (Roots.Process_Root, ELF, ELF_Size, "dma-owner",
                   CuBit.Process_IDs.No_Process,
                   (Kind => CuBit.Startup_Tables.Standard_Limit));
    begin

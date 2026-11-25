@@ -2,11 +2,11 @@
 # session only; the test launches Servo from the Apps menu (Config-driven,
 # desktop.launch.*), so procmgr's launch policy grants its network scope.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "display.svc" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "display.svc")
   # As in the real session (init-desktop-session.ccl); a metrics-enabled
   # Desktop requires it.
-  (start "metrics.svc" (priority 2))
-  (start "desktop.svc" (priority 4))
+  (start "metrics.svc")
+  (start "desktop.svc")
 )

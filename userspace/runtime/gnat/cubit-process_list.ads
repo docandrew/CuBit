@@ -10,7 +10,8 @@
 --  One 32-byte entry per process, little-endian:
 --     0  u64 identity (KERN-003, docs/process-objects.md)
 --     8  u8  state (the kernel's ProcessState position)
---     9  u8  cpu              10  i16 priority
+--     9  u8  cpu              10  u8  scheduling class (11: zero)
+--                                     (Process_List_ABI.Scheduling_Class)
 --    12  u32 frames (4 KiB pages)
 --    16  name (16 bytes, NUL padded)
 ------------------------------------------------------------------------------
@@ -26,7 +27,7 @@ package CuBit.Process_List is
    Identity_Offset : constant := 0;
    State_Offset    : constant := 8;
    CPU_Offset      : constant := 9;
-   Priority_Offset : constant := 10;
+   Class_Offset    : constant := 10;
    Frames_Offset   : constant := 12;
    Name_Offset     : constant := 16;
 
@@ -34,7 +35,8 @@ package CuBit.Process_List is
       Identity : Process_ID := No_Process;
       State    : Unsigned_8 := 0;
       CPU      : Unsigned_8 := 0;
-      Priority : Integer_16 := 0;
+      Class    : Unsigned_8 := 0;
+      Reserved : Unsigned_8 := 0;
       Frames   : Unsigned_32 := 0;
       Name     : String (1 .. Name_Bytes) := [others => ASCII.NUL];
    end record;
@@ -42,7 +44,8 @@ package CuBit.Process_List is
       Identity at Identity_Offset range 0 .. 63;
       State    at State_Offset range 0 .. 7;
       CPU      at CPU_Offset range 0 .. 7;
-      Priority at Priority_Offset range 0 .. 15;
+      Class    at Class_Offset range 0 .. 7;
+      Reserved at Class_Offset + 1 range 0 .. 7;
       Frames   at Frames_Offset range 0 .. 31;
       Name     at Name_Offset range 0 .. Name_Bytes * 8 - 1;
    end record;
@@ -53,4 +56,10 @@ package CuBit.Process_List is
 
    --  The name without its padding.
    function Name_Of (Item : Process_Entry) return String;
+
+   --  Its scheduling class (Process_List_ABI.Scheduling_Class) as a word
+   --  of Class_Name_Bytes, padded for a column; "?" padded when unknown.
+   Class_Name_Bytes : constant := 8;
+   function Class_Name (Item : Process_Entry) return String
+     with Post => Class_Name'Result'Length = Class_Name_Bytes;
 end CuBit.Process_List;

@@ -5,8 +5,8 @@
 # valid (tests/headless/run.sh --test display-latency --accel kvm,
 # CUBIT_DISPLAY_LATENCY_ANIMATION=1).
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "display.svc" (priority 5))
-  (start "desktop.svc" (priority 4))
-  (start "frame-ticker.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "frame-ticker.app")
 )

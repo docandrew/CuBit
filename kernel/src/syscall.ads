@@ -43,7 +43,6 @@ is
         SYSCALL_ALLOC_DMA,
         SYSCALL_ENABLE_IRQ,
         SYSCALL_MAP_INTO,
-        SYSCALL_SET_CPU,
         SYSCALL_SET_LATENCY_CONTRACT,
         SYSCALL_INSPECT_CAPABILITY,
         SYSCALL_THREAD_CREATE,
@@ -155,7 +154,6 @@ is
         SYSCALL_ALLOC_DMA            => 74,
         SYSCALL_ENABLE_IRQ           => 75,
         SYSCALL_MAP_INTO             => 76,
-        SYSCALL_SET_CPU              => 78,
         SYSCALL_SET_LATENCY_CONTRACT => 81,
         SYSCALL_INSPECT_CAPABILITY => 84,
         -- Threads and futexes (docs/threads.md)

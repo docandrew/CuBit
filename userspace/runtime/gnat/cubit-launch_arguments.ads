@@ -266,8 +266,8 @@ package CuBit.Launch_Arguments with Pure, SPARK_Mode is
    --  procmgr a grant holding the program name (Name_Bytes) followed by a
    --  launch block (Argument_Bytes; zero: none, the child gets no block):
    --    words (0) grant reference (CuBit.Grant_References wire form)
-   --    words (1) name bytes, (2) argument bytes, (3) priority (0: default)
-   --      in the low half and, in the high half, the length of delegated
+   --    words (1) name bytes, (2) argument bytes, (3) reserved (zero) in
+   --      the low half and, in the high half, the length of delegated
    --      places after the block (CuBit.Launch_Grants.Request_Word)
    --  Reply OK: words (0) = the child's identity (as in its exit report),
    --  (1) = its launch handle's rights word, (2) = an outcome word for the

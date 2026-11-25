@@ -2,7 +2,7 @@
 # install-reboot): logstore persists to @ufs:0/logstore.log, and
 # install-boot-check reads what an earlier boot wrote there.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
-  (start "install-boot-check.app" (priority 3))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "install-boot-check.app")
 )

@@ -58,6 +58,7 @@ package CuBit.Owned_Reservations with Preelaborate is
      (Page_Round (Bytes) /= 0 and then Release (Base, Page_Round (Bytes)));
 
    --  For C (Mesa's ANV CPU tables): 0 on success, else nonzero, as before.
+   --  Commit_From_C takes any page multiple, in steps, all or nothing.
    function Reserve_From_C (Bytes : Unsigned_64) return Unsigned_64
      with Export, Convention => C, External_Name => "cubit_owned_reserve";
    function Commit_From_C (Address, Bytes : Unsigned_64) return Unsigned_64

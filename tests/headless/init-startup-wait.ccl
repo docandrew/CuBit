@@ -6,15 +6,15 @@
 # procmgr's old fixed one-second wait). Entries start in order: a waiting
 # client holds the later ones back, never procmgr's service loop.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "startup-wait-client.app" (priority 3))
-  (start "startup-wait-provider.app" (priority 4)
+  (start "logstore.svc" (test-console approve-declared))
+  (start "startup-wait-client.app")
+  (start "startup-wait-provider.app"
     (arguments (Provider_Parameters behaviour => Wait_Behaviour.Never_Register after => 1500)))
-  (start "startup-wait-client.app" (priority 3))
-  (start "startup-wait-provider.app" (priority 4) (ready-deadline-ms 1000)
+  (start "startup-wait-client.app")
+  (start "startup-wait-provider.app" (ready-deadline-ms 1000)
     (arguments (Provider_Parameters behaviour => Wait_Behaviour.Never_Register after => 4000)))
-  (start "startup-wait-client.app" (priority 3))
-  (start "startup-wait-provider.app" (priority 4)
+  (start "startup-wait-client.app")
+  (start "startup-wait-provider.app"
     (arguments (Provider_Parameters behaviour => Wait_Behaviour.Register_Late after => 2500)))
-  (start "startup-wait-client.app" (priority 3))
+  (start "startup-wait-client.app")
 )

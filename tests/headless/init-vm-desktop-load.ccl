@@ -1,0 +1,12 @@
+# headless vm-desktop with CUBIT_VM_LOAD=1: the desktop, Neon Blast (music
+# through mixer.svc and frames) and vmm with the pinned Linux guest, whose
+# two vCPUs then spin (tests/headless/vm-desktop-shots.py). vmm starts last
+# so its window has the keyboard.
+(startup v1
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "neon-blast.app")
+  (start "vmm.app" (vm-create approve-declared))
+)

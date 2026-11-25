@@ -1,5 +1,4 @@
 pragma Ada_2022;
-with Ada.Unchecked_Conversion;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Grant_References;
 with CuBit.Memory_Grants;
@@ -15,8 +14,6 @@ package body CuBit.Process_Observer_Lists is
    --  The page procmgr fills (one at a time).
    Page : array (0 .. PO.Page_Bytes - 1) of Unsigned_8 := [others => 0]
      with Alignment => PO.Page_Bytes;
-
-   function Signed is new Ada.Unchecked_Conversion (Unsigned_16, Integer_16);
 
    --  Reply words: records written, processes in total.
    Written_Word : constant := 1;
@@ -77,7 +74,7 @@ package body CuBit.Process_Observer_Lists is
                Item.Identity := CuBit.Process_IDs.From_Word (Little (Base + PO.Pid_Offset, PO.Pid_Bytes));
                Item.State := Page (Base + PO.State_Offset);
                Item.CPU := Page (Base + PO.CPU_Offset);
-               Item.Priority := Signed (Unsigned_16 (Little (Base + PO.Priority_Offset, 2)));
+               Item.Class := Page (Base + PO.Class_Offset);
                Item.Frames := Unsigned_32 (Little (Base + PO.Frames_Offset, 4));
                for I in 1 .. Name_Length loop
                   Item.Name (I) := Character'Val (Page (Base + PO.Name_Offset + I - 1));

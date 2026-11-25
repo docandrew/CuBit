@@ -53,9 +53,9 @@
 --  controller), so the badge reaches the controller it was admitted for.
 --
 --  Spec layout (little-endian), and nothing after the last dependency:
---     0  u32  Magic ("CSPC")         4  u16  Spec_Version (2)
+--     0  u32  Magic ("CSPC")         4  u16  Spec_Version (3)
 --     6  u8   Restart_Kind           7  u8   Child_Kind
---     8  u8   Supervisor_Choice      9  u8   priority (1 .. 10)
+--     8  u8   Supervisor_Choice      9  u8   reserved (0)
 --    10  u8   Parameter_Source      11  u8   fact count
 --    12  u8   binding count         13  u8   dependency count
 --    14  u8   Start_Mode            15  u8   Sink_Kind
@@ -85,7 +85,7 @@ package CuBit.Child_Specs with Pure, SPARK_Mode is
    Release_Words     : constant := 2;
 
    Magic        : constant Unsigned_32 := 16#43505343#;   --  "CSPC"
-   Spec_Version : constant := 2;
+   Spec_Version : constant := 3;
    Header_Bytes : constant := 40;
 
    --  Named ceilings of one spec (it is one request, not a store).
@@ -145,10 +145,6 @@ package CuBit.Child_Specs with Pure, SPARK_Mode is
    type Sink_Kind is (No_Sink, Write_Only_Sink);
    for Sink_Kind use (No_Sink => 0, Write_Only_Sink => 1);
 
-   Minimum_Priority : constant := 1;
-   Maximum_Priority : constant := 10;
-   subtype Priority_Value is Unsigned_8 range Minimum_Priority .. Maximum_Priority;
-
    --  How long a graceful stop may take before the supervisor may end the
    --  child (explicit, no default: a spec always says).
    Maximum_Grace_Ms : constant := 600_000;
@@ -205,7 +201,6 @@ package CuBit.Child_Specs with Pure, SPARK_Mode is
       Stage      : Stop_Stage := Services;
       Kind       : Child_Kind := Worker;
       Supervisor : Supervisor_Choice := Caller;
-      Priority   : Priority_Value := Minimum_Priority;
       Stop_Grace : Grace_Ms := Grace_Ms'First;
       Intensity  : Intensity_Count := 0;
       Window     : Window_Ms := 0;
@@ -293,7 +288,7 @@ package CuBit.Child_Specs with Pure, SPARK_Mode is
      with Pre => Valid (S) and then Bytes'First = 1 and then Bytes'Length = Maximum_Spec_Bytes;
 
    --  Too_Short: shorter than the header and a name. Bad_Enumeration: an
-   --  enumeration byte names no literal. Bad_Number: a priority, grace,
+   --  enumeration byte names no literal. Bad_Number: a grace,
    --  intensity or window out of range. Bad_Reserved: a reserved field is
    --  not zero. Bad_Length: a length field past its ceiling, or the bytes
    --  end early or late. Bad_Text: a character outside its class, a

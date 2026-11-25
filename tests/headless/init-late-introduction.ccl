@@ -3,5 +3,5 @@
 # introduces logstore to it when logstore starts. Its markers reach the
 # serial console only through logstore's test mirror.
 (startup v1
-  (start "late-intro-check.app" (priority 5))
-  (start "logstore.svc" (priority 5) (test-console approve-declared)))
+  (start "late-intro-check.app")
+  (start "logstore.svc" (test-console approve-declared)))

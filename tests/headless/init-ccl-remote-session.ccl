@@ -4,24 +4,24 @@
 # grants the host everything the test exercises. Every parameter is spelled
 # out: the laptop images start it with listen => Remote_Listen.Off.
 (startup v1
-  (start "logstore.svc" (priority 5) (test-console approve-declared))
-  (start "clock.svc" (priority 5))
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
   # Twelve idle processes: with them more processes run than procmgr's
   # observer page holds (32 records), so (proc.list) has to read every
   # page (the test checks it lists them all).
-  (start "sleep.app" (priority 2))
-  (start "sleep.app" (priority 2))
-  (start "sleep.app" (priority 2))
-  (start "sleep.app" (priority 2))
-  (start "sleep.app" (priority 2))
-  (start "sleep.app" (priority 2))
-  (start "sleep.app" (priority 2))
-  (start "sleep.app" (priority 2))
-  (start "sleep.app" (priority 2))
-  (start "sleep.app" (priority 2))
-  (start "sleep.app" (priority 2))
-  (start "sleep.app" (priority 2))
-  (start "ccl-remote.app" (priority 4) (network approve-declared) (test-console approve-declared)
+  (start "sleep.app")
+  (start "sleep.app")
+  (start "sleep.app")
+  (start "sleep.app")
+  (start "sleep.app")
+  (start "sleep.app")
+  (start "sleep.app")
+  (start "sleep.app")
+  (start "sleep.app")
+  (start "sleep.app")
+  (start "sleep.app")
+  (start "sleep.app")
+  (start "ccl-remote.app" (network approve-declared) (test-console approve-declared)
     (arguments (Remote_Parameters listen => Remote_Listen.LAN
       display => Pairing_Display.Test_Console work => "@system/work"
       files => true builds => true mail => true)))
