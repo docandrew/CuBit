@@ -979,8 +979,10 @@ with open(sys.argv[1], "wb") as f:
         QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
     bench-latency)
-        # tests/sched-latency: interbench-style scheduler latency.
+        # tests/sched-latency: interbench-style scheduler latency. Its
+        # protect load holds 256 MiB (sched-latency.c PROTECT_BYTES).
         INIT_PROFILE="$ROOT_DIR/tests/sched-latency/init-bench-latency.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
     threads)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-threads.ccl"
@@ -7974,6 +7976,7 @@ sched-latency: peer ready
 sched-latency: workload=wake load=none
 sched-latency: workload=audio load=io
 sched-latency: workload=audio load=commit
+sched-latency: workload=audio load=protect
 sched-latency: done
 "
         if grep -qa 'sched-latency: FAIL\|sched-latency: .*unavailable' "$SERIAL_LOG"; then

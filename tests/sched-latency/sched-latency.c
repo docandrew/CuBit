@@ -37,6 +37,10 @@
  *                growing heap: on CuBit each map commits the region's pages
  *                through CHANGE_OWNED_RANGE, in steps of at most the
  *                kernel's Maximum_Owned_Commit_Bytes)
+ *   protect      one thread holding PROTECT_BYTES of anonymous memory, every
+ *                page touched, flipping it read-only and back read/write
+ *                with mprotect, forever (on CuBit each flip is one access
+ *                change of the whole range through CHANGE_OWNED_RANGE)
  *
  * One line per (workload, load):
  *   sched-latency: workload=W load=L samples=N p50_us= p99_us= max_us=
@@ -109,6 +113,11 @@
 /* A large heap step: four times the 16 MiB commit step CuBit allowed until
  * 2026-11 (its commits held the process lock with interrupts off). */
 #define COMMIT_BYTES (64UL * 1024 * 1024)
+/* The protect load's range: large enough that one whole-range access
+ * change held grantLock past MISS_LATENCY_US every time (the guest has
+ * 512 MiB for it, tests/headless/run.sh). */
+#define PROTECT_BYTES (256UL * 1024 * 1024)
+#define PAGE_BYTES 4096UL
 
 #define CALIBRATE_MS 1000
 #define WORK_CALIBRATE_UNITS 2000000
@@ -490,12 +499,38 @@ static void *commit_thread(void *arg)
 	return 0;
 }
 
-/* spam runs last: on the 2026-09-29 kernel it can panic the guest. */
-enum load_kind { LOAD_NONE, LOAD_BURN, LOAD_POLL, LOAD_IO, LOAD_COMMIT, LOAD_SPAM, LOAD_COUNT };
+static void *protect_thread(void *arg)
+{
+	struct counter *c = arg;
+	unsigned char *range = mmap(0, PROTECT_BYTES, PROT_READ | PROT_WRITE,
+				    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (range == MAP_FAILED) {
+		report("sched-latency: protect load mmap failed errno=%d\n", errno);
+		return 0;
+	}
+	for (unsigned long offset = 0; offset < PROTECT_BYTES; offset += PAGE_BYTES)
+		range[offset] = 1;
+	while (!atomic_load_explicit(&bg_stop, memory_order_relaxed)) {
+		if (mprotect(range, PROTECT_BYTES, PROT_READ) != 0 ||
+		    mprotect(range, PROTECT_BYTES, PROT_READ | PROT_WRITE) != 0) {
+			report("sched-latency: protect load mprotect failed errno=%d\n", errno);
+			break;
+		}
+		range[0] = 1;
+		atomic_fetch_add_explicit(&c->value, 1, memory_order_relaxed);
+	}
+	munmap(range, PROTECT_BYTES);
+	return 0;
+}
 
-static const char *const load_names[LOAD_COUNT] = { "none", "burn", "poll", "io", "commit", "spam" };
+/* spam runs last: on the 2026-09-29 kernel it can panic the guest. */
+enum load_kind { LOAD_NONE, LOAD_BURN, LOAD_POLL, LOAD_IO, LOAD_COMMIT, LOAD_PROTECT, LOAD_SPAM,
+		 LOAD_COUNT };
+
+static const char *const load_names[LOAD_COUNT] = {
+	"none", "burn", "poll", "io", "commit", "protect", "spam" };
 static const char *const load_units[LOAD_COUNT] = {
-	"-", "kunits/s", "yields/s", "writes/s", "maps/s", "handoffs/s" };
+	"-", "kunits/s", "yields/s", "writes/s", "maps/s", "flips/s", "handoffs/s" };
 
 /*
  * A fixed pool of threads, created once: background loads and the waker run
@@ -612,6 +647,9 @@ static int start_load(enum load_kind kind)
 		break;
 	case LOAD_COMMIT:
 		spawn(commit_thread, &bg_counts[0]);
+		break;
+	case LOAD_PROTECT:
+		spawn(protect_thread, &bg_counts[0]);
 		break;
 	}
 	return 1;
