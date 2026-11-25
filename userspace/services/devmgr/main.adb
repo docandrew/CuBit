@@ -3945,6 +3945,10 @@ procedure main is
       Give_Ports (ps2Child, "command", PS2_COMMAND, 1);
       Give_ISA_Line (ps2Child, "keyboard-line", KEYBOARD_IRQ);
       Give_ISA_Line (ps2Child, "mouse-line", MOUSE_IRQ);
+      --  Its urgency for the input path (SCHED-001), if it declares one.
+      if not Give_Declared_Scheduling (ps2Child) then
+         debugPrint ("devmgr: ps2.drv declares no urgency" & LF);
+      end if;
       debugPrint ("devmgr: PS/2 setup complete" & LF);
    end setupPS2;
 

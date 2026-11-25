@@ -12,4 +12,8 @@
   (interrupt mouse-line (resource 3))
   (request-service device-manager read-write ready)
   # ABI-002: its debug text, once devmgr introduces logstore.
-  (request-service-optional logstore read-write logstore))
+  (request-service-optional logstore read-write logstore)
+  # Urgency (SCHED-001, docs/scheduler.md section 4): each report it
+  # publishes lends Desktop an urgent turn, paid from 1 ms every 10 ms.
+  (request-scheduling urgency realtime (budget-us 1000) (period-us 10000))
+  (optional urgency))

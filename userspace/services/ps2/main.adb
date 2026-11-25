@@ -22,6 +22,7 @@ with System; use System;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Control_Events;
 with CuBit.Handles;
+with CuBit.Handles.Devices;
 with Startup;
 with PS2_Boot_Probe;
 with Pointer_Pending;
@@ -296,6 +297,9 @@ procedure main is
    --  if a batch fills, the controller is checked again before blocking so
    --  coalesced IRQs cannot strand a partial mouse packet in port 0x60.
    MAX_INPUT_BYTES_PER_BATCH : constant Positive := 64;
+   --  The urgency reservation its manifest's "urgency" grant covers.
+   URGENCY_BUDGET_US : constant := 1_000;
+   URGENCY_PERIOD_US : constant := 10_000;
 
 begin
    --  ABI-002: debug text into its logstore ring, never the kernel console;
@@ -305,6 +309,15 @@ begin
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;
    debugPrint ("ps2: starting" & LF);
+   --  The input path's urgency (SCHED-001): each report wakes Desktop with
+   --  an urgent turn, paid from devmgr's grant (manifest "urgency").
+   if Startup.Urgency.Present and then
+     CuBit.Handles.Devices.Reserve_Interactive
+       (Period_Us => URGENCY_PERIOD_US, Budget_Us => URGENCY_BUDGET_US,
+        Authority => Startup.Urgency.Value) /= Unsigned_64'Last
+   then
+      debugPrint ("ps2: urgency reserved for the input path" & LF);
+   end if;
 
    --  Discard firmware/bootloader residue before enabling live reports.  A
    --  flush after F4 could consume only the first byte of a packet and leave
