@@ -61,13 +61,17 @@ fonts-host:
 	cp build/cargo/x86_64-unknown-linux-gnu/release/libcubit_fonts.a build/font-host/
 
 fonts-native:
-	cd ../../kernel && alr exec -- gprbuild $(NATIVE_GPRBUILD_CONFIG) -p -P ../userspace/allocator/allocator_native.gpr
 	RUSTC_BOOTSTRAP=1 $(CARGO) --config 'target.x86_64-unknown-cubit.rustflags=["--remap-path-prefix=$(REPO_ROOT)=."]' \
 	  build --locked --offline --profile fonts -p cubit-fonts --features native --target $(FONT_TARGET) -Zjson-target-spec -Zbuild-std=core,alloc
 	mkdir -p build/font-native
 	# Assembled as a copy, which replaces the archive only when its
 	# contents changed (BLD-001): what links it is not rebuilt for nothing.
-	printf '%s\n' 'CREATE build/font-native/libcubit_fonts.a.new' 'ADDLIB build/cargo/x86_64-unknown-cubit/fonts/libcubit_fonts.a' 'ADDLIB ../allocator/build/native-lib/libcubit_allocator.a' 'SAVE' 'END' | ar -M
+	# The font engine only: no CuAlloc. Every program that links it links
+	# the runtime (libgnat-user.a), whose CuAlloc it allocates from. A copy
+	# here was linked before the runtime's and won, and nothing rebuilt it
+	# when the runtime changed (BUG-009: Desktop kept the 16 MiB commit step
+	# the kernel then refused, and died at start).
+	printf '%s\n' 'CREATE build/font-native/libcubit_fonts.a.new' 'ADDLIB build/cargo/x86_64-unknown-cubit/fonts/libcubit_fonts.a' 'SAVE' 'END' | ar -M
 	# memcpy, memmove, memset and memcmp are the runtime's (CuBit.String),
 	# for the Rust code too. Rust's core brings weak copies of them
 	# (compiler_builtins, one per archive member); this archive is linked
@@ -77,6 +81,9 @@ fonts-native:
 	# the program then has one definition of each (tests/runtime-string/linked.sh).
 	ar d build/font-native/libcubit_fonts.a.new $$(nm -A --defined-only build/font-native/libcubit_fonts.a.new 2>/dev/null \
 	  | sed -n 's/^[^:]*:\([^:]*\):[0-9a-f]* [TW] \(memcpy\|memmove\|memset\|memcmp\)$$/\1/p' | sort -u)
+	# One copy of each runtime unit per process, from the runtime.
+	python3 ../../tools/check_archive_overlap.py --runtime ../runtime/adalib/libgnat-user.a \
+	  build/font-native/libcubit_fonts.a.new
 	if cmp -s build/font-native/libcubit_fonts.a.new build/font-native/libcubit_fonts.a; then \
 	  rm build/font-native/libcubit_fonts.a.new; \
 	else mv build/font-native/libcubit_fonts.a.new build/font-native/libcubit_fonts.a; fi

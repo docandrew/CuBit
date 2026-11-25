@@ -1256,3 +1256,19 @@ arrival. `SCREEN_SETTLE_HOLD=sendkey` still holds that way and fails.
 make -C kernel world
 bash tests/headless/run.sh --test screen-settle --accel kvm --timeout 150
 ```
+
+## one-allocator: one CuAlloc per process, and a runtime change reaches it (BUG-009)
+
+The font archive carries no runtime unit (tools/check_archive_overlap.py,
+also run when the archive is made), and an incremental build follows a
+changed runtime spec: with Owned_Commit_Step_Pages halved, `make
+ui-fonts-native font-masks` links a program whose CuAlloc uses the new
+commit step, and the old one again once the spec is put back. Failed
+before: the font archive bundled its own CuAlloc, linked ahead of the
+runtime's and never rebuilt for a runtime change, so Desktop kept the 16 MiB
+commit step the kernel had come to refuse and died at start.
+
+```sh
+make -C kernel world
+bash tests/one-allocator/run.sh   # holding coordination/build.lock: it rebuilds
+```

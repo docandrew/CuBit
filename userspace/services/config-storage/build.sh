@@ -9,8 +9,10 @@ build_dir="$service_dir/build"
 probe_dir="$repo_dir/tests/config-turso/native"
 mkdir -p "$build_dir"
 cd "$repo_dir/kernel"
-alr exec -- gprbuild $gprbuild_config -p -P ../userspace/allocator/allocator_native.gpr
-alr exec -- gprbuild $gprbuild_config -p -P ../userspace/runtime/user_runtime.gpr
+# The runtime, CuAlloc in it, is make's (kernel/Makefile user_runtime, which
+# runs first): rebuilding its library here would remake libgnat-user.a
+# without the allocator objects make adds to it. One allocator per
+# process, from the runtime (BUG-009).
 # The manifest first: the Ada host's generated Startup package (its typed
 # "config" entry and the startup check, CAP-003) comes with it.
 mkdir -p "$build_dir/generated"
@@ -31,7 +33,6 @@ bash "$repo_dir/userspace/rust/std/cargo-cubit.sh" cargo build --manifest-path "
 ld -nostdlib -static -u __cubit_startup_check --build-id=sha1 -z noexecstack -z stack-size=16777216 \
     -T "$repo_dir/userspace/c/link.ld" \
     --start-group "$build_dir/cargo/x86_64-unknown-cubit/release/libcubit_config_storage.a" \
-    "$repo_dir/userspace/allocator/build/native-lib/libcubit_allocator.a" \
     "$build_dir/ada-lib/libconfig_storage_host.a" \
     "$repo_dir/userspace/runtime/adalib/libgnat-user.a" \
     --end-group "$build_dir/manifest.o" -o "$build_dir/config-storage.debug.svc"

@@ -1424,8 +1424,12 @@ ui-fonts-host:
 # BLD-001 interim: rebuilt only when a Rust source, the allocator it
 # archives with, or the flake (the Rust toolchain) changed.
 ui-fonts-native: build/gate/ui-fonts-native.stamp
+# The font archive carries no runtime unit (tools/check_archive_overlap.py,
+# in its recipe, refuses one: BUG-009); the check reads the runtime archive,
+# so a changed runtime runs it again.
 build/gate/ui-fonts-native.stamp: $(shell find ../userspace/rust ../userspace/allocator -type d \
-		\( -name 'build*' -o -name target \) -prune -o -type f -print) $(HOST_TOOL_INPUTS) | user_runtime
+		\( -name 'build*' -o -name target \) -prune -o -type f -print) $(HOST_TOOL_INPUTS) \
+		../tools/check_archive_overlap.py $(wildcard ../userspace/runtime/adalib/libgnat-user.a) | user_runtime
 	$(MAKE) -C ../userspace/rust fonts-native
 	@mkdir -p $(@D) && touch $@
 
@@ -3063,7 +3067,7 @@ $(eval $(call ccl_program,../userspace/apps/shell,shell.app,))
 config-storage: build/gpr/config-storage.stamp
 build/gpr/config-storage.stamp: $(GPR_STEP_INPUTS) $(shell find ../userspace/services/config-storage \
 		../tests/config-turso/native ../userspace/rust/std -type d \( -name 'build*' -o -name target \) -prune \
-		-o -type f -print) $(wildcard ../userspace/allocator/build/native-lib/libcubit_allocator.a) | user_runtime ccl-manifest
+		-o -type f -print) | user_runtime ccl-manifest
 	bash ../userspace/services/config-storage/build.sh
 	$(call stage,../userspace/services/config-storage/build/config-storage.svc,config-storage.svc)
 	@touch $@
