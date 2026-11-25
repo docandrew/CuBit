@@ -12,7 +12,8 @@
 #     own CuAlloc won the link and kept the step it was built with.
 # Run from the repository root inside nix develop, holding the build lock,
 # after make -C kernel world (it rebuilds the runtime twice, and restores
-# the spec it changes on any exit).
+# the spec it changes on any exit). The spec's time is then new, so the next
+# world recompiles what reads the runtime, once; run noop-rebuild after that.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 spec=$root/userspace/runtime/gnat/cubit-kernel_abi.ads
