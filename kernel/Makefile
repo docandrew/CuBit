@@ -1183,6 +1183,7 @@ bench-load: user_runtime ccl-manifest
 	cp ../userspace/apps/bench-load/build/bench-input-load.app isodir/boot/bench-input-load.app
 	cp ../userspace/apps/bench-load/build/bench-cpu.app isodir/boot/bench-cpu.app
 	cp ../userspace/apps/bench-load/build/bench-heap-load.app isodir/boot/bench-heap-load.app
+	cp ../userspace/apps/bench-load/build/bench-sbrk-load.app isodir/boot/bench-sbrk-load.app
 
 .PHONY : bench-audio
 bench-audio: isodir/boot/bench-audio.app

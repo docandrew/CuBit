@@ -62,6 +62,10 @@ BENCH_LOAD=0
 LOAD_WORKERS=1
 # Heap loads init-bench-audio-heap.ccl starts (--load-kind heap).
 HEAP_LOADS_EXPECTED=3
+# --load-kind windows: its sbrk loads, and its BENCH-LOAD peers (the three
+# heap loads).
+SBRK_LOADS_EXPECTED=3
+WINDOW_LOADS_EXPECTED=3
 LOAD_KIND=cpu
 TEMP_LOAD_PROFILE=""
 SERIAL_LOG=""
@@ -111,9 +115,11 @@ Options:
   --vcpu-cpus LIST     Pin vCPU 0,1,... to distinct Linux CPUs (e.g. 2,3,4,5; KVM only)
   --load               Add one busy peer (bench-ipc / bench-audio / bench-input)
   --load-workers COUNT Add 1..4 busy peers (bench-input only)
-  --load-kind KIND     With --load: cpu (default, spinning peers) or heap
+  --load-kind KIND     With --load: cpu (default, spinning peers), heap
                        (three bench-heap-load.app: each commits and releases
-                       32 MiB in a loop; bench-audio only)
+                       32 MiB in a loop; bench-audio only) or windows (heap
+                       loads, sbrk loads and CPU peers: interrupt-window
+                       preemption and migration; bench-audio only)
   --disk PATH          Base ext2 disk image (default: kernel/nvme_disk.img)
   --serial PATH        Serial log path (default: /tmp/cubit-headless-*.log)
   --pcap PATH          Packet capture path (default: /tmp/cubit-headless-*.pcap)
@@ -244,8 +250,8 @@ while [ "$#" -gt 0 ]; do
             ;;
         --load-kind)
             case "${2:-}" in
-                cpu|heap) LOAD_KIND="$2"; BENCH_LOAD=1 ;;
-                *) echo "headless: --load-kind must be cpu or heap" >&2; exit 2 ;;
+                cpu|heap|windows) LOAD_KIND="$2"; BENCH_LOAD=1 ;;
+                *) echo "headless: --load-kind must be cpu, heap or windows" >&2; exit 2 ;;
             esac
             shift 2
             ;;
@@ -1641,14 +1647,17 @@ if [ "${CUBIT_TEST_IDLE_DPI:-0}" = 1 ]; then
     QEMU_MEMORY="${QEMU_MEMORY:-1G}"
 fi
 
-if [ "$LOAD_KIND" = heap ] && [ "$TEST_NAME" != bench-audio ]; then
-    echo "headless: --load-kind heap only supports bench-audio" >&2
+if [ "$LOAD_KIND" != cpu ] && [ "$TEST_NAME" != bench-audio ]; then
+    echo "headless: --load-kind $LOAD_KIND only supports bench-audio" >&2
     exit 2
 fi
 if [ "$BENCH_LOAD" = 1 ]; then
     INIT_PROFILE="$ROOT_DIR/tests/headless/init-${TEST_NAME}-load.ccl"
     if [ "$LOAD_KIND" = heap ]; then
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-${TEST_NAME}-heap.ccl"
+    elif [ "$LOAD_KIND" = windows ]; then
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-${TEST_NAME}-windows.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-1G}"
     fi
     if [ "$LOAD_WORKERS" -gt 1 ]; then
         TEMP_LOAD_PROFILE="$(mktemp "${TMPDIR:-/tmp}/cubit-input-load.XXXXXX.ccl")"
@@ -1900,6 +1909,8 @@ if [ -n "$INIT_PROFILE" ]; then
                 BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-input-load.app"
             elif [ "$LOAD_KIND" = heap ]; then
                 BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-heap-load.app"
+            elif [ "$LOAD_KIND" = windows ]; then
+                BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-heap-load.app bench-sbrk-load.app"
             else
                 BENCHMARK_IMAGES="$BENCHMARK_IMAGES bench-load.app"
             fi
@@ -11893,7 +11904,16 @@ if [ "$TEST_NAME" = "neon-blast" ]; then
         exit 1
     fi
 fi
-if [ "$LOAD_KIND" = heap ]; then
+if [ "$LOAD_KIND" = windows ]; then
+    # Every heap growth landed in its own heap (init-bench-audio-windows.ccl).
+    SBRK_LOADS_PASSED="$(grep -ac 'SBRK-LOAD: PASS' "$SERIAL_LOG")"
+    if [ "$SBRK_LOADS_PASSED" -ne "$SBRK_LOADS_EXPECTED" ]; then
+        echo "headless: $SBRK_LOADS_PASSED of $SBRK_LOADS_EXPECTED sbrk loads passed" >&2
+        grep -a 'SBRK-LOAD: COMPLETE' "$SERIAL_LOG" >&2
+        exit 1
+    fi
+fi
+if [ "$LOAD_KIND" = heap ] || [ "$LOAD_KIND" = windows ]; then
     # Every heap load (init-bench-audio-heap.ccl) ran to the end, no
     # commit or release refused: the guest really held all three heaps.
     HEAP_LOADS_CLEAN="$(grep -Eac 'BENCH-LOAD: COMPLETE heap_rounds= *[1-9][0-9]* failures= 0 ' "$SERIAL_LOG")"
@@ -11923,6 +11943,8 @@ if [ "$BENCH_LOAD" = 1 ]; then
     REPORT_LOAD_WORKERS="$LOAD_WORKERS"
     if [ "$LOAD_KIND" = heap ]; then
         REPORT_LOAD_WORKERS="$HEAP_LOADS_EXPECTED"
+    elif [ "$LOAD_KIND" = windows ]; then
+        REPORT_LOAD_WORKERS="$WINDOW_LOADS_EXPECTED"
     fi
     if ! python3 "$ROOT_DIR/tests/performance/report.py" "$SERIAL_LOG" \
         --require-load --load-workers "$REPORT_LOAD_WORKERS" >/dev/null; then

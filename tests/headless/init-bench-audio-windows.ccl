@@ -1,0 +1,20 @@
+# bench-audio beside work that runs in interrupt windows (--load-kind
+# windows): three bench-heap-load.app commit and release 32 MiB in a loop
+# (owned-memory changes), three bench-sbrk-load.app grow their heaps with
+# SBRK (frames prepared with windows open). Seven busy programs on four
+# CPUs: a thread in a window is often preempted there and resumes on
+# another CPU. A system call that read its caller through
+# a per-CPU overlay taken at entry then acted for the thread that CPU runs
+# next: an sbrk locked one process's address space and released another's
+# ("Spinlock release without CPU ownership", bundle 8), or grew the wrong
+# heap (bench-sbrk-load's misplaced= count).
+(startup v1
+  (start "logstore.svc" (test-console approve-declared))
+  (start "bench-heap-load.app" (trace approve-declared))
+  (start "bench-heap-load.app" (trace approve-declared))
+  (start "bench-heap-load.app" (trace approve-declared))
+  (start "bench-sbrk-load.app" (trace approve-declared))
+  (start "bench-sbrk-load.app" (trace approve-declared))
+  (start "bench-sbrk-load.app" (trace approve-declared))
+  (start "bench-audio.app")
+)
