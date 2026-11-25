@@ -11,6 +11,7 @@ with Modules;
 with Process_Identities;
 with Process.Futex;
 with Process.Owned_Memory;
+with Process_Pool;
 with Owned_Reservation_Policy;
 with Process.IPC;
 with Process.User_Memory;
@@ -43,6 +44,9 @@ package body Syscall is
     pragma Compile_Time_Error
         (SyscallNumber'Pos (SyscallNumber'Last) >= Syscall_Census.Calls,
          "the system call census needs an index per call");
+
+    -- The most an sbrk prepares before its lock (64 MiB of frames).
+    Sbrk_Prepare_Pages : constant := 16384;
 
     ---------------------------------------------------------------------------
     -- exit
@@ -360,6 +364,16 @@ package body Syscall is
                   (arg0, arg1, arg2, sync => arg3 = Futex_ABI.Sync_Hint);
 
             when SYSCALL_SBRK =>
+                -- The new pages' frames are made clean first, with no lock
+                -- held and interrupt windows between batches (as for an
+                -- owned-memory commit); what is left under the lock below
+                -- is mapping. At most Sbrk_Prepare_Pages: a request can name
+                -- any size, and Heap_Admission decides under the lock.
+                if arg0 > 0 then
+                    Process_Pool.Prepare
+                      (Natural (Unsigned_64'Min (arg0 / Owned_Reservation_Policy.Page_Bytes + 1,
+                                               Sbrk_Prepare_Pages)));
+                end if;
                 -- Serialized against sibling threads' faults and sbrk.
                 Process.lockAddressSpace (Process.processOf (percpu.currentThread));
                 IPC.handleSbrk (

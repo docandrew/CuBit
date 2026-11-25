@@ -32,6 +32,7 @@ with Memory_Accounting;
 with Process_Memory_Budget;
 with Build;
 with Trace;
+with Interrupt_Windows;
 with Interrupt_Lines;
 with Device_Interrupts;
 with DMA_Remapping;
@@ -2239,19 +2240,31 @@ package body Process is
         end if;
 
         if threadOf (pid).mode = USER then
-            -- Physical-mapping admission may inspect owned-region inventory.
-            -- Keep its lock until all corresponding frame nodes and region
-            -- descriptors are retired, so that traversal never sees stale nodes.
-            Owned_Memory.Lock;
-            while proctab(pid).frames.length > 0 loop
-                BuddyAllocator.freeFrame (FrameLists.front(proctab(pid).frames));
-                FrameLists.popFront (proctab(pid).frames);
-
-            end loop;
-
-            FrameLists.delete (proctab(pid).frames);
-            Owned_Memory.Forget_Exited (pid, ownedRetired);
-            Owned_Memory.Unlock;
+            declare
+                -- The frames, taken off the process under the lock.
+                retiring : FrameLists.List;
+                pace : Interrupt_Windows.Pace := Interrupt_Windows.Start;
+            begin
+                -- Physical-mapping admission walks owned-region inventory
+                -- (frame nodes reached through region descriptors) under
+                -- Owned_Memory's lock: the descriptors go under it together
+                -- with the list, so no traversal reaches a node freed below.
+                Owned_Memory.Lock;
+                retiring := proctab(pid).frames;
+                proctab(pid).frames := (head => null, tail => null,
+                                        capacity => retiring.capacity, length => 0);
+                Owned_Memory.Forget_Exited (pid, ownedRetired);
+                Owned_Memory.Unlock;
+                -- No lock held now: a large process's frames take
+                -- milliseconds to free, so this CPU's interrupts get windows.
+                while retiring.length > 0 loop
+                    BuddyAllocator.freeFrame (FrameLists.front (retiring));
+                    FrameLists.popFront (retiring);
+                    Interrupt_Windows.Point (pace);
+                end loop;
+                FrameLists.delete (retiring);
+                FrameLists.delete (proctab(pid).frames);
+            end;
             if ownedRetired /= 0 then
                 println ("Process.reclaimProcess: owned regions retired" &
                          Natural'Image (ownedRetired));

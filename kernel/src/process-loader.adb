@@ -12,6 +12,8 @@ with Process;
 with ELF_Admission;
 with Process.User_Memory;
 with Kernel_Window;
+with Interrupt_Windows;
+with Process_Pool;
 with Strings;
 with TextIO; use TextIO;
 
@@ -182,6 +184,7 @@ package body Process.Loader is
         copied : Boolean;
         first : constant System.Address := To_Address (Integer_Address (segment.p_vaddr));
         last : constant System.Address := first + Storage_Count (segment.p_memsz);
+        pace : Interrupt_Windows.Pace := Interrupt_Windows.Start;
 
     begin
         success := False;
@@ -205,6 +208,11 @@ package body Process.Loader is
         print (" pages at "); println (first);
 
         for i in 0..numPages-1 loop
+            -- A large image takes milliseconds to copy, and a system call
+            -- runs with interrupts off: no lock and no window slot is held
+            -- between pages (the child is not yet published), so this CPU's
+            -- interrupts get a window every Interrupt_Windows.Interval_Us.
+            Interrupt_Windows.Point (pace);
             tryAddPage (proc    => proc,
                      mapTo   => first + (i * Virtmem.PAGE_SIZE),
                      frame   => storage,
@@ -380,6 +388,11 @@ package body Process.Loader is
                                requestedPID => requestedPID);
 
                 if pid = NO_PROCESS then return NO_PROCESS; end if;
+
+                -- The image's frames made clean first (laundered or grown,
+                -- interrupt windows between batches), so the page loop
+                -- below rarely zeroes a batch or a region in one go.
+                Process_Pool.Prepare (imagePages);
 
                 for segment of segments loop
                     if segment.p_type = ELF.SegmentType'Enum_Rep (ELF.PT_LOAD) and segment.p_memsz > 0 then
