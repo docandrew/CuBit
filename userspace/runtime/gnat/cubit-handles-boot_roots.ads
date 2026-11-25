@@ -80,6 +80,7 @@ package CuBit.Handles.Boot_Roots is
       Process_List_Object      : Process_Listing;    --  READ and GRANT
       Test_Console_Object      : Test_Console;       --  WRITE and GRANT
       VM_Create_Authority      : VM_Create;          --  WRITE and GRANT
+      Program_Scheduling       : Scheduling;         --  GRANT: one program's share
    end record;
 
    function Process_Manager return Launcher_Handles;

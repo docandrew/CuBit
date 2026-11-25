@@ -1039,6 +1039,8 @@ procedure main is
      CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.Test_Console);
    CAP_TYPE_VM_CREATE : constant Unsigned_64 :=
      CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.VM_Create);
+   CAP_TYPE_SCHEDULING : constant Unsigned_64 :=
+     CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.Scheduling);
    CAP_TYPE_IO_PORTS : constant Unsigned_64 :=
      CuBit.Handles.ABI.Kind'Enum_Rep (CuBit.Handles.ABI.IO_Ports);
    --  A publication page is no capability: recorded as none, its
@@ -1536,6 +1538,9 @@ procedure main is
       CMOS_Declaration : CMOS_Windows.Declaration;
       --  Declared entry i's request in Caps; 0 for a resource kind.
       Request_Of : Request_Map := [others => 0];
+      --  The manifest's first (request-scheduling NAME realtime ...): Budget
+      --  microseconds every Period, from .cubit.resources; Period 0: none.
+      Scheduling_Budget, Scheduling_Period : Unsigned_64 := 0;
    end record;
 
    --  The startup kinds whose requests are in .cubit.caps.
@@ -1718,6 +1723,25 @@ procedure main is
             begin
                View.CMOS_Declaration := CMOS_Windows.Inspect
                  (View.Declared, Resource_Copy, Device_Copy);
+               if Resource_Length >= 1 then
+                  declare
+                     Plan : RS.Section_Plan;
+                     Status : RS.Decode_Status;
+                     use type RS.Decode_Status;
+                     use type RS.Resource_Kind;
+                  begin
+                     RS.Decode (Resource_Copy, Plan, Status);
+                     if Status = RS.Decoded then
+                        for I in 1 .. Plan.Count loop
+                           if Plan.Entries (I).Kind = RS.Scheduling then
+                              View.Scheduling_Budget := Plan.Entries (I).Amount;
+                              View.Scheduling_Period := Plan.Entries (I).Extra;
+                              exit;
+                           end if;
+                        end loop;
+                     end if;
+                  end;
+               end if;
             end;
          end;
       end if;
@@ -4137,6 +4161,38 @@ procedure main is
             CAP_TYPE_PLATFORM_POWER, True, Outcome = SB.Granted, Mask (H.Write_Only), 0, 0);
       end Mint_Platform_Power;
 
+      --  Real-time CPU (SCHED-001): the manifest's (request-scheduling ...)
+      --  share, narrowed from devmgr's program-sized copy, with no rights
+      --  of its own to pass on. Any program procmgr launches may hold one
+      --  within that bound (an app's audio thread, so a slow frame drops a
+      --  frame and never a period); the kernel admits a reservation only
+      --  while the system's real-time total stays within its share.
+      procedure Mint_Scheduling
+        (Index : ST.Entry_Index; Handle : out Unsigned_64; Outcome : out SB.Mint_Outcome)
+      is
+      begin
+         Handle := ST.No_Handle;
+         Outcome := SB.Refused_By_Policy;
+         if View.Scheduling_Period = 0 then
+            Warnings.Warn ("procmgr: scheduling request without a share for pid" & Image (newPID));
+         elsif not H.Valid (PH.Program_Scheduling) then
+            Outcome := SB.Not_Available;
+            Warnings.Warn ("procmgr: scheduling refused: no authority configured");
+         else
+            Install (H.Narrowed (PH.Program_Scheduling, View.Scheduling_Budget,
+                                 View.Scheduling_Period),
+                     Handle, Outcome);
+            debugPrint ("procmgr: " & name & " pid" & Image (newPID) & ": real-time share" &
+                        Unsigned_64'Image (View.Scheduling_Budget) & " us of" &
+                        Unsigned_64'Image (View.Scheduling_Period) & " us " &
+                        (if Outcome = SB.Granted then "installed" else "refused") & LF);
+         end if;
+         recordAuthority
+           (newPID, Index, AUTH_SOURCE_MANIFEST, AUTH_REASON_MANIFEST_REQUEST,
+            CAP_TYPE_SCHEDULING, True, Outcome = SB.Granted, 0,
+            View.Scheduling_Budget, View.Scheduling_Period);
+      end Mint_Scheduling;
+
       --  The kernel trace object (Request.Trace, Trace_ABI): a Write-only
       --  copy of devmgr's root, only for a program the trusted startup
       --  plan started and approved, (trace approve-declared): the
@@ -4637,6 +4693,8 @@ procedure main is
               and then CMOS_Window.Status = CMOS_Windows.Admitted
             then
                Mint_ACPI_Resource_Window (Index, Handle, Outcome);
+            elsif Item.Kind = ST.Scheduling then
+               Mint_Scheduling (Index, Handle, Outcome);
             else
                Outcome := (if Item.Kind = ST.DMA then SB.Not_Available else SB.Refused_By_Policy);
             end if;

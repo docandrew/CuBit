@@ -163,6 +163,10 @@ package CuBit.Handles with Pure, SPARK_Mode is
    --  A share no larger than the source's: Budget every Period µs.
    function Narrowed (Item : Scheduling; Budget, Period : Unsigned_64)
      return Derivation;
+   --  The same, keeping Kept of the source's rights (Grant: a launcher's
+   --  narrower copy it may pass on).
+   function Narrowed (Item : Scheduling; Kept : Rights; Budget, Period : Unsigned_64)
+     return Derivation;
 
    ---------------------------------------------------------------------------
    --  A handle word placed in another process's table (INSTALL_CAPABILITY's
@@ -292,4 +296,6 @@ private
      return Derivation is (Make (ABI.Notification, Item.Word, Kept, ABI.Narrow, 0, First, Count));
    function Narrowed (Item : Scheduling; Budget, Period : Unsigned_64)
      return Derivation is (Make (ABI.Scheduling, Item.Word, (others => False), ABI.Narrow, 0, Budget, Period));
+   function Narrowed (Item : Scheduling; Kept : Rights; Budget, Period : Unsigned_64)
+     return Derivation is (Make (ABI.Scheduling, Item.Word, Kept, ABI.Narrow, 0, Budget, Period));
 end CuBit.Handles;

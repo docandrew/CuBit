@@ -92,7 +92,8 @@ package body CuBit.Handles.Boot_Roots is
             Trace_Object             => K.To_Trace (H.Trace),
             Process_List_Object      => K.To_Process_Listing (H.Process_List),
             Test_Console_Object      => K.To_Test_Console (H.Test_Console),
-            VM_Create_Authority      => K.To_VM_Create (H.VM_Create));
+            VM_Create_Authority      => K.To_VM_Create (H.VM_Create),
+            Program_Scheduling       => K.To_Scheduling (H.Scheduling));
       end;
    end Process_Manager;
 

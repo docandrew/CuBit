@@ -170,7 +170,7 @@ begin
                      Device_Inspection => H (13), Firmware_Snapshot => H (14),
                      Platform_Power => H (15), Trace => H (16),
                      Process_List => H (17), Test_Console => H (18),
-                     VM_Create => H (19)));
+                     VM_Create => H (19), Scheduling => H (20)));
       D : Process_Manager_Configuration; OK : Boolean;
       E : Encoded;
    begin
@@ -191,11 +191,16 @@ begin
          Decode (W, D, OK);
          Check (not OK, "process manager refuses a missing firmware snapshot reader");
          W := E.Words (1 .. E.Length);
-         Check (W'Last = 26 and then W (26) = H (19),
-                "process manager's VM creation authority is word 26");
+         Check (W (26) = H (19), "process manager's VM creation authority is word 26");
          W (26) := 0;  --  no VM creation authority (VMM-001)
          Decode (W, D, OK);
          Check (not OK, "process manager refuses a missing VM creation authority");
+         W := E.Words (1 .. E.Length);
+         Check (W'Last = 27 and then W (27) = H (20),
+                "process manager's scheduling authority is word 27, the last");
+         W (27) := 0;  --  no scheduling authority (SCHED-001, app audio threads)
+         Decode (W, D, OK);
+         Check (not OK, "process manager refuses a missing scheduling authority");
       end;
    end;
    declare

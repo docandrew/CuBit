@@ -194,7 +194,7 @@ package body Launch_Configuration with SPARK_Mode is
          Device_Inspection => Words (20), Firmware_Snapshot => Words (21),
          Platform_Power => Words (22), Trace => Words (23),
          Process_List => Words (24), Test_Console => Words (25),
-         VM_Create => Words (26));
+         VM_Create => Words (26), Scheduling => Words (27));
       Valid := Process_Handles_Well_Formed (Value.Handles);
       if Valid then
          Value.Framebuffer := (First => Words (4), Bytes => Words (5));

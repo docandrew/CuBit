@@ -1971,6 +1971,13 @@ procedure main is
    --  IPC ready protocol constants
    OP_READY       : constant Unsigned_32 := CuBit.Driver_Readiness.Ready_Label;
    OP_NOT_PRESENT : constant Unsigned_32 := CuBit.Driver_Readiness.Not_Present_Label;
+   --  The most one program's real-time reservation may take (procmgr's
+   --  copy of the scheduling root, SCHED-001): a quarter of one CPU, as
+   --  mixer.svc's 1.5 ms of 5 ms is three tenths. An app's audio thread
+   --  asks for less (Neon Blast's synthesizer: 2 ms of every 10 ms).
+   Program_Realtime_Budget_Us : constant := 250_000;
+   Program_Realtime_Period_Us : constant := 1_000_000;
+
    --  Real-time CPU for the audio pair (docs/scheduler.md, "Soft real
    --  time"): the reservation its manifest's (scheduling ...) request
    --  declares, narrowed from devmgr's root; the kernel's admission still
@@ -8844,7 +8851,16 @@ begin
             --  approves a declared request. devmgr never calls it.
             VM_Create =>
               DL.Place (C, H.Copy (Root.VM_Create_Root,
-                                   (Write | Grant => True, others => False))));
+                                   (Write | Grant => True, others => False))),
+            --  Real-time CPU for programs (SCHED-001, app audio threads):
+            --  devmgr's root narrowed to the most one program's reservation
+            --  may take, with Grant. procmgr installs a narrower copy where
+            --  a manifest declares a (request-scheduling ...) within it;
+            --  the kernel's admission still bounds the system total.
+            Scheduling =>
+              DL.Place (C, H.Narrowed (Root.Scheduling_Root, (Grant => True, others => False),
+                                       Budget => Program_Realtime_Budget_Us,
+                                       Period => Program_Realtime_Period_Us)));
       begin
          if not LC.Process_Handles_Well_Formed (Handles) then
             debugPrint ("devmgr: procmgr handles incomplete; boot denied" & LF);

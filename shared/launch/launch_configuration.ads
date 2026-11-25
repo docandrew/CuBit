@@ -282,8 +282,13 @@ package Launch_Configuration with Pure, SPARK_Mode is
       --  root issuer and installs a copy (Write only) in a program whose
       --  manifest declares it and whose startup entry approves it.
       VM_Create         : Unsigned_64 := 0;
+      --  Real-time CPU for programs, with Grant (SCHEDULING_ROOT narrowed
+      --  to the share one program's reservation may take): procmgr
+      --  installs a narrower copy in a program whose manifest declares a
+      --  (request-scheduling ...) within it (an app's audio thread).
+      Scheduling        : Unsigned_64 := 0;
    end record;
-   Process_Manager_Handle_Fields : constant := 21;
+   Process_Manager_Handle_Fields : constant := 22;
 
    --  The handles every procmgr needs are handles; the others (mixer, the
    --  framebuffer) are a handle or zero.
@@ -302,7 +307,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
       and then Is_Handle (H.Trace)
       and then Is_Handle (H.Process_List)
       and then Is_Handle (H.Test_Console)
-      and then Is_Handle (H.VM_Create));
+      and then Is_Handle (H.VM_Create)
+      and then Is_Handle (H.Scheduling));
 
    --  devmgr to procmgr.
    type Process_Manager_Configuration is record
@@ -587,13 +593,13 @@ package Launch_Configuration with Pure, SPARK_Mode is
                             Encode_Prefix'Result.Words (First_Handle_Word - 1 + I) =
                               Handle_Words (Value.Handles) (I));
 
-   --  The handles' words, in field order (Words (6 .. 26)).
+   --  The handles' words, in field order (Words (6 .. 27)).
    function Process_Handle_Words (H : Process_Manager_Handles) return Word_Array is
      [H.Self, H.Self_Process, H.Self_Grantable, H.Process_Root, H.Registration,
       H.Notifications, H.Filesystem, H.Config, H.Netstack, H.Network_Policy,
       H.Mixer, H.Device_Manager, H.Ready, H.Framebuffer, H.Device_Inspection,
       H.Firmware_Snapshot, H.Platform_Power, H.Trace, H.Process_List,
-      H.Test_Console, H.VM_Create]
+      H.Test_Console, H.VM_Create, H.Scheduling]
    with Post => Process_Handle_Words'Result'First = 1
                 and then Process_Handle_Words'Result'Length = Process_Manager_Handle_Fields;
 
@@ -692,7 +698,8 @@ package Launch_Configuration with Pure, SPARK_Mode is
                              Trace => Words (23),
                              Process_List => Words (24),
                              Test_Console => Words (25),
-                             VM_Create => Words (26))))
+                             VM_Create => Words (26),
+                             Scheduling => Words (27))))
                 and then (if Valid then
                             Value.Framebuffer.First = Words (4)
                             and then Value.Framebuffer.Bytes = Words (5)
