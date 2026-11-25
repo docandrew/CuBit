@@ -397,6 +397,14 @@ is
        success : out Boolean) with
         SPARK_Mode => Off;
 
+    -- claimUserFrame then bindFrameCharge as one step under one lock hold:
+    -- an allocated, unowned, unpinned, uncharged frame gets both its owner
+    -- and its charge, or (Success False) neither.
+    procedure claimChargedUserFrame
+      (addr : Virtmem.PhysAddress; owner : Frame_Owner; Identity : Unsigned_64;
+       Success : out Boolean)
+      with SPARK_Mode => Off;
+
     procedure releaseUserFrame
       (addr  : in Virtmem.PhysAddress;
        owner : in Frame_Owner) with

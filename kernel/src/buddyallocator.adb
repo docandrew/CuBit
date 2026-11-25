@@ -1573,6 +1573,43 @@ is
         Spinlocks.exitCriticalSection (lock);
     end bindCharge;
 
+    procedure claimChargedUserFrame
+      (addr : Virtmem.PhysAddress; owner : Frame_Owner; Identity : Unsigned_64;
+       Success : out Boolean)
+      with SPARK_Mode => Off
+    is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
+        slot : System.Address;
+    begin
+        Success := False;
+        if owner = 0 or else Identity = 0 or else frameOwnerBase = System.Null_Address
+          or else pfn > maxPinPFN or else addr mod Virtmem.FRAME_SIZE /= 0
+        then
+            return;
+        end if;
+        -- The charge slot may need a directory page: allocated before the
+        -- lock, as bindCharge does.
+        slot := prepareChargeSlot (pfn);
+        if slot = System.Null_Address then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (lock);
+        declare
+            currentOwner : Frame_Owner with Import, Volatile, Address => ownerAddress (pfn);
+            charge : Unsigned_64 with Import, Address => slot;
+            pins : Unsigned_8 with Import, Address => pinStateBase + Storage_Offset (pfn);
+        begin
+            if chargeRefund /= null and then currentOwner = 0 and then charge = 0
+              and then pins = 0 and then containsAllocatedFrame (addr)
+            then
+                currentOwner := owner;
+                charge := Identity;
+                Success := True;
+            end if;
+        end;
+        Spinlocks.exitCriticalSection (lock);
+    end claimChargedUserFrame;
+
     procedure bindFrameCharge
       (addr : Virtmem.PhysAddress; Identity : Unsigned_64; Success : out Boolean)
       with SPARK_Mode => Off is

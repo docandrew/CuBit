@@ -779,11 +779,9 @@ package body Process is
         end Forget;
         procedure Claim (Frame : Virtmem.PhysAddress; Accepted : out Boolean) is
         begin
-            BuddyAllocator.claimUserFrame (Frame, BuddyAllocator.Frame_Owner (frameOwner), Accepted);
-            if Accepted then
-                BuddyAllocator.bindFrameCharge (Frame, charge, Accepted);
-                handedOff := Accepted;
-            end if;
+            BuddyAllocator.claimChargedUserFrame
+              (Frame, BuddyAllocator.Frame_Owner (frameOwner), charge, Accepted);
+            handedOff := Accepted;
         end Claim;
         procedure Map (Frame : Virtmem.PhysAddress; Accepted : out Boolean) is
         begin
