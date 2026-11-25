@@ -2327,6 +2327,7 @@ package body AML_Execute with SPARK_Mode is
                Status := Returned;
             elsif Result.Status = Metadata_Returned then
                Value := (Metadata_Datum, Result.Metadata);
+               Status := Returned;
             elsif Result.Status = Reference_Returned then
                Value := (Value_Kind => Reference_Datum, Ref => Result.Ref);
                Status := Returned;

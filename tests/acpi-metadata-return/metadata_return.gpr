@@ -1,0 +1,17 @@
+project Metadata_Return is
+   type Build_Profile is ("checked", "shipping");
+   Profile : Build_Profile := external ("PROFILE", "checked");
+   for Languages use ("Ada");
+   for Source_Dirs use (".","../../shared/acpi","../../shared/firmware","../../shared/hardware","../../userspace/ccl/src","../../userspace/runtime/gnat","../../userspace/services/acpi","../../userspace/services/acpi/backend","../../userspace/services/acpi/dependencies","../../userspace/services/acpi/ec","../../userspace/services/acpi/events","../../userspace/services/acpi/field-client","../../userspace/services/acpi/field-client/inventory","../../userspace/services/acpi/field-client/provider","../../userspace/services/acpi/field-client/provider/binding","../../userspace/services/acpi/field-client/provider/startup","../../userspace/services/acpi/field-client/transport","../../userspace/services/acpi/hid-i2c","../../userspace/services/acpi/lib","../../userspace/services/acpi/lid","../../userspace/services/acpi/module-loading","../../userspace/services/acpi/native","../../userspace/services/acpi/native-clock","../../userspace/services/acpi/passive","../../userspace/services/acpi/pci-routing","../../userspace/services/acpi/power","../../userspace/services/acpi/provider-native","../../userspace/services/acpi/query-client","../../userspace/services/acpi/region-init","../../userspace/services/acpi/region-init/orphans","../../userspace/services/acpi/request-driver","../../userspace/services/acpi/resource-consumer","../../userspace/services/acpi/resource-data","../../userspace/services/acpi/snapshot","../../userspace/services/acpi/snapshot-manifest");
+   for Object_Dir use "obj/" & Profile;
+   for Exec_Dir use "bin/" & Profile;
+   for Main use ("metadata_return_tests.adb");
+   package Compiler is
+      case Profile is
+         when "checked" =>
+            for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+         when "shipping" =>
+            for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
+      end case;
+   end Compiler;
+end Metadata_Return;
