@@ -27,7 +27,7 @@ with Storehouse.Profiles;
 --
 --    ccl-build build --store DIR --source-root DIR [--import NAME=PATH]...
 --                    [--out DIR] [--profile NAME] [--timings] [--signing DIR]
---                    DIR/component.ccl...
+--                    [--inputs FILE] DIR/component.ccl...
 --                    (with build-params.ccl and build-catalog.ccl; NAME is a
 --                    toolchain's, or a fetched library's to seed its tree
 --                    without network; --profile makes the components'
@@ -35,7 +35,10 @@ with Storehouse.Profiles;
 --                    it; --timings prints where each step's time went,
 --                    Build_Timing; --signing signs each program's
 --                    executable with the key in DIR, SIGN-001: the store,
---                    the generation and --out then hold the signed file)
+--                    the generation and --out then hold the signed file;
+--                    --inputs writes FILE, every file and directory in the
+--                    source root the build read, one relative name a line,
+--                    so make knows when to ask again: BLD-001)
 --    ccl-build check --source-root DIR DIR/component.ccl...   (type-check only)
 --    ccl-build verify --store DIR
 --    ccl-build import --store DIR TREE   (copy a tree in, print its identity)
@@ -83,13 +86,14 @@ procedure Main is
         when Rollback_Command => "rollback", when Diff_Command => "diff", when Collect_Command => "gc");
 
    type Option is (Store_Option, Source_Root_Option, Import_Option, Out_Option, Profile_Option,
-                   Keep_Generations_Option, Dry_Run_Option, Timings_Option, Signing_Option);
+                   Keep_Generations_Option, Dry_Run_Option, Timings_Option, Signing_Option, Inputs_Option);
    function Option_Name (O : Option) return String is
      (case O is
         when Store_Option => "--store", when Source_Root_Option => "--source-root",
         when Import_Option => "--import", when Out_Option => "--out", when Profile_Option => "--profile",
         when Keep_Generations_Option => "--keep-generations", when Dry_Run_Option => "--dry-run",
-        when Timings_Option => "--timings", when Signing_Option => "--signing");
+        when Timings_Option => "--timings", when Signing_Option => "--signing",
+        when Inputs_Option => "--inputs");
    --  Options that take no value.
    function Is_Flag (O : Option) return Boolean is (O in Dry_Run_Option | Timings_Option);
    --  Options that may be given more than once.
@@ -100,7 +104,7 @@ procedure Main is
      (case C is
         when Build_Command =>
           [Store_Option | Source_Root_Option | Import_Option | Out_Option | Profile_Option | Timings_Option
-           | Signing_Option => True,
+           | Signing_Option | Inputs_Option => True,
            others => False],
         when Check_Command => [Source_Root_Option => True, others => False],
         when Verify_Command | Import_Command => [Store_Option => True, others => False],
@@ -223,6 +227,7 @@ procedure Main is
       File : File_Type;
       Result : Unbounded_String;
    begin
+      Build_Store.Note_Read (Name);
       Open (File, In_File, Name);
       while not End_Of_File (File) loop
          Append (Result, Get_Line (File) & ASCII.LF);
@@ -326,10 +331,18 @@ procedure Main is
             Target : constant String := Directory / To_String (P.Path);
          begin
             Ada.Directories.Create_Path (Ada.Directories.Containing_Directory (Target));
-            if Ada.Directories.Exists (Target) then
-               Ada.Directories.Delete_File (Target);
+            --  An output that already holds these bytes is left as it is,
+            --  so make sees an unchanged component as unchanged (BLD-001):
+            --  nothing that contains it is staged, signed or packed again.
+            if not (Ada.Directories.Exists (Target)
+                    and then Ada.Directories."=" (Ada.Directories.Kind (Target), Ada.Directories.Ordinary_File)
+                    and then Build_Store.Hash_File (Target) = P.Identity)
+            then
+               if Ada.Directories.Exists (Target) then
+                  Ada.Directories.Delete_File (Target);
+               end if;
+               Ada.Directories.Copy_File (Store.Path_Of (P.Kind, P.Identity), Target);
             end if;
-            Ada.Directories.Copy_File (Store.Path_Of (P.Kind, P.Identity), Target);
             Build_Platform.Change_Mode
               (Target, (if P.Kind = Storehouse.Executable_File then Writable_Executable else Writable_File));
          end;
@@ -375,6 +388,23 @@ procedure Main is
       end loop;
    end Sign;
 
+   --  --inputs: the names in Checkout among Reads, relative to it, one a
+   --  line, written to a temporary name and renamed into place.
+   procedure Write_Inputs (Name, Checkout : String; Reads : Build_Store.Name_Vectors.Vector) is
+      Prefix : constant String := Checkout & "/";
+      Pending : constant String := Name & ".pending";
+      File : File_Type;
+   begin
+      Create (File, Out_File, Pending);
+      for Read of Reads loop
+         if Read'Length > Prefix'Length and then Read (Read'First .. Read'First + Prefix'Length - 1) = Prefix then
+            Put_Line (File, Read (Read'First + Prefix'Length .. Read'Last));
+         end if;
+      end loop;
+      Close (File);
+      Build_Platform.Rename_Replace (Pending, Name);
+   end Write_Inputs;
+
    --  The location of the component being read, for diagnostics.
    Current_Declaration : Unbounded_String;
 
@@ -411,6 +441,7 @@ procedure Main is
          Parameter (Path, Storehouse.Regular_File, Identity);
       end Declaration;
       Components : Unbounded_String;
+      Inputs : Build_Store.Name_Vectors.Vector;
    begin
       declare
          Timed : Build_Timing.Scope (Build_Timing.Declarations);
@@ -463,6 +494,7 @@ procedure Main is
             end if;
             Store.Put_Root (Checkout, To_String (Program.Executable),
                             Build_Generations.Encode_Root (Items (Result.Products), Pins));
+            Inputs := Build_Store.Reads;
             if Given (Out_Option) then
                declare
                   Timed : Build_Timing.Scope (Build_Timing.Export);
@@ -486,6 +518,9 @@ procedure Main is
          end;
       end loop;
       Build_Timing.Report_Build (To_String (Components));
+      if Given (Inputs_Option) and then not Failed then
+         Write_Inputs (Value_Of (Inputs_Option), Checkout, Inputs);
+      end if;
       if Failed then
          Set_Exit_Status (Failure);
       elsif Given (Profile_Option) then
