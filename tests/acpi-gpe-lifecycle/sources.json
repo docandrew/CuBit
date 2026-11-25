@@ -226,5 +226,7 @@
   "userspace/services/acpi/resource-data/acpi_resource_data.adb",
   "userspace/services/acpi/resource-data/acpi_resource_data.ads",
   "userspace/services/acpi/resource-consumer/acpi_resource_names.ads",
-  "userspace/services/acpi/resource-consumer/acpi_resource_names.adb"
+  "userspace/services/acpi/resource-consumer/acpi_resource_names.adb",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.adb",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.ads"
 ]

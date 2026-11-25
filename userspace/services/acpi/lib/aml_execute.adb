@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with AML_Execute.Scalar_Transport;
+with AML_Declaration_Method_Adapter;
 with AML_Integers;
 with AML_BCD;
 with AML_Reference_Frames;
@@ -5810,14 +5811,15 @@ package body AML_Execute with SPARK_Mode is
          End_Call (Environment, AML_Declaration_Contexts.Scope_Of (Lease));
          AML_Declaration_Contexts.Close (Execute_Declaration_Lease_Store, Lease);
       end Execute_Declaration_Leave;
+      package Execute_Declaration_Methods is new AML_Declaration_Method_Adapter
+        (Context, Declaration_Status, Declaration_Unsupported,
+         Execute_Declaration_Valid, Define_Method);
       procedure Execute_Declaration_Method
-        (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease; Scope : Natural; Path : AML_Names.Name_Result; Flags : AML_Decode.Byte; Width : AML_Decode.Integer_Width; Code : AML_Decode.Bytes; Status : out AML_Execute.Declaration_Status) is
-      begin
-         if not Execute_Declaration_Valid (Environment, Lease) or else Scope /= AML_Declaration_Contexts.Scope_Of (Lease) then
-            Status := AML_Execute.Declaration_Unsupported; return;
-         end if;
-         Define_Method (Environment, Scope, Path, Flags, Width, Code, Status);
-      end Execute_Declaration_Method;
+        (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease;
+         Scope : Natural; Path : AML_Names.Name_Result; Flags : AML_Decode.Byte;
+         Width : AML_Decode.Integer_Width; Code : AML_Decode.Bytes;
+         Status : out AML_Execute.Declaration_Status)
+        renames Execute_Declaration_Methods.Forward;
       procedure Execute_Declaration_Fields
         (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease; Scope : Natural; Region : AML_Names.Name_Result; Flags : AML_Decode.Byte; Entries : AML_Decode.Bytes; Status : out AML_Execute.Execution_Status) is
       begin
@@ -6399,14 +6401,15 @@ package body AML_Execute with SPARK_Mode is
          End_Call (Environment, AML_Declaration_Contexts.Scope_Of (Lease));
          AML_Declaration_Contexts.Close (Execute_Declaration_Lease_Store, Lease);
       end Execute_Declaration_Leave;
+      package Execute_Declaration_Methods is new AML_Declaration_Method_Adapter
+        (Context, Declaration_Status, Declaration_Unsupported,
+         Execute_Declaration_Valid, Define_Method);
       procedure Execute_Declaration_Method
-        (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease; Scope : Natural; Path : AML_Names.Name_Result; Flags : AML_Decode.Byte; Width : AML_Decode.Integer_Width; Code : AML_Decode.Bytes; Status : out AML_Execute.Declaration_Status) is
-      begin
-         if not Execute_Declaration_Valid (Environment, Lease) or else Scope /= AML_Declaration_Contexts.Scope_Of (Lease) then
-            Status := AML_Execute.Declaration_Unsupported; return;
-         end if;
-         Define_Method (Environment, Scope, Path, Flags, Width, Code, Status);
-      end Execute_Declaration_Method;
+        (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease;
+         Scope : Natural; Path : AML_Names.Name_Result; Flags : AML_Decode.Byte;
+         Width : AML_Decode.Integer_Width; Code : AML_Decode.Bytes;
+         Status : out AML_Execute.Declaration_Status)
+        renames Execute_Declaration_Methods.Forward;
       procedure Execute_Declaration_Fields
         (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease; Scope : Natural; Region : AML_Names.Name_Result; Flags : AML_Decode.Byte; Entries : AML_Decode.Bytes; Status : out AML_Execute.Execution_Status) is
       begin

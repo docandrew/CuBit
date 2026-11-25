@@ -53,7 +53,7 @@
   "tests/aml-aslts-local/reference/source/runtime/collections/functional/local/local.asl": "1b72bebd1167b04a4e3690a561d44e2037d069e97e618c3b9e394d91675c72e9",
   "tests/aml-aslts-local/release.gpr": "79c8447afc66cb65904cfacb2b5d64e766960bdfca77d04bb7670c88389b9284",
   "tests/aml-aslts-local/run.py": "a16e9d2179a2dd3d10b7750c8a04a43f78e5b5b316512d113d663b8f37cd3ce4",
-  "tests/aml-aslts-local/source-inventory.json": "f57ffc3b6f38c5df6bb8b20942c8ea209eb11ef1d66f8feea6d046a49386c293",
+  "tests/aml-aslts-local/source-inventory.json": "4299868aabd73abacac8bf40c1d61e0bf9c03a543d23a99908f9ee908c7225c1",
   "userspace/services/acpi/acpi_bootstrap.adb": "820954d8d953869aa9e7514cb9b5ff35f9c0f672fdf8598c64aece2abe088125",
   "userspace/services/acpi/acpi_bootstrap.ads": "f0f7480e38a524ec5a188742b9bee28a9e4e4435cf6798ee7ece565937b033b1",
   "userspace/services/acpi/acpi_device_initialization.adb": "e96b8caf16a6b41c374a26c318ccb2df5fb994f8c2760833ee80f28e3e8375bf",
@@ -111,7 +111,7 @@
   "userspace/services/acpi/lib/aml_events.ads": "5fabc7e33e68c0f24d5ff580a8a6aa3869ec8c7ba0fc0d8e097db069dd962e06",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.adb": "c21262b8649836bb8db48c11d870fb10e82dab0dca714d20c23131e6e15ec548",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.ads": "e40f8067f168eb76269cd9126fceaff26f927f9b4db934ec28d97617b6286efb",
-  "userspace/services/acpi/lib/aml_execute.adb": "a7478aafc1d7a66005379d14ad281c6264007dcba31fbc433255e23601ee9538",
+  "userspace/services/acpi/lib/aml_execute.adb": "b1257c9b72d4b3b106956f6406850925a001f5ef121247fa23282208d280fa8f",
   "userspace/services/acpi/lib/aml_execute.ads": "25d01c37dc551d2afdfdacafa990f7292d06f1ce6ea4d400e990cd717bf2ccd7",
   "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
   "userspace/services/acpi/lib/aml_explicit_formatting.adb": "b7cb02de7c7a15b5e9803dd1c8314af339966734a80491d733777a1a7e710c16",
@@ -224,5 +224,7 @@
   "userspace/services/acpi/acpi_unprovisioned_regions.adb": "796b3970ccb990dda78b0817009485d74e5646a1fbc48b3d195f2934f864178d",
   "userspace/services/acpi/acpi_unprovisioned_regions.ads": "e75e55a16a3d71149c3ee1299759ef9b606b447a774e9eebca2010ad75ae790f",
   "userspace/services/acpi/lib/aml_register_views.adb": "9aae086733de674194e65fba58c2e97f680ae96743325f3e60787213dd1fa104",
-  "userspace/services/acpi/lib/aml_register_views.ads": "18b87232fbe28b28b7ed26a7325ff471e3cf30fcb59faaac6f18fd703199d267"
+  "userspace/services/acpi/lib/aml_register_views.ads": "18b87232fbe28b28b7ed26a7325ff471e3cf30fcb59faaac6f18fd703199d267",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.adb": "510228ca00815da40b82b8c6af627587ae0b2c1bf8022e4236d79e03214b5b04",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.ads": "2dbf96e817f4077b02954d4069617992f4495db3b144481a4fc1489af66ce0f5"
 }

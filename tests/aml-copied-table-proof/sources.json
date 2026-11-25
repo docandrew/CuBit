@@ -75,7 +75,7 @@
     "userspace/services/acpi/lib/aml_events.ads": "5fabc7e33e68c0f24d5ff580a8a6aa3869ec8c7ba0fc0d8e097db069dd962e06",
     "userspace/services/acpi/lib/aml_execute-scalar_transport.adb": "ef51d52cd2fb5a23e2f91cb80e470bfb5c24672be161d384dc4ee8c4e5cb5555",
     "userspace/services/acpi/lib/aml_execute-scalar_transport.ads": "e40f8067f168eb76269cd9126fceaff26f927f9b4db934ec28d97617b6286efb",
-    "userspace/services/acpi/lib/aml_execute.adb": "848d0600f178783f76f32ade555972d04e1de816ebb836d9eabad63034779abf",
+    "userspace/services/acpi/lib/aml_execute.adb": "b1257c9b72d4b3b106956f6406850925a001f5ef121247fa23282208d280fa8f",
     "userspace/services/acpi/lib/aml_execute.ads": "f3fdd16b6a5c3e239928462a11909315c5dd596209a7eb304f76e0b61b2179e1",
     "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
     "userspace/services/acpi/lib/aml_explicit_formatting.adb": "b7cb02de7c7a15b5e9803dd1c8314af339966734a80491d733777a1a7e710c16",
@@ -166,6 +166,8 @@
     "userspace/services/acpi/lib/aml_table_readers.adb": "64fe840ebc24ef43f35140558608901223ce8a35e0cd8eedf29c1074f308447a",
     "userspace/services/acpi/lib/aml_table_readers.ads": "a5b10752b71ed805bd96ef9c358bb680ea44ea3fced6f8a7a04cb161d7954a40",
     "userspace/services/acpi/lib/aml_table_sources.adb": "f3b6fdea3d677002763ad7d88cf52b7d9aff2fcbf6334e0f378abcadb7cc705e",
-    "userspace/services/acpi/lib/aml_table_sources.ads": "39b81e6dae8292e7505dab64056337e2b4c85f89af28c61bb73fa861104d06fe"
+    "userspace/services/acpi/lib/aml_table_sources.ads": "39b81e6dae8292e7505dab64056337e2b4c85f89af28c61bb73fa861104d06fe",
+    "userspace/services/acpi/lib/aml_declaration_method_adapter.adb": "510228ca00815da40b82b8c6af627587ae0b2c1bf8022e4236d79e03214b5b04",
+    "userspace/services/acpi/lib/aml_declaration_method_adapter.ads": "2dbf96e817f4077b02954d4069617992f4495db3b144481a4fc1489af66ce0f5"
   }
 }

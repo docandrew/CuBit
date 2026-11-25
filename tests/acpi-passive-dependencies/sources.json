@@ -71,6 +71,8 @@
   "userspace/services/acpi/lib/aml_data.ads",
   "userspace/services/acpi/lib/aml_declaration_contexts.adb",
   "userspace/services/acpi/lib/aml_declaration_contexts.ads",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.adb",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.ads",
   "userspace/services/acpi/lib/aml_decode.adb",
   "userspace/services/acpi/lib/aml_decode.ads",
   "userspace/services/acpi/lib/aml_definition_loads.adb",

@@ -420,7 +420,7 @@
     "userspace/services/acpi/lib/aml_events.ads": "5fabc7e33e68c0f24d5ff580a8a6aa3869ec8c7ba0fc0d8e097db069dd962e06",
     "userspace/services/acpi/lib/aml_execute-scalar_transport.adb": "ef51d52cd2fb5a23e2f91cb80e470bfb5c24672be161d384dc4ee8c4e5cb5555",
     "userspace/services/acpi/lib/aml_execute-scalar_transport.ads": "e40f8067f168eb76269cd9126fceaff26f927f9b4db934ec28d97617b6286efb",
-    "userspace/services/acpi/lib/aml_execute.adb": "848d0600f178783f76f32ade555972d04e1de816ebb836d9eabad63034779abf",
+    "userspace/services/acpi/lib/aml_execute.adb": "b1257c9b72d4b3b106956f6406850925a001f5ef121247fa23282208d280fa8f",
     "userspace/services/acpi/lib/aml_execute.ads": "61bda295752b81e49fa6182ebb9747c67c0a5ecda695610750b657b3504957db",
     "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
     "userspace/services/acpi/lib/aml_explicit_formatting.adb": "b7cb02de7c7a15b5e9803dd1c8314af339966734a80491d733777a1a7e710c16",
@@ -1237,6 +1237,8 @@
     "tests/acpi-pci-fields/alias-first.asl": "19dc23288b73c02c34524a79901294796408cb93c9721f90d4818a127e643736",
     "tests/acpi-pci-fields/frontend_buses_tests.adb": "014f9998962ce1ed6a9afa5006c5e9fbaf69eb8869d86ecc2e975c2c47129a09",
     "tests/acpi-pci-fields/no-bus-zero.asl": "4c565f03315a725948e68afdb65e4eefb22ca3ca628878f962180228f79ca737",
-    "tests/acpi-pci-fields/nonzero-bus.asl": "8572600dd8f7913d436257a65c311b76f5df94dfe49428260447e190aa9789a4"
+    "tests/acpi-pci-fields/nonzero-bus.asl": "8572600dd8f7913d436257a65c311b76f5df94dfe49428260447e190aa9789a4",
+    "userspace/services/acpi/lib/aml_declaration_method_adapter.adb": "510228ca00815da40b82b8c6af627587ae0b2c1bf8022e4236d79e03214b5b04",
+    "userspace/services/acpi/lib/aml_declaration_method_adapter.ads": "2dbf96e817f4077b02954d4069617992f4495db3b144481a4fc1489af66ce0f5"
   }
 }

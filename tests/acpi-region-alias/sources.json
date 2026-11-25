@@ -250,5 +250,7 @@
   "userspace/services/acpi/resource-data/acpi_resource_data-serial_connections.adb",
   "userspace/services/acpi/resource-data/acpi_resource_data-serial_connections.ads",
   "userspace/services/acpi/resource-data/acpi_resource_data.adb",
-  "userspace/services/acpi/resource-data/acpi_resource_data.ads"
+  "userspace/services/acpi/resource-data/acpi_resource_data.ads",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.adb",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.ads"
 ]

@@ -65,7 +65,7 @@
     "tests/acpi-native-power/native_power_tests.adb": "8e660e7b92b69d849f2ad1b8de9b7ffa13d7501bde274f879d9637c0abd8139a",
     "tests/acpi-native-power/power_test_log.adb": "99f405f4f82521f90be6b36fd88b191b0b8f9c1d115b7b56c101064a9389706c",
     "tests/acpi-native-power/power_test_log.ads": "afefe50fe6bc3d099a2ab0e4084bed103ff82a0e17d9b576469b392621fd942c",
-    "tests/acpi-native-power/sources.json": "643c65f2ee303e1b8acd7d73f81fab4764a43d10faed9e8a85934271d1a89688",
+    "tests/acpi-native-power/sources.json": "c816776b663b1ae46e5075fea5b9ad7bcb74aec5c6c7d36c2cfb1a368113c5c9",
     "userspace/runtime/gnat/cubit-control_events.ads": "9917bc1c897c36acaac0b8968d7fa6be527bd1bd5cefe42d3d92eadec04b6511",
     "userspace/runtime/gnat/cubit-grant_references.ads": "929c3ba1f4d612d6d0f3ee62b2a76f27540a8b6dd0946564dc84ba6b4f67814e",
     "userspace/runtime/gnat/cubit-handles-ipc.ads": "c5e3bdf0496704a3f2a2d1c456d52c7d0886886841862031e890b2b87a5f0687",
@@ -227,7 +227,7 @@
     "userspace/services/acpi/lib/aml_events.ads": "5fabc7e33e68c0f24d5ff580a8a6aa3869ec8c7ba0fc0d8e097db069dd962e06",
     "userspace/services/acpi/lib/aml_execute-scalar_transport.adb": "ef51d52cd2fb5a23e2f91cb80e470bfb5c24672be161d384dc4ee8c4e5cb5555",
     "userspace/services/acpi/lib/aml_execute-scalar_transport.ads": "e40f8067f168eb76269cd9126fceaff26f927f9b4db934ec28d97617b6286efb",
-    "userspace/services/acpi/lib/aml_execute.adb": "848d0600f178783f76f32ade555972d04e1de816ebb836d9eabad63034779abf",
+    "userspace/services/acpi/lib/aml_execute.adb": "b1257c9b72d4b3b106956f6406850925a001f5ef121247fa23282208d280fa8f",
     "userspace/services/acpi/lib/aml_execute.ads": "f3fdd16b6a5c3e239928462a11909315c5dd596209a7eb304f76e0b61b2179e1",
     "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
     "userspace/services/acpi/lib/aml_explicit_formatting.adb": "b7cb02de7c7a15b5e9803dd1c8314af339966734a80491d733777a1a7e710c16",
@@ -985,7 +985,9 @@
     "userspace/services/acpi/power/acpi_requests-sleep_states.adb": "39f9f0f3325e00702dd8c982befa705a81eb63c229b4f167ce1e762b1e650190",
     "userspace/services/acpi/power/acpi_requests-sleep_states.ads": "3300b8b9601e6adaa5d157280b29265f3099c6f5cba5004f4f53b0db6ae9c727",
     "userspace/services/acpi/acpi_field_diagnostics.adb": "471d19358a0e7101d82b8182a4ce9ce8e6d5507355bd7cc8436a266640adb32a",
-    "userspace/services/acpi/acpi_field_diagnostics.ads": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04"
+    "userspace/services/acpi/acpi_field_diagnostics.ads": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04",
+    "userspace/services/acpi/lib/aml_declaration_method_adapter.adb": "510228ca00815da40b82b8c6af627587ae0b2c1bf8022e4236d79e03214b5b04",
+    "userspace/services/acpi/lib/aml_declaration_method_adapter.ads": "2dbf96e817f4077b02954d4069617992f4495db3b144481a4fc1489af66ce0f5"
   },
   "scope": "Hosted actual native delay policy/facade/Core with modeled kernel/clock boundaries; normal ACPICA values only, no native elapsed-time proof."
 }

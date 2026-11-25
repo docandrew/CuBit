@@ -145,7 +145,7 @@
   },
   "aml_execute.adb": {
     "path": "userspace/services/acpi/lib/aml_execute.adb",
-    "sha256": "88f5f0fa039b7da3c6f163108bcba9f47c45152086911de482c7f9f9e1c2a2a5"
+    "sha256": "b1257c9b72d4b3b106956f6406850925a001f5ef121247fa23282208d280fa8f"
   },
   "aml_execute.ads": {
     "path": "userspace/services/acpi/lib/aml_execute.ads",
@@ -638,5 +638,13 @@
   "acpi_pci_memory_reads.adb": {
     "path": "userspace/services/acpi/lib/acpi_pci_memory_reads.adb",
     "sha256": "07c7ddbdb1aeecdf82f84d5711b30da559e081a5b83911b4e9f859c03ef6549a"
+  },
+  "aml_declaration_method_adapter.adb": {
+    "path": "userspace/services/acpi/lib/aml_declaration_method_adapter.adb",
+    "sha256": "510228ca00815da40b82b8c6af627587ae0b2c1bf8022e4236d79e03214b5b04"
+  },
+  "aml_declaration_method_adapter.ads": {
+    "path": "userspace/services/acpi/lib/aml_declaration_method_adapter.ads",
+    "sha256": "2dbf96e817f4077b02954d4069617992f4495db3b144481a4fc1489af66ce0f5"
   }
 }

@@ -101,6 +101,8 @@
     "aml_data.ads",
     "aml_declaration_contexts.adb",
     "aml_declaration_contexts.ads",
+    "aml_declaration_method_adapter.adb",
+    "aml_declaration_method_adapter.ads",
     "aml_decode.adb",
     "aml_decode.ads",
     "aml_definition_loads.adb",

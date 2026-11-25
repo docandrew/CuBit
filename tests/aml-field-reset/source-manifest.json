@@ -27,10 +27,10 @@
   "shared/firmware/firmware_tables.ads": "cdd038a8b009c7009c8f6286b34b6ab7d3c0bf7be8410ca782b0831780ae1ef4",
   "shared/hardware/hardware_authority.ads": "4338cc04e6d36035a9a692ef6335d708a3a9e843dc19a42e65bd10955df560e6",
   "tests/aml-field-reset/README.md": "67f56e1b812bf835345631b6e218c6b3557789019f88fd09b8d32eeba1779875",
-  "tests/aml-field-reset/closure.json": "c75c5a31158c2afa5c1630e6b6dccbbb4c6a5b55d1837aad73405f79d57c62bd",
+  "tests/aml-field-reset/closure.json": "15c1ceb6a0d01e98b36b29932e2c0dfe6b344211011b810e4beca732d9e11de8",
   "tests/aml-field-reset/field_io_core_tests.adb": "f2e7face94d7b982c267ea60feef2d8e697d87c8eac82b344932c34853f89106",
-  "tests/aml-field-reset/field_io_core_tests_checked.gpr": "cccc8840386cf3596b27803938a131e3ab89afc1bfc91c9c94f3edb4008b414a",
-  "tests/aml-field-reset/field_io_core_tests_release.gpr": "bfca228d47344366831392d7b61d149ddabaff5a7d96eec558870bb931170193",
+  "tests/aml-field-reset/field_io_core_tests_checked.gpr": "639f5bed89a6275a41b2bbde598b220619c9beff298856a39b11d65249e903c9",
+  "tests/aml-field-reset/field_io_core_tests_release.gpr": "bd0525f13da7844df7f021d47d478c95002fe2d7ed6ad907f66f020596dc0202",
   "tests/aml-field-reset/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
   "tests/aml-field-reset/reference-manifest.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
   "tests/aml-field-reset/root_test_support.adb": "25a9170b9bb184c40b8bbaccfc11c37a123a5f4aba093993bfbc26073179fe49",
@@ -101,7 +101,7 @@
   "userspace/services/acpi/lib/aml_events.ads": "5fabc7e33e68c0f24d5ff580a8a6aa3869ec8c7ba0fc0d8e097db069dd962e06",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.adb": "c21262b8649836bb8db48c11d870fb10e82dab0dca714d20c23131e6e15ec548",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.ads": "e40f8067f168eb76269cd9126fceaff26f927f9b4db934ec28d97617b6286efb",
-  "userspace/services/acpi/lib/aml_execute.adb": "7a3d619e7cfe8939395eedb44924fe710d69fe878bd73355c260cc66acb9eaf7",
+  "userspace/services/acpi/lib/aml_execute.adb": "b1257c9b72d4b3b106956f6406850925a001f5ef121247fa23282208d280fa8f",
   "userspace/services/acpi/lib/aml_execute.ads": "f3fdd16b6a5c3e239928462a11909315c5dd596209a7eb304f76e0b61b2179e1",
   "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
   "userspace/services/acpi/lib/aml_explicit_formatting.adb": "b7cb02de7c7a15b5e9803dd1c8314af339966734a80491d733777a1a7e710c16",
@@ -351,5 +351,7 @@
   "shared/acpi/acpi_nvs_protocol.adb": "91144adca7302f4b3dbeb155924badcb67b3b88eb5b35e98ddb089bf59e0be91",
   "shared/acpi/acpi_nvs_protocol.ads": "d9e44886e0bf055276fca31ea9da9f5586b2b4bf3bc50e141921cbcd9098c249",
   "userspace/services/acpi/acpi_field_diagnostics.adb": "471d19358a0e7101d82b8182a4ce9ce8e6d5507355bd7cc8436a266640adb32a",
-  "userspace/services/acpi/acpi_field_diagnostics.ads": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04"
+  "userspace/services/acpi/acpi_field_diagnostics.ads": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.adb": "510228ca00815da40b82b8c6af627587ae0b2c1bf8022e4236d79e03214b5b04",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.ads": "2dbf96e817f4077b02954d4069617992f4495db3b144481a4fc1489af66ce0f5"
 }

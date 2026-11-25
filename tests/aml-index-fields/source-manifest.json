@@ -45,12 +45,12 @@
   "tests/acpi-resource-data/source_guards.py": "af16fa2e959acd3acf67869a33752b273e1ed58cbd45287fd8fa12aac9824c36",
   "tests/aml-index-fields/README.md": "680ab600569bb80e9b93c396826a4386a7b395387a40cc62bfcefbccedf3fd39",
   "tests/aml-index-fields/check_reference.sh": "32dc93d93b7991426a01ba2b0be0e8616edc855b29a44dd4638d970148767b0d",
-  "tests/aml-index-fields/closure.json": "83460e48d809036f7ba1ebad289ec0b8a042ad442161dfadf240a24c107b467d",
+  "tests/aml-index-fields/closure.json": "de1d8ef39aacd92b9e31475ebfdd4acf8f9a4e0aea038f48f018c15d2eacc65d",
   "tests/aml-index-fields/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
   "tests/aml-index-fields/index_field_oracle.ads": "919ed7c2f95354281f6c73c0684c960f2af03f98a4d118fb58c845f42970af8f",
   "tests/aml-index-fields/index_field_tests.adb": "118f74f9c7cf5f0487a8d35416f3595a2f9e8cee6cd3005cfa807905507e0ef8",
-  "tests/aml-index-fields/index_field_tests_checked.gpr": "3159120b1c46d623bdc8a89344116e37288e67c217447f2d23485cbd3a6c1284",
-  "tests/aml-index-fields/index_field_tests_release.gpr": "ad7c9f07fe94d5c503e8f207516f0315e8030e76d433057aa02206a6f3ec46b0",
+  "tests/aml-index-fields/index_field_tests_checked.gpr": "c8ce0b62575936147d76e8179990da4684d0901a444a2882af9d3c3b8ded18f2",
+  "tests/aml-index-fields/index_field_tests_release.gpr": "35497d901338013687a6be8ce578c15a7637bf790fb95460502dc3e481198f9d",
   "tests/aml-index-fields/mirrors.json": "3e8ee639b064e2208e6080a4ac514187cc2e4efc950216ad6a0c5d919df23495",
   "tests/aml-index-fields/reference-manifest.json": "8c38ce0826f412a1bd2743288dd52ef3d4ad73f84933cb86f9f0657e8ea4e6b5",
   "tests/aml-index-fields/reference/compile.log": "6673b78420d78f6cca6b9eca19f6ae0641ac114eeda644ffab979c3d27ce9155",
@@ -127,7 +127,7 @@
   "userspace/services/acpi/lib/aml_events.ads": "5fabc7e33e68c0f24d5ff580a8a6aa3869ec8c7ba0fc0d8e097db069dd962e06",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.adb": "c21262b8649836bb8db48c11d870fb10e82dab0dca714d20c23131e6e15ec548",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.ads": "e40f8067f168eb76269cd9126fceaff26f927f9b4db934ec28d97617b6286efb",
-  "userspace/services/acpi/lib/aml_execute.adb": "7a3d619e7cfe8939395eedb44924fe710d69fe878bd73355c260cc66acb9eaf7",
+  "userspace/services/acpi/lib/aml_execute.adb": "b1257c9b72d4b3b106956f6406850925a001f5ef121247fa23282208d280fa8f",
   "userspace/services/acpi/lib/aml_execute.ads": "f3fdd16b6a5c3e239928462a11909315c5dd596209a7eb304f76e0b61b2179e1",
   "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
   "userspace/services/acpi/lib/aml_explicit_formatting.adb": "b7cb02de7c7a15b5e9803dd1c8314af339966734a80491d733777a1a7e710c16",
@@ -288,5 +288,7 @@
   "userspace/services/acpi/lib/aml_storage_capacities.adb": "1f2edbed840e59f4870ebdf507930ea9939fa2dd0d6aea52361e51ad2a50d00f",
   "userspace/services/acpi/lib/aml_storage_capacities.ads": "33773b3e2c1a3c1ce9cfc75ef8f6d084b84ca96411790acd49bb744b0a929688",
   "userspace/services/acpi/acpi_field_diagnostics.adb": "471d19358a0e7101d82b8182a4ce9ce8e6d5507355bd7cc8436a266640adb32a",
-  "userspace/services/acpi/acpi_field_diagnostics.ads": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04"
+  "userspace/services/acpi/acpi_field_diagnostics.ads": "9b2da3acd650f4498e31c43d3de4c7b126da5b095116ac0b69a59bbd8c348d04",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.adb": "510228ca00815da40b82b8c6af627587ae0b2c1bf8022e4236d79e03214b5b04",
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.ads": "2dbf96e817f4077b02954d4069617992f4495db3b144481a4fc1489af66ce0f5"
 }
