@@ -1440,7 +1440,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects.adb",
-      "sha256": "2a05d40be4e8ff6db25ae0118e3a2730b1c94ef7d9fb7c02513f1126b6c64315"
+      "sha256": "bf2db1f019b101146ae49d94ceb339cb3b5d20247a75feaff9f2a22277a20c13"
     },
     {
       "path": "userspace/services/acpi/lib/aml_objects.ads",

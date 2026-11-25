@@ -582,11 +582,22 @@ package body AML_Objects with SPARK_Mode is
    is
    begin
       ID := No_Object;
-      for I in 1 .. Store.Object_Capacity loop
-         if not Store.Objects (I).Occupied and then Store.Objects (I).Stamp < Store.Generation_Limit then
-            ID := I; Status := Allocated; return;
-         end if;
-      end loop;
+      -- Valid metadata puts every occupied slot in 1 .. Used. Equal live
+      -- and used counts therefore leave no eligible hole in that prefix.
+      if Store.Live_Used < Store.Used then
+         for I in 1 .. Store.Used loop
+            if not Store.Objects (I).Occupied and then Store.Objects (I).Stamp < Store.Generation_Limit then
+               ID := I; Status := Allocated; return;
+            end if;
+         end loop;
+      end if;
+      if Store.Used < Store.Object_Capacity then
+         for I in Store.Used + 1 .. Store.Object_Capacity loop
+            if not Store.Objects (I).Occupied and then Store.Objects (I).Stamp < Store.Generation_Limit then
+               ID := I; Status := Allocated; return;
+            end if;
+         end loop;
+      end if;
       Status := (if Store.Live_Used = Store.Object_Capacity then Object_Limit else Generation_Limit);
    end Select_Slot;
    procedure Occupy (Store : in out State; ID : Object_ID; Item : Object_Record) with

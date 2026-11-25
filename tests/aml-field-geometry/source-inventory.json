@@ -365,7 +365,7 @@
   },
   "aml_objects.adb": {
     "path": "userspace/services/acpi/lib/aml_objects.adb",
-    "sha256": "baf3370e9d9d14eb358f3df885eb74c47a4ade781edef94519b5493610d2304f"
+    "sha256": "bf2db1f019b101146ae49d94ceb339cb3b5d20247a75feaff9f2a22277a20c13"
   },
   "aml_objects.ads": {
     "path": "userspace/services/acpi/lib/aml_objects.ads",
