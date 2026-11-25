@@ -1,0 +1,32 @@
+--  Linux-hosted checks of Neon Blast's dynamic resolution (APP-008,
+--  tests/neon-dynres/run.sh): the controller, the present scaler and the
+--  software renderer built for the host. Not a CuBit result.
+project Neon_Dynres is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../userspace/apps/neon-blast");
+   for Excluded_Source_Files use ("main.adb");
+   for Main use ("dynres_tests.adb", "dynres_replay.adb");
+   type Build_Mode is ("checked", "release");
+   --  NEON_HOST_BUILD=release: the native app's flags (-O3, no run-time
+   --  checks) for timings; the default keeps assertions on.
+   Mode : Build_Mode := external ("NEON_HOST_BUILD", "checked");
+   case Mode is
+      when "release" =>
+         for Object_Dir use "build/obj-release";
+         for Exec_Dir use "build/release";
+      when others =>
+         for Object_Dir use "build/obj";
+         for Exec_Dir use "build";
+   end case;
+   package Compiler is
+      case Mode is
+         when "release" =>
+            for Default_Switches ("Ada") use
+              ("-O3", "-gnatp", "-gnat2022", "-gnatwa", "-gnatwJ", "-g", "-ffp-contract=off",
+               "-fno-tree-vrp", "-march=x86-64-v3");
+         when others =>
+            for Default_Switches ("Ada") use
+              ("-O2", "-gnat2022", "-gnatwa", "-gnatwJ", "-g", "-ffp-contract=off", "-gnata");
+      end case;
+   end Compiler;
+end Neon_Dynres;

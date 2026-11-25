@@ -28,7 +28,7 @@ package body Neon_Replay is
       R.Result_So_Far := (Frame_Hash => Digest_Start, Audio_Hash => Digest_Start, others => 0);
    end Start;
 
-   procedure Step (R : in out Replay; Target : System.Address; Width, Height : Positive) is
+   procedure Advance (R : in out Replay) is
       Head : Samples;
    begin
       Neon_Game.Render_Audio (R.Game, R.Left, R.Right, Frame_Samples);
@@ -41,11 +41,16 @@ package body Neon_Replay is
          Neon_Game.Advance (R.Game, Neon_Autopilot.Drive (R.Game.Sim, Neon_Game.Sim_Time (R.Game)),
                             Neon_Game.Sim_Time (R.Game) + Tick_Samples);
       end loop;
+      R.Result_So_Far.Frames := R.Result_So_Far.Frames + 1;
+   end Advance;
+
+   procedure Step (R : in out Replay; Target : System.Address; Width, Height : Positive) is
+   begin
+      Advance (R);
       Neon_Scene.Build (R.Frame, R.Game, Width, Height);
       Neon_Soft.Render (R.Renderer, R.Frame, Target, Width, Height, Width);
       R.Result_So_Far.Frame_Hash :=
         (R.Result_So_Far.Frame_Hash xor Neon_Soft.Frame_Hash (Target, Width, Height, Width)) * FNV_Prime;
-      R.Result_So_Far.Frames := R.Result_So_Far.Frames + 1;
    end Step;
 
    function Outcome (R : Replay) return Result is

@@ -52,6 +52,8 @@ with Neon_Replay;
 with Neon_GPU;
 with Neon_Keys; use Neon_Keys;
 with Neon_Math; use Neon_Math;
+with Neon_Present;
+with Neon_Resolution;
 with Neon_Scene;
 with Neon_Sim;
 with Neon_Soft;
@@ -105,6 +107,9 @@ procedure Main is
    G : constant Neon_Audio.Game_Ref := new Neon_Game.Game;
    Scene : constant Frame_Access := new Neon_Scene.Frame;
    Soft : Neon_Soft.Renderer;
+   --  The software path's dynamic resolution (Neon_Present).
+   package Present is new Neon_Present (Now_Us_Early, Neon_Audio.Lock, Neon_Audio.Unlock);
+   Painter : Present.Presenter;
 
    Win : CuBit.UI.App.Window;
    UI : CuBit.UI.State.UI_State;
@@ -159,8 +164,8 @@ procedure Main is
       A.Last := Value;
    end Note;
    function Mean (A : Average) return Float is (if A.Count = 0 then 0.0 else A.Sum / Float (A.Count));
-   Frame_Interval, Render_Time, Present_Latency, Input_To_Present, Key_To_Sound, Beat_To_Photon :
-     Average;
+   Frame_Interval, Render_Time, Scale_Time, Present_Latency, Input_To_Present, Key_To_Sound,
+   Beat_To_Photon : Average;
    Window_Frames : Natural := 0;
    Last_Frame_Us, Next_Soft_Us, Stats_Us : Unsigned_64 := 0;
    Painted_At_Us : Unsigned_64 := 0;       --  Render began painting this frame
@@ -384,7 +389,7 @@ procedure Main is
    ---------------------------------------------------------------------------
 
    procedure Draw_Overlay (Into : CuBit.UI.Canvas) is
-      Lines : constant Natural := 8;
+      Lines : constant Natural := 9;
       Line_H : constant Natural := UI_Text_Height + 3;
       Box : constant Rect := (4, 4, OVERLAY_WIDTH, Lines * Line_H + 2 * OVERLAY_INSET);
       Y : Natural := Box.y + OVERLAY_INSET;
@@ -401,6 +406,21 @@ procedure Main is
    begin
       Fill_Rect (Into, Box, OVERLAY_BACKGROUND);
       Put ("NEON BLAST  " & Path & "  " & Decimal (Into.width) & "x" & Decimal (Into.height), OVERLAY_ACCENT);
+      if GPU_Started then
+         Put ("internal " & Decimal (Into.width) & "x" & Decimal (Into.height) & " (GPU, native)");
+      else
+         declare
+            Shown : constant Present.Report := Present.Last (Painter);
+            Control : constant Neon_Resolution.Controller := Present.Control (Painter);
+         begin
+            Put ("internal " & Decimal (Shown.Internal_Width) & "x" & Decimal (Shown.Internal_Height) & " ("
+                 & Decimal (Shown.Scale) & "%)  scale " & Tenths (Scale_Time.Last) & " ms  budget "
+                 & Tenths (Float (Neon_Resolution.Budget_Us) / 1000.0) & " ms  drops "
+                 & Decimal (Natural (Neon_Resolution.Drops (Control))) & " raises "
+                 & Decimal (Natural (Neon_Resolution.Raises (Control))),
+                 (if Shown.Scale < 100 then OVERLAY_WARN else OVERLAY_INK));
+         end;
+      end if;
       Put ("frame " & Tenths (Frame_Interval.Last) & " ms (avg " & Tenths (Mean (Frame_Interval))
            & ")  render " & Tenths (Render_Time.Last) & " ms  GPU "
            & (if Neon_GPU.Last_GPU_Us = 0 then "n/a" else Tenths (Float (Neon_GPU.Last_GPU_Us) / 1000.0) & " ms"));
@@ -437,15 +457,20 @@ procedure Main is
          GC.Set_Area (Canvas, Window_Canvas, Full);
          GC.Paint (Canvas, Window_Canvas);
       elsif Window_Canvas.width > 0 and then Window_Canvas.height > 0
+        and then Window_Canvas.width <= Neon_Resolution.Maximum_Extent
+        and then Window_Canvas.height <= Neon_Resolution.Maximum_Extent
         and then Window_Canvas.pitch >= 4 * Window_Canvas.width
+        and then Window_Canvas.pitch / 4 <= Neon_Resolution.Maximum_Extent
       then
+         --  At the internal resolution that fits the frame budget, scaled
+         --  to the window (Neon_Present).
+         Present.Paint (Painter, Soft, Scene.all, G.all, Window_Canvas.addr, Window_Canvas.width,
+                        Window_Canvas.height, Window_Canvas.pitch / 4);
+         Note (Render_Time, Float (Present.Last (Painter).Render_Us) / 1000.0);
+         Note (Scale_Time, Float (Present.Last (Painter).Scale_Us) / 1000.0);
          Neon_Audio.Lock;
-         Neon_Scene.Build (Scene.all, G.all, Window_Canvas.width, Window_Canvas.height);
          Painted_Song := Float (G.Sim.Clock);
          Neon_Audio.Unlock;
-         Neon_Soft.Render (Soft, Scene.all, Window_Canvas.addr, Window_Canvas.width, Window_Canvas.height,
-                           Window_Canvas.pitch / 4);
-         Note (Render_Time, Float (Now_Us - Started_Us) / 1000.0);
       end if;
       if Overlay then
          Neon_Audio.Lock;
@@ -491,6 +516,24 @@ procedure Main is
                                                      - Display_Lead), 0.0, 2_400.0);
    end Note_Publish;
 
+   --  The software path's resolution for the stats line: the window, the
+   --  internal size and scale, the scale's cost, and the controller's
+   --  changes so far (tests/neon-blast/check_resolution.py reads them).
+   function Resolution_Stats return String is
+      Shown : constant Present.Report := Present.Last (Painter);
+      Control : constant Neon_Resolution.Controller := Present.Control (Painter);
+   begin
+      if GPU_Started then
+         return "";
+      end if;
+      return " output=" & Decimal (Shown.Output_Width) & "x" & Decimal (Shown.Output_Height)
+        & " internal=" & Decimal (Shown.Internal_Width) & "x" & Decimal (Shown.Internal_Height)
+        & " scale_pct=" & Decimal (Shown.Scale)
+        & " scale_ms_avg=" & Tenths (Mean (Scale_Time)) & " scale_ms_max=" & Tenths (Scale_Time.Peak)
+        & " res_drops=" & Decimal (Natural (Neon_Resolution.Drops (Control)))
+        & " res_raises=" & Decimal (Natural (Neon_Resolution.Raises (Control)));
+   end Resolution_Stats;
+
    procedure Report_Stats (Now : Unsigned_64) is
    begin
       if Stats_Us = 0 then
@@ -505,6 +548,7 @@ procedure Main is
                   & " frames=" & Decimal (Frame_Interval.Count)
                   & " frame_ms_avg=" & Tenths (Mean (Frame_Interval)) & " frame_ms_max=" & Tenths (Frame_Interval.Peak)
                   & " render_ms_avg=" & Tenths (Mean (Render_Time)) & " render_ms_max=" & Tenths (Render_Time.Peak)
+                  & Resolution_Stats
                   & " present_ms_avg=" & Tenths (Mean (Present_Latency))
                   & " input_to_present_ms_avg=" & Tenths (Mean (Input_To_Present))
                   & " input_to_present_ms_max=" & Tenths (Input_To_Present.Peak)
@@ -530,6 +574,7 @@ procedure Main is
                   & " demo=" & (if G.Sim.Demo then "yes" else "no") & ASCII.LF);
       Frame_Interval := (others => <>);
       Render_Time := (others => <>);
+      Scale_Time := (others => <>);
       Present_Latency := (others => <>);
       Input_To_Present := (others => <>);
       Key_To_Sound := (others => <>);

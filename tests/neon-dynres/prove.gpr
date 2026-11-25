@@ -1,0 +1,11 @@
+--  SPARK proof of Neon Blast's dynamic resolution units
+--  (tests/neon-dynres/prove.sh): the controller and the present scaler.
+project Prove is
+   for Source_Dirs use ("../../userspace/apps/neon-blast");
+   for Source_Files use ("neon_resolution.ads", "neon_resolution.adb",
+                         "neon_upscale.ads", "neon_upscale.adb");
+   for Object_Dir use "build/prove";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+end Prove;

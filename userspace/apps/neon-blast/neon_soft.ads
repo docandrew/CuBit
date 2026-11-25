@@ -19,7 +19,8 @@
 --  and a vignette in the same final pass.
 --
 --  It allocates its buffers from the frame's size (they grow, never a fixed
---  maximum) and keeps nothing between frames but those buffers.
+--  maximum, and are reused for smaller frames) and keeps nothing between
+--  frames but those buffers.
 ------------------------------------------------------------------------------
 with System;
 with Interfaces; use Interfaces;
@@ -34,6 +35,10 @@ package Neon_Soft is
    procedure Render (R : in out Renderer; F : Neon_Scene.Frame; Target : System.Address;
                      Width, Height, Pitch_Pixels : Positive);
 
+   --  How often R's buffers grew: a frame no larger than one it already
+   --  rendered reuses them.
+   function Buffer_Growths (R : Renderer) return Natural;
+
    --  FNV-1a 64 of the last rendered frame's pixels (the replay check).
    function Frame_Hash (Target : System.Address; Width, Height, Pitch_Pixels : Positive)
      return Unsigned_64;
@@ -47,7 +52,7 @@ private
    type Renderer is limited record
       Glow_Width, Glow_Height : Natural := 0;
       Glow_R, Glow_G, Glow_B, Scratch : Plane_Access;
-      Row_Max : Plane_Access;    --  brightest glow per glow row (skip dark rows)
+      Growths : Natural := 0;
       Light_R, Light_G, Light_B : Light_Access;
    end record;
 end Neon_Soft;

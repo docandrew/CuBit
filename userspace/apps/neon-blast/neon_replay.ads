@@ -47,8 +47,11 @@ package Neon_Replay is
    end record;
 
    procedure Start (R : in out Replay; Seed : Unsigned_64);
-   --  One frame: a frame's audio, the simulation to the heard time, the
-   --  software render into Target (Width x Height, packed rows).
+   --  One frame's game: its audio, then the simulation to the heard time.
+   --  Nothing a renderer does feeds back into it.
+   procedure Advance (R : in out Replay);
+   --  One frame: Advance, then the software render into Target (Width x
+   --  Height, packed rows), hashed.
    procedure Step (R : in out Replay; Target : System.Address; Width, Height : Positive);
    function Outcome (R : Replay) return Result;
 

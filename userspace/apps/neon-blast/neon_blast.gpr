@@ -40,6 +40,7 @@ project Neon_Blast is
       for Switches ("neon_soft.adb") use Game;
       for Switches ("neon_autopilot.adb") use Game;
       for Switches ("neon_replay.adb") use Game;
+      for Switches ("neon_present.adb") use Game;
       --  Proved (tests/gpu-canvas/run.sh --prove, level 2): no run-time checks.
       Proved := ("-O3", "-gnatp", "-gnat2022", "-fstack-usage", "-fomit-frame-pointer",
                  "-mno-red-zone", "-fno-pic", "-fno-tree-vrp");
@@ -47,6 +48,12 @@ project Neon_Blast is
       --  Proved at level 2 (tests/neon-blast/prove.sh): the game's float
       --  flags without run-time checks.
       for Switches ("neon_style.adb") use Game & ("-gnatp");
+      --  Proved at level 2 (tests/neon-dynres/prove.sh): the dynamic
+      --  resolution controller and the present scaler. The scaler's loops
+      --  are integer-only and target x86-64-v3, CuBit's minimum CPU (AVX2
+      --  gathers: a third of the time of SSE2's scalar widening at 4K).
+      for Switches ("neon_resolution.adb") use Game & ("-gnatp");
+      for Switches ("neon_upscale.adb") use Game & ("-gnatp", "-march=x86-64-v3");
    end Compiler;
 
    package Binder is

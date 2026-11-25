@@ -3,6 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 --  SPDX-License-Identifier: GPL-3.0-or-later
 ------------------------------------------------------------------------------
+with Ada.Unchecked_Deallocation;
 with Neon_Math; use Neon_Math;
 with Neon_Style;
 with Neon_Sim; use Neon_Sim;
@@ -25,22 +26,32 @@ package body Neon_Soft is
    Scanline_Dim : constant := 0.9;
    Vignette_Strength : constant := 0.35;
 
-   procedure Free_Unused is null;
+   procedure Free is new Ada.Unchecked_Deallocation (Float_Plane, Plane_Access);
 
+   --  The planes for a Width x Height frame. They grow to the largest size
+   --  asked for and are reused for any smaller one, so a renderer whose
+   --  size changes every few frames (dynamic resolution) allocates nothing
+   --  once it has held its largest size.
    procedure Ensure (R : in out Renderer; Width, Height : Positive) is
       GW : constant Positive := Width / Glow_Scale + 2;
       GH : constant Positive := Height / Glow_Scale + 2;
+      Glow_Cells : constant Positive := GW * GH;
+      Scratch_Cells : constant Positive := Natural'Max (GW, GH) * 3 + 1;
    begin
-      if R.Glow_R = null or else R.Glow_Width /= GW or else R.Glow_Height /= GH then
-         --  Grow (or reshape) from the frame's size; old planes are left to
-         --  the allocator's process heap (a resize is rare).
-         R.Glow_Width := GW;
-         R.Glow_Height := GH;
-         R.Glow_R := new Float_Plane (0 .. GW * GH - 1);
-         R.Glow_G := new Float_Plane (0 .. GW * GH - 1);
-         R.Glow_B := new Float_Plane (0 .. GW * GH - 1);
-         R.Scratch := new Float_Plane (0 .. Natural'Max (GW, GH) * 3);
-         R.Row_Max := new Float_Plane (0 .. GH - 1);
+      R.Glow_Width := GW;
+      R.Glow_Height := GH;
+      if R.Glow_R = null or else R.Glow_R'Length < Glow_Cells then
+         Free (R.Glow_R);
+         Free (R.Glow_G);
+         Free (R.Glow_B);
+         R.Glow_R := new Float_Plane (0 .. Glow_Cells - 1);
+         R.Glow_G := new Float_Plane (0 .. Glow_Cells - 1);
+         R.Glow_B := new Float_Plane (0 .. Glow_Cells - 1);
+         R.Growths := R.Growths + 1;
+      end if;
+      if R.Scratch = null or else R.Scratch'Length < Scratch_Cells then
+         Free (R.Scratch);
+         R.Scratch := new Float_Plane (0 .. Scratch_Cells - 1);
       end if;
       if R.Light_R = null then
          R.Light_R := new Light_Plane (0 .. Map_Columns * Map_Rows - 1);
@@ -48,6 +59,8 @@ package body Neon_Soft is
          R.Light_B := new Light_Plane (0 .. Map_Columns * Map_Rows - 1);
       end if;
    end Ensure;
+
+   function Buffer_Growths (R : Renderer) return Natural is (R.Growths);
 
    function Ceiling_Of (X : Float) return Float is (-Floor (-X));
 
@@ -594,9 +607,9 @@ package body Neon_Soft is
       Cam.Center_Y := Cam.Center_Y + F.Shake.Y * Scale;
       Splat_Lights (R, F);
       Background (R, F, Cam, Pixels, Width, Height, Pitch_Pixels);
-      R.Glow_R.all := [others => 0.0];
-      R.Glow_G.all := [others => 0.0];
-      R.Glow_B.all := [others => 0.0];
+      R.Glow_R (0 .. GW * GH - 1) := [others => 0.0];
+      R.Glow_G (0 .. GW * GH - 1) := [others => 0.0];
+      R.Glow_B (0 .. GW * GH - 1) := [others => 0.0];
 
       declare
          GR : Float_Plane renames R.Glow_R.all;
