@@ -3487,7 +3487,8 @@ $(RUN_ISO): build/isodir.stamp FORCE
 	  grub-mkrescue -o $@ isodir boot/grub/grub.cfg=build/run-grub.cfg; \
 	  $(call made_record,$@); fi
 
-# Build everything including DOOM, then create ISO and disk images
+# Build everything including DOOM, then create ISO and disk images (last, so
+# they hold every program world stages: BLD-001)
 .PHONY : world
 # Test programs the headless images pack. world builds them too, so no test
 # runs a binary left over from an older ABI (a stale one passes or fails for
@@ -3532,7 +3533,7 @@ build/gate/check-declarations.stamp: $(DECLARATION_INPUTS) $(wildcard isodir/boo
 test-console-shipped: world
 	python3 ../tests/test-console/check-shipped.py
 
-world: check-declarations test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check readiness-writer futex-share secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check font-masks trap-flag-check nmi-check direction-flag-check alignment-flag-check kernel-map-probe mov-ss-check clock-keeper-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr initrd ata_disk.img nvme_disk.img iso llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview tlb-tags ccl-sign
+world: check-declarations test-programs frame-ticker $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check readiness-writer futex-share secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check font-masks trap-flag-check nmi-check direction-flag-check alignment-flag-check kernel-map-probe mov-ss-check clock-keeper-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview tlb-tags ccl-sign initrd ata_disk.img nvme_disk.img iso
 	$(SIGN_PROGRAMS)
 
 .PHONY : headless-test
