@@ -1151,8 +1151,6 @@ package body AML_Namespace with SPARK_Mode is
          and then (if Status /= AML_Execute.Returned then Tree = Tree'Old)
    is
       use type AML_Identity.Identity;
-      use type AML_Decode.Byte;
-      use type AML_Objects.Allocation_Status;
    begin
       Result := (Scalar_Field, 0);
       Status := AML_Execute.Unsupported_Value;
