@@ -141,8 +141,22 @@ package body CuBit.Unwinder_Support is
    procedure CuAlloc_Free (Item : System.Address)
    with Import, Convention => C, External_Name => "cualloc_free";
 
+   --  libgcc's unwinder uses what it allocates without checking for null
+   --  (btree_allocate_node in the frame registry, for one), so a null here
+   --  would become a fault at page 0 that names nothing (BUG-009). Out of
+   --  memory stops the program with a message that says so instead.
    function Allocate (Bytes : size_t) return System.Address is
-     (CuAlloc_Allocate (Unsigned_64 (Bytes), Allocation_Alignment));
+      Result : constant System.Address :=
+        CuAlloc_Allocate (Unsigned_64 (Bytes), Allocation_Alignment);
+   begin
+      if Result = System.Null_Address then
+         CuBit.Program_Endings.Last_Chance.Write_Console
+           ("Exception unwinder: out of memory (the heap could not supply"
+            & size_t'Image (Bytes) & " bytes); stopping" & ASCII.LF);
+         CuBit.Program_Endings.Last_Chance.Stop;
+      end if;
+      return Result;
+   end Allocate;
 
    procedure Free (Item : System.Address) is
    begin
