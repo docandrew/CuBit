@@ -132,25 +132,40 @@ package body Syscall.Admin is
          and then role - cap.object.ref < cap.object.param);
 
     ---------------------------------------------------------------------------
-    -- holdsProcessAuthority
+    -- Process authority
     -- The caller's handle names a CAP_PROCESS with Right over targetPID: one
     -- naming that process (in its current incarnation), or the wildcard
     -- (ref = 0, the device manager's boot root and procmgr's copy of it).
+    --
+    -- The lookup (processAuthority) takes the caller's mailbox lock, so a
+    -- handler that locks the target's mailbox looks the caller's authority
+    -- up first and checks it against the target (coversProcess) under the
+    -- target's lock, where the target's generation cannot change. Looked up
+    -- under the target's lock, it would take a second mailbox lock out of
+    -- order: the caller's own again when it names itself (the spinlock
+    -- refuses the re-entry and the kernel halts), or a deadlock when two
+    -- processes name each other (IDIOT-001;
+    -- tests/mailbox-locks/check_own_lookups.py).
     ---------------------------------------------------------------------------
+    function processAuthority (callerPID : Process.ProcessID;
+                               handle    : Unsigned_64;
+                               right     : Capabilities.CapabilityRight)
+                               return Process_Capabilities.Found is
+      (findOwn (callerPID, handle, Capabilities.CAP_PROCESS, onlyRight (right)));
+
+    function coversProcess (authority : Process_Capabilities.Found;
+                            targetPID : Process.ProcessID) return Boolean is
+      (authority.OK and then
+       (authority.Cap.object.ref = 0 or else
+        (authority.Cap.object.ref = Unsigned_64 (targetPID) and then
+         authority.Cap.gen = Process.generationOf (targetPID))));
+
     function holdsProcessAuthority (callerPID : Process.ProcessID;
                                     handle    : Unsigned_64;
                                     targetPID : Process.ProcessID;
                                     right     : Capabilities.CapabilityRight)
-                                    return Boolean
-    is
-        found : constant Process_Capabilities.Found :=
-          findOwn (callerPID, handle, Capabilities.CAP_PROCESS, onlyRight (right));
-    begin
-        return found.OK and then
-          (found.Cap.object.ref = 0 or else
-           (found.Cap.object.ref = Unsigned_64 (targetPID) and then
-            found.Cap.gen = Process.generationOf (targetPID)));
-    end holdsProcessAuthority;
+                                    return Boolean is
+      (coversProcess (processAuthority (callerPID, handle, right), targetPID));
 
 
     ---------------------------------------------------------------------------
@@ -913,6 +928,9 @@ package body Syscall.Admin is
 
 
         targetPID : Process.ProcessID;
+        -- Looked up before the target's lock (processAuthority).
+        authority : constant Process_Capabilities.Found :=
+          processAuthority (callerPID, arg1, Capabilities.RIGHT_EXECUTE);
     begin
         targetPID := Process.processOfIdentity (Process_Identities.From_Word (arg0));
         if targetPID = Process.NO_PROCESS then
@@ -932,9 +950,7 @@ package body Syscall.Admin is
                     return;
                 end if;
 
-                if not holdsProcessAuthority (callerPID, arg1, targetPID,
-                                              Capabilities.RIGHT_EXECUTE)
-                then
+                if not coversProcess (authority, targetPID) then
                     println ("RESUME: denied, no RIGHT_EXECUTE");
                     retval := reterr;
                 elsif Process.threadOf (targetPID).state /= Process.SUSPENDED then
@@ -986,6 +1002,9 @@ package body Syscall.Admin is
         use type Process.Page_Allocation_Result;
         use type Process_Launch.Launch_Phase;
         targetPID : Process.ProcessID;
+        -- Looked up before the target's lock (processAuthority).
+        authority : constant Process_Capabilities.Found :=
+          processAuthority (callerPID, arg3, Capabilities.RIGHT_EXECUTE);
     begin
         retval := reterr;
         targetPID := Process.processOfIdentity (Process_Identities.From_Word (arg0));
@@ -1018,9 +1037,7 @@ package body Syscall.Admin is
                    Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
                 then
                     return;
-                elsif not holdsProcessAuthority (callerPID, arg3, targetPID,
-                                                 Capabilities.RIGHT_EXECUTE)
-                then
+                elsif not coversProcess (authority, targetPID) then
                     println ("LAUNCH-ARGS: denied, no RIGHT_EXECUTE");
                     return;
                 elsif Process.threadOf (targetPID).state /= Process.SUSPENDED or else
@@ -1297,29 +1314,35 @@ package body Syscall.Admin is
             refuse (LA.Invalid_Owner, "invalid owner identity");
             return;
         end if;
-        Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
-        if not Process.proctab(targetPID).admitted or else
-           Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
-        then
-            outcome := LA.Invalid_Owner;
-        elsif not holdsProcessAuthority (callerPID, arg3, targetPID,
-                                         Capabilities.RIGHT_GRANT)
-        then
-            outcome := LA.No_Process_Authority;
-        elsif not legacyLineHeld (arg4, arg0) then
-            outcome := LA.No_Line_Authority;
-        else
-            --  The owner set, the trigger/polarity agreement and the
-            --  I/O APIC entry, under the lines' lock.
-            Interrupt_Lines.Route
-              (Vector   => LA.Line_Vector (arg0),
-               Owner    => Unsigned_64 (targetPID),
-               CPU      => LA.CPU_Of (arg2),
-               Trigger  => LA.Trigger_Of (arg2),
-               Polarity => LA.Polarity_Of (arg2),
-               Outcome  => outcome);
-        end if;
-        Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+        -- The caller's authority, looked up before the owner's lock
+        -- (processAuthority); checked against the owner under it.
+        declare
+            authority : constant Process_Capabilities.Found :=
+              processAuthority (callerPID, arg3, Capabilities.RIGHT_GRANT);
+            lineHeld : constant Boolean := legacyLineHeld (arg4, arg0);
+        begin
+            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            if not Process.proctab(targetPID).admitted or else
+               Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
+            then
+                outcome := LA.Invalid_Owner;
+            elsif not coversProcess (authority, targetPID) then
+                outcome := LA.No_Process_Authority;
+            elsif not lineHeld then
+                outcome := LA.No_Line_Authority;
+            else
+                --  The owner set, the trigger/polarity agreement and the
+                --  I/O APIC entry, under the lines' lock.
+                Interrupt_Lines.Route
+                  (Vector   => LA.Line_Vector (arg0),
+                   Owner    => Unsigned_64 (targetPID),
+                   CPU      => LA.CPU_Of (arg2),
+                   Trigger  => LA.Trigger_Of (arg2),
+                   Polarity => LA.Polarity_Of (arg2),
+                   Outcome  => outcome);
+            end if;
+            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+        end;
         if outcome /= LA.Routed then
             print ("ENABLE_IRQ: refused, vector");
             print (Unsigned_32 (arg0));
