@@ -1,7 +1,8 @@
 # Neon Blast beside CPU-hungry ordinary programs (SCHED-001, app audio
 # threads; run.sh --test neon-blast with CUBIT_NEON_BURN=1): from half a
-# minute after boot, four bench-burn.app spin on the guest's four CPUs, so
-# the game's frames take longer and drop. The soundtrack's thread holds its
+# minute after boot, eight bench-burn.app spin on the guest's four CPUs,
+# two per CPU, so the game's frames take longer and drop (four, one per
+# CPU, left the frames at 19 ms: no constrained run). The soundtrack's thread holds its
 # real-time share, so the music must not underrun
 # (tests/neon-blast/check_underruns.py). Four CPUs rather than two: with
 # --cpus 2 procmgr asked for desktop.svc before the filesystem service was
@@ -11,6 +12,10 @@
   (start "clock.svc")
   (start "display.svc")
   (start "desktop.svc")
+  (start "bench-burn.app" (trace approve-declared))
+  (start "bench-burn.app" (trace approve-declared))
+  (start "bench-burn.app" (trace approve-declared))
+  (start "bench-burn.app" (trace approve-declared))
   (start "bench-burn.app" (trace approve-declared))
   (start "bench-burn.app" (trace approve-declared))
   (start "bench-burn.app" (trace approve-declared))

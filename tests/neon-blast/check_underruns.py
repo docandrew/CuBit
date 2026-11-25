@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Neon Blast beside CPU-hungry programs: frames drop, audio does not.
 
-run.sh --test neon-blast with CUBIT_NEON_BURN=1 starts four bench-burn.app
-beside the game (init-neon-blast-burn.ccl), one per guest CPU, from half a
+run.sh --test neon-blast with CUBIT_NEON_BURN=1 starts eight bench-burn.app
+beside the game (init-neon-blast-burn.ccl), two per guest CPU, from half a
 minute after boot. The game's
 soundtrack is synthesized on its own thread in a real-time share its
 manifest declares (SCHED-001, app audio threads), so however long a frame

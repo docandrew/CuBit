@@ -1582,7 +1582,7 @@ with open(sys.argv[1], "wb") as f:
         # Neon Blast (APP-008): the game on the desktop, its soundtrack
         # through mixer.svc and QEMU's HDA into a WAV (tests/neon-blast).
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-neon-blast.ccl"
-        # CUBIT_NEON_BURN=1: four CPU-hungry programs beside the game (SCHED-001,
+        # CUBIT_NEON_BURN=1: eight CPU-hungry programs beside the game (SCHED-001,
         # app audio threads); its frames drop, its music must not underrun.
         if [ "${CUBIT_NEON_BURN:-0}" = 1 ]; then
             INIT_PROFILE="$ROOT_DIR/tests/headless/init-neon-blast-burn.ccl"
