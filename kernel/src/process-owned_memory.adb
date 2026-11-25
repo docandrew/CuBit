@@ -9,6 +9,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Spinlocks;
 with Process_Pool;
 with Interrupt_Windows;
+with TextIO;
 with Virtmem.Regions;
 package body Process.Owned_Memory is
    package Policy renames Owned_Reservation_Policy;
@@ -257,17 +258,42 @@ package body Process.Owned_Memory is
               else 0);
    end Find_Base;
 
+   -- Refused reservations and commits go to the kernel log (BUG-009: a
+   -- refused commit left no trace, and the allocator's null reached
+   -- libgcc): the first Logged_Refusals in full, then every
+   -- Refusal_Sample'th, with the running count.
+   Logged_Refusals : constant := 32;
+   Refusal_Sample : constant := 1_024;
+   Refusals_Seen : Natural := 0 with Atomic;
+   function Count_Refusal return Natural is
+      Seen : constant Natural := Refusals_Seen;
+   begin
+      if Seen < Natural'Last then
+         Refusals_Seen := Seen + 1;
+      end if;
+      return Seen + 1;
+   end Count_Refusal;
+   function Logged (Count : Natural) return Boolean is
+     (Count <= Logged_Refusals or else Count mod Refusal_Sample = 0);
+
    procedure Reserve (PID : ProcessID; Bytes, Alignment : Unsigned_64; Base : out Unsigned_64) is
-      Candidate : Unsigned_64;
+      Candidate : Unsigned_64 := 0;
       Index : Records.Id;
+      Admitted : Boolean;
    begin
       Base := 0;
-      if PID = NO_PROCESS or else not Policy.Valid_Capacity (Bytes)
-        or else not Policy.Valid_Alignment (Alignment)
-      then return; end if;
+      if PID = NO_PROCESS then return; end if;
+      if not Policy.Valid_Capacity (Bytes) or else not Policy.Valid_Alignment (Alignment) then
+         if Logged (Count_Refusal) then TextIO.println
+           ("owned-memory: reserve refused pid=" & Natural'Image (Natural (PID)) &
+            " bytes=" & Unsigned_64'Image (Bytes) & " alignment=" & Unsigned_64'Image (Alignment) &
+            " reason=invalid-size-or-alignment"); end if;
+         return;
+      end if;
       Lock;
       lockAddressSpace (PID);
-      if proctab(PID).admitted then
+      Admitted := proctab(PID).admitted;
+      if Admitted then
          Candidate := Find_Base (PID, Bytes, Policy.Effective_Alignment (Alignment));
          if Candidate /= 0 then
             Records.Insert (Tables(PID), Candidate,
@@ -279,6 +305,14 @@ package body Process.Owned_Memory is
       end if;
       unlockAddressSpace (PID);
       Unlock;
+      if Base = 0 and then Logged (Count_Refusal) then
+         -- As a refused commit: no address range, or no record.
+         TextIO.println
+           ("owned-memory: reserve refused pid=" & Natural'Image (Natural (PID)) &
+            " bytes=" & Unsigned_64'Image (Bytes) &
+            " reason=" & (if not Admitted then "process-not-admitted"
+                          elsif Candidate = 0 then "no-address-range" else "no-region-record"));
+      end if;
    end Reserve;
 
    -- Back every page of [Address, Address + Bytes) with a fresh zero page,
@@ -291,6 +325,35 @@ package body Process.Owned_Memory is
    -- range is where a 2 MiB leaf could be chosen automatically, with no
    -- new parameter; that needs a run kind with one frame per 2 MiB and a
    -- Drop that splits a leaf, so it is not done here (ABI-002 results).
+   -- Why a commit was refused (BUG-009: a commit refused left no trace, and
+   -- the allocator's null reached libgcc). Page: tryAddPage's answer.
+   type Commit_Refusal is
+     (No_Refusal, No_Region, Not_Admitted, Overlaps_Backed, No_Tracking_Capacity,
+      No_Run_Record, Page_Refused);
+   Last_Refusal : Commit_Refusal := No_Refusal;
+   Last_Page_Result : Page_Allocation_Result := Page_Added;
+
+   -- The kernel has no enumeration images (No_Enumeration_Maps).
+   function Name (Why : Commit_Refusal) return String is
+     (case Why is
+        when No_Refusal => "none",
+        when No_Region => "no-live-region",
+        when Not_Admitted => "not-admitted",
+        when Overlaps_Backed => "overlaps-backed-pages",
+        when No_Tracking_Capacity => "no-frame-tracking-capacity",
+        when No_Run_Record => "no-run-record",
+        when Page_Refused => "page-refused");
+   function Name (Why : Page_Allocation_Result) return String is
+     (case Why is
+        when Page_Added => "added",
+        when Frame_Tracking_Full => "frame-tracking-full",
+        when Frame_Quota_Full => "frame-quota-full",
+        when Physical_Memory_Exhausted => "physical-memory-exhausted",
+        when Tracking_Storage_Exhausted => "tracking-storage-exhausted",
+        when Frame_Ownership_Failed => "frame-ownership-failed",
+        when Page_Table_Exhausted => "page-table-exhausted",
+        when Mapping_Already_Present => "mapping-already-present");
+
    procedure Commit (PID : ProcessID; Region_Index : Slot; Address, Bytes : Unsigned_64;
                      Success : out Boolean) is
       Index : Records.Id := 0;
@@ -307,7 +370,10 @@ package body Process.Owned_Memory is
             Item : Entry_Record renames Entries(PID, I).Value.all;
          begin
             if Is_Run_Of (Item, Region_Index) then
-               if Cuts (Item, Address, Bytes) then return; end if;
+               if Cuts (Item, Address, Bytes) then
+                  Last_Refusal := Overlaps_Backed;
+                  return;
+               end if;
                if Item.Status = Live and then Item.Count > 0
                  and then Policy.Adjoins (Item.Base, Policy.Page_Count (Item.Count), Address)
                  and then Item.First_Node = proctab(PID).frames.head
@@ -322,12 +388,18 @@ package body Process.Owned_Memory is
         (Positive'Max (1, proctab(PID).frames.length),
          Natural (Bytes / Page) + Natural (proctab(PID).stackSize / 4096) +
            INITIAL_HEAP_FRAME_HEADROOM);
-      if Capacity = 0 then return; end if;
+      if Capacity = 0 then
+         Last_Refusal := No_Tracking_Capacity;
+         return;
+      end if;
       if not Extending then
          Records.Insert (Tables(PID), Address,
            (Status => Building, Kind => Run, Parent => Region_Index, Owner => PID,
             Generation => generationOf (PID), Base => Address, others => <>), Index);
-         if Index = 0 then return; end if;
+         if Index = 0 then
+            Last_Refusal := No_Run_Record;
+            return;
+         end if;
       end if;
       Before := Entries(PID, Index).Count;
       proctab(PID).frames.capacity := Natural'Max (Capacity, proctab(PID).frames.capacity);
@@ -335,6 +407,8 @@ package body Process.Owned_Memory is
          tryAddPage (proctab(PID), To_Address (Integer_Address (Address) +
                        Integer_Address (Page_Index) * 4096), Storage, Result);
          if Result /= Page_Added then
+            Last_Refusal := Page_Refused;
+            Last_Page_Result := Result;
             Added := Entries(PID, Index).Count - Before;
             if Added > 0 then
                -- A new run is dropped whole (and its record released); an
@@ -506,6 +580,22 @@ package body Process.Owned_Memory is
       return not Covered or else Bytes_Of (Backed) = Bytes;
    end Range_Acceptable;
 
+   -- A refused commit, in the kernel log: which process, where, how much
+   -- and why. No lock is held here. Last_Refusal and Last_Page_Result are
+   -- read unlocked: diagnostics only.
+   procedure Report_Refused_Commit (PID : ProcessID; Address, Bytes : Unsigned_64) is
+      Seen : constant Natural := Count_Refusal;
+   begin
+      if Logged (Seen) then
+         TextIO.println
+           ("owned-memory: commit refused pid=" & Natural'Image (Natural (PID)) &
+            " address=" & Unsigned_64'Image (Address) & " bytes=" & Unsigned_64'Image (Bytes) &
+            " reason=" & Name (Last_Refusal) &
+            (if Last_Refusal = Page_Refused then " page=" & Name (Last_Page_Result) else "") &
+            " refusals=" & Natural'Image (Seen));
+      end if;
+   end Report_Refused_Commit;
+
    procedure Change_Range (PID : ProcessID; Address, Bytes : Unsigned_64;
                            Operation : Owned_Reservation_Policy.Range_Operation;
                            Success : out Boolean) is
@@ -562,13 +652,14 @@ package body Process.Owned_Memory is
          then
             Region_Index := 0;
          end if;
+         Last_Refusal := (if Region_Index = 0 then No_Region else No_Refusal);
          if Region_Index /= 0 then
             case Operation is
                when Policy.Commit =>
                   if not Policy.Commit_Admitted
                     (Entries(PID, Region_Index).Base, Entries(PID, Region_Index).Bytes, From, Length)
                   then
-                     null;
+                     Last_Refusal := Not_Admitted;
                   elsif not Last_Attempt and then BuddyAllocator.poolCleanFrames < Frames then
                      -- Laundering or growing here would zero and run a
                      -- TLB round under grantLock, which every CPU's
@@ -605,6 +696,9 @@ package body Process.Owned_Memory is
             exit when not Short;
             Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
          end loop;
+         if not Success then
+            Report_Refused_Commit (PID, Address, Bytes);
+         end if;
       elsif Bytes <= Step_Bytes or else Address > Unsigned_64'Last - Bytes
         or else Address mod Page /= 0 or else Bytes mod Page /= 0
       then
