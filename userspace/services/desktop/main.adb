@@ -285,8 +285,6 @@ procedure main is
    UI_ERR_BAD_OBJECT  : constant Unsigned_64 := 2;
    UI_ERR_BAD_STATE   : constant Unsigned_64 := 3;
    UI_ERR_UNSUPPORTED : constant Unsigned_64 := 5;
-   REPLY_OK           : constant Unsigned_32 := 16#F000#;
-   REPLY_ERR          : constant Unsigned_32 := 16#F001#;
 
    SURFACE_FLAG_SHELL  : constant Unsigned_64 := 1;
    SURFACE_FLAG_WINDOW : constant Unsigned_64 := 2;
