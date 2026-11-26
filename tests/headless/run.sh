@@ -1601,6 +1601,19 @@ with open(sys.argv[1], "wb") as f:
         if [ "${CUBIT_DISPLAY_LATENCY_ANIMATION:-0}" = 1 ]; then
             INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-latency-animated.ccl"
         fi
+        # SCHED-001 input urgency: CUBIT_LATENCY_LOAD=N CPU-bound peers
+        # (bench-input-load.app) beside the Calculator, and
+        # CUBIT_LATENCY_INPUT=usb types through QEMU's usb-kbd (xhci.drv)
+        # instead of the i8042 (ps2.drv). tests/input-urgency/check_latency.py
+        # then holds the driver-to-app stages to the input limit.
+        if [ "${CUBIT_LATENCY_LOAD:-0}" -gt 0 ]; then
+            TEMP_LATENCY_PROFILE="$(mktemp "${TMPDIR:-/tmp}/cubit-latency-load.XXXXXX.ccl")"
+            awk -v count="$CUBIT_LATENCY_LOAD" '
+                /^\)/ { for (i = 1; i <= count; i++)
+                           print "  (start \"bench-input-load.app\" (trace approve-declared))" }
+                { print }' "$INIT_PROFILE" > "$TEMP_LATENCY_PROFILE"
+            INIT_PROFILE="$TEMP_LATENCY_PROFILE"
+        fi
         ;;
     metrics-latency)
         # MET-002: display-latency with metrics.svc and ccl-remote; the
@@ -2527,6 +2540,15 @@ if [ -n "$INIT_PROFILE" ]; then
             echo "headless: failed to install the latency probe" >&2
             exit 1
         fi
+    fi
+    if [ "$TEST_NAME" = "display-latency" ] && [ "${CUBIT_LATENCY_LOAD:-0}" -gt 0 ]; then
+        if ! make -s -C "$KERNEL_DIR" bench-load >/dev/null; then
+            echo "headless: failed to build bench-load" >&2
+            exit 1
+        fi
+        debugfs -w -R "rm bench-input-load.app" "$TEMP_DISK" >/dev/null 2>&1
+        debugfs -w -R "write $KERNEL_DIR/isodir/boot/bench-input-load.app bench-input-load.app" \
+          "$TEMP_DISK" >/dev/null 2>&1 || exit 1
     fi
     if [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "display-latency" ] ||
        [ "$TEST_NAME" = "metrics-latency" ]; then
@@ -4451,6 +4473,11 @@ AUDIO_ARGS=(-audiodev none,id=snd0)
 TEST_DEVICE_ARGS=()
 if [ "$TEST_NAME" = "generic-launch" ] || [ "$TEST_NAME" = "platform-pool" ]; then
     TEST_DEVICE_ARGS=(-device edu)
+fi
+# display-latency typing through QEMU's USB keyboard (xhci.drv): the host's
+# key presses go to the keyboard added last.
+if [ "$TEST_NAME" = "display-latency" ] && [ "${CUBIT_LATENCY_INPUT:-ps2}" = usb ]; then
+    TEST_DEVICE_ARGS=(-device qemu-xhci,id=xhcikbd -device usb-kbd,bus=xhcikbd.0,port=1)
 fi
 # gpio-launch's HID offers name their I2C controller by PCI location: edu
 # stands in for it at 00:15.0 (the IdeaPad's touchpad controller's slot),
@@ -12409,6 +12436,15 @@ if [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "metrics-latency" ];
         exit 1
     fi
     grep -aE "virtio-gpu: |display: stats " "$SERIAL_LOG" | tail -n 3 || true
+    if [ "$TEST_NAME" = "display-latency" ] && [ "${CUBIT_LATENCY_LOAD:-0}" -gt 0 ]; then
+        # SCHED-001: beside the CPU-bound peers, the driver-to-app stages
+        # stay within the input limit (an urgent turn at each hop).
+        if ! python3 -I "$ROOT_DIR/tests/input-urgency/check_latency.py" "$SERIAL_LOG" \
+            "${CUBIT_LATENCY_INPUT:-ps2}"; then
+            echo "headless: loaded input missed the limit (see $SERIAL_LOG)" >&2
+            exit 1
+        fi
+    fi
 fi
 if [ "$TEST_NAME" = "calculator" ]; then
     # A failed Enter (division by zero) adds nothing: the next entry is

@@ -12,6 +12,7 @@ each frame's damage, stays small.
 
 usage: display-latency-keys.py MONITOR_SOCKET [COUNT]
 """
+import os
 import socket
 import sys
 import time
@@ -20,7 +21,7 @@ PERIOD_US = 16_667
 PHASES = 8
 # Whole refreshes between presses: room for the press, its release and
 # the frame, so presses never queue behind each other.
-STRIDE_PERIODS = 6
+STRIDE_PERIODS = int(os.environ.get("DISPLAY_LATENCY_STRIDE", "6"))
 HOLD_MS = 10
 KEYS = ("1", "backspace")
 
