@@ -407,7 +407,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|ladybird-js|ladybird-test262|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|mailbox-self|mailbox-mutual|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|graphics-report-nodriver|graphics-report-failing|graphics-report-desktop-down|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch|screen-settle)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|stdin-inlet|ladybird-js|ladybird-test262|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|mailbox-self|mailbox-mutual|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|graphics-report-nodriver|graphics-report-failing|graphics-report-desktop-down|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch|screen-settle)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -1300,6 +1300,10 @@ with open(sys.argv[1], "wb") as f:
         ;;
     libc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-libc.ccl"
+        ;;
+    stdin-inlet)
+        # The unix.stdin inlet: descriptor 0 read from a launcher-lent ring.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-stdin-inlet.ccl"
         ;;
     ladybird-test262)
         # WEB-006 phase a: Ladybird's test262-runner (JIT compiled out),
@@ -3678,6 +3682,18 @@ if [ -n "$INIT_PROFILE" ]; then
                 echo "headless: $LADYBIRD_CHECK was not installed" >&2
                 exit 1
             fi
+        done
+    fi
+    if [ "$TEST_NAME" = "stdin-inlet" ]; then
+        if ! make -C "$KERNEL_DIR" libc user_runtime ccl-manifest >/dev/null ||
+           ! bash "$ROOT_DIR/tests/stdin-inlet/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null; then
+            echo "headless: failed to build the stdin-inlet test" >&2
+            exit 1
+        fi
+        for STDIN_IMAGE in logstore.svc stdin-inlet-check.app stdin-check.app stdin-none.app; do
+            debugfs -w -R "rm $STDIN_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            debugfs -w -R "write $KERNEL_DIR/isodir/boot/$STDIN_IMAGE $STDIN_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         done
     fi
     if [ "$TEST_NAME" = "ladybird-test262" ]; then
@@ -7230,6 +7246,14 @@ if [ "$TEST_NAME" = "key-repeat" ]; then
     INPUT_INJECTOR_PID=$!
 fi
 
+if [ "$TEST_NAME" = "stdin-inlet" ]; then
+    # Quit QEMU once the launcher reports (the timeout is only the bound).
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "STDIN-INLET: PASS" "STDIN-INLET: FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "ladybird-test262" ]; then
     # Quit QEMU once the test262 launcher reports (the timeout is only the bound).
     QMP_SOCKET="$(qemu_socket qmp)"
@@ -8395,6 +8419,23 @@ cxx-check: streams and map PASS
 CXX: PASS
 "
         python3 "$ROOT_DIR/userspace/libc/tests/check-protection-faults.py" "$SERIAL_LOG" || exit 1
+        ;;
+    stdin-inlet)
+        required_markers="
+stdin-check: every line arrives, in order PASS
+stdin-check: read(0) at the end of the stream is 0 PASS
+stdin-check: poll reports the end of the stream PASS
+stdin-check: write to descriptor 0 is EBADF PASS
+stdin-none: read(0) without a declared inlet is EBADF PASS
+stdin-none: poll reports descriptor 0 not open PASS
+stdin-inlet: stdin-check reads the inlet's stream and exits with 0 PASS
+stdin-inlet: stdin-none finds no descriptor 0 and exits with 0 PASS
+STDIN-INLET: PASS
+"
+        if grep -qF 'STDIN-INLET: FAIL' "$SERIAL_LOG"; then
+            echo "headless: stdin-inlet test reported a failure" >&2
+            exit 1
+        fi
         ;;
     ladybird-test262)
         # The totals, and with LADYBIRD_TEST262_REFERENCE (the same build's

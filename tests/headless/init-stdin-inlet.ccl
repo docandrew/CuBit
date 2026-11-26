@@ -1,0 +1,6 @@
+# The unix.stdin inlet (tests/stdin-inlet): a launcher lends stdin-check a
+# ring for descriptor 0 and feeds it; stdin-none has no descriptor 0.
+(startup v1
+  (start "logstore.svc" (test-console approve-declared))
+  (start "stdin-inlet-check.app")
+)

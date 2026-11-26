@@ -1,0 +1,11 @@
+# The unix.stdin inlet check (tests/stdin-inlet): descriptor 0 is the inlet,
+# whose ring the launcher lends (CuBit.Inlet_Rings). Its ring is 4 pages, far
+# smaller than what the launcher sends, so nothing arrives unless the
+# launcher waits for this reader.
+(Executable_Manifest
+  identity => "com.cubit.stdin-check"
+  version => "0.1.0"
+  optional => ["logstore"]
+  requests => [(service "logstore" "logstore")]
+  inlets => [(Inlet "unix.stdin" Element.Raw_Bytes pages => 4)]
+  descriptors => [(Descriptor 0 "unix.stdin")])

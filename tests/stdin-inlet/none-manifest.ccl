@@ -1,0 +1,7 @@
+# The same check without the inlet (tests/stdin-inlet): descriptor 0 is not
+# open.
+(Executable_Manifest
+  identity => "com.cubit.stdin-none"
+  version => "0.1.0"
+  optional => ["logstore"]
+  requests => [(service "logstore" "logstore")])

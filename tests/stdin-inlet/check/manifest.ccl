@@ -1,0 +1,10 @@
+# The unix.stdin inlet launcher (tests/stdin-inlet/check): lends
+# stdin-check.app a ring for its inlet, writes 3000 lines into it as the
+# reader frees room, and runs stdin-none.app with no inlet.
+(Executable_Manifest
+  identity => "com.cubit.stdin-inlet-check"
+  version => "0.1.0"
+  requests => [(service "process-manager" "process-manager") (service "launch" "launch")
+    (service "logstore" "logstore")]
+  optional => ["logstore"]
+  may_launch => [(Launch "stdin-check.app") (Launch "stdin-none.app")])
