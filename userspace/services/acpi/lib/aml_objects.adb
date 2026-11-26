@@ -55,8 +55,17 @@ package body AML_Objects with SPARK_Mode is
      with Ghost, Annotate => (GNATprove, Logical_Equal);
    function Occupancy_Map (Objects : Object_Array) return Occupancy_Array is
      ([for I in Objects'Range => Objects (I).Occupied])
-     with Post => Occupancy_Map'Result = Occupancy_Array'([for I in Objects'Range => Objects (I).Occupied]),
-       Annotate => (GNATprove, Inline_For_Proof);
+     with Post => Occupancy_Map'Result'First = Objects'First
+       and then Occupancy_Map'Result'Last = Objects'Last
+       and then (for all I in Objects'Range => Occupancy_Map'Result (I) = Objects (I).Occupied);
+   procedure Occupancy_Map_Contract_Compatible (Objects : Object_Array)
+     with Ghost,
+       Post => Occupancy_Map (Objects) = Occupancy_Array'([for I in Objects'Range => Objects (I).Occupied]);
+   procedure Occupancy_Map_Contract_Compatible (Objects : Object_Array) is
+   begin
+      null;
+   end Occupancy_Map_Contract_Compatible;
+   pragma Unreferenced (Occupancy_Map_Contract_Compatible);
    function Occupied_Total (Present : Occupancy_Array) return Object_ID is
       Live : Object_ID := 0;
    begin
