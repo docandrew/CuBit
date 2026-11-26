@@ -1272,3 +1272,57 @@ commit step the kernel had come to refuse and died at start.
 make -C kernel world
 bash tests/one-allocator/run.sh   # holding coordination/build.lock: it rebuilds
 ```
+
+## neon-dynres: Neon Blast's dynamic resolution (APP-008)
+
+Hosted (tests/neon-dynres): the controller against a modelled renderer
+(drops to fit, raises when there is room, holds between the marks, one slow
+frame does not drop it, never under its 360-line floor), the bilinear
+scaler's arithmetic, the software renderer reusing its buffers across sizes,
+and the game unchanged by the render size (seed 7 at a fixed size, at a
+size changing every frame, and through the controller: the same audio
+hash, score and kills); its proof (level 2). Live: every software stats
+line names its window and internal size (check_resolution.py, plain), and
+on a 3840x2160 firmware mode the resolution drops, render plus scale comes
+back under 10 ms, and it rises again (constrained). Failed before: a size
+change made Neon_Soft allocate new glow planes each time (Buffer_Growths
+counts 20 for 20 changes); the stats line named no internal size, so the
+plain check fails on 939c4cbd4.
+
+```sh
+bash tests/neon-dynres/run.sh
+bash tests/neon-dynres/prove.sh
+make -C kernel world neon-blast && bash tests/neon-blast/run.sh
+bash tests/headless/run.sh --test neon-blast --accel kvm --timeout 900
+CUBIT_TEST_VIDEO_SIZE=3840x2160 CUBIT_NEON_DYNRES=constrained \
+  bash tests/headless/run.sh --test neon-blast --accel kvm --timeout 900
+```
+
+## graphics-report: which renderer is in use, and why (GPU-014)
+
+Hosted (tests/graphics-report): the entry's wire round trip, devmgr's copy
+(a post replaces its subject, procmgr's Gone turns a program's entries
+stale, a full report counts what it drops, pages against a generation,
+refusals) and the Deskbar's three cases; its proof (level 2). Live, through
+the console's (graphics.report): only QEMU's std VGA gives devmgr's GPU
+entry No_Driver_Bound and Desktop's output Policy Composition_CPU
+(nodriver); a virtio-gpu built init-failure gives Driver_Failed at Init
+(failing); Desktop exiting after its first frame, not restarted, still
+leaves the report answering with the GPU's entry and Desktop's last one,
+stale (desktop-down, read by graphics-report-check). Failed before: no
+renderer report existed; the reasons were free text in the logs only.
+
+```sh
+bash tests/graphics-report/run.sh
+bash tests/graphics-report/prove.sh
+make -C kernel world ccl-console graphics-report-check
+bash tests/headless/run.sh --test graphics-report-nodriver --accel kvm --timeout 120
+CUBIT_GPU_TEST_MODE=init-failure \
+  bash tests/headless/run.sh --test graphics-report-failing --accel kvm --timeout 120
+make -C kernel virtio-gpu initrd   # the production driver back in the boot image
+make -C kernel desktop CUBIT_DESKTOP_FAULT=exit-once CUBIT_COMPOSITOR_TIMING=on
+cp kernel/isodir/boot/desktop.svc /home/doc/cubit-build-tmp/desktop-fault.svc
+make -C kernel desktop CUBIT_COMPOSITOR_TIMING=on
+CUBIT_DESKTOP_IMAGE=/home/doc/cubit-build-tmp/desktop-fault.svc \
+  bash tests/headless/run.sh --test graphics-report-desktop-down --accel kvm --timeout 120
+```
