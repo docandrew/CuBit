@@ -609,7 +609,6 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          Optional : constant Views.Cursor := Named (Root, "optional");
          Limit : constant Views.Cursor := Named (Root, "handles");
          Channels : constant Views.Cursor := Named (Root, "channels");
-         Connections : constant Views.Cursor := Named (Root, "connections");
       begin
          for Index in 1 .. Views.Length (Object, Optional) loop
             Locate (Entry_Text ("optional", Index));
@@ -764,11 +763,6 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
             end;
          end loop;
 
-         if Views.Length (Object, Connections) > 0 then
-            Locate ("connections");
-            Fail (Not_Yet_Supported, "offers, uses and aliases come with the catalog and Connect",
-                  "leave connections empty until CAP-002 step 4");
-         end if;
       end Add_Startup;
 
       procedure Add_Scope (At_Cursor : Views.Cursor) is
@@ -1534,6 +1528,25 @@ package body CCL.Manifests.Typed with SPARK_Mode => On is
          Metadata (Named (Root, "identity"), Decl.Identity);
          Locate ("version");
          Metadata (Named (Root, "version"), Decl.Version);
+         --  How the app presents itself (UI-061): app => (App_Declaration.Declared (App_Presentation name => "Files")).
+         declare
+            App : constant Views.Cursor := Named (Root, "app");
+         begin
+            Locate ("app");
+            if Alt (App) = "Declared" then
+               declare
+                  Value : constant String := Text (Named (Views.Payload (Object, App), "name"));
+               begin
+                  if Valid_App_Name (Value) then
+                     Set_Text (Decl.App_Name, Value);
+                  else
+                     Fail (Invalid_Text, """" & Value & """ is not 1 to" & Natural'Image (MAX_APP_NAME) &
+                           " printable characters",
+                           "use letters, digits and punctuation, with single spaces between words");
+                  end if;
+               end;
+            end if;
+         end;
          --  The device matches first: resources are relative to them.
          declare
             Drives : constant Views.Cursor := Named (Root, "drives");

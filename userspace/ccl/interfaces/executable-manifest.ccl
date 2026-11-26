@@ -117,14 +117,21 @@
 (type Channel_Limit (variant (Server_Limit) (At_Most Integer)))
 (type Channel_Offer (record (contract String) (per_client Channel_Limit) (total Channel_Limit)
   (class Channel_Class Channel_Class.Normal)))
-# Catalog and Connect (step 4): interfaces offered and used, aliases.
-# Refused while non-empty; their payloads become typed records then.
-(type Connection (variant (Offers String) (Uses String) (Alias String)))
+# How the app presents itself to people (UI-061): its name, which Desktop's
+# task button shows; later its declared colour and icon (the window-chrome
+# decision). Written into the identity section, signed with the executable,
+# so no window chooses it at run time. A name is 1..32 printable
+# characters with single spaces between words. Undeclared: Desktop falls
+# back to the launcher entry's label and says so. Written
+#   app => (App_Declaration.Declared (App_Presentation name => "Files"))
+# (no smart constructor: the schema is at CCL's 16-function limit).
+(type App_Presentation (record (name String)))
+(type App_Declaration (variant (Undeclared) (Declared App_Presentation)))
 (type Executable_Manifest (record
   (identity String) (version String)
   (requests (List Request) []) (scopes (List Scope) [])
   (optional (List String) []) (handles Handle_Limit Handle_Limit.Standard_Limit)
-  (channels (List Channel_Offer) []) (connections (List Connection) [])
+  (channels (List Channel_Offer) []) (app App_Declaration App_Declaration.Undeclared)
   (drives (List Device_Match) []) (requests_none Boolean false)
   (may_launch (List Launch) [])
   (parameters Parameter_Signature Parameter_Signature.None) (argv Argv Argv.None)

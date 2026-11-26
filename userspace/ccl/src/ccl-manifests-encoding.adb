@@ -115,9 +115,14 @@ package body CCL.Manifests.Encoding with SPARK_Mode => On is
       --  Canonical little-endian wire ABI; no host layout/padding dependence.
       Append (Result.Identity, 16#4449_4243#, 4);
       Append (Result.Identity, 1, 2);
-      Append (Result.Identity, 2, 2);
+      --  The pair count: id and version, and the app name when declared
+      --  (an undeclared name leaves the section as it was before UI-061).
+      Append (Result.Identity, (if Decl.App_Name.Length > 0 then 3 else 2), 2);
       Pair ("id", Identity);
       Pair ("version", Version);
+      if Decl.App_Name.Length > 0 then
+         Pair ("name", Decl.App_Name);
+      end if;
       if Capability_Count > 0 or else Explicit_No_Requests then
       Append (Result.Capabilities, 16#4342_4954#, 4);
       Append (Result.Capabilities, 1, 2);

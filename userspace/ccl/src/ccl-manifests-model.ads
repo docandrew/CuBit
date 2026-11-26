@@ -159,6 +159,11 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    --  assigned in this order across kinds.
    type Declaration is record
       Identity, Version : Metadata_Text;
+      --  The app's name for people (UI-061): what Desktop's task button
+      --  shows. Empty when the manifest declares none. It is written into
+      --  the identity section beside the identity, so it is signed with the
+      --  executable and no process can change it at run time.
+      App_Name : Metadata_Text;
       Requests : Request_Array := [others => (others => <>)];
       Count : Request_Count := 0;
       Scopes : Scope_Array := [others => (others => <>)];
@@ -191,6 +196,16 @@ package CCL.Manifests.Model with SPARK_Mode => On is
    function Valid_Metadata_Text (Item : String) return Boolean is
      (Item'Length in 1 .. Binding_Name_Length'Last and then
       (for all C of Item => C in 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '.' | '-' | '_'));
+   --  An app name (UI-061): 1 .. MAX_APP_NAME printable ASCII characters,
+   --  neither starting nor ending with a space and with no two spaces in a
+   --  row, so two names that look alike are alike.
+   MAX_APP_NAME : constant := 32;
+   function Valid_App_Name (Item : String) return Boolean is
+     (Item'Length in 1 .. MAX_APP_NAME and then Item'Length <= Binding_Name_Length'Last
+      and then (for all C of Item => C in ' ' .. '~')
+      and then Item (Item'First) /= ' ' and then Item (Item'Last) /= ' '
+      and then (for all I in Item'First .. Item'Last - 1 =>
+                  not (Item (I) = ' ' and then Item (I + 1) = ' ')));
    --  Lowercase kebab names map injectively to the generated Startup
    --  package's function names: a leading letter, no trailing or doubled
    --  hyphens.

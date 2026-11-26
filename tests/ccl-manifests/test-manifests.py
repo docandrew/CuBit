@@ -669,6 +669,54 @@ class Manifests(unittest.TestCase):
                          struct.pack('<IHH', 0x43424954, 1, 0))
         self.reject(SOURCE[:-2] + ' (requests-none))', diagnostic='DUPLICATE_FIELD')
 
+    @staticmethod
+    def identity_pairs(section):
+        """Decode .cubit.id independently: "CBID", version 1, then
+        (u8 key length, u16 value length, key, value) pairs."""
+        magic, version, count = struct.unpack_from('<IHH', section, 0)
+        assert (magic, version) == (0x44494243, 1)
+        pairs, at = [], 8
+        for _ in range(count):
+            key_length, value_length = struct.unpack_from('<BH', section, at)
+            at += 3
+            key = section[at:at + key_length].decode()
+            value = section[at + key_length:at + key_length + value_length].decode()
+            at += key_length + value_length
+            pairs.append((key, value))
+        assert at == len(section)
+        return pairs
+
+    # UI-061: the app's name for people goes into the signed identity
+    # section beside the identity; a manifest without one keeps the section
+    # it had before. Typed manifests only: the keyword form is frozen.
+    def test_app_name_in_identity_section(self):
+        typed = ('(Executable_Manifest identity => "org.ladybird.browser" version => "1" '
+                 'app => (App_Declaration.Declared (App_Presentation name => "Ladybird")))')
+        result = self.compile(typed)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.identity_pairs(self.sections(result.stdout)['.cubit.id']),
+                         [('id', 'org.ladybird.browser'), ('version', '1'), ('name', 'Ladybird')])
+        spelled = typed.replace('name => "Ladybird"', '"Ladybird"')
+        self.assertEqual(self.sections(self.compile(spelled).stdout)['.cubit.id'],
+                         self.sections(result.stdout)['.cubit.id'])
+        plain = self.compile('(executable-manifest v1 (identity "a") (version "1"))')
+        self.assertEqual(self.identity_pairs(self.sections(plain.stdout)['.cubit.id']),
+                         [('id', 'a'), ('version', '1')])
+        for undeclared in ('(Executable_Manifest identity => "a" version => "1")',
+                           '(Executable_Manifest identity => "a" version => "1" app => App_Declaration.Undeclared)'):
+            self.assertEqual(self.sections(self.compile(undeclared).stdout)['.cubit.id'],
+                             self.sections(plain.stdout)['.cubit.id'])
+        # Names that read alike must be alike: no padding, doubled spaces,
+        # control characters, empty or overlong names.
+        for bad in ['', ' Files', 'Files ', 'Two  Spaces', 'Ctl\x01Name', 'x' * 33]:
+            with self.subTest(bad=bad):
+                self.reject(typed.replace('"Ladybird"', '"' + bad + '"'))
+        longest = self.compile(typed.replace('"Ladybird"', '"' + 'x' * 32 + '"'))
+        self.assertEqual(self.identity_pairs(self.sections(longest.stdout)['.cubit.id'])[2], ('name', 'x' * 32))
+        # The frozen keyword form has no app name.
+        self.reject('(executable-manifest v1 (identity "a") (version "1") (app-name "A"))',
+                    diagnostic='UNKNOWN_DECLARATION')
+
     def test_scopes_exact_encoding(self):
         source = SOURCE[:-2] + ' (filesystem-scope (rights read write create) "@mem:0/work"))'
         result = self.compile(source)
@@ -1577,15 +1625,13 @@ class Manifests(unittest.TestCase):
                 self.assertEqual(result.stdout, '')
                 self.assertIn(message, result.stderr)
 
-    def test_startup_connections_reserved_for_the_catalog(self):
-        for item in ['(Connection.Offers "net.socket")', '(Connection.Uses "@my_network")',
-                     '(Connection.Alias "@storage")']:
-            with self.subTest(item=item):
-                result = self.compile(self.TLS_TYPED.replace(
-                    '  scopes =>', f'  connections => [{item}]\n  scopes =>'), self.NATIVE)
-                self.assertEqual(result.returncode, 1)
-                self.assertEqual(result.stdout, '')
-                self.assertIn('connections: offers, uses and aliases come with the catalog and Connect', result.stderr)
+    # The never-accepted connections placeholder made room for app (UI-061);
+    # CAP-002 step 4 brings offers, uses and aliases back where they fit.
+    def test_startup_connections_field_is_gone(self):
+        result = self.compile(self.TLS_TYPED.replace(
+            '  scopes =>', '  connections => [(Connection.Offers "net.socket")]\n  scopes =>'), self.NATIVE)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, '')
 
     def test_startup_reserved_self_names(self):
         for name in ('self', 'self-process'):
