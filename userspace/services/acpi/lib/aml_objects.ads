@@ -130,7 +130,8 @@ package AML_Objects with SPARK_Mode, Pure is
        Post => AML_Metadata_Kinds.Supported (Metadata_Snapshot_Data'Result);
    function Byte_Data (Store : State; ID : Object_ID) return AML_Decode.Bytes
      with Pre => Valid (Store) and then Is_Live (Store, ID)
-       and then Kind (Store, ID) in Byte_Kind;
+       and then Kind (Store, ID) in Byte_Kind,
+       Post => Byte_Data'Result'Length = Length (Store, ID);
    function Element (Store : State; ID : Object_ID; Index : Natural) return Object_ID
      with Pre => Valid (Store) and then Is_Live (Store, ID)
        and then Kind (Store, ID) = Package_Object and then Index < Length (Store, ID),

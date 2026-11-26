@@ -5096,13 +5096,21 @@ package body Owned with SPARK_Mode is
    is
       ID : AML_Objects.Object_ID;
       Allocated : AML_Objects.Allocation_Status;
-      Witness : AML_Objects.Copies.Copy_Witness := AML_Objects.Copies.Empty_Witness (A.Object_Capacity);
    begin
       Copy := AML_References.No_Object_Handle;
       Status := AML_Execute.Unsupported_Value;
       if not Has_Source (A, Source) then return; end if;
-      AML_Objects.Copies.Clone
-        (A.Tree.Values, AML_References.Source (Source), ID, Allocated, Witness);
+      if AML_Objects.Kind (A.Tree.Values, AML_References.Source (Source)) in AML_Objects.Byte_Kind then
+         AML_Objects.Copies.Copy_Byte_Object
+           (A.Tree.Values, AML_References.Source (Source), ID, Allocated);
+      else
+         declare
+            Witness : AML_Objects.Copies.Copy_Witness (A.Object_Capacity);
+         begin
+            AML_Objects.Copies.Clone
+              (A.Tree.Values, AML_References.Source (Source), ID, Allocated, Witness);
+         end;
+      end if;
       if Allocated = AML_Objects.Unsupported_Copy then return; end if;
       if Allocated /= AML_Objects.Allocated then
          Status := AML_Execute.Value_Limit;

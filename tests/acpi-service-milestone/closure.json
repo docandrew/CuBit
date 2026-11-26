@@ -545,7 +545,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -565,11 +565,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -609,7 +609,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -1491,7 +1491,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -1511,11 +1511,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -1555,7 +1555,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -2437,7 +2437,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -2457,11 +2457,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -2501,7 +2501,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -3383,7 +3383,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -3403,11 +3403,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -3447,7 +3447,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -4332,7 +4332,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -4352,11 +4352,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -4396,7 +4396,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -5345,7 +5345,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -5365,11 +5365,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -5409,7 +5409,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -6278,7 +6278,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -6298,11 +6298,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -6342,7 +6342,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -7211,7 +7211,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -7231,11 +7231,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -7275,7 +7275,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -8184,7 +8184,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -8204,11 +8204,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -8248,7 +8248,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -9157,7 +9157,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -9177,11 +9177,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -9221,7 +9221,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -10130,7 +10130,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -10150,11 +10150,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -10194,7 +10194,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -11103,7 +11103,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -11123,11 +11123,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -11167,7 +11167,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -12076,7 +12076,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -12096,11 +12096,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -12140,7 +12140,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -13049,7 +13049,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -13069,11 +13069,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -13113,7 +13113,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -14022,7 +14022,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -14042,11 +14042,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -14086,7 +14086,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -14995,7 +14995,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -15015,11 +15015,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -15059,7 +15059,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -15968,7 +15968,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -15988,11 +15988,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -16032,7 +16032,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -16737,7 +16737,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -16757,11 +16757,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -16801,7 +16801,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -17518,7 +17518,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -17538,11 +17538,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -17582,7 +17582,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -18299,7 +18299,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -18319,11 +18319,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -18363,7 +18363,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -19244,7 +19244,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -19264,11 +19264,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -19308,7 +19308,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -20013,7 +20013,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -20033,11 +20033,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -20077,7 +20077,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -20794,7 +20794,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -20814,11 +20814,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -20858,7 +20858,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -21739,7 +21739,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -21759,11 +21759,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -21803,7 +21803,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -22684,7 +22684,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -22704,11 +22704,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -22748,7 +22748,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -23605,7 +23605,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -23625,11 +23625,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -23669,7 +23669,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -24538,7 +24538,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -24558,11 +24558,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -24602,7 +24602,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -25471,7 +25471,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -25491,11 +25491,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -25535,7 +25535,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -26416,7 +26416,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -26436,11 +26436,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -26480,7 +26480,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -27361,7 +27361,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -27381,11 +27381,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -27425,7 +27425,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -28375,7 +28375,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -28395,11 +28395,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -28439,7 +28439,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -29320,7 +29320,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -29340,11 +29340,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -29384,7 +29384,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",
@@ -30073,7 +30073,7 @@
       },
       "aml_namespace.adb": {
         "path": "userspace/services/acpi/lib/aml_namespace.adb",
-        "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02"
+        "sha256": "6e6f5698078a47fe558d2fed73d51f9a2b4253efedc1d9749a915225de14be8d"
       },
       "aml_namespace.ads": {
         "path": "userspace/services/acpi/lib/aml_namespace.ads",
@@ -30093,11 +30093,11 @@
       },
       "aml_objects-copies.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.adb",
-        "sha256": "9673a76c54e1c4838aa82cf9864d369b8df4606d3e5db5e2b3fac605d893a80b"
+        "sha256": "4db2d5d9af2ce0f40cd5b2af365ffcac49805f59366881f6f9772b1768700352"
       },
       "aml_objects-copies.ads": {
         "path": "userspace/services/acpi/lib/aml_objects-copies.ads",
-        "sha256": "3dba01fa011fbe89b0839669766cebffe50de66da4bb29edee7a540bacc028e4"
+        "sha256": "de2f858867ca78902ca325a979d7cc53fd9d9b25838f2b3d36f6f84be96a0fff"
       },
       "aml_objects-package_references.adb": {
         "path": "userspace/services/acpi/lib/aml_objects-package_references.adb",
@@ -30137,7 +30137,7 @@
       },
       "aml_objects.ads": {
         "path": "userspace/services/acpi/lib/aml_objects.ads",
-        "sha256": "8573a9522f0e550cfb55ae6f6042ebc28dd428c14272b1a0d66f5060025cfbcd"
+        "sha256": "b34e8a34f892c8eb92764a0d14b513bc545ff791efb7d567e9dd09481d203b74"
       },
       "aml_pending_members.adb": {
         "path": "userspace/services/acpi/lib/aml_pending_members.adb",

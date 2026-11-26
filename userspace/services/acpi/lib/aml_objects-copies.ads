@@ -1,5 +1,19 @@
 pragma Ada_2022;
 package AML_Objects.Copies with SPARK_Mode, Pure is
+   -- Byte objects are leaves. Their independent copy needs only one allocation.
+   procedure Copy_Byte_Object
+     (Store : in out State; Original : Object_ID; Copy : out Object_ID;
+      Status : out Allocation_Status)
+     with Pre => Valid (Store) and then Is_Live (Store, Original)
+         and then Kind (Store, Original) in Byte_Kind,
+       Post => Valid (Store) and then Extends (Store, Store'Old)
+         and then (if Status = Allocated then
+           Fresh_Allocation (Store, Store'Old, Copy)
+           and then Kind (Store, Copy) = Kind (Store'Old, Original)
+           and then Byte_Data (Store, Copy) = Byte_Data (Store'Old, Original)
+           and then Length (Store, Copy) = Length (Store'Old, Original)
+          else Copy = No_Object and then Store = Store'Old);
+
    type Copy_Witness (Object_Capacity : Storage_Capacity) is private;
    function Empty_Witness (Object_Capacity : Storage_Capacity := Max_Objects) return Copy_Witness;
    function Valid_Witness

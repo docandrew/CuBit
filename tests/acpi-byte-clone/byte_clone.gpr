@@ -1,0 +1,17 @@
+project Byte_Clone is
+   type Profile_Type is ("checked", "release");
+   Profile : Profile_Type := external ("ACPI_CLONE_PROFILE", "checked");
+   Output := external ("ACPI_CLONE_OUTPUT", "build");
+   for Source_Dirs use (".", "../../userspace/services/acpi/lib", "../../shared/firmware");
+   for Object_Dir use Output & "/" & Profile & "/obj";
+   for Exec_Dir use Output & "/" & Profile & "/bin";
+   for Main use ("byte_clone_tests.adb");
+   package Compiler is
+      case Profile is
+         when "checked" =>
+            for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnata", "-gnato");
+         when "release" =>
+            for Default_Switches ("Ada") use ("-O3", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
+      end case;
+   end Compiler;
+end Byte_Clone;
