@@ -11240,6 +11240,13 @@ capability-test: read of the undeclared boot timeline armed
 "
         ;;
     storage-grants)
+        # storage-check's exit retires 4 owned regions: the two allocations
+        # it leaves (4 KiB and 12 KiB, OWNED-EXIT-CHECK) and the runtime's
+        # two channel regions (a control page and a 64 KiB ring each,
+        # 69,632 bytes, from CuBit.Channels; filesystem-scope-check holds
+        # the same two). It said 3 from ABI-002 on; the stock base tree
+        # (4b629eab5) already retired 4. A region kind added to the
+        # runtime changes this count.
         required_markers="
 GRANT-REFERENCE-CHECK: PASS
 GRANT-RECLAMATION-CHECK: PASS
@@ -11247,7 +11254,7 @@ OWNED-MEMORY-CHECK: PASS
 OWNED-REGION-CHECK: PASS
 OWNED-GRANT-RETENTION-CHECK: PASS
 OWNED-EXIT-CHECK: leaving two allocations
-Process.reclaimProcess: owned regions retired 3
+Process.reclaimProcess: owned regions retired 4
 RAM-VOLUME-CHECK: PASS
 VOLUME-ISOLATION-CHECK: PASS
 ramdisk: volatile block device ready
