@@ -6962,7 +6962,12 @@ package body Owned with SPARK_Mode is
       case AML_Objects.Kind (A.Tree.Values, ID) is
          when AML_Objects.String_Object | AML_Objects.Buffer_Object =>
             Make (A, ID, Index, R, Byte_Status);
-            if Byte_Status = AML_Objects.Byte_References.Ready then Status := AML_Execute.Returned; end if;
+            if Byte_Status = AML_Objects.Byte_References.Ready then
+               Status := AML_Execute.Returned;
+            elsif Enable_Runtime_Error_Handler and then Byte_Status = AML_Objects.Byte_References.Out_Of_Bounds then
+               Status := (if AML_Objects.Kind (A.Tree.Values, ID) = AML_Objects.String_Object
+                 then AML_Execute.String_Index_Limit else AML_Execute.Buffer_Index_Limit);
+            end if;
          when AML_Objects.Package_Object =>
             Make_Element (A, ID, Index, R, Element_Status);
             if Element_Status = AML_Objects.Package_References.Ready then

@@ -160,7 +160,8 @@ package body ACPI_Requests with SPARK_Mode is
         when AML_Execute.Bad_Package => Error_Bad_Package,
         when AML_Execute.Invalid_Control => Error_Invalid_Control,
         when AML_Execute.Unknown_Name => Error_Unknown_Name,
-        when AML_Execute.Unsupported_Value => Error_Unsupported_Value,
+        when AML_Execute.Unsupported_Value | AML_Execute.Buffer_Index_Limit
+          | AML_Execute.String_Index_Limit => Error_Unsupported_Value,
         when AML_Execute.Bad_Name => Error_Bad_Name,
         when AML_Execute.Call_Limit => Error_Call_Limit,
         when AML_Execute.Division_By_Zero => Error_Division_By_Zero,

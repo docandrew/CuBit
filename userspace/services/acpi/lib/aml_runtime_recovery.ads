@@ -4,13 +4,14 @@ package AML_Runtime_Recovery with SPARK_Mode, Pure is
    use type AML_Decode.Byte;
    use type AML_Decode.Integer_Value;
    subtype Status_Code is AML_Runtime_Exceptions.Status_Code;
-   type Fault_Origin is (No_Fault, Local_Cell, Argument_Cell, Divide_Fault, Package_Fault, Missing_Return);
+   type Fault_Origin is (No_Fault, Local_Cell, Argument_Cell, Divide_Fault, Package_Fault, Buffer_Fault, String_Fault, Missing_Return);
    function Frame_Fault (Slot : Natural) return Fault_Origin is
      (if Slot in 1 .. 8 then Local_Cell elsif Slot in 9 .. 15 then Argument_Cell else No_Fault);
    function Code (Fault : Fault_Origin) return Status_Code is
      (case Fault is when No_Fault => 0, when Local_Cell => 16#3005#,
         when Argument_Cell => 16#3006#, when Divide_Fault => 16#300C#,
         when Package_Fault => 16#300B#,
+        when Buffer_Fault => 16#300A#, when String_Fault => 16#3011#,
         when Missing_Return => 16#3012#);
    type Boundary is private;
    function Valid (Item : Boundary) return Boolean;

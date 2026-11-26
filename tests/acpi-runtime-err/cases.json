@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "cases": [
     {
       "name": "basic-local_absent",
@@ -3554,18 +3554,18 @@
     {
       "name": "runtime-type-byte_bound",
       "family": "runtime",
-      "contract_kind": "known-refusal",
+      "contract_kind": "normal",
       "AML_hex": "44534454c2000000028c435542495400444956455252000001000000494e544c0804262008464c4147000842554630110301aa08504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001419544553540088425546300144455354700141465452a40a2a",
       "AML_sha256": "7a55ca86b416813eaa4a9b45ec595f689f7c3191673659d473e5938fd8960d7a",
       "expected": {
-        "status": "UNSUPPORTED_VALUE",
-        "value": "unavailable",
+        "status": "RETURNED",
+        "value": "42",
         "observations": {
-          "AFTR": 0,
-          "ECNT": 0,
-          "STAT": 0,
-          "ETYP": 0,
-          "THRD": 0,
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12298,
+          "ETYP": 2,
+          "THRD": 1,
           "RMDR": 17,
           "QUOT": 23,
           "DEST": 31,
@@ -3592,7 +3592,7 @@
         "exception_codes": [],
         "charged": 4
       },
-      "qualification": "Explicit refusal: precise byte-bound/type error recovery remains unimplemented; no reference equivalence claim"
+      "qualification": "Authenticated Buffer Index out-of-bounds now matches normal ACPICA300A; exact disabled baseline retained"
     },
     {
       "name": "runtime-type-wrong_kind",
@@ -3636,6 +3636,524 @@
         "charged": 8
       },
       "qualification": "Explicit refusal: precise byte-bound/type error recovery remains unimplemented; no reference equivalence claim"
+    },
+    {
+      "name": "runtime-byte-string_direct",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454cc0000000235435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141c544553540088535452304944583044455354700141465452a40a2a",
+      "AML_sha256": "c495aab4da7c032f2a4b32bcfd29f279ca45e7ee5b5eb3bd5c032683479f805d",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12305,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-byte-string_store",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ce00000002c1435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141e5445535400708853545230494458300044455354700141465452a40a2a",
+      "AML_sha256": "b7f1cc78da3f33be7f40f5117ec18e4d0a98b4a1238ed807477520bbb263ed38",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-byte-string_predicate",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d700000002b2435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014275445535400a010885354523049445830007554414b45a10675534b4950700141465452a40a2a",
+      "AML_sha256": "634ac71193ddf31a0ad473cfdcb4e0b50fe3a6a593dc71ec774a59d7479c5888",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12305,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-byte-string_return",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c1000000024d435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014115445535400a488535452304944583000",
+      "AML_sha256": "feb21ee0ab700306136d992efb54ce625df8953c7ecaecdc6a1c3cd82f56cc49",
+      "expected": {
+        "status": "NO_RETURN",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12305,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-byte-string_valid_last",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454cd0000000249435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141d5445535400708388535452300a020044455354700141465452a40a2a",
+      "AML_sha256": "8f06ddfe9ee18c795066e5396bb72789d500d5c50d35ff943c4dac14d5c00dc4",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 51,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 51,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 9
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-byte-string_wide_index",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454cb0000000244435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d0849445830ff0841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141c544553540088535452304944583044455354700141465452a40a2a",
+      "AML_sha256": "44a9082046bf3265895af201e2ab706df7bb5f9e27d56438c4e2e8174c097fe8",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12305,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-byte-string_nonzero",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d0000000020d435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014245f455252037545434e54706853544154708e6945545950706a54485244a40c78563412141c544553540088535452304944583044455354700141465452a40a2a",
+      "AML_sha256": "d42990fd2aaae600e4bc3af685789b3504981325ab4724e5050b70917d0009b6",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12305,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          305419896
+        ]
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-byte-string_operand_effect",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d3000000021b435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014235445535400885354523072494458307554414b450044455354700141465452a40a2a",
+      "AML_sha256": "030fbc9b9b77de58a85edca4f1e49e12808d156572ee0e723ede6f98a1e702eb",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12305,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-byte-buffer_direct",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454cc0000000254435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141c544553540088424652304944583044455354700141465452a40a2a",
+      "AML_sha256": "543eea0d7d84ef1bfbf5d946043849f38a2beeebac89747c3ab3dc30cdfa5f22",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12298,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-byte-buffer_store",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ce00000002e0435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141e5445535400708842465230494458300044455354700141465452a40a2a",
+      "AML_sha256": "af92729f3416c549628e2b7831e4ca10df44897fc95648936b373d04fad44373",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-byte-buffer_wide_index",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454cb0000000263435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d0849445830ff0841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141c544553540088424652304944583044455354700141465452a40a2a",
+      "AML_sha256": "c96b6637161e8b449b2e7a32975bf56cf83a7d1aa06a8f1881e83d738629a419",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12298,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-byte-buffer_operand_effect",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d3000000023a435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014235445535400884246523072494458307554414b450044455354700141465452a40a2a",
+      "AML_sha256": "524ae99f67745f94ed34fb4786db724387fd2c7df523142a9d6fb848057f29ad",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12298,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
     }
   ],
   "normal_reference_version": "20260408",
@@ -3648,7 +4166,11 @@
   "new_runtime_normal_diagnostics": 48,
   "new_runtime_guard_contracts": 2,
   "new_runtime_known_refusals": 1,
-  "planned_contracts": 396,
+  "planned_contracts": 444,
   "followup_normal_tables": 16,
-  "followup_known_refusals": 2
+  "followup_known_refusals": 1,
+  "byte_index_new_normal_tables": 12,
+  "prior_refusal_promoted_to_normal": [
+    "runtime-type-byte_bound"
+  ]
 }

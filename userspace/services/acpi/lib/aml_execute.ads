@@ -97,7 +97,7 @@ package AML_Execute with SPARK_Mode, Pure is
    type Execution_Status is
      (Returned, Object_Returned, Reference_Returned, Metadata_Returned, No_Return, Truncated, Unsupported, Uninitialized,
       Missing_Argument, Budget_Exceeded, Invalid_Method, Argument_Mismatch, Mutex_Order, Duplicate_Name, Namespace_Limit, Expression_Limit, Block_Limit, Bad_Package, Invalid_Control,
-      Unknown_Name, Unsupported_Value, Bad_Name, Call_Limit, Division_By_Zero, Empty_Buffer, Missing_Result, Value_Limit, Numeric_Overflow, Invalid_Delay, Delay_Failed, Package_Limit, Invalid_Match_Operation, No_Resource_End_Tag, Invalid_Resource_Type, Bad_Resource_Length, Resource_Buffer_Length, Invalid_Field_Length, Buffer_Field_Limit, Notify_Limit, Mutex_Not_Acquired, Invalid_Table_Length, Missing_Operand, Field_Indeterminate, Runtime_Exception, Fatal_Requested, Module_Completed);
+      Unknown_Name, Unsupported_Value, Bad_Name, Call_Limit, Division_By_Zero, Empty_Buffer, Missing_Result, Value_Limit, Numeric_Overflow, Invalid_Delay, Delay_Failed, Package_Limit, Buffer_Index_Limit, String_Index_Limit, Invalid_Match_Operation, No_Resource_End_Tag, Invalid_Resource_Type, Bad_Resource_Length, Resource_Buffer_Length, Invalid_Field_Length, Buffer_Field_Limit, Notify_Limit, Mutex_Not_Acquired, Invalid_Table_Length, Missing_Operand, Field_Indeterminate, Runtime_Exception, Fatal_Requested, Module_Completed);
    -- Recovery sites describe a failed declaration or consumed name term; they grant no authority.
    type Module_Name_Error_Site is (Operation_Region_Name_Error, Field_Region_Name_Error, Parsed_Name_Term_Error);
    -- Module_Completed is success only at authenticated root EOF, never failure.

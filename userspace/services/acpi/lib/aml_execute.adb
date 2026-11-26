@@ -3784,8 +3784,13 @@ package body AML_Execute with SPARK_Mode is
                      begin
                         Create_Index (Environment, Left_Item.Object.Source, V.Number, Ref, S);
                         if S /= Returned then
-                           if Enable_Runtime_Error_Handler and then not Module_Root and then S = Package_Limit then
+                           if Enable_Runtime_Error_Handler and then not Module_Root
+                             and then S in Package_Limit | Buffer_Index_Limit | String_Index_Limit
+                           then
                               declare
+                                 Fault : constant Recovery.Fault_Origin :=
+                                   (if S = Package_Limit then Recovery.Package_Fault
+                                    elsif S = Buffer_Index_Limit then Recovery.Buffer_Fault else Recovery.String_Fault);
                                  Count : Target_Number := 0;
                                  Targets : Target_List := [others => <>];
                                  Waiting : Boolean;
@@ -3793,7 +3798,7 @@ package body AML_Execute with SPARK_Mode is
                               begin
                                  Collect_Targets (Count, 1, Targets, Waiting, Target_Status);
                                  if Target_Status = Returned and then not Waiting and then Count = 1 then
-                                    Mark_Recovery (Recovery.Package_Fault, True);
+                                    Mark_Recovery (Fault, True);
                                  else S := Unsupported_Value;
                                  end if;
                               end;

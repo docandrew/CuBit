@@ -2047,7 +2047,7 @@
     },
     {
       "path": "userspace/services/acpi/acpi_requests.adb",
-      "sha256": "ce3255f85772fa1b0e173ca07c81a1129137fad14b84e2f66460be51369d6609",
+      "sha256": "d5f1afe0a4a80b0576801679fec2ade4e12c17ef518631f0d3e8019b90b5aca0",
       "kind": "ada"
     },
     {
@@ -2458,12 +2458,12 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.adb",
-      "sha256": "90f7b1167498d27c5780bb84de0e91cc4ea2255d2947cfd4be4ad109a4095866",
+      "sha256": "af43312cdb727b6d4d99c6e2a3f56645d300d9aad807c2a29599662ead62a8b7",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.ads",
-      "sha256": "ebe5f4955a5c9027177ad8abdec8e29f8a5f42b700ac0cf304e91574b188d348",
+      "sha256": "e21b952b2922c6c1c672fe0ce7d584c1fbaf12789c5c3f772af3ffa1d785a111",
       "kind": "ada"
     },
     {
@@ -2668,12 +2668,12 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "f9f1a3d9840fd6168565e7fa710b29167a4c1a2bdfc053099545d025570af849",
+      "sha256": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02",
       "kind": "ada"
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",
-      "sha256": "33969e1a85b28a95dc87ea844524baafa8aa500b2e5badf2e2d2b92f2a966378",
+      "sha256": "3749bbadafe90e6309db03d5612bb6bd3f0d6479d8f0c3c2a7363e110b01eb18",
       "kind": "ada"
     },
     {
@@ -3693,7 +3693,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_runtime_recovery.ads",
-      "sha256": "5ef48e313f2a864a033cf0ac5ccd4c49d37d32462d58deec73152166b2cb38de",
+      "sha256": "2206c031e7c8d321e2042ecb5baec13ea850a81cbb941f40bfa9dc74937d3724",
       "kind": "ada"
     }
   ],

@@ -37,6 +37,8 @@ package body ACPI_Startup_Diagnostics is
         when AML_Execute.Invalid_Delay => "INVALID_DELAY",
         when AML_Execute.Delay_Failed => "DELAY_FAILED",
         when AML_Execute.Package_Limit => "PACKAGE_LIMIT",
+        when AML_Execute.Buffer_Index_Limit => "BUFFER_INDEX_LIMIT",
+        when AML_Execute.String_Index_Limit => "STRING_INDEX_LIMIT",
         when AML_Execute.Invalid_Match_Operation => "INVALID_MATCH_OPERATION",
         when AML_Execute.No_Resource_End_Tag => "NO_RESOURCE_END_TAG",
         when AML_Execute.Invalid_Resource_Type => "INVALID_RESOURCE_TYPE",

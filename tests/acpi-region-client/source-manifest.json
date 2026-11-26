@@ -28,7 +28,7 @@
   "shared/hardware/hardware_authority.ads": "4338cc04e6d36035a9a692ef6335d708a3a9e843dc19a42e65bd10955df560e6",
   "tests/acpi-region-client/EVIDENCE.json": "3ecc38b08beb7eb81b74253bb6c00d7921e6587857995912da641ac2194fd042",
   "tests/acpi-region-client/README.md": "f0b084a53c569fc4307b7d6face4bd25094f9ed90b476614b0da29d5067198ff",
-  "tests/acpi-region-client/closure.json": "3eed9aa7ca941e328dbb0fa704e4a2770361270c00e249925099cb94fdd2e980",
+  "tests/acpi-region-client/closure.json": "f28c07dc9f21f466e87d8a998397b5c11151a30a439ef81269a830652dc419c7",
   "tests/acpi-region-client/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
   "tests/acpi-region-client/reference-manifest.json": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
   "tests/acpi-region-client/region_client_tests.adb": "5eb51675b30eceffc796ef5ba2ec2d0d839c08d159aecd898bd1df97486c1f86",
@@ -81,8 +81,8 @@
   "userspace/services/acpi/lib/aml_events.ads": "5fabc7e33e68c0f24d5ff580a8a6aa3869ec8c7ba0fc0d8e097db069dd962e06",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.adb": "c21262b8649836bb8db48c11d870fb10e82dab0dca714d20c23131e6e15ec548",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.ads": "e40f8067f168eb76269cd9126fceaff26f927f9b4db934ec28d97617b6286efb",
-  "userspace/services/acpi/lib/aml_execute.adb": "90f7b1167498d27c5780bb84de0e91cc4ea2255d2947cfd4be4ad109a4095866",
-  "userspace/services/acpi/lib/aml_execute.ads": "ebe5f4955a5c9027177ad8abdec8e29f8a5f42b700ac0cf304e91574b188d348",
+  "userspace/services/acpi/lib/aml_execute.adb": "af43312cdb727b6d4d99c6e2a3f56645d300d9aad807c2a29599662ead62a8b7",
+  "userspace/services/acpi/lib/aml_execute.ads": "e21b952b2922c6c1c672fe0ce7d584c1fbaf12789c5c3f772af3ffa1d785a111",
   "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
   "userspace/services/acpi/lib/aml_explicit_formatting.adb": "b7cb02de7c7a15b5e9803dd1c8314af339966734a80491d733777a1a7e710c16",
   "userspace/services/acpi/lib/aml_explicit_formatting.ads": "d196a95c7f5430a75403db767854dc48abd3dd4ec114d63ceac371f4bd076cfb",
@@ -121,8 +121,8 @@
   "userspace/services/acpi/lib/aml_mutexes.ads": "e0ac360bbdaaafd1b11c2e327d742b5a86670247098aa7811a8bd149fe449594",
   "userspace/services/acpi/lib/aml_names.adb": "c38d13f5f5fe640e775a1bdfc3e74eb64ecb58a92f6993cd8f8c3e656537dd61",
   "userspace/services/acpi/lib/aml_names.ads": "e5fca936d4c27a135a61ae102d423d3840b156af3194916ac4e7c180add2d990",
-  "userspace/services/acpi/lib/aml_namespace.adb": "f9f1a3d9840fd6168565e7fa710b29167a4c1a2bdfc053099545d025570af849",
-  "userspace/services/acpi/lib/aml_namespace.ads": "33969e1a85b28a95dc87ea844524baafa8aa500b2e5badf2e2d2b92f2a966378",
+  "userspace/services/acpi/lib/aml_namespace.adb": "26124cca85e4d07a06b6c278bbfadbd4a1be6189ec8647539fc15e22ae117f02",
+  "userspace/services/acpi/lib/aml_namespace.ads": "3749bbadafe90e6309db03d5612bb6bd3f0d6479d8f0c3c2a7363e110b01eb18",
   "userspace/services/acpi/lib/aml_object_identifiers.ads": "b7d4db854f3e2d3c8149e5ccab1f24f46493e6e7cd9b185de51e8b8cf899c356",
   "userspace/services/acpi/lib/aml_objects-byte_references.adb": "5d639dd2623b5b8da7f5de384fb1dd7673d27a2c7f80992b0b5af59253b13a1d",
   "userspace/services/acpi/lib/aml_objects-byte_references.ads": "2148763246707ce4489362db319fe12c1269c622b802f157f9a48ff55613cb8a",
@@ -325,5 +325,5 @@
   "userspace/services/acpi/lib/aml_runtime_error_invocation.ads": "e6fa888d5b1b4b5393be93f001b8a0d20a7769097ff08b172ee62bd8005ef834",
   "userspace/services/acpi/lib/aml_runtime_error_invocation.adb": "70f01e02b7fc6a8de0db6e268e26bcdd1c5e918d0204988165e1b2f1b2e073b1",
   "userspace/services/acpi/lib/aml_runtime_recovery.adb": "f2a5a31d8952c922785253abb621cd15feb7283fa2bbadab45ff65cfcef09088",
-  "userspace/services/acpi/lib/aml_runtime_recovery.ads": "5ef48e313f2a864a033cf0ac5ccd4c49d37d32462d58deec73152166b2cb38de"
+  "userspace/services/acpi/lib/aml_runtime_recovery.ads": "2206c031e7c8d321e2042ecb5baec13ea850a81cbb941f40bfa9dc74937d3724"
 }
