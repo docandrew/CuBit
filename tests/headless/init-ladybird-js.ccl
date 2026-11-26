@@ -1,0 +1,7 @@
+# Ladybird's js on CuBit (WEB-006 phase a, tests/ladybird): the launcher
+# runs the unmodified Linux/musl js shell on check.js.
+(startup v1
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "ladybird-js-check.app")
+)

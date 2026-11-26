@@ -1301,6 +1301,12 @@ with open(sys.argv[1], "wb") as f:
     libc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-libc.ccl"
         ;;
+    ladybird-js)
+        # WEB-006 phase a: Ladybird's js (LibJS, JIT compiled out), built
+        # unmodified as a Linux/musl program, runs tests/ladybird/check.js.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ladybird-js.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-1G}"
+        ;;
     binutils)
         # userspace/ports/binutils: as and ld on CuBit, compared with Linux.
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-binutils.ccl"
@@ -3636,6 +3642,35 @@ if [ -n "$INIT_PROFILE" ]; then
           "$ROOT_DIR/tests/binutils/build/expected-hello.elf"; do
             debugfs -w -R "write $BINUTILS_FILE work/$(basename "$BINUTILS_FILE")" \
               "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        done
+    fi
+    if [ "$TEST_NAME" = "ladybird-js" ]; then
+        # js and the launcher at the root; check.js and ICU's data file in
+        # @nvme:0/ladybird, which the launcher delegates to js read-only.
+        if ! make -C "$KERNEL_DIR" libc user_runtime ccl-manifest >/dev/null ||
+           ! bash "$ROOT_DIR/tests/ladybird/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null; then
+            echo "headless: failed to build the ladybird-js test" >&2
+            exit 1
+        fi
+        LADYBIRD_COMMANDS="$TEMP_DISK.ladybird"
+        {
+            for LADYBIRD_IMAGE in logstore.svc clock.svc ladybird-js.app ladybird-js-check.app; do
+                echo "rm $LADYBIRD_IMAGE"
+                echo "write $KERNEL_DIR/isodir/boot/$LADYBIRD_IMAGE $LADYBIRD_IMAGE"
+            done
+            echo "mkdir ladybird"
+            for LADYBIRD_FILE in "$ROOT_DIR/tests/ladybird/build/disk/"*; do
+                echo "rm ladybird/$(basename "$LADYBIRD_FILE")"
+                echo "write $LADYBIRD_FILE ladybird/$(basename "$LADYBIRD_FILE")"
+            done
+        } > "$LADYBIRD_COMMANDS"
+        debugfs -w -f "$LADYBIRD_COMMANDS" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        rm -f "$LADYBIRD_COMMANDS"
+        for LADYBIRD_CHECK in ladybird-js.app ladybird/check.js ladybird/icudt78l.dat; do
+            if ! debugfs -R "stat $LADYBIRD_CHECK" "$TEMP_DISK" 2>/dev/null | grep -q "Size:"; then
+                echo "headless: $LADYBIRD_CHECK was not installed" >&2
+                exit 1
+            fi
         done
     fi
     if [ "$TEST_NAME" = "gcc" ]; then
@@ -7144,6 +7179,14 @@ if [ "$TEST_NAME" = "key-repeat" ]; then
     INPUT_INJECTOR_PID=$!
 fi
 
+if [ "$TEST_NAME" = "ladybird-js" ]; then
+    # Quit QEMU once ladybird-js-check reports (the timeout is only the bound).
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "LADYBIRD-JS-CHECK: PASS" "LADYBIRD-JS-CHECK: FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "gcc" ]; then
     # Quit QEMU once gcc-check reports (TCG runs of the compilers are slow;
     # the timeout is only the bound).
@@ -8293,6 +8336,34 @@ cxx-check: streams and map PASS
 CXX: PASS
 "
         python3 "$ROOT_DIR/userspace/libc/tests/check-protection-faults.py" "$SERIAL_LOG" || exit 1
+        ;;
+    ladybird-js)
+        required_markers="
+ladybird-js-check: js unix.stdout: "ladybird-js: arithmetic and strings PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: allocation and collection PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: ArrayBuffer and typed arrays PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: resizable ArrayBuffer PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: RegExp PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: RegExp Unicode properties PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: JSON PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: BigInt PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: Intl.NumberFormat PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: Intl.DateTimeFormat PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: Intl.Collator PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: String.prototype.normalize PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: Date PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: Math PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: promise jobs PASS"
+ladybird-js-check: js unix.stdout: "ladybird-js: async functions PASS"
+ladybird-js-check: js runs check.js and exits with 0 PASS
+ladybird-js-check: js wrote its lines through the lent rings PASS
+ladybird-js-check: every check in check.js passes PASS
+LADYBIRD-JS-CHECK: PASS
+"
+        if grep -qF 'LADYBIRD-JS-CHECK: FAIL' "$SERIAL_LOG"; then
+            echo "headless: ladybird-js test reported a failure" >&2
+            exit 1
+        fi
         ;;
     gcc)
         required_markers="
