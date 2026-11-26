@@ -82,6 +82,7 @@ for unit in "$here/../runtime/gnat/cubit-channel_rings.adb" "$here/../runtime/gn
     "$here/ada/cubit-libc_net_names.adb" "$here/ada/cubit-libc_net.adb" \
     "$here/../runtime/gnat/cubit-net_control_queues.ads" "$here/ada/cubit-libc_threads.adb" \
     "$here/../runtime/gnat/cubit-stream_rings.adb" "$here/../runtime/gnat/cubit-stream_regions.adb" \
+    "$here/../runtime/gnat/cubit-inlet_rings.adb" \
     "$here/../runtime/gnat/cubit-channel_contracts.adb" \
     "$here/ada/cubit-libc_streams.adb" \
     "$here/../allocator/src/heap_classes.adb" "$here/../allocator/src/heap_bitmap.adb" \

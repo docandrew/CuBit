@@ -3474,7 +3474,11 @@ procedure main is
       --  procmgr as their owner when it acquires them.
       Result.Owner := Own_Process_Word;
       for E of pendingRings.Entries (1 .. pendingRings.Count) loop
-         if E.Outlet < S.Connector_Total and then S.Connectors (E.Outlet).Direction = PD.Outlet
+         --  An outlet's ring (the child produces into it) or an inlet's
+         --  (the child reads it, CuBit.Inlet_Rings): either way the child
+         --  maps the whole region writable.
+         if E.Outlet < S.Connector_Total
+           and then S.Connectors (E.Outlet).Direction in PD.Inlet | PD.Outlet
            and then CuBit.Grant_References.Valid_Wire (E.Grant)
          then
             declare

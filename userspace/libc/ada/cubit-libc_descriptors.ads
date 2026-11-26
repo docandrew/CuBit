@@ -12,7 +12,11 @@
 --           connector's ring (CuBit.Streams), created on first write with the
 --           connector's declared size and element type; an unmapped descriptor
 --           (1 and 2 included) is not open (EBADF). CuBit has no stdout.
---    0      none (inlets are not delivered yet)
+--    each descriptor the manifest maps onto one of its inlets (unix.stdin
+--           on 0): the ring its launcher lent for it (CuBit.Inlet_Rings),
+--           read until the launcher finishes it; with no ring lent, an empty
+--           stream. An unmapped descriptor 0 is not open (EBADF): there is no
+--           implicit console.
 --    3...   files and directories opened through filesystem.svc (file.c);
 --           pipes and socket pairs, in-process rings (CuBit.Libc_Rings);
 --           TCP sockets over netstack (net.c)

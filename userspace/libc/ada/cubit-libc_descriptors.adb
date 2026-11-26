@@ -24,6 +24,7 @@ with CuBit.Outlet_Rings;
 with CuBit.Grant_References;
 with CuBit.Stream_Regions;
 with CuBit.Stream_Rings;
+with CuBit.Inlet_Rings;
 with CuBit.Filesystem_Queues;
 with CuBit.Published_Clock;
 
@@ -149,7 +150,7 @@ package body CuBit.Libc_Descriptors is
    --  Unset (zero, as the table starts): a descriptor the manifest maps
    --  onto an outlet is then that connector's stream, any other is free
    --  (Settle). None: closed or free.
-   type Kinds is (Unset, None, Stream_Out, File, Directory, Pipe_Read, Pipe_Write,
+   type Kinds is (Unset, None, Stream_Out, Stream_In, File, Directory, Pipe_Read, Pipe_Write,
                   Socket_Pair, Tcp);
 
    --  CuBit.Streams' entry types.
@@ -166,9 +167,31 @@ package body CuBit.Libc_Descriptors is
       --  A unix.stderr outlet no launcher lent a ring for: its text goes
       --  into the program's log channel (CuBit.Libc_Log), when it has one.
       Logged : Boolean := False;
+      --  An inlet's descriptor (unix.stdin on 0): its slot in Inlets.
+      Inlet : Natural := 0;
    end record;
    Ports : array (CuBit.Program_Descriptions.Descriptor_Number) of Port_Entry;
    pragma Suppress_Initialization (Ports);
+
+   --  The inlets the manifest maps onto descriptors (CuBit.Inlet_Rings):
+   --  the ring the launcher lent (Base 0: none was, so the stream is empty
+   --  and ends at once), its declared pages, and the bytes of the record
+   --  being read (Pending (First .. Last)). Zero-filled (.bss).
+   Maximum_Inlets : constant := 4;
+   subtype Inlet_Slot is Natural range 0 .. Maximum_Inlets;
+   type Inlet_State is record
+      Lock : aliased CuBit.Libc_Imports.Lock_Word := 0;
+      Base : Unsigned_64 := 0;
+      Pages : Natural := 0;
+      First : Positive := 1;
+      Last : Natural := 0;
+   end record;
+   Inlets : array (1 .. Maximum_Inlets) of Inlet_State;
+   pragma Suppress_Initialization (Inlets);
+   type Inlet_Bytes is array (1 .. CuBit.Inlet_Rings.Maximum_Record) of Unsigned_8;
+   Pending : array (1 .. Maximum_Inlets) of Inlet_Bytes;
+   pragma Suppress_Initialization (Pending);
+   Inlet_Count : Inlet_Slot := 0;
    Maximum_Record  : constant := 4_096;
    Dispatcher_Stack_Bytes : constant := 64 * 1_024;
 
@@ -200,9 +223,14 @@ package body CuBit.Libc_Descriptors is
    begin
       if Table (Fd).Kind = Unset then
          Table (Fd) :=
-           (Kind => (if Fd <= Ports'Last and then Ports (Fd).Ring /= 0 then Stream_Out else None),
+           (Kind => (if Fd <= Ports'Last and then Ports (Fd).Inlet /= 0 then Stream_In
+                     elsif Fd <= Ports'Last and then Ports (Fd).Ring /= 0 then Stream_Out
+                     else None),
             Stream => (if Fd <= Ports'Last then Ports (Fd).Ring else 0),
-            Created => False, Handle | Offset | Size => 0, Close_On_Exec => False,
+            Created => False,
+            --  Stream_In: its slot in Inlets.
+            Handle => (if Fd <= Ports'Last then Unsigned_64 (Ports (Fd).Inlet) else 0),
+            Offset | Size => 0, Close_On_Exec => False,
             Flags => 0, Listing | Name | Ring | Peer | Socket => 0);
       end if;
    end Settle;
@@ -257,6 +285,10 @@ package body CuBit.Libc_Descriptors is
       for P of Ports loop
          P := (others => <>);
       end loop;
+      for I of Inlets loop
+         I := (others => <>);
+      end loop;
+      Inlet_Count := 0;
       if Length = 0 or else Length > PR.Maximum_Bytes + PS.Maximum_Section_Bytes + PD.Maximum_Descriptor_Bytes then
          return;
       end if;
@@ -294,21 +326,55 @@ package body CuBit.Libc_Descriptors is
          return;
       end if;
       for D of S.Descriptors (1 .. S.Descriptor_Total) loop
-         if D.Number > 0 and then S.Connectors (D.Target).Direction = PD.Outlet then
+         if S.Connectors (D.Target).Direction = PD.Inlet and then Inlet_Count < Maximum_Inlets then
+            --  An inlet (unix.stdin on 0): read from the ring its launcher
+            --  lends, if one does (below).
+            Inlet_Count := Inlet_Count + 1;
+            Inlets (Inlet_Count).Pages := Natural (S.Connectors (D.Target).Pages);
+            Ports (D.Number) :=
+              (Ring => PD.Ring_Id (D.Target),
+               Pages => Interfaces.C.unsigned (S.Connectors (D.Target).Pages),
+               Type_Tag => (if S.Connectors (D.Target).Element = PD.Text_Lines
+                            then Type_Text_Line else Type_Raw_Bytes),
+               Logged => False, Inlet => Inlet_Count);
+         elsif D.Number > 0 and then S.Connectors (D.Target).Direction = PD.Outlet then
             Ports (D.Number) :=
               (Ring => PD.Ring_Id (D.Target),
                Pages => Interfaces.C.unsigned (S.Connectors (D.Target).Pages),
                Type_Tag => (if S.Connectors (D.Target).Element = PD.Text_Lines
                             then Type_Text_Line else Type_Raw_Bytes),
                Logged => S.Connectors (D.Target).Name_Length = Stderr_Outlet'Length
-                 and then S.Connectors (D.Target).Name (1 .. Stderr_Outlet'Length) = Stderr_Outlet);
+                 and then S.Connectors (D.Target).Name (1 .. Stderr_Outlet'Length) = Stderr_Outlet,
+               Inlet => 0);
          end if;
       end loop;
       --  Rings the launcher lent: produce into them (Stream_Create then
       --  finds them and makes none).
       if Rings_Valid then
          for E of Rings.Entries (1 .. Rings.Count) loop
-            if E.Outlet < S.Connector_Total and then S.Connectors (E.Outlet).Direction = PD.Outlet then
+            if E.Outlet < S.Connector_Total and then S.Connectors (E.Outlet).Direction = PD.Inlet
+              and then CuBit.Grant_References.Valid_Wire (E.Grant)
+            then
+               --  An inlet's ring: this program reads it (and moves its
+               --  cursor in the control page, so the grant is writable).
+               declare
+                  Pages : constant Unsigned_64 := Unsigned_64 (S.Connectors (E.Outlet).Pages);
+                  Reference : constant CuBit.Grant_References.Reference :=
+                    CuBit.Grant_References.Decode (E.Grant);
+                  Mapped : constant Unsigned_64 := CuBit.Kernel_Calls.Call
+                    (K.Acquire_Shared_Memory_Grant, Reference.slot, Reference.generation,
+                     Rings.Owner, 0, CuBit.Stream_Regions.Region_Bytes (Natural (Pages)),
+                     Grant_Write);
+               begin
+                  if Mapped /= K.Failed then
+                     for P of Ports loop
+                        if P.Ring = PD.Ring_Id (E.Outlet) and then P.Inlet /= 0 then
+                           Inlets (P.Inlet).Base := Mapped;
+                        end if;
+                     end loop;
+                  end if;
+               end;
+            elsif E.Outlet < S.Connector_Total and then S.Connectors (E.Outlet).Direction = PD.Outlet then
                declare
                   Pages : constant Unsigned_64 := Unsigned_64 (S.Connectors (E.Outlet).Pages);
                   Reference : constant CuBit.Grant_References.Reference :=
@@ -1265,7 +1331,7 @@ package body CuBit.Libc_Descriptors is
                return Stream_Writev (E, Vectors, Count);
             when Directory =>
                return Error (EISDIR);
-            when Unset | None | Pipe_Read =>
+            when Unset | None | Pipe_Read | Stream_In =>
                return Error (EBADF);
          end case;
       end;
@@ -1293,6 +1359,65 @@ package body CuBit.Libc_Descriptors is
       end;
    end Pread;
 
+   --  An inlet's descriptor (Stream_In): the bytes of the record being read,
+   --  then the next record from the lent ring; 0 at the end of the stream
+   --  (the launcher finished, or lent no ring). Blocking unless O_NONBLOCK:
+   --  the producer is another process and posts no wakeup, so the wait is
+   --  a millisecond's sleep between looks.
+   function Inlet_Read (E : Descriptor_Entry; Buffer : System.Address; Count : size_t) return long;
+   function Inlet_Read (E : Descriptor_Entry; Buffer : System.Address; Count : size_t) return long is
+      Slot : constant Natural := Natural (Unsigned_64'Min (E.Handle, Maximum_Inlets));
+      Got : Natural;
+      Given : Natural;
+      Ignore : Unsigned_64;
+      Never : aliased Unsigned_32 := 0;
+   begin
+      if Slot = 0 then
+         return Error (EBADF);
+      elsif Count = 0 then
+         return 0;
+      end if;
+      declare
+         I : Inlet_State renames Inlets (Slot);
+      begin
+         loop
+            Lock (I.Lock'Access);
+            if I.First <= I.Last then
+               Given := Natural (size_t'Min (Count, size_t (I.Last - I.First + 1)));
+               declare
+                  Target : Inlet_Bytes with Import, Address => Buffer;
+               begin
+                  Target (1 .. Given) := Pending (Slot) (I.First .. I.First + Given - 1);
+               end;
+               I.First := I.First + Given;
+               Unlock (I.Lock'Access);
+               return long (Given);
+            elsif I.Base = 0 then
+               Unlock (I.Lock'Access);
+               return 0;
+            end if;
+            Got := CuBit.Inlet_Rings.Take (I.Base, I.Pages, Pending (Slot)'Address, Pending (Slot)'Length);
+            if Got > 0 then
+               I.First := 1;
+               I.Last := Got;
+               Unlock (I.Lock'Access);
+            else
+               Unlock (I.Lock'Access);
+               if CuBit.Inlet_Rings.Finished (I.Base) then
+                  return 0;
+               elsif Nonblocking (E) /= 0 then
+                  return Error (EAGAIN);
+               end if;
+               --  Sleep: a futex wait on a word nobody wakes, until the next
+               --  millisecond.
+               Ignore := CuBit.Kernel_Calls.Call
+                 (K.Wait, Wait_ABI.Futex_Sources, CuBit.Published_Clock.Milliseconds + 1,
+                  Value_Of (Never'Address), 0);
+            end if;
+         end loop;
+      end;
+   end Inlet_Read;
+
    function Read (Fd : int; Buffer : System.Address; Count : size_t) return long is
       At_Offset : Unsigned_64;
       Got : long;
@@ -1304,6 +1429,8 @@ package body CuBit.Libc_Descriptors is
          E : Descriptor_Entry renames Table (Integer (Fd));
       begin
          case E.Kind is
+            when Stream_In =>
+               return Inlet_Read (E, Buffer, Count);
             when Pipe_Read | Socket_Pair =>
                return Ring_Read (E, Buffer, Count);
             when Tcp =>
@@ -1376,7 +1503,7 @@ package body CuBit.Libc_Descriptors is
                Release_Ring (E.Ring, Reader => True);
                Release_Ring (E.Peer, Reader => False);
                Readiness_Changed;
-            when Unset | None | Stream_Out =>
+            when Unset | None | Stream_Out | Stream_In =>
                null;
          end case;
          Free (To_Address (E.Listing));
@@ -1416,7 +1543,7 @@ package body CuBit.Libc_Descriptors is
                S.Mode := S_IFIFO + 8#600#;
             when Socket_Pair | Tcp =>
                S.Mode := S_IFSOCK + 8#600#;
-            when Stream_Out | Unset | None =>
+            when Stream_Out | Stream_In | Unset | None =>
                S.Mode := S_IFIFO + 8#200#;      --  a write-only stream
          end case;
       end;
@@ -1610,6 +1737,24 @@ package body CuBit.Libc_Descriptors is
                case E.Kind is
                   when Stream_Out =>
                      Got := Flag (Want, POLLOUT + POLLWRNORM);
+                  when Stream_In =>
+                     --  Readable: bytes pending, a record ready, or the end.
+                     declare
+                        Slot : constant Natural := Natural (Unsigned_64'Min (E.Handle, Maximum_Inlets));
+                     begin
+                        if Slot /= 0 and then
+                          (Inlets (Slot).First <= Inlets (Slot).Last or else Inlets (Slot).Base = 0
+                           or else CuBit.Inlet_Rings.Ready (Inlets (Slot).Base)
+                           or else CuBit.Inlet_Rings.Finished (Inlets (Slot).Base))
+                        then
+                           Got := Flag (Want, POLLIN + POLLRDNORM);
+                           if Inlets (Slot).Base = 0
+                             or else CuBit.Inlet_Rings.Finished (Inlets (Slot).Base)
+                           then
+                              Got := Union (Got, POLLHUP);
+                           end if;
+                        end if;
+                     end;
                   when Pipe_Read =>
                      declare
                         Object : Ring_Object with Import, Address => To_Address (E.Ring);

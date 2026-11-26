@@ -45,6 +45,9 @@ package CuBit.Stream_Rings with Pure, SPARK_Mode is
    --  The cursor of the region's owner when it reads in place (a launcher
    --  reading its child's outlet); producers and other readers ignore it.
    OWNER_CURSOR_OFFSET : constant := 192;
+   --  An inlet's ring (CuBit.Inlet_Rings): its one reader's cursor, which
+   --  the producer never writes past, so an inlet loses nothing.
+   CONSUMER_OFFSET : constant := 320;
    --  The stream's element type (a CuBit.Streams.TypeTag), set once when
    --  the ring is made.
    ELEMENT_OFFSET : constant := 256;
