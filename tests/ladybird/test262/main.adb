@@ -156,8 +156,25 @@ procedure Main is
 
    Line : String (1 .. Ring_Pages * 4096);
 
+   --  One line of the runner's output.
+   procedure Take (Text : String) is
+   begin
+      if Text'Length > 7 and then Text (Text'First .. Text'First + 6) = "RESULT " then
+         Count (Text);
+      elsif Text'Length > 5 and then Text (Text'First .. Text'First + 4) = "DONE " then
+         Done_Seen := True;
+         Done_Count := 0;
+         for K in Text'First + 5 .. Text'Last loop
+            exit when Text (K) not in '0' .. '9' or else Done_Count > Natural'Last / 10 - 9;
+            Done_Count := Done_Count * 10 + (Character'Pos (Text (K)) - Character'Pos ('0'));
+         end loop;
+      end if;
+   end Take;
+
+   --  A record may hold several lines (one write): each is taken alone.
    procedure Drain is
       Read : Natural;
+      First : Positive;
    begin
       if Rings.Count = 0 then
          return;
@@ -165,16 +182,19 @@ procedure Main is
       loop
          Read := CuBit.Stream_Regions.Read_Owned (Ring_Base, Ring_Pages, Line'Address, Line'Length);
          exit when Read = 0;
-         if Read > 7 and then Line (1 .. 7) = "RESULT " then
-            Count (Line (1 .. Read));
-         elsif Read > 5 and then Line (1 .. 5) = "DONE " then
-            Done_Seen := True;
-            Done_Count := 0;
-            for K in 6 .. Read loop
-               exit when Line (K) not in '0' .. '9' or else Done_Count > Natural'Last / 10 - 9;
-               Done_Count := Done_Count * 10 + (Character'Pos (Line (K)) - Character'Pos ('0'));
-            end loop;
-         end if;
+         First := 1;
+         for Last in 1 .. Read loop
+            if Line (Last) = ASCII.LF or else Last = Read then
+               declare
+                  Ends : constant Natural := (if Line (Last) = ASCII.LF then Last - 1 else Last);
+               begin
+                  if Ends >= First then
+                     Take (Line (First .. Ends));
+                  end if;
+               end;
+               First := Last + 1;
+            end if;
+         end loop;
       end loop;
    end Drain;
 

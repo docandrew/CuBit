@@ -97,9 +97,24 @@ procedure Main is
 
    --  Show what the rings hold now; the run goes on (a full ring would
    --  hold up the program writing to it).
+   --  A record may hold several lines (one write of js's output): each is
+   --  shown on its own.
+   Buffer : String (1 .. Ring_Pages * 4096);
+
+   procedure Show_Line (Outlet : String; Text : String) is
+   begin
+      Lines := Lines + 1;
+      debugPrint ("ladybird-js-check: js " & Outlet & ": " & Text & ASCII.LF);
+      for First in Text'First .. Text'Last - Pass_Line'Length + 1 loop
+         if Text (First .. First + Pass_Line'Length - 1) = Pass_Line then
+            Saw_Pass := True;
+         end if;
+      end loop;
+   end Show_Line;
+
    procedure Drain is
-      Buffer : String (1 .. 512);
       Read : Natural;
+      First : Positive;
    begin
       for E in 1 .. Rings.Count loop
          declare
@@ -109,11 +124,17 @@ procedure Main is
                Read := CuBit.Stream_Regions.Read_Owned
                  (Ring_Bases (K), Ring_Pages, Buffer'Address, Buffer'Length);
                exit when Read = 0;
-               Lines := Lines + 1;
-               debugPrint ("ladybird-js-check: js " & Outlet_Names (K) & ": " & Buffer (1 .. Read) & ASCII.LF);
-               for First in 1 .. Read - Pass_Line'Length + 1 loop
-                  if Buffer (First .. First + Pass_Line'Length - 1) = Pass_Line then
-                     Saw_Pass := True;
+               First := 1;
+               for Last in 1 .. Read loop
+                  if Buffer (Last) = ASCII.LF or else Last = Read then
+                     declare
+                        Ends : constant Natural := (if Buffer (Last) = ASCII.LF then Last - 1 else Last);
+                     begin
+                        if Ends >= First then
+                           Show_Line (Outlet_Names (K), Buffer (First .. Ends));
+                        end if;
+                     end;
+                     First := Last + 1;
                   end if;
                end loop;
             end loop;
