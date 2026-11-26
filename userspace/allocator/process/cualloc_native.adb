@@ -25,11 +25,16 @@ package body CuAlloc_Native is
    --  CuBit's thread exits call cualloc_thread_exit themselves.
    procedure Attached is null;
 
-   --  One commit backs any range (MEM-007): CuAlloc's commits are bounded
-   --  only by what it wants, here the largest page multiple.
-   Any_Commit : constant Unsigned_64 := Unsigned_64'Last - (ABI.Page_Bytes - 1);
+   --  The kernel commits any size in one call (MEM-007), so this is
+   --  CuAlloc's own growth step, not a kernel limit: a heap grows by at
+   --  most 256 KiB at a time. A system runs dozens of per-thread heaps;
+   --  growing each by CuAlloc's 1 MiB COMMIT_STEP instead held tens of MiB
+   --  more and starved bench-audio's heap loads in the 256 MiB guest
+   --  (physical memory exhausted). Geometric growth for large heaps is
+   --  MEM-007's next CuAlloc step.
+   Growth_Step : constant Unsigned_64 := 256 * 1024;
 
-   package Heap is new CuAlloc (Reserve, Commit, Release, Any_Commit, Attached);
+   package Heap is new CuAlloc (Reserve, Commit, Release, Growth_Step, Attached);
 
    function Decommit (Address, Bytes : Unsigned_64) return Boolean is
      (CuBit.Kernel_Calls.Call
