@@ -33,6 +33,7 @@ with CuBit.Program_Descriptions;
 with CuBit.Stream_Regions;
 with CuBit.Streams;
 with CuBit.Monotonic;
+with CuBit.Process_Events;
 with System.Storage_Elements;
 
 procedure Main is
@@ -351,6 +352,11 @@ procedure Main is
                end if;
             end;
          end loop;
+         --  The rings' grant events (lent with notify) are read and let go
+         --  each turn: CuBit.Process_Events keeps at most Kept_Events unread,
+         --  and an exit queued behind them would never be taken (the run
+         --  stopped after 12 batches of 3 rings).
+         CuBit.Process_Events.Serve_Defaults;
          CuBit.Launching.Poll_Exit (Child, Has_Ended, Ended);
          exit when Has_Ended;
          Drain;
