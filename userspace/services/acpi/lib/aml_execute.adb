@@ -3207,7 +3207,15 @@ package body AML_Execute with SPARK_Mode is
                      end;
                   elsif Stack (Depth).Op in Increment_Op | Decrement_Op then
                      Complete_Update (Stack (Depth).Targets (1), Stack (Depth).Op, V, S);
-                     if S /= Returned then return; end if;
+                     if S /= Returned then
+                        if Enable_Runtime_Error_Handler and then not Module_Root
+                          and then S = Uninitialized and then Fault_Cell = Recovery.Local_Cell
+                          and then Stack (Depth).Targets_Ready and then Stack (Depth).Target_Count = 1
+                          and then Stack (Depth).Targets (1).Kind = Slot_Target
+                          and then Stack (Depth).Targets (1).Slot in 16#60# .. 16#67#
+                        then Mark_Recovery (Fault_Cell, True); end if;
+                        return;
+                     end if;
                   elsif Stack (Depth).Is_Conditional_Reference then
                      declare
                         Ref : AML_References.Reference := AML_References.No_Reference;

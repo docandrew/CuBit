@@ -6,7 +6,7 @@ Run in the pinned Nix development shell with a fresh output directory:
 bash tests/acpi-runtime-err/run.sh --root "$PWD" --output /tmp/cubit-err-regression-unique
 ```
 
-The checked and release profiles run 444 contracts using 105 diagnostic AML tables. Both builds finish before timed cases. Tests cover default-off behavior, consumed invalid Unload operands, zero/nonzero and high-bit integer returns, retained status strings through actual collection, no-return/noninteger handlers, automatic recursion guarding, explicit recursion limits, low fuel and unavailable thread tags. Every run checks retained-result/copy-table cleanup and zero modeled hardware reads/writes.
+The checked and release profiles run 508 contracts using 121 diagnostic AML tables. Both builds finish before timed cases. Tests cover default-off behavior, consumed invalid Unload operands, zero/nonzero and high-bit integer returns, retained status strings through actual collection, no-return/noninteger handlers, automatic recursion guarding, explicit recursion limits, low fuel and unavailable thread tags. Every run checks retained-result/copy-table cleanup and zero modeled hardware reads/writes.
 
 This is a named hosted heap of64 objects,1024 payload bytes and64 elements, with copied-table capacity2/256. The tag1 provider is nonauthority fixture data; it is not a numeric OS thread-ID parity claim. Persistent namespace strings intentionally survive temporary-root cleanup. The collector test requires an increase in actual completed-collection and freed-byte counters while the retained error-name string remains equal.
 
@@ -42,7 +42,7 @@ The next 72 contracts add seven SizeOf-cell tables, eight authenticated package-
 index-bound tables and three nearby type/buffer controls, enabled and disabled
 in both profiles. Seventeen of these tables now match normal ACPICA observations.
 The buffer bound uses its precise error; the wrong-kind source retains an explicit
-refusal contract. The seven changed production files preserve source membership.
+refusal contract. These extensions preserve source membership.
 The actual recovery unit was proved once after the latest fault-code edit: 56
 checks, including 25 runtime-error checks, zero unproved. The other 65 helper checks are reused unchanged. Namespace and
 executor adapters have a compositional argument; full interpreter AoRTE remains
@@ -56,3 +56,13 @@ its normal-reference behavior; wrong-kind sources and complex indexed Store
 ordering remain explicit refusals. All prior fixture AML bytes are retained.
 The actual edited recovery unit closes56checks/25runtimechecks with0unproved;
 other65helper checks are reused unchanged. Full interpreter AoRTE is unfinished.
+
+Sixteen further normal tables add fully consumed direct-local Increment and
+Decrement failures, Store consumers, predicates and returns, repeated faults,
+ObjectType after failure, initialized controls and integer wraparound. They run
+enabled and disabled in both profiles. A failed update preserves the unset
+local, reports3005, and may give a consuming Store its later3012 report.
+Named, argument and complex reference update recovery remain separate work.
+The121 actual helper proof checks are reused with exact source/report hashes;
+the parent adds a guarded call and no new state or storage invariant. The full
+interpreter proof remains unfinished.

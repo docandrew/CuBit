@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "cases": [
     {
       "name": "basic-local_absent",
@@ -4154,6 +4154,696 @@
         "charged": 7
       },
       "qualification": "Normal ACPICA string3011/buffer300A bounds; thread presence only, no numeric thread identity claim"
+    },
+    {
+      "name": "runtime-update-inc_direct",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d000000002a0435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141a5445535400a008464c41477000607560700141465452a40a2a",
+      "AML_sha256": "1e43a2af9ac2b49eef35021745133d8adf0345c4b57a37a48410fd9756574271",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-inc_store",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d500000002f6435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141f5445535400a008464c414770006070756044455354700141465452a40a2a",
+      "AML_sha256": "b82665cfae5d18153de5883d85b8f1f2d13185c2b0c75af2b866c1656f149c72",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-inc_predicate",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454de00000002ef435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014285445535400a008464c4147700060a00875607554414b45a10675534b4950700141465452a40a2a",
+      "AML_sha256": "7f25ccd48e30ae1e1e057172de1f33978cd31f4ebf306fb1d9bf3ec36a96a053",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-inc_return",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c80000000282435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014125445535400a008464c4147700060a47560",
+      "AML_sha256": "4d69d77b931912b738d29cbb7cb8211f8f7132ded0f011cf866da68c6e1fe74a",
+      "expected": {
+        "status": "NO_RETURN",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-dec_direct",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d0000000029f435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141a5445535400a008464c41477000607660700141465452a40a2a",
+      "AML_sha256": "386e5e9915e303ab6e5b01cd94b2f94db6b880e3aa0b2274cce5b14614c034f8",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-dec_store",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d500000002f5435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141f5445535400a008464c414770006070766044455354700141465452a40a2a",
+      "AML_sha256": "68434ceb1acab6fe2e72a3afbda48604bab66ac837c9b4c620e4d2dc78c601f8",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-dec_predicate",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454de00000002ee435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014285445535400a008464c4147700060a00876607554414b45a10675534b4950700141465452a40a2a",
+      "AML_sha256": "42a532980b72b333159539747c0fd758ed9ddeaee0e26d83879382bfea35f11a",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-dec_return",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c80000000281435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014125445535400a008464c4147700060a47660",
+      "AML_sha256": "e65bd4202503e7872f8ef9114baa609201e009bce0590ff0d485282a93e22b8b",
+      "expected": {
+        "status": "NO_RETURN",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-inc_nonzero",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d40000000278435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014245f455252037545434e54706853544154708e6945545950706a54485244a40c78563412141a5445535400a008464c41477000607560700141465452a40a2a",
+      "AML_sha256": "f2d5b915fe11193779aa4c58a7ad6da0d3ae6945dfe029f39ef6149085a9ed83",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          305419896
+        ]
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-inc_initialized",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d60000000293435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470108504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014205445535400a008464c41477000607560706044455354700141465452a40a2a",
+      "AML_sha256": "6d248c91587afda1529f8f060814d1948ee6107462c874da138f5d0c9ac413ee",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 1,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 1,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 13
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-dec_initialized",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d70000000283435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470108504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014215445535400a009464c4147700a02607660706044455354700141465452a40a2a",
+      "AML_sha256": "9914dd968cee0a7969f7f4553f302dc2ce35adf44b9a9711cd619075bb3f6e29",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 1,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 1,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 13
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-inc_wrap",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d60000000294435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470108504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014205445535400a008464c414770ff607560706044455354700141465452a40a2a",
+      "AML_sha256": "5f517a5fc36174648f2d29fa31fcd1ebcd66a7766edff462b19536f19d3543c6",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 0,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 0,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 13
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-dec_wrap",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d60000000292435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470108504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014205445535400a008464c41477000607660706044455354700141465452a40a2a",
+      "AML_sha256": "5df9761800aaff268d4a3c519163975ab86572cc186538e79bd2bfb877fbacc0",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 18446744073709551615,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 18446744073709551615,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 13
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-inc_object_type",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d70000000204435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014215445535400a008464c41477000607560708e6044455354700141465452a40a2a",
+      "AML_sha256": "e914cd8a005656b744d4f4ecaceb641132e4631411ec48638cdd4cf0a2a79e1b",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 0,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-inc_repeated",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d200000002c7435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141c5445535400a008464c414770006075607560700141465452a40a2a",
+      "AML_sha256": "53ddb4350df0044a21989e5126a9a3f39c1655190ae2ad49c9c2d8b8c81d895e",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-update-dec_repeated",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d200000002c5435542495400444956455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141c5445535400a008464c414770006076607660700141465452a40a2a",
+      "AML_sha256": "2aa4cabb91847e32344cd4d0447fff87d0cd604b8a1082943a1d0efa89246514",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
     }
   ],
   "normal_reference_version": "20260408",
@@ -4166,11 +4856,12 @@
   "new_runtime_normal_diagnostics": 48,
   "new_runtime_guard_contracts": 2,
   "new_runtime_known_refusals": 1,
-  "planned_contracts": 444,
+  "planned_contracts": 508,
   "followup_normal_tables": 16,
   "followup_known_refusals": 1,
   "byte_index_new_normal_tables": 12,
   "prior_refusal_promoted_to_normal": [
     "runtime-type-byte_bound"
-  ]
+  ],
+  "update_cell_new_normal_tables": 16
 }
