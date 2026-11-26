@@ -392,9 +392,10 @@ package body Syscall is
                 Process.unlockAddressSpace (Process.processOf (caller));
 
             -- Owned memory (Process.Owned_Memory, ABI-002): three calls,
-            -- no flags. Reserve: arg0 page-aligned bytes (up to 2 GiB),
-            -- arg1 the base's alignment (0: a page); the base, or zero.
-            -- The base, or a refusal word (Owned_Memory_ABI, MEM-007).
+            -- no flags. Reserve: arg0 page-aligned bytes, arg1 the base's
+            -- alignment (0: a page); the base, or a refusal word
+            -- (Owned_Memory_ABI, MEM-007: Too_Large above the kernel's
+            -- largest region, Owned_Reservation_Policy).
             when SYSCALL_RESERVE_OWNED_REGION =>
                 declare
                     Why : Owned_Memory_ABI.Refusal;
