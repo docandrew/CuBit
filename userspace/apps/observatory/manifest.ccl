@@ -1,7 +1,11 @@
-(executable-manifest v1
-  (identity "com.cubit.observatory")
-  (version "0.1.0")
-  # ABI-002: its debug text (CuBit.Console_Route).
-  (request-service-optional logstore read-write logstore)
-  (request-service desktop read-write desktop)
-  (request-service metrics-observer read-write metrics-observer))
+(Executable_Manifest
+  identity => "com.cubit.observatory"
+  version => "0.1.0"
+  # Its name for people: the task button's label (UI-061).
+  app => (App_Declaration.Declared (App_Presentation name => "Observatory"))
+  requests => [
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    (service "metrics-observer" "metrics-observer")]
+  optional => ["logstore"])

@@ -1,9 +1,13 @@
 # Read-only inspection of non-secret machine configuration. No FS or network.
-(executable-manifest v1
-  (identity "com.cubit.config-inspector")
-  (version "0.1.0")
-  # One "started" record (CuBit.Logging.Announce).
-  (request-service logstore read-write logstore)
-  (request-service desktop read-write desktop)
-  (request-service config read-write config)
-  (config-scope (rights read) all))
+(Executable_Manifest
+  identity => "com.cubit.config-inspector"
+  version => "0.1.0"
+  # Its name for people: the task button's label (UI-061).
+  app => (App_Declaration.Declared (App_Presentation name => "Config Inspector"))
+  requests => [
+    # One "started" record (CuBit.Logging.Announce).
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    (service "config" "config")]
+  scopes => [
+    (config-all [File_Right.Read])])

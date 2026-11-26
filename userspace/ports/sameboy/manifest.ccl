@@ -2,11 +2,15 @@
 # sameboy/ or the live image's optical disc; a window on the desktop; its
 # own stream on the mixer. No network, device, launch or writable-file
 # authority.
-(executable-manifest v1
-  (identity "com.cubit.sameboy")
-  (version "0.1.0")
-  (request-service filesystem read-write filesystem)
-  (filesystem-scope (rights read) "@nvme:0/sameboy")
-  (filesystem-scope (rights read) "@cd:0/sameboy")
-  (request-service desktop read-write desktop)
-  (request-service mixer read-write mixer))
+(Executable_Manifest
+  identity => "com.cubit.sameboy"
+  version => "0.1.0"
+  # Its name for people: the task button's label (UI-061).
+  app => (App_Declaration.Declared (App_Presentation name => "SameBoy"))
+  requests => [
+    (service "filesystem" "filesystem")
+    (service "desktop" "desktop")
+    (service "mixer" "mixer")]
+  scopes => [
+    (filesystem [File_Right.Read] "@nvme:0/sameboy")
+    (filesystem [File_Right.Read] "@cd:0/sameboy")])

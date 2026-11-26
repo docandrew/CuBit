@@ -29,9 +29,12 @@ def recorded(name):
             for path in sorted((root / 'tests/ccl-manifests/fixtures' / name).glob('*.bin'))}
 
 
-def identity_bytes(identity, version):
-    result = struct.pack('<IHH', 0x44494243, 1, 2)
-    for key, value in ((b'id', identity.encode('ascii')), (b'version', version.encode('ascii'))):
+def identity_bytes(identity, version, name=None):
+    pairs = [(b'id', identity.encode('ascii')), (b'version', version.encode('ascii'))]
+    if name is not None:
+        pairs.append((b'name', name.encode('ascii')))
+    result = struct.pack('<IHH', 0x44494243, 1, len(pairs))
+    for key, value in pairs:
         result += struct.pack('<BH', len(key), len(value)) + key + value
     return result
 
@@ -84,6 +87,16 @@ with tempfile.TemporaryDirectory(prefix='ccl-migrations.') as temporary:
                 raise AssertionError('unreviewed identity-update exception')
             expected['.cubit.id'] = corrected
             print(f'IDENTITY UPDATE {entry["directory"]}: {update["reason"]}', flush=True)
+        # UI-061: these apps declare their name for people, a third pair in
+        # the identity section after id and version (the recorded pairs stay).
+        app_names = {'userspace/apps/files': ('com.cubit.files', 'Files'),
+                     'userspace/apps/devices': ('com.cubit.devices', 'Devices'),
+                     'userspace/ccl/apps/ccl-workbench': ('com.cubit.ccl-workbench', 'CCL Workbench')}
+        if entry['directory'] in app_names:
+            identity, name = app_names[entry['directory']]
+            assert expected['.cubit.id'] == identity_bytes(identity, '0.1.0'), entry
+            expected['.cubit.id'] = identity_bytes(identity, '0.1.0', name)
+            print(f'APP NAME UPDATE {entry["directory"]}: {name}', flush=True)
         # Intentional post-migration additions for the native taskbar. Keep the
         # recorded fixtures unchanged and specify the exact added authority
         # bytes independently of the compiler under test.

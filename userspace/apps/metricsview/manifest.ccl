@@ -6,6 +6,8 @@
 (Executable_Manifest
   identity => "com.cubit-os.metricsview"
   version => "0.1.0"
+  # Its name for people: the task button's label (UI-061).
+  app => (App_Declaration.Declared (App_Presentation name => "Metrics"))
   requests => [
     # One "started" record (CuBit.Logging.Announce).
     (service "logstore" "logstore")

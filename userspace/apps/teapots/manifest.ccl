@@ -1,10 +1,13 @@
 # CuBit Teapots (userspace/apps/teapots): a Vulkan teapot gallery on a GPU
 # canvas. The render session is optional: a software start (no Intel GPU,
 # QEMU, or no approval) runs with the canvas's placeholder.
-(executable-manifest v1
-  (identity "com.cubit.teapots")
-  (version "0.1.0")
-  (request-render-optional read-write render)
-  # One "started" record (CuBit.Logging.Announce).
-  (request-service logstore read-write logstore)
-  (request-service desktop read-write desktop))
+(Executable_Manifest
+  identity => "com.cubit.teapots"
+  version => "0.1.0"
+  # Its name for people: the task button's label (UI-061).
+  app => (App_Declaration.Declared (App_Presentation name => "Teapots"))
+  requests => [
+    (Request.Optional_Render "render")
+    # One "started" record (CuBit.Logging.Announce).
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")])

@@ -1,14 +1,18 @@
 # CuBit Text (docs/text-editor.md). Requested authority only: it reads the
 # volume and writes only under Documents/ (a save writes a sibling there and
 # renames it over the file, so it needs create as well as write).
-(executable-manifest v1
-  (identity "com.cubit.text")
-  (version "0.1.0")
-  # One "started" record (CuBit.Logging.Announce).
-  (request-service logstore read-write logstore)
-  (request-service desktop read-write desktop)
-  (request-service filesystem read-write text-filesystem)
-  (filesystem-scope (rights read write create) "@nvme:0/Documents/")
-  # Recovery copies of unsaved work at shutdown (CuBit.UI.Recovery).
-  (filesystem-scope (rights read write create) "@system/Recovery/com.cubit.text/")
-  (filesystem-scope (rights read) "@nvme:0/"))
+(Executable_Manifest
+  identity => "com.cubit.text"
+  version => "0.1.0"
+  # Its name for people: the task button's label (UI-061).
+  app => (App_Declaration.Declared (App_Presentation name => "Text"))
+  requests => [
+    # One "started" record (CuBit.Logging.Announce).
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    (service "filesystem" "text-filesystem")]
+  scopes => [
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@nvme:0/Documents/")
+    # Recovery copies of unsaved work at shutdown (CuBit.UI.Recovery).
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@system/Recovery/com.cubit.text/")
+    (filesystem [File_Right.Read] "@nvme:0/")])

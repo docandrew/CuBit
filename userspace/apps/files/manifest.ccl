@@ -1,17 +1,21 @@
 # Requested authority only; the existing launch path remains in control.
-(executable-manifest v1
-  (identity "com.cubit.files")
-  (version "0.1.0")
-  # One "started" record (CuBit.Logging.Announce).
-  (request-service logstore read-write logstore)
-  (request-service desktop read-write desktop)
-  (request-service filesystem read-write files-filesystem)
-  (filesystem-scope (rights read) "@nvme:0/")
-  (filesystem-scope (rights read) "@mem:0/")
-  # USB sticks (FS-034), read and written, and ejected (Eject needs write
-  # access to the whole volume); by position until removable places are
-  # named by label (@media, FS-033).
-  (filesystem-scope (rights read write create) "@usb:0")
-  (filesystem-scope (rights read write create) "@usb:1")
-  (filesystem-scope (rights read write create) "@usb:2")
-  (filesystem-scope (rights read write create) "@usb:3"))
+(Executable_Manifest
+  identity => "com.cubit.files"
+  version => "0.1.0"
+  # Its name for people: the task button's label (UI-061).
+  app => (App_Declaration.Declared (App_Presentation name => "Files"))
+  requests => [
+    # One "started" record (CuBit.Logging.Announce).
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    (service "filesystem" "files-filesystem")]
+  scopes => [
+    (filesystem [File_Right.Read] "@nvme:0/")
+    (filesystem [File_Right.Read] "@mem:0/")
+    # USB sticks (FS-034), read and written, and ejected (Eject needs write
+    # access to the whole volume); by position until removable places are
+    # named by label (@media, FS-033).
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@usb:0")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@usb:1")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@usb:2")
+    (filesystem [File_Right.Read File_Right.Write File_Right.Create] "@usb:3")])

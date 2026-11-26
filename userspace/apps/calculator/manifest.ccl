@@ -2,12 +2,16 @@
 # desktop (its window and the clipboard), logstore, and Config confined to
 # its own keys (calculator.*: the remembered mode and options), nothing
 # else: no files, no network, no other service.
-(executable-manifest v1
-  (identity "com.cubit.calculator")
-  (version "0.1.0")
-  # One "started" record (CuBit.Logging.Announce).
-  (request-service logstore read-write logstore)
-  (request-service desktop read-write desktop)
-  # calculator.options: the typed Calc_Options the app starts in.
-  (request-service config read-write config)
-  (config-scope (rights read write) "calculator."))
+(Executable_Manifest
+  identity => "com.cubit.calculator"
+  version => "0.1.0"
+  # Its name for people: the task button's label (UI-061).
+  app => (App_Declaration.Declared (App_Presentation name => "Calculator"))
+  requests => [
+    # One "started" record (CuBit.Logging.Announce).
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")
+    # calculator.options: the typed Calc_Options the app starts in.
+    (service "config" "config")]
+  scopes => [
+    (config [File_Right.Read File_Right.Write] "calculator.")])
