@@ -40,8 +40,11 @@ package body CuBit.Libc_System_Calls is
 
    NUL : constant Character := Character'Val (0);
 
-   --  The main thread's tid (threads THREAD_CREATE makes are 1 .. 1023).
-   Main_Thread_Id : constant := 16#3FFF_FFFF#;
+   --  The main thread's tid: past the ids of the threads THREAD_CREATE
+   --  makes (1 .. 1023). Not musl's 16#3FFF_FFFF#, which in a mutex's
+   --  owner bits marks it not recoverable (another thread locking an
+   --  owner-tracked mutex the main thread held got ENOTRECOVERABLE).
+   Main_Thread_Id : constant := 1_024;
    --  Until the kernel reports its CPU count: four.
    Default_CPU_Mask : constant Unsigned_64 := 16#F#;
    CPU_Mask_Bytes : constant := 8;
