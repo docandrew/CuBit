@@ -76,6 +76,7 @@ with CuBit.Metric_Protocol;
 with CuBit.Authority; use CuBit.Authority;
 with CuBit.Memory_Grants;
 with CuBit.Process_Observer;
+with CuBit.App_Names;
 with CuBit.Boot_Milestone_Codes;
 with CuBit.Boot_Milestones;
 with CuBit.Grant_References;
@@ -664,6 +665,10 @@ procedure main is
       Valid : Boolean := False;
       Identity : String (1 .. PO.Identity_Bytes) := [others => ' '];
       Identity_Length : Natural range 0 .. PO.Identity_Bytes := 0;
+      --  The app's name for people from the same signed section (UI-061,
+      --  CuBit.App_Names); empty when the manifest declares none.
+      App_Name : String (1 .. CuBit.App_Names.Maximum_Name_Bytes) := [others => ' '];
+      App_Name_Length : CuBit.App_Names.Name_Length := 0;
       Launcher : Process_ID := No_Process;
       Started : Unsigned_64 := 0;
       --  What SPAWN gave procmgr for it: authority over it (kill, resume,
@@ -724,14 +729,17 @@ procedure main is
    end closeChildHandles;
 
    procedure noteProcess
-     (pid, launcher : Process_ID; identity : String;
+     (pid, launcher : Process_ID; identity, appName : String;
       Control : CuBit.Handles.Process; Mailbox : CuBit.Handles.Endpoint)
    is
       Length : constant Natural := Natural'Min (identity'Length, PO.Identity_Bytes);
+      Name_Length : constant CuBit.App_Names.Name_Length :=
+        Natural'Min (appName'Length, CuBit.App_Names.Maximum_Name_Bytes);
       I : constant Records.Index := Records.Ensure (pid);
    begin
       if I = 0 then return; end if;
       Records.Values (I) := (Valid => True, Identity => [others => ' '], Identity_Length => Length,
+                             App_Name => [others => ' '], App_Name_Length => Name_Length,
                              Launcher => launcher, Started => CuBit.Monotonic.Milliseconds,
                              Control => Control, Mailbox => Mailbox, Resumed => False, Held => False,
                              Stop_Grace => 0, Sequence => Next_Launch_Sequence,
@@ -741,6 +749,7 @@ procedure main is
          Next_Launch_Sequence := Next_Launch_Sequence + 1;
       end if;
       Records.Values (I).Identity (1 .. Length) := identity (identity'First .. identity'First + Length - 1);
+      Records.Values (I).App_Name (1 .. Name_Length) := appName (appName'First .. appName'First + Name_Length - 1);
    end noteProcess;
 
    --  procmgr's untagged endpoint to a process it started (null if none).
@@ -861,6 +870,68 @@ procedure main is
       CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
       Answer ((if Count = 0 then PO.Unavailable else PO.OK));
    end handleProcessList;
+
+   --  Describe (UI-061, CuBit.App_Names): a process's app name and identity,
+   --  as its signed identity section declared them at launch, into one page
+   --  the registered Desktop lends. Only Desktop may ask: it names windows'
+   --  apps on its task buttons, and nothing else needs to learn what runs.
+   procedure handleAppDescribe (sender : Process_ID; msg : Message) is
+      package AN renames CuBit.App_Names;
+      Reference : CuBit.Memory_Grants.Grant_Reference;
+      Mapped : System.Address;
+      Ok, Returned : Boolean;
+      Known_Index : Records.Index;
+      replyMsg : Message := NULL_MESSAGE;
+      ignore : Unsigned_64;
+      procedure Answer (Result : AN.Status) is
+      begin
+         replyMsg.tag := (label => Unsigned_32 (AN.Status'Enum_Rep (Result)), length => 1, protocol => 0,
+                          ipc => <>, reserved => 0);
+         replyMsg.words := [0 => Unsigned_64 (AN.Status'Enum_Rep (Result)), others => 0];
+         ignore := reply (sender, replyMsg);
+      end Answer;
+   begin
+      if sender = No_Process or else sender /= Registered_Driver (DRIVER_DESKTOP) then
+         Answer (AN.Denied);
+         return;
+      end if;
+      if msg.tag.length /= AN.Request_Words
+        or else not CuBit.Grant_References.Valid_Wire (msg.words (AN.Grant_Word))
+      then
+         Answer (AN.Invalid_Request);
+         return;
+      end if;
+      Known_Index := Records.Find (From_Word (msg.words (AN.Process_Word)));
+      if Known_Index = 0 or else not Records.Values (Known_Index).Valid then
+         Answer (AN.Unknown);
+         return;
+      end if;
+      Reference := CuBit.Grant_References.Decode (msg.words (AN.Grant_Word));
+      CuBit.Memory_Grants.Acquire
+        (Reference, sender, 0, AN.Record_Bytes, CuBit.Memory_Grants.Write_Access, Mapped, Ok);
+      if not Ok then
+         Answer (AN.Invalid_Request);
+         return;
+      end if;
+      declare
+         Page : array (0 .. AN.Record_Bytes - 1) of Unsigned_8 with Import, Address => Mapped;
+         Known : Process_Record renames Records.Values (Known_Index);
+         Identity_Length : constant AN.Identity_Length :=
+           Natural'Min (Known.Identity_Length, AN.Maximum_Identity_Bytes);
+      begin
+         Page := [others => 0];
+         Page (AN.Name_Length_Offset) := Unsigned_8 (Known.App_Name_Length);
+         for J in 1 .. Known.App_Name_Length loop
+            Page (AN.Name_Offset + J - 1) := Character'Pos (Known.App_Name (J));
+         end loop;
+         Page (AN.Identity_Length_Offset) := Unsigned_8 (Identity_Length);
+         for J in 1 .. Identity_Length loop
+            Page (AN.Identity_Offset + J - 1) := Character'Pos (Known.Identity (J));
+         end loop;
+      end;
+      CuBit.Memory_Grants.Return_Acquisition (Reference, Returned);
+      Answer (AN.OK);
+   end handleAppDescribe;
 
    procedure clearAuthorityForPID (pid : Process_ID) is
    begin
@@ -1215,18 +1286,23 @@ procedure main is
 
    ---------------------------------------------------------------------------
    --  parseIdSection
-   --  Parse the .cubit.id section from the ELF in elfBuf. Searches for
-   --  the "id" key and copies its value into pkgId.
+   --  Parse the .cubit.id section from the ELF in elfBuf: the "id" pair
+   --  into pkgId and, when the manifest declares one, the "name" pair (the
+   --  app's name for people, UI-061) into appName. The section is signed
+   --  with the executable; nothing at run time changes either.
    ---------------------------------------------------------------------------
    procedure parseIdSection
      (elfSize  : Unsigned_64;
       pkgId    : out String;
-      pkgIdLen : out Natural)
+      pkgIdLen : out Natural;
+      appName  : out String;
+      appNameLen : out Natural)
    is
       e_shoff     : Unsigned_64;
       e_shnum     : Unsigned_16;
    begin
       pkgIdLen := 0;
+      appNameLen := 0;
 
       if elfSize < 64 then
          return;
@@ -1310,7 +1386,27 @@ procedure main is
                                  pkgId (pkgId'First ..
                                     pkgId'First + pkgIdLen - 1));
                               debugPrint ("" & LF);
-                              return;
+                           --  "name": only one that is a valid name, whole.
+                           elsif kLen = 4 and then
+                              readU8 (pos) = Unsigned_8 (Character'Pos ('n')) and then
+                              readU8 (pos + 1) = Unsigned_8 (Character'Pos ('a')) and then
+                              readU8 (pos + 2) = Unsigned_8 (Character'Pos ('m')) and then
+                              readU8 (pos + 3) = Unsigned_8 (Character'Pos ('e')) and then
+                              vLen in 1 .. Natural'Min (appName'Length, CuBit.App_Names.Maximum_Name_Bytes)
+                           then
+                              declare
+                                 Value : String (1 .. vLen);
+                              begin
+                                 for c in 0 .. vLen - 1 loop
+                                    Value (Value'First + c) :=
+                                       Character'Val (Natural (readU8 (
+                                          pos + Unsigned_64 (kLen) + Unsigned_64 (c))));
+                                 end loop;
+                                 if CuBit.App_Names.Valid_Name (Value) then
+                                    appName (appName'First .. appName'First + vLen - 1) := Value;
+                                    appNameLen := vLen;
+                                 end if;
+                              end;
                            end if;
 
                            pos := pos + Unsigned_64 (kLen) +
@@ -3568,6 +3664,8 @@ procedure main is
       Span_Start, Span_Read, Span_Spawned, Span_Reset, Span_Setup : Unsigned_64 := 0;
       pkgId         : String (1 .. 128);
       pkgIdLen      : Natural := 0;
+      appName       : String (1 .. CuBit.App_Names.Maximum_Name_Bytes) := [others => ' '];
+      appNameLen    : CuBit.App_Names.Name_Length := 0;
       streamBitmask : Unsigned_64 := 0;
       Render : Render_Request;
       Reading : Manifest_Reading;
@@ -4923,7 +5021,7 @@ procedure main is
       --  provider depends on it (an identity-gated role such as
       --  acpi-power, Startup_Only_Denied), so it is known before the wait
       --  is decided, not only at minting.
-      parseIdSection (elfSize, pkgId, pkgIdLen);
+      parseIdSection (elfSize, pkgId, pkgIdLen, appName, appNameLen);
 
       --  A starting provider is waited for, parked, before anything runs.
       declare
@@ -5265,7 +5363,8 @@ procedure main is
          Mask (H.Read_Write), To_Word (newPID), 0);
 
       --  The package identity (.cubit.id) was parsed before the waits.
-      noteProcess (newPID, requester, pkgId (1 .. pkgIdLen), Child.Control, Child.Mailbox);
+      noteProcess (newPID, requester, pkgId (1 .. pkgIdLen), appName (1 .. appNameLen),
+                   Child.Control, Child.Mailbox);
       Sources.Started (newPID, pkgId (1 .. pkgIdLen), name);
       Recorded := Records.Find (newPID) /= 0;
       --  Only a program that declares the metric outlet publishes metrics;
@@ -9722,6 +9821,8 @@ begin
                else
                   sendReply (sender, REPLY_ERR, 0);
                end if;
+            when CuBit.App_Names.Describe_Operation =>
+               handleAppDescribe (sender, msg);
             when EVENT_CHILD_EXIT =>
                --  A process retired (the kernel tells procmgr of each; only the
                --  kernel posts this label, with no sender). Act only if it is
