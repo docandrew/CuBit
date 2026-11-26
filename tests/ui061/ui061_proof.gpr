@@ -1,0 +1,20 @@
+--  Proof of UI-061's pure parts: the thumbnail scaler and fit
+--  (Client_Thumbnails) and the hover card's layout (Desktop_Task_Cards).
+--  gnatprove -P ui061_proof.gpr (level 2, every check; run.sh --prove).
+project UI061_Proof is
+   for Source_Dirs use ("../../userspace/lib/ui", "../../userspace/services/desktop",
+                        "../../userspace/runtime/gnat", "../../userspace/lib/display",
+                        "../../userspace/lib/theme");
+   for Source_Files use
+     ("client_thumbnails.ads", "client_thumbnails.adb",
+      "desktop_task_cards.ads", "desktop_task_cards.adb", "desktop_deskbar_style.ads",
+      "cubit.ads", "cubit-app_names.ads", "cubit-ui_metrics.ads",
+      "cubit-appearance.ads", "cubit-appearance.adb", "cubit-theme.ads");
+   for Object_Dir use "build/proof";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--checks-as-errors=on", "--report=fail");
+   end Prove;
+end UI061_Proof;

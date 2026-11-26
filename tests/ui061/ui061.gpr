@@ -1,0 +1,29 @@
+--  Hosted tests and timing for UI-061 (the Deskbar's hover card): the
+--  thumbnail scaler (Client_Thumbnails), the card's layout
+--  (Desktop_Task_Cards) and the app-name rule (CuBit.App_Names).
+--  gprbuild -P ui061.gpr, then build/ui061_tests (run.sh does both).
+project UI061 is
+   for Source_Dirs use (".", "../../userspace/lib/ui", "../../userspace/services/desktop",
+                        "../../userspace/runtime/gnat", "../../userspace/lib/display",
+                        "../../userspace/lib/theme");
+   for Source_Files use
+     ("ui061_tests.adb", "client_thumbnails.ads", "client_thumbnails.adb",
+      "desktop_task_cards.ads", "desktop_task_cards.adb", "desktop_deskbar_style.ads",
+      "cubit.ads", "cubit-app_names.ads", "cubit-ui_metrics.ads",
+      "cubit-appearance.ads", "cubit-appearance.adb", "cubit-theme.ads");
+   --  checked: every assertion and loop invariant runs (the tests);
+   --  release: as Desktop builds it, -gnatp and no assertions (the timing).
+   type Mode_Type is ("checked", "release");
+   Mode : Mode_Type := external ("UI061_MODE", "checked");
+   for Object_Dir use "build/" & Mode;
+   for Exec_Dir use "build/" & Mode;
+   for Main use ("ui061_tests.adb");
+   package Compiler is
+      case Mode is
+         when "checked" =>
+            for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnata", "-gnato", "-gnatwa");
+         when "release" =>
+            for Default_Switches ("Ada") use ("-O2", "-gnat2022", "-gnatp", "-gnatwa");
+      end case;
+   end Compiler;
+end UI061;
