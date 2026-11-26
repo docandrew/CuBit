@@ -61,11 +61,17 @@ procedure Main is
         when Todo_Error => "todo_error");
    Totals : array (Outcome) of Natural := [others => 0];
 
-   --  One lent ring for the runner's unix.stdout; its stderr is not lent.
+   --  Lent rings for the runner's unix.stdout (its results) and
+   --  unix.stderr (shown, up to Stderr_Shown_Limit lines in all).
    Ring_Pages : constant := 16;
    Rings : CuBit.Outlet_Rings.Table;
    Ring_Base : Unsigned_64 := 0;
    Ring_Reference : CuBit.Memory_Grants.Grant_Reference;
+   Stderr_Base : Unsigned_64 := 0;
+   Stderr_Reference : CuBit.Memory_Grants.Grant_Reference;
+   Stderr_Lent : Boolean := False;
+   Stderr_Shown : Natural := 0;
+   Stderr_Shown_Limit : constant := 200;
 
    --  This batch: results seen, and whether the last one stopped the runner.
    Batch_Results : Natural := 0;
@@ -152,6 +158,17 @@ procedure Main is
          Rings.Count := 1;
          Rings.Entries (1) := (Outlet => Index, Grant => Grant);
       end if;
+      Stderr_Lent := False;
+      PP.Find_Connector (S, "unix.stderr", Index, Found);
+      if Found and then Rings.Count = 1 then
+         CuBit.Launching.Lend_Ring
+           (Launcher, 1, CuBit.Streams.TYPE_TEXT_LINE, Stderr_Base, Grant, Stderr_Reference, Ok);
+         if Ok then
+            Rings.Count := 2;
+            Rings.Entries (2) := (Outlet => Index, Grant => Grant);
+            Stderr_Lent := True;
+         end if;
+      end if;
    end Lend;
 
    Line : String (1 .. Ring_Pages * 4096);
@@ -178,6 +195,16 @@ procedure Main is
    begin
       if Rings.Count = 0 then
          return;
+      end if;
+      if Stderr_Lent then
+         loop
+            Read := CuBit.Stream_Regions.Read_Owned (Stderr_Base, 1, Line'Address, Line'Length);
+            exit when Read = 0;
+            if Stderr_Shown < Stderr_Shown_Limit then
+               Stderr_Shown := Stderr_Shown + 1;
+               Show ("runner stderr: " & Line (1 .. Read));
+            end if;
+         end loop;
       end if;
       loop
          Read := CuBit.Stream_Regions.Read_Owned (Ring_Base, Ring_Pages, Line'Address, Line'Length);
@@ -276,6 +303,10 @@ procedure Main is
       Drain;
       if Rings.Count > 0 then
          CuBit.Memory_Grants.Revoke (Ring_Reference, Revoked);
+         if Stderr_Lent then
+            CuBit.Memory_Grants.Revoke (Stderr_Reference, Revoked);
+            Stderr_Lent := False;
+         end if;
          Rings.Count := 0;
       end if;
       return (if Ended.Kind = CuBit.Child_Exits.Exited then Integer (Ended.Code) else Not_Exited);
@@ -312,7 +343,7 @@ begin
             Next := Next + 1;
          end if;
       end if;
-      if Next mod 5_000 < Batch then
+      if Next / 5_000 /= (Next - Natural'Min (Next, Batch_Results + 1)) / 5_000 then
          Show ("progress " & Image (Next));
       end if;
    end loop;
