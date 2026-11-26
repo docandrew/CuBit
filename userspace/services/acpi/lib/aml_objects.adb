@@ -15,10 +15,6 @@ package body AML_Objects with SPARK_Mode is
       Target := Source;
       Source := Empty_Like (Source);
    end Transfer;
-   procedure Discard (Store : in out State) is
-   begin
-      Store := Empty_Like (Store);
-   end Discard;
    use type AML_References.Reference_Kind;
    function Slot_Bound (Store : State) return Object_ID is (Store.Used);
    function Live_Count (Store : State) return Object_ID is (Store.Live_Used);
@@ -289,6 +285,27 @@ package body AML_Objects with SPARK_Mode is
    begin
       null;
    end Preserve_Valid_Bytes;
+   procedure Discard (Store : in out State) is
+      Empty_Object : constant Object_Record := (others => <>);
+      Expected : constant State := Empty_Like (Store) with Ghost;
+   begin
+      -- Reset the inline storage directly, preserving its capacities and
+      -- incarnation limit without materializing a second complete state.
+      Store.Used := 0;
+      Store.Live_Used := 0;
+      Store.Bytes_Used := 0;
+      Store.Elements_Used := 0;
+      for ID in Store.Objects'Range loop
+         Store.Objects (ID) := Empty_Object;
+         pragma Loop_Invariant
+           (for all Cleared in Store.Objects'First .. ID =>
+              Store.Objects (Cleared) = Empty_Object);
+      end loop;
+      Store.Bytes := [others => 0];
+      Store.Elements := [others => 0];
+      pragma Assert (Store = Expected);
+      Preserve_Valid_Bytes (Expected, Store);
+   end Discard;
    function Empty (Max_Incarnation : AML_Object_Identifiers.Incarnation_Budget :=
       AML_Object_Identifiers.Slot_Incarnation'Last;
       Object_Capacity : Storage_Capacity := Max_Objects; Byte_Capacity : Storage_Capacity := Max_Bytes;
