@@ -10,7 +10,10 @@ required = (
  "TEST: PASS native owned records 8193 pages twice, hole reuse, protection, interleaved reservation retirement",
  "TEST: PASS MEM-007 4 TiB + 32 GiB cage",
  "native owned records: exiting with 64 live mappings",
- "Process.reclaimProcess: owned regions retired 64",
+ # The 64 live mappings and the runtime's own heap region (CuAlloc's,
+ # which the secondary stack lives on): an exit with no test mapping
+ # retires 1.
+ "Process.reclaimProcess: owned regions retired 65",
 )
 with (directory / "qemu.log").open("w") as log:
     vm = subprocess.Popen([
