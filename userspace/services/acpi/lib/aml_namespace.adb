@@ -6059,7 +6059,6 @@ package body Owned with SPARK_Mode is
       use AML_Execute;
       package Builder is new AML_Concatenation (AML_Objects.Max_Bytes);
       use type Builder.Build_Status;
-      use type Builder.Output_Kind;
       Left_Kind, Right_Kind : Builder.Input_Kind := Builder.Integer_Input;
       Left_Number, Right_Number : AML_Decode.Integer_Value := 0;
       Left_ID, Right_ID : AML_Objects.Object_ID := 0;
@@ -6067,11 +6066,6 @@ package body Owned with SPARK_Mode is
       Left_Descriptor, Right_Descriptor : Descriptor_Kind := No_Descriptor;
       Node : Node_ID := 0;
       Target_Reference : Reference := AML_References.No_Reference;
-      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
-      Snapshot_Copy : AML_Objects.Clone_Status;
-      Prior_Node : Entry_Record;
-      ID : AML_Objects.Object_ID;
-      Allocated : AML_Objects.Allocation_Status;
       Located : Lookup_Result;
       procedure Classify
         (Operand : Concatenation_Operand; Kind : out Builder.Input_Kind;
@@ -6179,71 +6173,108 @@ package body Owned with SPARK_Mode is
          end case;
       end Data;
       Accepted : Boolean;
-      procedure Execute_Value_Transaction is
+      procedure Allocate_Result
+        (Built : Builder.Result; Allocated : out AML_Objects.Allocation_Status)
+        with Pre => Built.Status = Builder.Built
+      is
+         ID : AML_Objects.Object_ID;
+         Source : AML_References.Object_Handle;
+         Has_Fresh_Source : Boolean;
       begin
-         Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-         Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-         Status := Unsupported_Value;
-         if not Initialized (A) then return; end if;
-         Classify (Left, Left_Kind, Left_Number, Left_ID, Left_Descriptor, Accepted);
-         if not Accepted then return; end if;
-         Classify (Right, Right_Kind, Right_Number, Right_ID, Right_Descriptor, Accepted);
-         if not Accepted then return; end if;
-         case Destination.Kind is
-            when Detached_Result | Prepared_Cell_Copy => null;
-            when Named_Attachment =>
-               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
-               if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
-               Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
-               if Located.Status /= Found then Status := Unknown_Name; return; end if;
-               if Located.Node = Root then return; end if;
-               Node := Located.Node;
-               Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
-               if not Accepted then return; end if;
-            when Reference_Attachment =>
-               if not Matches (A, Destination.Ref) then return; end if;
-               Target_Reference := Destination.Ref;
-               if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
-                  Node := Node_ID (AML_References.Named_Node (Destination.Ref));
-               end if;
-         end case;
+         Builder.Allocate (Built, A.Tree.Values, ID, Allocated);
+         if Allocated /= AML_Objects.Allocated then
+            Status := Value_Limit;
+            return;
+         end if;
+         -- The initialized arena owns this fresh byte object.
+         Make_Source (A, ID, Source, Has_Fresh_Source);
+         pragma Assert (Has_Fresh_Source);
+         Read_Source (A, Source, Result_Value, Status);
+      end Allocate_Result;
+
+      procedure Allocate_And_Attach (Built : Builder.Result)
+        with Pre => Built.Status = Builder.Built
+             and then Destination.Kind /= Detached_Result
+      is
+         Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+         Snapshot_Copy : AML_Objects.Clone_Status;
+         Prior_Node : Entry_Record;
+         Allocated : AML_Objects.Allocation_Status;
+      begin
          AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
          if Snapshot_Copy /= AML_Objects.Cloned then
-            Status := AML_Execute.Value_Limit; return;
+            AML_Objects.Discard (Prior_Values);
+            Status := Value_Limit;
+            return;
          end if;
          if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
-         declare
-            Built : constant Builder.Result := Builder.Build
-              (Width, Left_Kind, Left_Number, Data (Left_ID, Left_Descriptor),
-               Right_Kind, Right_Number, Data (Right_ID, Right_Descriptor));
-         begin
-            if Built.Status = Builder.Empty_Buffer then Status := Empty_Buffer; return; end if;
-            if Built.Status = Builder.Length_Limit then Status := Value_Limit; return; end if;
-            AML_Objects.New_Bytes
-              (A.Tree.Values,
-               (if Built.Kind = Builder.String_Output then AML_Objects.String_Object else AML_Objects.Buffer_Object),
-               Built.Data (1 .. Built.Length), ID, Allocated);
-         end;
-         if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
-         Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
-         if Status = Returned then
-            case Destination.Kind is
-               when Detached_Result => null;
-               when Prepared_Cell_Copy => Clone_Value (A, Width, Result_Value, Cell_Value, Status);
-               when Named_Attachment => Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Direct_Target);
-               when Reference_Attachment => Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
-            end case;
+         Allocate_Result (Built, Allocated);
+         if Allocated = AML_Objects.Allocated then
+            if Status = Returned then
+               case Destination.Kind is
+                  when Detached_Result => null;
+                  when Prepared_Cell_Copy => Clone_Value (A, Width, Result_Value, Cell_Value, Status);
+                  when Named_Attachment => Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Direct_Target);
+                  when Reference_Attachment => Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Destination.Mode);
+               end case;
+            end if;
+            if Status /= Returned then
+               pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
+               AML_Objects.Transfer (Prior_Values, A.Tree.Values);
+               Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+               Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+            end if;
          end if;
-         if Status /= Returned then
-            pragma Assert (Node = 0 or else A.Tree.Items (Node) = Prior_Node);
-            AML_Objects.Transfer (Prior_Values, A.Tree.Values);
-            Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-            Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-         end if;
-      end Execute_Value_Transaction;
+         AML_Objects.Discard (Prior_Values);
+      end Allocate_And_Attach;
    begin
-      Execute_Value_Transaction;
-      AML_Objects.Discard (Prior_Values);
+      Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+      Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+      Status := Unsupported_Value;
+      if not Initialized (A) then return; end if;
+      Classify (Left, Left_Kind, Left_Number, Left_ID, Left_Descriptor, Accepted);
+      if not Accepted then return; end if;
+      Classify (Right, Right_Kind, Right_Number, Right_ID, Right_Descriptor, Accepted);
+      if not Accepted then return; end if;
+      case Destination.Kind is
+         when Detached_Result | Prepared_Cell_Copy => null;
+         when Named_Attachment =>
+            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+            if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
+            Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
+            if Located.Status /= Found then Status := Unknown_Name; return; end if;
+            if Located.Node = Root then return; end if;
+            Node := Located.Node;
+            Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
+            if not Accepted then return; end if;
+         when Reference_Attachment =>
+            if not Matches (A, Destination.Ref) then return; end if;
+            Target_Reference := Destination.Ref;
+            if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
+               Node := Node_ID (AML_References.Named_Node (Destination.Ref));
+            end if;
+      end case;
+      declare
+         Built : constant Builder.Result := Builder.Build
+           (Width, Left_Kind, Left_Number, Data (Left_ID, Left_Descriptor),
+            Right_Kind, Right_Number, Data (Right_ID, Right_Descriptor));
+      begin
+         case Built.Status is
+            when Builder.Empty_Buffer => Status := Empty_Buffer;
+            when Builder.Length_Limit => Status := Value_Limit;
+            when Builder.Built =>
+               if Destination.Kind = Detached_Result then
+                  declare
+                     Allocated : AML_Objects.Allocation_Status;
+                  begin
+                     Allocate_Result (Built, Allocated);
+                     pragma Assert (Allocated /= AML_Objects.Allocated or else Status = Returned);
+                  end;
+               else
+                  Allocate_And_Attach (Built);
+               end if;
+         end case;
+      end;
    end Concatenate_And_Attach;
    procedure To_Buffer_And_Attach
      (A : in out Arena; Width : AML_Decode.Integer_Width;

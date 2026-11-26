@@ -143,4 +143,13 @@ package body AML_Concatenation with SPARK_Mode is
          end;
       end return;
    end Build;
+   procedure Allocate
+     (Item : Result; Store : in out AML_Objects.State;
+      ID : out AML_Objects.Object_ID; Status : out AML_Objects.Allocation_Status)
+   is
+      Kind : constant AML_Objects.Byte_Kind :=
+        (if Item.Kind = String_Output then AML_Objects.String_Object else AML_Objects.Buffer_Object);
+   begin
+      AML_Objects.New_Bytes (Store, Kind, Item.Data (1 .. Item.Length), ID, Status);
+   end Allocate;
 end AML_Concatenation;
