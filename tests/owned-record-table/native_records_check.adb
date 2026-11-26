@@ -57,7 +57,9 @@ begin
    Check (Base /= 0, "rounding across old bound");
    Sentinel (Base + 16 * 1024 * 1024, 0, False);
    Check (Free (Base, 16 * 1024 * 1024 + 1), "rounded large release");
-   Check (Owned.Reserve (2**31 + 4096) = 0, "above region limit");
+   --  MEM-007: past the kernel's largest region (4 TiB + 64 GiB), refused
+   --  and said so (Too_Large); no limit is compiled into this program.
+   Check (Owned.Reserve (2**42 + 2**36 + 4096) = 0, "above region limit");
    Check (Allocate (Unsigned_64'Last) = 0, "mapping size overflow");
    debugPrint ("TEST: PASS large owned mappings lifecycle" & ASCII.LF);
    for Round in 1 .. 2 loop
@@ -103,12 +105,75 @@ begin
       Check (Owned.Change (Base, 4096, Owned.Make_Read_Only), "read-only run");
       Sentinel(Base,Unsigned_64(Round),False);
       Check (Owned.Change (Base, 4096, Owned.Make_Read_Write), "restore write access");
-      Check (not Owned.Release (Base, 4096), "cannot release a run directly");
-      Check (Owned.Release (Base, 2**31), "region retirement");
+      --  munmap semantics (MEM-007): the head page goes (the region
+      --  shrinks and its runs follow), then the rest.
+      Check (Owned.Release (Base, 4096), "release of the region's head");
+      Sentinel(Base+8192,0,False);
+      Check (Owned.Release (Base + 4096, 2**31 - 4096), "region retirement");
       Sentinel(Other,1234,False);
       Check (Free (Other, 4096), "unrelated release");
    end loop;
    debugPrint("TEST: PASS native owned records 8193 pages twice, hole reuse, protection, interleaved reservation retirement" & ASCII.LF);
+   --  MEM-007: Ladybird's memory model (K1-K5, K7-K9) and typed refusals.
+   declare
+      GiB : constant Unsigned_64 := 2**30;
+      TiB : constant Unsigned_64 := 2**40;
+      MiB : constant Unsigned_64 := 2**20;
+      Cage, Twice, Heap, Direct, Run, Middle, Low, High : Unsigned_64;
+   begin
+      --  K1: the ArrayBuffer cage, 4 TiB + 32 GiB, in one reservation.
+      Cage := Owned.Reserve (4 * TiB + 32 * GiB, 0);
+      Check (Cage /= 0, "K1 a 4 TiB + 32 GiB reservation");
+      --  K2, K5: LibGC reserves twice its 32 GiB region, then gives back the
+      --  head and the tail around a 32 GiB-aligned 32 GiB.
+      Twice := Owned.Reserve (64 * GiB, 0);
+      Check (Twice /= 0, "K2 a 64 GiB reservation beside the cage");
+      Heap := (Twice + 32 * GiB - 1) and not (32 * GiB - 1);
+      if Heap > Twice then
+         Check (Owned.Release (Twice, Heap - Twice), "K5 release of the head");
+      end if;
+      if Heap + 32 * GiB < Twice + 64 * GiB then
+         Check (Owned.Release (Heap + 32 * GiB, Twice + 64 * GiB - (Heap + 32 * GiB)),
+                "K5 release of the tail");
+      end if;
+      --  K3: or the kernel aligns it.
+      Direct := Owned.Reserve (32 * GiB, 32 * GiB);
+      Check (Direct /= 0 and then Direct mod (32 * GiB) = 0, "K3 a 32 GiB-aligned reservation");
+      --  K7: one commit, any page multiple, inside the reservation.
+      Run := Heap + 3 * 4096;
+      Check (Owned.Change (Run, 64 * MiB, Owned.Commit), "K7 one 64 MiB commit");
+      Sentinel (Run, 0, False);
+      Sentinel (Run + 64 * MiB - 8, 0, False);
+      Sentinel (Run, 16#A11CE#, True);
+      Sentinel (Run + 64 * MiB - 8, 16#B0B#, True);
+      Check (not Owned.Change (Run + 32 * MiB, 4096, Owned.Commit), "a commit over committed pages");
+      --  K8, K9: decommit a subrange; protect another read-only and back.
+      Check (Owned.Change (Run + 8 * MiB, MiB, Owned.Decommit), "K8 decommit a subrange");
+      Check (Owned.Change (Run + 16 * MiB, MiB, Owned.Make_Read_Only), "K9 read-only");
+      Check (Owned.Change (Run + 16 * MiB, MiB, Owned.Make_Read_Write), "K9 read/write again");
+      --  K5, the middle: a hole in the middle of the run and the region;
+      --  both sides keep their pages and the hole is no region.
+      Middle := Run + 32 * MiB;
+      Check (Owned.Release (Middle, MiB), "K5 release of a middle range");
+      Sentinel (Run, 16#A11CE#, False);
+      Sentinel (Run + 64 * MiB - 8, 16#B0B#, False);
+      Check (not Owned.Change (Middle, 4096, Owned.Commit), "the released middle is no region");
+      Check (Owned.Change (Middle - MiB, 4096, Owned.Decommit), "the lower part is still a region");
+      Check (Owned.Change (Middle + MiB, 4096, Owned.Decommit), "the upper part is a region of its own");
+      --  munmap across regions and the holes between them: everything from
+      --  the lowest to the highest of the three, in one call.
+      Low := Unsigned_64'Min (Cage, Unsigned_64'Min (Heap, Direct));
+      High := Unsigned_64'Max (Cage + 4 * TiB + 32 * GiB,
+                               Unsigned_64'Max (Heap + 32 * GiB, Direct + 32 * GiB));
+      Check (Owned.Release (Low, High - Low), "a release across regions and holes");
+      Check (not Owned.Change (Run, 4096, Owned.Decommit) and then
+             not Owned.Change (Direct, 4096, Owned.Commit) and then
+             not Owned.Change (Cage, 4096, Owned.Commit), "every region in it gone");
+      Check (not Owned.Release (Low, High - Low), "a second release touches nothing");
+      debugPrint ("TEST: PASS MEM-007 4 TiB + 32 GiB cage, 64 GiB trimmed to a 32 GiB-aligned heap, "
+                  & "32 GiB alignment, one 64 MiB commit, decommit, read-only, a middle release, "
+                  & "a release across regions and holes" & ASCII.LF);
+   end;
    for I in 1 .. 64 loop
       Base := Allocate (4096);
       Check (Base /= 0, "exit cleanup allocation");

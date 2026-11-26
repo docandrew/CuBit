@@ -23,7 +23,8 @@ procedure Layout_Tests is
      [0, 1, 2, 4095, 4096, 4097, L.Limit - L.First,
       L.Limit - L.First + 1, Unsigned_64'Last];
 begin
-   pragma Assert (Memory_Grants.Received_Region_Limit <= L.First);
+   -- MEM-007: the aperture lies below the received grants.
+   pragma Assert (L.Limit <= Memory_Grants.Received_Region_First);
    pragma Assert (L.Limit < 16#0000_6000_0000_0000#); -- framebuffer
    pragma Assert (not L.Conflicts (16#0000_5000_0000_0000#, 2 ** 32)); -- initrd
    pragma Assert (L.First mod 4096 = 0 and L.Limit mod 4096 = 0);

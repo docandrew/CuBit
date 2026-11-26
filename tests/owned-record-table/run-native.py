@@ -8,6 +8,7 @@ directory = pathlib.Path(sys.argv[1]).resolve()
 serial = directory / "serial.log"
 required = (
  "TEST: PASS native owned records 8193 pages twice, hole reuse, protection, interleaved reservation retirement",
+ "TEST: PASS MEM-007 4 TiB + 32 GiB cage",
  "native owned records: exiting with 64 live mappings",
  "Process.reclaimProcess: owned regions retired 64",
 )

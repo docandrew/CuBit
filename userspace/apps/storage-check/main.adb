@@ -62,6 +62,14 @@ procedure main is
          end loop;
          return True;
       end Check;
+      --  One page reads Expected throughout.
+      function Check_Page (Base : Unsigned_64; Expected : Unsigned_8) return Boolean is
+         type Data is array (1 .. Natural (PAGE_SIZE)) of Unsigned_8;
+         Buffer : Data with Import, Volatile,
+           Address => To_Address (Integer_Address (Base));
+      begin
+         return (for all Byte of Buffer => Byte = Expected);
+      end Check_Page;
    begin
       if Owned.Allocate (0) /= 0 or else
         Owned.Allocate (Unsigned_64'Last) /= 0 or else
@@ -74,11 +82,16 @@ procedure main is
          if A = 0 or B = 0 or A = B or A mod PAGE_SIZE /= 0 or B mod PAGE_SIZE /= 0
          then return False; end if;
          if not Check (A, 0, 16#A5#) or else not Check (B, 0, 16#5A#) then return False; end if;
-         -- Interior, wrong-size and non-owned releases must not change data.
-         if Release (A + PAGE_SIZE, Bytes) or else Release (A, PAGE_SIZE) or else
-           Release (A, Bytes - 1) or else
-           not Check (A, 16#A5#, 16#A5#) or else not Owned.Free (A, Bytes - 1) or else
-           Release (A, Bytes)
+         -- An unaligned length is refused and changes nothing (MEM-007).
+         if Release (A, Bytes - 1) or else not Check (A, 16#A5#, 16#A5#) then
+            return False;
+         end if;
+         -- munmap semantics: the tail page, then the head page go; the
+         -- middle page stays, its data intact; then it goes too, and a
+         -- second release of the range touches nothing and is refused.
+         if not Release (A + 2 * PAGE_SIZE, PAGE_SIZE) or else not Release (A, PAGE_SIZE)
+           or else not Check_Page (A + PAGE_SIZE, 16#A5#)
+           or else not Release (A + PAGE_SIZE, PAGE_SIZE) or else Release (A, Bytes)
          then return False; end if;
          Again := Owned.Allocate (Bytes);
          -- First-fit reuses the hole, but fresh physical contents must be zero.
@@ -214,9 +227,11 @@ procedure main is
          end if;
       end if;
 
-      --  Release: wrong size refused; the whole region back; then nothing.
-      Expect (not Owned.Release (R, Region_Bytes - PAGE_SIZE), "release of the wrong size");
-      Expect (Owned.Release (R, Region_Bytes), "release");
+      --  Release (munmap semantics, MEM-007): all but the last page, then
+      --  the last page; every frame back; a second release touches nothing
+      --  and is refused.
+      Expect (Owned.Release (R, Region_Bytes - PAGE_SIZE), "release of the region's head");
+      Expect (Owned.Release (P (Pages - 1), PAGE_SIZE), "release of the rest");
       Expect (Grown (0), "release gave every frame back");
       Expect (not Owned.Release (R, Region_Bytes), "double release");
       Expect (not Owned.Change (R, PAGE_SIZE, Owned.Commit), "commit after release");
