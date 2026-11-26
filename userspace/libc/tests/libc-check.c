@@ -95,6 +95,39 @@ static void reservation_checks(void)
 	check(munmap(opened, mib) == 0, "the second reservation is released");
 }
 
+/* Ladybird's real sizes (MEM-007): LibGC reserves 64 GiB to trim it to a
+ * 32 GiB-aligned 32 GiB heap, and LibJS reserves a 4 TiB + 32 GiB
+ * ArrayBuffer cage. Both are far over the former 2 GiB region limit,
+ * which libc once mirrored and refused itself with ENOMEM before the
+ * kernel was asked (BUG-009). Neither commits anything; the pages at the
+ * far end of each are committed, written and given back. */
+static void large_reservation_checks(void)
+{
+	const size_t gib = (size_t)1 << 30, tib = (size_t)1 << 40, page = 4096;
+	const size_t twice = 64 * gib, heap_bytes = 32 * gib, cage_bytes = 4 * tib + 32 * gib;
+	char *twice_base = mmap(0, twice, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+	check(twice_base != MAP_FAILED, "mmap NORESERVE reserves 64 GiB (more than 2 GiB reaches the kernel)");
+	if (twice_base != MAP_FAILED) {
+		char *heap = (char *)(((unsigned long)twice_base + heap_bytes - 1) & ~(unsigned long)(heap_bytes - 1));
+		size_t head = (size_t)(heap - twice_base), tail = twice - head - heap_bytes;
+		check((head == 0 || munmap(twice_base, head) == 0) && (tail == 0 || munmap(heap + heap_bytes, tail) == 0),
+		      "the 64 GiB reservation trims to a 32 GiB-aligned 32 GiB");
+		char *last = heap + heap_bytes - page;
+		int committed = mmap(last, page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) == last;
+		check(committed && last[0] == 0, "a page at the far end of the 32 GiB heap commits");
+		if (committed) last[page - 1] = 7;
+		check(munmap(heap, heap_bytes) == 0, "the 32 GiB heap is released");
+	}
+	char *cage = mmap(0, cage_bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+	check(cage != MAP_FAILED, "mmap NORESERVE reserves a 4 TiB + 32 GiB cage");
+	if (cage != MAP_FAILED) {
+		char *far = cage + cage_bytes - page;
+		int committed = mmap(far, page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) == far;
+		check(committed && far[0] == 0, "a page at the far end of the cage commits");
+		check(munmap(cage, cage_bytes) == 0, "the cage is released");
+	}
+}
+
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 static long counter;
@@ -210,6 +243,7 @@ int main(void)
 		check(munmap(guard, 8192) == 0, "release mixed guard and data pages");
 	}
 	reservation_checks();
+	large_reservation_checks();
 	owner_mutex_checks();
 	for (int round = 0; round < 128; round++) {
 		unsigned char *p = mmap(0, 1 << 20, PROT_READ | PROT_WRITE,

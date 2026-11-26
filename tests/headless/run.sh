@@ -8385,6 +8385,13 @@ libc-check: the whole reservation is released PASS
 libc-check: a second reservation, one page committed PASS
 libc-check: mprotect opens a reservation in place PASS
 libc-check: the second reservation is released PASS
+libc-check: mmap NORESERVE reserves 64 GiB (more than 2 GiB reaches the kernel) PASS
+libc-check: the 64 GiB reservation trims to a 32 GiB-aligned 32 GiB PASS
+libc-check: a page at the far end of the 32 GiB heap commits PASS
+libc-check: the 32 GiB heap is released PASS
+libc-check: mmap NORESERVE reserves a 4 TiB + 32 GiB cage PASS
+libc-check: a page at the far end of the cage commits PASS
+libc-check: the cage is released PASS
 libc-check: a recursive mutex the main thread holds is busy to another thread PASS
 libc-check: opendir and readdir PASS
 libc-check: a file outside the scope is denied PASS
