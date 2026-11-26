@@ -1,0 +1,16 @@
+{
+  "name": "copied-owner-observed-2tables-256bytes-v1",
+  "Copied_Table_Capacity": 2,
+  "Copied_Byte_Capacity": 256,
+  "Load_Capacity": "Catalog_Count+Copied_Table_Capacity",
+  "model": "finite-memory-io-v1",
+  "memory_bytes_per_space": 65536,
+  "geometry_handles": 128,
+  "observed_tables": 1,
+  "observed_bytes": 88,
+  "table_headroom": 1,
+  "byte_headroom": 168,
+  "complete_capacity_need_established": false,
+  "production_core_default_changed": false,
+  "native_boot_sizing_separate": true
+}
