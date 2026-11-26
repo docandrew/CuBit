@@ -1,0 +1,7 @@
+# KERN-006 layer 1 (tests/image-shares/native): a copy of the shared image,
+# and its twin (the same manifest: the same layout, another fill).
+(Executable_Manifest
+  identity => "com.cubit.image-share-child"
+  version => "0.1.0"
+  optional => ["logstore"]
+  requests => [(service "logstore" "logstore")])

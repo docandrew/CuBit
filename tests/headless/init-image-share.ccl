@@ -1,0 +1,6 @@
+# KERN-006 layer 1 (tests/image-shares/native): ten copies of one image
+# share its read-only frames; a twin with other bytes does not.
+(startup v1
+  (start "logstore.svc" (test-console approve-declared))
+  (start "image-share-check.app")
+)
