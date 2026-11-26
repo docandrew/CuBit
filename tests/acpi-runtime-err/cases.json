@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "cases": [
     {
       "name": "basic-local_absent",
@@ -649,6 +649,2215 @@
         ]
       },
       "qualification": "Strictly compiler-admitted diagnostic; normal ACPICA reference with non-authority thread-presence comparison"
+    },
+    {
+      "name": "runtime-numeric-direct_zero",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "445344549f0000000237435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141a5445535400780100524d445251554f54700141465452a40a2a",
+      "AML_sha256": "ba74205ecef256964b13304d2494b5b595bdcb94cbf6223679040700118ffb80",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-direct_original",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "445344549f00000002cf435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a468141a5445535400780100524d445251554f54700141465452a40a2a",
+      "AML_sha256": "a3977f0b5eb53617607c02aea36eb09939ca2c809296d3830354d0a856c0cce3",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          12300
+        ]
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-direct_absent",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "445344547e00000002e3435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b495000141a5445535400780100524d445251554f54700141465452a40a2a",
+      "AML_sha256": "ce612a0832da6101a444507b80cf8bba21e52e8b6d9d96c88769d5ab896c1abc",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          12300
+        ]
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-store_named",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454a4000000028d435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141f544553540070780100524d445251554f5444455354700141465452a40a2a",
+      "AML_sha256": "8ee5ef4d415f67a82076d49d07f57cfafe87c6c0cd760d9b31422f1dfb75d4d3",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-store_local",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454a70000000257435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001422544553540070780100524d445251554f5460706044455354700141465452a40a2a",
+      "AML_sha256": "f1bb373e7f9e9965c87e696863f6fc2c3e244f4675b5a6f6253542860f638ca5",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 3,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-predicate_if",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454af000000027f435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400142a5445535400a012780100524d445251554f54700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "634268fd2ea3803022309ac687654be3782729d5a00003b475cbbaa862277c5d",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-return_divide",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454970000000219435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014125445535400a4780100524d445251554f54",
+      "AML_sha256": "913a9e0f2a0cadc0ebf2528cb912365a0498d2e8514bd17b3ddb892ca822951b",
+      "expected": {
+        "status": "NO_RETURN",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-mod_zero",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454a400000002d9435542495400444956455252000001000000494e544c080426200841465452000845434e5400085354415400084554595000085448524400085a4449560008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001419544553540085015a44495651554f54700141465452a40a2a",
+      "AML_sha256": "59d00ea1e22e9fb22e46cd81bba627eb3bd244eb7f7aa559276e8d6e22d2cd8e",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-nonzero_handler",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454a3000000020f435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014245f455252037545434e54706853544154708e6945545950706a54485244a40c78563412141a5445535400780100524d445251554f54700141465452a40a2a",
+      "AML_sha256": "034d8a5d9f26bbaf9453a486c79bad3f83aa9ab5ae23805d56f21ae8afe051f1",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          305419896
+        ]
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-operand_side_effects",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454a900000002ee435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001424544553540078700144455354700054414b45524d445251554f54700141465452a40a2a",
+      "AML_sha256": "829f3b28dfeeaa3bcc8a6a47d736a49d49d5f9143aaf9b9afe82d4a9e665ac8a",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 1,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 1,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-target_locals",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ad00000002dc435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014285445535400700a1160700a176178010060617060524d4452706151554f54700141465452a40a2a",
+      "AML_sha256": "07bf0ddadaddeb9bfa0e0f0c2e262bb48b2dd021888f62ace22fee9d324bd974",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 8
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-target_index",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454cb000000022b435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008504b47301206020a110a1708524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400143a544553540078010088504b4730000088504b47300100708388504b47300000524d4452708388504b4730010051554f54700141465452a40a2a",
+      "AML_sha256": "50161f941878d99c8fcdbeaccfc3b1969058dea36f82bf2c2646c5628122a8c8",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 10
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-numeric-target_side_effect",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454cf000000028a435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008504b47301206020a110a1708524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400143e544553540078010088504b47307554414b450088504b47300000708388504b47300000524d4452708388504b4730010051554f54700141465452a40a2a",
+      "AML_sha256": "14d943e9d7ca06b0dbcc540261d68f5d41da663bced0aa0688bf3e355671b3b5",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 11
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-uninitialized-store_local",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b600000002dc435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141f5445535400a009464c4147700a0760706044455354700141465452a40a2a",
+      "AML_sha256": "3399ddf9be2ed8662a664a51f95e0755a3ee4e89b6569c175abb592342493451",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-uninitialized-predicate_local",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c100000002d8435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400142a5445535400a009464c4147700a0760a00860700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "9b78f6e3dccb7fac617f4ec718328e3c846a1a929784196115911940723715db",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 1
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-uninitialized-predicate_not",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c20000000243435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400142b5445535400a009464c4147700a0760a0099260700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "6cb8413170f095fd2ecbea686d7b8fcbbc773d9fe6a2ac13ea4f21ff325d9c5e",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-uninitialized-predicate_compare",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c400000002aa435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400142d5445535400a009464c4147700a0760a00b92936000700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "4319024d3482265feb3d4703fbcc7dffe0440aa09cdc4a7ec3cb6620c301a9c9",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-uninitialized-numeric_add",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b700000002d7435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014205445535400a009464c4147700a076072600144455354700141465452a40a2a",
+      "AML_sha256": "ee5e397136aa205e8946e3543dfedfe10c3e8242c3baaa055818356243f3e3a2",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-uninitialized-store_add",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454bc0000000228435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014255445535400a009464c4147700a076070726001524d445244455354700141465452a40a2a",
+      "AML_sha256": "3c64aeebc6a39f05291ae51443a1b6627546cfcb56232e85859fa224a384a5f0",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-uninitialized-return_local",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454a90000000268435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014125445535400a009464c4147700a0760a460",
+      "AML_sha256": "116a09714c82d271adba3b108a83608a42b9db8f3f294a9fc833b698f46179e7",
+      "expected": {
+        "status": "NO_RETURN",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-uninitialized-predicate_or",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c30000000240435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400142c5445535400a009464c4147700a0760a00a916001700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "a0d94c94b9ef9d5d6067e0308a13d13f57c7536e086f51144b4f0b91282aa777",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-uninitialized-store_index_target",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454bd00000002ca435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014265445535400a009464c4147700a0760706088504b47307554414b4500700141465452a40a2a",
+      "AML_sha256": "e9168c764a4e68849ab5858a84cf1a9ca30c9d83c6eaa8fdabcb1c622748b7de",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 8
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-uninitialized-two_stores",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454bc00000002b7435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014255445535400a009464c4147700a0760706044455354706051554f54700141465452a40a2a",
+      "AML_sha256": "aadcec11c4c75d25a51eb6f99dc3c3252dda6a0a88bfa6ec1a80a3624cc003b3",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-callee-root_no_return_if",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c400000002c5435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494400a478015a444956524d445251554f5414235445535400a00b564f4944700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "117ade5f5cb257e66d28ed97f8577a5d2e07c2294a8272f30377327d3d8d4fde",
+      "expected": {
+        "status": "MISSING_RESULT",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-callee-root_no_return_return",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ac0000000258435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494400a478015a444956524d445251554f54140b5445535400a4564f4944",
+      "AML_sha256": "6cbec1662201bad6b385c341083f1a35a0ae1746a565048923bfda230badd82a",
+      "expected": {
+        "status": "NO_RETURN",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-consumer-not_callee",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c3000000022e435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494400a478015a444956524d445251554f5414225445535400a00b92564f49447554414b45a10675534b4950700141465452a40a2a",
+      "AML_sha256": "de46fc4a6fe02864ef8f01d9a34522332678f3563f076ef322a45cac171ba67e",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-consumer-store_callee",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b900000002cc435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494400a478015a444956524d445251554f541418544553540070564f494444455354700141465452a40a2a",
+      "AML_sha256": "9066774ac71931d54f2cd5052c0fc43b0f281ed61f8ad608d066d507424fcf32",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-consumer-convert_callee",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b900000002a3435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494400a478015a444956524d445251554f541418544553540099564f494444455354700141465452a40a2a",
+      "AML_sha256": "fc529c1242e1fb0ad3fba951822a1ed01c84c7ba9ae771c4e8b1c6d2837922a1",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-consumer-predicate_convert_callee",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c40000000224435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494400a478015a444956524d445251554f5414235445535400a00c99564f4944007554414b45a10675534b4950700141465452a40a2a",
+      "AML_sha256": "2b86ccdc4528eecd4590dbf424579dbb491bf7c273c909e5b2098ec648674f68",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-consumer-store_convert_callee",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454bb000000022f435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494400a478015a444956524d445251554f54141a54455354007099564f49440044455354700141465452a40a2a",
+      "AML_sha256": "d4dd77abc50b91a07ca118c67733dfab799efb239f9ddf3c12b1be13d3ed5bcb",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 3,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-consumer-store_not_callee",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ba0000000238435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494400a478015a444956524d445251554f54141954455354007092564f494444455354700141465452a40a2a",
+      "AML_sha256": "227fec6ec33f8408050e09cde480bd30b9b621a5453bb8c3ab825d564e63dbed",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 3,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-callee-arg_not",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c400000002c2435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494401a478685a444956524d445251554f5414235445535400a00c92564f4944017554414b45a10675534b4950700141465452a40a2a",
+      "AML_sha256": "fb8a2cff93866b5425da6ff9caa2b69b7c945c4cf101209b18177dca4739ede8",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 8
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-callee-arg_store",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ba0000000261435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494401a478685a444956524d445251554f541419544553540070564f49440144455354700141465452a40a2a",
+      "AML_sha256": "c5820d700318f93d97de88fb038da0c7e12eea452f878e3c0ce8203466ee565c",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-callee-arg_convert_predicate",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c500000002b8435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494401a478685a444956524d445251554f5414245445535400a00d99564f494401007554414b45a10675534b4950700141465452a40a2a",
+      "AML_sha256": "9edd939c76905df67d23b809611184117da4150f90fdb1c7516d89af4f46736a",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 8
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-callee-arg_direct_if",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c50000000259435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494401a478685a444956524d445251554f5414245445535400a00c564f494401700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "bdbbe7f0081eb990280126bda39afd202fc2837fb03cb9dc96c8f86a74a89f39",
+      "expected": {
+        "status": "MISSING_RESULT",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-callee-arg_direct_return",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ad00000002ed435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001415564f494401a478685a444956524d445251554f54140c5445535400a4564f494401",
+      "AML_sha256": "335bdcb1587509e09910ec6908b3d6aa4c4b2d339f8e6e066dc6aa39df1b9305",
+      "expected": {
+        "status": "NO_RETURN",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-callee-consumer_nonzero",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c600000002fa435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b495000142d5f455252037545434e54706853544154708e6945545950706a54485244a00c93680b1230a40c78563412a4001415564f494400a478015a444956524d445251554f541418544553540070564f494444455354700141465452a40a2a",
+      "AML_sha256": "a05ff4702b5196a7f8c3367852af2b690e84c12b70418951b43a509aafb83a26",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          305419896
+        ]
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-callee-nested_consumer_nonzero",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c70000000266435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b495000142d5f455252037545434e54706853544154708e6945545950706a54485244a00c93680b1230a40c78563412a4001415564f494400a478015a444956524d445251554f54141954455354007092564f494444455354700141465452a40a2a",
+      "AML_sha256": "a352f9c3bbe4a45235910af0742f778b7f8c72fd5fac647d4296c8b7a43f5995",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          305419896
+        ]
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-tail_if_local",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c4000000021e435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400142d5445535400a009464c4147700a0760a01301a00860700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "3820c712d95e93752516e2c1d33b94e896280eb412082aae03d0a16dc300640c",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 1
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-loop_local_break",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b9000000028d435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014225445535400a009464c4147700a0760a208607554414b45a5700141465452a40a2a",
+      "AML_sha256": "05c472443b927d429d52455ee12dafd659de3ffb133e0e823585bb82ca1b1975",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-loop_not_break",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ba00000002f8435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014235445535400a009464c4147700a0760a20992607554414b45a5700141465452a40a2a",
+      "AML_sha256": "9f48f7a8e8f5c57d77c6ecceb7e5b07f7a3440056c4839793e2dac240ef6a095",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-nested_not_local",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c100000002ac435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400142a5445535400a009464c4147700a0760a0099292607554414b45a10675534b4950700141465452a40a2a",
+      "AML_sha256": "7fbd24d436747470a6ab52a7d485eabc342d56a6db1799451da4253c6d0c3a5d",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-compare_nonzero_handler",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c60000000280435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014245f455252037545434e54706853544154708e6945545950706a54485244a40c78563412142b5445535400a009464c4147700a0760a00a929360007554414b45a10675534b4950700141465452a40a2a",
+      "AML_sha256": "778c599fb96bd26c86ff72665eeed0a96d89d953c67d4d9274a7c3b7c3e6e099",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          305419896
+        ]
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-nested_not_divide",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c900000002b3435542495400444956455252000001000000494e544c08042620085a4449560008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400142c5445535400a0159278015a444956524d445251554f547554414b45a10675534b4950700141465452a40a2a",
+      "AML_sha256": "c954d8882cc58646a5782107a8e6df4446f92c5458911a37d939603e98ad8afd",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-not_store_divide",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454be00000002aa435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014335445535400a01b927078015a444956524d445251554f5444455354700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "2b63645710896a8ac65b041c11b94c1730f66c80358f66fa404e5f33f2a579b1",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 3,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-store_store_divide",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b20000000250435542495400444956455252000001000000494e544c08042620085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014275445535400707078015a444956524d445251554f5444455354524d4452700141465452a40a2a",
+      "AML_sha256": "cf37b336995016ce76a3d6948ef47a3b3763c3b37b0fcd5debffa2b188cd8da6",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 3,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-not_store_local",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c100000002c5435542495400444956455252000001000000494e544c0804262008464c414700085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014305445535400a009464c4147700a0760a00e92706044455354700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "7c15bfbb1a9d93409c7691dd6446fe21b8b7d84a8e6b7291198914dbbe50ce39",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-store_not_local",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b10000000279435542495400444956455252000001000000494e544c0804262008464c414700085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014205445535400a009464c4147700a076070926044455354700141465452a40a2a",
+      "AML_sha256": "7eecae53a6319e3c3db81f13e8cc3c80fe9c52bf4a2805e278de078e949d0fbf",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA observations mapped to CuBit status and nonauthority thread presence; no numeric thread-ID parity claim"
+    },
+    {
+      "name": "runtime-complex-target-refused",
+      "family": "runtime",
+      "contract_kind": "known-refusal",
+      "AML_hex": "44534454da000000023e435542495400444956455252000001000000494e544c0804262008504b47301206020a110a17085a444956000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b495000143a5f455252037545434e54a0109345434e54017054414b45534b49507054414b4544455354706853544154708e6945545950706a54485244a400142954455354007078015a444956524d445251554f5488504b47307554414b4500700141465452a40a2a",
+      "AML_sha256": "8277de3041763139751ad831360efe3c340bceb2a5a1d86f6875462c14c61da9",
+      "expected": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Strictly compiler-admitted guard/refusal contract; no complete reference behavior claim"
+    },
+    {
+      "name": "runtime-handler_same_fault",
+      "family": "runtime",
+      "contract_kind": "guard",
+      "AML_hex": "44534454aa000000022a435542495400444956455252000001000000494e544c080426200841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b495000142b5f455252037545434e54706853544154708e6945545950706a54485244780100524d445251554f54a400141a5445535400780100524d445251554f54700141465452a40a2a",
+      "AML_sha256": "691a5ddd19249477a015f3b88a5b7afda9c5a20a73abd991431371d88a11b855",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          12300
+        ]
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Strictly compiler-admitted guard/refusal contract; no complete reference behavior claim"
+    },
+    {
+      "name": "runtime-handler_cross_fault",
+      "family": "runtime",
+      "contract_kind": "guard",
+      "AML_hex": "44534454ac00000002aa435542495400444956455252000001000000494e544c080426205b014d555458000841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014265f455252037545434e54706853544154708e6945545950706a544852445b274d555458a400141a5445535400780100524d445251554f54700141465452a40a2a",
+      "AML_sha256": "55aa74fba94b2aa752312f994b797590562e1f87fc83a519ed1e8d6654ac099e",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12300,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          12300
+        ]
+      },
+      "default": {
+        "status": "DIVISION_BY_ZERO",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Strictly compiler-admitted guard/refusal contract; no complete reference behavior claim"
     }
   ],
   "normal_reference_version": "20260408",
@@ -657,5 +2866,9 @@
   "old_ASLTS_PASS_credit": 0,
   "compiled_runtime_contract_cases": [
     "release-nested_handler_fault"
-  ]
+  ],
+  "new_runtime_normal_diagnostics": 48,
+  "new_runtime_guard_contracts": 2,
+  "new_runtime_known_refusals": 1,
+  "planned_contracts": 324
 }

@@ -9,6 +9,7 @@ with AML_Simple_Targets;
 with AML_Unload_Framing;
 with AML_Unload_Statement;
 with AML_Runtime_Error_Invocation;
+with AML_Runtime_Recovery;
 package body AML_Execute with SPARK_Mode is
    use AML_Decode;
    Event_Extension : constant Byte := 16#02#;
@@ -315,6 +316,11 @@ package body AML_Execute with SPARK_Mode is
       type Resume_Point is (No_Resume_Point, Complete_Divide_Statement,
          Complete_Uninitialized_Numeric_Statement, Consumed_Missing_Name_Term);
       Failed_Statement : Resume_Point := No_Resume_Point;
+      package Recovery renames AML_Runtime_Recovery;
+      use type Recovery.Fault_Origin, Recovery.Plan_Kind;
+      Recovery_State : Recovery.Boundary := Recovery.Empty;
+      Fault_Cell : Recovery.Fault_Origin := Recovery.No_Fault;
+      Missing_Method_Result : Boolean := False;
       function Failure (Status : Execution_Status; Charged : Natural)
          return Execution_Result is
          Safe_Status : constant Payload_Free_Failure :=
@@ -698,10 +704,14 @@ package body AML_Execute with SPARK_Mode is
       begin
          Status := Returned;
          Provenance := Detached_Provenance;
+         if Enable_Runtime_Error_Handler then Fault_Cell := Recovery.No_Fault; end if;
          if Slot > 0 then
             declare Stored : constant Frame_Read_Result := Slot_Value (Slot - 1); begin
                if Stored.Status /= Frames.Ready then Status := Unsupported_Value; return; end if;
                if not Stored.Initialized then
+                  if Enable_Runtime_Error_Handler and then not Module_Root then
+                     Fault_Cell := Recovery.Frame_Fault (Slot);
+                  end if;
                   Status := (if Slot <= 8 then Uninitialized else Missing_Argument); return;
                end if;
                Item := Stored.Value;
@@ -1022,6 +1032,53 @@ package body AML_Execute with SPARK_Mode is
                Targets (Count) := T;
             end loop;
          end Collect_Targets;
+         procedure Mark_Recovery
+           (Fault : Recovery.Fault_Origin; Complete : Boolean; Active_Depth : Natural := Depth)
+           with Pre => Active_Depth <= Depth
+         is
+         begin
+            Recovery_State := Recovery.Begin_Boundary (Fault, Active_Depth, Complete, False);
+            while Recovery.Needs_Parent (Recovery_State) loop
+               pragma Loop_Invariant (Recovery.Valid (Recovery_State));
+               pragma Loop_Invariant (Recovery.Depth_At_Start (Recovery_State) = Active_Depth);
+               pragma Loop_Variant (Decreases => Recovery.Parents_Left (Recovery_State));
+               declare
+                  Parent_Op : constant Byte := Stack (Recovery.Parent_Index (Recovery_State)).Op;
+                  Count : Target_Number := 0;
+                  Targets : Target_List := [others => <>];
+                  Waiting : Boolean;
+                  Target_Status : Execution_Status;
+                  Target_Complete : Boolean := False;
+               begin
+                  if Parent_Op = 16#70# then
+                     -- A simple target has no expression side effects. Keep
+                     -- indexed targets refused: their effects must occur
+                     -- between distinct runtime error reports.
+                     Collect_Targets (Count, 1, Targets, Waiting, Target_Status);
+                     Target_Complete := Target_Status = Returned and then not Waiting and then Count = 1;
+                  end if;
+                  Recovery.Supply_Parent (Recovery_State, Parent_Op, Target_Complete);
+               end;
+            end loop;
+         end Mark_Recovery;
+         procedure Mark_Store_Recovery (Target_Complete : Boolean; Status : Execution_Status) is
+            Count : Target_Number := 0;
+            Targets : Target_List := [others => <>];
+            Waiting : Boolean;
+            Target_Status : Execution_Status;
+         begin
+            if not Enable_Runtime_Error_Handler or else Module_Root
+              or else Status not in Uninitialized | Missing_Argument
+              or else Fault_Cell = Recovery.No_Fault
+            then return; end if;
+            if not Target_Complete then
+               -- Consume a simple target without writing it. Complex targets
+               -- reach this point through the ordinary evaluated-target arm.
+               Collect_Targets (Count, 1, Targets, Waiting, Target_Status);
+               if Target_Status /= Returned or else Waiting then return; end if;
+            end if;
+            Mark_Recovery (Fault_Cell, True);
+         end Mark_Store_Recovery;
          procedure Publish_Live (Extra : Expression_Values := [])
            with Pre => Extra'Length <= Value_Arguments'Length;
          Context_Depth : Natural range 0 .. Call_Budget'Last := 0;
@@ -1738,7 +1795,7 @@ package body AML_Execute with SPARK_Mode is
          procedure Advance_Numeric
            (F : in out Frame; Right_Slot : Slot_Number;
             Value : in out Datum; Waiting : out Boolean;
-            Status : out Execution_Status)
+            Status : out Execution_Status; Completed_Operation : out Boolean)
            with Pre => Context_Valid (Environment) and then not Value'Constrained
                and then Offset <= Parse_Limit and then Parse_Limit <= Limit and then Limit <= Code'Length,
              Post => Context_Valid (Environment)
@@ -1750,6 +1807,7 @@ package body AML_Execute with SPARK_Mode is
          is
          begin
             Waiting := False;
+            Completed_Operation := False;
             Status := Returned;
             if not (AML_Logic.Unary (F.Op) or AML_Integers.Unary (F.Op))
               and then not F.Has_Left
@@ -1772,10 +1830,12 @@ package body AML_Execute with SPARK_Mode is
                F.Collecting_Targets := False;
                F.Targets_Ready := True;
             end if;
+            Completed_Operation := True;
             Complete_Numeric (F, Right_Slot, Value, Status);
          end Advance_Numeric;
          Have_Value : Boolean;
          Waiting_For_Target : Boolean;
+         Numeric_Completed : Boolean := False;
          Pending_Slot : Slot_Number;
          Pending_Identity : Scalar_Location := 0;
          Pending_Concat : Concatenation_Operand;
@@ -2259,7 +2319,8 @@ package body AML_Execute with SPARK_Mode is
            (ID : Natural; Actuals : Value_Arguments; Count : Natural;
             Need_Value : Boolean; Value : out Datum;
             Status : out Execution_Status;
-            Sources : Argument_Locations := [others => 0])
+            Sources : Argument_Locations := [others => 0];
+            Expression_Call : Boolean := False; Stacked_Call : Boolean := False)
            with Always_Terminates,
                 Subprogram_Variant => (Decreases => Calls_Left, Decreases => Natural'(0)),
                 Pre => Context_Valid (Environment) and then not Value'Constrained and then Count <= 7 and then Charged > 0 and then Charged <= Budget,
@@ -2347,6 +2408,34 @@ package body AML_Execute with SPARK_Mode is
                Status := Returned;
             elsif Result.Status = No_Return and Need_Value then
                Status := Missing_Result;
+               if Enable_Runtime_Error_Handler and then not Module_Root and then Expression_Call then
+                  -- Zero-argument methods dispatch directly. Argument-bearing
+                  -- methods still own their call frame until Dispatch returns.
+                  if Stacked_Call and then Depth = 0 then return; end if;
+                  declare
+                     Consumer_Depth : constant Natural := (if Stacked_Call then Depth - 1 else Depth);
+                     Count : Target_Number := 0;
+                     Targets : Target_List := [others => <>];
+                     Waiting : Boolean;
+                     Target_Status : Execution_Status;
+                     Complete : Boolean := False;
+                  begin
+                     if Consumer_Depth = 0 then
+                        Missing_Method_Result := True;
+                     else
+                        case Stack (Consumer_Depth).Op is
+                           when 16#92# => Complete := True;
+                           when 16#70# | To_Integer_Op =>
+                              Collect_Targets (Count, 1, Targets, Waiting, Target_Status);
+                              Complete := Target_Status = Returned and then not Waiting and then Count = 1;
+                           when others => null;
+                        end case;
+                        if Complete then
+                           Mark_Recovery (Recovery.Missing_Return, True, Consumer_Depth);
+                        end if;
+                     end if;
+                  end;
+               end if;
             end if;
             end;
          end Dispatch;
@@ -2859,7 +2948,7 @@ package body AML_Execute with SPARK_Mode is
                      when Method_Binding =>
                         if Bound.Parameters = 0 then
                            Dispatch (Bound.Method_ID, [others => (Value_Kind => Integer_Datum, Number => 0, Origin => AML_Decode.Ordinary_Integer)], 0,
-                                     not Allow_No_Return or Depth > 0, V, S);
+                                     not Allow_No_Return or Depth > 0, V, S, Expression_Call => True);
                            if S /= Returned then return; end if;
                            Pending_Provenance := Expression_Result;
                         else
@@ -2910,7 +2999,15 @@ package body AML_Execute with SPARK_Mode is
                      end if;
                      Publish_Live ([V]);
                      Resolve_Slot_With_Source (Pending_Slot, V, Final_Provenance, S);
-                     if S /= Returned then return; end if;
+                     if S /= Returned then
+                        if Enable_Runtime_Error_Handler and then not Module_Root
+                          and then S in Uninitialized | Missing_Argument
+                          and then Fault_Cell /= Recovery.No_Fault
+                        then
+                           Recovery_State := Recovery.Begin_Boundary (Fault_Cell, 0, True, True);
+                        end if;
+                        return;
+                     end if;
                      if Pending_Slot = 0 and then Final_Provenance.Kind /= Owned_Integer_Scalar then
                         Refresh_Scalar_Location (Pending_Identity, V, S);
                         if S /= Returned then return; end if;
@@ -3270,7 +3367,8 @@ package body AML_Execute with SPARK_Mode is
                         end;
                      else
                         Dispatch (Stack (Depth).Method_ID, Stack (Depth).Actuals,
-                                  Stack (Depth).Given, not Allow_No_Return or Depth > 1, V, S, Stack (Depth).Locations);
+                                  Stack (Depth).Given, not Allow_No_Return or Depth > 1, V, S, Stack (Depth).Locations,
+                                  Expression_Call => True, Stacked_Call => True);
                      end if;
                      if S /= Returned then return; end if;
                   elsif Stack (Depth).Op = Concatenate_Op then
@@ -3917,7 +4015,7 @@ package body AML_Execute with SPARK_Mode is
                         Left_Item := Stack (Depth).Left;
                         Resolve_Store_Source (Stack (Depth).Left_Slot, Left_Item, Stack (Depth).Left_Location,
                           Expression_Location (Call_Frame, Depth, Reserved_Root), S);
-                        if S /= Returned then return; end if;
+                        if S /= Returned then Mark_Store_Recovery (True, S); return; end if;
                         -- Target expressions have run, but no target write is
                         -- permitted for a metadata Store source.
                         if Left_Item.Value_Kind = Metadata_Datum or else
@@ -3951,7 +4049,7 @@ package body AML_Execute with SPARK_Mode is
                      else
                         Resolve_Store_Source (Pending_Slot, V, Pending_Identity,
                           Expression_Location (Call_Frame, Depth, Reserved_Root), S);
-                        if S /= Returned then return; end if;
+                        if S /= Returned then Mark_Store_Recovery (False, S); return; end if;
                         -- Debug observes an authenticated value without storing
                         -- it into a namespace object, reference or frame cell.
                         if (V.Value_Kind = Metadata_Datum or else
@@ -3987,8 +4085,15 @@ package body AML_Execute with SPARK_Mode is
                      if S /= Returned then return; end if;
                   end if;
                   Advance_Numeric
-                    (Stack (Depth), Pending_Slot, V, Waiting_For_Target, S);
+                    (Stack (Depth), Pending_Slot, V, Waiting_For_Target, S, Numeric_Completed);
                   if S /= Returned then
+                     if Enable_Runtime_Error_Handler and then not Module_Root and then Numeric_Completed then
+                        if S = Division_By_Zero then
+                           Mark_Recovery (Recovery.Divide_Fault, True);
+                        elsif S in Uninitialized | Missing_Argument and then Fault_Cell /= Recovery.No_Fault then
+                           Mark_Recovery (Fault_Cell, True);
+                        end if;
+                     end if;
                      if S = Division_By_Zero and then Module_Root
                        and then Stack (Depth).Op = Divide_Op and then Stack (Depth).Targets_Ready
                      then Locate_Numeric_Statement_End (Complete_Divide_Statement);
@@ -4057,6 +4162,11 @@ package body AML_Execute with SPARK_Mode is
       is
       begin
          Operand_Location := 0; Failed_Statement := No_Resume_Point;
+         if Enable_Runtime_Error_Handler then
+            Fault_Cell := Recovery.No_Fault;
+            Recovery_State := Recovery.Empty;
+            Missing_Method_Result := False;
+         end if;
          Evaluate_Operand (V, S, Allow_No_Return, Require_Integer, Package_Name => Package_Name);
          -- Clear saved actual roots on every expression exit, including errors.
          if Tracking then
@@ -4221,6 +4331,16 @@ package body AML_Execute with SPARK_Mode is
                Status := Child.Status;
          end case;
       end Handle_Runtime_Error;
+      procedure Report_Recovery (Status : in out Execution_Status) is
+      begin
+         if not Enable_Runtime_Error_Handler or else Module_Root or else Pending_Fatal.Present then return; end if;
+         while Recovery.Needs_Report (Recovery_State) loop
+            pragma Loop_Invariant (Recovery.Valid (Recovery_State));
+            pragma Loop_Variant (Decreases => Recovery.Reports_Left (Recovery_State));
+            Handle_Runtime_Error (Recovery.Report_Code (Recovery_State), True, Status);
+            Recovery.Reply (Recovery_State, Status = Returned);
+         end loop;
+      end Report_Recovery;
       procedure Unload_Object (Status : out Execution_Status; Complete : out Boolean) is
          Source : Datum;
          Plan : constant AML_Unload_Statement.Plan := AML_Unload_Statement.Prepare
@@ -5249,7 +5369,30 @@ package body AML_Execute with SPARK_Mode is
                   Outer := Limit;
                   Limit := If_End;
                   Operand (Value, State, Require_Integer => True);
-                  if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
+                  if State /= Returned then
+                     Report_Recovery (State);
+                     if State /= Returned or else not Recovery.Completed (Recovery_State) then
+                        Body_Result := Failure (State, Charged); return;
+                     end if;
+                     declare
+                        Input : constant Recovery.Bounds :=
+                          (Start, Offset, If_End, Else_Start, Resume, Outer, Has_Else, Is_Loop);
+                        Plan : constant Recovery.Predicate_Plan := Recovery.Plan_Predicate
+                          (Input, Block_Depth, Block_Capacity, Recovery.Ignored_Predicate (Recovery_State));
+                     begin
+                        if Plan.Kind /= Recovery.Planned then Body_Result := Failure (Block_Limit, Charged); return; end if;
+                        for I in 1 .. Plan.Count loop
+                           Blocks (Plan.Frames (I).Index) :=
+                             (Outer_Limit => Plan.Frames (I).Outer_Limit,
+                              Resume => Plan.Frames (I).Resume, Restart => Plan.Frames (I).Restart,
+                              Kind => (if Plan.Frames (I).Loop_Frame then Loop_Block else Conditional_Block),
+                              Prior_Scope => Current_Lexical_Scope);
+                        end loop;
+                        Block_Depth := Plan.New_Depth;
+                        Offset := Plan.Next_Offset;
+                        Limit := Plan.Next_Limit;
+                     end;
+                  else
                   --  Predicate conversion observes the AML integer width.
                   if Value.Value_Kind /= Integer_Datum then Body_Result := Failure (Unsupported_Value, Charged); return; end if;
                   Value := (Value_Kind => Integer_Datum, Number => AML_Integers.Normalize (Value.Number, Width), Origin => AML_Decode.Ordinary_Integer);
@@ -5274,6 +5417,7 @@ package body AML_Execute with SPARK_Mode is
                        (Outer_Limit => Outer, Resume => Resume,
                         Restart => Start, Kind => (if Is_Loop then Loop_Block else Conditional_Block),
                         Prior_Scope => Current_Lexical_Scope);
+                  end if;
                   end if;
                end;
             when 16#A5# | 16#9F# => --  Break / Continue, nearest loop only.
@@ -5309,7 +5453,15 @@ package body AML_Execute with SPARK_Mode is
             when 16#A4# => -- Return
                if Module_Root then Body_Result := Failure (Unsupported, Charged); return; end if;
                Operand (Value, State);
-               if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
+               if State /= Returned then
+                  if State = Missing_Result and then Missing_Method_Result then
+                     Body_Result := Failure (No_Return, Charged); return;
+                  end if;
+                  Report_Recovery (State);
+                  Body_Result := Failure ((if State = Returned and then Recovery.Completed (Recovery_State)
+                    then No_Return else State), Charged);
+                  return;
+               end if;
                Return_Source := Operand_Location;
                if Value.Value_Kind = Reference_Datum then
                   Body_Result := (Status => Reference_Returned, Charged => Charged, Ref => Value.Ref); return;
@@ -5328,7 +5480,12 @@ package body AML_Execute with SPARK_Mode is
                Operand (Value, State);
                if State /= Returned then
                   declare Continue_Execution : Boolean := False; begin
-                     if Module_Root and then State = Division_By_Zero
+                     if not Module_Root and then Recovery.Needs_Report (Recovery_State)
+                       and then not Pending_Fatal.Present
+                     then
+                        Report_Recovery (State);
+                        Continue_Execution := State = Returned and then Recovery.Completed (Recovery_State);
+                     elsif Module_Root and then State = Division_By_Zero
                        and then Failed_Statement = Complete_Divide_Statement
                        and then not Pending_Fatal.Present
                      then
@@ -5361,7 +5518,12 @@ package body AML_Execute with SPARK_Mode is
                Operand (Value, State);
                if State /= Returned then
                   declare Continue_Execution : Boolean := False; begin
-                     if Module_Root and then State = Division_By_Zero
+                     if not Module_Root and then Recovery.Needs_Report (Recovery_State)
+                       and then not Pending_Fatal.Present
+                     then
+                        Report_Recovery (State);
+                        Continue_Execution := State = Returned and then Recovery.Completed (Recovery_State);
+                     elsif Module_Root and then State = Division_By_Zero
                        and then Failed_Statement = Complete_Divide_Statement
                        and then not Pending_Fatal.Present
                      then

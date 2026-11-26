@@ -49,7 +49,7 @@
   "tests/aml-bank-declarations/bank_declaration_tests_checked.gpr": "d31dc666985d1945f320fd8d11d1ee91aa0dd6c94689742e5b576802adbd24cb",
   "tests/aml-bank-declarations/bank_declaration_tests_release.gpr": "0485903ddbaa0db4b41d654f3825f4ff28865d47c36b8f0a8c30ad6790dbba65",
   "tests/aml-bank-declarations/check_reference.sh": "ef077dfd1be1440a8cb6454e66167d0e392f7e0c8f2310ca1cc96ce138ce429d",
-  "tests/aml-bank-declarations/closure.json": "f2d1b74ed6a4b9a37ef16a551854cf0eaa159e0e3ac16c06b07e28ff05dc99f2",
+  "tests/aml-bank-declarations/closure.json": "bd2119c8f2c46fc54ea37632a98068713abfab11fcdb2e5474e966cc55b0aa3b",
   "tests/aml-bank-declarations/extract_observations.awk": "771f5b67ba2b248039a1282468e2c8748f373be6de0ce67983319408dd4fdf6d",
   "tests/aml-bank-declarations/hosted_capture.py": "bb667e639c2ba2c9c11aa0fb09e30f0bd768b8728290657fcff4ef090da231db",
   "tests/aml-bank-declarations/mirrors.json": "c139d5dd08aa5428b1fb32eea5e4c3e2ee61b0d337429722f2a8e6c10dd83fa6",
@@ -121,7 +121,7 @@
   "userspace/services/acpi/lib/aml_events.ads": "5fabc7e33e68c0f24d5ff580a8a6aa3869ec8c7ba0fc0d8e097db069dd962e06",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.adb": "c21262b8649836bb8db48c11d870fb10e82dab0dca714d20c23131e6e15ec548",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.ads": "e40f8067f168eb76269cd9126fceaff26f927f9b4db934ec28d97617b6286efb",
-  "userspace/services/acpi/lib/aml_execute.adb": "35a28f99400e6fc0e1fadf7e9232c7f4739197138a6b244d855dec1cd243f910",
+  "userspace/services/acpi/lib/aml_execute.adb": "d6942faf0982ba9be29e4b782578ff90677991e6b0461fc8e7b312586c1694e9",
   "userspace/services/acpi/lib/aml_execute.ads": "ebe5f4955a5c9027177ad8abdec8e29f8a5f42b700ac0cf304e91574b188d348",
   "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
   "userspace/services/acpi/lib/aml_explicit_formatting.adb": "b7cb02de7c7a15b5e9803dd1c8314af339966734a80491d733777a1a7e710c16",
@@ -294,5 +294,7 @@
   "userspace/services/acpi/lib/aml_runtime_error_policy.ads": "b3fccb95635c63eb47e92c351a25f0f8db1b5d9f1a6cac7cbd6d5c6b313c4331",
   "userspace/services/acpi/lib/aml_runtime_error_policy.adb": "ae1315dae239eb7b368480c75fe4b94d4bb4a06389cb3e1cec905686406fe8f5",
   "userspace/services/acpi/lib/aml_runtime_error_invocation.ads": "e6fa888d5b1b4b5393be93f001b8a0d20a7769097ff08b172ee62bd8005ef834",
-  "userspace/services/acpi/lib/aml_runtime_error_invocation.adb": "70f01e02b7fc6a8de0db6e268e26bcdd1c5e918d0204988165e1b2f1b2e073b1"
+  "userspace/services/acpi/lib/aml_runtime_error_invocation.adb": "70f01e02b7fc6a8de0db6e268e26bcdd1c5e918d0204988165e1b2f1b2e073b1",
+  "userspace/services/acpi/lib/aml_runtime_recovery.adb": "f2a5a31d8952c922785253abb621cd15feb7283fa2bbadab45ff65cfcef09088",
+  "userspace/services/acpi/lib/aml_runtime_recovery.ads": "8ee23584cf3aacd3ebcda40e0c7160102454d356d289736a1a9d87740ce45e36"
 }

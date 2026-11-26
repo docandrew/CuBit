@@ -257,3 +257,5 @@ aml_unload_statement.adb
 aml_runtime_exceptions.adb
 aml_runtime_error_policy.adb
 aml_runtime_error_invocation.adb
+aml_runtime_recovery.ads
+aml_runtime_recovery.adb

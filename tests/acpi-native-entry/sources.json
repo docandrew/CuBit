@@ -72,7 +72,7 @@
     "shared/platform",
     "userspace/lib/acpi-windows"
   ],
-  "selection_count": 259,
+  "selection_count": 261,
   "inputs": [
     {
       "path": "build-catalog.ccl",
@@ -4172,7 +4172,7 @@
     },
     {
       "path": "tests/acpi-native-entry/selections.txt",
-      "sha256": "3bee23d27598c820371c2cd3a6dca2f6274790058157b0ca77a837e8a6eb84a1"
+      "sha256": "f2dbaaddfefe7554a03b2cd49c6da31486fdb5b179e4c3c7695c66fd07748628"
     },
     {
       "path": "userspace/ccl/catalogs/native-runtime-services.ccl",
@@ -9792,7 +9792,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.adb",
-      "sha256": "35a28f99400e6fc0e1fadf7e9232c7f4739197138a6b244d855dec1cd243f910"
+      "sha256": "d6942faf0982ba9be29e4b782578ff90677991e6b0461fc8e7b312586c1694e9"
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.ads",
@@ -12117,6 +12117,14 @@
     {
       "path": "userspace/services/acpi/lib/aml_runtime_error_invocation.adb",
       "sha256": "70f01e02b7fc6a8de0db6e268e26bcdd1c5e918d0204988165e1b2f1b2e073b1"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_runtime_recovery.adb",
+      "sha256": "f2a5a31d8952c922785253abb621cd15feb7283fa2bbadab45ff65cfcef09088"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_runtime_recovery.ads",
+      "sha256": "8ee23584cf3aacd3ebcda40e0c7160102454d356d289736a1a9d87740ce45e36"
     }
   ],
   "tools": {
