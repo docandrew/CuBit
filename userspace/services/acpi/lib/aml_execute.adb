@@ -4758,6 +4758,10 @@ package body AML_Execute with SPARK_Mode is
                      end if;
                      State := Unsupported_Value;
                      Operate_Mutex (Environment, Value, AML_Mutexes.Release_Mutex, 0, Timed_Out, State);
+                     if State = Mutex_Not_Acquired then
+                        Handle_Runtime_Error (AML_Runtime_Exceptions.Code_For
+                          (AML_Runtime_Exceptions.Mutex_Not_Acquired), True, State);
+                     end if;
                      if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
                   end;
                elsif Code (Code'First + Offset) in Signal_Extension | Reset_Extension then

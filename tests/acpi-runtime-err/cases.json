@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "cases": [
     {
       "name": "basic-local_absent",
@@ -322,10 +322,340 @@
       "require_collection_during_TEST": false,
       "qualification": "Raw synthetic negative/runtime contract; illustrative ASL is not a compiler admission. No ACPICA parity or ASLTS PASS credit.",
       "normal_reference": false
+    },
+    {
+      "name": "release-unowned_absent",
+      "family": "release",
+      "AML_hex": "445344545f000000021b43554249540052454c455252000001000000494e544c080426205b014d555458000841465452000845434e5400085354415400084554595000085448524400141554455354005b274d555458700141465452a40a2a",
+      "AML_sha256": "ab561733ff355e85e19e8ec57adf5a82ce9b4592db9039fe67222915c953845a",
+      "expected_status": "RUNTIME_EXCEPTION",
+      "expected_code": 12310,
+      "expected_observations": {
+        "AFTR": 0,
+        "ECNT": 0,
+        "STAT": 0,
+        "ETYP": 0,
+        "THRD": 0
+      },
+      "default_status": "MUTEX_NOT_ACQUIRED",
+      "default_observations": {
+        "AFTR": 0,
+        "ECNT": 0,
+        "STAT": 0,
+        "ETYP": 0,
+        "THRD": 0
+      },
+      "normal_reference_observations": {
+        "TEST": [],
+        "AFTR": [
+          0
+        ],
+        "ECNT": [
+          0
+        ],
+        "STAT": [
+          0
+        ],
+        "ETYP": [
+          0
+        ],
+        "THRD": [
+          0
+        ]
+      },
+      "qualification": "Strictly compiler-admitted diagnostic; normal ACPICA reference with non-authority thread-presence comparison"
+    },
+    {
+      "name": "release-unowned_zero",
+      "family": "release",
+      "AML_hex": "4453445480000000026f43554249540052454c455252000001000000494e544c080426205b014d555458000841465452000845434e540008535441540008455459500008544852440014205f455252037545434e54706853544154708e6945545950706a54485244a400141554455354005b274d555458700141465452a40a2a",
+      "AML_sha256": "4506ab8c187a1b67b56df93809f27f8839a7a11bad5958bc63c0e73d7e301b97",
+      "expected_status": "RETURNED",
+      "expected_code": null,
+      "expected_observations": {
+        "AFTR": 1,
+        "ECNT": 1,
+        "STAT": 12310,
+        "ETYP": 2,
+        "THRD": 1
+      },
+      "default_status": "MUTEX_NOT_ACQUIRED",
+      "default_observations": {
+        "AFTR": 0,
+        "ECNT": 0,
+        "STAT": 0,
+        "ETYP": 0,
+        "THRD": 0
+      },
+      "normal_reference_observations": {
+        "TEST": [
+          42
+        ],
+        "AFTR": [
+          1
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12310
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Strictly compiler-admitted diagnostic; normal ACPICA reference with non-authority thread-presence comparison"
+    },
+    {
+      "name": "release-unowned_original",
+      "family": "release",
+      "AML_hex": "4453445480000000020743554249540052454c455252000001000000494e544c080426205b014d555458000841465452000845434e540008535441540008455459500008544852440014205f455252037545434e54706853544154708e6945545950706a54485244a468141554455354005b274d555458700141465452a40a2a",
+      "AML_sha256": "4695f3d022f5fa8028570ea96378c643abc710795e6341f3d75ab5761f3e74f7",
+      "expected_status": "RUNTIME_EXCEPTION",
+      "expected_code": 12310,
+      "expected_observations": {
+        "AFTR": 0,
+        "ECNT": 1,
+        "STAT": 12310,
+        "ETYP": 2,
+        "THRD": 1
+      },
+      "default_status": "MUTEX_NOT_ACQUIRED",
+      "default_observations": {
+        "AFTR": 0,
+        "ECNT": 0,
+        "STAT": 0,
+        "ETYP": 0,
+        "THRD": 0
+      },
+      "normal_reference_observations": {
+        "TEST": [],
+        "AFTR": [
+          0
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12310
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Strictly compiler-admitted diagnostic; normal ACPICA reference with non-authority thread-presence comparison"
+    },
+    {
+      "name": "release-unowned_nonzero",
+      "family": "release",
+      "AML_hex": "4453445484000000024743554249540052454c455252000001000000494e544c080426205b014d555458000841465452000845434e540008535441540008455459500008544852440014245f455252037545434e54706853544154708e6945545950706a54485244a40c78563412141554455354005b274d555458700141465452a40a2a",
+      "AML_sha256": "7a939f130c41443ccce83cfc5b6e9f1b743fd96beff4698cc275e27944800805",
+      "expected_status": "RUNTIME_EXCEPTION",
+      "expected_code": 305419896,
+      "expected_observations": {
+        "AFTR": 0,
+        "ECNT": 1,
+        "STAT": 12310,
+        "ETYP": 2,
+        "THRD": 1
+      },
+      "default_status": "MUTEX_NOT_ACQUIRED",
+      "default_observations": {
+        "AFTR": 0,
+        "ECNT": 0,
+        "STAT": 0,
+        "ETYP": 0,
+        "THRD": 0
+      },
+      "normal_reference_observations": {
+        "TEST": [],
+        "AFTR": [
+          0
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12310
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Strictly compiler-admitted diagnostic; normal ACPICA reference with non-authority thread-presence comparison"
+    },
+    {
+      "name": "release-double_release_zero",
+      "family": "release",
+      "AML_hex": "4453445494000000029743554249540052454c455252000001000000494e544c080426205b014d555458000841465452000845434e540008535441540008455459500008544852440014205f455252037545434e54706853544154708e6945545950706a54485244a40014295445535400a00d5b234d5554580000a40bad0b5b274d5554585b274d555458700141465452a40a2a",
+      "AML_sha256": "6e7079ba91ca47046e8bbd98fcbe17c1fb65e22e952f21f7e122c43ea8c0eae6",
+      "expected_status": "RETURNED",
+      "expected_code": null,
+      "expected_observations": {
+        "AFTR": 1,
+        "ECNT": 1,
+        "STAT": 12310,
+        "ETYP": 2,
+        "THRD": 1
+      },
+      "default_status": "MUTEX_NOT_ACQUIRED",
+      "default_observations": {
+        "AFTR": 0,
+        "ECNT": 0,
+        "STAT": 0,
+        "ETYP": 0,
+        "THRD": 0
+      },
+      "normal_reference_observations": {
+        "TEST": [
+          42
+        ],
+        "AFTR": [
+          1
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12310
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Strictly compiler-admitted diagnostic; normal ACPICA reference with non-authority thread-presence comparison"
+    },
+    {
+      "name": "release-balanced_mutex",
+      "family": "release",
+      "AML_hex": "445344548e000000027343554249540052454c455252000001000000494e544c080426205b014d555458000841465452000845434e540008535441540008455459500008544852440014205f455252037545434e54706853544154708e6945545950706a54485244a40014235445535400a00d5b234d5554580000a40bad0b5b274d555458700141465452a40a2a",
+      "AML_sha256": "44ea5bc731f197886e5fd0f3e4f5b1630095429d70333655dfc42d77724a8f2c",
+      "expected_status": "RETURNED",
+      "expected_code": null,
+      "expected_observations": {
+        "AFTR": 1,
+        "ECNT": 0,
+        "STAT": 0,
+        "ETYP": 0,
+        "THRD": 0
+      },
+      "default_status": "RETURNED",
+      "default_observations": {
+        "AFTR": 1,
+        "ECNT": 0,
+        "STAT": 0,
+        "ETYP": 0,
+        "THRD": 0
+      },
+      "normal_reference_observations": {
+        "TEST": [
+          42
+        ],
+        "AFTR": [
+          1
+        ],
+        "ECNT": [
+          0
+        ],
+        "STAT": [
+          0
+        ],
+        "ETYP": [
+          0
+        ],
+        "THRD": [
+          0
+        ]
+      },
+      "qualification": "Strictly compiler-admitted diagnostic; normal ACPICA reference with non-authority thread-presence comparison"
+    },
+    {
+      "name": "release-nested_handler_fault",
+      "family": "release",
+      "AML_hex": "4453445486000000029343554249540052454c455252000001000000494e544c080426205b014d555458000841465452000845434e540008535441540008455459500008544852440014265f455252037545434e54706853544154708e6945545950706a544852445b274d555458a400141554455354005b274d555458700141465452a40a2a",
+      "AML_sha256": "32807ca8286f1ddbf277e689fd50c6c0d432211b88da9bc521ad7e21ca45c509",
+      "expected_status": "RUNTIME_EXCEPTION",
+      "expected_code": 12310,
+      "expected_observations": {
+        "AFTR": 0,
+        "ECNT": 1,
+        "STAT": 12310,
+        "ETYP": 2,
+        "THRD": 1
+      },
+      "default_status": "MUTEX_NOT_ACQUIRED",
+      "default_observations": {
+        "AFTR": 0,
+        "ECNT": 0,
+        "STAT": 0,
+        "ETYP": 0,
+        "THRD": 0
+      },
+      "normal_reference_observations": null,
+      "qualification": "Strictly compiler-admitted recursive handler guard contract; no normal ACPICA recursion parity claim"
+    },
+    {
+      "name": "release-handler_mutex_domain",
+      "family": "release",
+      "AML_hex": "4453445494000000029743554249540052454c455252000001000000494e544c080426205b014d555458000841465452000845434e540008535441540008455459500008544852440014345f455252037545434e54706853544154708e6945545950706a54485244a00d5b234d5554580000a40bad0b5b274d555458a400141554455354005b274d555458700141465452a40a2a",
+      "AML_sha256": "676e83e4d613e720e7ddd3ac6af6d7bf69485a9429c39efda4f1a132b70c4de5",
+      "expected_status": "RETURNED",
+      "expected_code": null,
+      "expected_observations": {
+        "AFTR": 1,
+        "ECNT": 1,
+        "STAT": 12310,
+        "ETYP": 2,
+        "THRD": 1
+      },
+      "default_status": "MUTEX_NOT_ACQUIRED",
+      "default_observations": {
+        "AFTR": 0,
+        "ECNT": 0,
+        "STAT": 0,
+        "ETYP": 0,
+        "THRD": 0
+      },
+      "normal_reference_observations": {
+        "TEST": [
+          42
+        ],
+        "AFTR": [
+          1
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12310
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Strictly compiler-admitted diagnostic; normal ACPICA reference with non-authority thread-presence comparison"
     }
   ],
   "normal_reference_version": "20260408",
   "raw_negative_contracts": 4,
   "raw_negative_cases_not_compiler_admissions": true,
-  "old_ASLTS_PASS_credit": 0
+  "old_ASLTS_PASS_credit": 0,
+  "compiled_runtime_contract_cases": [
+    "release-nested_handler_fault"
+  ]
 }

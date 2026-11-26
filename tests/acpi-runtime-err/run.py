@@ -47,7 +47,22 @@ def execute(binary, case, output, enabled=True, fuel=5_000_000, tag=1):
     before, after, freed_before, freed_after = map(int, gc[0])
     assert int(charged) <= fuel
     assert re.search(r'^PROBE_CLEANUP roots=\s*0 tables=\s*0 bytes=\s*0 reads=\s*0 writes=\s*0$', text, re.M)
-    if fuel <= 8:
+    if case['family'] == 'release':
+        if fuel <= 8:
+            assert status == 'BUDGET_EXCEEDED' and obs['AFTR'] == 0
+        elif tag == 0:
+            assert status == 'RUNTIME_EXCEPTION' and errors == [0x3016]
+            assert obs['AFTR'] == obs['ECNT'] == 0
+        elif not enabled:
+            assert status == case['default_status'] and not errors
+            assert obs == case['default_observations']
+            assert value == ('42' if status == 'RETURNED' else 'unavailable')
+        else:
+            assert status == case['expected_status']
+            assert errors == ([] if case['expected_code'] is None else [case['expected_code']])
+            assert obs == case['expected_observations']
+            assert value == ('42' if status == 'RETURNED' else 'unavailable')
+    elif fuel <= 8:
         assert status == 'BUDGET_EXCEEDED' and obs['AFTR'] == obs['ECNT'] == 0
     elif tag == 0:
         assert status == 'RUNTIME_EXCEPTION' and errors == [0x3003]
@@ -103,22 +118,27 @@ def main():
         for build in builds:
             folder = output/build['profile']
             for case in cases:
-                for enabled in ([False, True] if case['family'] == 'basic' else [True]):
+                for enabled in ([False, True] if case['family'] in ['basic', 'release'] else [True]):
                     row = execute(build['binary'], case, folder/(case['name']+('-on' if enabled else '-off')), enabled)
                     rows.append(dict(profile=build['profile'], **row))
             control = next(case for case in cases if case['name'] == 'robust-high_bits_zero')
             for fuel in range(9):
                 rows.append(dict(profile=build['profile'], **execute(build['binary'], control, folder/('fuel-'+str(fuel)), fuel=fuel)))
             rows.append(dict(profile=build['profile'], **execute(build['binary'], control, folder/'tag-zero', tag=0)))
-        assert len(rows) == 68
+            release_control = next(case for case in cases if case['name'] == 'release-unowned_zero')
+            for fuel in range(9):
+                rows.append(dict(profile=build['profile'], **execute(build['binary'], release_control,
+                    folder/('release-fuel-'+str(fuel)), fuel=fuel)))
+            rows.append(dict(profile=build['profile'], **execute(build['binary'], release_control, folder/'release-tag-zero', tag=0)))
+        assert len(rows) == 120
     except Exception as error:
         failure = repr(error)
-    result = dict(terminal=True, failure=failure, planned_cases=68, executed_cases=len(rows),
+    result = dict(terminal=True, failure=failure, planned_cases=120, executed_cases=len(rows),
         passed_cases=len(rows), builds=builds, rows=rows, original_ASLTS_PASS_credit=0,
         original_corpus_or_expectation_edits=0, named_heap=dict(objects=64, bytes=1024, elements=64),
         normal_numeric_thread_ID_parity_claim=False, native=False, full_interpreter_proof_claim=False)
     (output/'RESULT.json').write_text(json.dumps(result, indent=2)+'\n')
-    print(json.dumps(dict(failure=failure, passed_cases=len(rows), planned_cases=68)), flush=True)
+    print(json.dumps(dict(failure=failure, passed_cases=len(rows), planned_cases=120)), flush=True)
     if failure:
         raise SystemExit(1)
 

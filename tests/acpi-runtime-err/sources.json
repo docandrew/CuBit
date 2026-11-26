@@ -550,7 +550,7 @@
     "userspace/services/acpi/lib/aml_events.ads": "5fabc7e33e68c0f24d5ff580a8a6aa3869ec8c7ba0fc0d8e097db069dd962e06",
     "userspace/services/acpi/lib/aml_execute-scalar_transport.adb": "ef51d52cd2fb5a23e2f91cb80e470bfb5c24672be161d384dc4ee8c4e5cb5555",
     "userspace/services/acpi/lib/aml_execute-scalar_transport.ads": "e40f8067f168eb76269cd9126fceaff26f927f9b4db934ec28d97617b6286efb",
-    "userspace/services/acpi/lib/aml_execute.adb": "b1d2ff0034d7153798dfd74cf48502f5c78a1f604d749eadd2d88994704f8e6b",
+    "userspace/services/acpi/lib/aml_execute.adb": "35a28f99400e6fc0e1fadf7e9232c7f4739197138a6b244d855dec1cd243f910",
     "userspace/services/acpi/lib/aml_execute.ads": "ebe5f4955a5c9027177ad8abdec8e29f8a5f42b700ac0cf304e91574b188d348",
     "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
     "userspace/services/acpi/lib/aml_explicit_formatting.adb": "b7cb02de7c7a15b5e9803dd1c8314af339966734a80491d733777a1a7e710c16",
@@ -934,11 +934,11 @@
     "tests/acpi-aslts-copied-conformance/acpi_service_core-copy_probe.ads": "735a118c9672be060186d092eca750d75b669af2dbf5cef3f36334aacac20297",
     "tests/acpi-aslts-copied-conformance/acpi_service_core-copy_probe.adb": "63a289a78320dc615d749b34bdb147ea188d3a43db359efbf1712030d411d727",
     "tests/acpi-runtime-err/build.py": "ca015fb260aed5cbfaa5d97a5e29408305d59b95be1a627bc18d83fb6e313d57",
-    "tests/acpi-runtime-err/README.md": "cc6de0b6aa33d5c4a5b62e13fe136aa10fa8ed55cad0f569047e7c8fd2ce0204",
+    "tests/acpi-runtime-err/README.md": "3e8b9b9ba022805d4f7030a551a4837ce3009dc9de43ddcc785cb7f65d87f185",
     "tests/acpi-runtime-err/runtime_error_probe.adb": "58edc8491809e583b176d28bdf50581f3d397a8c4cffcb442321034444f9b4bb",
-    "tests/acpi-runtime-err/run.py": "4e5fd88abbf84b35fe250c0d5c0228bd2ce6385a646b7b373621f442a0fbd216",
+    "tests/acpi-runtime-err/run.py": "7afdc4a7e6468c226dfc3521acf7a335d654f2319828ea0b6e20acee05e0c120",
     "tests/acpi-runtime-err/run.sh": "ab27dff7b5876f14991350d8fe4c5610205d80c82ff7ba39601edad67d1d1639",
-    "tests/acpi-runtime-err/cases.json": "a28e28909a5b4635f37833f440eb2c4821b4bb5903aaaa5f3903a50f05267145"
+    "tests/acpi-runtime-err/cases.json": "cec91d6f86e7b11ae950cf54a86dcdebcb6523f51f05e58d39ada6e7f90f862c"
   },
   "ada_sources": [
     "shared/acpi/acpi_battery_observation_protocol.ads",
