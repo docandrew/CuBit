@@ -544,6 +544,29 @@ package body Process is
         Spinlocks.exitCriticalSection (mailtab(pid).lock);
     end publish;
 
+    -- KERN-006: the process's charge for its shared image pages (before its
+    -- account closes), and its use of the image (after its page tables go).
+    procedure forgetImageCharge (pid : ProcessID) is
+        cancelled : Boolean;
+    begin
+        if proctab(pid).imageSharedPages /= 0 then
+            Memory_Accounting.Cancel_Unbound
+              (proctab(pid).imageCharge, proctab(pid).imageSharedPages, cancelled);
+            if not cancelled then raise ProcessException with "Image charge cancel failed"; end if;
+            proctab(pid).imageCharge := 0;
+            proctab(pid).imageSharedPages := 0;
+        end if;
+    end forgetImageCharge;
+
+    procedure forgetImageShare (pid : ProcessID) is
+        use type Image_Shares.Share;
+    begin
+        if proctab(pid).imageShare /= Image_Shares.No_Share then
+            Image_Shares.Release (proctab(pid).imageShare);
+            proctab(pid).imageShare := Image_Shares.No_Share;
+        end if;
+    end forgetImageShare;
+
     procedure discardUnpublished (pid : ProcessID) is
         procedure deleteP4 is new Virtmem.deleteP4 (BuddyAllocator.freeFrame);
         procedure zeroize is new Virtmem.zeroize (Virtmem.P4);
@@ -563,6 +586,8 @@ package body Process is
             zeroize (addrtab(pid));
             proctab(pid).pgTable := NO_PROCESS;
         end if;
+        -- Its shared image's frames: its tables reach them no more.
+        forgetImageShare (pid);
         while proctab(pid).frames.length > 0 loop
             BuddyAllocator.freeFrame (FrameLists.front (proctab(pid).frames));
             FrameLists.popFront (proctab(pid).frames);
@@ -579,6 +604,7 @@ package body Process is
         threadOf (pid).fpu := System.Null_Address;
         -- Before the account closes: the refund goes to it.
         Process_Capabilities.Tables.Release_All (proctab(pid).caps);
+        forgetImageCharge (pid);
         threadOf (pid).state := INVALID;
         -- No access to this slot after returning its PID to the allocator.
         if proctab(pid).memoryAccount /= 0 then
@@ -2328,6 +2354,7 @@ package body Process is
         -- Release the capability table (every page), before the memory
         -- account closes: the refund goes to it.
         Process_Capabilities.Tables.Release_All (proctab(pid).caps);
+        forgetImageCharge (pid);
         if proctab(pid).memoryAccount /= 0 then
             declare
                 closed : Boolean;
@@ -2379,6 +2406,9 @@ package body Process is
             Readiness_Pages.Release (proctab(pid).readinessFrame,
                                      proctab(pid).threadCountFrames);
             proctab(pid).pgTable := NO_PROCESS;
+            -- Its shared image's frames (KERN-006): the last process to
+            -- map them frees them.
+            forgetImageShare (pid);
         end if;
 
         -- Every thread: withdraw futex waits, then free its kernel stack

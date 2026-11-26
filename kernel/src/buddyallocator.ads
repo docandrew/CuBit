@@ -383,6 +383,13 @@ is
       (addr : Virtmem.PhysAddress; owner : Frame_Owner; success : out Boolean)
       with SPARK_Mode => Off;
 
+    -- The same for a frame no process owns that the kernel holds mapped
+    -- (a shared image's, Image_Shares): the caller has checked, under its
+    -- own lock, that the frame is still one of those (KERN-006).
+    procedure pinKernelHeldFrame
+      (addr : Virtmem.PhysAddress; success : out Boolean)
+      with SPARK_Mode => Off;
+
     procedure unpinFrame
       (addr    : in Virtmem.PhysAddress;
        success : out Boolean) with

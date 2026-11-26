@@ -12,6 +12,7 @@ with Process.User_Memory;
 with Stackframe;
 with Spinlocks;
 with BuddyAllocator;
+with Image_Shares;
 with TLB_Shootdown;
 with Virtmem;
 
@@ -145,6 +146,23 @@ package body Debug_Sessions is
          when Debug_View_Walk.Not_Write_Back => Refusal := Not_Write_Back; return;
          when Debug_View_Walk.Viewable       => null;
       end case;
+      -- KERN-006: or a frame of the shared image the target maps (its
+      -- read-only segments), pinned as the image's, not the target's.
+      if not Pinned and then R.Kind = Debug_View_Walk.Viewable then
+         declare
+            use type Image_Shares.Share;
+            S : constant Image_Shares.Share := Process.proctab (Target).imageShare;
+            Page : Image_Shares.Page_Index;
+            Inside : Boolean;
+         begin
+            if S /= Image_Shares.No_Share then
+               Image_Shares.Page_Of (S, Target_Address, Page, Inside);
+               if Inside then
+                  Image_Shares.Pin_View (S, Page, Frame, Pinned);
+               end if;
+            end if;
+         end;
+      end if;
       if not Pinned then
          Refusal := Not_Owned;
          return;

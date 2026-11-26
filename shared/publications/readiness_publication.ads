@@ -30,9 +30,10 @@
 --  generation of this life), written once before the process runs: a
 --  process learns who it is with a load, not a system call.
 --
---  Owned_Bytes and Event_Drops are the process's own statistics (they
---  replace SYSCALL_READ_STATISTICS): its own physical frames in bytes,
---  stored whenever its frame list changes, and the events its mailbox
+--  Owned_Bytes, Shared_Image_Bytes and Event_Drops are the process's own
+--  statistics (they replace SYSCALL_READ_STATISTICS): its own physical
+--  frames in bytes, stored whenever its frame list changes, the bytes of
+--  its image it maps from shared frames (KERN-006), and the events its mailbox
 --  refused because a publisher's ring was full.
 --
 --  Thread counts: the two pages after the readiness page hold one 64-byte
@@ -53,7 +54,7 @@ package Readiness_Publication with Pure, SPARK_Mode is
    Page_Bytes   : constant := Clock_Publication.Page_Bytes;
    Page_Address : constant := Clock_Publication.Page_Address + 6 * Page_Bytes;
 
-   Layout_Version : constant := 3;
+   Layout_Version : constant := 4;
 
    --  A count of entries ever queued (or wakes). It never goes down; at
    --  its largest value it stays there (2**64 entries are never reached).
@@ -78,6 +79,10 @@ package Readiness_Publication with Pure, SPARK_Mode is
       Owned_Bytes     : Unsigned_64     := 0;
       --  Events its mailbox refused because the publisher's ring was full.
       Event_Drops     : Count           := 0;
+      --  KERN-006: its image's read-only pages it maps from frames shared
+      --  with other processes of the same image, in bytes (not in
+      --  Owned_Bytes; its quota is charged for them as for its own).
+      Shared_Image_Bytes : Unsigned_64  := 0;
    end record;
    for Readiness_Page use record
       Version         at 0  range 0 .. 63;
@@ -86,6 +91,7 @@ package Readiness_Publication with Pure, SPARK_Mode is
       Identity        at 40 range 0 .. 63;
       Owned_Bytes     at 48 range 0 .. 63;
       Event_Drops     at 56 range 0 .. 63;
+      Shared_Image_Bytes at 64 range 0 .. 63;
    end record;
    --  Where a process reads its own identity word.
    Identity_Offset  : constant := 40;

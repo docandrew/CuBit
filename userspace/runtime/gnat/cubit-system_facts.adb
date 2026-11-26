@@ -98,6 +98,8 @@ package body CuBit.System_Facts is
 
    function Owned_Bytes return Unsigned_64 is
      (if Own_Published then Own.Owned_Bytes else 0);
+   function Shared_Image_Bytes return Unsigned_64 is
+     (if Own_Published then Own.Shared_Image_Bytes else 0);
 
    function Event_Drops return Unsigned_64 is
      (if Own_Published then Unsigned_64 (Own.Event_Drops) else 0);

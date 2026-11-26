@@ -60,6 +60,7 @@ with Quiescent_Reclamation;
 with Page_Allocation;
 with Process_Frames;
 with Readiness_Pages;
+with Image_Shares;
 with Readiness_Publication;
 with Thread_Slots;
 with Process_Lifetime;
@@ -988,6 +989,14 @@ package Process is
         -- Resource quota (populated from CAP_RESOURCE on resume)
         quota               : ResourceQuota;
         memoryAccount       : Unsigned_64 := 0;
+
+        -- KERN-006: the shared image whose read-only frames this process
+        -- maps (Image_Shares; No_Share: none), and its own charge for them
+        -- (an unbound reservation of imageSharedPages in memoryAccount,
+        -- given back before the account closes).
+        imageShare          : Image_Shares.Share := Image_Shares.No_Share;
+        imageCharge         : Unsigned_64 := 0;
+        imageSharedPages    : Unsigned_64 := 0;
 
         -- The process's main thread (docs/threads.md). Scheduling, context
         -- and per-thread IPC state live in its thread record.

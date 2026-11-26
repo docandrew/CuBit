@@ -54,6 +54,8 @@ is
 
     -- The process's own frames, in bytes (No_Frame: nothing).
     procedure Set_Owned (Frame : Virtmem.PhysAddress; Bytes : Unsigned_64);
+    -- KERN-006: the bytes of shared image frames the process maps.
+    procedure Set_Shared (Frame : Virtmem.PhysAddress; Bytes : Unsigned_64);
 
     -- One more event its mailbox refused (No_Frame: nothing).
     procedure Note_Drop (Frame : Virtmem.PhysAddress);

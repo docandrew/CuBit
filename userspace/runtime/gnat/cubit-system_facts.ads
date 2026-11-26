@@ -99,6 +99,9 @@ package CuBit.System_Facts is
    --  This process's own physical frames, in bytes: excludes borrowed
    --  mappings, page-table frames and other services' allocations.
    function Owned_Bytes return Unsigned_64;
+   --  KERN-006: the bytes of this program's image it maps from frames
+   --  shared with other processes of the same image (not in Owned_Bytes).
+   function Shared_Image_Bytes return Unsigned_64;
 
    --  Events this process's mailbox refused because a publisher's ring
    --  was full.

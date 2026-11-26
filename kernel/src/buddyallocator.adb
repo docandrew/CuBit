@@ -1826,6 +1826,35 @@ is
         Spinlocks.exitCriticalSection (lock);
     end pinOwnedFrame;
 
+    procedure pinKernelHeldFrame
+      (addr : Virtmem.PhysAddress; success : out Boolean)
+      with SPARK_Mode => Off
+    is
+        pfn : constant Unsigned_64 := Unsigned_64 (Virtmem.addrToPFN (addr));
+    begin
+        success := False;
+        if pinStateBase = System.Null_Address or else
+           frameOwnerBase = System.Null_Address or else pfn > maxPinPFN or else
+           addr mod Virtmem.FRAME_SIZE /= 0
+        then
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (lock);
+        declare
+            currentOwner : Frame_Owner with Import, Volatile,
+                Address => ownerAddress (pfn);
+            raw : Unsigned_8 with Import, Volatile,
+                Address => pinStateBase + Storage_Offset (pfn);
+            lifetime : Frame_Pins.State := Frame_Pins.Decode (raw);
+        begin
+            if currentOwner = No_Owner then
+                Frame_Pins.Pin (lifetime, success);
+                raw := Frame_Pins.Encode (lifetime);
+            end if;
+        end;
+        Spinlocks.exitCriticalSection (lock);
+    end pinKernelHeldFrame;
+
     procedure unpinFrame
       (addr    : in Virtmem.PhysAddress;
        success : out Boolean) with

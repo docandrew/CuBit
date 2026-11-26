@@ -1,0 +1,17 @@
+--  SPDX-License-Identifier: GPL-3.0-or-later
+--  KERN-006 layer 1: the share rules' SPARK proof (Image_Share_Policy) and
+--  their hosted test (run.sh).
+project Shares is
+   for Languages use ("Ada");
+   for Source_Dirs use (".", "../../kernel/src");
+   for Source_Files use ("policy_tests.adb", "image_share_policy.ads", "image_share_policy.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("policy_tests.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--timeout=60");
+   end Prove;
+end Shares;

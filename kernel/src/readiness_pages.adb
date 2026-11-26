@@ -85,6 +85,19 @@ package body Readiness_Pages is
         end;
     end Set_Owned;
 
+    procedure Set_Shared (Frame : Virtmem.PhysAddress; Bytes : Unsigned_64) is
+    begin
+        if Frame = No_Frame then
+            return;
+        end if;
+        declare
+            Page : RP.Readiness_Page with Import, Address => Virtmem.P2Va (Frame);
+            Word : Unsigned_64 with Import, Atomic, Address => Page.Shared_Image_Bytes'Address;
+        begin
+            Word := Bytes;
+        end;
+    end Set_Shared;
+
     procedure Note_Drop (Frame : Virtmem.PhysAddress) is
     begin
         if Frame = No_Frame then
