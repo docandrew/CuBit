@@ -3938,8 +3938,10 @@ package body AML_Execute with SPARK_Mode is
                         Resolve_Store_Source (Pending_Slot, V, Pending_Identity,
                           Expression_Location (Call_Frame, Depth, Reserved_Root), S);
                         if S /= Returned then return; end if;
-                        if V.Value_Kind = Metadata_Datum then S := Unsupported_Value; return; end if;
-                        if V.Value_Kind = Object_Datum and then V.Object.Type_Code = Event_Type_Code
+                        -- Debug observes an authenticated value without storing
+                        -- it into a namespace object, reference or frame cell.
+                        if (V.Value_Kind = Metadata_Datum or else
+                            (V.Value_Kind = Object_Datum and then V.Object.Type_Code = Event_Type_Code))
                           and then not (Parse_Limit - Offset >= Debug_Target_Bytes
                             and then Code (Code'First + Offset) = Extended_Op
                             and then Code (Code'First + Offset + 1) = Debug_Extension)

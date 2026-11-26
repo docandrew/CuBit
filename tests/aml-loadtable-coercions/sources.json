@@ -243,7 +243,7 @@
     },
     {
       "path": "tests/aml-module-execution-context/sources.json",
-      "sha256": "8b3b76cbcf00fdd5f07c830fbb2948e8d6b213727ee9e45f88dc9264226a12ac"
+      "sha256": "7f660e88ee0e324257bb44781790326a1cb4d53ee1532ac5eb7fe0ec95a2cd62"
     },
     {
       "path": "userspace/services/acpi/acpi_allocation_diagnostics.adb",
@@ -634,7 +634,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.adb",
-      "sha256": "b1257c9b72d4b3b106956f6406850925a001f5ef121247fa23282208d280fa8f",
+      "sha256": "dcda88f045f955307b10f8eefba8fa66295e2cbdf9df696c889c70f12e04dbab",
       "kind": "ada"
     },
     {
