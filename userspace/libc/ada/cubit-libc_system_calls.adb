@@ -413,24 +413,105 @@ package body CuBit.Libc_System_Calls is
       return To_Long (Base);
    end Protect_Or_Release;
 
-   function Map (Length : Unsigned_64; Protection, Flags : long; Fd : int;
+   --  MAP_FIXED over a range of a region this process already has (a
+   --  reservation it made with mmap): the range's pages are replaced by
+   --  fresh ones, as on Linux. Its committed pages go back (decommit);
+   --  then, unless the new protection is PROT_NONE, it is committed whole
+   --  (zero, read/write) in the kernel's commit steps and given that
+   --  protection. On a refused commit the range is decommitted again, so
+   --  it is left inaccessible rather than partly backed. The kernel places
+   --  regions itself: an address outside every region of this process is
+   --  refused, never mapped.
+   function Replace_Pages (Address, Length : Unsigned_64; Protection : long) return long;
+   function Replace_Pages (Address, Length : Unsigned_64; Protection : long) return long is
+      Size : constant Unsigned_64 := Region_Bytes (Length);
+      Done, Step : Unsigned_64 := 0;
+      Ignore : Boolean;
+   begin
+      if Size = 0 or else (Address and Page_Mask) /= 0 then
+         return Error (EINVAL);
+      elsif not Change_Range (Address, Size, K.Decommit) then
+         return Error (ENOMEM);
+      elsif Protection = PROT_NONE then
+         return To_Long (Address);
+      end if;
+      while Done < Size loop
+         Step := Unsigned_64'Min (Size - Done, K.Maximum_Owned_Commit_Bytes);
+         if not Change_Range (Address + Done, Step, K.Commit) then
+            Ignore := Change_Range (Address, Size, K.Decommit);
+            return Error (ENOMEM);
+         end if;
+         Done := Done + Step;
+      end loop;
+      if Protection = PROT_READ and then not Change_Range (Address, Size, K.Make_Read_Only) then
+         Ignore := Change_Range (Address, Size, K.Decommit);
+         return Error (ENOMEM);
+      end if;
+      return To_Long (Address);
+   end Replace_Pages;
+
+   --  mprotect to PROT_READ or read/write over a range of a reservation that
+   --  is not all committed (a MAP_NORESERVE mapping opened in place, as
+   --  SpiderMonkey and V8 do): its uncommitted pages are committed (zero)
+   --  and committed ones keep their bytes, then the whole range is given
+   --  Protection, as on Linux. A kernel commit is refused when any page of
+   --  its range is committed, so a refused step is committed page by page.
+   --  False when the range is not inside one region of this process.
+   function Open_Reserved (Address, Length : Unsigned_64; Protection : long) return Boolean;
+   function Open_Reserved (Address, Length : Unsigned_64; Protection : long) return Boolean is
+      Size : constant Unsigned_64 := Region_Bytes (Length);
+      Done, Step, Page : Unsigned_64 := 0;
+      Ignore : Boolean;
+   begin
+      if Size = 0 or else (Address and Page_Mask) /= 0 then
+         return False;
+      end if;
+      while Done < Size loop
+         Step := Unsigned_64'Min (Size - Done, K.Maximum_Owned_Commit_Bytes);
+         if not Change_Range (Address + Done, Step, K.Commit) then
+            Page := 0;
+            while Page < Step loop
+               Ignore := Change_Range (Address + Done + Page, K.Page_Bytes, K.Commit);
+               Page := Page + K.Page_Bytes;
+            end loop;
+         end if;
+         Done := Done + Step;
+      end loop;
+      return Change_Range (Address, Size, Access_Operation (Protection));
+   end Open_Reserved;
+
+   function Map (Address, Length : Unsigned_64; Protection, Flags : long; Fd : int;
                  Offset : long) return long;
-   function Map (Length : Unsigned_64; Protection, Flags : long; Fd : int;
+   function Map (Address, Length : Unsigned_64; Protection, Flags : long; Fd : int;
                  Offset : long) return long
    is
       Allowed_Flags : constant Unsigned_64 :=
         Bits (MAP_PRIVATE) or Bits (MAP_ANONYMOUS) or Bits (MAP_STACK)
-        or Bits (MAP_NORESERVE);
+        or Bits (MAP_NORESERVE) or Bits (MAP_FIXED);
       Base : Unsigned_64;
    begin
       if Length = 0 then
          return Error (EINVAL);
       elsif Protection not in PROT_NONE | PROT_READ | PROT_READ + PROT_WRITE
-        or else Has (Flags, MAP_FIXED)
         or else (Bits (Flags) and Bits (MAP_TYPE)) /= Bits (MAP_PRIVATE)
         or else (Bits (Flags) and not Allowed_Flags) /= 0
+        or else (Has (Flags, MAP_FIXED) and then not Has (Flags, MAP_ANONYMOUS))
       then
          return Error (ENOTSUP);
+      elsif Has (Flags, MAP_FIXED) then
+         return Replace_Pages (Address, Length, Protection);
+      elsif Protection = PROT_NONE and then Has (Flags, MAP_NORESERVE)
+        and then Has (Flags, MAP_ANONYMOUS)
+      then
+         --  Address space only (VirtualAlloc's MEM_RESERVE): no page is
+         --  committed or charged until MAP_FIXED commits part of it.
+         --  Without MAP_NORESERVE a PROT_NONE mapping stays committed, so
+         --  that mprotect can open it (musl's guarded thread stacks).
+         if Region_Bytes (Length) = 0 then
+            return Error (ENOMEM);
+         end if;
+         Base := Kernel (K.Reserve_Owned_Region, Region_Bytes (Length), 0);
+         return (if Base = 0 or else Base = K.Failed then Error (ENOMEM) else To_Long (Base));
       end if;
       Base := Allocate_Region (Length);
       if Base = 0 then
@@ -1040,10 +1121,16 @@ package body CuBit.Libc_System_Calls is
          when SYS_brk =>
             return Grow_Break (Bits (A));
          when SYS_mmap =>
-            return Map (Bits (B), C, D, Low (E), F);
+            return Map (Bits (A), Bits (B), C, D, Low (E), F);
          when SYS_munmap =>
-            --  A whole mapping only: its region goes back.
-            return (if Release_Region (Bits (A), Bits (B)) then 0 else Error (EINVAL));
+            --  A whole mapping: its region goes back. Part of one: its
+            --  pages go back (decommit) and it faults from then on, but
+            --  its address space stays reserved until the process ends,
+            --  since the kernel releases whole regions only.
+            return (if Release_Region (Bits (A), Bits (B))
+                      or else ((Bits (A) and Page_Mask) = 0
+                               and then Change_Range (Bits (A), Bits (B), K.Decommit))
+                    then 0 else Error (EINVAL));
          when SYS_madvise =>
             --  Advisory no-ops only. In particular no fork-related mapping
             --  semantics: AWS-LC probes support with invalid advice.
@@ -1058,6 +1145,7 @@ package body CuBit.Libc_System_Calls is
                return Error (ENOSYS);
             end if;
             return (if Change_Range (Bits (A), Bits (B), Access_Operation (C))
+                      or else (C /= PROT_NONE and then Open_Reserved (Bits (A), Bits (B), C))
                     then 0 else Error (EINVAL));
          when SYS_mremap =>
             return Error (ENOMEM);                 --  musl falls back to copying

@@ -8243,6 +8243,21 @@ libc-check: main thread stack bounds PASS
 libc-check: open and read (DER begins with a SEQUENCE) PASS
 libc-check: lseek, pread and end of file PASS
 libc-check: mmap a file PASS
+libc-check: mmap NORESERVE reserves address space PASS
+libc-check: MAP_FIXED commits inside a reservation PASS
+libc-check: committed pages are zero PASS
+libc-check: MAP_FIXED PROT_NONE decommits PASS
+libc-check: a recommitted range is fresh zero pages PASS
+libc-check: MAP_FIXED over committed pages replaces only its range PASS
+libc-check: munmap trims the head and tail of a reservation PASS
+libc-check: the kept middle survives the trim PASS
+libc-check: munmap of committed pages inside a reservation PASS
+libc-check: munmap of an unaligned range is refused PASS
+libc-check: MAP_FIXED outside a reservation is refused PASS
+libc-check: the whole reservation is released PASS
+libc-check: a second reservation, one page committed PASS
+libc-check: mprotect opens a reservation in place PASS
+libc-check: the second reservation is released PASS
 libc-check: opendir and readdir PASS
 libc-check: a file outside the scope is denied PASS
 libc-check: create and write a file PASS

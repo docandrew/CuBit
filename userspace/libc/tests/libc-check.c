@@ -45,6 +45,56 @@ static void check(int ok, const char *name)
 	if (!ok) failures++;
 }
 
+/* Address space reserved without memory, then committed and decommitted in
+ * place, and trimmed at both ends: how Ladybird's LibGC reserves its heap
+ * region (Core::System::reserve_address_space, commit_memory,
+ * decommit_memory, release_address_space), on a small scale. */
+static void reservation_checks(void)
+{
+	const size_t mib = 1 << 20, span = 64 * mib, aligned = 32 * mib;
+	char *base = mmap(0, span, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+	check(base != MAP_FAILED, "mmap NORESERVE reserves address space");
+	if (base == MAP_FAILED) return;
+	char *region = (char *)(((unsigned long)base + aligned - 1) & ~(unsigned long)(aligned - 1));
+	char *chunk = region + 4 * mib;
+	check(mmap(chunk, 2 * mib, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) == chunk,
+	      "MAP_FIXED commits inside a reservation");
+	check(chunk[0] == 0 && chunk[2 * mib - 1] == 0, "committed pages are zero");
+	memset(chunk, 0x6c, 2 * mib);
+	check(mmap(chunk, 2 * mib, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_NORESERVE, -1, 0) == chunk,
+	      "MAP_FIXED PROT_NONE decommits");
+	check(mmap(chunk, 2 * mib, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) == chunk
+	      && chunk[0] == 0 && chunk[mib] == 0, "a recommitted range is fresh zero pages");
+	chunk[0] = 1;
+	chunk[mib] = 2;
+	check(mmap(chunk + mib, mib, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) == chunk + mib
+	      && chunk[0] == 1 && chunk[mib] == 0, "MAP_FIXED over committed pages replaces only its range");
+	size_t head = (size_t)(region - base), tail = span - head - aligned;
+	check((head == 0 || munmap(base, head) == 0) && (tail == 0 || munmap(region + aligned, tail) == 0),
+	      "munmap trims the head and tail of a reservation");
+	check(chunk[0] == 1, "the kept middle survives the trim");
+	check(munmap(chunk, mib) == 0, "munmap of committed pages inside a reservation");
+	check(munmap(base + 1, 4096) == -1 && errno == EINVAL, "munmap of an unaligned range is refused");
+	/* The kernel places every region: MAP_FIXED never maps at an address
+	 * this process has not reserved (Linux would map over .bss). */
+	static char outside[2 * 4096];
+	char *unowned = (char *)(((unsigned long)outside + 4095) & ~4095ul);
+	check(mmap(unowned, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) == MAP_FAILED,
+	      "MAP_FIXED outside a reservation is refused");
+	check(munmap(base, span) == 0, "the whole reservation is released");
+	/* Opened in place with mprotect instead (SpiderMonkey's and V8's
+	 * pattern): pages committed before keep their bytes, the rest are zero. */
+	char *opened = mmap(0, mib, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+	check(opened != MAP_FAILED
+	      && mmap(opened + 4096, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) == opened + 4096,
+	      "a second reservation, one page committed");
+	if (opened == MAP_FAILED) return;
+	opened[4096] = 9;
+	check(mprotect(opened, mib, PROT_READ | PROT_WRITE) == 0 && opened[4096] == 9 && opened[0] == 0 && opened[mib - 1] == 0,
+	      "mprotect opens a reservation in place");
+	check(munmap(opened, mib) == 0, "the second reservation is released");
+}
+
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 static long counter;
@@ -131,6 +181,7 @@ int main(void)
 		((volatile char *)guard)[4096] = 42;
 		check(munmap(guard, 8192) == 0, "release mixed guard and data pages");
 	}
+	reservation_checks();
 	for (int round = 0; round < 128; round++) {
 		unsigned char *p = mmap(0, 1 << 20, PROT_READ | PROT_WRITE,
 		                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -138,10 +189,11 @@ int main(void)
 		if (p == MAP_FAILED) return 1;
 		check(p[0] == 0 && p[(1 << 20) - 1] == 0, "owned mmap zero fill");
 		memset(p, 0x5a, 1 << 20);
-		check(munmap(p, 4096) == -1 && errno == EINVAL,
-		      "partial munmap rejected");
-		check(p[0] == 0x5a && p[(1 << 20) - 1] == 0x5a,
-		      "rejected unmap preserves contents");
+		/* As on Linux, part of a mapping can be unmapped; the rest
+		 * keeps its contents. */
+		check(munmap(p, 4096) == 0, "partial munmap returns its pages");
+		check(p[4096] == 0x5a && p[(1 << 20) - 1] == 0x5a,
+		      "partial munmap keeps the rest");
 		check(munmap(p, 1 << 20) == 0, "whole munmap releases allocation");
 		check(munmap(p, 1 << 20) == -1 && errno == EINVAL,
 		      "duplicate munmap rejected");
