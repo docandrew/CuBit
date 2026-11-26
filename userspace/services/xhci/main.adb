@@ -16,6 +16,7 @@ with CuBit.Devices;
 with CuBit.Device_Interrupts;
 with CuBit.Monotonic;
 with Startup;
+with Input_Urgency;
 with CuBit.Launch_Configurations;
 with Launch_Configuration;
 with Boot_Log;
@@ -323,6 +324,11 @@ begin
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;
+   --  Its keyboards' and mice's urgency (SCHED-001, Input_Urgency): their
+   --  report signals lend Desktop urgent turns, nothing else it does.
+   if Startup.Urgency.Present and then Input_Urgency.Reserve (Startup.Urgency.Value) then
+      debugPrint ("xhci: urgency reserved for the input path" & ASCII.LF);
+   end if;
    declare
       Configuration : Launch_Configuration.Controller_Configuration;
       Configured : Boolean;

@@ -25,6 +25,10 @@
   drives => [(Device_Match.ACPI_ID "PNP0C50")]
   requests => [(service "i2c" "i2c") (service "gpio" "gpio")
     (notification "mouse" Notify_Access.Publish "mouse-events")
-    (service "device-manager" "ready") (service "logstore" "logstore")]
-  optional => ["logstore"]
+    (service "device-manager" "ready") (service "logstore" "logstore")
+    # Urgency (SCHED-001): 1 ms every 10 ms pays for the urgent turns its
+    # touchpad reports lend Desktop. Input_Wakes_Only: its I2C bus
+    # transactions through i2c-dw never spend it (Latency_Contract_ABI).
+    (scheduling "urgency" 1000 10000)]
+  optional => ["logstore" "urgency"]
   parameters => (Parameter_Signature.Declared "HID_Parameters"))

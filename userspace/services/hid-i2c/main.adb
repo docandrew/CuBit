@@ -23,6 +23,7 @@ with HID_Touchpad_Pump;
 with I2C_Transfer_Wire;
 with Parameters;
 with Startup;
+with Input_Urgency;
 procedure Main is
    package W renames I2C_Transfer_Wire;
    package D renames HID_I2C_Descriptors;
@@ -97,6 +98,8 @@ procedure Main is
    Now : W.Word;
    Available, Can_Start, Ack, Queued : Boolean;
    Startup_Limit : Launch.Deadline_Result;
+   --  Its input urgency was admitted (Input_Urgency).
+   Urgent : Boolean;
    Started : App.Start_Result;
    Progress : Pump.Report;
    Activity : CuBit.Messages.Activity_Result;
@@ -139,8 +142,12 @@ procedure Main is
    end Report_Once;
 begin
    Log.Initialize (Binding_Result);
+   --  Its touchpad's urgency (SCHED-001, Input_Urgency): its report
+   --  publications lend Desktop urgent turns; its I2C transactions do not.
+   Urgent := Startup.Urgency.Present and then Input_Urgency.Reserve (Startup.Urgency.Value);
    Log.Stage (Log.Identify, True, Log.Confirmed,
-      " acpi-id=PNP0C50 i2c=channel gpio=irq" & Log.Hex ("descriptor-register", W.Word (Raw.descriptor_register)));
+      " acpi-id=PNP0C50 i2c=channel gpio=irq" & Log.Hex ("descriptor-register", W.Word (Raw.descriptor_register)) &
+      " urgency=" & (if Urgent then "reserved" else "none"));
    Clock.Sample_Time (Now, Available); Clock.Cache_Time (Now, Available);
    Startup_Limit := Launch.Deadline (Now, Raw.timing.startup);
    Can_Start := GPIO_Binding.Status = GPIO.Endpoint_Resolved and then

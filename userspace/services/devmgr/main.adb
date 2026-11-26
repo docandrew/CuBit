@@ -3921,6 +3921,10 @@ procedure main is
         (virtioInputChild, LC.Encode (LC.Queue_Configuration'(DMA => dmaPhys), LC.Virtio_Input));
       Give_Registers (virtioInputChild, "virtio-input.drv", modernBar, inputModernBytes,
                       H.Read_Write);
+      --  Its input urgency (SCHED-001), as it declares.
+      if not Give_Declared_Scheduling (virtioInputChild) then
+         debugPrint ("devmgr: virtio-input.drv declares no input urgency" & LF);
+      end if;
       inputTransportReady := True;
       debugPrint ("devmgr: virtio-input setup complete" & LF);
    end setupVirtioInput;
@@ -4602,6 +4606,10 @@ procedure main is
       --  registering or replacing them) and its endpoint to devmgr come
       --  from its manifest too.
       Give_Registers (child, "xhci.drv", bar0Phys, barPages * PAGE_BYTES, H.Read_Write);
+      --  Its keyboards' and mice's urgency (SCHED-001), as it declares.
+      if not Give_Declared_Scheduling (child) then
+         Warnings.Inform ("devmgr: " & Name & " declares no input urgency");
+      end if;
       --  Its lines (logstore tells instances apart by their process).
       Give_Logstore (child, Next_Log_Issuance);
       --  Its location, which names it in its log lines; the registers and
@@ -6783,6 +6791,11 @@ procedure main is
               H.Badged (Logstore_Endpoint, H.Read_Write,
                 CuBit.Log_Protocol.Publisher_Tag
                   (Driver_Log_Budget, Next_Log_Issuance)));
+         end if;
+         --  The real-time or urgency share its manifest declares, if any
+         --  (hid-i2c.drv's input urgency, SCHED-001).
+         if Give_Declared_Scheduling (Child) then
+            Warnings.Inform ("devmgr: " & Name & " given its declared scheduling share");
          end if;
          DL.Set_Payload (Child, LC.Encode (Config));
          --  PWR-003: a driver of a device acpi.svc reported serves its AML

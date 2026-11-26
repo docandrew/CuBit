@@ -15,5 +15,8 @@
     (dma "events" 4096)
     (service "device-manager" "ready")
     # ABI-002: its debug text, once devmgr introduces logstore.
-    (service "logstore" "logstore")]
-  optional => ["logstore"])
+    (service "logstore" "logstore")
+    # Urgency (SCHED-001): 1 ms every 10 ms pays for the urgent turns its
+    # report signals lend Desktop (Input_Wakes_Only, Latency_Contract_ABI).
+    (scheduling "urgency" 1000 10000)]
+  optional => ["logstore" "urgency"])

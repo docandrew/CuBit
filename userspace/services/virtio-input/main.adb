@@ -37,6 +37,7 @@ with CuBit.Control_Events;
 with CuBit.Virtio_Input_Control;
 with CuBit.Device_Interrupts;
 with Startup;
+with Input_Urgency;
 with Absolute_Pointer;
 with Input_Sources;
 with CuBit.Monotonic;
@@ -288,6 +289,11 @@ begin
    --  Stop (devmgr's, at shutdown): nothing to finish; the runtime ends
    --  the process when a receive returns it (CuBit.Messages).
    CuBit.Messages.Exit_On_Stop;
+   --  Its keyboards' and mice's urgency (SCHED-001, Input_Urgency): their
+   --  report signals lend Desktop urgent turns, nothing else it does.
+   if Startup.Urgency.Present and then Input_Urgency.Reserve (Startup.Urgency.Value) then
+      debugPrint ("virtio-input: urgency reserved for the input path" & ASCII.LF);
+   end if;
    debugPrint ("virtio-input: starting" & LF);
 
    --  Startup is bound to the registered device manager's kernel-supplied

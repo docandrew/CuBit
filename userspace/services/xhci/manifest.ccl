@@ -18,5 +18,10 @@
     (dma "rings" 16777216)
     (service "device-manager" "ready")
     # ABI-002: its lines, once devmgr introduces logstore.
-    (service "logstore" "logstore")]
-  optional => ["logstore"])
+    (service "logstore" "logstore")
+    # Urgency for its keyboards and mice (SCHED-001): 1 ms every 10 ms pays
+    # for the urgent turns its HID report signals lend Desktop. Only those:
+    # it reserves it Input_Wakes_Only, so its USB disks' traffic never
+    # spends it (Latency_Contract_ABI).
+    (scheduling "urgency" 1000 10000)]
+  optional => ["logstore" "urgency"])
