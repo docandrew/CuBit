@@ -206,7 +206,9 @@ package CuBit.Channels is
    --  (a drop-oldest reader); Ended: the channel's grant has ended.
    type Signal_Result is (Signalled, No_Region, Ended);
    --  Sync: this thread is about to block (the woken thread runs here).
-   procedure Signal (C : Channel; Sync : Boolean; Result : out Signal_Result);
+   --  Urgent: the signal carries input (CuBit.Waits.Wake_Peer).
+   procedure Signal
+     (C : Channel; Sync : Boolean; Result : out Signal_Result; Urgent : Boolean := False);
 
    --  Producers: whether the consumer armed its waiting word (it sleeps
    --  until woken): an acceptor that produces signals only then.

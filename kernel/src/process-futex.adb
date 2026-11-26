@@ -389,14 +389,15 @@ package body Process.Futex is
         return wakeFor (PerCPUData.getCurrentPID, address, count);
     end wake;
 
-    function wakeSpace (word, count, space : Unsigned_64; sync : Boolean) return Unsigned_64 is
+    function wakeSpace (word, count, space : Unsigned_64; sync : Boolean;
+                        urgent : Boolean := False) return Unsigned_64 is
     begin
         if space = Futex_ABI.Private_Space then
             return wake (word, count);
         elsif space = Futex_ABI.Shared_Space then
             return wakeWordOf (PerCPUData.getCurrentPID, True, word, count, sync => sync);
         elsif space = Futex_ABI.Peer_Space then
-            return IPC.wakePeer (PerCPUData.getCurrentPID, word, sync);
+            return IPC.wakePeer (PerCPUData.getCurrentPID, word, sync, urgent);
         else
             return WAKE_REFUSED;
         end if;

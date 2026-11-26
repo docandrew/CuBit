@@ -1125,8 +1125,11 @@ package Process is
     -- admitted INTERACTIVE reservation with budget left, lends wakee, which
     -- its IPC is waking, an urgent turn of Urgent_Turn_Microseconds paid
     -- from that budget. Call before readying or switching to wakee, in the
-    -- waker's system call, with Process.lock held.
-    procedure lendUrgency (wakee : ThreadID);
+    -- waker's system call, with Process.lock held. input: an input wake (an
+    -- event publication, or a channel wake marked Futex_ABI.Urgent_Hint);
+    -- a holder whose contract says Latency_Contract_ABI.Input_Wakes_Only
+    -- lends on those alone.
+    procedure lendUrgency (wakee : ThreadID; input : Boolean := False);
 
     -- Where ready thread tid should join a ready list
     -- (Virtual_Deadlines.Place over every CPU's running and first queued

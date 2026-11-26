@@ -42,11 +42,12 @@ package body CuBit.Input_Source is
    end Count_Up;
 
    --  The one place a source wakes Desktop (IPC-010 swaps this for a
-   --  shared futex).
+   --  shared futex). An input wake: a driver holding input urgency lends
+   --  Desktop an urgent turn with it (SCHED-001, Latency_Contract_ABI).
    procedure Wake_Desktop (S : Source) is
       Ignore : CuBit.Channels.Signal_Result;
    begin
-      CuBit.Channels.Signal (S.Channel, Sync => False, Result => Ignore);
+      CuBit.Channels.Signal (S.Channel, Sync => False, Result => Ignore, Urgent => True);
    end Wake_Desktop;
 
    procedure Forget_Desktop (S : in out Source) is

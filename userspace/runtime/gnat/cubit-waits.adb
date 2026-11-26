@@ -109,9 +109,11 @@ package body CuBit.Waits is
            + (if Peer.Shared then W.Wake_Shared else 0),
          Deadline, Mine.Word, Expected, 0, Peer.Word));
 
-   function Wake_Peer (Grant : GR.Reference; Sync : Boolean := False) return Boolean is
+   function Wake_Peer
+     (Grant : GR.Reference; Sync : Boolean := False; Urgent : Boolean := False) return Boolean is
      (CuBit.Kernel_Calls.Call
         (CuBit.Kernel_ABI.Futex_Wake, GR.Encode (Grant), 1, FA.Peer_Space,
-         (if Sync then FA.Sync_Hint else 0)) /= FA.Wake_Refused);
+         (if Sync then FA.Sync_Hint else 0) or (if Urgent then FA.Urgent_Hint else 0))
+      /= FA.Wake_Refused);
 
 end CuBit.Waits;

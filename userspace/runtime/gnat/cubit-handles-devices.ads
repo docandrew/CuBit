@@ -55,8 +55,11 @@ package CuBit.Handles.Devices is
    --  urgent turns this thread lends the threads its IPC wakes (the input
    --  path: input source, Desktop, the focused app). The thread itself runs
    --  by ordinary deadline. 0, or Unsigned_64'Last.
+   --  Flags: Latency_Contract_ABI's (Input_Wakes_Only for a driver that
+   --  serves more than input: only its input wakes lend).
    function Reserve_Interactive
-     (Period_Us, Budget_Us : Unsigned_64; Authority : Scheduling) return Unsigned_64;
+     (Period_Us, Budget_Us : Unsigned_64; Authority : Scheduling;
+      Flags : Unsigned_64 := 0) return Unsigned_64;
 
    --  Mark a boot milestone (docs/boot-timeline.md, Boot_Timeline_Layout):
    --  a Call on the owner role's notification handle. True when the kernel

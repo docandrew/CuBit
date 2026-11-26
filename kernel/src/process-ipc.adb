@@ -777,8 +777,11 @@ package body Process.IPC is
     -- woken thread an urgent turn if it holds INTERACTIVE budget
     -- (Process.lendUrgency). Never from an interrupt: the thread it
     -- interrupted did not wake anyone.
+    -- input: the wake is an input wake (an event publication, or a channel
+    -- wake marked Urgent_Hint), which an Input_Wakes_Only holder lends on.
     procedure wakeActivityWaitersLocked
-      (owner : ProcessID; sync : Boolean := False; lend : Boolean := False) is
+      (owner : ProcessID; sync : Boolean := False; lend : Boolean := False;
+       input : Boolean := False) is
         waiter : ThreadID := mailtab(owner).recvQueue.head;
         following : ThreadID;
         -- Only the first waiter woken takes the waker's CPU (readySync).
@@ -793,7 +796,7 @@ package body Process.IPC is
                 threadtab (waiter).receiveDeadlineActive := False;
                 noteWake (owner);
                 if lend then
-                    lendUrgency (waiter);
+                    lendUrgency (waiter, input);
                 end if;
                 if handOver then
                     readySync (waiter);
@@ -819,7 +822,8 @@ package body Process.IPC is
 
     -- Caller holds mailtab(owner).lock and Process.lock. Every thread waiting
     -- for an event or completion rechecks its condition when it runs.
-    procedure wakeNotifyWaitersLocked (owner : ProcessID; lend : Boolean := False) is
+    procedure wakeNotifyWaitersLocked
+      (owner : ProcessID; lend : Boolean := False; input : Boolean := False) is
         waiter : ThreadID;
     begin
         while not Queues.isEmpty (mailtab(owner).notifyQueue) loop
@@ -829,7 +833,7 @@ package body Process.IPC is
             then
                 noteWake (owner);
                 if lend then
-                    lendUrgency (waiter);
+                    lendUrgency (waiter, input);
                 end if;
                 ready (waiter);
             end if;
@@ -850,7 +854,8 @@ package body Process.IPC is
     -- doorbell or one-way message) wakes one blocked receiver, which may
     -- consume it, and every event waiter.
     procedure wakeForUnsolicitedWork
-      (owner : ProcessID; sync : Boolean := False; lend : Boolean := False) is
+      (owner : ProcessID; sync : Boolean := False; lend : Boolean := False;
+       input : Boolean := False) is
         receiver : ThreadID;
         -- A sync wake hands the waker's CPU to one thread; any others are
         -- readied as usual.
@@ -867,7 +872,7 @@ package body Process.IPC is
             then
                 noteWake (owner);
                 if lend then
-                    lendUrgency (receiver);
+                    lendUrgency (receiver, input);
                 end if;
                 if sync then
                     readySync (receiver);
@@ -877,8 +882,8 @@ package body Process.IPC is
                 end if;
             end if;
         end if;
-        wakeNotifyWaitersLocked (owner, lend);
-        wakeActivityWaitersLocked (owner, sync and then not handed, lend);
+        wakeNotifyWaitersLocked (owner, lend, input);
+        wakeActivityWaitersLocked (owner, sync and then not handed, lend, input);
         Spinlocks.exitCriticalSection (lock);
     end wakeForUnsolicitedWork;
 
@@ -1913,7 +1918,8 @@ package body Process.IPC is
         --  receive() is the intentional mixed-lane wait primitive: it may
         --  consume events as well as requests. Wake both event-specific and
         --  mixed waiters whenever unsolicited work is published.
-        wakeForUnsolicitedWork (dest, lend => True);
+        -- An event publication is an input wake (Input_Wakes_Only).
+        wakeForUnsolicitedWork (dest, lend => True, input => True);
 
         Spinlocks.exitCriticalSection (mailtab(dest).lock);
     end trySendEvent;
@@ -3117,7 +3123,8 @@ package body Process.IPC is
 
     -- Set owner's wake (any: whatever its wake word, a peer's wake; else
     -- only if ownerAddress is its registered wake word).
-    function raiseWake (owner : ProcessID; ownerAddress : Unsigned_64; sync, any : Boolean)
+    function raiseWake (owner : ProcessID; ownerAddress : Unsigned_64; sync, any : Boolean;
+                        urgent : Boolean := False)
       return Boolean
     is
         matched : Boolean := False;
@@ -3138,7 +3145,7 @@ package body Process.IPC is
             end if;
             -- Raised by a thread's own system call (a futex or channel
             -- wake), so the waker may lend urgency.
-            wakeForUnsolicitedWork (owner, sync, lend => True);
+            wakeForUnsolicitedWork (owner, sync, lend => True, input => urgent);
         end if;
         Spinlocks.exitCriticalSection (mailtab(owner).lock);
         return matched;
@@ -3148,7 +3155,8 @@ package body Process.IPC is
       return Boolean is
       (raiseWake (owner, ownerAddress, sync, any => False));
 
-    function wakePeer (caller : ProcessID; reference : Unsigned_64; sync : Boolean)
+    function wakePeer (caller : ProcessID; reference : Unsigned_64; sync : Boolean;
+                       urgent : Boolean := False)
       return Unsigned_64
     is
         slotPart : constant Unsigned_64 := reference and 16#FFFF_FFFF#;
@@ -3184,7 +3192,8 @@ package body Process.IPC is
         end if;
         -- A closed mailbox (the peer is ending) takes no wake: refused, as a
         -- wake through an ended grant is.
-        return (if raiseWake (target, 0, sync, any => True) then 1 else Futex_ABI.Wake_Refused);
+        return (if raiseWake (target, 0, sync, any => True, urgent => urgent) then 1
+                else Futex_ABI.Wake_Refused);
     end wakePeer;
 
     ---------------------------------------------------------------------------

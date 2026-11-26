@@ -75,8 +75,11 @@ package Process.Futex is
     --
     -- Peer_Space (IPC-010 option B): word is a grant reference; the caller,
     -- a party of that live notified grant, wakes the other party's wake word
-    -- (Process.IPC.wakePeer); sync places the woken thread on this CPU.
-    function wakeSpace (word, count, space : Unsigned_64; sync : Boolean) return Unsigned_64;
+    -- (Process.IPC.wakePeer); sync places the woken thread on this CPU;
+    -- urgent marks it an input wake (Futex_ABI.Urgent_Hint: the caller
+    -- may lend urgency, Latency_Contract_ABI.Input_Wakes_Only).
+    function wakeSpace (word, count, space : Unsigned_64; sync : Boolean;
+                        urgent : Boolean := False) return Unsigned_64;
 
     -- Wake up to count waiters of pid on address (thread exit).
     function wakeFor (pid : ProcessID; address, count : Unsigned_64)

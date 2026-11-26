@@ -35,6 +35,7 @@ with Boot_Timeline_Layout;
 with Wait_ABI;
 with Wait_Policy;
 with Futex_ABI;
+with Latency_Contract_ABI;
 with Thread_ABI;
 with Thread_Slots;
 
@@ -368,7 +369,9 @@ package body Syscall is
             -- (Futex_ABI, IPC-010).
             when SYSCALL_FUTEX_WAKE =>
                 retval := Process.Futex.wakeSpace
-                  (arg0, arg1, arg2, sync => arg3 = Futex_ABI.Sync_Hint);
+                  (arg0, arg1, arg2,
+                   sync   => Futex_ABI.Has_Hint (arg3, Futex_ABI.Sync_Hint),
+                   urgent => Futex_ABI.Has_Hint (arg3, Futex_ABI.Urgent_Hint));
 
             when SYSCALL_SBRK =>
                 -- The new pages' frames are made clean first, with no lock
@@ -617,6 +620,9 @@ package body Syscall is
                 then
                     retval := Unsigned_64'Last;
                 elsif arg1 /= 0 and then arg2 > arg1 then
+                    retval := Unsigned_64'Last;
+                elsif not Latency_Contract_ABI.Defined (arg3) then
+                    -- A flag this kernel does not know.
                     retval := Unsigned_64'Last;
                 else
                     -- REALTIME and INTERACTIVE are enforced: admitted only

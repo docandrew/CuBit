@@ -26,8 +26,11 @@
 --  Waking a channel peer (IPC-010 option B, Channel_Wake_ABI): FUTEX_WAKE
 --  with arg2 Peer_Space, arg0 a grant's reference word (generation << 32 |
 --  slot) of a live grant made with the notify flag (a channel's) that the
---  caller is a party of, arg1 ignored, arg3 Sync_Hint when the caller is
---  about to block (the woken thread is placed on its CPU). It wakes the
+--  caller is a party of, arg1 ignored, arg3 a set of hints: Sync_Hint when
+--  the caller is about to block (the woken thread is placed on its CPU),
+--  Urgent_Hint for an input wake (an input source ring's signal to Desktop:
+--  a holder of an Input_Wakes_Only INTERACTIVE contract lends the woken
+--  thread an urgent turn, Latency_Contract_ABI). It wakes the
 --  other party's wake word: the Ready_Word wait or the receive it is in,
 --  coalesced. Result 1 (woken, or already pending), or Wake_Refused.
 ------------------------------------------------------------------------------
@@ -48,8 +51,12 @@ package Futex_ABI with Pure, SPARK_Mode is
    Private_Space : constant Unsigned_64 := 0;
    Shared_Space  : constant Unsigned_64 := 1;
    Peer_Space    : constant Unsigned_64 := 2;
-   --  FUTEX_WAKE's arg3 (Peer_Space): the waker is about to block.
+   --  FUTEX_WAKE's arg3 (Peer_Space), a set: the waker is about to block;
+   --  the wake carries input (see above).
    Sync_Hint     : constant Unsigned_64 := 1;
+   Urgent_Hint   : constant Unsigned_64 := 2;
+   function Has_Hint (Hints, Hint : Unsigned_64) return Boolean is
+     ((Hints and Hint) /= 0);
 
    --  FUTEX_WAKE of a shared word by a process that is neither party of a
    --  live grant (or a malformed word): nothing woken.

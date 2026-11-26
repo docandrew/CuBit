@@ -472,8 +472,10 @@ package Process.IPC is
     -- party of the live grant named by reference (generation << 32 | slot),
     -- made with the notify flag; the other party's wake word is woken (its
     -- Ready_Word wait or its receive: one coalesced Channel_Wake_ABI
-    -- notice). Returns 1, or Futex_ABI.Wake_Refused.
-    function wakePeer (caller : ProcessID; reference : Unsigned_64; sync : Boolean)
+    -- notice). Returns 1, or Futex_ABI.Wake_Refused. urgent: an input wake
+    -- (Futex_ABI.Urgent_Hint).
+    function wakePeer (caller : ProcessID; reference : Unsigned_64; sync : Boolean;
+                       urgent : Boolean := False)
       return Unsigned_64;
 
     -- Called once after reserving a PID, before resetting/publishing its

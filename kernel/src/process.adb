@@ -33,6 +33,7 @@ with Process_Memory_Budget;
 with Build;
 with Trace;
 with Interrupt_Windows;
+with Latency_Contract_ABI;
 with Interrupt_Lines;
 with Device_Interrupts;
 with DMA_Remapping;
@@ -232,13 +233,15 @@ package body Process is
         Scheduling_Turns.Move (threadtab (tid).loanOwnTurn, Turn);
     end endLoan;
 
-    procedure lendUrgency (wakee : ThreadID) is
+    procedure lendUrgency (wakee : ThreadID; input : Boolean := False) is
         lender : constant ThreadID := PerCPUData.getCurrentThread;
         accepted : Boolean;
     begin
         if lender = NO_THREAD or else lender = wakee or else
            not threadtab (lender).rtAdmitted or else
            threadtab (lender).latency.class /= LATENCY_INTERACTIVE or else
+           (Latency_Contract_ABI.Input_Only (Unsigned_64 (threadtab (lender).latency.flags))
+            and then not input) or else
            threadtab (wakee).idle or else
            threadtab (wakee).loanLender /= NO_THREAD or else
            realtimeEligible (wakee) or else

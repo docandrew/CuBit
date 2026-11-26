@@ -102,7 +102,11 @@ package CuBit.Waits is
    --  this process is a party of. Sync: this thread is about to block (the
    --  woken thread is placed on its CPU). False: refused (not a party, or
    --  the grant or the peer has ended).
-   function Wake_Peer (Grant : GR.Reference; Sync : Boolean := False) return Boolean;
+   --  Urgent: an input wake (Futex_ABI.Urgent_Hint): a holder of an
+   --  Input_Wakes_Only INTERACTIVE contract lends the woken thread an urgent
+   --  turn (Latency_Contract_ABI).
+   function Wake_Peer
+     (Grant : GR.Reference; Sync : Boolean := False; Urgent : Boolean := False) return Boolean;
 
    --  The futex pause's length, under the kernel's limit.
    Pause_Cycles : constant Unsigned_64 := 4_000;

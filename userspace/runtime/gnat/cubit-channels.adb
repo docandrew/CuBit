@@ -584,13 +584,14 @@ package body CuBit.Channels is
      (C.Active and then C.This_Side = Producing and then C.Has_Peer
       and then Word (C.Peer_Base, CP.CONSUMER_WAITING_OFFSET) /= Not_Waiting);
 
-   procedure Signal (C : Channel; Sync : Boolean; Result : out Signal_Result) is
+   procedure Signal
+     (C : Channel; Sync : Boolean; Result : out Signal_Result; Urgent : Boolean := False) is
    begin
       if not C.Active or else not C.Has_Own then
          Result := No_Region;
          return;
       end if;
-      Result := (if CuBit.Waits.Wake_Peer (C.Own_Grant, Sync) then Signalled else Ended);
+      Result := (if CuBit.Waits.Wake_Peer (C.Own_Grant, Sync, Urgent) then Signalled else Ended);
    end Signal;
 
    --  The consumer's index, as far as the producer can trust it.

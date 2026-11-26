@@ -70,8 +70,9 @@ package body CuBit.Handles.Devices is
               K.Word (Authority)));
 
    function Reserve_Interactive
-     (Period_Us, Budget_Us : Unsigned_64; Authority : Scheduling) return Unsigned_64 is
-     (K.Call (K.Set_Latency_Contract, Latency_Interactive, Period_Us, Budget_Us, 0,
+     (Period_Us, Budget_Us : Unsigned_64; Authority : Scheduling;
+      Flags : Unsigned_64 := 0) return Unsigned_64 is
+     (K.Call (K.Set_Latency_Contract, Latency_Interactive, Period_Us, Budget_Us, Flags,
               K.Word (Authority)));
 
    function Mark_Milestone (Milestone : Unsigned_64; Authority : Notification)
