@@ -1,0 +1,14 @@
+# The Ladybird test262 launcher (tests/ladybird/test262): runs
+# ladybird-test262.app over test262 in batches, with the test262 and
+# ladybird places delegated read-only, and reports every result that is not
+# a pass on the kernel console.
+(Executable_Manifest
+  identity => "com.cubit.ladybird-test262-check"
+  version => "0.1.0"
+  requests => [(service "process-manager" "process-manager") (service "launch" "launch") (service "filesystem" "filesystem")
+    (service "logstore" "logstore")]
+  optional => ["logstore"]
+  scopes => [
+    (filesystem [File_Right.Read] "@nvme:0/ladybird")
+    (filesystem [File_Right.Read] "@nvme:0/test262")]
+  may_launch => [(Launch "ladybird-test262.app")])

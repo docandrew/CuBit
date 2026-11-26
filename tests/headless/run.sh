@@ -1301,6 +1301,13 @@ with open(sys.argv[1], "wb") as f:
     libc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-libc.ccl"
         ;;
+    ladybird-test262)
+        # WEB-006 phase a: Ladybird's test262-runner (JIT compiled out),
+        # built unmodified as a Linux/musl program, over all of test262.
+        # The suite needs a larger disk (TEST262_DISK_BYTES) and a while.
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-ladybird-test262.ccl"
+        QEMU_MEMORY="${QEMU_MEMORY:-2G}"
+        ;;
     ladybird-js)
         # WEB-006 phase a: Ladybird's js (LibJS, JIT compiled out), built
         # unmodified as a Linux/musl program, runs tests/ladybird/check.js.
@@ -3667,6 +3674,50 @@ if [ -n "$INIT_PROFILE" ]; then
         debugfs -w -f "$LADYBIRD_COMMANDS" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
         rm -f "$LADYBIRD_COMMANDS"
         for LADYBIRD_CHECK in ladybird-js.app ladybird/check.js ladybird/icudt78l.dat; do
+            if ! debugfs -R "stat $LADYBIRD_CHECK" "$TEMP_DISK" 2>/dev/null | grep -q "Size:"; then
+                echo "headless: $LADYBIRD_CHECK was not installed" >&2
+                exit 1
+            fi
+        done
+    fi
+    if [ "$TEST_NAME" = "ladybird-test262" ]; then
+        # The runner and the launcher at the root; ICU's data in
+        # @nvme:0/ladybird; the staged test262 (harness, tests, list.txt) in
+        # @nvme:0/test262. Its 50,000 files need more room than the base
+        # disk has: the test disk is grown first.
+        if ! make -C "$KERNEL_DIR" libc user_runtime ccl-manifest >/dev/null ||
+           ! bash "$ROOT_DIR/tests/ladybird/build.sh" "$KERNEL_DIR/isodir/boot" >/dev/null; then
+            echo "headless: failed to build the ladybird-test262 test" >&2
+            exit 1
+        fi
+        LADYBIRD_STAGE="${LADYBIRD_STAGE:-$KERNEL_DIR/build/ladybird}"
+        if [ ! -f "$KERNEL_DIR/isodir/boot/ladybird-test262.app" ] || [ ! -f "$LADYBIRD_STAGE/test262/list.txt" ]; then
+            echo "headless: no staged test262-runner or test262 in $LADYBIRD_STAGE" >&2
+            exit 1
+        fi
+        truncate -s "${TEST262_DISK_BYTES:-1610612736}" "$TEMP_DISK" &&
+            e2fsck -fy "$TEMP_DISK" >/dev/null 2>&1; resize2fs "$TEMP_DISK" >/dev/null 2>&1 || {
+            echo "headless: could not grow the test disk" >&2
+            exit 1
+        }
+        LADYBIRD_COMMANDS="$TEMP_DISK.ladybird"
+        {
+            for LADYBIRD_IMAGE in logstore.svc clock.svc ladybird-test262.app ladybird-test262-check.app; do
+                echo "rm $LADYBIRD_IMAGE"
+                echo "write $KERNEL_DIR/isodir/boot/$LADYBIRD_IMAGE $LADYBIRD_IMAGE"
+            done
+            echo "mkdir ladybird"
+            for LADYBIRD_FILE in "$LADYBIRD_STAGE/data/"icudt*l.dat; do
+                echo "write $LADYBIRD_FILE ladybird/$(basename "$LADYBIRD_FILE")"
+            done
+            echo "mkdir test262"
+            (cd "$LADYBIRD_STAGE/test262" && find harness test -type d | LC_ALL=C sort | sed 's|^|mkdir test262/|')
+            (cd "$LADYBIRD_STAGE/test262" && find harness test list.txt -type f | LC_ALL=C sort |
+               sed "s|^\(.*\)\$|write $LADYBIRD_STAGE/test262/\1 test262/\1|")
+        } > "$LADYBIRD_COMMANDS"
+        debugfs -w -f "$LADYBIRD_COMMANDS" "$TEMP_DISK" >/dev/null 2>&1 || exit 1
+        rm -f "$LADYBIRD_COMMANDS"
+        for LADYBIRD_CHECK in ladybird-test262.app test262/list.txt test262/harness/assert.js ladybird/icudt78l.dat; do
             if ! debugfs -R "stat $LADYBIRD_CHECK" "$TEMP_DISK" 2>/dev/null | grep -q "Size:"; then
                 echo "headless: $LADYBIRD_CHECK was not installed" >&2
                 exit 1
@@ -7179,6 +7230,14 @@ if [ "$TEST_NAME" = "key-repeat" ]; then
     INPUT_INJECTOR_PID=$!
 fi
 
+if [ "$TEST_NAME" = "ladybird-test262" ]; then
+    # Quit QEMU once the test262 launcher reports (the timeout is only the bound).
+    QMP_SOCKET="$(qemu_socket qmp)"
+    QMP_ARGS=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
+    python3 "$ROOT_DIR/tests/headless/stop-on-markers.py" \
+        "$SERIAL_LOG" "$QMP_SOCKET" "$TIMEOUT_SECONDS" "LADYBIRD-TEST262: DONE" "LADYBIRD-TEST262: FAIL" &
+    INPUT_INJECTOR_PID=$!
+fi
 if [ "$TEST_NAME" = "ladybird-js" ]; then
     # Quit QEMU once ladybird-js-check reports (the timeout is only the bound).
     QMP_SOCKET="$(qemu_socket qmp)"
@@ -8336,6 +8395,16 @@ cxx-check: streams and map PASS
 CXX: PASS
 "
         python3 "$ROOT_DIR/userspace/libc/tests/check-protection-faults.py" "$SERIAL_LOG" || exit 1
+        ;;
+    ladybird-test262)
+        # The totals, and with LADYBIRD_TEST262_REFERENCE (the same build's
+        # libjs-test262 per-file results on Linux) the pass counts within
+        # 0.1% of the tests.
+        required_markers="
+LADYBIRD-TEST262: DONE
+"
+        python3 "$ROOT_DIR/tests/ladybird/test262/compare.py" "$SERIAL_LOG" \
+            ${LADYBIRD_TEST262_REFERENCE:+"$LADYBIRD_TEST262_REFERENCE"} || exit 1
         ;;
     ladybird-js)
         required_markers="

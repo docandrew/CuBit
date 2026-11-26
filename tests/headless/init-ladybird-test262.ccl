@@ -1,0 +1,7 @@
+# test262 on CuBit (WEB-006 phase a, tests/ladybird/test262): the launcher
+# runs the unmodified Linux/musl test262-runner over the suite.
+(startup v1
+  (start "logstore.svc" (test-console approve-declared))
+  (start "clock.svc")
+  (start "ladybird-test262-check.app")
+)
