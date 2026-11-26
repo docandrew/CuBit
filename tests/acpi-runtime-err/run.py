@@ -140,15 +140,15 @@ def main():
                 rows.append(dict(profile=build['profile'], **execute(build['binary'], release_control,
                     folder/('release-fuel-'+str(fuel)), fuel=fuel)))
             rows.append(dict(profile=build['profile'], **execute(build['binary'], release_control, folder/'release-tag-zero', tag=0)))
-        assert len(rows) == 324
+        assert len(rows) == 396
     except Exception as error:
         failure = repr(error)
-    result = dict(terminal=True, failure=failure, planned_cases=324, executed_cases=len(rows),
+    result = dict(terminal=True, failure=failure, planned_cases=396, executed_cases=len(rows),
         passed_cases=len(rows), builds=builds, rows=rows, original_ASLTS_PASS_credit=0,
         original_corpus_or_expectation_edits=0, named_heap=dict(objects=64, bytes=1024, elements=64),
         normal_numeric_thread_ID_parity_claim=False, native=False, full_interpreter_proof_claim=False)
     (output/'RESULT.json').write_text(json.dumps(result, indent=2)+'\n')
-    print(json.dumps(dict(failure=failure, passed_cases=len(rows), planned_cases=324)), flush=True)
+    print(json.dumps(dict(failure=failure, passed_cases=len(rows), planned_cases=396)), flush=True)
     if failure:
         raise SystemExit(1)
 

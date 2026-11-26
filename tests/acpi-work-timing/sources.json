@@ -6,11 +6,11 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",
-      "sha256": "c2b39501eeda65742a98a84dc48f81e800d9448a5c23c7e1226b7d3bd96d9ef3"
+      "sha256": "33969e1a85b28a95dc87ea844524baafa8aa500b2e5badf2e2d2b92f2a966378"
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "19188e457466b8faed8f774c32e9ac4d7ef117c52029b37429cbde11895b8611"
+      "sha256": "f9f1a3d9840fd6168565e7fa710b29167a4c1a2bdfc053099545d025570af849"
     },
     {
       "path": "userspace/services/acpi/acpi_service_core.ads",

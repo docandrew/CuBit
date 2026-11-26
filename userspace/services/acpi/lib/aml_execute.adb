@@ -2539,6 +2539,11 @@ package body AML_Execute with SPARK_Mode is
             if B in 16#70# | 16#83# | 16#88# | Copy_Object_Op | To_Integer_Op | To_Buffer_Op | Mid_Op | To_String_Op | Decimal_String_Op | Hexadecimal_String_Op | Match_Op | Concatenate_Resources_Op | Concatenate_Op or else AML_Integers.Supported (B) or else AML_Logic.Supported (B)
               or else (B in 16#87# | 16#8E# and then Parse_Limit - Offset > 1
                 and then Code (Code'First + Offset + 1) in 16#71# | 16#83# | 16#88#)
+              or else (B = 16#87# and then Enable_Runtime_Error_Handler and then not Module_Root
+                and then Parse_Limit - Offset > 1
+                and then Code (Code'First + Offset + 1) in 16#60# .. 16#6E#
+                and then Slot_Value (Natural (Code (Code'First + Offset + 1) - 16#60#)).Status = Frames.Ready
+                and then not Slot_Value (Natural (Code (Code'First + Offset + 1) - 16#60#)).Initialized)
             then
                if Depth = Max_Expression_Depth then S := Expression_Limit; return; end if;
                Depth := Depth + 1;
@@ -3740,7 +3745,14 @@ package body AML_Execute with SPARK_Mode is
                      if S /= Returned then return; end if;
                   elsif Stack (Depth).Op in 16#87# | 16#8E# then
                      Resolve_Expression_Slot (Pending_Slot, V, S, Pending_Identity);
-                     if S /= Returned then return; end if;
+                     if S /= Returned then
+                        if Enable_Runtime_Error_Handler and then not Module_Root
+                          and then Stack (Depth).Op = 16#87#
+                          and then S in Uninitialized | Missing_Argument
+                          and then Fault_Cell /= Recovery.No_Fault
+                        then Mark_Recovery (Fault_Cell, True); end if;
+                        return;
+                     end if;
                      declare Type_Code, Size : Natural; N : Integer_Value; begin
                         Describe (V, Type_Code, Size, S);
                         if S /= Returned then return; end if;
@@ -3771,7 +3783,24 @@ package body AML_Execute with SPARK_Mode is
                         Ref : AML_References.Reference;
                      begin
                         Create_Index (Environment, Left_Item.Object.Source, V.Number, Ref, S);
-                        if S /= Returned then S := Unsupported_Value; return; end if;
+                        if S /= Returned then
+                           if Enable_Runtime_Error_Handler and then not Module_Root and then S = Package_Limit then
+                              declare
+                                 Count : Target_Number := 0;
+                                 Targets : Target_List := [others => <>];
+                                 Waiting : Boolean;
+                                 Target_Status : Execution_Status;
+                              begin
+                                 Collect_Targets (Count, 1, Targets, Waiting, Target_Status);
+                                 if Target_Status = Returned and then not Waiting and then Count = 1 then
+                                    Mark_Recovery (Recovery.Package_Fault, True);
+                                 else S := Unsupported_Value;
+                                 end if;
+                              end;
+                           else S := Unsupported_Value;
+                           end if;
+                           return;
+                        end if;
                         V := (Value_Kind => Reference_Datum, Ref => Ref);
                      end;
                      Write_Target (V, S, Parse_Limit);

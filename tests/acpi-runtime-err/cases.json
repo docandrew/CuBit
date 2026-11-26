@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "cases": [
     {
       "name": "basic-local_absent",
@@ -2858,6 +2858,784 @@
         "charged": 4
       },
       "qualification": "Strictly compiler-admitted guard/refusal contract; no complete reference behavior claim"
+    },
+    {
+      "name": "runtime-size-store_size",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b70000000253435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014205445535400a009464c4147700a076070876044455354700141465452a40a2a",
+      "AML_sha256": "cfaf609e0966123d8edb8e96d5bf7d752ec9c9bafd63802ee08aed9200853550",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-size-predicate_size",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c2000000024e435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400142b5445535400a009464c4147700a0760a0098760700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "41e76e6a31a3687f4dfb3b674008649e47863cb5c827d2e56bc38f2bf899f981",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-size-return_size",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454aa00000002df435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014135445535400a009464c4147700a0760a48760",
+      "AML_sha256": "79969e978b2fc5b9a3f3ae87b7058c54ea2a264cfef6b9a3e3f294c2a6dc09be",
+      "expected": {
+        "status": "NO_RETURN",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-size-not_size",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c300000002b9435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400142c5445535400a009464c4147700a0760a00a928760700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "f311f891fce1b7d712657d869c27ad948258a9b744cd87ea05c2682cf688fc2f",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 6
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-size-object_type",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b7000000024c435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014205445535400a009464c4147700a0760708e6044455354700141465452a40a2a",
+      "AML_sha256": "c8acad39f52256e12f6fe947f156b2ef7028f6701d1396d220bc6cc2abc1b18a",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 0,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 0,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 9
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-size-initialized_size",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454bb0000000268435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014245445535400a009464c4147700a0760700a096070876044455354700141465452a40a2a",
+      "AML_sha256": "3ac7864366601549dad15fb678842ad1efd1bd225cf80bd4bde59306a53c7532",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 8,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 8,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 11
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-size-size_nonzero",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454bb000000022b435542495400444956455252000001000000494e544c0804262008464c41470008504b47301206020a110a170841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014245f455252037545434e54706853544154708e6945545950706a54485244a40c7856341214205445535400a009464c4147700a076070876044455354700141465452a40a2a",
+      "AML_sha256": "e5f61e50b83b6fd081bea436f45bd5fa85f610f5d0c449904a113be3553e09d3",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12293,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          305419896
+        ]
+      },
+      "default": {
+        "status": "UNINITIALIZED",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 5
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-index-direct",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b60000000272435542495400444956455252000001000000494e544c0804262008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141c544553540088504b47304944583044455354700141465452a40a2a",
+      "AML_sha256": "6cf9ad6c96aa725f63c5cc93b092d0a4481cecbe91629d1241c943ab4c0a663d",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12299,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-index-store",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b800000002fe435542495400444956455252000001000000494e544c0804262008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141e54455354007088504b4730494458300044455354700141465452a40a2a",
+      "AML_sha256": "9667b00e7ed351f6576f34902b8e0674f88928aceb992ee2d0bb909672aa9ab3",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-index-predicate",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c100000002ef435542495400444956455252000001000000494e544c0804262008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014275445535400a01088504b473049445830007554414b45a10675534b4950700141465452a40a2a",
+      "AML_sha256": "99e09aa0db3d66ae0da7b81f91f5c9d4df84c423c45490ded1c01fe310710fec",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12299,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-index-return",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ab000000028a435542495400444956455252000001000000494e544c0804262008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014115445535400a488504b47304944583000",
+      "AML_sha256": "e3749761a9a7c3d2220a70198a38ce1056b552a0fb2e1f34cec1fd40ee8d166c",
+      "expected": {
+        "status": "NO_RETURN",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12299,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-index-valid_last",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b70000000286435542495400444956455252000001000000494e544c0804262008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141d5445535400708388504b47300a020044455354700141465452a40a2a",
+      "AML_sha256": "162b8a6708a263d8b35c89a4484d5124cd985f46a17c143115dd78cf67ee6369",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 29,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 29,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 9
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-index-wide_index",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454b50000000281435542495400444956455252000001000000494e544c0804262008504b47301208030a110a170a1d0849445830ff0841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141c544553540088504b47304944583044455354700141465452a40a2a",
+      "AML_sha256": "c38e837ce56dc5d96e129e9d264cb9c4f49b2950e03470cdb1356e04ae7d11a0",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12299,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-index-nonzero",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ba000000024a435542495400444956455252000001000000494e544c0804262008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014245f455252037545434e54706853544154708e6945545950706a54485244a40c78563412141c544553540088504b47304944583044455354700141465452a40a2a",
+      "AML_sha256": "5665a42076575ebaa8528b651b129a051639fdf116f0d0c222b98ef59fdaf331",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12299,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          305419896
+        ]
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-index-operand_effect",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454bd0000000258435542495400444956455252000001000000494e544c0804262008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001423544553540088504b473072494458307554414b450044455354700141465452a40a2a",
+      "AML_sha256": "ac56d31a939a864d3f46f7d7d11cb31861606e8025266c697c80ac2f50e31a97",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12299,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-type-byte_valid",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454c50000000294435542495400444956455252000001000000494e544c0804262008464c4147000842554630110301aa08504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400141c544553540070838842554630000044455354700141465452a40a2a",
+      "AML_sha256": "696e4610a3d6d6b798b604fcca34ebb3ebc4d5118132abaa82800170a61e2a6f",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 170,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 170,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 9
+      },
+      "qualification": "Normal ACPICA observations; numeric thread identity not compared"
+    },
+    {
+      "name": "runtime-type-byte_bound",
+      "family": "runtime",
+      "contract_kind": "known-refusal",
+      "AML_hex": "44534454c2000000028c435542495400444956455252000001000000494e544c0804262008464c4147000842554630110301aa08504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a4001419544553540088425546300144455354700141465452a40a2a",
+      "AML_sha256": "7a55ca86b416813eaa4a9b45ec595f689f7c3191673659d473e5938fd8960d7a",
+      "expected": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 4
+      },
+      "qualification": "Explicit refusal: precise byte-bound/type error recovery remains unimplemented; no reference equivalence claim"
+    },
+    {
+      "name": "runtime-type-wrong_kind",
+      "family": "runtime",
+      "contract_kind": "known-refusal",
+      "AML_hex": "44534454d60000000210435542495400444956455252000001000000494e544c0804262008464c4147000842554630110301aa08504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a40014135352433000a00a464c4147a4504b4730a4011419544553540088535243300044455354700141465452a40a2a",
+      "AML_sha256": "1179070c84058b707d62b86bbdce6672bddaa3c4979d20c1d411e030312981db",
+      "expected": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "UNSUPPORTED_VALUE",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 8
+      },
+      "qualification": "Explicit refusal: precise byte-bound/type error recovery remains unimplemented; no reference equivalence claim"
     }
   ],
   "normal_reference_version": "20260408",
@@ -2870,5 +3648,7 @@
   "new_runtime_normal_diagnostics": 48,
   "new_runtime_guard_contracts": 2,
   "new_runtime_known_refusals": 1,
-  "planned_contracts": 324
+  "planned_contracts": 396,
+  "followup_normal_tables": 16,
+  "followup_known_refusals": 2
 }

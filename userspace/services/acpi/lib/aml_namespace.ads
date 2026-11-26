@@ -1363,7 +1363,8 @@ package Owned with SPARK_Mode is
      Index : AML_Decode.Integer_Value; R : out Reference;
      Status : out AML_Execute.Execution_Status)
      with Pre => Valid (A),
-     Post => Status in AML_Execute.Returned | AML_Execute.Unsupported_Value
+     Post => Status in AML_Execute.Returned | AML_Execute.Unsupported_Value | AML_Execute.Package_Limit
+       and then (if Status = AML_Execute.Package_Limit then Enable_Runtime_Error_Handler and then Has_Source (A, H))
        and then (if Status = AML_Execute.Returned then Has_Source (A, H)
          and then Matches (A, R) and then Target (R) = AML_References.Source (H)
          and then AML_Decode.Integer_Value (Offset (R)) = Index);

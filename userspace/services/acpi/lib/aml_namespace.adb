@@ -6965,7 +6965,11 @@ package body Owned with SPARK_Mode is
             if Byte_Status = AML_Objects.Byte_References.Ready then Status := AML_Execute.Returned; end if;
          when AML_Objects.Package_Object =>
             Make_Element (A, ID, Index, R, Element_Status);
-            if Element_Status = AML_Objects.Package_References.Ready then Status := AML_Execute.Returned; end if;
+            if Element_Status = AML_Objects.Package_References.Ready then
+               Status := AML_Execute.Returned;
+            elsif Enable_Runtime_Error_Handler and then Element_Status = AML_Objects.Package_References.Out_Of_Bounds then
+               Status := AML_Execute.Package_Limit;
+            end if;
          when AML_Objects.Integer_Object | AML_Objects.Reference_Object | AML_Objects.Metadata_Object | AML_Objects.Metadata_Snapshot_Object | AML_Objects.Event_Object | AML_Objects.Mutex_Object => null;
       end case;
    end Make_Index;
