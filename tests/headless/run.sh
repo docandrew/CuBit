@@ -8384,6 +8384,7 @@ libc-check: the whole reservation is released PASS
 libc-check: a second reservation, one page committed PASS
 libc-check: mprotect opens a reservation in place PASS
 libc-check: the second reservation is released PASS
+libc-check: a recursive mutex the main thread holds is busy to another thread PASS
 libc-check: opendir and readdir PASS
 libc-check: a file outside the scope is denied PASS
 libc-check: create and write a file PASS

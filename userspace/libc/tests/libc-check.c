@@ -116,6 +116,34 @@ static void *worker(void *arg)
 	return (void *)(per_thread == id * 10 ? id : -1);
 }
 
+/* musl marks an owner-tracked mutex not recoverable with 0x3fffffff in its
+ * lock word's owner bits, so no thread may have that id: a recursive mutex
+ * the main thread holds must be busy to another thread (EBUSY), not
+ * ENOTRECOVERABLE. Ladybird's AK::Mutex is recursive. */
+static pthread_mutex_t held;
+
+static void *try_held(void *arg)
+{
+	(void)arg;
+	return (void *)(long)pthread_mutex_trylock(&held);
+}
+
+static void owner_mutex_checks(void)
+{
+	pthread_mutexattr_t attributes;
+	pthread_t other;
+	void *result = 0;
+	pthread_mutexattr_init(&attributes);
+	pthread_mutexattr_settype(&attributes, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init(&held, &attributes);
+	pthread_mutex_lock(&held);
+	int ran = pthread_create(&other, 0, try_held, 0) == 0 && pthread_join(other, &result) == 0;
+	pthread_mutex_unlock(&held);
+	pthread_mutex_destroy(&held);
+	pthread_mutexattr_destroy(&attributes);
+	check(ran && (long)result == EBUSY, "a recursive mutex the main thread holds is busy to another thread");
+}
+
 static int cmp(const void *a, const void *b)
 {
 	return *(const int *)a - *(const int *)b;
@@ -182,6 +210,7 @@ int main(void)
 		check(munmap(guard, 8192) == 0, "release mixed guard and data pages");
 	}
 	reservation_checks();
+	owner_mutex_checks();
 	for (int round = 0; round < 128; round++) {
 		unsigned char *p = mmap(0, 1 << 20, PROT_READ | PROT_WRITE,
 		                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
