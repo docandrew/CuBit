@@ -65,12 +65,9 @@ package body Client_Frame_Pair is
       Repair := Debt.Empty;
       Ready := False;
       if O.Closing or O.Painting or O.Config.Status /= DP.Success then return; end if;
-      if Debt.Nonempty (Changed) then
-         if not Debt.Contains (Debt.Bounds (O.Damage), Changed) then return; end if;
-         Debt.Invalidate (O.Damage, Changed);
-      elsif Changed /= Debt.Empty then
-         return;
-      end if;
+      --  Every change is owed where it lies on the surface; the caller
+      --  forgets its damage once this was reached (CuBit.UI.App).
+      Debt.Note_Change (O.Damage, Changed);
       if not Pending (O) then return; end if;
       Bytes := Natural (DP.Byte_Length (O.Config.Value.Layout));
       if Frames.Capacity (O.Frames (O.Next)) /= 0 then

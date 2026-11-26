@@ -18,6 +18,13 @@ package body Client_Frame_Damage with SPARK_Mode is
       S.Debt (1) := Merge (S.Debt (1), Area);
       S.Debt (2) := Merge (S.Debt (2), Area);
    end Invalidate;
+   procedure Note_Change (S : in out State; Area : Box) is
+      On_Surface : constant Box := Clip (Area, S.Extent);
+   begin
+      if On_Surface /= Empty then
+         Invalidate (S, On_Surface);
+      end if;
+   end Note_Change;
    procedure Published (S : in out State; B : Slot; Rendered : Box) is
       pragma Unreferenced (Rendered);
    begin

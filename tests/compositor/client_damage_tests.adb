@@ -77,6 +77,25 @@ begin
    pragma Assert (Publication_Damage (S) = Empty and Required (S, 2) = Area);
    Area := (0, 0, 1, 1); Invalidate (S, Area);
    pragma Assert (Required (S, 1) = Area and Required (S, 2) = Bounds (S));
+   -- Regression (display-stall, 2026-11-26): a change reaching past the
+   -- surface's bounds was refused whole by the frame pair and the caller
+   -- forgot it, so its on-surface pixels were never repainted. Note_Change
+   -- owes exactly the part on the surface, and nothing for a change wholly
+   -- outside it or with no area.
+   S := Open ((0, 0, 17, 13));
+   Published (S, 1, Bounds (S)); Published (S, 2, Bounds (S));
+   pragma Assert (Required (S, 1) = Empty and Required (S, 2) = Empty);
+   Note_Change (S, (10, 5, 40, 9));
+   pragma Assert (Required (S, 1) = (10, 5, 17, 9) and Required (S, 2) = (10, 5, 17, 9));
+   pragma Assert (Publication_Damage (S) = (10, 5, 17, 9));
+   Published (S, 1, (10, 5, 17, 9)); Published (S, 2, (10, 5, 17, 9));
+   Note_Change (S, (20, 20, 30, 30));
+   Note_Change (S, (5, 5, 5, 9));
+   Note_Change (S, Empty);
+   pragma Assert (Required (S, 1) = Empty and Required (S, 2) = Empty and Publication_Damage (S) = Empty);
+   Note_Change (S, (0, 0, Coordinate'Last, Coordinate'Last));
+   pragma Assert (Required (S, 1) = Bounds (S) and Required (S, 2) = Bounds (S));
+   Ada.Text_IO.Put_Line ("PASS client repaint: off-surface changes owe their on-surface part");
    Ada.Text_IO.Put_Line ("PASS client repaint: 4096 pixel-model cycles, publications" &
      Natural'Image (Published_Count) & ", painted pixels" & Natural'Image (Repaired_Pixels));
 end Client_Damage_Tests;

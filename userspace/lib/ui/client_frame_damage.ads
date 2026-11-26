@@ -31,6 +31,27 @@ package Client_Frame_Damage with SPARK_Mode, Pure is
          Contains (Publication_Damage (S), Publication_Damage (S'Old)) and
          (for all B in Slot => Contains (Required (S, B), Area) and
             Contains (Required (S, B), Required (S'Old, B)));
+   -- The part of Area on the surface (Extent); Empty when none is.
+   function Clip (Area, Extent : Box) return Box is
+     (if Nonempty (Area) and then Nonempty (Extent) and then
+         Coordinate'Max (Area.Left, Extent.Left) < Coordinate'Min (Area.Right, Extent.Right) and then
+         Coordinate'Max (Area.Top, Extent.Top) < Coordinate'Min (Area.Bottom, Extent.Bottom)
+      then (Coordinate'Max (Area.Left, Extent.Left), Coordinate'Max (Area.Top, Extent.Top),
+            Coordinate'Min (Area.Right, Extent.Right), Coordinate'Min (Area.Bottom, Extent.Bottom))
+      else Empty)
+     with Post => Clip'Result = Empty or else
+       (Nonempty (Clip'Result) and then Contains (Extent, Clip'Result) and then Contains (Area, Clip'Result));
+   -- Any change the producer reports, wherever it lies: what of it is on
+   -- the surface becomes debt; the rest has no pixels to repaint. Nothing
+   -- on the surface is dropped (a change reaching past the bounds used to
+   -- be refused whole, its on-surface part lost).
+   procedure Note_Change (S : in out State; Area : Box)
+     with Pre => Valid (S),
+       Post => Valid (S) and Bounds (S) = Bounds (S'Old) and
+         Contains (Publication_Damage (S), Clip (Area, Bounds (S))) and
+         Contains (Publication_Damage (S), Publication_Damage (S'Old)) and
+         (for all B in Slot => Contains (Required (S, B), Clip (Area, Bounds (S))) and
+            Contains (Required (S, B), Required (S'Old, B)));
    -- Only after successful publication of a buffer repainted from current
    -- retained state over Rendered. No intervening state changes are permitted.
    -- On render/publication failure leave debt intact. Repair is NOT additional
