@@ -20,6 +20,8 @@ begin
                D := Plan (Old, Page, Mode);
                pragma Assert (D.Allowed = Expected);
                if Expected then
+                  --  MEM-007 (K12): a leaf Plan wrote reads back its mode.
+                  pragma Assert (Current (D.Value) = Mode);
                   pragma Assert ((D.Value and 1) = (if Mode = Inaccessible then 0 else 1));
                   pragma Assert (((D.Value and 2) /= 0) = (Mode = Read_Write));
                   pragma Assert (((D.Value and NX) /= 0) = (Mode /= Read_Execute));

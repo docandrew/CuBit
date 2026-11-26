@@ -6,4 +6,6 @@
   (start "cxx-check.app")
   (start "guard-fault.app")
   (start "readonly-fault.app")
+  (start "discard-readonly-fault.app")
+  (start "discard-reserved-fault.app")
 )

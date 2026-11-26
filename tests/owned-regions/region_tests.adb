@@ -1,6 +1,6 @@
 --  ABI-002 owned regions: a hosted model of the kernel's run bookkeeping
 --  (kernel/src/process-owned_memory.adb: Commit, Decommit, Set_Access,
---  Release, Drop) built on the proved policy (Owned_Reservation_Policy:
+--  Discard, Release, Drop) built on the proved policy (Owned_Reservation_Policy:
 --  Within, Commit_Admitted, Overlaps, Adjoins, Split, Decode, Access_Of),
 --  checked after every operation against a page-bitmap oracle.
 --
@@ -27,7 +27,8 @@ with Interfaces; use Interfaces;
 with Owned_Reservation_Policy; use Owned_Reservation_Policy;
 with Ada.Text_IO;
 procedure Region_Tests is
-   Checks : Natural := 0;
+   --  More than Natural holds once Discard joined the operations.
+   Checks : Unsigned_64 := 0;
    procedure Check (Good : Boolean; What : String) is
    begin
       Checks := Checks + 1;
@@ -235,6 +236,49 @@ procedure Region_Tests is
                end loop;
                return True;
             end;
+         when Discard =>
+            --  MEM-007 (K12), as the kernel's Discard_Range: the range's
+            --  backed pages are decommitted, then each run of them with one
+            --  access is committed again (fresh frames) and given that
+            --  access back; unbacked pages stay unbacked.
+            declare
+               Saved : constant Access_Array := W.Modes;
+               Was : constant Bits := W.Present;
+               First_Page : constant Natural := Page_Of (Address);
+               Last_Page : constant Natural := First_Page + Natural (Bytes / Page_Bytes) - 1;
+               P, Q : Natural;
+            begin
+               if not Change_Step (W, Address, Bytes, Decommit) then
+                  return False;
+               end if;
+               P := First_Page;
+               while P <= Last_Page loop
+                  if Was (P) then
+                     Q := P;
+                     while Q < Last_Page and then Was (Q + 1) and then Saved (Q + 1) = Saved (P) loop
+                        Q := Q + 1;
+                     end loop;
+                     if not Change_Step (W, Region_Base + Unsigned_64 (P) * Page_Bytes,
+                                         Unsigned_64 (Q - P + 1) * Page_Bytes, Commit)
+                     then
+                        return False;
+                     end if;
+                     if Saved (P) /= Read_Write and then not Change_Step
+                       (W, Region_Base + Unsigned_64 (P) * Page_Bytes, Unsigned_64 (Q - P + 1) * Page_Bytes,
+                        (case Saved (P) is
+                           when Inaccessible => Make_Inaccessible,
+                           when Read_Only => Make_Read_Only,
+                           when Read_Write => Make_Read_Write))
+                     then
+                        return False;
+                     end if;
+                     P := Q + 1;
+                  else
+                     P := P + 1;
+                  end if;
+               end loop;
+               return True;
+            end;
       end case;
    end Change_Step;
 
@@ -249,7 +293,9 @@ procedure Region_Tests is
       Top, Step_Base : Unsigned_64;
       Covered : Natural := 0;
    begin
-      if Operation = Commit or else Bytes <= Step_Bytes or else Address > Unsigned_64'Last - Bytes
+      --  A commit and a discard take their own steps (Change_Step).
+      if Operation in Commit | Discard or else Bytes <= Step_Bytes
+        or else Address > Unsigned_64'Last - Bytes
         or else Address mod Page_Bytes /= 0 or else Bytes mod Page_Bytes /= 0
       then
          return Change_Step (W, Address, Bytes, Operation);
@@ -306,6 +352,12 @@ procedure Region_Tests is
             for P in First .. Last loop
                if W.Backed (P) then W.Oracle_Freed := W.Oracle_Freed + 1; end if;
                W.Backed (P) := False;
+            end loop;
+         when Discard =>
+            --  Backed pages stay backed, on fresh frames (the old ones
+            --  freed), with their access; unbacked ones stay unbacked.
+            for P in First .. Last loop
+               if W.Backed (P) then W.Oracle_Freed := W.Oracle_Freed + 1; end if;
             end loop;
          when Make_Inaccessible | Make_Read_Only | Make_Read_Write =>
             if not All_Backed then return False; end if;
@@ -437,7 +489,7 @@ begin
          Valid : Boolean;
       begin
          Decode (Raw, Operation, Valid);
-         Check (Valid = (Raw <= 4), "decode accepts 0 .. 4 only");
+         Check (Valid = (Raw <= 5), "decode accepts 0 .. 5 only (Discard is 5, MEM-007)");
          if Valid then Check (Range_Operation'Pos (Operation) = Raw, "decode position"); end if;
       end;
    end loop;

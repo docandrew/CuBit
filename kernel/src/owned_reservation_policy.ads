@@ -81,12 +81,15 @@ package Owned_Reservation_Policy with SPARK_Mode => On is
    ---------------------------------------------------------------------------
    -- CHANGE_OWNED_RANGE's operation: its wire value is the position.
    ---------------------------------------------------------------------------
+   -- Discard (MEM-007, K12; MADV_DONTNEED): committed pages of the range
+   -- read zero from then on and keep their access; pages only reserved
+   -- stay so. Never an upgrade of access.
    type Range_Operation is
-     (Commit, Decommit, Make_Inaccessible, Make_Read_Only, Make_Read_Write);
+     (Commit, Decommit, Make_Inaccessible, Make_Read_Only, Make_Read_Write, Discard);
    subtype Access_Operation is Range_Operation
      range Make_Inaccessible .. Make_Read_Write;
 
-   -- Untrusted wire value to operation: only the five positions decode.
+   -- Untrusted wire value to operation: only the six positions decode.
    procedure Decode (Raw : Unsigned_64; Operation : out Range_Operation;
                      Valid : out Boolean)
    with Post => Valid = (Raw <= Range_Operation'Pos (Range_Operation'Last))

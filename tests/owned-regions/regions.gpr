@@ -4,10 +4,11 @@ project Regions is
    for Languages use ("Ada");
    for Source_Dirs use (".", "../../kernel/src");
    for Source_Files use ("region_tests.adb", "owned_reservation_policy.ads",
-                         "owned_reservation_policy.adb");
+                         "owned_reservation_policy.adb", "release_walk_tests.adb",
+                         "owned_release_walk.ads", "owned_release_walk.adb");
    for Object_Dir use "build";
    for Exec_Dir use "build";
-   for Main use ("region_tests.adb");
+   for Main use ("region_tests.adb", "release_walk_tests.adb");
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2");
    end Compiler;

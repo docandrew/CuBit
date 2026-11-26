@@ -2130,6 +2130,10 @@ build/gate/libc-protection-check.stamp: $(LIBC_STAMP) $(CCL_MANIFEST_TOOL) $(wil
 	$(call stage,$(UNSTAGED)/guard-fault.app,guard-fault.app)
 	../userspace/libc/cubit-cc -O2 -g -DFAULT_READ_ONLY=1 -o $(UNSTAGED)/readonly-fault.app ../userspace/libc/tests/protection-fault.c --manifest ../userspace/libc/build/protection-manifest.o
 	$(call stage,$(UNSTAGED)/readonly-fault.app,readonly-fault.app)
+	../userspace/libc/cubit-cc -O2 -g -DFAULT_DISCARD_READ_ONLY=1 -o $(UNSTAGED)/discard-readonly-fault.app ../userspace/libc/tests/protection-fault.c --manifest ../userspace/libc/build/protection-manifest.o
+	$(call stage,$(UNSTAGED)/discard-readonly-fault.app,discard-readonly-fault.app)
+	../userspace/libc/cubit-cc -O2 -g -DFAULT_DISCARD_RESERVED=1 -o $(UNSTAGED)/discard-reserved-fault.app ../userspace/libc/tests/protection-fault.c --manifest ../userspace/libc/build/protection-manifest.o
+	$(call stage,$(UNSTAGED)/discard-reserved-fault.app,discard-reserved-fault.app)
 	@mkdir -p $(@D) && touch $@
 
 # Rust std on CuBit (docs/rust-std.md): patched std, built with -Zbuild-std.

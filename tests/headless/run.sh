@@ -3871,7 +3871,8 @@ if [ -n "$INIT_PROFILE" ]; then
         done
     fi
     if [ "$TEST_NAME" = "libc" ]; then
-        for PROTECTION_IMAGE in guard-fault.app readonly-fault.app; do
+        for PROTECTION_IMAGE in guard-fault.app readonly-fault.app \
+          discard-readonly-fault.app discard-reserved-fault.app; do
             debugfs -w -R "rm $PROTECTION_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
             debugfs -w -R "write $KERNEL_DIR/isodir/boot/$PROTECTION_IMAGE $PROTECTION_IMAGE" \
                 "$TEMP_DISK" >/dev/null 2>&1 || exit 1

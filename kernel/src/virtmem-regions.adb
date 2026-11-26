@@ -1,9 +1,12 @@
 with Region_PTE;
 package body Virtmem.Regions with SPARK_Mode => Off is
+   -- Read: Mode is ignored, nothing is written, and Current is the leaf's
+   -- access (Success: the leaf maps Expected_Frame as an owned page).
    procedure Visit (Root : P4; Address : VirtAddress;
                          Expected_Frame : PFN; Mode : Access_Mode;
                          Write_Enabled : Boolean;
-                         Success : out Boolean) is
+                         Success : out Boolean;
+                         Current : out Access_Mode) is
       function Get_P3 is new getNextTable (P4);
       function Get_P2 is new getNextTable (P3);
       function Get_P1 is new getNextTable (P2);
@@ -13,6 +16,7 @@ package body Virtmem.Regions with SPARK_Mode => Off is
          not Entry_Value.size and not Entry_Value.NX);
    begin
       Success := False;
+      Current := Inaccessible;
       if Address = 0 or Address >= 2 ** 47 or Address mod PAGE_SIZE /= 0 or
         Expected_Frame = 0 then return; end if;
       if not Traversable (Root (getP4Index (Address))) then return; end if;
@@ -46,6 +50,11 @@ package body Virtmem.Regions with SPARK_Mode => Off is
                when Read_Execute => Region_PTE.Read_Execute));
       begin
          if not Plan.Allowed then return; end if;
+         Current := (case Region_PTE.Current (Word) is
+                       when Region_PTE.Inaccessible => Inaccessible,
+                       when Region_PTE.Read_Only => Read_Only,
+                       when Region_PTE.Read_Write => Read_Write,
+                       when Region_PTE.Read_Execute => Read_Execute);
          if Write_Enabled then Word := Plan.Value; end if;
          Success := True;
       end;
@@ -54,15 +63,24 @@ package body Virtmem.Regions with SPARK_Mode => Off is
    procedure Set_Access (Root : P4; Address : VirtAddress;
                          Expected_Frame : PFN; Mode : Access_Mode;
                          Success : out Boolean) is
+      Ignore : Access_Mode;
    begin
-      Visit (Root, Address, Expected_Frame, Mode, True, Success);
+      Visit (Root, Address, Expected_Frame, Mode, True, Success, Ignore);
    end Set_Access;
+
+   procedure Current_Access (Root : P4; Address : VirtAddress;
+                             Expected_Frame : PFN; Mode : out Access_Mode;
+                             Found : out Boolean) is
+   begin
+      Visit (Root, Address, Expected_Frame, Inaccessible, False, Found, Mode);
+   end Current_Access;
 
    function Matches (Root : P4; Address : VirtAddress;
                      Expected_Frame : PFN) return Boolean is
       OK : Boolean;
+      Ignore : Access_Mode;
    begin
-      Visit (Root, Address, Expected_Frame, Inaccessible, False, OK);
+      Visit (Root, Address, Expected_Frame, Inaccessible, False, OK, Ignore);
       return OK;
    end Matches;
 end Virtmem.Regions;

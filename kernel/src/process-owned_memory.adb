@@ -9,6 +9,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Spinlocks;
 with Process_Pool;
 with Interrupt_Windows;
+with Owned_Release_Walk;
 with TextIO;
 with Virtmem.Regions;
 package body Process.Owned_Memory is
@@ -659,6 +660,9 @@ package body Process.Owned_Memory is
       end if;
    end Report_Refused_Commit;
 
+   procedure Discard_Range (PID : ProcessID; Address, Bytes : Unsigned_64;
+                            Success : out Boolean; Why : out Owned_Memory_ABI.Refusal);
+
    procedure Change_Range (PID : ProcessID; Address, Bytes : Unsigned_64;
                            Operation : Owned_Reservation_Policy.Range_Operation;
                            Success : out Boolean; Why : out Owned_Memory_ABI.Refusal) is
@@ -741,6 +745,9 @@ package body Process.Owned_Memory is
                   Decommit (PID, Region_Index, From, Length, Success);
                when Policy.Access_Operation =>
                   Set_Access (PID, Region_Index, From, Length, Policy.Access_Of (Operation), Success);
+               when Policy.Discard =>
+                  -- Discard_Range's own steps; never a locked attempt.
+                  null;
             end case;
          end if;
          -- Why, while the locks still serialize Last_Refusal.
@@ -760,6 +767,10 @@ package body Process.Owned_Memory is
       Success := False;
       Why := Owned_Memory_ABI.Invalid_Range;
       if PID = NO_PROCESS then return; end if;
+      if Policy."=" (Operation, Policy.Discard) then
+         Discard_Range (PID, Address, Bytes, Success, Why);
+         return;
+      end if;
       if Is_Commit then
          -- Any size, in one call (MEM-007): the kernel commits the range in
          -- locked steps of at most Policy.Maximum_Commit_Bytes, upward, the
@@ -829,6 +840,168 @@ package body Process.Owned_Memory is
          end loop;
       end if;
    end Change_Range;
+
+   -- Discard (MEM-007, K12; MADV_DONTNEED): every committed page of
+   -- [Address, Address + Bytes) reads zero from then on and keeps its access
+   -- (read/write, read-only or inaccessible); reserved pages stay reserved
+   -- and access is never upgraded. Across regions and the holes between
+   -- them, as Release; a range that touches no region is refused
+   -- (No_Region). Each step takes one segment, the highest left, at most
+   -- Discard_Step_Pages committed pages of one run with one access, found
+   -- under the locks:
+   -- it is decommitted, committed again (fresh zero pages, read/write) and
+   -- given its access back, each in Change_Range's own bounded steps. Fresh
+   -- frames rather than zeroing in place: a page granted to another
+   -- process keeps the receiver's view (its pin), as a decommit does, and a
+   -- user frame is not in the kernel's linear map to clear. A refused
+   -- recommit (no memory) leaves the segment decommitted and says why.
+   procedure Discard_Range (PID : ProcessID; Address, Bytes : Unsigned_64;
+                            Success : out Boolean; Why : out Owned_Memory_ABI.Refusal) is
+      Discard_Step_Pages : constant := 4096;
+      Cursor : Unsigned_64;
+      Touched : Boolean := False;
+      Seg_Base, Seg_Bytes : Unsigned_64;
+      Seg_Access : Virtmem.Regions.Access_Mode;
+      Found_Region : Boolean;
+      Changed : Boolean;
+
+      procedure Take_Locks is
+      begin
+         Spinlocks.enterCriticalSection (grantLock);
+         Lock;
+         lockAddressSpace (PID);
+      end Take_Locks;
+      procedure Drop_Locks is
+      begin
+         unlockAddressSpace (PID);
+         Unlock;
+         Spinlocks.exitCriticalSection (grantLock);
+      end Drop_Locks;
+
+      -- Under the locks: the next segment, the highest below Cursor (the
+      -- range is walked downward, as a run's frames are listed, highest
+      -- page first). Seg_Bytes 0: none in this step (Cursor moves down past
+      -- a region part with nothing committed). Found_Region: a region
+      -- overlaps what is left of the range, [Address, Cursor).
+      procedure Next_Segment is
+         Region_Index, Run_Index : Natural := 0;
+         Run_Base, Run_End, Low, High, Top, Page_Address : Unsigned_64 := 0;
+         Node : FrameLists.NodePtr;
+         Mode : Virtmem.Regions.Access_Mode;
+         Mapped : Boolean;
+      begin
+         Seg_Bytes := 0;
+         Found_Region := False;
+         Seg_Access := Virtmem.Regions.Read_Write;
+         -- The highest live region overlapping [Address, Cursor).
+         for I of Records.Iterate (Tables(PID)'Access) loop
+            declare
+               Item : Entry_Record renames Entries(PID, I).Value.all;
+            begin
+               if Item.Status = Live and then Item.Kind = Region and then Item.Owner = PID
+                 and then Item.Generation = generationOf (PID)
+                 and then Item.Base < Cursor and then Item.Base + Item.Bytes > Address
+                 and then (Region_Index = 0 or else Item.Base > Entries(PID, Region_Index).Base)
+               then
+                  Region_Index := I;
+               end if;
+            end;
+         end loop;
+         if Region_Index = 0 then return; end if;
+         Found_Region := True;
+         Low := Unsigned_64'Max (Address, Entries(PID, Region_Index).Base);
+         High := Unsigned_64'Min (Cursor, Entries(PID, Region_Index).Base + Entries(PID, Region_Index).Bytes);
+         -- Its highest live run reaching into [Low, High).
+         for I of Records.Iterate (Tables(PID)'Access) loop
+            declare
+               Item : Entry_Record renames Entries(PID, I).Value.all;
+            begin
+               if Is_Run_Of (Item, Region_Index) and then Item.Status = Live
+                 and then Item.Count > 0
+                 and then Item.Base < High and then Item.Base + Bytes_Of (Item.Count) > Low
+                 and then (Run_Index = 0 or else Item.Base > Entries(PID, Run_Index).Base)
+               then
+                  Run_Index := I;
+               end if;
+            end;
+         end loop;
+         if Run_Index = 0 then
+            -- Nothing committed in this region's part: on below it.
+            Cursor := Low;
+            return;
+         end if;
+         Run_Base := Entries(PID, Run_Index).Base;
+         Run_End := Run_Base + Bytes_Of (Entries(PID, Run_Index).Count);
+         Top := Unsigned_64'Min (High, Run_End);
+         -- The frame of the segment's highest page: skip the run's pages
+         -- above Top (its frames are listed highest page first).
+         Node := Entries(PID, Run_Index).First_Node;
+         Page_Address := Run_End - Page;
+         while Page_Address >= Top and then Node /= null loop
+            Node := Node.next;
+            Page_Address := Page_Address - Page;
+         end loop;
+         if Node = null then return; end if;
+         Virtmem.Regions.Current_Access
+           (addrtab(proctab(PID).pgTable), Integer_Address (Page_Address),
+            Virtmem.PFN (Node.element / 4096), Seg_Access, Mapped);
+         if not Mapped then return; end if;
+         -- Down while the access stays the same, within the run, the range
+         -- and the step's bound.
+         Seg_Bytes := Page;
+         loop
+            exit when Page_Address <= Unsigned_64'Max (Low, Run_Base)
+              or else Seg_Bytes >= Discard_Step_Pages * Page;
+            Node := Node.next;
+            exit when Node = null;
+            Virtmem.Regions.Current_Access
+              (addrtab(proctab(PID).pgTable), Integer_Address (Page_Address - Page),
+               Virtmem.PFN (Node.element / 4096), Mode, Mapped);
+            exit when not Mapped or else Virtmem.Regions."/=" (Mode, Seg_Access);
+            Page_Address := Page_Address - Page;
+            Seg_Bytes := Seg_Bytes + Page;
+         end loop;
+         Seg_Base := Page_Address;
+      end Next_Segment;
+
+      function Operation_Of (Mode : Virtmem.Regions.Access_Mode) return Policy.Range_Operation is
+        (case Mode is
+           when Virtmem.Regions.Inaccessible => Policy.Make_Inaccessible,
+           when Virtmem.Regions.Read_Only => Policy.Make_Read_Only,
+           when Virtmem.Regions.Read_Write | Virtmem.Regions.Read_Execute => Policy.Make_Read_Write);
+   begin
+      Success := False;
+      Why := Owned_Memory_ABI.Invalid_Range;
+      if PID = NO_PROCESS or else Bytes = 0 or else Bytes mod Page /= 0
+        or else Address mod Page /= 0 or else Address > Unsigned_64'Last - Bytes
+      then
+         return;
+      end if;
+      Cursor := Address + Bytes;
+      while Cursor > Address loop
+         Take_Locks;
+         Next_Segment;
+         Drop_Locks;
+         Touched := Touched or else Found_Region;
+         exit when not Found_Region;
+         if Seg_Bytes > 0 then
+            Change_Range (PID, Seg_Base, Seg_Bytes, Policy.Decommit, Changed, Why);
+            if not Changed then return; end if;
+            Change_Range (PID, Seg_Base, Seg_Bytes, Policy.Commit, Changed, Why);
+            if not Changed then return; end if;
+            if Virtmem.Regions."/=" (Seg_Access, Virtmem.Regions.Read_Write) then
+               Change_Range (PID, Seg_Base, Seg_Bytes, Operation_Of (Seg_Access), Changed, Why);
+               if not Changed then return; end if;
+            end if;
+            Cursor := Seg_Base;
+            Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
+         end if;
+      end loop;
+      Success := Touched;
+      if not Touched then
+         Why := Owned_Memory_ABI.No_Region;
+      end if;
+   end Discard_Range;
 
    -- A whole region: exact base and capacity.
    procedure Release_Region (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean;
@@ -1032,9 +1205,6 @@ package body Process.Owned_Memory is
    -- touches no region is refused (No_Region), so the caller can tell.
    procedure Release_Range (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean;
                             Why : out Owned_Memory_ABI.Refusal) is
-      Limit : Unsigned_64;
-      Cursor : Unsigned_64 := Base;
-      Touched : Boolean := False;
       -- A decommit can race another thread's commit into the range; give
       -- up after this many rounds rather than loop.
       Shrink_Attempts : constant := 3;
@@ -1056,30 +1226,126 @@ package body Process.Owned_Memory is
         (Item.Status = Live and then Item.Kind = Region and then Item.Owner = PID
          and then Item.Generation = generationOf (PID));
 
-      -- The lowest live region of PID overlapping [From, Limit), or 0.
-      function Next_Region (From : Unsigned_64) return Natural is
-         Found : Natural := 0;
+      -- The region Next_Region last gave (its record; it may move or go
+      -- while no lock is held, so Apply checks it again).
+      Region_Index : Natural := 0;
+
+      procedure Next_Region (From, Limit : Unsigned_64; Found : out Boolean;
+                             Region_Base, Region_Bytes : out Unsigned_64) is
       begin
+         Region_Index := 0;
+         Region_Base := 0;
+         Region_Bytes := 0;
+         Take_Locks;
          for I of Records.Iterate (Tables(PID)'Access) loop
             declare
                Item : Entry_Record renames Entries(PID, I).Value.all;
             begin
                if Live_Region (Item) and then Item.Base < Limit
                  and then Item.Base + Item.Bytes > From
-                 and then (Found = 0 or else Item.Base < Entries(PID, Found).Base)
+                 and then (Region_Index = 0 or else Item.Base < Entries(PID, Region_Index).Base)
                then
-                  Found := I;
+                  Region_Index := I;
                end if;
             end;
          end loop;
-         return Found;
+         Found := Region_Index /= 0;
+         if Found then
+            Region_Base := Entries(PID, Region_Index).Base;
+            Region_Bytes := Entries(PID, Region_Index).Bytes;
+         end if;
+         Drop_Locks;
       end Next_Region;
 
-      Region_Index : Natural;
-      Region_Base, Region_Bytes, Cut_Base, Cut_Bytes, Upper_Base : Unsigned_64;
-      Cut : Policy.Run_Split;
-      Spare, Moved : Records.Id := 0;
-      Decommitted, Shrunk : Boolean;
+      procedure Apply (Region_Base, Region_Bytes : Unsigned_64; Cut : Policy.Run_Split;
+                       Done : out Boolean) is
+         Cut_Base : constant Unsigned_64 := Region_Base + Cut.Lower * Page;
+         Cut_Bytes : constant Unsigned_64 := Cut.Dropped * Page;
+         Upper_Base : constant Unsigned_64 := Cut_Base + Cut_Bytes;
+         Spare, Moved : Records.Id := 0;
+         Decommitted : Boolean;
+      begin
+         Done := False;
+         if Cut.Lower = 0 and then Cut.Upper = 0 then
+            Release_Region (PID, Region_Base, Region_Bytes, Done, Why);
+            return;
+         end if;
+         for Attempt in 1 .. Shrink_Attempts loop
+            Change_Range (PID, Cut_Base, Cut_Bytes, Policy.Decommit, Decommitted, Why);
+            if not Decommitted then return; end if;
+            Take_Locks;
+            -- The region as it was, with nothing backed in the cut now.
+            if not Records.Present (Tables(PID), Region_Index)
+              or else not Live_Region (Entries(PID, Region_Index).Value.all)
+              or else Entries(PID, Region_Index).Base /= Region_Base
+              or else Entries(PID, Region_Index).Bytes /= Region_Bytes
+            then
+               Drop_Locks;
+               Why := Owned_Memory_ABI.No_Region;
+               return;
+            end if;
+            if not Range_Backed (PID, Region_Index, Cut_Base, Cut_Bytes) then
+               if Cut.Lower > 0 and then Cut.Upper > 0 then
+                  -- A middle cut: the upper part becomes a region of its own.
+                  Records.Insert (Tables(PID), Upper_Base,
+                    (Status => Live, Kind => Region, Owner => PID,
+                     Generation => generationOf (PID), Base => Upper_Base,
+                     Bytes => Cut.Upper * Page, others => <>), Spare);
+                  if Spare = 0 then
+                     Drop_Locks;
+                     Why := Owned_Memory_ABI.No_Record;
+                     return;
+                  end if;
+                  for I of Records.Iterate (Tables(PID)'Access) loop
+                     if Is_Run_Of (Entries(PID, I).Value.all, Region_Index)
+                       and then Entries(PID, I).Base >= Upper_Base
+                     then
+                        Entries(PID, I).Parent := Spare;
+                     end if;
+                  end loop;
+                  Entries(PID, Region_Index).Bytes := Cut.Lower * Page;
+               elsif Cut.Upper = 0 then
+                  -- The tail: the region keeps its base (and its key).
+                  Entries(PID, Region_Index).Bytes := Cut.Lower * Page;
+               else
+                  -- The head: the region moves to a record keyed by its new
+                  -- base (the table orders regions by base), its runs
+                  -- following it.
+                  declare
+                     Copy : Entry_Record := Entries(PID, Region_Index).Value.all;
+                  begin
+                     Copy.Base := Upper_Base;
+                     Copy.Bytes := Cut.Upper * Page;
+                     Records.Insert (Tables(PID), Upper_Base, Copy, Moved);
+                  end;
+                  if Moved = 0 then
+                     Drop_Locks;
+                     Why := Owned_Memory_ABI.No_Record;
+                     return;
+                  end if;
+                  for I of Records.Iterate (Tables(PID)'Access) loop
+                     if Is_Run_Of (Entries(PID, I).Value.all, Region_Index) then
+                        Entries(PID, I).Parent := Moved;
+                     end if;
+                  end loop;
+                  Records.Release (Tables(PID), Region_Index);
+               end if;
+               Drop_Locks;
+               Done := True;
+               -- Between regions, an interrupt window (the walk takes the
+               -- next one with the locks taken again).
+               Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
+               return;
+            end if;
+            Drop_Locks;
+            -- Another thread committed into the cut meanwhile: again.
+            Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
+         end loop;
+         Why := Owned_Memory_ABI.Already_Backed;
+      end Apply;
+
+      procedure Walk is new Owned_Release_Walk (Next_Region, Apply);
+      Touched : Boolean;
    begin
       Success := False;
       Why := Owned_Memory_ABI.Invalid_Range;
@@ -1088,108 +1354,9 @@ package body Process.Owned_Memory is
       then
          return;
       end if;
-      Limit := Base + Bytes;
-      loop
-         Take_Locks;
-         Region_Index := Next_Region (Cursor);
-         if Region_Index = 0 then
-            Drop_Locks;
-            exit;
-         end if;
-         Touched := True;
-         Region_Base := Entries(PID, Region_Index).Base;
-         Region_Bytes := Entries(PID, Region_Index).Bytes;
-         Cut := Policy.Split (Region_Base, Region_Bytes / Page,
-                              Unsigned_64'Max (Cursor, Region_Base),
-                              Unsigned_64'Min (Limit, Region_Base + Region_Bytes) -
-                                Unsigned_64'Max (Cursor, Region_Base));
-         Drop_Locks;
-         Cut_Base := Region_Base + Cut.Lower * Page;
-         Cut_Bytes := Cut.Dropped * Page;
-         Upper_Base := Cut_Base + Cut_Bytes;
-         if Cut.Lower = 0 and then Cut.Upper = 0 then
-            Release_Region (PID, Region_Base, Region_Bytes, Success, Why);
-            if not Success then return; end if;
-         else
-            Shrunk := False;
-            for Attempt in 1 .. Shrink_Attempts loop
-               Change_Range (PID, Cut_Base, Cut_Bytes, Policy.Decommit, Decommitted, Why);
-               if not Decommitted then return; end if;
-               Take_Locks;
-               -- The region as it was, with nothing backed in the cut now.
-               if not Records.Present (Tables(PID), Region_Index)
-                 or else not Live_Region (Entries(PID, Region_Index).Value.all)
-                 or else Entries(PID, Region_Index).Base /= Region_Base
-                 or else Entries(PID, Region_Index).Bytes /= Region_Bytes
-               then
-                  Drop_Locks;
-                  Why := Owned_Memory_ABI.No_Region;
-                  return;
-               end if;
-               if not Range_Backed (PID, Region_Index, Cut_Base, Cut_Bytes) then
-                  if Cut.Lower > 0 and then Cut.Upper > 0 then
-                     -- A middle cut: the upper part becomes a region of its own.
-                     Records.Insert (Tables(PID), Upper_Base,
-                       (Status => Live, Kind => Region, Owner => PID,
-                        Generation => generationOf (PID), Base => Upper_Base,
-                        Bytes => Cut.Upper * Page, others => <>), Spare);
-                     if Spare = 0 then
-                        Drop_Locks;
-                        Why := Owned_Memory_ABI.No_Record;
-                        return;
-                     end if;
-                     for I of Records.Iterate (Tables(PID)'Access) loop
-                        if Is_Run_Of (Entries(PID, I).Value.all, Region_Index)
-                          and then Entries(PID, I).Base >= Upper_Base
-                        then
-                           Entries(PID, I).Parent := Spare;
-                        end if;
-                     end loop;
-                     Entries(PID, Region_Index).Bytes := Cut.Lower * Page;
-                  elsif Cut.Upper = 0 then
-                     -- The tail: the region keeps its base (and its key).
-                     Entries(PID, Region_Index).Bytes := Cut.Lower * Page;
-                  else
-                     -- The head: the region moves to a record keyed by its
-                     -- new base (the table orders regions by base), its runs
-                     -- following it.
-                     declare
-                        Copy : Entry_Record := Entries(PID, Region_Index).Value.all;
-                     begin
-                        Copy.Base := Upper_Base;
-                        Copy.Bytes := Cut.Upper * Page;
-                        Records.Insert (Tables(PID), Upper_Base, Copy, Moved);
-                     end;
-                     if Moved = 0 then
-                        Drop_Locks;
-                        Why := Owned_Memory_ABI.No_Record;
-                        return;
-                     end if;
-                     for I of Records.Iterate (Tables(PID)'Access) loop
-                        if Is_Run_Of (Entries(PID, I).Value.all, Region_Index) then
-                           Entries(PID, I).Parent := Moved;
-                        end if;
-                     end loop;
-                     Records.Release (Tables(PID), Region_Index);
-                  end if;
-                  Shrunk := True;
-               end if;
-               Drop_Locks;
-               exit when Shrunk;
-               -- Another thread committed into the cut meanwhile: again.
-               Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
-            end loop;
-            if not Shrunk then
-               Why := Owned_Memory_ABI.Already_Backed;
-               return;
-            end if;
-         end if;
-         Cursor := Upper_Base;
-         exit when Cursor >= Limit;
-         Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
-      end loop;
-      Success := Touched;
+      Walk (Base, Bytes, Touched, Success);
       if not Touched then
+         Success := False;
          Why := Owned_Memory_ABI.No_Region;
       end if;
    end Release_Range;

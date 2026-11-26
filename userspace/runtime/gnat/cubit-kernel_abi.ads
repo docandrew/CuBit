@@ -70,8 +70,10 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    --  the frames go back, the range stays reserved and faults until it is
    --  committed again (then zero). The others set the access of committed
    --  pages; owned memory is never executable.
+   --  Discard (MADV_DONTNEED): committed pages read zero from then on and
+   --  keep their access; reserved pages stay reserved.
    type Owned_Range_Operation is
-     (Commit, Decommit, Make_Inaccessible, Make_Read_Only, Make_Read_Write);
+     (Commit, Decommit, Make_Inaccessible, Make_Read_Only, Make_Read_Write, Discard);
 
    --  What a call returns when it fails or has nothing to give.
    Failed : constant Unsigned_64 := Unsigned_64'Last;

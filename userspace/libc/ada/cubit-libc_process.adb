@@ -792,4 +792,8 @@ package body CuBit.Libc_Process is
       CuBit.Libc_Log.Write_Console (Text, Length);
    end Debug_Write;
 
+   function Owned_Discard (Address, Bytes : Unsigned_64) return Unsigned_64 is
+     (CuBit.Kernel_Calls.Call (Change_Owned_Range, Address, Bytes,
+                               Owned_Range_Operation'Pos (Discard)));
+
 end CuBit.Libc_Process;

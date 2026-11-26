@@ -125,6 +125,9 @@ begin
       GiB : constant Unsigned_64 := 2**30;
       TiB : constant Unsigned_64 := 2**40;
       MiB : constant Unsigned_64 := 2**20;
+      --  The page below the owned-memory aperture (kernel
+      --  Owned_Memory_Layout.First, 16 TiB): never an owned region.
+      Below_Aperture : constant Unsigned_64 := 16 * TiB - 4096;
       Why : Owned.Refusal;
       Cage, Twice, Heap, Direct, Run, Middle, Low, High : Unsigned_64;
    begin
@@ -177,6 +180,31 @@ begin
              not Owned.Change (Direct, 4096, Owned.Commit) and then
              not Owned.Change (Cage, 4096, Owned.Commit), "every region in it gone");
       Check (not Owned.Release (Low, High - Low), "a second release touches nothing");
+      --  K12, Discard: committed pages read zero, their neighbours keep
+      --  their bytes, pages only reserved stay reserved; outside every
+      --  region it is refused. (A read-only page stays read-only after it:
+      --  libc's discard-readonly-fault probe, which must die.)
+      declare
+         Three : constant Unsigned_64 := Owned.Allocate (3 * 4096);
+         Pair : constant Unsigned_64 := Owned.Reserve (2 * 4096);
+      begin
+         Check (Three /= 0 and then Pair /= 0, "K12 regions");
+         Sentinel (Three, 16#1111#, True);
+         Sentinel (Three + 4096, 16#2222#, True);
+         Sentinel (Three + 8192, 16#3333#, True);
+         Check (Owned.Change (Three + 4096, 4096, Owned.Discard), "K12 discard a page");
+         Sentinel (Three + 4096, 0, False);
+         Sentinel (Three, 16#1111#, False);
+         Sentinel (Three + 8192, 16#3333#, False);
+         Sentinel (Three + 4096, 16#4444#, True);
+         Check (Owned.Change (Pair, 4096, Owned.Commit), "K12 commit half");
+         Sentinel (Pair, 16#5555#, True);
+         Check (Owned.Change (Pair, 2 * 4096, Owned.Discard), "K12 discard committed and reserved");
+         Sentinel (Pair, 0, False);
+         Check (Owned.Change (Pair + 4096, 4096, Owned.Commit), "K12 the reserved page stayed reserved");
+         Check (not Owned.Change (Below_Aperture, 4096, Owned.Discard), "K12 refused outside every region");
+         Check (Owned.Free (Three, 3 * 4096) and then Owned.Release (Pair, 2 * 4096), "K12 release");
+      end;
       --  Typed refusals, no limit compiled in.
       Check (Owned.Reserve (4096, 3, Why) = 0 and then
              Owned_Memory_ABI."=" (Why, Owned_Memory_ABI.Invalid_Alignment), "an invalid alignment");
@@ -184,7 +212,7 @@ begin
              Owned_Memory_ABI."=" (Why, Owned_Memory_ABI.Invalid_Range), "an unaligned size");
       debugPrint ("TEST: PASS MEM-007 4 TiB + 32 GiB cage, 64 GiB trimmed to a 32 GiB-aligned heap, "
                   & "32 GiB alignment, one 64 MiB commit, decommit, read-only, a middle release, "
-                  & "a release across regions and holes, typed refusals" & ASCII.LF);
+                  & "a release across regions and holes, discard, typed refusals" & ASCII.LF);
    end;
    for I in 1 .. 64 loop
       Base := Allocate (4096);

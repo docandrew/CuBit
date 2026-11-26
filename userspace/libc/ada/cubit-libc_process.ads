@@ -34,6 +34,7 @@
 --  this program did not start.
 ------------------------------------------------------------------------------
 pragma Ada_2022;
+with Interfaces;
 with Interfaces.C;
 with System;
 
@@ -88,6 +89,13 @@ package CuBit.Libc_Process is
    procedure Debug_Write
      (Text : System.Address; Length : Interfaces.C.size_t)
    with Export, Convention => C, External_Name => "cubit_debug_write";
+
+   --  <cubit/memory.h> (cubit_owned_discard): the kernel's Discard over [Address, Address +
+   --  Bytes) (MEM-007, K12; what MADV_DONTNEED needs): committed pages read
+   --  zero from then on and keep their access, reserved pages stay
+   --  reserved. 0, or the kernel's refusal word (Owned_Memory_ABI).
+   function Owned_Discard (Address, Bytes : Interfaces.Unsigned_64) return Interfaces.Unsigned_64
+   with Export, Convention => C, External_Name => "cubit_owned_discard";
 
    --  An event another of the program's threads received (the stream
    --  dispatcher, a write polling for subscriptions): a child's exit is kept

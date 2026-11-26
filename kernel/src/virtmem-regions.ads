@@ -13,4 +13,9 @@ package Virtmem.Regions with SPARK_Mode => Off is
    procedure Set_Access (Root : P4; Address : VirtAddress;
                          Expected_Frame : PFN; Mode : Access_Mode;
                          Success : out Boolean);
+   -- The access the user leaf for Address grants, when it maps
+   -- Expected_Frame (Found); caller holds the address-space lock.
+   procedure Current_Access (Root : P4; Address : VirtAddress;
+                             Expected_Frame : PFN; Mode : out Access_Mode;
+                             Found : out Boolean);
 end Virtmem.Regions;

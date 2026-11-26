@@ -16,4 +16,15 @@ package Region_PTE with Pure, SPARK_Mode => On is
       else (Plan'Result.Value and not Change_Mask) = (Old and not Change_Mask)
         and then not ((Plan'Result.Value and 2) /= 0 and
                       (Plan'Result.Value and 16#8000_0000_0000_0000#) = 0));
+
+   -- The access a leaf grants, as Plan writes it (MEM-007, K12: Discard
+   -- gives fresh pages the access the old ones had): not present is
+   -- inaccessible; present and writable read/write; present, read-only,
+   -- execute-disabled read-only; present, read-only, executable
+   -- read/execute.
+   function Current (Value : Unsigned_64) return Access_Mode is
+     (if (Value and 1) = 0 then Inaccessible
+      elsif (Value and 2) /= 0 then Read_Write
+      elsif (Value and 16#8000_0000_0000_0000#) /= 0 then Read_Only
+      else Read_Execute);
 end Region_PTE;

@@ -7,6 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../kernel"
 alr exec -- gprbuild -q -p -P ../tests/owned-regions/regions.gpr
 ../tests/owned-regions/build/region_tests
+../tests/owned-regions/build/release_walk_tests
 alr exec -- gnatprove -P ../tests/owned-regions/regions.gpr -u owned_reservation_policy.adb \
   --level=2 --timeout=60 --report=fail --checks-as-errors=on -j2
 echo 'owned region policy: proved'

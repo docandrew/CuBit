@@ -20,6 +20,7 @@ package CuBit.Owned_Reservations with Preelaborate is
      renames CuBit.Kernel_ABI.Make_Inaccessible;
    function Make_Read_Only return Range_Operation renames CuBit.Kernel_ABI.Make_Read_Only;
    function Make_Read_Write return Range_Operation renames CuBit.Kernel_ABI.Make_Read_Write;
+   function Discard return Range_Operation renames CuBit.Kernel_ABI.Discard;
    Page_Bytes : constant := 4096;
    --  No size limit is compiled in (MEM-007): the kernel refuses what it
    --  cannot give, and says why (Owned_Memory_ABI.Refusal).
