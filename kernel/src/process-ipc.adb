@@ -14,6 +14,7 @@ with Futex_ABI;
 with Process.Futex;
 with Readiness_Publication;
 with Boot_Diagnostics;
+with Stuck_Watch_Text;
 with BuddyAllocator;
 with Call_Sequences;
 with Process_Identities;
@@ -1154,13 +1155,17 @@ package body Process.IPC is
         hotReports : Natural := 0;
         percent : Unsigned_64 := 0;
         watched : Boolean := False;
+        --  This report: the thread was hot for Watch_Hot_Reports reports,
+        --  or is a main thread waiting undispatched for Stuck_Call_Ms.
+        firedHot : Boolean := False;
+        firedQuiet : Boolean := False;
     end record;
     watchSamples  : array (ThreadID) of Watch_Sample;
     lastReportMs  : Unsigned_64 := 0;
     Watch_Hot_Percent : constant := 90;
     Watch_Hot_Reports : constant := 2;
-    Watched_Names : constant array (1 .. 3) of String (1 .. 9) :=
-      ("desktop.s", "display.s", "intel-gpu");
+    Watched_Names : constant array (1 .. 4) of String (1 .. 9) :=
+      ("desktop.s", "display.s", "intel-gpu", "virtio-gp");
 
     --  noteEvidence's rows, newest last, under evidenceLock.
     evidenceLock  : Spinlocks.Spinlock;
@@ -1256,21 +1261,26 @@ package body Process.IPC is
             add (line, last, ")");
         end addName;
 
-        function stateName (s : ProcessState) return String is
+        function stateClass (s : ProcessState) return Stuck_Watch_Text.Wait_Class is
           (case s is
-             when INVALID              => "gone",
-             when READY                => "ready",
-             when RUNNING              => "running",
-             when SLEEPING             => "sleep",
-             when WAITING              => "wait",
-             when WAITINGFOREVENT      => "event",
-             when SENDING              => "send",
-             when RECEIVING            => "recv",
-             when WAITINGFORREPLY      => "call",
-             when WAITINGFORCOMPLETION => "compl",
-             when SUSPENDED            => "susp",
-             when FUTEXWAITING         => "futex",
-             when VMHALTED             => "guest-halted");
+             when INVALID              => Stuck_Watch_Text.Gone,
+             when READY                => Stuck_Watch_Text.Ready,
+             when RUNNING              => Stuck_Watch_Text.Running,
+             when SLEEPING             => Stuck_Watch_Text.Sleeping,
+             when WAITING              => Stuck_Watch_Text.Waiting,
+             when WAITINGFOREVENT      => Stuck_Watch_Text.Waiting_For_Event,
+             when SENDING              => Stuck_Watch_Text.Queued_In_Call,
+             when RECEIVING            => Stuck_Watch_Text.Idle_Receive,
+             when WAITINGFORREPLY      => Stuck_Watch_Text.Waiting_For_Reply,
+             when WAITINGFORCOMPLETION => Stuck_Watch_Text.Waiting_For_Completion,
+             when SUSPENDED            => Stuck_Watch_Text.Suspended,
+             when FUTEXWAITING         => Stuck_Watch_Text.Futex_Waiting,
+             when VMHALTED             => Stuck_Watch_Text.Guest_Halted);
+
+        function stateName (s : ProcessState) return String is
+          (Stuck_Watch_Text.State_Word (stateClass (s)));
+
+        why : Stuck_Watch_Text.Reasons;
         silenceMs : constant Unsigned_64 := Time.Boot_CPU_Silence_Ms;
     begin
         --  The latest kernel verdicts (noteEvidence), while recent.
@@ -1358,6 +1368,8 @@ package body Process.IPC is
         begin
             for tid in ThreadID range 1 .. ThreadID'Last loop
                 watchSamples (tid).watched := False;
+                watchSamples (tid).firedHot := False;
+                watchSamples (tid).firedQuiet := False;
                 if Thread_Table.Present (Natural (tid)) and then
                    threadtab (tid).process /= NO_PROCESS and then
                    isWatched (threadtab (tid).process)
@@ -1382,17 +1394,32 @@ package body Process.IPC is
                                          then Natural'Min (w.hotReports + 1, 1_000) else 0);
                         w.residency := residency;
                         w.dispatches := dispatches;
-                        if w.hotReports >= Watch_Hot_Reports or else
-                           (tid = mainThreadOf (t.process) and then
-                            t.state in FUTEXWAITING | WAITINGFORCOMPLETION | WAITING and then
-                            nowMs - w.quietSince >= Stuck_Call_Ms)
-                        then
+                        w.firedHot := w.hotReports >= Watch_Hot_Reports;
+                        w.firedQuiet :=
+                          tid = mainThreadOf (t.process) and then
+                          t.state in FUTEXWAITING | WAITINGFORCOMPLETION | WAITING and then
+                          nowMs - w.quietSince >= Stuck_Call_Ms;
+                        why.Hot_Thread := why.Hot_Thread or else w.firedHot;
+                        why.Quiet_Main := why.Quiet_Main or else w.firedQuiet;
+                        if w.firedHot or else w.firedQuiet then
                             suspicious := True;
                         end if;
                     end;
                 end if;
             end loop;
+            why.Stuck_Call := count > 0;
             if suspicious or else count > 0 then
+                --  Why the watch printed, first: the rows below are context.
+                if count < Boot_Diagnostics.Stuck_Rows then
+                    declare
+                        last : Natural := 0;
+                    begin
+                        count := count + 1;
+                        add (lines (count), last, "why:");
+                        add (lines (count), last, Stuck_Watch_Text.Reason_Words (why));
+                        TextIO.println ("STUCK-WATCH: " & lines (count) (1 .. last));
+                    end;
+                end if;
                 for tid in ThreadID range 1 .. ThreadID'Last loop
                     exit when count = Boot_Diagnostics.Stuck_Rows;
                     if watchSamples (tid).watched then
@@ -1414,9 +1441,11 @@ package body Process.IPC is
                                        (nowMs - watchSamples (tid).quietSince) / 1_000);
                             add (lines (count), last, "s rip=");
                             addHex (lines (count), last, t.sampledRIP);
+                            add (lines (count), last, Stuck_Watch_Text.Fired_Words
+                                 (watchSamples (tid).firedHot, watchSamples (tid).firedQuiet));
                             --  Its current or last call: whom, and which request.
                             if t.callTarget /= NO_PROCESS then
-                                add (lines (count), last, " ->");
+                                add (lines (count), last, Stuck_Watch_Text.Call_Words (stateClass (t.state)));
                                 addName (lines (count), last, t.callTarget);
                                 add (lines (count), last, " lbl=");
                                 addShortHex (lines (count), last, t.sendMsg.tag.label);
