@@ -135,4 +135,11 @@ package body AML_Explicit_Formatting with SPARK_Mode is
       end loop;
       return Cursor = Data'Length;
    end Buffer_Encoding;
+   procedure Allocate
+     (Item : Result; Store : in out AML_Objects.State;
+      ID : out AML_Objects.Object_ID; Status : out AML_Objects.Allocation_Status)
+   is
+   begin
+      AML_Objects.New_Bytes (Store, AML_Objects.String_Object, Item.Data, ID, Status);
+   end Allocate;
 end AML_Explicit_Formatting;

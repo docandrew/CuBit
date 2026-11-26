@@ -10,7 +10,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "bd1e1c99cea3016cd4ee46085858bfb9b3a201944b64fb122480e6bfc9d7e33a"
+      "sha256": "0df80ad78df1c150be1a581731bc34f6f93756d9412830edb22789b528d82827"
     },
     {
       "path": "userspace/services/acpi/acpi_service_core.ads",

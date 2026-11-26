@@ -1,8 +1,13 @@
 with AML_Decode;
+with AML_Objects;
 generic
    Max_Output_Length : Natural;
 package AML_Explicit_Formatting with SPARK_Mode, Pure is
    use type AML_Decode.Integer_Value;
+   use type AML_Decode.Bytes;
+   use type AML_Objects.Allocation_Status;
+   use type AML_Objects.Object_Kind;
+   use type AML_Objects.State;
    use type AML_Decode.Integer_Width;
    type Format_Mode is (Decimal_Format, Hexadecimal_Format);
    subtype Extent is Natural range 0 .. Max_Output_Length;
@@ -57,4 +62,18 @@ package AML_Explicit_Formatting with SPARK_Mode, Pure is
            From_Buffer'Result.Length = Buffer_Length (Mode, Data)
            and then Buffer_Encoding (Mode, Data, From_Buffer'Result.Data)
          else From_Buffer'Result.Length = 0);
+   -- A built result occupies one new String slot. Refusal has no store effects.
+   procedure Allocate
+     (Item : Result; Store : in out AML_Objects.State;
+      ID : out AML_Objects.Object_ID; Status : out AML_Objects.Allocation_Status)
+     with Pre => Item.Status = Built and then AML_Objects.Valid (Store),
+       Post => AML_Objects.Valid (Store)
+         and then AML_Objects.Extends (Store, Store'Old)
+         and then (if Status = AML_Objects.Allocated then
+           AML_Objects.Fresh_Allocation (Store, Store'Old, ID)
+           and then AML_Objects.Is_Live (Store, ID)
+           and then AML_Objects.Kind (Store, ID) = AML_Objects.String_Object
+           and then AML_Objects.Byte_Data (Store, ID) = Item.Data
+           and then AML_Objects.Length (Store, ID) = Item.Length
+         else Store = Store'Old and then ID = AML_Objects.No_Object);
 end AML_Explicit_Formatting;

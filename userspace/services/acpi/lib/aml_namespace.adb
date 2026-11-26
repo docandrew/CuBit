@@ -6598,9 +6598,6 @@ package body Owned with SPARK_Mode is
       Existing_String : Boolean := False;
       Node : Node_ID := 0;
       Target_Reference : Reference := AML_References.No_Reference;
-      Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
-      Snapshot_Copy : AML_Objects.Clone_Status;
-      Prior_Node : Entry_Record;
       ID : AML_Objects.Object_ID := 0;
       Located : Lookup_Result;
       Accepted : Boolean;
@@ -6608,52 +6605,13 @@ package body Owned with SPARK_Mode is
          Allocated : AML_Objects.Allocation_Status;
       begin
          if Formatted.Status /= Formatting.Built then Status := Value_Limit; return; end if;
-         AML_Objects.New_Bytes (A.Tree.Values, AML_Objects.String_Object, Formatted.Data, ID, Allocated);
+         Formatting.Allocate (Formatted, A.Tree.Values, ID, Allocated);
          Status := (if Allocated = AML_Objects.Allocated then Returned else Value_Limit);
       end Create;
-      procedure Execute_Value_Transaction is
+      procedure Produce_Result is
+         Source : AML_References.Object_Handle;
+         Authentic : Boolean;
       begin
-         Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-         Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
-         Status := Unsupported_Value;
-         if not Initialized (A) then return; end if;
-         case Item.Value_Kind is
-            when Reference_Datum | Metadata_Datum => return;
-            when Integer_Datum => null;
-            when Object_Datum =>
-               if not Has_Source (A, Item.Object.Source)
-                 or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
-               then return; end if;
-               Source_ID := AML_References.Source (Item.Object.Source);
-               case AML_Objects.Kind (A.Tree.Values, Source_ID) is
-                  when AML_Objects.String_Object => Existing_String := True;
-                  when AML_Objects.Buffer_Object => null;
-                  when others => return;
-               end case;
-         end case;
-         case Destination.Kind is
-            when Detached_Result | Prepared_Cell_Copy => null;
-            when Named_Attachment =>
-               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
-               if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
-               Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
-               if Located.Status /= Found then Status := Unknown_Name; return; end if;
-               if Located.Node = Root then return; end if;
-               Node := Located.Node;
-               Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
-               if not Accepted then return; end if;
-            when Reference_Attachment =>
-               if not Matches (A, Destination.Ref) then return; end if;
-               Target_Reference := Destination.Ref;
-               if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
-                  Node := Node_ID (AML_References.Named_Node (Destination.Ref));
-               end if;
-         end case;
-         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
-         if Snapshot_Copy /= AML_Objects.Cloned then
-            Status := AML_Execute.Value_Limit; return;
-         end if;
-         if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
          if Existing_String then
             ID := Source_ID;
          elsif Item.Value_Kind = Integer_Datum then
@@ -6663,13 +6621,33 @@ package body Owned with SPARK_Mode is
             Create (Formatting.From_Buffer (Selected_Mode, AML_Objects.Byte_Data (A.Tree.Values, Source_ID)));
             if Status /= Returned then return; end if;
          end if;
-         Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
+         Make_Source (A, ID, Source, Authentic);
+         pragma Assert (Authentic);
+         Read_Source (A, Source, Result_Value, Status);
+      end Produce_Result;
+
+      procedure Produce_And_Attach is
+         Prior_Values : AML_Objects.State := AML_Objects.Empty_Like (A.Tree.Values);
+         Snapshot_Copy : AML_Objects.Clone_Status;
+         Prior_Node : Entry_Record;
+      begin
+         AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
+         if Snapshot_Copy /= AML_Objects.Cloned then
+            AML_Objects.Discard (Prior_Values);
+            Status := Value_Limit;
+            return;
+         end if;
+         if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
+         Produce_Result;
+         if ID = AML_Objects.No_Object then
+            AML_Objects.Discard (Prior_Values);
+            return;
+         end if;
          if Status = Returned then
             case Destination.Kind is
                when Detached_Result => null;
                when Prepared_Cell_Copy =>
-                  if Existing_String then Clone_Value (A, Width, Result_Value, Cell_Value, Status);
-                  else Cell_Value := Result_Value; end if;
+                  Clone_Value (A, Width, Result_Value, Cell_Value, Status);
                when Named_Attachment =>
                   Store_Reference_Value (A, Target_Reference, Width, Result_Value, Status, Explicit_Result_Target);
                when Reference_Attachment =>
@@ -6682,10 +6660,56 @@ package body Owned with SPARK_Mode is
             Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
             Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          end if;
-      end Execute_Value_Transaction;
+         AML_Objects.Discard (Prior_Values);
+      end Produce_And_Attach;
    begin
-      Execute_Value_Transaction;
-      AML_Objects.Discard (Prior_Values);
+      Result_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+      Cell_Value := (Integer_Datum, 0, AML_Decode.Ordinary_Integer);
+      Status := Unsupported_Value;
+      if not Initialized (A) then return; end if;
+      case Item.Value_Kind is
+         when Reference_Datum | Metadata_Datum => return;
+         when Integer_Datum => null;
+         when Object_Datum =>
+            if not Has_Source (A, Item.Object.Source)
+              or else Item.Object.ID /= AML_References.Source (Item.Object.Source)
+            then return; end if;
+            Source_ID := AML_References.Source (Item.Object.Source);
+            case AML_Objects.Kind (A.Tree.Values, Source_ID) is
+               when AML_Objects.String_Object => Existing_String := True;
+               when AML_Objects.Buffer_Object => null;
+               when others => return;
+            end case;
+      end case;
+      case Destination.Kind is
+         when Detached_Result | Prepared_Cell_Copy => null;
+         when Named_Attachment =>
+            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+            if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
+            Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
+            if Located.Status /= Found then Status := Unknown_Name; return; end if;
+            if Located.Node = Root then return; end if;
+            Node := Located.Node;
+            Make_Named_Reference (A, Natural (Node), Target_Reference, Accepted);
+            if not Accepted then return; end if;
+         when Reference_Attachment =>
+            if not Matches (A, Destination.Ref) then return; end if;
+            Target_Reference := Destination.Ref;
+            if AML_References.Kind (Destination.Ref) = AML_References.Named_Cell then
+               Node := Node_ID (AML_References.Named_Node (Destination.Ref));
+            end if;
+      end case;
+      if Destination.Kind = Detached_Result
+        or else (Destination.Kind = Prepared_Cell_Copy and then not Existing_String)
+      then
+         Produce_Result;
+         pragma Assert (ID = AML_Objects.No_Object or else Status = Returned);
+         if Destination.Kind = Prepared_Cell_Copy and then Status = Returned then
+            Cell_Value := Result_Value;
+         end if;
+      else
+         Produce_And_Attach;
+      end if;
    end Format_String_And_Attach;
    function Invocation_Count (A : Arena) return AML_Frame_Handles.Invocation_Serial is
      (A.Invocation_Issued);
