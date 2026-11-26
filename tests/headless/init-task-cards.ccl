@@ -1,0 +1,10 @@
+# UI-061: task buttons name apps, hover cards show their windows
+# (tests/headless/run.sh --test task-cards, tests/headless/task-cards-drive.py):
+# the Calculator, and task-card-check's two windows titled as other apps.
+(startup v1
+  (start "logstore.svc" (test-console approve-declared))
+  (start "display.svc")
+  (start "desktop.svc")
+  (start "calculator.app")
+  (start "task-card-check.app")
+)

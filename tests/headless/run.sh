@@ -347,7 +347,7 @@ done
 
 if [ -z "$TIMEOUT_SECONDS" ]; then
     case "$TEST_NAME" in
-        desktop-display|desktop-session|desktop-session-no-invtsc|desktop-protocol|files|text|calculator|ui-latency|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart|desktop-reap|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|power-sources|graphics-report-nodriver|graphics-report-failing|graphics-report-desktop-down)
+        desktop-display|desktop-session|desktop-session-no-invtsc|desktop-protocol|files|text|calculator|task-cards|ui-latency|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|clipboard|key-repeat|input-stream|launch-failure|startup-health|desktop-restart|desktop-reap|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|power-sources|graphics-report-nodriver|graphics-report-failing|graphics-report-desktop-down)
             TIMEOUT_SECONDS=$DESKTOP_TIMEOUT_SECONDS ;;
         desktop-launch)
             # Five launches and three closes; the driver quits when done.
@@ -407,7 +407,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|stdin-inlet|image-share|ladybird-js|ladybird-test262|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|mailbox-self|mailbox-mutual|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|graphics-report-nodriver|graphics-report-failing|graphics-report-desktop-down|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch|screen-settle)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|stdin-inlet|image-share|ladybird-js|ladybird-test262|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|task-cards|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|mailbox-self|mailbox-mutual|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|graphics-report-nodriver|graphics-report-failing|graphics-report-desktop-down|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch|screen-settle)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -1632,6 +1632,9 @@ with open(sys.argv[1], "wb") as f:
             INIT_PROFILE="$ROOT_DIR/tests/headless/init-neon-blast-burn.ccl"
         fi
         ;;
+    task-cards)
+        INIT_PROFILE="$ROOT_DIR/tests/headless/init-task-cards.ccl"
+        ;;
     display-latency)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-display-latency.ccl"
         # CUBIT_DISPLAY_LATENCY_ANIMATION=1: a window animating every refresh
@@ -2588,8 +2591,16 @@ if [ -n "$INIT_PROFILE" ]; then
         debugfs -w -R "write $KERNEL_DIR/isodir/boot/bench-input-load.app bench-input-load.app" \
           "$TEMP_DISK" >/dev/null 2>&1 || exit 1
     fi
+    if [ "$TEST_NAME" = "task-cards" ]; then
+        debugfs -w -R "rm task-card-check.app" "$TEMP_DISK" >/dev/null 2>&1
+        if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/task-card-check.app task-card-check.app" \
+          "$TEMP_DISK" >/dev/null 2>&1; then
+            echo "headless: failed to install task-card-check.app" >&2
+            exit 1
+        fi
+    fi
     if [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "display-latency" ] ||
-       [ "$TEST_NAME" = "metrics-latency" ]; then
+       [ "$TEST_NAME" = "metrics-latency" ] || [ "$TEST_NAME" = "task-cards" ]; then
         CALC_TEST_IMAGE="$KERNEL_DIR/isodir/boot/calculator.app"
         if [ ! -f "$CALC_TEST_IMAGE" ]; then
             echo "headless: missing current Calculator test image: $CALC_TEST_IMAGE" >&2
@@ -4842,7 +4853,7 @@ if [ "$TEST_NAME" = "managed-ui" ] || [ "$TEST_NAME" = "remote-screenshot" ]; th
     rm -f "$MONITOR_SOCKET"
     MONITOR_ARGS=(-monitor "unix:$MONITOR_SOCKET,server,nowait")
 fi
-if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "launch-failure" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "ui-latency" ] || [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "metrics-latency" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
+if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TEST_NAME" = "launch-failure" ] || [ "$TEST_NAME" = "text" ] || [ "$TEST_NAME" = "calculator" ] || [ "$TEST_NAME" = "task-cards" ] || [ "$TEST_NAME" = "ui-latency" ] || [ "$TEST_NAME" = "display-latency" ] || [ "$TEST_NAME" = "metrics-latency" ] || [ "$TEST_NAME" = "clipboard" ] || [ "$TEST_NAME" = "mesa-window" ] || [ "$TEST_NAME" = "gpu-viewer" ] ||
    [ "$TEST_NAME" = "desktop-protocol" ] ||
    [ "$TEST_NAME" = "ccl-workspace" ] || [ "$TEST_NAME" = "ccl-console" ] ||
    [ "$TEST_NAME" = "llm-mock" ] || [ "$TEST_NAME" = "agent-mock" ] || [ "$TEST_NAME" = "agent-app" ] || [ "$TEST_NAME" = "llm-live" ] ||
@@ -6811,6 +6822,15 @@ if [ "$TEST_NAME" = "desktop-display" ] || [ "$TEST_NAME" = "files" ] || [ "$TES
             probe_wait "UI-PROBE: keys keys="
             probe_wait "UI-PROBE: closed"
             sleep 1.5
+        elif [ "$TEST_NAME" = "task-cards" ]; then
+            # UI-061: task buttons name apps by their manifests; hover and
+            # keyboard focus show the card (tests/headless/task-cards-drive.py).
+            if ! python3 "$ROOT_DIR/tests/headless/task-cards-drive.py" "$SERIAL_LOG" "$MONITOR_SOCKET" \
+                 "${SERIAL_LOG%.log}-task-cards" >> "${SERIAL_LOG%.log}-task-cards.txt" 2>&1; then
+                cat "${SERIAL_LOG%.log}-task-cards.txt" >&2
+                exit 1
+            fi
+            cat "${SERIAL_LOG%.log}-task-cards.txt"
         elif [ "$TEST_NAME" = "calculator" ]; then
             # CuBit Calculator (docs/calculator.md) by keyboard: exact
             # results, ans, an approximation, a big integer, a failed Enter
@@ -11631,6 +11651,19 @@ calculator: mode STANDARD
 calculator: closed
 "
         ;;
+    task-cards)
+        # UI-061: buttons name apps by their manifests' signed names, never
+        # a window's title; the hover card lists every title (the host
+        # driver, task-cards-drive.py, also checks the keyboard path).
+        required_markers="
+task-card-check: two windows open
+task-card-check: renamed its window Calculator
+label=\"Task Card Check\" source=manifest identity=com.cubit.task-card-check windows=2
+label=\"Calculator\" source=manifest identity=com.cubit.calculator windows=1
+title=\"Calculator\" button=\"Task Card Check\"
+desktop: task card app=\"Task Card Check\" source=manifest identity=com.cubit.task-card-check windows=2 titles=[\"Calculator\",\"Second window\"
+"
+        ;;
     usb-hotplug)
         # tests/usb-hotplug/check.py checks both instances and hotplug.
         required_markers="
@@ -11902,7 +11935,8 @@ esac
 if { [ "$TEST_NAME" = "device-build" ] || [ "$TEST_NAME" = "service-switch" ] \
        || [ "$TEST_NAME" = "service-switch-reboot" ] || [ "$TEST_NAME" = "acpi-live-replace" ] \
        || [ "$TEST_NAME" = "desktop-live-replace" ] \
-       || [ "$TEST_NAME" = "console-run-staged" ] || [ "$TEST_NAME" = "bench-build" ]; } && [ -n "$INPUT_INJECTOR_PID" ]; then
+       || [ "$TEST_NAME" = "console-run-staged" ] || [ "$TEST_NAME" = "bench-build" ] \
+       || [ "$TEST_NAME" = "task-cards" ]; } && [ -n "$INPUT_INJECTOR_PID" ]; then
     # The host driver's own checks (its PASS/FAIL lines above) gate too.
     if ! wait "$INPUT_INJECTOR_PID"; then
         INPUT_INJECTOR_PID=""

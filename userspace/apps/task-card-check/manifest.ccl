@@ -1,0 +1,9 @@
+# task-card-check (UI-061, tests/headless --test task-cards): two windows of
+# one app whose titles name other apps. Its task button must still read its
+# own declared name, "Task Card Check", whatever the windows call themselves.
+(Executable_Manifest
+  identity => "com.cubit.task-card-check"
+  version => "0.1.0"
+  # Its name for people: the task button's label (UI-061).
+  app => (App_Declaration.Declared (App_Presentation name => "Task Card Check"))
+  requests => [(service "desktop" "desktop")])
