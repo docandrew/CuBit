@@ -10262,6 +10262,8 @@ package body Owned with SPARK_Mode is
          Begin_Field_Context => PCI_Begin, Advance_Field_Context => PCI_Advance,
          Finish_Field_Context => PCI_Finish,
          Profile_Enabled => Profile_Enabled, Observe_Profile => Observe_Profile,
+         Enable_Runtime_Error_Handler => Enable_Runtime_Error_Handler,
+         Runtime_Error_Thread => Runtime_Error_Thread,
          Resolve_String_Name => Resolve_String_Reference);
    begin
       -- Unknown external completion survives tree rollback and Reset. Even
@@ -12553,6 +12555,9 @@ package body Owned with SPARK_Mode is
                   Outcome := (AML_Execute.Reference_Returned, Raw.Charged, (Root => Root));
                when AML_Execute.Metadata_Returned =>
                   Outcome := (AML_Execute.Metadata_Returned, Raw.Charged, (Root => Root));
+               when AML_Execute.Runtime_Exception => Outcome :=
+                  (Status => AML_Execute.Runtime_Exception, Charged => Raw.Charged,
+                   Exception_Code => Raw.Exception_Code);
                when AML_Execute.Fatal_Requested => Outcome := (AML_Execute.Fatal_Requested, Raw.Charged, Raw.Fatal);
                when AML_Execute.Module_Completed => Outcome := (AML_Execute.Unsupported_Value, Raw.Charged);
                when others => Outcome := (Failure_Status (Raw.Status), Raw.Charged);
@@ -14908,6 +14913,9 @@ package body Owned with SPARK_Mode is
                   Outcome := (AML_Execute.Reference_Returned, Raw.Charged, (Root => Root));
                when AML_Execute.Metadata_Returned =>
                   Outcome := (AML_Execute.Metadata_Returned, Raw.Charged, (Root => Root));
+               when AML_Execute.Runtime_Exception => Outcome :=
+                  (Status => AML_Execute.Runtime_Exception, Charged => Raw.Charged,
+                   Exception_Code => Raw.Exception_Code);
                when AML_Execute.Fatal_Requested => Outcome := (AML_Execute.Fatal_Requested, Raw.Charged, Raw.Fatal);
                when AML_Execute.Module_Completed => Outcome := (AML_Execute.Unsupported_Value, Raw.Charged);
                when others => Outcome := (Failure_Status (Raw.Status), Raw.Charged);

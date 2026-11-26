@@ -1,0 +1,125 @@
+package body AML_Runtime_Exceptions with SPARK_Mode is
+   function Normalize (Value : AML_Decode.Integer_Value) return Status_Code is
+   begin
+      return Value and 16#FFFF_FFFF#;
+   end Normalize;
+   function Name (Code : Status_Code) return String is
+   begin
+      case Code is
+         when 16#0000# => return "AE_OK";
+         when 16#0001# => return "AE_ERROR";
+         when 16#0002# => return "AE_NO_ACPI_TABLES";
+         when 16#0003# => return "AE_NO_NAMESPACE";
+         when 16#0004# => return "AE_NO_MEMORY";
+         when 16#0005# => return "AE_NOT_FOUND";
+         when 16#0006# => return "AE_NOT_EXIST";
+         when 16#0007# => return "AE_ALREADY_EXISTS";
+         when 16#0008# => return "AE_TYPE";
+         when 16#0009# => return "AE_NULL_OBJECT";
+         when 16#000A# => return "AE_NULL_ENTRY";
+         when 16#000B# => return "AE_BUFFER_OVERFLOW";
+         when 16#000C# => return "AE_STACK_OVERFLOW";
+         when 16#000D# => return "AE_STACK_UNDERFLOW";
+         when 16#000E# => return "AE_NOT_IMPLEMENTED";
+         when 16#000F# => return "AE_SUPPORT";
+         when 16#0010# => return "AE_LIMIT";
+         when 16#0011# => return "AE_TIME";
+         when 16#0012# => return "AE_ACQUIRE_DEADLOCK";
+         when 16#0013# => return "AE_RELEASE_DEADLOCK";
+         when 16#0014# => return "AE_NOT_ACQUIRED";
+         when 16#0015# => return "AE_ALREADY_ACQUIRED";
+         when 16#0016# => return "AE_NO_HARDWARE_RESPONSE";
+         when 16#0017# => return "AE_NO_GLOBAL_LOCK";
+         when 16#0018# => return "AE_ABORT_METHOD";
+         when 16#0019# => return "AE_SAME_HANDLER";
+         when 16#001A# => return "AE_NO_HANDLER";
+         when 16#001B# => return "AE_OWNER_ID_LIMIT";
+         when 16#001C# => return "AE_NOT_CONFIGURED";
+         when 16#001D# => return "AE_ACCESS";
+         when 16#001E# => return "AE_IO_ERROR";
+         when 16#001F# => return "AE_NUMERIC_OVERFLOW";
+         when 16#0020# => return "AE_HEX_OVERFLOW";
+         when 16#0021# => return "AE_DECIMAL_OVERFLOW";
+         when 16#0022# => return "AE_OCTAL_OVERFLOW";
+         when 16#0023# => return "AE_END_OF_TABLE";
+         when 16#1001# => return "AE_BAD_PARAMETER";
+         when 16#1002# => return "AE_BAD_CHARACTER";
+         when 16#1003# => return "AE_BAD_PATHNAME";
+         when 16#1004# => return "AE_BAD_DATA";
+         when 16#1005# => return "AE_BAD_HEX_CONSTANT";
+         when 16#1006# => return "AE_BAD_OCTAL_CONSTANT";
+         when 16#1007# => return "AE_BAD_DECIMAL_CONSTANT";
+         when 16#1008# => return "AE_MISSING_ARGUMENTS";
+         when 16#1009# => return "AE_BAD_ADDRESS";
+         when 16#2001# => return "AE_BAD_SIGNATURE";
+         when 16#2002# => return "AE_BAD_HEADER";
+         when 16#2003# => return "AE_BAD_CHECKSUM";
+         when 16#2004# => return "AE_BAD_VALUE";
+         when 16#2005# => return "AE_INVALID_TABLE_LENGTH";
+         when 16#3001# => return "AE_AML_BAD_OPCODE";
+         when 16#3002# => return "AE_AML_NO_OPERAND";
+         when 16#3003# => return "AE_AML_OPERAND_TYPE";
+         when 16#3004# => return "AE_AML_OPERAND_VALUE";
+         when 16#3005# => return "AE_AML_UNINITIALIZED_LOCAL";
+         when 16#3006# => return "AE_AML_UNINITIALIZED_ARG";
+         when 16#3007# => return "AE_AML_UNINITIALIZED_ELEMENT";
+         when 16#3008# => return "AE_AML_NUMERIC_OVERFLOW";
+         when 16#3009# => return "AE_AML_REGION_LIMIT";
+         when 16#300A# => return "AE_AML_BUFFER_LIMIT";
+         when 16#300B# => return "AE_AML_PACKAGE_LIMIT";
+         when 16#300C# => return "AE_AML_DIVIDE_BY_ZERO";
+         when 16#300D# => return "AE_AML_BAD_NAME";
+         when 16#300E# => return "AE_AML_NAME_NOT_FOUND";
+         when 16#300F# => return "AE_AML_INTERNAL";
+         when 16#3010# => return "AE_AML_INVALID_SPACE_ID";
+         when 16#3011# => return "AE_AML_STRING_LIMIT";
+         when 16#3012# => return "AE_AML_NO_RETURN_VALUE";
+         when 16#3013# => return "AE_AML_METHOD_LIMIT";
+         when 16#3014# => return "AE_AML_NOT_OWNER";
+         when 16#3015# => return "AE_AML_MUTEX_ORDER";
+         when 16#3016# => return "AE_AML_MUTEX_NOT_ACQUIRED";
+         when 16#3017# => return "AE_AML_INVALID_RESOURCE_TYPE";
+         when 16#3018# => return "AE_AML_INVALID_INDEX";
+         when 16#3019# => return "AE_AML_REGISTER_LIMIT";
+         when 16#301A# => return "AE_AML_NO_WHILE";
+         when 16#301B# => return "AE_AML_ALIGNMENT";
+         when 16#301C# => return "AE_AML_NO_RESOURCE_END_TAG";
+         when 16#301D# => return "AE_AML_BAD_RESOURCE_VALUE";
+         when 16#301E# => return "AE_AML_CIRCULAR_REFERENCE";
+         when 16#301F# => return "AE_AML_BAD_RESOURCE_LENGTH";
+         when 16#3020# => return "AE_AML_ILLEGAL_ADDRESS";
+         when 16#3021# => return "AE_AML_LOOP_TIMEOUT";
+         when 16#3022# => return "AE_AML_UNINITIALIZED_NODE";
+         when 16#3023# => return "AE_AML_TARGET_TYPE";
+         when 16#3024# => return "AE_AML_PROTOCOL";
+         when 16#3025# => return "AE_AML_BUFFER_LENGTH";
+         when 16#3026# => return "AE_AML_TOO_FEW_ARGUMENTS";
+         when 16#3027# => return "AE_AML_TOO_MANY_ARGUMENTS";
+         when 16#4001# => return "AE_CTRL_RETURN_VALUE";
+         when 16#4002# => return "AE_CTRL_PENDING";
+         when 16#4003# => return "AE_CTRL_TERMINATE";
+         when 16#4004# => return "AE_CTRL_TRUE";
+         when 16#4005# => return "AE_CTRL_FALSE";
+         when 16#4006# => return "AE_CTRL_DEPTH";
+         when 16#4007# => return "AE_CTRL_END";
+         when 16#4008# => return "AE_CTRL_TRANSFER";
+         when 16#4009# => return "AE_CTRL_BREAK";
+         when 16#400A# => return "AE_CTRL_CONTINUE";
+         when 16#400B# => return "AE_CTRL_PARSE_CONTINUE";
+         when 16#400C# => return "AE_CTRL_PARSE_PENDING";
+         when others => return "UNKNOWN_STATUS_CODE";
+      end case;
+   end Name;
+   function Message (Code : Status_Code) return AML_Decode.Bytes is
+      Text : constant String := Name (Code);
+      Result : AML_Decode.Bytes (1 .. Text'Length) := [others => 0];
+   begin
+      for Index in Result'Range loop
+         Result (Index) := AML_Decode.Byte (Character'Pos (Text (Index)));
+         pragma Loop_Invariant
+           (for all Done in Result'First .. Index =>
+             Result (Done) = AML_Decode.Byte (Character'Pos (Text (Done))));
+      end loop;
+      return Result;
+   end Message;
+end AML_Runtime_Exceptions;

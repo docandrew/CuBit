@@ -1,0 +1,331 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "basic-local_absent",
+      "family": "basic",
+      "AML_hex": "44534454670000000277435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200084954454d0108504b473012030101141554455354007001605b2a60700141465452a40a2a",
+      "AML_sha256": "919319c8b17ac9d0053db5ae97955a44d8e333891482b2cb4e555d28724caeb5",
+      "handler_present": false,
+      "handler_return": null,
+      "normal_observations": {
+        "TEST": [],
+        "AFTR": [
+          0
+        ],
+        "ECNT": [
+          0
+        ],
+        "STAT": [
+          0
+        ],
+        "ETYP": [
+          0
+        ],
+        "THRD": [
+          0
+        ]
+      },
+      "qualification": "Synthetic compiler-admitted diagnostic with pinned normal ACPICA observations; no original ASLTS credit"
+    },
+    {
+      "name": "basic-local_continue",
+      "family": "basic",
+      "AML_hex": "445344548800000002cb435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200084954454d0108504b47301203010114205f455252037545434e54706853544154708e6945545950706a54485244a400141554455354007001605b2a60700141465452a40a2a",
+      "AML_sha256": "689ef650020ae6cd93caa69720c1941630217c68d5c7a318be67ab6fb9707722",
+      "handler_present": true,
+      "handler_return": "Zero",
+      "normal_observations": {
+        "TEST": [
+          42
+        ],
+        "AFTR": [
+          1
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12291
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Synthetic compiler-admitted diagnostic with pinned normal ACPICA observations; no original ASLTS credit"
+    },
+    {
+      "name": "basic-local_propagate",
+      "family": "basic",
+      "AML_hex": "44534454880000000263435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200084954454d0108504b47301203010114205f455252037545434e54706853544154708e6945545950706a54485244a468141554455354007001605b2a60700141465452a40a2a",
+      "AML_sha256": "e7db1cb7a4d1d66a439c2dbba769dfaf89ad39c833971c02c8f1dfd2f0d5c182",
+      "handler_present": true,
+      "handler_return": "Arg0",
+      "normal_observations": {
+        "TEST": [],
+        "AFTR": [
+          0
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12291
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Synthetic compiler-admitted diagnostic with pinned normal ACPICA observations; no original ASLTS credit"
+    },
+    {
+      "name": "basic-local_replace",
+      "family": "basic",
+      "AML_hex": "445344548800000002ca435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200084954454d0108504b47301203010114205f455252037545434e54706853544154708e6945545950706a54485244a401141554455354007001605b2a60700141465452a40a2a",
+      "AML_sha256": "886c2f6f8790aa7d44920e8abf1c40c289dc7252699f09e02c39c2f52e5f9d05",
+      "handler_present": true,
+      "handler_return": "One",
+      "normal_observations": {
+        "TEST": [],
+        "AFTR": [
+          0
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12291
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Synthetic compiler-admitted diagnostic with pinned normal ACPICA observations; no original ASLTS credit"
+    },
+    {
+      "name": "basic-name_continue",
+      "family": "basic",
+      "AML_hex": "445344548800000002cd435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200084954454d0108504b47301203010114205f455252037545434e54706853544154708e6945545950706a54485244a400141554455354005b2a4954454d700141465452a40a2a",
+      "AML_sha256": "f7491701dc571b4fb53b7b65bcdcc41a7501ac3e5b836d7d9a1d962024508a2a",
+      "handler_present": true,
+      "handler_return": "Zero",
+      "normal_observations": {
+        "TEST": [
+          42
+        ],
+        "AFTR": [
+          1
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12291
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Synthetic compiler-admitted diagnostic with pinned normal ACPICA observations; no original ASLTS credit"
+    },
+    {
+      "name": "basic-reference_continue",
+      "family": "basic",
+      "AML_hex": "4453445489000000025a435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200084954454d0108504b47301203010114205f455252037545434e54706853544154708e6945545950706a54485244a400141654455354005b2a714954454d700141465452a40a2a",
+      "AML_sha256": "a0c2795c896dad8f937274e191d502bd94c4232aa2dc334a6d64f810d3b6bd1d",
+      "handler_present": true,
+      "handler_return": "Zero",
+      "normal_observations": {
+        "TEST": [
+          42
+        ],
+        "AFTR": [
+          1
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12291
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Synthetic compiler-admitted diagnostic with pinned normal ACPICA observations; no original ASLTS credit"
+    },
+    {
+      "name": "basic-package_continue",
+      "family": "basic",
+      "AML_hex": "445344548b00000002af435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200084954454d0108504b47301203010114205f455252037545434e54706853544154708e6945545950706a54485244a400141854455354007012030101605b2a60700141465452a40a2a",
+      "AML_sha256": "00b69a65ca9cbfff9405ed4189c2f836d26396ee930c29021c992fce4f2b9d4c",
+      "handler_present": true,
+      "handler_return": "Zero",
+      "normal_observations": {
+        "TEST": [
+          42
+        ],
+        "AFTR": [
+          1
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12291
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Synthetic compiler-admitted diagnostic with pinned normal ACPICA observations; no original ASLTS credit"
+    },
+    {
+      "name": "basic-index_continue",
+      "family": "basic",
+      "AML_hex": "445344548b000000025c435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200084954454d0108504b47301203010114205f455252037545434e54706853544154708e6945545950706a54485244a400141854455354005b2a88504b47300000700141465452a40a2a",
+      "AML_sha256": "e8efb1807d6d973101fa2505ffa7d4a401473ed51a0d376c5087ade6f2964c3a",
+      "handler_present": true,
+      "handler_return": "Zero",
+      "normal_observations": {
+        "TEST": [
+          42
+        ],
+        "AFTR": [
+          1
+        ],
+        "ECNT": [
+          1
+        ],
+        "STAT": [
+          12291
+        ],
+        "ETYP": [
+          2
+        ],
+        "THRD": [
+          140737349940928
+        ]
+      },
+      "qualification": "Synthetic compiler-admitted diagnostic with pinned normal ACPICA observations; no original ASLTS credit"
+    },
+    {
+      "name": "robust-no_return",
+      "family": "robust",
+      "AML_hex": "445344548500000002c2435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200085345454e0008534156450d00141f5f455252037545434e54706853544154708e6945545950706a54485244a3141554455354007001605b2a60700141465452a40a2a",
+      "AML_sha256": "4a22bfc762bdcf241122f48f6a580b3c235f5d54bf2c8023d2a98c80b6c44710",
+      "expected_status": "RUNTIME_EXCEPTION",
+      "expected_code": 12291,
+      "expected_SEEN": 0,
+      "require_collection_during_TEST": false,
+      "qualification": "Raw synthetic negative/runtime contract; illustrative ASL is not a compiler admission. No ACPICA parity or ASLTS PASS credit.",
+      "normal_reference": false
+    },
+    {
+      "name": "robust-high_bits_zero",
+      "family": "robust",
+      "AML_hex": "445344549d0000000228435542495400554e4c4f4144000001000000494e544c080426200845434e540008535441540008455459500008544852440008414654520008534156450d00085345454e00084954454d0108504b47301203010114285f455252037545434e54706853544154708e6945545950706a54485244a40e0000000001000000141554455354007001605b2a60700141465452a40a2a",
+      "AML_sha256": "32055e0373e98f41330b35488991dc75527aacb8087b1857f0498fa98bd089c8",
+      "expected_status": "RETURNED",
+      "expected_code": null,
+      "expected_SEEN": 0,
+      "require_collection_during_TEST": false,
+      "qualification": "Normal ACPICA semantic differential",
+      "normal_reference": true
+    },
+    {
+      "name": "robust-high_bits_original",
+      "family": "robust",
+      "AML_hex": "445344549d00000002f5435542495400554e4c4f4144000001000000494e544c080426200845434e540008535441540008455459500008544852440008414654520008534156450d00085345454e00084954454d0108504b47301203010114285f455252037545434e54706853544154708e6945545950706a54485244a40e0330000001000000141554455354007001605b2a60700141465452a40a2a",
+      "AML_sha256": "bf647fb4bbaa6872bbce4c29a5de02bec36631968744c97a8b846d056bcfad74",
+      "expected_status": "RUNTIME_EXCEPTION",
+      "expected_code": 12291,
+      "expected_SEEN": 0,
+      "require_collection_during_TEST": false,
+      "qualification": "Normal ACPICA semantic differential",
+      "normal_reference": true
+    },
+    {
+      "name": "robust-retained_message",
+      "family": "robust",
+      "AML_hex": "44534454bd00000002fb435542495400554e4c4f4144000001000000494e544c080426200845434e540008535441540008455459500008544852440008414654520008534156450d00085345454e00084954454d0108504b47301203010114265f455252037545434e54706853544154708e6945545950706a54485244706953415645a400143754455354007001605b2a60700141465452a02193534156450d41455f414d4c5f4f504552414e445f545950450070015345454ea40a2a",
+      "AML_sha256": "94ec4bb79d66c08d939066f8c2e343f04b6c831013e13ddd40b6c83d74f487e9",
+      "expected_status": "RETURNED",
+      "expected_code": null,
+      "expected_SEEN": 1,
+      "require_collection_during_TEST": false,
+      "qualification": "Normal ACPICA semantic differential",
+      "normal_reference": true
+    },
+    {
+      "name": "robust-retained_message_gc",
+      "family": "robust",
+      "AML_hex": "44534454db000000020f435542495400554e4c4f4144000001000000494e544c080426200845434e540008535441540008455459500008544852440008414654520008534156450d00085345454e00084954454d0108504b47301203010114265f455252037545434e54706853544154708e6945545950706a54485244706953415645a40014450554455354007001605b2a60700141465452700062a20e95620a087011040b0001617562a00a929387610b0001a400a02193534156450d41455f414d4c5f4f504552414e445f545950450070015345454ea40a2a",
+      "AML_sha256": "d49f050e0fd5ff82de547e7a59b8737c36fc827738645a051ad1e219f442d5a4",
+      "expected_status": "RETURNED",
+      "expected_code": null,
+      "expected_SEEN": 1,
+      "require_collection_during_TEST": true,
+      "qualification": "Normal ACPICA semantic differential",
+      "normal_reference": true
+    },
+    {
+      "name": "robust-automatic_recursion_guard",
+      "family": "robust",
+      "AML_hex": "445344548c00000002fd435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200085345454e0008534156450d0014265f455252037545434e54706853544154708e6945545950706a544852447001605b2a60a400141554455354007001605b2a60700141465452a40a2a",
+      "AML_sha256": "33e94ce5e839a79f71fa4e714dfde5f7b86ebed09e4e7ddde1f21ef6dcc38a35",
+      "expected_status": "RUNTIME_EXCEPTION",
+      "expected_code": 12291,
+      "expected_SEEN": 0,
+      "require_collection_during_TEST": false,
+      "qualification": "Raw synthetic negative/runtime contract; illustrative ASL is not a compiler admission. No ACPICA parity or ASLTS PASS credit.",
+      "normal_reference": false
+    },
+    {
+      "name": "robust-noninteger_return",
+      "family": "robust",
+      "AML_hex": "4453445495000000022c435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200085345454e0008534156450d00142f5f455252037545434e54706853544154708e6945545950706a54485244a40d6e6f742d616e2d696e746567657200141554455354007001605b2a60700141465452a40a2a",
+      "AML_sha256": "21f01cf01d6a9fc40429e996f6c79c5878892b12fd4881578b63a60b42de19e1",
+      "expected_status": "RUNTIME_EXCEPTION",
+      "expected_code": 12291,
+      "expected_SEEN": 0,
+      "require_collection_during_TEST": false,
+      "qualification": "Raw synthetic negative/runtime contract; illustrative ASL is not a compiler admission. No ACPICA parity or ASLTS PASS credit.",
+      "normal_reference": false
+    },
+    {
+      "name": "robust-explicit_recursion_resource",
+      "family": "robust",
+      "AML_hex": "445344548c0000000230435542495400554e4c4f4144000001000000494e544c080426200845434e5400085354415400084554595000085448524400084146545200085345454e0008534156450d0014265f455252037545434e54706853544154708e6945545950706a54485244a45f45525268696a141554455354007001605b2a60700141465452a40a2a",
+      "AML_sha256": "6319fa7d7bba764f848707267ec908ccaacfb259f80f9171476d7b1c6a70c473",
+      "expected_status": "RESOURCE",
+      "expected_code": null,
+      "expected_SEEN": 0,
+      "require_collection_during_TEST": false,
+      "qualification": "Raw synthetic negative/runtime contract; illustrative ASL is not a compiler admission. No ACPICA parity or ASLTS PASS credit.",
+      "normal_reference": false
+    }
+  ],
+  "normal_reference_version": "20260408",
+  "raw_negative_contracts": 4,
+  "raw_negative_cases_not_compiler_admissions": true,
+  "old_ASLTS_PASS_credit": 0
+}

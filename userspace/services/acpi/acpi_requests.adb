@@ -184,7 +184,8 @@ package body ACPI_Requests with SPARK_Mode is
         when AML_Execute.Fatal_Requested => Error_Fatal_Requested,
         when AML_Execute.Field_Indeterminate => Error_Field_Indeterminate,
         when AML_Execute.Invalid_Table_Length => Error_Invalid_Table_Length,
-        when AML_Execute.Missing_Operand => Error_Missing_Operand);
+        when AML_Execute.Missing_Operand => Error_Missing_Operand,
+        when AML_Execute.Runtime_Exception => Error_Runtime_Exception);
    -- Read requests cannot modify the snapshot or its upload state.
    procedure Read_Request (Server : State; Request : Packet; Reply : out Response)
      with Pre => Consistent (Server) and then Valid (Server) and then

@@ -50,6 +50,7 @@ package body ACPI_Startup_Diagnostics is
         when AML_Execute.Field_Indeterminate => "FIELD_INDETERMINATE",
         when AML_Execute.Missing_Operand => "MISSING_OPERAND",
         when AML_Execute.Fatal_Requested => "FATAL_REQUESTED",
+        when AML_Execute.Runtime_Exception => "RUNTIME_EXCEPTION",
         when AML_Execute.Module_Completed => "MODULE_COMPLETED");
 
    function Freeze_Name (Item : ACPI_Service.Freeze_Status) return String is

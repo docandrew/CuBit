@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with AML_Profile_Events;
+with AML_Runtime_Exceptions;
 with AML_Field_Layout;
 with ACPI_FADT.Transactions;
 with AML_Mutexes;
@@ -89,15 +90,19 @@ package AML_Execute with SPARK_Mode, Pure is
    function As_Values (Args : Arguments) return Value_Arguments with
      Post => (for all I in Args'Range => As_Values'Result (I).Value_Kind = Integer_Datum
        and then As_Values'Result (I).Number = Args (I));
+   -- A payload status carries the exact nonzero replacement selected by _ERR.
+   -- AE_OK is represented by ordinary continuation, never a runtime failure.
+   subtype Runtime_Error_Code is AML_Runtime_Exceptions.Status_Code range
+     1 .. AML_Runtime_Exceptions.Status_Code'Last;
    type Execution_Status is
      (Returned, Object_Returned, Reference_Returned, Metadata_Returned, No_Return, Truncated, Unsupported, Uninitialized,
       Missing_Argument, Budget_Exceeded, Invalid_Method, Argument_Mismatch, Mutex_Order, Duplicate_Name, Namespace_Limit, Expression_Limit, Block_Limit, Bad_Package, Invalid_Control,
-      Unknown_Name, Unsupported_Value, Bad_Name, Call_Limit, Division_By_Zero, Empty_Buffer, Missing_Result, Value_Limit, Numeric_Overflow, Invalid_Delay, Delay_Failed, Package_Limit, Invalid_Match_Operation, No_Resource_End_Tag, Invalid_Resource_Type, Bad_Resource_Length, Resource_Buffer_Length, Invalid_Field_Length, Buffer_Field_Limit, Notify_Limit, Mutex_Not_Acquired, Invalid_Table_Length, Missing_Operand, Field_Indeterminate, Fatal_Requested, Module_Completed);
+      Unknown_Name, Unsupported_Value, Bad_Name, Call_Limit, Division_By_Zero, Empty_Buffer, Missing_Result, Value_Limit, Numeric_Overflow, Invalid_Delay, Delay_Failed, Package_Limit, Invalid_Match_Operation, No_Resource_End_Tag, Invalid_Resource_Type, Bad_Resource_Length, Resource_Buffer_Length, Invalid_Field_Length, Buffer_Field_Limit, Notify_Limit, Mutex_Not_Acquired, Invalid_Table_Length, Missing_Operand, Field_Indeterminate, Runtime_Exception, Fatal_Requested, Module_Completed);
    -- Recovery sites describe a failed declaration or consumed name term; they grant no authority.
    type Module_Name_Error_Site is (Operation_Region_Name_Error, Field_Region_Name_Error, Parsed_Name_Term_Error);
    -- Module_Completed is success only at authenticated root EOF, never failure.
    subtype Execution_Failure is Execution_Status range No_Return .. Fatal_Requested;
-   -- Status-only adapters cannot fabricate a fatal request without its payload.
+   -- Status-only adapters cannot fabricate a runtime exception or fatal request without its payload.
    subtype Payload_Free_Failure is Execution_Status range No_Return .. Field_Indeterminate;
    type Execution_Result (Status : Execution_Status := No_Return) is record
       Charged : Natural;
@@ -108,6 +113,7 @@ package AML_Execute with SPARK_Mode, Pure is
          when Object_Returned => Object : Object_Value;
          when Reference_Returned => Ref : AML_References.Reference;
          when Metadata_Returned => Metadata : Metadata_Value;
+         when Runtime_Exception => Exception_Code : Runtime_Error_Code;
          when Fatal_Requested => Fatal : AML_Fatal.Request;
          when others => null;
       end case;
@@ -715,6 +721,10 @@ package AML_Execute with SPARK_Mode, Pure is
         (Environment : in out Context; Ref : AML_References.Reference;
          Ticket : Field_Context_Ticket; Geometry : AML_Field_Layout.Register_Geometry;
          Value : in out Datum; Status : in out Execution_Status) is null;
+      -- Separate from module diagnostic hooks: this enables normal nested
+      -- AML calls only at precise, fully consumed runtime exception sites.
+      Enable_Runtime_Error_Handler : Boolean := False;
+      with procedure Runtime_Error_Thread (Tag : in out AML_Decode.Integer_Value) is null;
    procedure Execute_From_Source
      (Code : AML_Decode.Bytes; Width : AML_Decode.Integer_Width;
       Args : Value_Arguments; Argument_Count : Natural; Budget : Natural;

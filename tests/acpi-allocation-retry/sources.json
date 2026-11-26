@@ -10,15 +10,15 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "eccb857a551ea045835116a6c016d527ff2a87c7d5895425ed8dbfd3b6a96b9c"
+      "sha256": "19188e457466b8faed8f774c32e9ac4d7ef117c52029b37429cbde11895b8611"
     },
     {
       "path": "userspace/services/acpi/acpi_service_core.ads",
-      "sha256": "2704cdadddabbb56b02e189c138fe255e4a4cfa3769076429c305b7d23560f06"
+      "sha256": "1cd0c60133cb226c47bb395892e26afc965e5d3f5a3fb9b857df4d5b62c7e60f"
     },
     {
       "path": "userspace/services/acpi/acpi_service_core.adb",
-      "sha256": "95ae2f53df8f5dba56594e33c8f23e4eaf7c4214335c4875491e54463898964e"
+      "sha256": "0d133da5b4af3e6a5a19dbc636b9c81269545a13735a0bf1cbeda278d70a63fd"
     },
     {
       "path": "userspace/services/acpi/native/acpi_native_startup_timing.adb",

@@ -8,6 +8,7 @@ with AML_Logic;
 with AML_Simple_Targets;
 with AML_Unload_Framing;
 with AML_Unload_Statement;
+with AML_Runtime_Error_Invocation;
 package body AML_Execute with SPARK_Mode is
    use AML_Decode;
    Event_Extension : constant Byte := 16#02#;
@@ -56,6 +57,9 @@ package body AML_Execute with SPARK_Mode is
       Load_Table_Extension : constant AML_Decode.Byte := 16#1F#;
       Load_Source_Extension : constant AML_Decode.Byte := 16#20#;
       Pending_Fatal : AML_Fatal.Observation;
+      Runtime_Handler_Active : Boolean := False;
+      Has_Runtime_Exception : Boolean := False;
+      Pending_Runtime_Code : Runtime_Error_Code := 1;
       -- Recursive Run calls share policy and preserve suspended caller roots.
       -- Bootstrap restrictions are independent of module declaration lifetime.
       -- Descendants inherit any active restriction; future runtime loads may
@@ -318,6 +322,10 @@ package body AML_Execute with SPARK_Mode is
       begin
          if Pending_Fatal.Present then
             return (Status => Fatal_Requested, Charged => Charged, Fatal => Pending_Fatal.Item);
+         end if;
+         if Status = Runtime_Exception and then Has_Runtime_Exception then
+            return (Status => Runtime_Exception, Charged => Charged,
+                    Exception_Code => Pending_Runtime_Code);
          end if;
          return (Status => Safe_Status, Charged => Charged);
       end Failure;
@@ -2321,6 +2329,10 @@ package body AML_Execute with SPARK_Mode is
             if Result.Status = Fatal_Requested and then not Pending_Fatal.Present then
                Pending_Fatal := (Present => True, Item => Result.Fatal);
             end if;
+            if Result.Status = Runtime_Exception then
+               Pending_Runtime_Code := Result.Exception_Code;
+               Has_Runtime_Exception := True;
+            end if;
             Status := Result.Status;
             if Result.Status = Returned then
                Value := (Value_Kind => Integer_Datum, Number => Result.Value, Origin => Result.Origin);
@@ -4056,21 +4068,177 @@ package body AML_Execute with SPARK_Mode is
          -- collecting callback runs before the caller consumes/publishes V.
          Publish_Expression_Roots (Environment, Call_Frame, []);
       end Operand;
-      procedure Unload_Object (Status : out Execution_Status) is
+      -- The real transaction sequencing/fuel/source construction lives in
+      -- AML_Runtime_Error_Invocation. These adapters retain ordinary owner,
+      -- transport, suspended-root and recursive Run operations.
+      procedure Handle_Runtime_Error
+        (Original : Runtime_Error_Code; Complete : Boolean;
+         Status : in out Execution_Status) is
+         Actuals : Value_Arguments := [others => (Integer_Datum, 0, Ordinary_Integer)];
+         Incoming : Argument_Locations := [others => 0];
+         Returned_Source : Scalar_Location := 0;
+         Child : Execution_Result;
+         Stage_Failure : Payload_Free_Failure := Unsupported_Value;
+         procedure Find_Handler
+           (Owner : in out Context; Found : out Boolean; ID : out Natural) is
+            Path : constant AML_Names.Name_Result :=
+              (Kind => AML_Names.Accepted, Rooted => True, Parents => 0, Count => 1,
+               Parts => [1 => "_ERR", others => "____"], Consumed => 5);
+            Binding : Binding_Result;
+         begin
+            Found := False; ID := 0;
+            Lookup (Owner, Input, 0, Path, Width, Inspect_Binding, Binding);
+            if Binding.Status /= Method_Binding or else Binding.Parameters /= 3
+              or else Binding.Method_ID = 0 then return; end if;
+            declare Method : constant Method_Definition := Get_Method (Owner, Binding.Method_ID); begin
+               if not Method.Exists or else Natural (Method.Flags and 7) /= 3 then return; end if;
+            end;
+            ID := Binding.Method_ID; Found := True;
+         end Find_Handler;
+         procedure Stage_Arguments
+           (Owner : in out Context; ID : Natural;
+            Code : AML_Runtime_Exceptions.Status_Code; Tag : Integer_Value;
+            Message : Bytes; Source : aliased AML_Byte_Sources.Storage;
+            Ready, Failure_Propagates : out Boolean) is
+            Bound : Binding_Result;
+            Stored : Transport.Outcome;
+         begin
+            Ready := False; Failure_Propagates := False;
+            if ID = 0 then return; end if;
+            Materialize (Owner, Current_Lexical_Scope, String_Literal, Width,
+              Message, Source, 0, Bound);
+            if Bound.Status /= Non_Integer_Binding then
+               if Bound.Status = Failed_Binding and then Bound.Failure in
+                 Value_Limit | Budget_Exceeded | Call_Limit | Namespace_Limit |
+                 Expression_Limit | Block_Limit | Package_Limit | Field_Indeterminate
+               then Stage_Failure := Bound.Failure; Failure_Propagates := True; end if;
+               return;
+            end if;
+            if Bound.Object.Type_Code /= 2 then return; end if;
+            Actuals (0) := (Integer_Datum, Code, Ordinary_Integer);
+            Actuals (1) := (Object_Datum, Bound.Object);
+            Actuals (2) := (Integer_Datum, Tag, Ordinary_Integer);
+            Publish_Held_Root (Owner, Call_Frame, AML_Root_Slots.Returned_Value, True, Actuals (1));
+            for I in 0 .. 2 loop
+               Incoming (I) := Argument_Location (Call_Frame, I);
+               Transport.Put (Values, Incoming (I), Actuals (I), Stored);
+               if Stored /= Transport.Ready then
+                  Stage_Failure := Value_Limit; Failure_Propagates := True; return;
+               end if;
+            end loop;
+            Ready := True;
+         end Stage_Arguments;
+         procedure Invoke_Handler
+           (Owner : in out Context; ID : Natural; Child_Budget, Depth : Natural;
+            Integer_Return, Failure_Propagates : out Boolean;
+            Value : out Integer_Value; Child_Charged : out Natural) is
+            Method : constant Method_Definition := Get_Method (Owner, ID);
+         begin
+            Integer_Return := False; Failure_Propagates := False; Value := 0; Child_Charged := 0;
+            if not Method.Exists or else Natural (Method.Flags and 7) /= 3 then return; end if;
+            Run
+              ((if Method.Implementation = AML_Implementation then Method.Code.Bytes (1 .. Method.Length)
+                else Bytes'(1 .. 0 => 0)), Method.Code, 0, Method.Width, Actuals, 3,
+               Child_Budget, Method.Scope, Child, Call_Budget (Depth), ID,
+               Method.Flags, Call_Frame, AML_Declaration_Contexts.Method_Request,
+               Method.Implementation, Incoming, Returned_Source);
+            Publish_Expression_Roots (Owner, Call_Frame, []);
+            Child_Charged := Child.Charged;
+            Failure_Propagates := Child.Status in Fatal_Requested | Budget_Exceeded | Call_Limit | Value_Limit |
+              Namespace_Limit | Expression_Limit | Block_Limit | Package_Limit |
+              Field_Indeterminate | Notify_Limit | Delay_Failed;
+            Integer_Return := Child.Status = Returned;
+            if Integer_Return then Value := Child.Value; end if;
+         end Invoke_Handler;
+         procedure Cleanup (Owner : in out Context) is
+         begin
+            for I in 0 .. 2 loop
+               if Incoming (I) /= 0 then Clear_If_Present (Incoming (I)); end if;
+            end loop;
+            if Returned_Source /= 0 then Clear_If_Present (Returned_Source); end if;
+            Publish_Held_Root (Owner, Call_Frame, AML_Root_Slots.Returned_Value,
+              False, (Integer_Datum, 0, Ordinary_Integer));
+         end Cleanup;
+         package Invocation renames AML_Runtime_Error_Invocation;
+         Decision : Invocation.Outcome;
+         Machine : Invocation.State;
+         Tag, Child_Value : Integer_Value := 0;
+         ID, Child_Charged : Natural := 0;
+         Found, Ready, Failure_Propagates, Integer_Return : Boolean := False;
+      begin
+         if not Enable_Runtime_Error_Handler or else not Tracking or else
+           not Complete or else Module_Root or else Pending_Fatal.Present
+         then return; end if;
+         Pending_Runtime_Code := Original; Has_Runtime_Exception := True; Status := Runtime_Exception;
+         if Runtime_Handler_Active then return; end if;
+         Clear_If_Present (Pending_Location (Call_Frame));
+         Publish_Held_Root (Environment, Call_Frame, AML_Root_Slots.Returned_Value,
+           False, (Integer_Datum, 0, Ordinary_Integer));
+         Runtime_Handler_Active := True;
+         Machine := Invocation.Begin_Call (Original, Enable_Runtime_Error_Handler,
+           Tracking, False, Complete, Calls_Left, Call_Budget'Last, Charged, Budget);
+         loop
+            pragma Loop_Invariant (Invocation.Valid (Machine));
+            pragma Loop_Variant (Decreases => Invocation.Remaining (Machine));
+            case Invocation.Current (Machine) is
+               when Invocation.Need_Thread =>
+                  Runtime_Error_Thread (Tag); Invocation.Supply_Thread (Machine, Tag);
+               when Invocation.Need_Handler =>
+                  Find_Handler (Environment, Found, ID); Invocation.Supply_Handler (Machine, Found);
+               when Invocation.Need_Stage =>
+                  declare
+                     Message : constant Bytes := AML_Runtime_Exceptions.Message (Original);
+                     Source : aliased constant AML_Byte_Sources.Storage := Invocation.Message_Source (Original);
+                  begin
+                     Stage_Arguments (Environment, ID, Original, Tag, Message, Source, Ready, Failure_Propagates);
+                  end;
+                  Invocation.Supply_Stage (Machine, Ready, Failure_Propagates);
+               when Invocation.Need_Child =>
+                  Invoke_Handler (Environment, ID, Invocation.Child_Budget (Machine),
+                    Invocation.Child_Depth (Machine), Integer_Return, Failure_Propagates,
+                    Child_Value, Child_Charged);
+                  Invocation.Supply_Child (Machine, Integer_Return, Failure_Propagates,
+                    Child_Value, Child_Charged);
+               when Invocation.Need_Cleanup => Cleanup (Environment); Invocation.Cleaned (Machine);
+               when Invocation.Done => exit;
+            end case;
+         end loop;
+         Decision := Invocation.Finish (Machine);
+         Runtime_Handler_Active := False;
+         Charged := Decision.Charged;
+         case Decision.Kind is
+            when Invocation.Keep_Original | Invocation.Replace_Exception =>
+               Pending_Runtime_Code := Decision.Code; Has_Runtime_Exception := True;
+               Status := Runtime_Exception;
+            when Invocation.Continue_Statement => Has_Runtime_Exception := False; Status := Returned;
+            when Invocation.Fuel_Exhausted => Status := Budget_Exceeded;
+            when Invocation.Depth_Exhausted => Status := Call_Limit;
+            when Invocation.Propagate_Stage_Failure => Status := Stage_Failure;
+            when Invocation.Propagate_Child_Failure =>
+               if Child.Status = Fatal_Requested then
+                  Pending_Fatal := (Present => True, Item => Child.Fatal);
+               end if;
+               Status := Child.Status;
+         end case;
+      end Handle_Runtime_Error;
+      procedure Unload_Object (Status : out Execution_Status; Complete : out Boolean) is
          Source : Datum;
          Plan : constant AML_Unload_Statement.Plan := AML_Unload_Statement.Prepare
            (Code, Offset, Limit, Charged, Budget);
       begin
+         Complete := False;
          Offset := Plan.Next_Offset;
          Charged := Plan.Next_Charged;
          case Plan.Outcome is
             when AML_Unload_Statement.Truncated => Status := Truncated;
             when AML_Unload_Statement.Budget_Exceeded => Status := Budget_Exceeded;
-            when AML_Unload_Statement.Complete_Invalid_Handle |
-                 AML_Unload_Statement.Invalid_Operand => Status := Unsupported_Value;
+            when AML_Unload_Statement.Complete_Invalid_Handle =>
+               Complete := True; Status := Unsupported_Value;
+            when AML_Unload_Statement.Invalid_Operand => Status := Unsupported_Value;
             when AML_Unload_Statement.Evaluate_Operand =>
                Operand (Source, Status);
                if Status /= Returned then return; end if;
+               Complete := True;
                Status := Unsupported_Value;
          end case;
       end Unload_Object;
@@ -4547,8 +4715,14 @@ package body AML_Execute with SPARK_Mode is
                   Operand (Value, State);
                   if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
                elsif Code (Code'First + Offset) = AML_Unload_Framing.Unload_Extension then
-                  Unload_Object (State);
-                  if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
+                  declare Complete : Boolean; begin
+                     Unload_Object (State, Complete);
+                     if Complete and then State = Unsupported_Value then
+                        Handle_Runtime_Error (AML_Runtime_Exceptions.Code_For
+                          (AML_Runtime_Exceptions.Unload_Bad_Handle), True, State);
+                     end if;
+                     if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
+                  end;
                elsif Code (Code'First + Offset) = AML_Mutexes.Release_Opcode then
                   Offset := Offset + 1;
                   if Offset = Limit then Body_Result := Failure (Truncated, Charged); return; end if;

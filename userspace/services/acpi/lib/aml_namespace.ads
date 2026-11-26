@@ -81,6 +81,11 @@ generic
    -- allocation, logging, hardware, reentry or an effect on execution policy.
    Profile_Enabled : Boolean := False;
    with procedure Observe_Profile (Item : AML_Profile_Events.Event) is null;
+   -- Opt-in owner policy. The provider supplies a real execution-thread tag;
+   -- zero means unavailable. It must return normally without AML reentry,
+   -- allocation, collection or hardware access. The tag grants no authority.
+   Enable_Runtime_Error_Handler : Boolean := False;
+   with procedure Runtime_Error_Thread (Tag : in out AML_Decode.Integer_Value) is null;
 package AML_Namespace with SPARK_Mode is
    use type AML_Table_Sources.Source_Kind;
    use type AML_Decode.Integer_Value;
@@ -1488,6 +1493,7 @@ package Owned with SPARK_Mode is
                Origin : AML_Decode.Integer_Origin;
             when AML_Execute.Object_Returned | AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned =>
                Handle : Value_Handle;
+            when AML_Execute.Runtime_Exception => Exception_Code : AML_Execute.Runtime_Error_Code;
             when AML_Execute.Fatal_Requested => Fatal : AML_Fatal.Request;
             when others => null;
          end case;

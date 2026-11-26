@@ -254,3 +254,6 @@ acpi_host_bridge_owners.adb
 aml_namespace.ads
 aml_unload_framing.adb
 aml_unload_statement.adb
+aml_runtime_exceptions.adb
+aml_runtime_error_policy.adb
+aml_runtime_error_invocation.adb

@@ -67,6 +67,11 @@ generic
    -- allocation, logging, hardware, reentry or an effect on execution policy.
    Profile_Enabled : Boolean := False;
    with procedure Observe_Profile (Item : AML_Profile_Events.Event) is null;
+   -- Opt-in owner policy. The provider supplies a real execution-thread tag;
+   -- zero means unavailable. It must return normally without AML reentry,
+   -- allocation, collection or hardware access. The tag grants no authority.
+   Enable_Runtime_Error_Handler : Boolean := False;
+   with procedure Runtime_Error_Thread (Tag : in out AML_Decode.Integer_Value) is null;
 package ACPI_Service_Core with SPARK_Mode is
    pragma Unevaluated_Use_Of_Old (Allow);
    Max_Namespace_Nodes : constant Positive := Namespace_Node_Capacity;
@@ -80,7 +85,8 @@ package ACPI_Service_Core with SPARK_Mode is
       Observe_Interface_Query => Observe_Interface_Query,
       Wait_Event_Timeout => Wait_Event_Timeout,
       Block_Capacity => Block_Capacity, Enable_PCI_Context => Enable_PCI_Context, Observe_Work => Observe_Work,
-      Profile_Enabled => Profile_Enabled, Observe_Profile => Observe_Profile);
+      Profile_Enabled => Profile_Enabled, Observe_Profile => Observe_Profile,
+      Enable_Runtime_Error_Handler => Enable_Runtime_Error_Handler, Runtime_Error_Thread => Runtime_Error_Thread);
    package Values is new Namespace.Owned.Collecting;
    use type AML_Execute.Execution_Status;
    use type AML_Copied_Tables.Outcome;

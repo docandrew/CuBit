@@ -30,3 +30,9 @@ The Unload framing leaf adds its concrete body to the full semantic selection: 2
 The closed source inventory also includes the four existing shared ACPI CMOS protocol/window specifications and bodies from the named base. These repair an earlier inventory omission; the full selection remains255 units and the original flags, tools and named selections remain unchanged. This source-inventory repair adds no production-code changes or proof claim.
 
 The proved Unload statement window/fuel helper adds one concrete body selection, for256 total. Both helper sources are included in the full closed directory inventory. Existing flags, limits and historical fixtures remain unchanged.
+
+The bounded runtime _ERR owner adds three concrete source-body selections (exception codec, admission/return policy and invocation phase machine), for259 total. All six sources are included in the unchanged full directory inventory. This remains compile-only SDK semantics with original tools and flags; owner proof and runtime results are separate receipts.
+
+The request metrics mapping also includes explicit runtime-exception class45; existing wire values0..44 and packet layout are unchanged.
+
+Startup diagnostic status names explicitly distinguish RUNTIME_EXCEPTION.

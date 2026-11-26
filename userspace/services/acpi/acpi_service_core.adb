@@ -434,6 +434,9 @@ package body ACPI_Service_Core with SPARK_Mode is
             Result := (AML_Execute.Unsupported_Value, Outcome.Charged);
          elsif Outcome.Status = AML_Execute.Returned then
             Result := (AML_Execute.Returned, Outcome.Charged, Outcome.Number, Outcome.Origin);
+         elsif Outcome.Status = AML_Execute.Runtime_Exception then
+            Result := (Status => AML_Execute.Runtime_Exception, Charged => Outcome.Charged,
+                       Exception_Code => Outcome.Exception_Code);
          elsif Outcome.Status = AML_Execute.Fatal_Requested then
             Result := (Status => AML_Execute.Fatal_Requested, Charged => Outcome.Charged, Fatal => Outcome.Fatal);
          else Result := (Failure_Status (Outcome.Status), Outcome.Charged); end if;
@@ -495,6 +498,9 @@ package body ACPI_Service_Core with SPARK_Mode is
          Result := (AML_Execute.Unsupported_Value, Outcome.Charged);
       elsif Outcome.Status = AML_Execute.Returned then
          Result := (AML_Execute.Returned, Outcome.Charged, Outcome.Number, Outcome.Origin);
+      elsif Outcome.Status = AML_Execute.Runtime_Exception then
+         Result := (Status => AML_Execute.Runtime_Exception, Charged => Outcome.Charged,
+                    Exception_Code => Outcome.Exception_Code);
       elsif Outcome.Status = AML_Execute.Fatal_Requested then
          Result := (Status => AML_Execute.Fatal_Requested, Charged => Outcome.Charged, Fatal => Outcome.Fatal);
       else Result := (Failure_Status (Outcome.Status), Outcome.Charged); end if;

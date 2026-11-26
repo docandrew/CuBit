@@ -6,15 +6,15 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.ads",
-      "sha256": "79c24999577cbefd15ee77b52049f8ae1dd3258345b886a55f863eb2b98734b4"
+      "sha256": "c2b39501eeda65742a98a84dc48f81e800d9448a5c23c7e1226b7d3bd96d9ef3"
     },
     {
       "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "eccb857a551ea045835116a6c016d527ff2a87c7d5895425ed8dbfd3b6a96b9c"
+      "sha256": "19188e457466b8faed8f774c32e9ac4d7ef117c52029b37429cbde11895b8611"
     },
     {
       "path": "userspace/services/acpi/acpi_service_core.ads",
-      "sha256": "2704cdadddabbb56b02e189c138fe255e4a4cfa3769076429c305b7d23560f06"
+      "sha256": "1cd0c60133cb226c47bb395892e26afc965e5d3f5a3fb9b857df4d5b62c7e60f"
     },
     {
       "path": "userspace/services/acpi/lib/acpi_startup_timing.ads",
