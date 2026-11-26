@@ -265,7 +265,7 @@ procedure Main is
       package DT renames Desktop_Tooltips;
       package DSI renames Desktop_Status_Items;
       use type DT.Target;
-      type Seen_Set is array (0 .. DT.BUTTON_TARGET) of Boolean;
+      type Seen_Set is array (0 .. DT.TASK_BASE + DT.MAXIMUM_WINDOWS - 1) of Boolean;
       type Seen_Access is access Seen_Set;
       Seen : constant Seen_Access := new Seen_Set'(others => False);
       Distinct : Boolean := True;
@@ -290,6 +290,10 @@ procedure Main is
       end loop;
       Note ((Kind => DT.Unread_Count));
       Note ((Kind => DT.Status_Button));
+      --  UI-061: each task button's hover card, named by its first window.
+      for Slot in DT.Window_Slot loop
+         Note ((Kind => DT.Task_Button, First => Slot));
+      end loop;
       Check (Distinct, "every target has its own number");
       Check (DT.Decode (Natural'Last) = DT.NO_TARGET, "an unknown number is no target");
       Check (DT.Button_Text (DT.Maximize_Button, False, False) = "Maximize unavailable"

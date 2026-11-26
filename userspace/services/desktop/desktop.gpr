@@ -113,6 +113,9 @@ project Desktop is
         for Switches ("compositor_pool.adb") use Proved_Compose_Switches;
         for Switches ("compositor_pointer_over.adb") use Proved_Compose_Switches;
         for Switches ("client_raster.adb") use Proved_Compose_Switches;
+        --  UI-061: the hover card's thumbnail scaler and layout (tests/ui061).
+        for Switches ("client_thumbnails.adb") use Proved_Compose_Switches;
+        for Switches ("desktop_task_cards.adb") use Proved_Compose_Switches;
     end Compiler;
 
     package Binder is

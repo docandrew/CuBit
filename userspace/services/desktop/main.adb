@@ -195,6 +195,10 @@ with CuBit.UI.Keys;
 with CuBit.UI.Keycaps;
 with CuBit.UI.Keycap_Renderer;
 with CuBit.UI.Modifier_Reveal;
+with Desktop_App_Describe;
+with Desktop_Task_Card;
+with Desktop_Task_Cards;
+with CuBit.App_Names;
 with CCL.Interfaces.Desktop_Launch;
 with CuBit.Appearance;
 with CuBit.Settings;
@@ -840,12 +844,22 @@ procedure main is
       appIcon  : Desktop_Icons.Icon_ID := Desktop_Icons.Start;
       appLabel : String (1 .. Desktop_Launch.Maximum_Label) := [others => ' '];
       appLabelLength : Natural range 0 .. Desktop_Launch.Maximum_Label := 0;
+      --  UI-061: where appLabel came from (the manifest's declared name,
+      --  signed with the executable, once procmgr has answered; until then
+      --  the launcher entry's label), and the owner's manifest identity.
+      --  Nothing the window sends changes either: its title is separate.
+      nameSource : Desktop_Task_Card.Name_Source := Desktop_Task_Card.Unknown;
+      appIdentity : String (1 .. CuBit.App_Names.Maximum_Identity_Bytes) := [others => ' '];
+      appIdentityLength : Natural range 0 .. CuBit.App_Names.Maximum_Identity_Bytes := 0;
+      --  procmgr is still to be asked who the owner is.
+      describeWanted : Boolean := False;
+      --  procmgr answered (or could not be asked).
+      described : Boolean := False;
       taskOrder : Unsigned_64 := 0;
-      --  The task button's label widths in the taskbar's font, measured
-      --  once whenever the title or the app changes (not per frame): the
-      --  title (one window) and the app's label (a group).
+      --  The task button's label width in the taskbar's font, measured
+      --  once whenever the app's name changes (not per frame).
       labelsMeasured : Boolean := False;
-      titleWidth, appLabelWidth : Natural := 0;
+      appLabelWidth : Natural := 0;
    end record;
 
    package Focus_Policy renames Compositor_Focus;
@@ -1384,6 +1398,9 @@ procedure main is
    hoverInsideId : Unsigned_64 := 0;
    tipBox     : Rect := (others => 0);
    tipControl : Rect := (others => 0);
+   --  UI-061: windows whose owner procmgr has still to be asked about
+   --  (assignApp sets it; pumpDescribe asks).
+   describePending : Boolean := False;
 
    --  A window's launcher entry: the one that started its owner (or the
    --  Settings entry for the built-in Settings window); 0 for none.
@@ -1444,12 +1461,21 @@ procedure main is
          S.appLabel := launchMenu.Entries (Index).Label;
          S.appLabelLength := launchMenu.Entries (Index).Label_Length;
          S.appKey := appKeyOf (launchMenu.Entries (Index));
+         S.nameSource :=
+           (if Owner = No_Process then Desktop_Task_Card.Desktop_Itself else Desktop_Task_Card.Launcher);
       else
          S.appColor := Desktop_Launch.Theme_Accent;
          S.appIcon := Desktop_Icons.Start;
          S.appLabelLength := 0;
          S.appKey := TG.Group_Key (To_Word (Owner));
+         S.nameSource := Desktop_Task_Card.Unknown;
       end if;
+      --  The manifest's own name replaces the launcher's when procmgr
+      --  answers (pumpDescribe, applyDescribe).
+      S.appIdentityLength := 0;
+      S.described := Owner = No_Process;
+      S.describeWanted := Owner /= No_Process;
+      describePending := describePending or else S.describeWanted;
       S.taskOrder := nextTaskOrder;
       nextTaskOrder := nextTaskOrder + 1;
       S.labelsMeasured := False;
@@ -2866,6 +2892,13 @@ procedure main is
       end if;
    end loadSuperKeys;
 
+   --  UI-061 (defined after the tooltips): the task buttons' hover card,
+   --  its box for the tip system, a change in what it shows, and procmgr's
+   --  answer about a window's owner.
+   procedure drawTaskCard;
+   function cardTipBox (First : DT.Window_Slot) return Rect;
+   procedure cardContentChanged;
+   procedure applyDescribe (A : Desktop_App_Describe.Answer);
 
    --  The Deskbar's task buttons (Desktop_Task_Groups): one per app, in
    --  the order its first window opened, whatever the stacking.
@@ -2958,30 +2991,37 @@ procedure main is
      (if statusRect.x > taskAreaLeft + DBS.Button_Gap then statusRect.x - DBS.Button_Gap
       else taskAreaLeft);
 
-   --  Each window's label widths, measured where they changed.
+   --  What a task button says (UI-061): the app's name, never a window's
+   --  title, so no window can name its button after another app. The
+   --  manifest's declared name once procmgr has answered, else the
+   --  launcher entry's label; with neither, the manifest identity; nothing
+   --  (the icon alone) until procmgr answers, then "Unknown app".
+   function taskLabel (S : Surface) return String is
+     (if S.appLabelLength > 0 then S.appLabel (1 .. S.appLabelLength)
+      elsif S.appIdentityLength > 0 then S.appIdentity (1 .. S.appIdentityLength)
+      elsif S.described then "Unknown app"
+      else "");
+
+   --  Each window's label width, measured where it changed.
    procedure measureTaskLabels is
    begin
       for I in store.Surfaces'Range loop
          if store.Surfaces (I).used and then not store.Surfaces (I).labelsMeasured then
             --  In the emphasis face, the wider one a label is drawn in
             --  (the focused window's button), so focus never resizes it.
-            store.Surfaces (I).titleWidth :=
-              uiTextWidth (surfaceTitle (store.Surfaces (I)), CuBit.Fonts.Sans_Semibold);
             store.Surfaces (I).appLabelWidth :=
-              uiTextWidth (store.Surfaces (I).appLabel (1 .. store.Surfaces (I).appLabelLength),
-                           CuBit.Fonts.Sans_Semibold);
+              uiTextWidth (taskLabel (store.Surfaces (I)), CuBit.Fonts.Sans_Semibold);
             store.Surfaces (I).labelsMeasured := True;
          end if;
       end loop;
    end measureTaskLabels;
 
    --  A group's button as wide as its content (as drawTaskButtons lays it
-   --  out): icon, label (the app's for a group, else the title), the count
-   --  badge, padding; between Task_Minimum and Task_Maximum.
+   --  out): icon, the app's name (taskLabel), the count badge, padding;
+   --  between Task_Minimum and Task_Maximum.
    function taskContentWidth (G : TG.Group) return DBL.Button_Width_Range is
       S : Surface renames store.Surfaces (SurfaceIndex (G.First));
-      label : constant Natural :=
-        (if G.Members > 1 and then S.appLabelLength > 0 then S.appLabelWidth else S.titleWidth);
+      label : constant Natural := S.appLabelWidth;
    begin
       return Natural'Max
         (DBS.Task_Minimum,
@@ -3899,6 +3939,15 @@ procedure main is
         completion.token = Desktop_Launch_Refresh.Token
       then
          Desktop_Launch_Refresh.Collect (completion);
+      elsif Desktop_App_Describe.Token /= 0 and then
+        completion.token = Desktop_App_Describe.Token
+      then
+         declare
+            Answer : Desktop_App_Describe.Answer;
+         begin
+            Desktop_App_Describe.Collect (completion, Answer);
+            applyDescribe (Answer);
+         end;
       elsif Desktop_Pointer_Plane.Matches (completion.token) then
          Desktop_Pointer_Plane.Collect (completion, requestSequence);
       elsif Desktop_Status_Refresh.Matches (completion.token) then
@@ -6672,8 +6721,7 @@ procedure main is
               (if r.x + r.w > textX + DBS.Label_Right + countW
                then r.x + r.w - textX - DBS.Label_Right - countW else 0);
             label : constant String := fitText
-              ((if Group.Members > 1 and then S.appLabelLength > 0
-                then S.appLabel (1 .. S.appLabelLength) else surfaceTitle (S)), room,
+              (taskLabel (S), room,
                (if Group.Active then CuBit.Fonts.Sans_Semibold else CuBit.Fonts.Sans));
          begin
             if not isEmpty (r) then
@@ -11250,14 +11298,18 @@ procedure main is
                   result := DP.Denied;
                else
                   store.Surfaces (SurfaceIndex (idx)).title := titleRequest.Value.Title;
-                  store.Surfaces (SurfaceIndex (idx)).labelsMeasured := False;
                   store.Surfaces (SurfaceIndex (idx)).dirty := True;
                   result := DP.Success;
                   scheduleRedrawRect
                     (inflateRect
                        (surfaceRect (store.Surfaces (SurfaceIndex (idx))), 2));
-                  --  The taskbar button shows the same title.
-                  scheduleRedrawRect (taskButtonRect (SurfaceIndex (idx)));
+                  --  The task button names the app, not the window (UI-061):
+                  --  a title shows in the title bar and the hover card only.
+                  debugPrint ("desktop: window title set surface" &
+                              Natural'Image (Natural (store.Surfaces (SurfaceIndex (idx)).id mod 2 ** 31)) &
+                              " title=""" & surfaceTitle (store.Surfaces (SurfaceIndex (idx))) &
+                              """ button=""" & taskLabel (store.Surfaces (SurfaceIndex (idx))) & """" & LF);
+                  cardContentChanged;
                end if;
                replyMsg := CuBit.Desktop_Messages.From_Wire
                  (DP.Encode_Status (DP.Set_Window_Title, result));
@@ -12948,6 +13000,11 @@ procedure main is
       if shellSurfaceVisible and then not deskbarPanelOpen and then pointInRect (x, y, statusRect) then
          return statusTargetAt (x, y);
       end if;
+      --  A task button: its app's hover card (UI-061).
+      if shellSurfaceVisible and then not deskbarPanelOpen and then pointInRect (x, y, taskbarRect) then
+         idx := hitTaskButton (x, y);
+         return (if idx in 0 .. surfaceLast then (Kind => DT.Task_Button, First => idx) else DT.NO_TARGET);
+      end if;
       idx := hitSurface (x, y);
       if idx in 0 .. surfaceLast then
          declare
@@ -12984,6 +13041,8 @@ procedure main is
          when DT.Unread_Count =>
             return countText (unread) & (if unread = 1 then " unread notification" else " unread notifications");
          when DT.Status_Button => return "Notifications and status";
+         --  Its card, not a line of text (Desktop_Task_Card).
+         when DT.Task_Button => return "";
       end case;
    end tipText;
 
@@ -13001,6 +13060,9 @@ procedure main is
       hint : constant String := tipHint (T);
       focused : constant Boolean := not isEmpty (tipControl);
    begin
+      if TTP.Showing (tipState) and then T.Kind = DT.Task_Button then
+         return cardTipBox (T.First);
+      end if;
       if not TTP.Showing (tipState) or else text'Length = 0 or else fbWidth = 0 or else fbHeight = 0 then
          return (others => 0);
       end if;
@@ -13060,12 +13122,28 @@ procedure main is
    end dismissTip;
 
    --  Keyboard users: the focused status button's tip, below or above it,
+   --  or a focused task button's hover card above it,
    --  after the same delay (call after the key's dismissTip).
    procedure focusTip is
    begin
       if deskbarFocus = Status_Focus and then shellSurfaceVisible and then not deskbarPanelOpen then
          tipControl := statusRect;
          TTP.Pointer_At (tipState, DT.Encode ((Kind => DT.Status_Button)), tipControl.x, tipControl.y, nowMs);
+      elsif deskbarFocus = Task_Focus and then shellSurfaceVisible and then not deskbarPanelOpen
+        and then not groupListOpen and then deskbarFocusTask /= 0
+      then
+         --  A focused task button: its hover card, after the same delay.
+         declare
+            W : constant TG.Windows := taskWindows;
+            M : constant TG.Model := taskModel (W);
+            G : constant TG.Group_Count := TG.At_Position (W, M, deskbarFocusTask);
+         begin
+            if G /= 0 then
+               tipControl := placeRect (spansOf (W, M), deskbarFocusTask);
+               TTP.Pointer_At (tipState, DT.Encode ((Kind => DT.Task_Button, First => Natural (M.Groups (G).First))),
+                               tipControl.x, tipControl.y, nowMs);
+            end if;
+         end;
       end if;
    end focusTip;
 
@@ -13088,6 +13166,10 @@ procedure main is
       T : constant DT.Target := DT.Decode (tipState.On);
    begin
       if not TTP.Showing (tipState) or else isEmpty (r) then
+         return;
+      end if;
+      if T.Kind = DT.Task_Button then
+         drawTaskCard;
          return;
       end if;
       declare
@@ -13203,6 +13285,429 @@ procedure main is
          end;
       end loop;
    end drawSuperHints;
+
+   ---------------------------------------------------------------------------
+   --  UI-061: who a window belongs to, and the task buttons' hover card.
+   ---------------------------------------------------------------------------
+
+   --  An app's Deskbar group once its manifest identity is known: every
+   --  window of the same signed executable shares a button, however it was
+   --  started (FNV-1a, as appKeyOf, over a prefix no program name has).
+   function identityKeyOf (Identity : String) return TG.Group_Key is
+      FNV_Offset : constant Unsigned_64 := 16#CBF2_9CE4_8422_2325#;
+      FNV_Prime  : constant Unsigned_64 := 16#0000_0100_0000_01B3#;
+      Hash : Unsigned_64 := FNV_Offset;
+      Keyed : constant String := "identity:" & Identity;
+   begin
+      for C of Keyed loop
+         Hash := (Hash xor Unsigned_64 (Character'Pos (C))) * FNV_Prime;
+      end loop;
+      return TG.Group_Key (Hash);
+   end identityKeyOf;
+
+   function sourceImage (Source : Desktop_Task_Card.Name_Source) return String is
+     (case Source is
+         when Desktop_Task_Card.Manifest => "manifest",
+         when Desktop_Task_Card.Launcher => "launcher",
+         when Desktop_Task_Card.Desktop_Itself => "desktop",
+         when Desktop_Task_Card.Identity_Only => "identity",
+         when Desktop_Task_Card.Unknown => "unknown");
+
+   --  The buttons as they stand, for the log (and tests/headless ui061):
+   --  position, label, where it came from, windows, place on the bar.
+   procedure logTaskButtons is
+      W : constant TG.Windows := taskWindows;
+      M : constant TG.Model := taskModel (W);
+      spans : constant DBL.Span_List := spansOf (W, M);
+   begin
+      for P in 1 .. M.Count loop
+         declare
+            G : constant TG.Group_Count := TG.At_Position (W, M, P);
+         begin
+            if G /= 0 then
+               declare
+                  S : Surface renames store.Surfaces (SurfaceIndex (M.Groups (G).First));
+                  r : constant Rect := placeRect (spans, P);
+               begin
+                  debugPrint ("desktop: task button" & Natural'Image (Natural (P)) & " label=""" & taskLabel (S) &
+                              """ source=" & sourceImage (S.nameSource) &
+                              " identity=" & S.appIdentity (1 .. S.appIdentityLength) &
+                              " windows=" & countText (Natural (M.Groups (G).Members)) &
+                              " at" & Natural'Image (r.x) & "," & Natural'Image (r.y) &
+                              " size" & Natural'Image (r.w) & " x" & Natural'Image (r.h) & LF);
+               end;
+            end if;
+         end;
+      end loop;
+   end logTaskButtons;
+
+   --  Ask procmgr about the next window owner not yet asked about, one
+   --  request at a time (Desktop_App_Describe); never waits for it.
+   procedure pumpDescribe is
+      submitted : Boolean;
+   begin
+      if not describePending then
+         return;
+      end if;
+      Desktop_App_Describe.Initialize;
+      if not Desktop_App_Describe.Ready and then not Desktop_App_Describe.Unavailable then
+         return;
+      end if;
+      describePending := False;
+      for I in store.Surfaces'Range loop
+         if store.Surfaces (I).used and then store.Surfaces (I).describeWanted then
+            declare
+               owner : constant Process_ID := store.Surfaces (I).owner;
+            begin
+               Desktop_App_Describe.Submit (owner, requestSequence, submitted);
+               for J in store.Surfaces'Range loop
+                  if store.Surfaces (J).used and then store.Surfaces (J).owner = owner then
+                     store.Surfaces (J).describeWanted := False;
+                     --  Not asked: what the launcher said stands.
+                     if not submitted then
+                        store.Surfaces (J).described := True;
+                        store.Surfaces (J).labelsMeasured := False;
+                     end if;
+                  end if;
+               end loop;
+               --  Others wait for this answer (or are marked when procmgr
+               --  cannot be asked at all).
+               for J in store.Surfaces'Range loop
+                  if store.Surfaces (J).used and then store.Surfaces (J).describeWanted then
+                     describePending := True;
+                  end if;
+               end loop;
+               if not submitted then
+                  scheduleRedrawRect (taskbarRect);
+               end if;
+               return;
+            end;
+         end if;
+      end loop;
+   end pumpDescribe;
+
+   procedure applyDescribe (A : Desktop_App_Describe.Answer) is
+      changed : Boolean := False;
+   begin
+      for I in store.Surfaces'Range loop
+         declare
+            S : Surface renames store.Surfaces (I);
+         begin
+            if S.used and then A.Owner /= No_Process and then S.owner = A.Owner then
+               S.described := True;
+               if A.Known then
+                  S.appIdentity := [others => ' '];
+                  S.appIdentity (1 .. A.Identity_Length) := A.Identity (1 .. A.Identity_Length);
+                  S.appIdentityLength := A.Identity_Length;
+                  if A.Name_Length > 0 then
+                     S.appLabel := [others => ' '];
+                     S.appLabel (1 .. A.Name_Length) := A.Name (1 .. A.Name_Length);
+                     S.appLabelLength := A.Name_Length;
+                     S.nameSource := Desktop_Task_Card.Manifest;
+                  elsif S.appLabelLength = 0 and then A.Identity_Length > 0 then
+                     S.nameSource := Desktop_Task_Card.Identity_Only;
+                  end if;
+                  if A.Identity_Length > 0 then
+                     S.appKey := identityKeyOf (A.Identity (1 .. A.Identity_Length));
+                  end if;
+               end if;
+               S.labelsMeasured := False;
+               changed := True;
+            end if;
+         end;
+      end loop;
+      if changed then
+         scheduleRedrawRect (taskbarRect);
+         cardContentChanged;
+         logTaskButtons;
+      end if;
+      pumpDescribe;
+   end applyDescribe;
+
+   --  The hover card's layer (Desktop_Task_Card), composed like the Deskbar
+   --  panel: a Desktop-owned source no app can read. cardFirst: the shown
+   --  group's first window slot (-1: none); cardPictured: the window the
+   --  thumbnail shows; cardVersion: that window's content when the picture
+   --  started; cardDueMs: when the loop must come back for the card (its
+   --  next band, or a newer frame held back by Thumbnail_Refresh_Ms).
+   Card_Source_Base : constant Unsigned_64 := 16#5441_534B_4341_0000#;   --  "TASKCA"
+   --  A live thumbnail follows its window at most this often.
+   Thumbnail_Refresh_Ms : constant := 100;
+   --  Bands are drawn on consecutive passes, at least this far apart.
+   Thumbnail_Band_Interval_Ms : constant := 1;
+   cardSurface : Surface;
+   cardSourceSerial : Unsigned_64 := 0;
+   cardFirst : Integer := -1;
+   cardPictured : Integer := -1;
+   cardVersion : Compositor_Source_Content.Content_Version := Compositor_Source_Content.No_Version;
+   cardRendered : Boolean := False;
+   cardDirty : Boolean := False;
+   cardRefreshDueMs : Unsigned_64 := 0;
+   cardDueMs : Unsigned_64 := 0;
+   --  The current picture's cost in timing builds (all its bands).
+   cardBandsUs, cardBandsMaxUs, cardBands : Unsigned_64 := 0;
+
+   procedure cardContentChanged is
+   begin
+      cardDirty := True;
+   end cardContentChanged;
+
+   --  Whether s is a window whose pixels a thumbnail can read.
+   function pictureOf (S : Surface) return Desktop_Task_Card.Picture is
+     (if S.used and then S.bufferAttached and then S.bufferAddr /= System.Null_Address
+        and then S.bufferFormat = PIXEL_FORMAT_BGRA8888 and then S.bufferW > 0 and then S.bufferH > 0
+        and then S.bufferPitch >= S.bufferW * 4 and then S.bufferPitch mod 4 = 0
+      then (Present => True, Address => S.bufferAddr, Width => S.bufferW, Height => S.bufferH,
+            Pitch_Pixels => S.bufferPitch / 4)
+      else (others => <>));
+
+   --  The card's content for the group whose first window is at First: the
+   --  app as its button names it, and each window in opening order. The
+   --  thumbnail shows the focused window, else the topmost shown one, else
+   --  the first.
+   function cardView (First : SurfaceIndex) return Desktop_Task_Card.View is
+      W : constant TG.Windows := taskWindows;
+      Head : Surface renames store.Surfaces (First);
+      V : Desktop_Task_Card.View;
+      found : Boolean;
+      slot : TG.Window_Slot;
+      focused, topShown, earliest : Integer := -1;
+      pictured : Integer;
+      count : Natural := 0;
+      Label : constant String := taskLabel (Head);
+   begin
+      V.Name_Length := Natural'Min (Label'Length, Desktop_Task_Card.Maximum_Name);
+      V.Name (1 .. V.Name_Length) := Label (Label'First .. Label'First + V.Name_Length - 1);
+      V.Source := Head.nameSource;
+      V.Identity_Length := Head.appIdentityLength;
+      V.Identity (1 .. Head.appIdentityLength) := Head.appIdentity (1 .. Head.appIdentityLength);
+      V.Icon := Head.appIcon;
+      V.Stripe := Head.stripe.Stripe;
+      V.Colors := deskbarColors;
+      for R in TG.Window_Rank loop
+         TG.Member_At (W, Head.appKey, R, found, slot);
+         exit when not found;
+         count := count + 1;
+         declare
+            S : Surface renames store.Surfaces (SurfaceIndex (slot));
+         begin
+            if earliest < 0 then
+               earliest := Integer (slot);
+            end if;
+            if S.id = focusSurface and then not S.minimized then
+               focused := Integer (slot);
+            end if;
+            --  Higher slots stand higher in the stack.
+            if not S.minimized and then Integer (slot) > topShown then
+               topShown := Integer (slot);
+            end if;
+         end;
+      end loop;
+      pictured := (if focused >= 0 then focused elsif topShown >= 0 then topShown else earliest);
+      V.Windows := count;
+      for R in 1 .. Natural'Min (count, Desktop_Task_Cards.Maximum_Rows) loop
+         TG.Member_At (W, Head.appKey, TG.Window_Rank (R), found, slot);
+         exit when not found;
+         declare
+            S : Surface renames store.Surfaces (SurfaceIndex (slot));
+            Title : constant String := surfaceTitle (S);
+            Item : Desktop_Task_Card.Row renames V.Rows (R);
+         begin
+            Item.Title_Length := Natural'Min (Title'Length, Desktop_Task_Card.Maximum_Title);
+            Item.Title (1 .. Item.Title_Length) := Title (Title'First .. Title'First + Item.Title_Length - 1);
+            Item.Focused := S.id = focusSurface and then not S.minimized;
+            Item.Minimized := S.minimized;
+            Item.Pictured := Integer (slot) = pictured;
+         end;
+      end loop;
+      if pictured >= 0 then
+         V.Source_Picture := pictureOf (store.Surfaces (SurfaceIndex (pictured)));
+      end if;
+      cardPictured := pictured;
+      return V;
+   end cardView;
+
+   --  Lay the card out for First and draw all but the thumbnail's pixels;
+   --  a new layer source when the buffer moved or its height changed.
+   procedure renderCard (First : SurfaceIndex) is
+      V : constant Desktop_Task_Card.View := cardView (First);
+      OK : Boolean;
+      use type Compositor_Source_Content.Content_Version;
+   begin
+      Desktop_Task_Card.Render (V, OK);
+      cardRendered := OK;
+      cardDirty := False;
+      if not OK then
+         return;
+      end if;
+      if cardSurface.bufferAddr /= Desktop_Task_Card.Buffer
+        or else cardSurface.bufferH /= Desktop_Task_Card.Buffer_Height
+      then
+         if cardSurface.id /= 0 then
+            Desktop_Compositor.Retire_Source (Compositor_Source_Content.Source_Key (cardSurface.id));
+         end if;
+         cardSourceSerial := cardSourceSerial + 1;
+         cardSurface := (others => <>);
+         cardSurface.id := Card_Source_Base + cardSourceSerial;
+         cardSurface.bufferAttached := True;
+         cardSurface.bufferAddr := Desktop_Task_Card.Buffer;
+         cardSurface.bufferW := Desktop_Task_Card.Buffer_Width;
+         cardSurface.bufferH := Desktop_Task_Card.Buffer_Height;
+         cardSurface.bufferPitch := Desktop_Task_Card.Buffer_Pitch;
+         cardSurface.bufferFormat := PIXEL_FORMAT_BGRA8888;
+      end if;
+      cardSurface.contentVersion := cardSurface.contentVersion + 1;
+      Desktop_Compositor.Note_Source_Change
+        (Compositor_Source_Content.Source_Key (cardSurface.id),
+         Compositor_Source_Content.Whole
+           (Natural'Min (Desktop_Task_Card.Buffer_Height, Compositor_Source_Content.Maximum_Rows)));
+      cardVersion :=
+        (if cardPictured >= 0 then store.Surfaces (SurfaceIndex (cardPictured)).contentVersion
+         else Compositor_Source_Content.No_Version);
+      cardBandsUs := 0;
+      cardBandsMaxUs := 0;
+      cardBands := 0;
+      declare
+         P : constant Desktop_Task_Cards.Layout := Desktop_Task_Card.Layout;
+         --  "title" per row, the focused one starred.
+         function Titles (R : Positive) return String is
+           (if R > Natural'Min (V.Windows, Desktop_Task_Cards.Maximum_Rows) then ""
+            else (if R > 1 then "," else "") & """" & V.Rows (R).Title (1 .. V.Rows (R).Title_Length) & """" &
+                 (if V.Rows (R).Focused then "*" else "") & Titles (R + 1));
+      begin
+         debugPrint ("desktop: task card app=""" & V.Name (1 .. V.Name_Length) &
+                     """ source=" & sourceImage (V.Source) &
+                     " identity=" & V.Identity (1 .. V.Identity_Length) &
+                     " windows=" & countText (V.Windows) & " titles=[" & Titles (1) & "]" &
+                     " thumbnail" & Natural'Image (P.Thumbnail.W) & " x" & Natural'Image (P.Thumbnail.H) & LF);
+      end;
+   end renderCard;
+
+   --  Where the card stands: above its button, on the primary screen.
+   function cardRect (First : SurfaceIndex) return Rect is
+      button : constant Rect := taskButtonRect (First);
+      M : constant := Desktop_Task_Cards.Coordinate'Last;
+      P : Desktop_Task_Cards.Placement;
+   begin
+      if not cardRendered or else isEmpty (button) then
+         return (others => 0);
+      end if;
+      P := Desktop_Task_Cards.Place
+        (Natural'Min (button.x, M), Natural'Min (primaryBounds.x, M),
+         Natural'Min (primaryBounds.x + primaryBounds.w, M), Natural'Min (taskbarY, M),
+         Natural'Min (Desktop_Task_Card.Buffer_Height, M));
+      if not P.Fits then
+         return (others => 0);
+      end if;
+      return (P.X, P.Y, Desktop_Task_Card.Buffer_Width, Desktop_Task_Card.Buffer_Height);
+   end cardRect;
+
+   --  The tip system's box for a task button: the card, laid out now when
+   --  it shows another app or its content changed.
+   function cardTipBox (First : DT.Window_Slot) return Rect is
+   begin
+      if First > surfaceLast or else not store.Surfaces (First).used then
+         return (others => 0);
+      end if;
+      if cardFirst /= Integer (First) or else cardDirty or else not cardRendered then
+         renderCard (First);
+         cardFirst := Integer (First);
+      end if;
+      return cardRect (First);
+   end cardTipBox;
+
+   procedure drawTaskCard is
+      r : constant Rect := tipBox;
+   begin
+      if cardFirst < 0 or else not cardRendered or else isEmpty (r)
+        or else cardSurface.bufferH /= r.h
+      then
+         return;
+      end if;
+      drawDappledShadow (r.x, r.y, r.w, r.h);
+      drawClientBuffer (cardSurface, r.x, r.y, r.w, r.h);
+   end drawTaskCard;
+
+   --  Each pass (after tickTip): the card follows its content; the
+   --  thumbnail gets its next band, and starts again (at most every
+   --  Thumbnail_Refresh_Ms) when its window shows a newer frame.
+   procedure tickCard (now : Unsigned_64) is
+      use type Compositor_Source_Content.Content_Version;
+      T : constant DT.Target := DT.Decode (tipState.On);
+      shown : constant Boolean := TTP.Showing (tipState) and then T.Kind = DT.Task_Button;
+   begin
+      cardDueMs := 0;
+      if not shown then
+         cardFirst := -1;
+         return;
+      end if;
+      if T.First > surfaceLast or else not store.Surfaces (T.First).used then
+         dismissTip;
+         return;
+      end if;
+      if cardDirty or else cardFirst /= Integer (T.First) then
+         declare
+            before : constant Rect := tipBox;
+         begin
+            relayoutTip (before);
+         end;
+      end if;
+      if not cardRendered or else cardPictured < 0 then
+         return;
+      end if;
+      declare
+         Pictured : Surface renames store.Surfaces (SurfaceIndex (cardPictured));
+         Rows : Compositor_Source_Content.Row_Band;
+      begin
+         if Pictured.contentVersion /= cardVersion and then Desktop_Task_Card.Complete then
+            if now >= cardRefreshDueMs then
+               cardVersion := Pictured.contentVersion;
+               cardRefreshDueMs := now + Thumbnail_Refresh_Ms;
+               Desktop_Task_Card.Restart;
+               cardBandsUs := 0;
+               cardBandsMaxUs := 0;
+               cardBands := 0;
+            else
+               cardDueMs := cardRefreshDueMs;
+            end if;
+         end if;
+         if Desktop_Task_Card.Complete then
+            return;
+         end if;
+         Desktop_Task_Card.Advance (pictureOf (Pictured), Rows);
+         if Compositor_Source_Content.Is_Empty (Rows) then
+            --  The window's buffer changed shape: lay the card out again.
+            if not Desktop_Task_Card.Complete then
+               cardContentChanged;
+               cardDueMs := now + Thumbnail_Band_Interval_Ms;
+            end if;
+            return;
+         end if;
+         cardSurface.contentVersion := cardSurface.contentVersion + 1;
+         Desktop_Compositor.Note_Source_Change (Compositor_Source_Content.Source_Key (cardSurface.id), Rows);
+         if not isEmpty (tipBox) then
+            scheduleRedrawRect
+              ((tipBox.x, tipBox.y + Rows.First, tipBox.w, Rows.Last - Rows.First));
+         end if;
+         if Desktop_Timing_Policy.Enabled then
+            cardBands := cardBands + 1;
+            cardBandsUs := cardBandsUs + Desktop_Task_Card.Last_Band_Microseconds;
+            cardBandsMaxUs := Unsigned_64'Max (cardBandsMaxUs, Desktop_Task_Card.Last_Band_Microseconds);
+            if Desktop_Task_Card.Complete then
+               debugPrint ("desktop: task card thumbnail" &
+                           Natural'Image (Desktop_Task_Card.Layout.Thumbnail.W) & " x" &
+                           Natural'Image (Desktop_Task_Card.Layout.Thumbnail.H) & " from" &
+                           Natural'Image (Pictured.bufferW) & " x" & Natural'Image (Pictured.bufferH) &
+                           " in" & Unsigned_64'Image (cardBandsUs) & " us over" &
+                           Unsigned_64'Image (cardBands) & " bands, largest" &
+                           Unsigned_64'Image (cardBandsMaxUs) & " us" & LF);
+            end if;
+         end if;
+         if not Desktop_Task_Card.Complete then
+            cardDueMs := now + Thumbnail_Band_Interval_Ms;
+         end if;
+      end;
+   end tickCard;
 
    procedure damageChromeButton
       (id : Unsigned_64; button : Pointer_Action; damage : in out Rect)
@@ -16319,6 +16824,7 @@ begin
          phaseMark (Phase_Events);
          checkLaunchDeadline;
          Desktop_Launch_Refresh.Pump (requestSequence);
+         pumpDescribe;
 
          -- Count and elapsed-time admission both yield a paint opportunity
          -- under a busy request stream. A handler already running can overrun
@@ -16408,6 +16914,7 @@ begin
          loadSuperKeys;
          tickTip (nowMs);
          noteSuperReveal (nowMs);
+         tickCard (nowMs);
          --  Secrets are wiped at their deadline, not only on the next paste.
          if Desktop_Clipboard.Next_Deadline (Unsigned_64'Last) /= Unsigned_64'Last
            and then Desktop_Clipboard.Expire (nowMs) and then clipboardMenuOpen
@@ -16524,6 +17031,10 @@ begin
                   if MR.Next_Deadline (superReveal, nowMs) /= MR.NEVER and then
                     (nextDueMs = 0 or else MR.Next_Deadline (superReveal, nowMs) < nextDueMs)
                   then nextDueMs := MR.Next_Deadline (superReveal, nowMs); end if;
+                  --  The hover card's next thumbnail band or newer frame.
+                  if cardDueMs /= 0 and then
+                    (nextDueMs = 0 or else cardDueMs < nextDueMs)
+                  then nextDueMs := cardDueMs; end if;
                   --  "Keep this display mode?": its countdown and deadline.
                   if modeTrial.Current = Desktop_Mode_Trial.Asking then
                      declare

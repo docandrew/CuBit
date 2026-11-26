@@ -28,12 +28,16 @@ package Desktop_Tooltips with SPARK_Mode, Pure is
    subtype Window_Slot is Natural range 0 .. MAXIMUM_WINDOWS - 1;
    type Window_Button is (Minimize_Button, Maximize_Button, Close_Button);
 
-   type Target_Kind is (Nothing, Button_Of_Window, Status_Icon, Unread_Count, Status_Button);
+   --  Task_Button: a task button, named by its app's first window (its
+   --  hover card, UI-061, Desktop_Task_Card).
+   type Target_Kind is (Nothing, Button_Of_Window, Status_Icon, Unread_Count, Status_Button, Task_Button);
    type Target (Kind : Target_Kind := Nothing) is record
       case Kind is
          when Button_Of_Window =>
             Slot : Window_Slot := 0;
             Button : Window_Button := Minimize_Button;
+         when Task_Button =>
+            First : Window_Slot := 0;
          when Status_Icon =>
             Item : DSI.Item := DSI.Item'First;
          when Nothing | Unread_Count | Status_Button =>
@@ -50,6 +54,7 @@ package Desktop_Tooltips with SPARK_Mode, Pure is
    STATUS_BASE : constant := WINDOW_BASE + MAXIMUM_WINDOWS * BUTTONS;
    UNREAD_TARGET : constant := STATUS_BASE + ITEMS;
    BUTTON_TARGET : constant := UNREAD_TARGET + 1;
+   TASK_BASE : constant := BUTTON_TARGET + 1;
 
    function Decode (Value : TP.Target) return Target is
      (if Value in WINDOW_BASE .. STATUS_BASE - 1 then
@@ -59,6 +64,7 @@ package Desktop_Tooltips with SPARK_Mode, Pure is
         (Kind => Status_Icon, Item => DSI.Item'Val (Value - STATUS_BASE))
       elsif Value = UNREAD_TARGET then (Kind => Unread_Count)
       elsif Value = BUTTON_TARGET then (Kind => Status_Button)
+      elsif Value in TASK_BASE .. TASK_BASE + MAXIMUM_WINDOWS - 1 then (Kind => Task_Button, First => Value - TASK_BASE)
       else NO_TARGET);
 
    function Encode (Of_Target : Target) return TP.Target is
@@ -68,7 +74,8 @@ package Desktop_Tooltips with SPARK_Mode, Pure is
            WINDOW_BASE + Of_Target.Slot * BUTTONS + Window_Button'Pos (Of_Target.Button),
          when Status_Icon => STATUS_BASE + DSI.Item'Pos (Of_Target.Item),
          when Unread_Count => UNREAD_TARGET,
-         when Status_Button => BUTTON_TARGET)
+         when Status_Button => BUTTON_TARGET,
+         when Task_Button => TASK_BASE + Of_Target.First)
      with Post => Decode (Encode'Result) = Of_Target
                   and then (Encode'Result = TP.NO_TARGET) = (Of_Target.Kind = Nothing);
 
