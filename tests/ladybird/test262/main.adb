@@ -52,6 +52,11 @@ procedure Main is
    --  libc delivers no signals, so the runner's own alarm never fires; the
    --  limit is passed as on Linux and recorded here.
    Timeout_Seconds : constant String := "10";
+   --  So the limit is kept here: a runner that reports no result for this
+   --  long is ended and its running test counted as a timeout, as the Linux
+   --  driver counts its SIGALRM. Six times Linux's 10 s, for the guest.
+   Stall_Microseconds : constant := 60_000_000;
+   Last_Result : Unsigned_64 := 0;
 
    --  The results test262-runner reports, and the two this driver adds.
    type Outcome is (Passed, Failed, Skipped, Metadata_Error, Harness_Error,
@@ -147,6 +152,7 @@ procedure Main is
          Show ("failed " & Test & " (result " & Value & ")");
       end if;
       Batch_Results := Batch_Results + 1;
+      Last_Result := CuBit.Monotonic.Microseconds;
    end Count;
 
    procedure Lend is
@@ -269,6 +275,7 @@ procedure Main is
    end Sleep_Milliseconds;
 
    Not_Started : constant Integer := -2;
+   Stalled     : constant Integer := -3;
    Not_Exited  : constant Integer := -1;
 
    --  The runner over lines First .. First + Batch - 1 of the list: its
@@ -286,6 +293,8 @@ procedure Main is
       Region : LG.Bytes (1 .. LG.Maximum_Bytes);
       Region_Length : LG.Byte_Count;
       Revoked : Boolean;
+      Ended_By_Us : Boolean := False;
+      End_Result : CuBit.Launching.Launch_Result;
       --  The lines given so far, as list indices (from 0), and the end.
       Fed : Natural := First;
       Last : constant Natural := Natural'Min (Lines, First + Batch);
@@ -320,6 +329,7 @@ procedure Main is
          return Not_Started;
       end if;
       Lend;
+      Last_Result := CuBit.Monotonic.Microseconds;
       CuBit.Launching.Launch
         (Launcher, Program, Block.Data (1 .. Length), Region (1 .. Region_Length), Child, Result, Failure,
          Rings);
@@ -344,6 +354,10 @@ procedure Main is
          CuBit.Launching.Poll_Exit (Child, Has_Ended, Ended);
          exit when Has_Ended;
          Drain;
+         if not Ended_By_Us and then CuBit.Monotonic.Microseconds - Last_Result > Stall_Microseconds then
+            CuBit.Launching.End_Child (Child, End_Result);
+            Ended_By_Us := True;
+         end if;
          Sleep_Milliseconds (1);
       end loop;
       Drain;
@@ -355,6 +369,9 @@ procedure Main is
             Stderr_Lent := False;
          end if;
          Rings.Count := 0;
+      end if;
+      if Ended_By_Us then
+         return Stalled;
       end if;
       return (if Ended.Kind = CuBit.Child_Exits.Exited then Integer (Ended.Code) else Not_Exited);
    end Run;
@@ -388,7 +405,14 @@ begin
          exit;
       end if;
       Next := Next + Batch_Results;
-      if Code = 0 and then Done_Seen then
+      if Code = Stalled then
+         --  The test it was running took too long: a timeout, as on Linux.
+         Totals (Timeout_Error) := Totals (Timeout_Error) + 1;
+         if Next < Lines then
+            Show ("timeout " & List (Starts (Next + 1) .. Starts (Next + 2) - 2));
+         end if;
+         Next := Next + 1;
+      elsif Code = 0 and then Done_Seen then
          --  The list ends inside this batch.
          exit when Done_Count < Batch;
       else
