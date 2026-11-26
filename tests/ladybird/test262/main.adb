@@ -4,12 +4,12 @@
 --
 --  test262 on CuBit (WEB-006 phase a): Ladybird's test262-runner, built
 --  unmodified as a Linux/musl program (ladybird-test262.app), over the
---  tests listed in @nvme:0/test262/list.txt, in batches of 250 as
---  libjs-test262's driver runs it on Linux. The runner reads a batch's
---  paths from its standard input, which the port's compatibility layer
---  gives from the list file (LADYBIRD_STDIN_FILE, _FIRST, _COUNT in the
---  launch block's environment), and writes one RESULT line per test to its
---  unix.stdout outlet, read here through a lent ring. As the Linux driver
+--  tests in the staged list (linked in: list.S, the stage's list.txt), in
+--  batches of 250 as libjs-test262's driver runs it on Linux. The runner
+--  reads a batch's paths from its standard input, the unix.stdin inlet:
+--  a ring lent here and fed a line at a time as it reads
+--  (CuBit.Inlet_Rings), then finished; it writes one RESULT line per test
+--  to its unix.stdout outlet, read here through another lent ring. As the Linux driver
 --  does, a runner that ends early is started again after its last result;
 --  the test it was running counts as a process error unless its own result
 --  said why it stopped. Every result that is not a pass goes to the kernel
@@ -19,6 +19,7 @@ with CuBit.Console_Route;
 with Wait_ABI;
 with Interfaces; use Interfaces;
 with CuBit.Child_Exits;
+with CuBit.Inlet_Rings;
 with CuBit.Launch_Arguments;
 with CuBit.Launch_Grants;
 with CuBit.Kernel_ABI;
@@ -32,6 +33,7 @@ with CuBit.Program_Descriptions;
 with CuBit.Stream_Regions;
 with CuBit.Streams;
 with CuBit.Monotonic;
+with System.Storage_Elements;
 
 procedure Main is
    Launcher : constant CuBit.Launching.Launcher := CuBit.Launching.Using (Startup.Process_Manager);
@@ -40,6 +42,7 @@ procedure Main is
    package PP renames CuBit.Program_Descriptions;
    use type CuBit.Launching.Launch_Result;
    use type CuBit.Child_Exits.Termination_Kind;
+   use type CuBit.Inlet_Rings.Put_Result;
 
    Program  : constant String := "ladybird-test262.app";
    Suite    : constant String := "@nvme:0/test262";
@@ -61,9 +64,26 @@ procedure Main is
         when Todo_Error => "todo_error");
    Totals : array (Outcome) of Natural := [others => 0];
 
-   --  Lent rings for the runner's unix.stdout (its results) and
-   --  unix.stderr (shown, up to Stderr_Shown_Limit lines in all).
-   Ring_Pages : constant := 16;
+   --  Lent rings for the runner's unix.stdout (its results), unix.stderr
+   --  (shown, up to Stderr_Shown_Limit lines in all) and unix.stdin (the
+   --  batch's paths), each of the pages ladybird-test262.app's manifest
+   --  declares.
+   Ring_Pages : constant := 128;
+   Stderr_Pages : constant := 4;
+   Inlet_Pages : constant := 16;
+   Inlet_Base : Unsigned_64 := 0;
+   Inlet_Reference : CuBit.Memory_Grants.Grant_Reference;
+
+   --  The list of tests, one path per line (list.S).
+   List_Start : constant Character with Import, External_Name => "ladybird_test262_list_start";
+   List_End : constant Character with Import, External_Name => "ladybird_test262_list_end";
+   List_Bytes : constant Natural :=
+     Natural (System.Storage_Elements."-" (List_End'Address, List_Start'Address));
+   List : constant String (1 .. List_Bytes) with Import, Address => List_Start'Address;
+   --  Where each line starts (Starts (Lines + 1) is just past the list).
+   Maximum_Lines : constant := 100_000;
+   Starts : array (1 .. Maximum_Lines + 1) of Positive := [others => 1];
+   Lines : Natural := 0;
    Rings : CuBit.Outlet_Rings.Table;
    Ring_Base : Unsigned_64 := 0;
    Ring_Reference : CuBit.Memory_Grants.Grant_Reference;
@@ -158,14 +178,27 @@ procedure Main is
          Rings.Count := 1;
          Rings.Entries (1) := (Outlet => Index, Grant => Grant);
       end if;
+      PP.Find_Connector (S, "unix.stdin", Index, Found);
+      if not Found or else Rings.Count = 0 then
+         Rings.Count := 0;
+         return;
+      end if;
+      CuBit.Launching.Lend_Ring
+        (Launcher, Inlet_Pages, CuBit.Streams.TYPE_TEXT_LINE, Inlet_Base, Grant, Inlet_Reference, Ok);
+      if not Ok then
+         Rings.Count := 0;
+         return;
+      end if;
+      Rings.Count := 2;
+      Rings.Entries (2) := (Outlet => Index, Grant => Grant);
       Stderr_Lent := False;
       PP.Find_Connector (S, "unix.stderr", Index, Found);
-      if Found and then Rings.Count = 1 then
+      if Found then
          CuBit.Launching.Lend_Ring
-           (Launcher, 1, CuBit.Streams.TYPE_TEXT_LINE, Stderr_Base, Grant, Stderr_Reference, Ok);
+           (Launcher, Stderr_Pages, CuBit.Streams.TYPE_TEXT_LINE, Stderr_Base, Grant, Stderr_Reference, Ok);
          if Ok then
-            Rings.Count := 2;
-            Rings.Entries (2) := (Outlet => Index, Grant => Grant);
+            Rings.Count := 3;
+            Rings.Entries (3) := (Outlet => Index, Grant => Grant);
             Stderr_Lent := True;
          end if;
       end if;
@@ -198,7 +231,7 @@ procedure Main is
       end if;
       if Stderr_Lent then
          loop
-            Read := CuBit.Stream_Regions.Read_Owned (Stderr_Base, 1, Line'Address, Line'Length);
+            Read := CuBit.Stream_Regions.Read_Owned (Stderr_Base, Stderr_Pages, Line'Address, Line'Length);
             exit when Read = 0;
             if Stderr_Shown < Stderr_Shown_Limit then
                Stderr_Shown := Stderr_Shown + 1;
@@ -253,6 +286,9 @@ procedure Main is
       Region : LG.Bytes (1 .. LG.Maximum_Bytes);
       Region_Length : LG.Byte_Count;
       Revoked : Boolean;
+      --  The lines given so far, as list indices (from 0), and the end.
+      Fed : Natural := First;
+      Last : constant Natural := Natural'Min (Lines, First + Batch);
       procedure Argument (Text : String) is
       begin
          LA.Add_Argument (Block, Text, Added);
@@ -272,9 +308,6 @@ procedure Main is
       Argument ("-t");
       Argument (Timeout_Seconds);
       Environment ("LADYBIRD_ICU_DATA=" & Data & "/icudt78l.dat");
-      Environment ("LADYBIRD_STDIN_FILE=" & Suite & "/list.txt");
-      Environment ("LADYBIRD_STDIN_FIRST=" & Image (First));
-      Environment ("LADYBIRD_STDIN_COUNT=" & Image (Batch));
       LA.Finish (Block, Length, Added);
       Accepted := Accepted and Added;
       LG.Start (Places);
@@ -295,6 +328,19 @@ procedure Main is
          return Not_Started;
       end if;
       loop
+         --  The batch's paths, a line per record, as the runner frees room.
+         while Fed < Last loop
+            declare
+               Path : constant String := List (Starts (Fed + 1) .. Starts (Fed + 2) - 1);
+            begin
+               exit when CuBit.Inlet_Rings.Write (Inlet_Base, Inlet_Pages, Path'Address, Path'Length)
+                 /= CuBit.Inlet_Rings.Put;
+               Fed := Fed + 1;
+               if Fed = Last then
+                  CuBit.Inlet_Rings.Finish (Inlet_Base);
+               end if;
+            end;
+         end loop;
          CuBit.Launching.Poll_Exit (Child, Has_Ended, Ended);
          exit when Has_Ended;
          Drain;
@@ -302,6 +348,7 @@ procedure Main is
       end loop;
       Drain;
       if Rings.Count > 0 then
+         CuBit.Memory_Grants.Revoke (Inlet_Reference, Revoked);
          CuBit.Memory_Grants.Revoke (Ring_Reference, Revoked);
          if Stderr_Lent then
             CuBit.Memory_Grants.Revoke (Stderr_Reference, Revoked);
@@ -319,7 +366,17 @@ procedure Main is
    Launch_Failed : Boolean := False;
 begin
    CuBit.Console_Route.Route_Named ("logstore");
+   --  Index the list's lines (each line includes its newline).
+   for K in List'Range loop
+      exit when Lines = Maximum_Lines;
+      if List (K) = ASCII.LF then
+         Lines := Lines + 1;
+         Starts (Lines + 1) := K + 1;
+      end if;
+   end loop;
+   Show ("tests listed" & Natural'Image (Lines));
    loop
+      exit when Next >= Lines;
       Batch_Results := 0;
       Stopping_Result := False;
       Done_Seen := False;

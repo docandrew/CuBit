@@ -42,6 +42,12 @@ launcher() {
 launcher "$here/check" ladybird_check.gpr ladybird-js-check.app
 if [ -f "$stage/ladybird-test262.app" ]; then
     cp "$stage/ladybird-test262.app" "$out/ladybird-test262.app"
+    # The list of tests, linked into the launcher, which feeds it to the
+    # runner's unix.stdin inlet a batch at a time.
+    mkdir -p "$here/test262/build"
+    printf '\t.section .rodata\n\t.globl ladybird_test262_list_start\n\t.globl ladybird_test262_list_end\nladybird_test262_list_start:\n\t.incbin "%s"\nladybird_test262_list_end:\n\t.section .note.GNU-stack,"",@progbits\n' \
+        "$stage/test262/list.txt" > "$here/test262/build/list.S"
+    as --64 "$here/test262/build/list.S" -o "$here/test262/build/list.o"
     launcher "$here/test262" ladybird_test262_check.gpr ladybird-test262-check.app
 fi
 echo "ladybird tests: $out, disk files in $here/build/disk and $stage/test262"

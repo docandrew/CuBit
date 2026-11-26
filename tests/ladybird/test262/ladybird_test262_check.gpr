@@ -61,7 +61,8 @@ project Ladybird_Test262_Check is
             "-lgnat-user",
             "-T", "../../../userspace/c/link.ld",
             "../../../userspace/c/build/crt0.o",
-            "build/manifest.o"
+            "build/manifest.o",
+            "build/list.o"
         );
     end Linker;
 
