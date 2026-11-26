@@ -66,3 +66,12 @@ Named, argument and complex reference update recovery remain separate work.
 The121 actual helper proof checks are reused with exact source/report hashes;
 the parent adds a guarded call and no new state or storage invariant. The full
 interpreter proof remains unfinished.
+
+Twenty further normal tables cover ToBCD overflow and invalid FromBCD, both
+integer widths, unchanged destination storage, Store consumers, predicates,
+returns, repeated errors, handler refusal and target-method effects. The actual
+conversion status selects3008 only after the target is consumed; a consuming
+Store may then report3012. Standalone extended statements use the same guarded
+report/completion protocol as ordinary expression statements. The actual
+changed recovery unit closes56checks including25RTE with0unproved;65unchanged
+helper checks are reused. Full interpreter AoRTE remains unfinished.

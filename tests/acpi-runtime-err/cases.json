@@ -4844,6 +4844,868 @@
         "charged": 5
       },
       "qualification": "Normal ACPICA direct-local update behavior; thread presence only, no numeric OS thread identity parity"
+    },
+    {
+      "name": "runtime-bcd-to_direct",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454dd0000000212435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0e0000c16ff2862300141954455354005b294f56464c44455354700141465452a40a2a",
+      "AML_sha256": "942da71198d9ac4ad22706a46c18f186940f9e298ca2ac752720c5cc1678d092",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12296,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-to_store",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454e2000000024f435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0e0000c16ff2862300141e5445535400705b294f56464c4445535451554f54700141465452a40a2a",
+      "AML_sha256": "7752a8e1f4866e948f8a7642c6f0e8e0836b3fb6494b7292b92b2070c3a36998",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-to_predicate",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ed000000025b435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0e0000c16ff286230014295445535400a0115b294f56464c44455354700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "341b58e7fe691ea65b9db8592f9d255b29dd9ccdfa58bb0ba891af3deeba9f57",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12296,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-to_return",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d500000002f4435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0e0000c16ff286230014115445535400a45b294f56464c44455354",
+      "AML_sha256": "97522930f9bc5bab13d5eadcb6bae56f6b6bdb5384bd8ee579a2d5722b4d67aa",
+      "expected": {
+        "status": "NO_RETURN",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12296,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-from_direct",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d600000002df435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0a0a141954455354005b284f56464c44455354700141465452a40a2a",
+      "AML_sha256": "963ecd4bad40138665f2bf4d2ebc89cd9f7447125a8f8fa5608c2fc3c7b5a68b",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12296,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-from_store",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454db000000021c435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0a0a141e5445535400705b284f56464c4445535451554f54700141465452a40a2a",
+      "AML_sha256": "fb13a26d285ed3a0b5ed5b6b162617bcdfb981ba182df5c114c2c58d10c5ffe5",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-from_predicate",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454e60000000228435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0a0a14295445535400a0115b284f56464c44455354700154414b45a1077001534b4950700141465452a40a2a",
+      "AML_sha256": "6bd0e018f08041264e7e61f5c4f6a67e052585ba2d04e119ea5be78fa5351cfa",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12296,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 1,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-from_return",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454ce00000002c1435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0a0a14115445535400a45b284f56464c44455354",
+      "AML_sha256": "73ea5d44a2f7d278d2e3727bee908614edf7084ec6702f8d64ab2adb9cbe5dc7",
+      "expected": {
+        "status": "NO_RETURN",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12296,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-to_nonzero",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454e100000002ea435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014245f455252037545434e54706853544154708e6945545950706a54485244a40c78563412084f56464c0e0000c16ff2862300141954455354005b294f56464c44455354700141465452a40a2a",
+      "AML_sha256": "918b906e074d6f6393e4698b84f54542429c86e6a19ef476ee500394946e825b",
+      "expected": {
+        "status": "RUNTIME_EXCEPTION",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 1,
+          "STAT": 12296,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [
+          305419896
+        ]
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-to_max",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454dd0000000215435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0effffc06ff2862300141954455354005b294f56464c44455354700141465452a40a2a",
+      "AML_sha256": "7157647dc32bd23c1da7e1bb2cc4f5022976a698dbf84cf7ed55afa0a489d0f8",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 11068046444225730969,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 11068046444225730969,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-from_max",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454dd0000000216435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0e9999999999999999141954455354005b284f56464c44455354700141465452a40a2a",
+      "AML_sha256": "00b3ec7eda245947125871528466dee01522d2794ae1c930555517ae4ac719e6",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 9999999999999999,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 9999999999999999,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-to32_max",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d9000000010b435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0cffe0f505141954455354005b294f56464c44455354700141465452a40a2a",
+      "AML_sha256": "29a4406a78b8a7137ab4ac0139d1ac9e7fddb087f1d7b91f43b89e4584f975e2",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 2576980377,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 2576980377,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-to32_overflow",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454d90000000109435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0c00e1f505141954455354005b294f56464c44455354700141465452a40a2a",
+      "AML_sha256": "0ae9c4b449149133e1cf3b56358658ee9e130664f2ee09fef1f99ac9bb9a8388",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12296,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-to_null",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454df000000029e435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0e0000c16ff2862300141b5445535400705b294f56464c0044455354700141465452a40a2a",
+      "AML_sha256": "2bc7e9104e93ac62e017e2542bfea68368afc382acb1c2da208dc17a22d39c2d",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-to_repeated",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454e70000000213435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0e0000c16ff2862300142354455354005b294f56464c444553545b294f56464c44455354700141465452a40a2a",
+      "AML_sha256": "7e8112094b04e9e406468a19f1bc96da7f2cd9a4035e9a7d071a8e0f5e8fea14",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12296,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 3
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-from_valid",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454dd000000023a435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0e9078563412000000141954455354005b284f56464c44455354700141465452a40a2a",
+      "AML_sha256": "83af8ac328e3a3b063056a528fda165c59aaa14f6e174133c797768f7082bdc8",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 1234567890,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 23,
+          "DEST": 1234567890,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 7
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-target-to_effect",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454000100000295435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0e0000c16ff2862300140f5441524700700a4951554f54a400142c54455354005b294f56464c8842465230544152470070838842465230000044455354700141465452a40a2a",
+      "AML_sha256": "0e4a4d559ae36dabe4845051efb7e47645eff2ccc5082561f37e3cdcfa6c5f30",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12296,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 73,
+          "DEST": 1,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 73,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 10
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-target-from_effect",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454f90000000263435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0a0a140f5441524700700a4951554f54a400142c54455354005b284f56464c8842465230544152470070838842465230000044455354700141465452a40a2a",
+      "AML_sha256": "c3187eea4b116742dc71f72636ba28ab99788d85cab376882c856a78d1fca102",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 1,
+          "STAT": 12296,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 73,
+          "DEST": 1,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 73,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 10
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-target-to_consumer",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454f800000002bb435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0e0000c16ff2862300140f5441524700700a4951554f54a40014245445535400705b294f56464c8842465230544152470044455354700141465452a40a2a",
+      "AML_sha256": "e71b75be37be79e7bcebb7845f79eda7297ae7cc3a0de1c37384cebf85bbc77e",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 73,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 73,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 10
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
+    },
+    {
+      "name": "runtime-bcd-target-from_consumer",
+      "family": "runtime",
+      "contract_kind": "normal",
+      "AML_hex": "44534454f10000000288435542495400424344455252000001000000494e544c0804262008535452300d31323300084246523011060a0301020308464c41470008504b47301208030a110a170a1d08494458300a030841465452000845434e540008535441540008455459500008544852440008524d44520a110851554f540a1708444553540a1f0854414b450008534b49500014205f455252037545434e54706853544154708e6945545950706a54485244a400084f56464c0a0a140f5441524700700a4951554f54a40014245445535400705b284f56464c8842465230544152470044455354700141465452a40a2a",
+      "AML_sha256": "7271070b489160b2d5003cd0cb04c933a2ac75378b35245f524710d36120ffe6",
+      "expected": {
+        "status": "RETURNED",
+        "value": "42",
+        "observations": {
+          "AFTR": 1,
+          "ECNT": 2,
+          "STAT": 12306,
+          "ETYP": 2,
+          "THRD": 1,
+          "RMDR": 17,
+          "QUOT": 73,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": []
+      },
+      "default": {
+        "status": "NUMERIC_OVERFLOW",
+        "value": "unavailable",
+        "observations": {
+          "AFTR": 0,
+          "ECNT": 0,
+          "STAT": 0,
+          "ETYP": 0,
+          "THRD": 0,
+          "RMDR": 17,
+          "QUOT": 73,
+          "DEST": 31,
+          "TAKE": 0,
+          "SKIP": 0
+        },
+        "exception_codes": [],
+        "charged": 10
+      },
+      "qualification": "Normal ACPICA BCD overflow behavior, fully consumed target effects and unchanged storage; thread presence only"
     }
   ],
   "normal_reference_version": "20260408",
@@ -4856,12 +5718,13 @@
   "new_runtime_normal_diagnostics": 48,
   "new_runtime_guard_contracts": 2,
   "new_runtime_known_refusals": 1,
-  "planned_contracts": 508,
+  "planned_contracts": 588,
   "followup_normal_tables": 16,
   "followup_known_refusals": 1,
   "byte_index_new_normal_tables": 12,
   "prior_refusal_promoted_to_normal": [
     "runtime-type-byte_bound"
   ],
-  "update_cell_new_normal_tables": 16
+  "update_cell_new_normal_tables": 16,
+  "bcd_new_normal_tables": 20
 }

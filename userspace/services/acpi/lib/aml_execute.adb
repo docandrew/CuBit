@@ -3659,7 +3659,13 @@ package body AML_Execute with SPARK_Mode is
                           (if Stack (Depth).BCD = Decode_BCD then AML_BCD.From_BCD (V.Number, Width)
                            else AML_BCD.To_BCD (V.Number, Width));
                      begin
-                        if Converted.Status = AML_BCD.Numeric_Overflow then S := Numeric_Overflow; return; end if;
+                        if Converted.Status = AML_BCD.Numeric_Overflow then
+                           S := Numeric_Overflow;
+                           if Enable_Runtime_Error_Handler and then not Module_Root
+                             and then Stack (Depth).Targets_Ready and then Stack (Depth).Target_Count = 1
+                           then Mark_Recovery (Recovery.Numeric_Fault, True); end if;
+                           return;
+                        end if;
                         V := (Value_Kind => Integer_Datum, Number => Converted.Value, Origin => Ordinary_Integer);
                      end;
                      Apply_Target (Stack (Depth).Targets (1), V, S, Explicit_Result_Target);
@@ -4997,7 +5003,15 @@ package body AML_Execute with SPARK_Mode is
                   Offset := Offset - 1;
                   Operand (Value, State);
                   if State /= Returned then
-                     Body_Result := Failure (State, Charged); return;
+                     declare Continue_Execution : Boolean := False; begin
+                        if not Module_Root and then Recovery.Needs_Report (Recovery_State)
+                          and then not Pending_Fatal.Present
+                        then
+                           Report_Recovery (State);
+                           Continue_Execution := State = Returned and then Recovery.Completed (Recovery_State);
+                        end if;
+                        if not Continue_Execution then Body_Result := Failure (State, Charged); return; end if;
+                     end;
                   end if;
                elsif Code (Code'First + Offset) = Create_Field_Extension then
                   Offset := Offset + 1;
