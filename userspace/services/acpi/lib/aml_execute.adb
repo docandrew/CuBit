@@ -6,6 +6,8 @@ with AML_BCD;
 with AML_Reference_Frames;
 with AML_Logic;
 with AML_Simple_Targets;
+with AML_Unload_Framing;
+with AML_Unload_Statement;
 package body AML_Execute with SPARK_Mode is
    use AML_Decode;
    Event_Extension : constant Byte := 16#02#;
@@ -4054,6 +4056,24 @@ package body AML_Execute with SPARK_Mode is
          -- collecting callback runs before the caller consumes/publishes V.
          Publish_Expression_Roots (Environment, Call_Frame, []);
       end Operand;
+      procedure Unload_Object (Status : out Execution_Status) is
+         Source : Datum;
+         Plan : constant AML_Unload_Statement.Plan := AML_Unload_Statement.Prepare
+           (Code, Offset, Limit, Charged, Budget);
+      begin
+         Offset := Plan.Next_Offset;
+         Charged := Plan.Next_Charged;
+         case Plan.Outcome is
+            when AML_Unload_Statement.Truncated => Status := Truncated;
+            when AML_Unload_Statement.Budget_Exceeded => Status := Budget_Exceeded;
+            when AML_Unload_Statement.Complete_Invalid_Handle |
+                 AML_Unload_Statement.Invalid_Operand => Status := Unsupported_Value;
+            when AML_Unload_Statement.Evaluate_Operand =>
+               Operand (Source, Status);
+               if Status /= Returned then return; end if;
+               Status := Unsupported_Value;
+         end case;
+      end Unload_Object;
       -- Source draft: value normalization policy awaits the pinned oracle.
       procedure Notify_Object (Status : out Execution_Status) is
          Target : Datum := (Integer_Datum, 0, Ordinary_Integer);
@@ -4525,6 +4545,9 @@ package body AML_Execute with SPARK_Mode is
                then
                   Offset := Offset - 1;
                   Operand (Value, State);
+                  if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
+               elsif Code (Code'First + Offset) = AML_Unload_Framing.Unload_Extension then
+                  Unload_Object (State);
                   if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
                elsif Code (Code'First + Offset) = AML_Mutexes.Release_Opcode then
                   Offset := Offset + 1;

@@ -252,3 +252,5 @@ acpi_native_discovery_budget.adb
 acpi_host_bridge_owners.ads
 acpi_host_bridge_owners.adb
 aml_namespace.ads
+aml_unload_framing.adb
+aml_unload_statement.adb

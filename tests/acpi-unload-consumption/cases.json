@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "header_hex": "44534454560000000291435542495400554e4c4f4144000001000000494e544c08042620",
+  "module_prefix_hex": "084146545200084245464f00084954454d0108504b473012030101140d4d41524b00754245464fa400",
+  "normal_reference_version": "20260408",
+  "normal_reference_binary_sha256": "a161f8b3a0b94b4301c1d0f2ccca6c0f808d2998cd4c9e037a9d7b218c88dcfe",
+  "qualification": "Synthetic diagnostic AML; no legacy corpus, firmware or baseline expectation changes",
+  "cases": [
+    {
+      "name": "missing_operand",
+      "TEST_body_hex": "5b2a",
+      "AML_sha256": "f6cbaed4e158c91b2ccf4b07672aab318e2dc14d7269396cc3738ed946b98036",
+      "expected_status": "TRUNCATED",
+      "expected_BEFO": 0,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_OPERAND_TYPE"
+    },
+    {
+      "name": "truncated_debug",
+      "TEST_body_hex": "5b2a5b",
+      "AML_sha256": "c8b390b4d96aecafa21b3be266844c02678e7361543778628f1a1cb0a081948d",
+      "expected_status": "TRUNCATED",
+      "expected_BEFO": 0,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_INTERNAL"
+    },
+    {
+      "name": "wrong_extended_lead",
+      "TEST_body_hex": "5b2a5b30700141465452a40a2a",
+      "AML_sha256": "a27556959492d670ead39f0de2ff275a3fe699021cdfb397d1807afed1b2165b",
+      "expected_status": "UNSUPPORTED_VALUE",
+      "expected_BEFO": 0,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_OPERAND_TYPE"
+    },
+    {
+      "name": "null_name",
+      "TEST_body_hex": "5b2a00700141465452a40a2a",
+      "AML_sha256": "b348eea273503bd84710eb23d5f86b76847ca2905b0fa359c01602410e6f8a0a",
+      "expected_status": "UNSUPPORTED_VALUE",
+      "expected_BEFO": 0,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_OPERAND_TYPE"
+    },
+    {
+      "name": "debug_object",
+      "TEST_body_hex": "5b2a5b31700141465452a40a2a",
+      "AML_sha256": "425eafaa837f23a9d5a6bedcb51c1f941e317a35730d2bcc9ac24459d753a60b",
+      "expected_status": "UNSUPPORTED_VALUE",
+      "expected_BEFO": 0,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_OPERAND_TYPE"
+    },
+    {
+      "name": "literal_integer",
+      "TEST_body_hex": "5b2a0a01700141465452a40a2a",
+      "AML_sha256": "757fcebc07db01b32d9211eabd4d37be1893e11ee2fd904da2e25209ae1367f2",
+      "expected_status": "UNSUPPORTED_VALUE",
+      "expected_BEFO": 0,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_OPERAND_TYPE"
+    },
+    {
+      "name": "uninitialized_local",
+      "TEST_body_hex": "5b2a60700141465452a40a2a",
+      "AML_sha256": "811b437bfb2bd9b2ab3402e7ac50ead66d2c4f22c0fa76b7789a3c893cda3c2f",
+      "expected_status": "UNINITIALIZED",
+      "expected_BEFO": 0,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_UNINITIALIZED_LOCAL"
+    },
+    {
+      "name": "named_integer",
+      "TEST_body_hex": "5b2a4954454d700141465452a40a2a",
+      "AML_sha256": "8a052e2c85bdbdb624addb8810302b8bd74ec6228f13d6f8b0bfbe99b60be331",
+      "expected_status": "UNSUPPORTED_VALUE",
+      "expected_BEFO": 0,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_OPERAND_TYPE"
+    },
+    {
+      "name": "reference_integer",
+      "TEST_body_hex": "5b2a714954454d700141465452a40a2a",
+      "AML_sha256": "7b8871af1d37d90c752a305b01d558e38332b85eedcafd3b496a6a4c8f26d9a2",
+      "expected_status": "UNSUPPORTED_VALUE",
+      "expected_BEFO": 0,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_OPERAND_TYPE"
+    },
+    {
+      "name": "dereference_integer",
+      "TEST_body_hex": "5b2a83714954454d700141465452a40a2a",
+      "AML_sha256": "6f343c696e99bbc43289ec6aba282dba41a8f1297a8ae9e937a99bf484bf44eb",
+      "expected_status": "UNSUPPORTED_VALUE",
+      "expected_BEFO": 0,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_OPERAND_TYPE"
+    },
+    {
+      "name": "method_side_effect",
+      "TEST_body_hex": "5b2a4d41524b700141465452a40a2a",
+      "AML_sha256": "39551ed501272a5c6be22dfa764148901dd61425686bfd3f4e684c392aa975ba",
+      "expected_status": "UNSUPPORTED_VALUE",
+      "expected_BEFO": 1,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_OPERAND_TYPE"
+    },
+    {
+      "name": "index_side_effect",
+      "TEST_body_hex": "5b2a88504b47304d41524b00700141465452a40a2a",
+      "AML_sha256": "3ff7b9fd2c0a02611596b0dac949b36971f6ff1e4738ccceb05d9b40bfc77d70",
+      "expected_status": "UNSUPPORTED_VALUE",
+      "expected_BEFO": 1,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_OPERAND_TYPE"
+    },
+    {
+      "name": "index_out_of_bounds",
+      "TEST_body_hex": "5b2a88504b47300100700141465452a40a2a",
+      "AML_sha256": "adf56fec74297131acb2945804eb8dd0a9c0de57a73ae8497a89b23b08c641a6",
+      "expected_status": "UNSUPPORTED_VALUE",
+      "expected_BEFO": 0,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_PACKAGE_LIMIT"
+    },
+    {
+      "name": "index_effect_then_failure",
+      "TEST_body_hex": "5b2a88504b4730754245464f00700141465452a40a2a",
+      "AML_sha256": "ba9d4bab87303a6c5896bc9e68b227204c5bc646ede196e20def5db95126d618",
+      "expected_status": "UNSUPPORTED_VALUE",
+      "expected_BEFO": 1,
+      "expected_AFTR": 0,
+      "normal_error_name": "AE_AML_PACKAGE_LIMIT"
+    }
+  ]
+}

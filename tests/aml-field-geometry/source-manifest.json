@@ -31,7 +31,7 @@
   "tests/aml-field-geometry/EVIDENCE.json": "d190c1208d2a70b8c885dbdcd5ed8e5394d1678f4e777f2262db4ec364301bbb",
   "tests/aml-field-geometry/README.md": "2d8332dd7a2c001ddfb97df71b7152d1f3bdad2ac24011d796ea5e7bf5c2cc0a",
   "tests/aml-field-geometry/check_plan_proof.sh": "055260bd762dedb621cdd19cdb07550330ce80bc6eac14f17c7b41050ab3cd87",
-  "tests/aml-field-geometry/closure.json": "7367481fa756af5b42afdbd34c58b715237ca4543c9550bbaf430bf38b23dde1",
+  "tests/aml-field-geometry/closure.json": "bdd7b9931d5fdd22723582a6f4b49b53ffd3bb5d3db15a09609fedb768f27d81",
   "tests/aml-field-geometry/field_datum_tests.adb": "33e0d5d79e7aff2cea6079ab581801e99076468ee59e68e8cd48033e71118155",
   "tests/aml-field-geometry/field_plan_tests.adb": "e13f2e4ee7ef24f4f32eb19796037a8b912a203eaa1b726ac5aaf33a820caf0f",
   "tests/aml-field-geometry/field_plan_tests_checked.gpr": "2fb590af2821763bb55794311a8219007e494a3608a266826cff77fd205868f6",
@@ -62,7 +62,7 @@
   "tests/aml-field-geometry/reference/current-plans/prove/prove.log": "d334c455bb10628f3090fcfa7b730b93b94e760ebe67d6d23fad55476177d609",
   "tests/aml-field-geometry/reference/current-plans/prove/unit.spark": "3f57b4d48391f00e11812208d34187fcda74f2e1582257b03fda8afc2035df90",
   "tests/aml-field-geometry/run.py": "0dff4d5c5b3e7fb8723bbf003049e54b9a3013c6fc49c947f731290d372c7ded",
-  "tests/aml-field-geometry/source-inventory.json": "69f2c7287336daaa304e224994af8f2827ba0f8543312eb6dd4038bc59f3d636",
+  "tests/aml-field-geometry/source-inventory.json": "0aaf5e5e09e32ededec7d0dccac5966a2129b990bb3d4933bbda73a159775c0b",
   "tests/aml-field-geometry/source_guards.py": "af16fa2e959acd3acf67869a33752b273e1ed58cbd45287fd8fa12aac9824c36",
   "tests/aml-field-geometry/tools.json": "9c8e10464718b79e009ca3c275ddba6cc952c7e38b46657651975c6deacb5fb5",
   "userspace/services/acpi/lib/acpi_fadt-registers.adb": "2ecd70f15b923ec248550895cfa52adc353239441ff1f28dd6469ac642e56ed6",
@@ -101,7 +101,7 @@
   "userspace/services/acpi/lib/aml_events.ads": "5fabc7e33e68c0f24d5ff580a8a6aa3869ec8c7ba0fc0d8e097db069dd962e06",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.adb": "c21262b8649836bb8db48c11d870fb10e82dab0dca714d20c23131e6e15ec548",
   "userspace/services/acpi/lib/aml_execute-scalar_transport.ads": "e40f8067f168eb76269cd9126fceaff26f927f9b4db934ec28d97617b6286efb",
-  "userspace/services/acpi/lib/aml_execute.adb": "dcda88f045f955307b10f8eefba8fa66295e2cbdf9df696c889c70f12e04dbab",
+  "userspace/services/acpi/lib/aml_execute.adb": "da76617ebfcea0bdb4a6b9efcaae608d08820bf51e2fa113a5d8417bc4e6978d",
   "userspace/services/acpi/lib/aml_execute.ads": "f3fdd16b6a5c3e239928462a11909315c5dd596209a7eb304f76e0b61b2179e1",
   "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
   "userspace/services/acpi/lib/aml_explicit_formatting.adb": "b7cb02de7c7a15b5e9803dd1c8314af339966734a80491d733777a1a7e710c16",
@@ -227,5 +227,9 @@
   "userspace/services/acpi/lib/aml_storage_capacities.adb": "1f2edbed840e59f4870ebdf507930ea9939fa2dd0d6aea52361e51ad2a50d00f",
   "userspace/services/acpi/lib/aml_storage_capacities.ads": "33773b3e2c1a3c1ce9cfc75ef8f6d084b84ca96411790acd49bb744b0a929688",
   "userspace/services/acpi/lib/aml_declaration_method_adapter.adb": "510228ca00815da40b82b8c6af627587ae0b2c1bf8022e4236d79e03214b5b04",
-  "userspace/services/acpi/lib/aml_declaration_method_adapter.ads": "2dbf96e817f4077b02954d4069617992f4495db3b144481a4fc1489af66ce0f5"
+  "userspace/services/acpi/lib/aml_declaration_method_adapter.ads": "2dbf96e817f4077b02954d4069617992f4495db3b144481a4fc1489af66ce0f5",
+  "userspace/services/acpi/lib/aml_unload_framing.adb": "2a4af1e37dcfd2c6cc2d9640baacdcbe4b69177fe8e88f884c7a0efe09582705",
+  "userspace/services/acpi/lib/aml_unload_framing.ads": "a1d611d987f5a51681189a865b59186098983db685b3c92297b3d3203d9ef0ff",
+  "userspace/services/acpi/lib/aml_unload_statement.adb": "b3569ad8f1a7222c1c184834f552f0e9a9e434c540a29ff8fa7b9b5f9ce02eaf",
+  "userspace/services/acpi/lib/aml_unload_statement.ads": "b5700dc1a5f9beff931798f47558a9b7dd8201e703b52d7c79d26a04f5dc2fca"
 }

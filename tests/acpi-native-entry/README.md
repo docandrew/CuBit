@@ -24,3 +24,9 @@ check the runtime style rules while preserving each checked/release profile.
 The default semantic inventory contains 227 selections, retaining all 222 earlier selections and adding five startup bridge/event/delay declarations or bodies. For a bounded startup iteration, run `bash tests/acpi-native-entry/run.sh --mode release --selection startup` (or `--mode checked --selection startup`). This explicit named selection checks nine units and reports its own selection/artifact counts; it does not stand in for the default full selection. Unknown selection names and named native-object selections are refused. Native object/build/boot validation is coordinator-owned in the current ACPI workflow.
 
 The ancestor-propagation change extends the explicit startup semantic selection to 11 units, including both EC discovery spec and body. The full default inventory now contains 228 selections; all earlier 227 remain. Native object generation and hardware execution remain coordinator-owned.
+
+The Unload framing leaf adds its concrete body to the full semantic selection: 255 units, retaining all254 earlier selections. Its two source files are part of the closed live Ada inventory. The historical fixtures remain unchanged and unused. This remains compile-only SDK checking, with no native execution or new proof claim.
+
+The closed source inventory also includes the four existing shared ACPI CMOS protocol/window specifications and bodies from the named base. These repair an earlier inventory omission; the full selection remains255 units and the original flags, tools and named selections remain unchanged. This source-inventory repair adds no production-code changes or proof claim.
+
+The proved Unload statement window/fuel helper adds one concrete body selection, for256 total. Both helper sources are included in the full closed directory inventory. Existing flags, limits and historical fixtures remain unchanged.

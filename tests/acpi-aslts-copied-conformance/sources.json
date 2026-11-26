@@ -550,7 +550,7 @@
     "userspace/services/acpi/lib/aml_events.ads": "5fabc7e33e68c0f24d5ff580a8a6aa3869ec8c7ba0fc0d8e097db069dd962e06",
     "userspace/services/acpi/lib/aml_execute-scalar_transport.adb": "ef51d52cd2fb5a23e2f91cb80e470bfb5c24672be161d384dc4ee8c4e5cb5555",
     "userspace/services/acpi/lib/aml_execute-scalar_transport.ads": "e40f8067f168eb76269cd9126fceaff26f927f9b4db934ec28d97617b6286efb",
-    "userspace/services/acpi/lib/aml_execute.adb": "dcda88f045f955307b10f8eefba8fa66295e2cbdf9df696c889c70f12e04dbab",
+    "userspace/services/acpi/lib/aml_execute.adb": "da76617ebfcea0bdb4a6b9efcaae608d08820bf51e2fa113a5d8417bc4e6978d",
     "userspace/services/acpi/lib/aml_execute.ads": "0218eb814976ea88677365b1d770218862219536b47711c33e390e2d764d8ea8",
     "userspace/services/acpi/lib/aml_execution_limits.ads": "0f39494ae4418a3c8c639e2875c41ed9bec40c28849eed3f147940757a150794",
     "userspace/services/acpi/lib/aml_explicit_formatting.adb": "b7cb02de7c7a15b5e9803dd1c8314af339966734a80491d733777a1a7e710c16",
@@ -922,7 +922,7 @@
     "tests/acpi-aslts-corpus/run.py": "8c0dfeed079b2de2967d0e3321aededc160e4e5b8370ff96df7369f9e6463d4a",
     "tests/acpi-aslts-corpus/upstream.json": "08ce99f8805caa3d72316baf2fac9731358d49632905c42bf5b794c95a5965a4",
     "tests/acpi-aslts-corpus/aggregate-flags.json": "089ed08bc6ff174ab60bb04d8ea3accf7100e1541724ae6d77d5319355de4aa0",
-    "tests/acpi-aslts-corpus/sources.json": "b2e5d7dbee319636f831985eb5eee71549842b78be0955e76851b87cee329c44",
+    "tests/acpi-aslts-corpus/sources.json": "d2768d2642ed664861c27829cafd3a98ab43c0b26cde482eafcbfd003efd0dd0",
     "tests/acpi-aslts-copied-conformance/build.py": "ae8615592640420ba4394281a359a691c3c7d425af47edc0c066ee978eeb8948",
     "tests/acpi-aslts-copied-conformance/hosted_byte_memory.adb": "c8f3596d3c83508b704252b658598568703a71ed0a167a862f195339d0027156",
     "tests/acpi-aslts-copied-conformance/aslts_corpus_runner.adb": "d92bf2dfb5951fc1d63aeaa63be2467409a64a1eb722da45e32e265f4319bd33",
@@ -931,7 +931,11 @@
     "tests/acpi-aslts-copied-conformance/owner-policy.json": "8d85565b90ce817e6c122c33136669d96dca951bbcfcc50afa0b1203ac618cf8",
     "tests/acpi-aslts-copied-conformance/run.sh": "18e591626d38e68d563eb51d5d2f0e62e5111cc521619fb567ab9a805ac5b970",
     "tests/acpi-aslts-copied-conformance/acpi_service_core-copy_probe.ads": "735a118c9672be060186d092eca750d75b669af2dbf5cef3f36334aacac20297",
-    "tests/acpi-aslts-copied-conformance/hosted_byte_memory.ads": "a520360fbe538373d8318b663dbf8818a796ab5919321c2f8e6f6c387513de1d"
+    "tests/acpi-aslts-copied-conformance/hosted_byte_memory.ads": "a520360fbe538373d8318b663dbf8818a796ab5919321c2f8e6f6c387513de1d",
+    "userspace/services/acpi/lib/aml_unload_framing.adb": "2a4af1e37dcfd2c6cc2d9640baacdcbe4b69177fe8e88f884c7a0efe09582705",
+    "userspace/services/acpi/lib/aml_unload_framing.ads": "a1d611d987f5a51681189a865b59186098983db685b3c92297b3d3203d9ef0ff",
+    "userspace/services/acpi/lib/aml_unload_statement.adb": "b3569ad8f1a7222c1c184834f552f0e9a9e434c540a29ff8fa7b9b5f9ce02eaf",
+    "userspace/services/acpi/lib/aml_unload_statement.ads": "b5700dc1a5f9beff931798f47558a9b7dd8201e703b52d7c79d26a04f5dc2fca"
   },
   "ada_sources": [
     "shared/acpi/acpi_battery_observation_protocol.ads",
@@ -1855,7 +1859,11 @@
     "tests/acpi-aslts-copied-conformance/acpi_service_core-copy_probe.ads",
     "tests/acpi-aslts-copied-conformance/aslts_corpus_runner.adb",
     "tests/acpi-aslts-copied-conformance/hosted_byte_memory.adb",
-    "tests/acpi-aslts-copied-conformance/hosted_byte_memory.ads"
+    "tests/acpi-aslts-copied-conformance/hosted_byte_memory.ads",
+    "userspace/services/acpi/lib/aml_unload_framing.adb",
+    "userspace/services/acpi/lib/aml_unload_framing.ads",
+    "userspace/services/acpi/lib/aml_unload_statement.adb",
+    "userspace/services/acpi/lib/aml_unload_statement.ads"
   ],
   "tools": {
     "iasl": {

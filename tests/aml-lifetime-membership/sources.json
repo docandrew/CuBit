@@ -267,7 +267,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.adb",
-      "sha256": "dcda88f045f955307b10f8eefba8fa66295e2cbdf9df696c889c70f12e04dbab"
+      "sha256": "da76617ebfcea0bdb4a6b9efcaae608d08820bf51e2fa113a5d8417bc4e6978d"
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.ads",
@@ -748,6 +748,22 @@
     {
       "path": "userspace/services/acpi/lib/aml_declaration_method_adapter.ads",
       "sha256": "2dbf96e817f4077b02954d4069617992f4495db3b144481a4fc1489af66ce0f5"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_unload_framing.adb",
+      "sha256": "2a4af1e37dcfd2c6cc2d9640baacdcbe4b69177fe8e88f884c7a0efe09582705"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_unload_framing.ads",
+      "sha256": "a1d611d987f5a51681189a865b59186098983db685b3c92297b3d3203d9ef0ff"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_unload_statement.adb",
+      "sha256": "b3569ad8f1a7222c1c184834f552f0e9a9e434c540a29ff8fa7b9b5f9ce02eaf"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_unload_statement.ads",
+      "sha256": "b5700dc1a5f9beff931798f47558a9b7dd8201e703b52d7c79d26a04f5dc2fca"
     }
   ],
   "tests": [

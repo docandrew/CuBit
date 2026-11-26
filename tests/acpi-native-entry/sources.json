@@ -72,7 +72,7 @@
     "shared/platform",
     "userspace/lib/acpi-windows"
   ],
-  "selection_count": 254,
+  "selection_count": 256,
   "inputs": [
     {
       "path": "build-catalog.ccl",
@@ -4152,7 +4152,7 @@
     },
     {
       "path": "tests/acpi-native-entry/README.md",
-      "sha256": "3e2dc176efb0e964d1ab9c9ac4e4b15db8539e33fe7c89f240dda233bfd15777"
+      "sha256": "bbabf36fbcecbe119c07f4f90eac094d55e25f026b04e21bacd9740b7ef8e7ae"
     },
     {
       "path": "tests/acpi-native-entry/reference/catalog.ccl",
@@ -4172,7 +4172,7 @@
     },
     {
       "path": "tests/acpi-native-entry/selections.txt",
-      "sha256": "60e61ed524e56174f74428b1368d3b8f2a1656851cb245b28637aa4de8b1f368"
+      "sha256": "b03074b867384223d003b0719fa067f5de591fd3cc1b86f622c5b43c9dd0c646"
     },
     {
       "path": "userspace/ccl/catalogs/native-runtime-services.ccl",
@@ -9792,7 +9792,7 @@
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.adb",
-      "sha256": "dcda88f045f955307b10f8eefba8fa66295e2cbdf9df696c889c70f12e04dbab"
+      "sha256": "da76617ebfcea0bdb4a6b9efcaae608d08820bf51e2fa113a5d8417bc4e6978d"
     },
     {
       "path": "userspace/services/acpi/lib/aml_execute.ads",
@@ -12061,6 +12061,38 @@
     {
       "path": "userspace/services/acpi/lib/aml_declaration_method_adapter.ads",
       "sha256": "2dbf96e817f4077b02954d4069617992f4495db3b144481a4fc1489af66ce0f5"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_unload_framing.ads",
+      "sha256": "a1d611d987f5a51681189a865b59186098983db685b3c92297b3d3203d9ef0ff"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_unload_framing.adb",
+      "sha256": "2a4af1e37dcfd2c6cc2d9640baacdcbe4b69177fe8e88f884c7a0efe09582705"
+    },
+    {
+      "path": "shared/acpi/acpi_cmos_handover_protocol.adb",
+      "sha256": "be5dec5e8f8ddc56b19a7c29d3cab90120fc100c3b7aec873d8e9be5d2369c4d"
+    },
+    {
+      "path": "shared/acpi/acpi_cmos_handover_protocol.ads",
+      "sha256": "b8d8d4b54699e55987a0ef2544e7caf7a9f399b1b8459926c71273726699458d"
+    },
+    {
+      "path": "shared/acpi/acpi_cmos_manifest_windows.adb",
+      "sha256": "4e65a9d044e246febb41d2f3bd95e5a7529b99425f4089a114b3da451b85b851"
+    },
+    {
+      "path": "shared/acpi/acpi_cmos_manifest_windows.ads",
+      "sha256": "1dd31583cf32aa0a56ae9c925cfde202d43f0afa1e8a5a3a954ce4f7901ebe12"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_unload_statement.ads",
+      "sha256": "b5700dc1a5f9beff931798f47558a9b7dd8201e703b52d7c79d26a04f5dc2fca"
+    },
+    {
+      "path": "userspace/services/acpi/lib/aml_unload_statement.adb",
+      "sha256": "b3569ad8f1a7222c1c184834f552f0e9a9e434c540a29ff8fa7b9b5f9ce02eaf"
     }
   ],
   "tools": {
