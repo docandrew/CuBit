@@ -2,6 +2,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Owned_Reservations;
+with Owned_Memory_ABI;
 -- Disposable startup fixture. Uses only caller-owned mapping syscalls
 -- (owned regions, ABI-002).
 procedure Native_Records_Check is
@@ -59,7 +60,12 @@ begin
    Check (Free (Base, 16 * 1024 * 1024 + 1), "rounded large release");
    --  MEM-007: past the kernel's largest region (4 TiB + 64 GiB), refused
    --  and said so (Too_Large); no limit is compiled into this program.
-   Check (Owned.Reserve (2**42 + 2**36 + 4096) = 0, "above region limit");
+   declare
+      Why : Owned.Refusal;
+   begin
+      Check (Owned.Reserve (2**42 + 2**36 + 4096, 0, Why) = 0
+             and then Owned_Memory_ABI."=" (Why, Owned_Memory_ABI.Too_Large), "above region limit");
+   end;
    Check (Allocate (Unsigned_64'Last) = 0, "mapping size overflow");
    debugPrint ("TEST: PASS large owned mappings lifecycle" & ASCII.LF);
    for Round in 1 .. 2 loop
@@ -119,14 +125,15 @@ begin
       GiB : constant Unsigned_64 := 2**30;
       TiB : constant Unsigned_64 := 2**40;
       MiB : constant Unsigned_64 := 2**20;
+      Why : Owned.Refusal;
       Cage, Twice, Heap, Direct, Run, Middle, Low, High : Unsigned_64;
    begin
       --  K1: the ArrayBuffer cage, 4 TiB + 32 GiB, in one reservation.
-      Cage := Owned.Reserve (4 * TiB + 32 * GiB, 0);
+      Cage := Owned.Reserve (4 * TiB + 32 * GiB, 0, Why);
       Check (Cage /= 0, "K1 a 4 TiB + 32 GiB reservation");
       --  K2, K5: LibGC reserves twice its 32 GiB region, then gives back the
       --  head and the tail around a 32 GiB-aligned 32 GiB.
-      Twice := Owned.Reserve (64 * GiB, 0);
+      Twice := Owned.Reserve (64 * GiB, 0, Why);
       Check (Twice /= 0, "K2 a 64 GiB reservation beside the cage");
       Heap := (Twice + 32 * GiB - 1) and not (32 * GiB - 1);
       if Heap > Twice then
@@ -137,7 +144,7 @@ begin
                 "K5 release of the tail");
       end if;
       --  K3: or the kernel aligns it.
-      Direct := Owned.Reserve (32 * GiB, 32 * GiB);
+      Direct := Owned.Reserve (32 * GiB, 32 * GiB, Why);
       Check (Direct /= 0 and then Direct mod (32 * GiB) = 0, "K3 a 32 GiB-aligned reservation");
       --  K7: one commit, any page multiple, inside the reservation.
       Run := Heap + 3 * 4096;
@@ -170,9 +177,14 @@ begin
              not Owned.Change (Direct, 4096, Owned.Commit) and then
              not Owned.Change (Cage, 4096, Owned.Commit), "every region in it gone");
       Check (not Owned.Release (Low, High - Low), "a second release touches nothing");
+      --  Typed refusals, no limit compiled in.
+      Check (Owned.Reserve (4096, 3, Why) = 0 and then
+             Owned_Memory_ABI."=" (Why, Owned_Memory_ABI.Invalid_Alignment), "an invalid alignment");
+      Check (Owned.Reserve (4097, 0, Why) = 0 and then
+             Owned_Memory_ABI."=" (Why, Owned_Memory_ABI.Invalid_Range), "an unaligned size");
       debugPrint ("TEST: PASS MEM-007 4 TiB + 32 GiB cage, 64 GiB trimmed to a 32 GiB-aligned heap, "
                   & "32 GiB alignment, one 64 MiB commit, decommit, read-only, a middle release, "
-                  & "a release across regions and holes" & ASCII.LF);
+                  & "a release across regions and holes, typed refusals" & ASCII.LF);
    end;
    for I in 1 .. 64 loop
       Base := Allocate (4096);

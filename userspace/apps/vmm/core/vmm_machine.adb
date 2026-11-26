@@ -1522,7 +1522,7 @@ package body Vmm_Machine is
          if Base = 0 then
             Vmm_Machine.Log ("no address space for" & Unsigned_64'Image (RAM_MiB) & " MiB of guest RAM");
             return;
-         elsif not CuBit.Owned_Reservations.Commit_Steps (Base, RAM_Bytes) then
+         elsif not CuBit.Owned_Reservations.Change (Base, RAM_Bytes, CuBit.Owned_Reservations.Commit) then
             Vmm_Machine.Log ("committing" & Unsigned_64'Image (RAM_MiB)
                              & " MiB of guest RAM was refused (the monitor's memory limit?)");
             return;

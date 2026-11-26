@@ -2,6 +2,7 @@ pragma Ada_2022;
 with CuAlloc;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with Owned_Memory_ABI;
 
 package body CuAlloc_Native is
    package ABI renames CuBit.Kernel_ABI;
@@ -10,8 +11,11 @@ package body CuAlloc_Native is
    --  region's base is a multiple of the alignment. Commit: CuAlloc asks
    --  for the next prefix of a region, [Base + Offset, + Bytes), fresh
    --  zero pages. Release: the whole region with everything committed.
+   --  A refusal (Owned_Memory_ABI) is no base: 0.
    function Reserve (Bytes, Alignment : Unsigned_64) return Unsigned_64 is
-     (CuBit.Kernel_Calls.Call (ABI.Reserve_Owned_Region, Bytes, Alignment));
+     (declare Answer : constant Unsigned_64 :=
+        CuBit.Kernel_Calls.Call (ABI.Reserve_Owned_Region, Bytes, Alignment);
+      begin (if Owned_Memory_ABI.Is_Refusal_Word (Answer) then 0 else Answer));
    function Commit (Base, Offset, Bytes : Unsigned_64) return Boolean is
      (CuBit.Kernel_Calls.Call
         (ABI.Change_Owned_Range, Base + Offset, Bytes,
@@ -21,7 +25,11 @@ package body CuAlloc_Native is
    --  CuBit's thread exits call cualloc_thread_exit themselves.
    procedure Attached is null;
 
-   package Heap is new CuAlloc (Reserve, Commit, Release, ABI.Maximum_Owned_Commit_Bytes, Attached);
+   --  One commit backs any range (MEM-007): CuAlloc's commits are bounded
+   --  only by what it wants, here the largest page multiple.
+   Any_Commit : constant Unsigned_64 := Unsigned_64'Last - (ABI.Page_Bytes - 1);
+
+   package Heap is new CuAlloc (Reserve, Commit, Release, Any_Commit, Attached);
 
    function Decommit (Address, Bytes : Unsigned_64) return Boolean is
      (CuBit.Kernel_Calls.Call

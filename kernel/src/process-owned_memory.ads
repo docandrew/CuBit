@@ -1,5 +1,6 @@
 with Interfaces; use Interfaces;
 with Owned_Reservation_Policy;
+with Owned_Memory_ABI;
 -- Owned memory: the one region API (ABI-002, three system calls).
 --
 --   Reserve       page-aligned virtual capacity in the owned aperture, no RAM;
@@ -31,26 +32,31 @@ with Owned_Reservation_Policy;
 -- Callers own a live execution pin for PID. No caller holds addressSpaceLock.
 package Process.Owned_Memory is
    -- Alignment: the base's (Owned_Reservation_Policy.Valid_Alignment; 0 is
-   -- a page); an invalid one is refused. Base is 0 on refusal.
-   procedure Reserve (PID : ProcessID; Bytes, Alignment : Unsigned_64; Base : out Unsigned_64);
+   -- a page); an invalid one is refused. Base is 0 on refusal, and Why says
+   -- why (Owned_Memory_ABI; meaningless on success, as for the others).
+   procedure Reserve (PID : ProcessID; Bytes, Alignment : Unsigned_64; Base : out Unsigned_64;
+                      Why : out Owned_Memory_ABI.Refusal);
 
    -- The range [Address, Address + Bytes) must lie in one live region of
-   -- PID. Commit: every page of the range unbacked, Bytes at most
-   -- Owned_Reservation_Policy.Maximum_Commit_Bytes; all or nothing.
+   -- PID. Commit: every page of the range unbacked, any size (MEM-007: the
+   -- kernel backs it in locked steps of Owned_Reservation_Policy.
+   -- Maximum_Commit_Bytes, with lock breaks and interrupt windows between
+   -- them); all or nothing.
    -- Decommit: backed pages of the range are dropped, unbacked ones
    -- ignored; all or nothing unless a page-table retirement fails, which
    -- quarantines that run (retained until the process exits). Access
    -- operations: every page of the range committed; never executable.
    procedure Change_Range (PID : ProcessID; Address, Bytes : Unsigned_64;
                            Operation : Owned_Reservation_Policy.Range_Operation;
-                           Success : out Boolean);
+                           Success : out Boolean; Why : out Owned_Memory_ABI.Refusal);
 
    -- Exact base and capacity of a live region. The region is quarantined
    -- at once, then its pages retired in steps of at most
    -- Owned_Reservation_Policy.Pages_Per_Locked_Step, the locks given back
    -- between steps. A failed run retirement retains the region and the
    -- backing not yet retired.
-   procedure Release (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean);
+   procedure Release (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean;
+                      Why : out Owned_Memory_ABI.Refusal);
 
    -- Legacy physical mappers must hold this lock from alias admission through
    -- publication. Order: mailbox/grant -> owned-memory -> address-space -> buddy.

@@ -21,6 +21,7 @@ with CuBit.File_Access;
 with CuBit.Volume_Descriptions;
 with CuBit.Channels;
 with CuBit.Owned_Reservations;
+with Owned_Memory_ABI;
 with CuBit.System_Facts;
 with CuBit.Handles;
 with CuBit.Handles.Startup;
@@ -164,7 +165,8 @@ procedure main is
       Expect (not Owned.Change (R + 1, PAGE_SIZE, Owned.Commit), "unaligned commit");
       Expect (not Owned.Change (R, 0, Owned.Commit), "empty commit");
       Expect (not Owned.Change (R, PAGE_SIZE, Owned.Make_Read_Write), "access over unbacked pages");
-      Expect (syscall (SYSCALL_CHANGE_OWNED_RANGE, R, PAGE_SIZE, 5) = Unsigned_64'Last,
+      Expect (syscall (SYSCALL_CHANGE_OWNED_RANGE, R, PAGE_SIZE, 5) =
+                Owned_Memory_ABI.Refusal_Word (Owned_Memory_ABI.Invalid_Operation),
               "unknown operation (an executable one does not exist)");
       Expect (Grown (0), "reservation holds no RAM");
 

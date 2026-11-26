@@ -35,8 +35,8 @@
  *   commit       one thread mapping COMMIT_BYTES of anonymous memory,
  *                touching its first byte and unmapping it, forever (a
  *                growing heap: on CuBit each map commits the region's pages
- *                through CHANGE_OWNED_RANGE, in steps of at most the
- *                kernel's Maximum_Owned_Commit_Bytes)
+ *                with one CHANGE_OWNED_RANGE, which the kernel backs in
+ *                bounded locked steps)
  *   protect      one thread holding PROTECT_BYTES of anonymous memory, every
  *                page touched, flipping it read-only and back read/write
  *                with mprotect, forever (on CuBit each flip is one access

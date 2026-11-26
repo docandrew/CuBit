@@ -12,6 +12,7 @@ with CuBit.Published_Clock;
 with CuBit.Hardware_Random;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
+with Owned_Memory_ABI;
 with CuBit.System_Facts;
 with CuBit.Process_IDs;
 with CuBit.Libc_ABI; use CuBit.Libc_ABI;
@@ -344,9 +345,10 @@ package body CuBit.Libc_System_Calls is
    end Grow_Break;
 
    --  mmap's memory is one owned region (kernel Process.Owned_Memory,
-   --  ABI-002) per mapping: Length rounded up to pages, committed whole.
+   --  ABI-002) per mapping: Length rounded up to pages, committed whole in
+   --  one call (MEM-007; the kernel refuses what it cannot give).
    function Region_Bytes (Length : Unsigned_64) return Unsigned_64 is
-     (if Length = 0 or else Length > K.Maximum_Owned_Region_Bytes then 0
+     (if Length = 0 or else Length > Unsigned_64'Last - Page_Mask then 0
       else (Length + Page_Mask) and not Page_Mask);
 
    function Change_Range (Base, Length : Unsigned_64;
@@ -367,26 +369,21 @@ package body CuBit.Libc_System_Calls is
    function Allocate_Region (Length : Unsigned_64) return Unsigned_64 is
       Size : constant Unsigned_64 := Region_Bytes (Length);
       Base : Unsigned_64;
-      Done, Step : Unsigned_64 := 0;
    begin
       if Size = 0 then
          return 0;
       end if;
       Base := Kernel (K.Reserve_Owned_Region, Size, 0);
-      if Base = 0 or else Base = K.Failed then
+      if Owned_Memory_ABI.Is_Refusal_Word (Base) then
          return 0;
       end if;
-      while Done < Size loop
-         Step := Unsigned_64'Min (Size - Done, K.Maximum_Owned_Commit_Bytes);
-         if not Change_Range (Base + Done, Step, K.Commit) then
-            declare
-               Ignore : constant Boolean := Release_Region (Base, Size);
-            begin
-               return 0;
-            end;
-         end if;
-         Done := Done + Step;
-      end loop;
+      if not Change_Range (Base, Size, K.Commit) then
+         declare
+            Ignore : constant Boolean := Release_Region (Base, Size);
+         begin
+            return 0;
+         end;
+      end if;
       return Base;
    end Allocate_Region;
 
@@ -420,7 +417,7 @@ package body CuBit.Libc_System_Calls is
    --  reservation it made with mmap): the range's pages are replaced by
    --  fresh ones, as on Linux. Its committed pages go back (decommit);
    --  then, unless the new protection is PROT_NONE, it is committed whole
-   --  (zero, read/write) in the kernel's commit steps and given that
+   --  (zero, read/write) in one kernel commit (MEM-007) and given that
    --  protection. On a refused commit the range is decommitted again, so
    --  it is left inaccessible rather than partly backed. The kernel places
    --  regions itself: an address outside every region of this process is
@@ -428,7 +425,6 @@ package body CuBit.Libc_System_Calls is
    function Replace_Pages (Address, Length : Unsigned_64; Protection : long) return long;
    function Replace_Pages (Address, Length : Unsigned_64; Protection : long) return long is
       Size : constant Unsigned_64 := Region_Bytes (Length);
-      Done, Step : Unsigned_64 := 0;
       Ignore : Boolean;
    begin
       if Size = 0 or else (Address and Page_Mask) /= 0 then
@@ -437,15 +433,10 @@ package body CuBit.Libc_System_Calls is
          return Error (ENOMEM);
       elsif Protection = PROT_NONE then
          return To_Long (Address);
+      elsif not Change_Range (Address, Size, K.Commit) then
+         --  All or nothing: the kernel left nothing committed.
+         return Error (ENOMEM);
       end if;
-      while Done < Size loop
-         Step := Unsigned_64'Min (Size - Done, K.Maximum_Owned_Commit_Bytes);
-         if not Change_Range (Address + Done, Step, K.Commit) then
-            Ignore := Change_Range (Address, Size, K.Decommit);
-            return Error (ENOMEM);
-         end if;
-         Done := Done + Step;
-      end loop;
       if Protection = PROT_READ and then not Change_Range (Address, Size, K.Make_Read_Only) then
          Ignore := Change_Range (Address, Size, K.Decommit);
          return Error (ENOMEM);
@@ -458,28 +449,24 @@ package body CuBit.Libc_System_Calls is
    --  SpiderMonkey and V8 do): its uncommitted pages are committed (zero)
    --  and committed ones keep their bytes, then the whole range is given
    --  Protection, as on Linux. A kernel commit is refused when any page of
-   --  its range is committed, so a refused step is committed page by page.
-   --  False when the range is not inside one region of this process.
+   --  its range is committed (all or nothing), so when the whole range's
+   --  commit is refused it is committed page by page. False when the range
+   --  is not inside one region of this process.
    function Open_Reserved (Address, Length : Unsigned_64; Protection : long) return Boolean;
    function Open_Reserved (Address, Length : Unsigned_64; Protection : long) return Boolean is
       Size : constant Unsigned_64 := Region_Bytes (Length);
-      Done, Step, Page : Unsigned_64 := 0;
+      Page : Unsigned_64 := 0;
       Ignore : Boolean;
    begin
       if Size = 0 or else (Address and Page_Mask) /= 0 then
          return False;
       end if;
-      while Done < Size loop
-         Step := Unsigned_64'Min (Size - Done, K.Maximum_Owned_Commit_Bytes);
-         if not Change_Range (Address + Done, Step, K.Commit) then
-            Page := 0;
-            while Page < Step loop
-               Ignore := Change_Range (Address + Done + Page, K.Page_Bytes, K.Commit);
-               Page := Page + K.Page_Bytes;
-            end loop;
-         end if;
-         Done := Done + Step;
-      end loop;
+      if not Change_Range (Address, Size, K.Commit) then
+         while Page < Size loop
+            Ignore := Change_Range (Address + Page, K.Page_Bytes, K.Commit);
+            Page := Page + K.Page_Bytes;
+         end loop;
+      end if;
       return Change_Range (Address, Size, Access_Operation (Protection));
    end Open_Reserved;
 
@@ -514,7 +501,8 @@ package body CuBit.Libc_System_Calls is
             return Error (ENOMEM);
          end if;
          Base := Kernel (K.Reserve_Owned_Region, Region_Bytes (Length), 0);
-         return (if Base = 0 or else Base = K.Failed then Error (ENOMEM) else To_Long (Base));
+         return (if Owned_Memory_ABI.Is_Refusal_Word (Base) then Error (ENOMEM)
+                 else To_Long (Base));
       end if;
       Base := Allocate_Region (Length);
       if Base = 0 then
@@ -1126,14 +1114,11 @@ package body CuBit.Libc_System_Calls is
          when SYS_mmap =>
             return Map (Bits (A), Bits (B), C, D, Low (E), F);
          when SYS_munmap =>
-            --  A whole mapping: its region goes back. Part of one: its
-            --  pages go back (decommit) and it faults from then on, but
-            --  its address space stays reserved until the process ends,
-            --  since the kernel releases whole regions only.
-            return (if Release_Region (Bits (A), Bits (B))
-                      or else ((Bits (A) and Page_Mask) = 0
-                               and then Change_Range (Bits (A), Bits (B), K.Decommit))
-                    then 0 else Error (EINVAL));
+            --  The kernel's munmap semantics (MEM-007): every page of the
+            --  range that lies in a mapping goes back, whole mappings, a
+            --  head, a tail or a middle, across mappings and holes. A range
+            --  that touches no mapping is refused (EINVAL; Linux returns 0).
+            return (if Release_Region (Bits (A), Bits (B)) then 0 else Error (EINVAL));
          when SYS_madvise =>
             --  Advisory no-ops only. In particular no fork-related mapping
             --  semantics: AWS-LC probes support with invalid advice.

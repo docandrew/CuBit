@@ -13,6 +13,7 @@ with Process.Futex;
 with Process.Owned_Memory;
 with Process_Pool;
 with Owned_Reservation_Policy;
+with Owned_Memory_ABI;
 with Process.IPC;
 with Process.User_Memory;
 with Process.Map_Probe;
@@ -393,26 +394,36 @@ package body Syscall is
             -- Owned memory (Process.Owned_Memory, ABI-002): three calls,
             -- no flags. Reserve: arg0 page-aligned bytes (up to 2 GiB),
             -- arg1 the base's alignment (0: a page); the base, or zero.
+            -- The base, or a refusal word (Owned_Memory_ABI, MEM-007).
             when SYSCALL_RESERVE_OWNED_REGION =>
-                Process.Owned_Memory.Reserve
-                  (Process.processOf (caller), arg0, arg1, retval);
+                declare
+                    Why : Owned_Memory_ABI.Refusal;
+                begin
+                    Process.Owned_Memory.Reserve
+                      (Process.processOf (caller), arg0, arg1, retval, Why);
+                    if retval = 0 then
+                        retval := Owned_Memory_ABI.Refusal_Word (Why);
+                    end if;
+                end;
 
             -- arg0 address, arg1 bytes (a page range of one region), arg2
             -- the operation (Owned_Reservation_Policy.Range_Operation:
             -- 0 commit, 1 decommit, 2 inaccessible, 3 read-only, 4
-            -- read/write). Zero, or Last when refused.
+            -- read/write). Done, or a refusal word (Owned_Memory_ABI).
             when SYSCALL_CHANGE_OWNED_RANGE =>
                 declare
                     Operation : Owned_Reservation_Policy.Range_Operation;
                     Known, Changed : Boolean := False;
+                    Why : Owned_Memory_ABI.Refusal := Owned_Memory_ABI.Invalid_Operation;
                 begin
                     Owned_Reservation_Policy.Decode (arg2, Operation, Known);
                     if Known then
                         Process.Owned_Memory.Change_Range
                           (Process.processOf (caller), arg0, arg1,
-                           Operation, Changed);
+                           Operation, Changed, Why);
                     end if;
-                    retval := (if Changed then 0 else Unsigned_64'Last);
+                    retval := (if Changed then Owned_Memory_ABI.Done
+                               else Owned_Memory_ABI.Refusal_Word (Why));
                 end;
 
             when SYSCALL_RELEASE_OWNED_REGION =>
@@ -424,14 +435,16 @@ package body Syscall is
                 -- takes the view's release (BOOT-013).
                 declare
                     Released : Boolean;
+                    Why : Owned_Memory_ABI.Refusal;
                 begin
                     Process.Owned_Memory.Release
-                      (Process.processOf (caller), arg0, arg1, Released);
-                    if not Released then
+                      (Process.processOf (caller), arg0, arg1, Released, Why);
+                    if not Released and then Owned_Memory_ABI."=" (Why, Owned_Memory_ABI.No_Region) then
                         Modules.Release_View
                           (Process.processOf (caller), arg0, arg1, Released);
                     end if;
-                    retval := (if Released then 0 else Unsigned_64'Last);
+                    retval := (if Released then Owned_Memory_ABI.Done
+                               else Owned_Memory_ABI.Refusal_Word (Why));
                 end;
 
             -- Give the CPU to any other ready thread; the caller is re-queued

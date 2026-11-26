@@ -1,8 +1,8 @@
 --  SPDX-License-Identifier: GPL-3.0-or-later
 --  bench-heap-load: a growing heap beside a benchmark (MEM-006). Commits,
 --  touches and releases Heap_Bytes of owned memory in a loop for
---  Duration_Ms: each round is CHANGE_OWNED_RANGE commits in
---  Maximum_Owned_Commit_Bytes steps and one RELEASE_OWNED_REGION, the
+--  Duration_Ms: each round is one CHANGE_OWNED_RANGE commit of the whole
+--  heap (the kernel steps it, MEM-007) and one RELEASE_OWNED_REGION, the
 --  kernel work that once held grantLock (and so every CPU's waits) for
 --  tens of milliseconds. Prints its rate; the benchmark beside it is what
 --  is measured (tests/headless/run.sh --load-kind heap).

@@ -336,7 +336,7 @@ package body CuBit.Debug_Stub is
          return;
       end if;
       --  The lowest page stays uncommitted: a guard.
-      if not CuBit.Owned_Reservations.Commit_Steps (Stack + ABI.Page_Bytes, Bytes - ABI.Page_Bytes) then
+      if not CuBit.Owned_Reservations.Change (Stack + ABI.Page_Bytes, Bytes - ABI.Page_Bytes, CuBit.Owned_Reservations.Commit) then
          Ignore := CuBit.Owned_Reservations.Release (Stack, Bytes);
          return;
       end if;

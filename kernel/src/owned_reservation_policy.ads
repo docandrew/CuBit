@@ -24,7 +24,13 @@ with Interfaces;
 package Owned_Reservation_Policy with SPARK_Mode => On is
    use Interfaces;
    Page_Bytes : constant Unsigned_64 := 4096;
-   Maximum_Reserved_Bytes : constant Unsigned_64 := 2 * 1024 * 1024 * 1024;
+   -- The largest region (MEM-007, K1): 4 TiB + 64 GiB, room for Ladybird's
+   -- ArrayBuffer cage (4 TiB + 32 GiB) with slack. The kernel's own bound,
+   -- never compiled into a program: a larger request is refused as
+   -- Owned_Memory_ABI.Too_Large. Its page count stays a Natural (a run's
+   -- Count).
+   Gibibyte : constant := 1024 * 1024 * 1024;
+   Maximum_Reserved_Bytes : constant Unsigned_64 := 4 * 1024 * Gibibyte + 64 * Gibibyte;
    -- The most pages one locked step backs or retires. A commit zeroes and
    -- maps every page, and a release unmaps and frees them, under grantLock
    -- and the owned-memory and address-space locks with interrupts off;
@@ -33,10 +39,13 @@ package Owned_Reservation_Policy with SPARK_Mode => On is
    -- periods, input). 16 MiB steps (4096 pages) held them for up to
    -- 141 ms under nested KVM (2026-11).
    Pages_Per_Locked_Step : constant := 64;
-   -- One commit backs at most this much; larger ranges are committed in
-   -- steps (CuBit.Owned_Reservations, libc's mmap, CuAlloc).
+   -- One locked step of a commit backs at most this much; a commit of any
+   -- size goes in such steps inside the kernel (MEM-007), so this is no
+   -- part of the ABI.
    Maximum_Commit_Bytes : constant Unsigned_64 := Pages_Per_Locked_Step * Page_Bytes;
-   Maximum_Region_Pages : constant := 2 * 1024 * 1024 * 1024 / 4096;
+   Maximum_Region_Pages : constant := (4 * 1024 * Gibibyte + 64 * Gibibyte) / 4096;
+   pragma Compile_Time_Error (Maximum_Region_Pages > Natural'Last,
+                              "a region's page count must fit a run's Count");
    subtype Page_Count is Unsigned_64 range 0 .. Maximum_Region_Pages;
 
    -- Capacity consumes virtual addresses only.
@@ -45,10 +54,11 @@ package Owned_Reservation_Policy with SPARK_Mode => On is
       Capacity mod Page_Bytes = 0);
 
    -- A region's base may be asked to be a multiple of an alignment:
-   -- 0 (callers that pass none) or a power of two up to 1 GiB; anything up
-   -- to a page means a page. CuAlloc places its arenas this way, so the
-   -- arena of an address is the address with its low bits cleared.
-   Maximum_Alignment : constant Unsigned_64 := 2 ** 30;
+   -- 0 (callers that pass none) or a power of two up to 64 GiB (MEM-007,
+   -- K3: Ladybird's LibGC aligns its 32 GiB heap region); anything up to a
+   -- page means a page. CuAlloc places its arenas this way, so the arena
+   -- of an address is the address with its low bits cleared.
+   Maximum_Alignment : constant Unsigned_64 := 2 ** 36;
    function Valid_Alignment (Alignment : Unsigned_64) return Boolean is
      (Alignment = 0 or else
       (Alignment <= Maximum_Alignment and then (Alignment and (Alignment - 1)) = 0));

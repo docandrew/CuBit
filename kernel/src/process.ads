@@ -120,6 +120,9 @@ package Process is
       (Owned_Memory_Layout.Limit > Process_Layout.Device_Mapping_First,
        "owned memory must lie below the device-mapping arena (Process_Layout)");
     pragma Compile_Time_Error
+      (Owned_Memory_Layout.Limit > Memory_Grants.Received_Region_First,
+       "owned memory must lie below the received grants");
+    pragma Compile_Time_Error
       (Clock_Publication.Page_Address + Clock_Publication.Page_Bytes >
          Process_Layout.Device_Mapping_First,
        "the clock page must lie below the device-mapping arena (Process_Layout)");

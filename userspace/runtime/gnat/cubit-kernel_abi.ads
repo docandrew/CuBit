@@ -89,9 +89,6 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    Futex_Timed_Out : constant Unsigned_64 := Wait_ABI.Futex_Timed_Out;
    Futex_Revoked   : constant Unsigned_64 := Wait_ABI.Futex_Revoked;
 
-   --  The largest owned-memory region (kernel Owned_Reservation_Policy).
-   Maximum_Owned_Region_Bytes : constant := 2 * 1024 * 1024 * 1024;
-
    --  The service role netstack registers (CuBit.Messages.DRIVER_NETSTACK).
    Driver_Netstack   : constant := 3;
 
@@ -133,11 +130,9 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
 
    Page_Bytes : constant := 4_096;
 
-   --  The most one commit may back (kernel Owned_Reservation_Policy:
-   --  Pages_Per_Locked_Step pages, which bounds how long a commit holds
-   --  the kernel's grant lock). Larger ranges are committed in steps.
-   Owned_Commit_Step_Pages : constant := 64;
-   Maximum_Owned_Commit_Bytes : constant := Owned_Commit_Step_Pages * Page_Bytes;
+   --  Owned memory has no size limit in the ABI (MEM-007): one commit
+   --  backs any range, and a request the kernel cannot meet is refused with
+   --  a typed reason (Owned_Memory_ABI; BUG-009 was a limit compiled in).
 
    --  SYSCALL_WRITE's console device.
    Console : constant := 1;

@@ -1211,7 +1211,11 @@ package body Syscall.IPC is
            Current_Break => Unsigned_64 (To_Integer (Process.proctab(callerPID).heapEnd)),
            Exclusive_Limit => Unsigned_64
              (Integer_Address'Min
-                (Process.GRANT_REGION_BASE,
+                (Integer_Address'Min
+                   (Process.GRANT_REGION_BASE,
+                    -- The owned-memory aperture lies below the received
+                    -- grants (MEM-007): the heap stops at it.
+                    Integer_Address (Owned_Memory_Layout.First)),
                  To_Integer (Process.proctab(callerPID).stackBottom)) and Virtmem.PAGE_MASK),
            Increment => arg0,
            Used_Frames => Unsigned_64 (Process.proctab(callerPID).frames.length),

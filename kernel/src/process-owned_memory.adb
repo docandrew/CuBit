@@ -276,14 +276,20 @@ package body Process.Owned_Memory is
    function Logged (Count : Natural) return Boolean is
      (Count <= Logged_Refusals or else Count mod Refusal_Sample = 0);
 
-   procedure Reserve (PID : ProcessID; Bytes, Alignment : Unsigned_64; Base : out Unsigned_64) is
+   procedure Reserve (PID : ProcessID; Bytes, Alignment : Unsigned_64; Base : out Unsigned_64;
+                      Why : out Owned_Memory_ABI.Refusal) is
       Candidate : Unsigned_64 := 0;
-      Index : Records.Id;
+      Index : Records.Id := 0;
       Admitted : Boolean;
    begin
       Base := 0;
+      Why := Owned_Memory_ABI.Invalid_Range;
       if PID = NO_PROCESS then return; end if;
       if not Policy.Valid_Capacity (Bytes) or else not Policy.Valid_Alignment (Alignment) then
+         Why := (if not Policy.Valid_Alignment (Alignment) then Owned_Memory_ABI.Invalid_Alignment
+                 elsif Bytes > Policy.Maximum_Reserved_Bytes and then Bytes mod Page = 0
+                 then Owned_Memory_ABI.Too_Large
+                 else Owned_Memory_ABI.Invalid_Range);
          if Logged (Count_Refusal) then TextIO.println
            ("owned-memory: reserve refused pid=" & Natural'Image (Natural (PID)) &
             " bytes=" & Unsigned_64'Image (Bytes) & " alignment=" & Unsigned_64'Image (Alignment) &
@@ -305,6 +311,9 @@ package body Process.Owned_Memory is
       end if;
       unlockAddressSpace (PID);
       Unlock;
+      Why := (if not Admitted then Owned_Memory_ABI.Not_Admitted
+              elsif Candidate = 0 then Owned_Memory_ABI.No_Address_Space
+              else Owned_Memory_ABI.No_Record);
       if Base = 0 and then Logged (Count_Refusal) then
          -- As a refused commit: no address range, or no record.
          TextIO.println
@@ -327,9 +336,11 @@ package body Process.Owned_Memory is
    -- Drop that splits a leaf, so it is not done here (ABI-002 results).
    -- Why a commit was refused (BUG-009: a commit refused left no trace, and
    -- the allocator's null reached libgcc). Page: tryAddPage's answer.
+   -- (MEM-007) Also why a decommit or access change was refused; each maps
+   -- to the typed reason the caller gets (Owned_Memory_ABI, To_ABI).
    type Commit_Refusal is
      (No_Refusal, No_Region, Not_Admitted, Overlaps_Backed, No_Tracking_Capacity,
-      No_Run_Record, Page_Refused);
+      No_Run_Record, Page_Refused, Process_Gone, Not_Backed_Range, Retire_Failed);
    Last_Refusal : Commit_Refusal := No_Refusal;
    Last_Page_Result : Page_Allocation_Result := Page_Added;
 
@@ -342,7 +353,10 @@ package body Process.Owned_Memory is
         when Overlaps_Backed => "overlaps-backed-pages",
         when No_Tracking_Capacity => "no-frame-tracking-capacity",
         when No_Run_Record => "no-run-record",
-        when Page_Refused => "page-refused");
+        when Page_Refused => "page-refused",
+        when Process_Gone => "process-not-admitted",
+        when Not_Backed_Range => "pages-not-committed",
+        when Retire_Failed => "retirement-failed");
    function Name (Why : Page_Allocation_Result) return String is
      (case Why is
         when Page_Added => "added",
@@ -353,6 +367,26 @@ package body Process.Owned_Memory is
         when Frame_Ownership_Failed => "frame-ownership-failed",
         when Page_Table_Exhausted => "page-table-exhausted",
         when Mapping_Already_Present => "mapping-already-present");
+
+   -- The reason the caller is told (Owned_Memory_ABI).
+   function To_ABI (Why : Commit_Refusal; Page_Answer : Page_Allocation_Result)
+                    return Owned_Memory_ABI.Refusal is
+     (case Why is
+        when No_Refusal | No_Region => Owned_Memory_ABI.No_Region,
+        when Not_Admitted => Owned_Memory_ABI.Invalid_Range,
+        when Overlaps_Backed => Owned_Memory_ABI.Already_Backed,
+        when No_Tracking_Capacity | No_Run_Record => Owned_Memory_ABI.No_Record,
+        when Process_Gone => Owned_Memory_ABI.Not_Admitted,
+        when Not_Backed_Range => Owned_Memory_ABI.Not_Backed,
+        when Retire_Failed => Owned_Memory_ABI.Retirement_Failed,
+        when Page_Refused =>
+          (case Page_Answer is
+             when Frame_Quota_Full => Owned_Memory_ABI.Over_Quota,
+             when Frame_Tracking_Full => Owned_Memory_ABI.No_Record,
+             when Mapping_Already_Present => Owned_Memory_ABI.Already_Backed,
+             when Frame_Ownership_Failed => Owned_Memory_ABI.Retirement_Failed,
+             when Page_Added | Physical_Memory_Exhausted | Tracking_Storage_Exhausted |
+                  Page_Table_Exhausted => Owned_Memory_ABI.Out_Of_Memory));
 
    procedure Commit (PID : ProcessID; Region_Index : Slot; Address, Bytes : Unsigned_64;
                      Success : out Boolean) is
@@ -451,7 +485,7 @@ package body Process.Owned_Memory is
             Item : Entry_Record renames Entries(PID, I).Value.all;
          begin
             if Is_Run_Of (Item, Region_Index) and then Cuts (Item, Address, Bytes) then
-               if Item.Status /= Live then return; end if;
+               if Item.Status /= Live then Last_Refusal := Retire_Failed; return; end if;
                Cut := Cut_Of (Item, Address, Bytes);
                if Cut.Lower > 0 and Cut.Upper > 0 then Middle_Base := Address + Bytes; end if;
             end if;
@@ -461,7 +495,10 @@ package body Process.Owned_Memory is
          Records.Insert (Tables(PID), Middle_Base,
            (Status => Building, Kind => Run, Parent => Region_Index, Owner => PID,
             Generation => generationOf (PID), Base => Middle_Base, others => <>), Spare);
-         if Spare = 0 then return; end if;
+         if Spare = 0 then
+            Last_Refusal := No_Run_Record;
+            return;
+         end if;
       end if;
       Success := True;
       for I of Records.Iterate (Tables(PID)'Access) loop
@@ -474,6 +511,7 @@ package body Process.Owned_Memory is
                Cut := Cut_Of (Item, Address, Bytes);
                Drop (PID, I, Cut, Spare, Dropped);
                Success := Success and Dropped;
+               if not Dropped then Last_Refusal := Retire_Failed; end if;
                -- A middle cut is the only run the range touches.
                exit when Cut.Lower > 0 and Cut.Upper > 0;
             end if;
@@ -525,12 +563,13 @@ package body Process.Owned_Memory is
             Item : Entry_Record renames Entries(PID, I).Value.all;
          begin
             if Is_Run_Of (Item, Region_Index) and then Cuts (Item, Address, Bytes) then
-               if Item.Status /= Live then return; end if;
+               if Item.Status /= Live then Last_Refusal := Retire_Failed; return; end if;
                declare
                   Cut : constant Run_Cut := Cut_Of (Item, Address, Bytes);
                begin
                   if not Inventory_Valid (Item, Cut.Upper, Cut.Dropped) then
                      Item.Status := Quarantined;
+                     Last_Refusal := Retire_Failed;
                      return;
                   end if;
                end;
@@ -538,7 +577,10 @@ package body Process.Owned_Memory is
             end if;
          end;
       end loop;
-      if Bytes_Of (Covered) /= Bytes then return; end if;
+      if Bytes_Of (Covered) /= Bytes then
+         Last_Refusal := Not_Backed_Range;
+         return;
+      end if;
       Success := True;
       for I of Records.Iterate (Tables(PID)'Access) loop
          declare
@@ -552,7 +594,12 @@ package body Process.Owned_Memory is
                   Change (Item, Selected, OK);
                   TLB_Shootdown.Invalidate_All;
                end if;
-               if OK then Item.Status := Live; else Success := False; end if;
+               if OK then
+                  Item.Status := Live;
+               else
+                  Success := False;
+                  Last_Refusal := Retire_Failed;
+               end if;
             end if;
          end;
       end loop;
@@ -580,6 +627,22 @@ package body Process.Owned_Memory is
       return not Covered or else Bytes_Of (Backed) = Bytes;
    end Range_Acceptable;
 
+   -- Whether any run of the region backs a page of [Address, Address +
+   -- Bytes): a commit of the whole range is then refused before its first
+   -- step, so a refusal changes nothing.
+   function Range_Backed (PID : ProcessID; Region_Index : Slot; Address, Bytes : Unsigned_64)
+                          return Boolean is
+   begin
+      for I of Records.Iterate (Tables(PID)'Access) loop
+         if Is_Run_Of (Entries(PID, I).Value.all, Region_Index)
+           and then Cuts (Entries(PID, I).Value.all, Address, Bytes)
+         then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Range_Backed;
+
    -- A refused commit, in the kernel log: which process, where, how much
    -- and why. No lock is held here. Last_Refusal and Last_Page_Result are
    -- read unlocked: diagnostics only.
@@ -598,7 +661,7 @@ package body Process.Owned_Memory is
 
    procedure Change_Range (PID : ProcessID; Address, Bytes : Unsigned_64;
                            Operation : Owned_Reservation_Policy.Range_Operation;
-                           Success : out Boolean) is
+                           Success : out Boolean; Why : out Owned_Memory_ABI.Refusal) is
       -- A commit whose frames another CPU took between Prepare and the
       -- locks gives the locks back and prepares again, up to this many
       -- times; the last attempt goes ahead and may launder or grow under
@@ -615,8 +678,9 @@ package body Process.Owned_Memory is
       -- (mostly TLB rounds); in these, each step holds it about 0.5 ms.
       Pages_Per_Range_Step : constant := 4096;
       Step_Bytes : constant Unsigned_64 := Pages_Per_Range_Step * Page;
-      Frames : constant Natural :=
-        (if Bytes <= Policy.Maximum_Commit_Bytes then Natural (Bytes / Page) else 0);
+      -- A commit of any size goes in locked steps of at most
+      -- Policy.Maximum_Commit_Bytes (MEM-007): Frames is the step's.
+      Frames : Natural := 0;
       Is_Commit : constant Boolean := Policy."=" (Operation, Policy.Commit);
       Short : Boolean := False;
 
@@ -644,15 +708,20 @@ package body Process.Owned_Memory is
                end;
             end loop;
          end if;
+         Last_Refusal := (if Region_Index /= 0 then No_Refusal
+                          elsif not proctab(PID).admitted then Process_Gone else No_Region);
          if Region_Index /= 0 and then First_Step
            and then not (Policy.Within (Entries(PID, Region_Index).Base, Entries(PID, Region_Index).Bytes,
                                         Address, Bytes)
-                         and then Range_Acceptable (PID, Region_Index, Address, Bytes,
-                                                    Covered => not Policy."=" (Operation, Policy.Decommit)))
+                         and then (if Is_Commit
+                                   then not Range_Backed (PID, Region_Index, Address, Bytes)
+                                   else Range_Acceptable
+                                          (PID, Region_Index, Address, Bytes,
+                                           Covered => not Policy."=" (Operation, Policy.Decommit))))
          then
+            Last_Refusal := (if Is_Commit then Overlaps_Backed else No_Region);
             Region_Index := 0;
          end if;
-         Last_Refusal := (if Region_Index = 0 then No_Region else No_Refusal);
          if Region_Index /= 0 then
             case Operation is
                when Policy.Commit =>
@@ -674,30 +743,74 @@ package body Process.Owned_Memory is
                   Set_Access (PID, Region_Index, From, Length, Policy.Access_Of (Operation), Success);
             end case;
          end if;
+         -- Why, while the locks still serialize Last_Refusal.
+         if not Success and then not Short then
+            Why := To_ABI (Last_Refusal, Last_Page_Result);
+         end if;
          unlockAddressSpace (PID);
          Unlock;
          Spinlocks.exitCriticalSection (grantLock);
       end Locked_Attempt;
 
       Top, Step_Base : Unsigned_64;
+      Done, Length : Unsigned_64 := 0;
+      Rolled_Back : Boolean;
+      Undo_Why : Owned_Memory_ABI.Refusal;
    begin
       Success := False;
+      Why := Owned_Memory_ABI.Invalid_Range;
       if PID = NO_PROCESS then return; end if;
       if Is_Commit then
-         for Attempt in 1 .. Commit_Attempts loop
-            -- A commit's frames are made clean first, with no lock held:
-            -- the laundering and any pool growth (zeroing, TLB rounds)
-            -- stay out of the locked step, which every CPU's wait path
-            -- contends for.
-            if Frames > 0 then
-               Process_Pool.Prepare (Frames);
+         -- Any size, in one call (MEM-007): the kernel commits the range in
+         -- locked steps of at most Policy.Maximum_Commit_Bytes, upward, the
+         -- locks given back and an interrupt window opened between steps
+         -- (the first step checks that no page of the whole range is
+         -- backed). Each step extends the run the one before it made, so
+         -- the range is one run unless another thread's commit came between
+         -- them. All or nothing: when a step is refused, the pages the
+         -- steps before it backed are decommitted again.
+         if Bytes = 0 or else Bytes mod Page /= 0 or else Address mod Page /= 0
+           or else Address > Unsigned_64'Last - Bytes
+         then
+            Why := Owned_Memory_ABI.Invalid_Range;
+            if Logged (Count_Refusal) then
+               TextIO.println ("owned-memory: commit refused pid=" & Natural'Image (Natural (PID)) &
+                               " address=" & Unsigned_64'Image (Address) &
+                               " bytes=" & Unsigned_64'Image (Bytes) & " reason=invalid-range");
             end if;
-            Locked_Attempt (Address, Bytes, Last_Attempt => Attempt = Commit_Attempts);
-            exit when not Short;
+            return;
+         end if;
+         loop
+            Length := Unsigned_64'Min (Bytes - Done, Policy.Maximum_Commit_Bytes);
+            Frames := Natural (Length / Page);
+            for Attempt in 1 .. Commit_Attempts loop
+               -- A step's frames are made clean first, with no lock held:
+               -- the laundering and any pool growth (zeroing, TLB rounds)
+               -- stay out of the locked step, which every CPU's wait path
+               -- contends for.
+               Process_Pool.Prepare (Frames);
+               Locked_Attempt (Address + Done, Length, Last_Attempt => Attempt = Commit_Attempts,
+                               First_Step => Done = 0);
+               exit when not Short;
+               Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
+            end loop;
+            exit when not Success;
+            Done := Done + Length;
+            exit when Done = Bytes;
             Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
          end loop;
          if not Success then
             Report_Refused_Commit (PID, Address, Bytes);
+            if Done > 0 then
+               -- Undo the steps already done (a decommit, in its own steps).
+               Change_Range (PID, Address, Done, Policy.Decommit, Rolled_Back, Undo_Why);
+               if not Rolled_Back then
+                  TextIO.println ("owned-memory: a refused commit's first steps were not undone pid=" &
+                                  Natural'Image (Natural (PID)) & " address=" & Unsigned_64'Image (Address) &
+                                  " bytes=" & Unsigned_64'Image (Done) & " reason=" &
+                                  Unsigned_64'Image (Owned_Memory_ABI.Refusal_Word (Undo_Why)));
+               end if;
+            end if;
          end if;
       elsif Bytes <= Step_Bytes or else Address > Unsigned_64'Last - Bytes
         or else Address mod Page /= 0 or else Bytes mod Page /= 0
@@ -717,7 +830,9 @@ package body Process.Owned_Memory is
       end if;
    end Change_Range;
 
-   procedure Release (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean) is
+   -- A whole region: exact base and capacity.
+   procedure Release_Region (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean;
+                             Why : out Owned_Memory_ABI.Refusal) is
       Region_Index : Natural := 0;
       Reclaimed : Boolean;
 
@@ -846,7 +961,10 @@ package body Process.Owned_Memory is
       Done, Failed : Boolean := False;
    begin
       Success := False;
+      Why := Owned_Memory_ABI.Invalid_Range;
       if PID = NO_PROCESS or else not Policy.Valid_Capacity (Bytes) then return; end if;
+      -- Refused below: no such region, or (after Failed) a retirement.
+      Why := Owned_Memory_ABI.No_Region;
       -- Quarantine the region (no commit, access change or grant reaches it
       -- again); unmap its pages in bounded steps; one TLB round for the
       -- whole region (a round interrupts every CPU, so one per region, not
@@ -877,6 +995,7 @@ package body Process.Owned_Memory is
       end loop;
       Drop_Locks;
       if Failed then
+         Why := Owned_Memory_ABI.Retirement_Failed;
          return;
       end if;
       -- No CPU may still translate an unmapped page when its frame is freed.
@@ -896,6 +1015,206 @@ package body Process.Owned_Memory is
       end loop;
       Drop_Locks;
       Success := Done;
+      if Failed then Why := Owned_Memory_ABI.Retirement_Failed; end if;
+   end Release_Region;
+
+   -- munmap semantics (MEM-007, K5): every page of [Base, Base + Bytes)
+   -- that lies in a live region of PID stops being part of it, across
+   -- regions and the holes between them. A region the range covers is
+   -- released whole (Release_Region); one it overlaps is first decommitted
+   -- there (Change_Range, in its bounded steps), then shrinks: the range
+   -- takes its head (the region moves to a record keyed by its new base,
+   -- its runs following it), its tail, or its middle (the region splits:
+   -- a second record, reserved before anything changes, takes the upper
+   -- part and the runs above the range). Policy.Split names the parts, as
+   -- it does a run's. Regions go lowest first; one that fails ends the
+   -- call, the ones before it stay released (as munmap). A range that
+   -- touches no region is refused (No_Region), so the caller can tell.
+   procedure Release_Range (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean;
+                            Why : out Owned_Memory_ABI.Refusal) is
+      Limit : Unsigned_64;
+      Cursor : Unsigned_64 := Base;
+      Touched : Boolean := False;
+      -- A decommit can race another thread's commit into the range; give
+      -- up after this many rounds rather than loop.
+      Shrink_Attempts : constant := 3;
+
+      procedure Take_Locks is
+      begin
+         Spinlocks.enterCriticalSection (grantLock);
+         Lock;
+         lockAddressSpace (PID);
+      end Take_Locks;
+      procedure Drop_Locks is
+      begin
+         unlockAddressSpace (PID);
+         Unlock;
+         Spinlocks.exitCriticalSection (grantLock);
+      end Drop_Locks;
+
+      function Live_Region (Item : Entry_Record) return Boolean is
+        (Item.Status = Live and then Item.Kind = Region and then Item.Owner = PID
+         and then Item.Generation = generationOf (PID));
+
+      -- The lowest live region of PID overlapping [From, Limit), or 0.
+      function Next_Region (From : Unsigned_64) return Natural is
+         Found : Natural := 0;
+      begin
+         for I of Records.Iterate (Tables(PID)'Access) loop
+            declare
+               Item : Entry_Record renames Entries(PID, I).Value.all;
+            begin
+               if Live_Region (Item) and then Item.Base < Limit
+                 and then Item.Base + Item.Bytes > From
+                 and then (Found = 0 or else Item.Base < Entries(PID, Found).Base)
+               then
+                  Found := I;
+               end if;
+            end;
+         end loop;
+         return Found;
+      end Next_Region;
+
+      Region_Index : Natural;
+      Region_Base, Region_Bytes, Cut_Base, Cut_Bytes, Upper_Base : Unsigned_64;
+      Cut : Policy.Run_Split;
+      Spare, Moved : Records.Id := 0;
+      Decommitted, Shrunk : Boolean;
+   begin
+      Success := False;
+      Why := Owned_Memory_ABI.Invalid_Range;
+      if PID = NO_PROCESS or else Bytes = 0 or else Bytes mod Page /= 0
+        or else Base mod Page /= 0 or else Base > Unsigned_64'Last - Bytes
+      then
+         return;
+      end if;
+      Limit := Base + Bytes;
+      loop
+         Take_Locks;
+         Region_Index := Next_Region (Cursor);
+         if Region_Index = 0 then
+            Drop_Locks;
+            exit;
+         end if;
+         Touched := True;
+         Region_Base := Entries(PID, Region_Index).Base;
+         Region_Bytes := Entries(PID, Region_Index).Bytes;
+         Cut := Policy.Split (Region_Base, Region_Bytes / Page,
+                              Unsigned_64'Max (Cursor, Region_Base),
+                              Unsigned_64'Min (Limit, Region_Base + Region_Bytes) -
+                                Unsigned_64'Max (Cursor, Region_Base));
+         Drop_Locks;
+         Cut_Base := Region_Base + Cut.Lower * Page;
+         Cut_Bytes := Cut.Dropped * Page;
+         Upper_Base := Cut_Base + Cut_Bytes;
+         if Cut.Lower = 0 and then Cut.Upper = 0 then
+            Release_Region (PID, Region_Base, Region_Bytes, Success, Why);
+            if not Success then return; end if;
+         else
+            Shrunk := False;
+            for Attempt in 1 .. Shrink_Attempts loop
+               Change_Range (PID, Cut_Base, Cut_Bytes, Policy.Decommit, Decommitted, Why);
+               if not Decommitted then return; end if;
+               Take_Locks;
+               -- The region as it was, with nothing backed in the cut now.
+               if not Records.Present (Tables(PID), Region_Index)
+                 or else not Live_Region (Entries(PID, Region_Index).Value.all)
+                 or else Entries(PID, Region_Index).Base /= Region_Base
+                 or else Entries(PID, Region_Index).Bytes /= Region_Bytes
+               then
+                  Drop_Locks;
+                  Why := Owned_Memory_ABI.No_Region;
+                  return;
+               end if;
+               if not Range_Backed (PID, Region_Index, Cut_Base, Cut_Bytes) then
+                  if Cut.Lower > 0 and then Cut.Upper > 0 then
+                     -- A middle cut: the upper part becomes a region of its own.
+                     Records.Insert (Tables(PID), Upper_Base,
+                       (Status => Live, Kind => Region, Owner => PID,
+                        Generation => generationOf (PID), Base => Upper_Base,
+                        Bytes => Cut.Upper * Page, others => <>), Spare);
+                     if Spare = 0 then
+                        Drop_Locks;
+                        Why := Owned_Memory_ABI.No_Record;
+                        return;
+                     end if;
+                     for I of Records.Iterate (Tables(PID)'Access) loop
+                        if Is_Run_Of (Entries(PID, I).Value.all, Region_Index)
+                          and then Entries(PID, I).Base >= Upper_Base
+                        then
+                           Entries(PID, I).Parent := Spare;
+                        end if;
+                     end loop;
+                     Entries(PID, Region_Index).Bytes := Cut.Lower * Page;
+                  elsif Cut.Upper = 0 then
+                     -- The tail: the region keeps its base (and its key).
+                     Entries(PID, Region_Index).Bytes := Cut.Lower * Page;
+                  else
+                     -- The head: the region moves to a record keyed by its
+                     -- new base (the table orders regions by base), its runs
+                     -- following it.
+                     declare
+                        Copy : Entry_Record := Entries(PID, Region_Index).Value.all;
+                     begin
+                        Copy.Base := Upper_Base;
+                        Copy.Bytes := Cut.Upper * Page;
+                        Records.Insert (Tables(PID), Upper_Base, Copy, Moved);
+                     end;
+                     if Moved = 0 then
+                        Drop_Locks;
+                        Why := Owned_Memory_ABI.No_Record;
+                        return;
+                     end if;
+                     for I of Records.Iterate (Tables(PID)'Access) loop
+                        if Is_Run_Of (Entries(PID, I).Value.all, Region_Index) then
+                           Entries(PID, I).Parent := Moved;
+                        end if;
+                     end loop;
+                     Records.Release (Tables(PID), Region_Index);
+                  end if;
+                  Shrunk := True;
+               end if;
+               Drop_Locks;
+               exit when Shrunk;
+               -- Another thread committed into the cut meanwhile: again.
+               Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
+            end loop;
+            if not Shrunk then
+               Why := Owned_Memory_ABI.Already_Backed;
+               return;
+            end if;
+         end if;
+         Cursor := Upper_Base;
+         exit when Cursor >= Limit;
+         Interrupt_Windows.Open (Hold_Us => Interrupt_Windows.Lock_Break_Us);
+      end loop;
+      Success := Touched;
+      if not Touched then
+         Why := Owned_Memory_ABI.No_Region;
+      end if;
+   end Release_Range;
+
+   procedure Release (PID : ProcessID; Base, Bytes : Unsigned_64; Success : out Boolean;
+                      Why : out Owned_Memory_ABI.Refusal) is
+      Exact : Boolean := False;
+   begin
+      Lock;
+      for I of Records.Iterate (Tables(PID)'Access) loop
+         if Entries(PID, I).Status in Live | Quarantined and then Entries(PID, I).Kind = Region
+           and then Entries(PID, I).Owner = PID
+           and then Entries(PID, I).Base = Base and then Entries(PID, I).Bytes = Bytes
+         then
+            Exact := True;
+            exit;
+         end if;
+      end loop;
+      Unlock;
+      if Exact then
+         -- The common case: one region, whole (its retirement in steps).
+         Release_Region (PID, Base, Bytes, Success, Why);
+      else
+         Release_Range (PID, Base, Bytes, Success, Why);
+      end if;
    end Release;
 
    procedure Forget_Exited (PID : ProcessID; Retired : out Natural) is

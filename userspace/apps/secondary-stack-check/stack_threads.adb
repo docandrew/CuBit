@@ -59,8 +59,8 @@ package body Stack_Threads is
       end if;
       --  A guard page at the bottom: it is never committed, so an overflow
       --  faults and never reaches a neighbour.
-      if not CuBit.Owned_Reservations.Commit_Steps
-           (Thread.Stack + ABI.Page_Bytes, Stack_Bytes - ABI.Page_Bytes)
+      if not CuBit.Owned_Reservations.Change
+           (Thread.Stack + ABI.Page_Bytes, Stack_Bytes - ABI.Page_Bytes, CuBit.Owned_Reservations.Commit)
       then
          return Thread;
       end if;

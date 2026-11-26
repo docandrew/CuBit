@@ -21,9 +21,6 @@ package body CuBit.Thread_Areas is
    pragma Compile_Time_Error
      (Layout.Page_Bytes /= ABI.Page_Bytes, "thread area pages differ from the kernel's");
    pragma Compile_Time_Error
-     (Layout.Maximum_Area_Bytes > ABI.Maximum_Owned_Region_Bytes,
-      "a thread area may not fit one owned-memory region");
-   pragma Compile_Time_Error
      (Layout.Object_Alignment < Standard'Maximum_Alignment,
       "a thread area's stack object is not aligned for its data");
 

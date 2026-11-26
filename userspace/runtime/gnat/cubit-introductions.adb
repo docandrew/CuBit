@@ -140,8 +140,8 @@ package body CuBit.Introductions is
       if Stack = 0 then
          return;
       end if;
-      if not CuBit.Owned_Reservations.Commit_Steps
-           (Stack + ABI.Page_Bytes, Stack_Bytes - ABI.Page_Bytes)
+      if not CuBit.Owned_Reservations.Change
+           (Stack + ABI.Page_Bytes, Stack_Bytes - ABI.Page_Bytes, CuBit.Owned_Reservations.Commit)
       then
          Ignore := CuBit.Owned_Reservations.Release (Stack, Stack_Bytes);
          return;

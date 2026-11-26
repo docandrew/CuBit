@@ -294,8 +294,8 @@ package body Dash_Runner is
       end if;
       --  A guard page at the bottom: it is never committed, so an overflow
       --  faults instead of writing over a neighbour.
-      if not CuBit.Owned_Reservations.Commit_Steps
-           (Stack + ABI.Page_Bytes, Data_Stack_Bytes - ABI.Page_Bytes)
+      if not CuBit.Owned_Reservations.Change
+           (Stack + ABI.Page_Bytes, Data_Stack_Bytes - ABI.Page_Bytes, CuBit.Owned_Reservations.Commit)
       then
          return;
       end if;
