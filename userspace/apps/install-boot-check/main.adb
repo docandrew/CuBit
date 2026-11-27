@@ -12,6 +12,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System;
@@ -80,7 +81,7 @@ procedure Main is
 begin
    --  ABI-002: debug text into its logstore ring, never the kernel console.
    CuBit.Console_Route.Route_Named ("logstore");
-   Raw := syscall (SYSCALL_SBRK, (Loan_Pages + 1) * CuBit.Memory_Grants.PAGE_SIZE);
+   Raw := CuBit.Process_Calls.Grow_Heap ((Loan_Pages + 1) * CuBit.Memory_Grants.PAGE_SIZE);
    Buffer := To_Address (Integer_Address
      ((Raw + CuBit.Memory_Grants.PAGE_SIZE - 1) and not (CuBit.Memory_Grants.PAGE_SIZE - 1)));
    CuBit.Memory_Grants.Create_Via_Capability (Startup.Filesystem, Buffer, Loan_Pages, True, Loan, Granted);
