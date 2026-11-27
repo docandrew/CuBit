@@ -2,9 +2,8 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuAlloc_Native;
-with CuBit.Kernel_ABI;
-with CuBit.Kernel_Calls;
 with CuBit.Messages;
+with CuBit.Process_Calls;
 
 package body CuAlloc_Gnat is
    --  The largest alignment an Ada object needs here.
@@ -20,7 +19,6 @@ package body CuAlloc_Gnat is
       Text : String (1 .. 20);
       First : Positive := Text'Last + 1;
       Rest : Unsigned_64 := Size;
-      Unused : Unsigned_64;
    begin
       loop
          First := First - 1;
@@ -31,9 +29,7 @@ package body CuAlloc_Gnat is
       CuBit.Messages.debugPrint ("Ada heap: cannot allocate ");
       CuBit.Messages.debugPrint (Text (First .. Text'Last));
       CuBit.Messages.debugPrint (" bytes; stopping" & ASCII.LF);
-      loop
-         Unused := CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Exit_Process, 1);
-      end loop;
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end Out_Of_Memory;
 
    --  The pointer, or the end of the process.
