@@ -6,6 +6,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with CuBit.Benchmark_Clock;
+with CuBit.Process_Calls;
 with CuBit.Timing_Histograms;
 with Startup;
 
@@ -213,7 +214,7 @@ begin
    if Rate = 0 then
       debugPrint ("BENCH: FAIL storage calibration" & ASCII.LF); return;
    end if;
-   Raw := syscall (SYSCALL_SBRK, 2 * Block_Bytes);
+   Raw := CuBit.Process_Calls.Grow_Heap (2 * Block_Bytes);
    if Raw = Unsigned_64'Last then
       debugPrint ("BENCH: FAIL storage allocation" & ASCII.LF); return;
    end if;
