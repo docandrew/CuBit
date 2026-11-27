@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Control_Events;
@@ -51,5 +52,5 @@ begin
       end if;
    end loop;
    Say ("swap-probe: build " & Build & " stopping");
-   Ignore := syscall (SYSCALL_EXIT, Exit_Success);
+   CuBit.Process_Calls.Exit_Process (Exit_Success);
 end Main;
