@@ -17,6 +17,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 with CuBit.Process_Events;
 with CuBit.Busy_Poll;
 with CuBit.Driver_Readiness;
@@ -62,7 +63,7 @@ procedure Main is
    begin
       UFS_Log.Summary (", controller declined");
       Report (CuBit.Driver_Readiness.Not_Present_Label);
-      Ignored := syscall (SYSCALL_EXIT);
+      CuBit.Process_Calls.Exit_Process;
    end Decline;
 
    --  The registers that explain a failed enable, UIC command or list start.
