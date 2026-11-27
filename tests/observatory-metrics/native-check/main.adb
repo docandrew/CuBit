@@ -1,4 +1,5 @@
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -49,8 +50,7 @@ procedure Main is
    begin
       debugPrint ("TEST: FAIL observatory-async " & Reason & ASCII.LF);
       O.Close;
-      Ignore := syscall (SYSCALL_EXIT, 1);
-      loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end Fail;
    function Decimal (N : Unsigned_64) return String is
       S : constant String := N'Image;
@@ -191,8 +191,7 @@ begin
                debugPrint ("TEST: PASS desktop-metrics frames=" &
                  Rows (I) (P.Row_Count_Word)'Image & " batches=" &
                  Rows (I) (P.Row_Source_Batches)'Image & ASCII.LF);
-               Ignore := syscall (SYSCALL_EXIT, 0);
-               return;
+               CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
             end if;
          end if;
       end loop;
