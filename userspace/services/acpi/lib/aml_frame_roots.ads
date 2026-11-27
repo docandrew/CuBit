@@ -17,7 +17,8 @@ package AML_Frame_Roots with SPARK_Mode, Pure is
       Initialized : Boolean := False;
       Value : Value_Type := Empty_Value;
    end record;
-   function Valid (Store : State) return Boolean;
+   function Fresh (Store : State) return Boolean with Ghost, Annotate => (GNATprove, Inline_For_Proof);
+   function Valid (Store : State) return Boolean with Post => (if Fresh (Store) then Valid'Result);
    -- Coherence is an inductive proof obligation, never a per-operation heap scan.
    function Coherent (Store : State) return Boolean with Ghost;
    type Address_List is array (Positive range <>) of AML_Object_Identifiers.Object_Address;

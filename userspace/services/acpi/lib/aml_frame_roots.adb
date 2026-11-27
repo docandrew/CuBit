@@ -3,8 +3,21 @@ package body AML_Frame_Roots with SPARK_Mode is
    package R renames AML_Objects.Root_Snapshots;
    use type R.Header;
    use type AML_Object_Identifiers.Slot_Incarnation;
+   function Fresh (Store : State) return Boolean is
+     (Store.Used = 0 and then
+      (for all I in Root_Index =>
+        Store.Touched_Count (I) = 0 and then
+        Store.Entries (I) = Entry_Data'(others => <>)));
    function Empty (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects)
-      return State is (Object_Capacity => Object_Capacity, others => <>);
+      return State
+   is
+   begin
+      return Result : State (Object_Capacity) do
+         pragma Assert (Result.Used = 0);
+         pragma Assert (for all I in Root_Index => Result.Touched_Count (I) = 0);
+         pragma Assert (for all I in Root_Index => Result.Entries (I) = Entry_Data'(others => <>));
+      end return;
+   end Empty;
    function Find (Store : State; Frame : FH.Frame_Handle) return Root_Count is
    begin
       if Frame = FH.No_Frame then return 0; end if;
@@ -38,6 +51,8 @@ package body AML_Frame_Roots with SPARK_Mode is
       Found : Root_Count := 0;
    begin
       for I in Root_Index loop
+         pragma Loop_Invariant (Found < I);
+         pragma Loop_Invariant (if Fresh (Store) then Found = 0);
          if Store.Touched_Count (I) > Store.Object_Capacity then return False; end if;
          for K in 1 .. Store.Touched_Count (I) loop
             if Store.Touched (I,K) not in 1 .. Store.Object_Capacity
