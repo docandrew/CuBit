@@ -45,9 +45,6 @@ tests/compositor/refresh-fixture/cubit-messages.adb
 tests/compositor/refresh-fixture/cubit-messages.ads
 tests/compositor/startup-denial/native_log_observer.adb
 tests/compositor/trace-native/archive/main.adb
-tests/config-object-client/native-app/benchmark.adb
-tests/config-object-client/native-app/main.adb
-tests/config-object-client/native-app/reopen.adb
 tests/config-turso/examples/bench.rs
 tests/control-events/check/main.adb
 tests/control-events/child/main.adb

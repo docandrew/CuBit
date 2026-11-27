@@ -1,4 +1,4 @@
-with CuBit.Waits;
+with CuBit.Process_Calls;
 with Startup;
 with CuBit.Handles;
 with CuBit.Handles.Services;
@@ -46,8 +46,7 @@ procedure Reopen is
    begin
       if not OK then
          debugPrint ("TEST: FAIL config-objects-reopen " & Step & ASCII.LF);
-         Ignore := syscall (SYSCALL_EXIT, 1);
-         loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
    end Check;
    function Next_Token return Unsigned_64 is
@@ -157,5 +156,5 @@ begin
    Client.Retire (Reader, Good); Check (Good, "nested retire");
    debugPrint ("TEST: PASS config-objects-nested-reopen" & ASCII.LF);
    debugPrint ("TEST: PASS config-objects-reopen" & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end Reopen;

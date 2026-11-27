@@ -1,4 +1,4 @@
-with CuBit.Waits;
+with CuBit.Process_Calls;
 with Startup;
 with CuBit.Handles;
 with CuBit.Handles.Services;
@@ -40,8 +40,7 @@ procedure Benchmark is
    begin
       if not OK then
          debugPrint ("TEST: FAIL config-objects-benchmark " & Step & ASCII.LF);
-         Ignore := syscall (SYSCALL_EXIT, 1);
-         loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
    end Check;
 
@@ -210,5 +209,5 @@ begin
    Report ("overlap-set", Overlap_Commit);
    debugPrint ("CONFIG-BENCH: reads_before_write_reply=" & Read_First'Image & ASCII.LF);
    debugPrint ("TEST: PASS config-objects-benchmark" & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end Benchmark;
