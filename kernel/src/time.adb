@@ -12,6 +12,7 @@ with Boot_Timer_Diagnostics;
 with PerCPUData;
 with Process;
 with Process.IPC;
+with Process.Stuck_Calls;
 with Process.Futex;
 with VM_Objects;
 with Process.Queues;
@@ -281,7 +282,7 @@ is
                 TextIO.println ("CLOCK: FAIL the clock page cannot convert CPU" &
                   Natural'Image (CPU) & "'s counter" & Unsigned_64'Image (Counter) &
                   "; msTicks holds at" & Unsigned_64'Image (previousMs));
-                Process.IPC.noteEvidence ("CLOCK C: the clock page refused CPU" & Natural'Image (CPU) &
+                Process.Stuck_Calls.noteEvidence ("CLOCK C: the clock page refused CPU" & Natural'Image (CPU) &
                   "'s counter; msTicks held at" & Unsigned_64'Image (previousMs));
             end if;
         elsif CPU = Timekeeping_Turns.Boot_CPU then
@@ -295,7 +296,7 @@ is
               Natural'Image (CPU) & "; no CPU kept time from" & Unsigned_64'Image (previousMs) &
               " ms; SMIs during the jump:" &
               (if smiState = Counting then Unsigned_64'Image (smis) else " unknown"));
-            Process.IPC.noteEvidence ("CLOCK B: time jumped" &
+            Process.Stuck_Calls.noteEvidence ("CLOCK B: time jumped" &
               Unsigned_64'Image (Time.msTicks - previousMs) & " ms at" &
               Unsigned_64'Image (previousMs) & " ms, no CPU ran; SMIs during the jump:" &
               (if smiState = Counting then Unsigned_64'Image (smis) else " unknown"));
@@ -324,7 +325,7 @@ is
                      "due in" & Unsigned_64'Image ((alarmAt - Counter) / tscPerDuration / Milliseconds) & " ms") &
                   "; SMIs on CPU" & Natural'Image (CPU) & " since its last keeper tick:" &
                   (if smiState = Counting then Unsigned_64'Image (smis) else " unknown"));
-                Process.IPC.noteEvidence ("CLOCK A: CPU 0 silent from" &
+                Process.Stuck_Calls.noteEvidence ("CLOCK A: CPU 0 silent from" &
                   Unsigned_64'Image (bootCPULastRun) & " ms, " &
                   (if Process.cpuRunningKey (Timekeeping_Turns.Boot_CPU) = Virtual_Deadlines.Idle_Key
                    then "idle" else "busy") & ", alarm " &
@@ -335,10 +336,10 @@ is
             end if;
             Clock_Page.Note_Milliseconds (Time.msTicks);
             Process.IPC.expireReceiveDeadlines (Time.msTicks);
-            if Time.msTicks / Process.IPC.Stuck_Report_Period_Ms /=
-               previousMs / Process.IPC.Stuck_Report_Period_Ms
+            if Time.msTicks / Process.Stuck_Calls.Stuck_Report_Period_Ms /=
+               previousMs / Process.Stuck_Calls.Stuck_Report_Period_Ms
             then
-                Process.IPC.reportStuckCalls (Time.msTicks);
+                Process.Stuck_Calls.reportStuckCalls (Time.msTicks);
             end if;
             Process.Futex.expireDeadlines (Time.msTicks);
             VM_Objects.Expire_Halts (Time.msTicks);
@@ -507,7 +508,7 @@ is
                       "; SMIs on CPU 0 meanwhile:" &
                       (if Ok and then Value >= bootCPULastSMIs
                        then Unsigned_64'Image (Value - bootCPULastSMIs) else " unknown"));
-                    Process.IPC.noteEvidence ("CLOCK A: CPU 0 back after" &
+                    Process.Stuck_Calls.noteEvidence ("CLOCK A: CPU 0 back after" &
                       Unsigned_64'Image (Timekeeping_Turns.Silence (bootCPULastRun, Time.msTicks)) &
                       " ms," & Unsigned_64'Image (Boot_CPU_Timer_Interrupts - bootCPULastInterrupts) &
                       " timer irqs; SMIs" &

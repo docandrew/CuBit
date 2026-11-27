@@ -15,7 +15,7 @@ with IO_Page_Walk;
 with IOMMU_Domains;
 with Handoff_Contexts;
 with Mem_mgr;
-with Process.IPC;
+with Process.Stuck_Calls;
 with Spinlocks;
 with TextIO; use TextIO;
 with Time;
@@ -1382,7 +1382,7 @@ package body DMA_Remapping with SPARK_Mode => Off is
     ---------------------------------------------------------------------------
     -- After a DMA fault's line: whether the address lies in a reserved
     -- memory region (RMRR) the DMAR names; and the fault, short, for the
-    -- boot panel (Process.IPC.noteEvidence), where the log may be out of
+    -- boot panel (Process.Stuck_Calls.noteEvidence), where the log may be out of
     -- reach.
     procedure Note_Reserved_Region
       (Who : Requester_ID; Address : Unsigned_64; Write : Boolean)
@@ -1411,7 +1411,7 @@ package body DMA_Remapping with SPARK_Mode => Off is
         else
             println ("kernel: DMA fault address in no reserved region (RMRR) of the DMAR");
         end if;
-        Process.IPC.noteEvidence
+        Process.Stuck_Calls.noteEvidence
           ("DMA fault " & Location (Who) & (if Write then " write " else " read ") &
            "0x" & Text & (if Inside /= 0 then " in an RMRR" else " in no RMRR"));
     end Note_Reserved_Region;

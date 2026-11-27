@@ -3,7 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 --
 --  @summary
---  The words of the stuck-call watch (Process.IPC.reportStuckCalls), kept
+--  The words of the stuck-call watch (Process.Stuck_Calls.reportStuckCalls), kept
 --  apart so a hosted test can check how a row reads.
 --
 --  A watch row names a thread, its state and the call it is in or last
@@ -53,7 +53,7 @@ package Stuck_Watch_Text with SPARK_Mode, Pure is
    --  Why a watch report printed: a thread stuck in a call for the stuck
    --  time, a watched thread hot for consecutive reports, a watched main
    --  thread waiting undispatched for the stuck time, a recent kernel
-   --  verdict (Process.IPC.noteEvidence, e.g. the CLOCK notes), CPU 0
+   --  verdict (Process.Stuck_Calls.noteEvidence, e.g. the CLOCK notes), CPU 0
    --  taking no timer work.
    type Reasons is record
       Stuck_Call      : Boolean := False;

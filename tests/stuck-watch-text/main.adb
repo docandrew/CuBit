@@ -32,7 +32,7 @@ procedure Main is
    function Has (Text, Part : String) return Boolean is
      (Ada.Strings.Fixed.Index (Text, Part) /= 0);
 
-   --  A watch row as Process.IPC.reportStuckCalls builds it.
+   --  A watch row as Process.Stuck_Calls.reportStuckCalls builds it.
    function Row (Class : Wait_Class; Hot, Quiet : Boolean) return String is
      ("* display.svc(31) t31 " & State_Word (Class) &
       " cpu 0% quiet 56s rip=000000000042F3F6" & Fired_Words (Hot, Quiet) &

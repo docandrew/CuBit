@@ -31,7 +31,7 @@ package Boot_Diagnostics with SPARK_Mode => Off is
    --  exception vector and RIP), empty when not needed.
    procedure Emergency (Message : System.Address; Detail : String);
    --  Stuck_Calls: up to Stuck_Rows lines, the kernel's recent evidence
-   --  (Process.IPC.noteEvidence) then threads blocked in a synchronous call
+   --  (Process.Stuck_Calls.noteEvidence) then threads blocked in a synchronous call
    --  for a long time, drawn above the heartbeat (the time keeper's timer,
    --  any CPU's, every few seconds). Count = 0 clears a previous report.
    Stuck_Rows : constant := 12;

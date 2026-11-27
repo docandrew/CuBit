@@ -333,7 +333,7 @@ is
                 -- will eventually return to interruptReturn in
                 -- interrupt.asm, not here.
                 eoi (TIMER);
-                -- Where user code was running (Process.IPC.reportStuckCalls).
+                -- Where user code was running (Process.Stuck_Calls.reportStuckCalls).
                 if Util.isBitSet (frame.cs, 0) or Util.isBitSet (frame.cs, 1) then
                     declare
                         tid : constant Process.ThreadID := PerCPUData.getCurrentThread;
