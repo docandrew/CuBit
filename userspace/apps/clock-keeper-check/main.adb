@@ -29,6 +29,7 @@ with CuBit.Published_Clock;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 
 procedure Main is
    use ASCII;
@@ -81,11 +82,8 @@ procedure Main is
    --  Straight to the kernel's console write: the probe kernel reads it.
    --  Returns once CPU 0 is skipping its clock work.
    procedure Stall_CPU_0 is
-      Ignore : constant Unsigned_64 := syscall
-        (SYSCALL_WRITE, STDOUT,
-         Unsigned_64 (System.Storage_Elements.To_Integer (Stall_Request'Address)),
-         Stall_Request'Length);
    begin
+      CuBit.Process_Calls.Write_Console (Stall_Request);
       Spin_Until (Now + Settle_Ms);
    end Stall_CPU_0;
 
@@ -169,9 +167,5 @@ begin
    else
       Print ("TEST: FAIL clock-keeper" & LF);
    end if;
-   Ignore_Exit : declare
-      Ignore : constant Unsigned_64 := syscall (SYSCALL_EXIT, 0);
-   begin
-      null;
-   end Ignore_Exit;
+   CuBit.Process_Calls.Exit_Process;
 end Main;
