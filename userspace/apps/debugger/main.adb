@@ -13,6 +13,7 @@ with CuBit.Console_Route;
 with CuBit.Logging;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Monotonic;
+with CuBit.Process_Calls;
 with CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.Controls;
@@ -50,7 +51,6 @@ procedure Main is
    win : CuBit.UI.App.Window;
    ui : CuBit.UI.State.UI_State;
    controls : CuBit.UI.Controls.Control_Map;
-   ignore : Unsigned_64;
    Attach_Outcome : Debugger_Source.Attach_Result := Debugger_Source.Engine_Failed;
    Reported_First : Boolean := False;
    --  Frames that repaint part of the window (damage only).
@@ -313,8 +313,7 @@ begin
    end if;
    if Opened /= CuBit.UI.App.Opened then
       Debugger_Source.Detach;
-      ignore := syscall (SYSCALL_EXIT, 1);
-      return;
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end if;
    V.Arrange (View, CuBit.UI.App.Width (win), CuBit.UI.App.Height (win));
    V.Absorb (View, Current);
@@ -322,5 +321,5 @@ begin
    Run_UI (win);
    Debugger_Source.Detach;
    CuBit.UI.App.Close (win);
-   ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end Main;
