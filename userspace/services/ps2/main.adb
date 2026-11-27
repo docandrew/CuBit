@@ -15,6 +15,7 @@
 --    Mouse:    label=2, words(0) = packed(buttons|dx|dy|dz|flags)
 ------------------------------------------------------------------------------
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use System;
@@ -332,8 +333,7 @@ begin
            (tag => (label => OP_NOT_PRESENT, length => 0,
                     protocol => 0, ipc => <>, reserved => 0),
             authorityTag => 0, words => (others => 0)), CuBit.Messages.Wait_Forever);
-         ignore := syscall (SYSCALL_EXIT);
-         return;
+         CuBit.Process_Calls.Exit_Process;
       end if;
    end;
 
