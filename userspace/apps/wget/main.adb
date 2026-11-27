@@ -18,6 +18,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
+with CuBit.Process_Calls;
 with CuBit.TLS_Protocol;
 with CuBit.Streams;
 with CuBit.Handles;
@@ -118,15 +119,10 @@ begin
    declare
       ret : Unsigned_64;
    begin
-      ret := syscall (SYSCALL_SBRK, Unsigned_64 (DATA_BUF_SIZE));
+      ret := CuBit.Process_Calls.Grow_Heap (Unsigned_64 (DATA_BUF_SIZE));
       if ret = Unsigned_64'Last then
          debugPrint ("wget: sbrk failed" & LF);
-         declare
-            ignore : Unsigned_64;
-         begin
-            ignore := syscall (SYSCALL_EXIT, 1);
-         end;
-         return;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
       dataBuf := To_Address (Integer_Address (ret));
    end;
@@ -150,12 +146,7 @@ begin
 
       if not ok then
          debugPrint ("wget: transfer grant to tls.svc failed" & LF);
-         declare
-            ignore : Unsigned_64;
-         begin
-            ignore := syscall (SYSCALL_EXIT, 1);
-         end;
-         return;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
    end;
 
@@ -200,12 +191,7 @@ begin
          CuBit.Streams.streamPrint (
             Progress, "Connection failed: " & Reason & LF);
       end;
-      declare
-         ignore : Unsigned_64;
-      begin
-         ignore := syscall (SYSCALL_EXIT, 1);
-      end;
-      return;
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end if;
 
    chanHandle := msg.words (0);
@@ -238,12 +224,7 @@ begin
 
    if tag.label /= REPLY_OK then
       debugPrint ("wget: write failed" & LF);
-      declare
-         ignore : Unsigned_64;
-      begin
-         ignore := syscall (SYSCALL_EXIT, 1);
-      end;
-      return;
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end if;
 
    debugPrint ("wget: sent ");
@@ -349,9 +330,5 @@ begin
    debugPrint ("wget: done" & LF);
    CuBit.Streams.streamPrint (
       Progress, "Done." & LF);
-   declare
-      ignore : Unsigned_64;
-   begin
-      ignore := syscall (SYSCALL_EXIT, 0);
-   end;
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end main;
