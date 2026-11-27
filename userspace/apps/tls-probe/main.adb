@@ -20,6 +20,7 @@ with TLS_Probe_Roots;
 with CuBit.Handles;
 with Startup;
 with CuBit.Monotonic;
+with CuBit.Process_Calls;
 
 --  Native SPARKTLS probe (headless tls-probe regression). Links SPARKTLS into
 --  a CuBit process, seeds its RBG from SPARKEntropy, loads a test root from
@@ -36,7 +37,7 @@ procedure Main is
 
    --  The channel's grant (header and rings), then a scratch buffer.
    Allocation : constant Unsigned_64 :=
-     syscall (SYSCALL_SBRK, Channel_Bytes + Transfer_Size);
+     CuBit.Process_Calls.Grow_Heap (Channel_Bytes + Transfer_Size);
    Channel_Address : constant System.Address :=
      To_Address (Integer_Address (Allocation));
    Transfer_Address : constant System.Address :=
