@@ -1,5 +1,6 @@
 with CuBit.Console_Route;
 with CuBit.Desktop_Protocol;
+with CuBit.Process_Calls;
 with CuBit.UI.Input;
 with CuBit.Logging;
 with Interfaces; use Interfaces;
@@ -45,7 +46,6 @@ procedure Main is
    Load_Status : P.Status := P.Unavailable;
    Value : P.Text;
    Value_Status : P.Status := P.OK;
-   Ignore : Unsigned_64;
 
    function Explain (Status : P.Status) return String is
      (case Status is
@@ -349,5 +349,5 @@ begin
       Run_UI (Win);
       CuBit.UI.App.Close (Win);
    end if;
-   Ignore := syscall (SYSCALL_EXIT);
+   CuBit.Process_Calls.Exit_Process;
 end Main;
