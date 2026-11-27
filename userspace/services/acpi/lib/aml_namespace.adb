@@ -4831,17 +4831,21 @@ package body Owned with SPARK_Mode is
       end loop;
       Status := Invalid_Expression_Root;
       for Index in Frame_Pins.Root_Index loop
-         declare
-            Snapshot_Seeds : Object_Root_Set (1 .. A.Object_Capacity);
-            Snapshot_Status : AML_Objects.Root_Snapshots.Result_Status;
-            use type AML_Objects.Root_Snapshots.Result_Status;
-         begin
-            AML_Objects.Root_Snapshots.Resolve
-              (Frame_Pins.Read_Snapshot (A.Frame_Roots, Index), A.Token,
-               A.Tree.Values, Snapshot_Seeds, Snapshot_Status);
-            if Snapshot_Status /= AML_Objects.Root_Snapshots.Ready then return; end if;
-            for ID in Seeds'Range loop Seeds (ID) := Seeds (ID) or Snapshot_Seeds (ID); end loop;
-         end;
+         -- A vacant frame has an empty snapshot by Frame_Pins.Valid. Avoid
+         -- copying and resolving its object-capacity stamp array on each GC.
+         if Frame_Pins.Read_Cell (A.Frame_Roots, Index, AML_Frame_Handles.Local_0).Reserved then
+            declare
+               Snapshot_Seeds : Object_Root_Set (1 .. A.Object_Capacity);
+               Snapshot_Status : AML_Objects.Root_Snapshots.Result_Status;
+               use type AML_Objects.Root_Snapshots.Result_Status;
+            begin
+               AML_Objects.Root_Snapshots.Resolve
+                 (Frame_Pins.Read_Snapshot (A.Frame_Roots, Index), A.Token,
+                  A.Tree.Values, Snapshot_Seeds, Snapshot_Status);
+               if Snapshot_Status /= AML_Objects.Root_Snapshots.Ready then return; end if;
+               for ID in Seeds'Range loop Seeds (ID) := Seeds (ID) or Snapshot_Seeds (ID); end loop;
+            end;
+         end if;
       end loop;
       Status := Invalid_Root_Value;
       for Value of Extra loop
