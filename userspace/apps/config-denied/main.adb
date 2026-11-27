@@ -2,6 +2,7 @@ with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Config_Inspection;
+with CuBit.Process_Calls;
 with CuBit.Settings.Inspection;
 with Startup;
 --  A program without config-all: Config must refuse it inspection outside
@@ -17,7 +18,6 @@ procedure Main is
    end Query;
    Value : Text;
    Result : Status;
-   Ignore : Unsigned_64;
    Good : Boolean;
 begin
    --  ABI-002: debug text into its logstore ring, never the kernel console.
@@ -33,5 +33,5 @@ begin
    Query (Read_Value, "test.denied.absent", Value, Result);
    Good := Good and Result = Missing;
    debugPrint ((if Good then "TEST: PASS config-denied" else "TEST: FAIL config-denied") & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT);
+   CuBit.Process_Calls.Exit_Process;
 end Main;
