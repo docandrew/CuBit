@@ -166,7 +166,6 @@ userspace/services/display/main.adb
 userspace/services/filesystem/fs_server-storage.adb
 userspace/services/gpio/native/gpio_main_entry.adb
 userspace/services/nvme/main.adb
-userspace/services/nvme/nvme.adb
 userspace/services/procmgr/main.adb
 userspace/services/ps2/main.adb
 userspace/services/ramdisk/main.adb

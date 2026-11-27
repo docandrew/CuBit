@@ -19,6 +19,7 @@
 --  controller reset that re-creates the queues, then a bounded re-issue;
 --  only then does the request fail, with a typed outcome.
 ------------------------------------------------------------------------------
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with System.Storage_Elements; use System.Storage_Elements;
 with System.Machine_Code;
@@ -610,7 +611,7 @@ package body NVMe is
          if CuBit.Busy_Poll.Within (started, IO_SPIN_MICROSECONDS) then
             CuBit.Busy_Poll.Relax;
          else
-            ignore := syscall (SYSCALL_YIELD);
+            CuBit.Process_Calls.Yield;
          end if;
       end loop;
       if not found and then interruptsEnabled then

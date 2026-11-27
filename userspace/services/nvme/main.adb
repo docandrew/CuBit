@@ -27,6 +27,7 @@ with CuBit.Device_Identities;
 with CuBit.Busy_Poll;
 with CuBit.NVMe_Control;
 with CuBit.Device_Interrupts;
+with CuBit.Process_Calls;
 with Startup;
 with NVMe;
 
@@ -193,7 +194,7 @@ begin
                           protocol => 0, ipc => <>, reserved => 0),
              authorityTag => 0,
              words    => [others => 0]), CuBit.Messages.Wait_Forever);
-         ignore := syscall (SYSCALL_EXIT);
+         CuBit.Process_Calls.Exit_Process;
       end;
       return;
    end if;
