@@ -1,4 +1,5 @@
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -32,8 +33,7 @@ procedure Main is
    procedure Fail (Reason : String) is
    begin
       debugPrint ("TEST: FAIL desktop-metrics " & Reason & ASCII.LF);
-      Ignore := syscall (SYSCALL_EXIT, 1);
-      loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end Fail;
 begin
    --  ABI-002: debug text into its logstore ring, never the kernel console.
@@ -106,8 +106,7 @@ begin
          end loop;
          debugPrint ("TEST: PASS desktop-metrics frames=" & Frames'Image &
            " batches=" & Batches'Image & " producer-dropped=" & Dropped'Image & " stages=input,draw,submit byte-schema=valid fallback-transfer=zero profiling=completion,diagnostic" & ASCII.LF);
-         Ignore := syscall (SYSCALL_EXIT, 0);
-         return;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
       end if;
       Ignore := CuBit.Waits.Sleep_For (50);
    end loop;

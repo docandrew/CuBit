@@ -1,4 +1,5 @@
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -26,5 +27,5 @@ begin
    end loop;
    debugPrint ("TEST: metrics-load done pid=" & PID'Image &
      " chunks=" & Chunks'Image & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end Main;

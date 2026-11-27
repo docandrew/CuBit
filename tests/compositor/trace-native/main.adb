@@ -1,4 +1,5 @@
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -28,8 +29,7 @@ procedure Main is
    procedure Fail (Why : String) is
    begin
       debugPrint ("TEST: FAIL desktop-trace " & Why & ASCII.LF);
-      Ignore := syscall (SYSCALL_EXIT, 1);
-      loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end Fail;
 begin
    --  ABI-002: debug text into its logstore ring, never the kernel console.
@@ -99,5 +99,5 @@ begin
      " skipped_rows=" & S.Counts (Collector).Skipped_Rows'Image &
      " rejected_rows=" & S.Counts (Collector).Rejected_Rows'Image &
      " retirement=confirmed" & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end Main;

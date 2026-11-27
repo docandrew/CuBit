@@ -1,4 +1,5 @@
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System;
@@ -23,7 +24,7 @@ procedure Main is
    procedure Fail (Reason : String) is
    begin
       debugPrint ("TEST: FAIL metrics-stall " & Reason & ASCII.LF);
-      Ignore := syscall (SYSCALL_EXIT, 1);
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end Fail;
 begin
    --  ABI-002: debug text into its logstore ring, never the kernel console.
