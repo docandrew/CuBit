@@ -32,7 +32,7 @@ with CuBit.Handles.Boot_Roots;
 with CuBit.Handles.Control;
 with CuBit.Handles.Debug;
 with CuBit.Handles.Test_Consoles;
-with CuBit.Messages;
+with CuBit.Process_Calls;
 with CuBit.Process_IDs;
 with CuBit.Startup_Tables;
 with CuBit.Waits;
@@ -306,9 +306,8 @@ begin
                Check (HD.Outcome_Is (R, D.Occupied), "a second view on one page is Occupied");
                --  The kernel never reaches the aperture: as a source (a
                --  console write of the view's bytes) or a destination.
-               Written := CuBit.Messages.syscall
-                 (CuBit.Messages.SYSCALL_WRITE, CuBit.Messages.STDOUT,
-                  Slice + Marker_Offset, Probe_Text'Length);
+               Written := CuBit.Process_Calls.Write_Console
+                 (To_Address (Integer_Address (Slice + Marker_Offset)), Probe_Text'Length);
                Check (Written = 0, "the kernel refuses to read the aperture");
                R := HD.Threads (S, To_Address (Integer_Address (Slice)), 64);
                Check (HD.Outcome_Is (R, D.Destination_Unwritable),
