@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -30,7 +31,6 @@ procedure Main is
    Filtered_Text : constant String := "log-fields: filtered information";
    Kept_Text : constant String := "log-fields: frame presented late";
 
-   Ignore : Unsigned_64;
    Result : P.Status;
    Value : P.Event;
    Lost : Unsigned_64;
@@ -40,10 +40,7 @@ procedure Main is
    begin
       if not Condition then
          debugPrint ("TEST: FAIL log-fields: " & Name & ASCII.LF);
-         Ignore := syscall (SYSCALL_EXIT, 1);
-         loop
-            Ignore := CuBit.Waits.Sleep_For (1000);
-         end loop;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
    end Check;
 
@@ -126,5 +123,5 @@ begin
    debugPrint ("log-fields: frame latency_us=4167 frame=42 delta=-5 " &
                "late=true delivered to Warning observer" & ASCII.LF);
    debugPrint ("TEST: PASS log-fields" & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end Main;
