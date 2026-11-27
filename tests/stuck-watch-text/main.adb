@@ -68,7 +68,14 @@ begin
    Check (Reason_Words ((Stuck_Call => True, others => False)) = " stuck-call", "stuck call");
    Check (Reason_Words ((Hot_Thread => True, others => False)) = " hot-thread", "hot thread");
    Check (Reason_Words ((Quiet_Main => True, others => False)) = " quiet-main-thread", "quiet main");
-   Check (Reason_Words ((others => True)) = " stuck-call hot-thread quiet-main-thread", "all reasons");
+   Check (Reason_Words ((Kernel_Evidence => True, others => False)) = " kernel-evidence",
+          "a kernel note is its own reason, not a stuck call");
+   Check (Reason_Words ((CPU0_Silent => True, others => False)) = " cpu0-silent",
+          "CPU 0's silence is its own reason, not a stuck call");
+   Check (Reason_Words ((others => True)) =
+            " stuck-call hot-thread quiet-main-thread kernel-evidence cpu0-silent",
+          "all reasons");
+   Check (State_Word (Guest_Halted) = "guest-halted", "a halted guest's vCPU reads guest-halted");
 
    --  The thread that fired is marked; context rows are not.
    Check (not Has (Idle, "FIRED"), "a context row carries no mark: " & Idle);

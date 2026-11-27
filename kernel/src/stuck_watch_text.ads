@@ -52,17 +52,23 @@ package Stuck_Watch_Text with SPARK_Mode, Pure is
 
    --  Why a watch report printed: a thread stuck in a call for the stuck
    --  time, a watched thread hot for consecutive reports, a watched main
-   --  thread waiting undispatched for the stuck time.
+   --  thread waiting undispatched for the stuck time, a recent kernel
+   --  verdict (Process.IPC.noteEvidence, e.g. the CLOCK notes), CPU 0
+   --  taking no timer work.
    type Reasons is record
-      Stuck_Call : Boolean := False;
-      Hot_Thread : Boolean := False;
-      Quiet_Main : Boolean := False;
+      Stuck_Call      : Boolean := False;
+      Hot_Thread      : Boolean := False;
+      Quiet_Main      : Boolean := False;
+      Kernel_Evidence : Boolean := False;
+      CPU0_Silent     : Boolean := False;
    end record;
 
    function Reason_Words (R : Reasons) return String is
      ((if R.Stuck_Call then " stuck-call" else "") &
       (if R.Hot_Thread then " hot-thread" else "") &
-      (if R.Quiet_Main then " quiet-main-thread" else ""));
+      (if R.Quiet_Main then " quiet-main-thread" else "") &
+      (if R.Kernel_Evidence then " kernel-evidence" else "") &
+      (if R.CPU0_Silent then " cpu0-silent" else ""));
 
    --  The mark after a row's thread when that thread fired the watch.
    function Fired_Words (Hot, Quiet_Main : Boolean) return String is

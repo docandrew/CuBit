@@ -1292,6 +1292,7 @@ package body Process.IPC is
                 count := count + 1;
                 lines (count) := evidenceText (i);
             end loop;
+            why.Kernel_Evidence := True;
         end if;
         Spinlocks.exitCriticalSection (evidenceLock);
         --  CPU 0 taking no timer work while another CPU keeps the time
@@ -1301,6 +1302,7 @@ package body Process.IPC is
                 last : Natural := 0;
             begin
                 count := count + 1;
+                why.CPU0_Silent := True;
                 add (lines (count), last, "CPU 0 ran no timer work for ");
                 addNumber (lines (count), last, silenceMs / 1_000);
                 add (lines (count), last, "s");
@@ -1321,6 +1323,7 @@ package body Process.IPC is
                       and then nowMs - start >= Stuck_Call_Ms
                     then
                         count := count + 1;
+                        why.Stuck_Call := True;
                         addName (lines (count), last, t.process);
                         add (lines (count), last, " -> ");
                         if server = NO_PROCESS then
@@ -1407,7 +1410,6 @@ package body Process.IPC is
                     end;
                 end if;
             end loop;
-            why.Stuck_Call := count > 0;
             if suspicious or else count > 0 then
                 --  Why the watch printed, first: the rows below are context.
                 if count < Boot_Diagnostics.Stuck_Rows then
