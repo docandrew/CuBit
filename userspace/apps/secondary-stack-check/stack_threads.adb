@@ -8,6 +8,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Owned_Reservations;
+with CuBit.Process_Calls;
 with CuBit.Thread_Areas;
 with Thread_ABI;
 
@@ -37,7 +38,7 @@ package body Stack_Threads is
    begin
       CuBit.System_Facts.Enter_Thread (Slot);
       Before := CuBit.System_Facts.Thread_System_Calls;
-      Ignore := CuBit.Kernel_Calls.Call (ABI.Yield);
+      CuBit.Process_Calls.Yield;
       Counts (Index) := (Entry_Slot  => Slot,
                          First_Count => First,
                          Yield_Added => CuBit.System_Facts.Thread_System_Calls - Before);
@@ -68,8 +69,8 @@ package body Stack_Threads is
       if Area = CuBit.Thread_Areas.No_Area then
          return Thread;
       end if;
-      Result := CuBit.Kernel_Calls.Call
-        (ABI.Thread_Create, Unsigned_64 (To_Integer (Worker'Address)),
+      Result := CuBit.Process_Calls.Create_Thread
+        (Unsigned_64 (To_Integer (Worker'Address)),
          ((Thread.Stack + Stack_Bytes) and not (Stack_Alignment - 1)) - Return_Address_Bytes,
          Unsigned_64 (Index), Area,
          Unsigned_64 (To_Integer (Exit_Words (Index)'Address)));
