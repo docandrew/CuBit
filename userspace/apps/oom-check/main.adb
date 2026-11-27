@@ -3,6 +3,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
+with CuBit.Process_Calls;
 with Startup;
 
 --  Out-of-memory reclaim check (headless oom-reclaim). Lend pages to
@@ -85,7 +86,7 @@ begin
    debugPrint ("oom-check: holding " & Decimal (Held) & " grants" & LF);
 
    while Request >= Page_Bytes loop
-      if syscall (SYSCALL_SBRK, Request) = Refused then
+      if CuBit.Process_Calls.Grow_Heap (Request) = Refused then
          Request := Request / 2;
       else
          Taken := Taken + Request;
