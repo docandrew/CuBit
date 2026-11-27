@@ -11,6 +11,7 @@ with Check_Results; use Check_Results;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Owned_Reservations;
+with CuBit.Process_Calls;
 with CuBit.Thread_Areas;
 
 package body Exception_Threads is
@@ -54,7 +55,7 @@ package body Exception_Threads is
          exception
             when E : Thread_Error =>
                --  Let the other threads raise before this one looks.
-               Ignore := CuBit.Kernel_Calls.Call (ABI.Yield);
+               CuBit.Process_Calls.Yield;
                if Exception_Message (E) = Message_Of (Thread) then
                   Own (Thread) := Own (Thread) + 1;
                end if;
@@ -81,8 +82,8 @@ package body Exception_Threads is
          Stacks (W) := CuBit.Owned_Reservations.Allocate (Stack_Bytes);
          Area := (if Stacks (W) = 0 then CuBit.Thread_Areas.No_Area else CuBit.Thread_Areas.Create);
          if Area /= CuBit.Thread_Areas.No_Area then
-            if CuBit.Kernel_Calls.Call
-                 (ABI.Thread_Create, Unsigned_64 (To_Integer (Worker'Address)),
+            if CuBit.Process_Calls.Create_Thread
+                 (Unsigned_64 (To_Integer (Worker'Address)),
                   ((Stacks (W) + Stack_Bytes) and not (Stack_Alignment - 1)) - Return_Address_Bytes,
                   Unsigned_64 (W), Area,
                   Unsigned_64 (To_Integer (Exit_Words (W)'Address))) = ABI.Failed
