@@ -157,7 +157,6 @@ userspace/apps/platform-pool-check/main.adb
 userspace/apps/storage-check/main.adb
 userspace/apps/trap-flag-check/main.adb
 userspace/lib/debug/stub-rs/src/lib.rs
-userspace/lib/disk-install/install_sources.adb
 userspace/lib/ui/cubit-ui-app.adb
 userspace/services/acpi/native/acpi_one_service.adb
 userspace/services/desktop/desktop_launch_refresh.adb

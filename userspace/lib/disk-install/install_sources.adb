@@ -8,6 +8,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Filesystems; use CuBit.Filesystems;
+with CuBit.Process_Calls;
 with Storehouse;
 with Storehouse.Hashing;
 with System_Generation_Records;
@@ -87,7 +88,7 @@ package body Install_Sources is
    begin
       if not Ready_State then
          Filesystem_Endpoint := Filesystem;
-         Raw := syscall (SYSCALL_SBRK, (Loan_Pages + 1) * CuBit.Memory_Grants.PAGE_SIZE);
+         Raw := CuBit.Process_Calls.Grow_Heap ((Loan_Pages + 1) * CuBit.Memory_Grants.PAGE_SIZE);
          if Raw /= 0 and then Raw /= Unsigned_64'Last then
             Buffer := To_Address (Integer_Address
               ((Raw + CuBit.Memory_Grants.PAGE_SIZE - 1) and not (CuBit.Memory_Grants.PAGE_SIZE - 1)));
