@@ -5633,7 +5633,7 @@ package body Owned with SPARK_Mode is
       if Count > AML_Objects.Max_Bytes then Status := AML_Execute.Value_Limit; return; end if;
       if (Target_Kind = AML_Objects.String_Object
           or else AML_Objects.Length (A.Tree.Values, Target) = 0)
-        and then Count > AML_Objects.Max_Bytes - AML_Objects.Byte_Count (A.Tree.Values)
+        and then Count > A.Tree.Values.Byte_Capacity - AML_Objects.Byte_Count (A.Tree.Values)
       then Status := AML_Execute.Value_Limit; return; end if;
       -- Conversion uses bounded payload scratch; the authenticated target
       -- is updated in place without a full-arena candidate or copyback.
