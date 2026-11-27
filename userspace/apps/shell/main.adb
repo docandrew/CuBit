@@ -15,6 +15,7 @@
 ------------------------------------------------------------------------------
 with CuBit.Child_Exits;
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with CuBit.Monotonic;
 with Interfaces; use Interfaces;
@@ -513,7 +514,7 @@ procedure main is
          --  MAPFB is device memory, not a frame owned by this process. Generic
          --  grants intentionally cannot pin/regrant it. Draw directly into an
          --  ordinary owned buffer instead; no extra staging copy is needed.
-         rawBuffer := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
+         rawBuffer := CuBit.Process_Calls.Grow_Heap (pages * 4096 + 4096);
          if rawBuffer = Unsigned_64'Last then
             debugPrint ("shell: display buffer allocation failed" & LF);
             releaseDisplayPresent;
@@ -1644,7 +1645,7 @@ procedure main is
          "SUSPENDED ");
    begin
       --  Allocate buffer via sbrk
-      ret := syscall (SYSCALL_SBRK, PS_BUF_SIZE);
+      ret := CuBit.Process_Calls.Grow_Heap (PS_BUF_SIZE);
       if ret = Unsigned_64'Last then
          putStr ("ps: sbrk failed" & LF);
          return;
@@ -3516,12 +3517,7 @@ begin
       ret := CuBit.Handles.Devices.Map_Framebuffer (Startup.Framebuffer);
       if ret = Unsigned_64'Last then
          debugPrint ("shell: MAPFB failed" & LF);
-         declare
-            ignore : Unsigned_64;
-         begin
-            ignore := syscall (SYSCALL_EXIT, 1);
-         end;
-         return;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
       fbAddr := To_Address (Integer_Address (ret));
    end;
@@ -3585,7 +3581,7 @@ begin
          ret : Unsigned_64;
          ok  : Boolean;
       begin
-         ret := syscall (SYSCALL_SBRK, Unsigned_64 (GRANT_BUF_PAGES * 4096));
+         ret := CuBit.Process_Calls.Grow_Heap (Unsigned_64 (GRANT_BUF_PAGES * 4096));
          if ret /= Unsigned_64'Last then
             grantBuf := To_Address (Integer_Address (ret));
             CuBit.Memory_Grants.Create_Via_Capability (
@@ -3610,7 +3606,7 @@ begin
       ret : Unsigned_64;
       ok  : Boolean;
    begin
-      ret := syscall (SYSCALL_SBRK, Unsigned_64 (FS_BUF_PAGES * 4096));
+      ret := CuBit.Process_Calls.Grow_Heap (Unsigned_64 (FS_BUF_PAGES * 4096));
       if ret /= Unsigned_64'Last then
          fsBuf := To_Address (Integer_Address (ret));
          CuBit.Memory_Grants.Create_Via_Capability (
