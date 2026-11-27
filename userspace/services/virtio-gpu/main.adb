@@ -13,6 +13,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use System;
@@ -408,7 +409,7 @@ procedure main is
    begin
       debugPrint ("virtio-gpu: " & why & LF);
       signalReady (16#FF01#);
-      ignore := syscall (SYSCALL_EXIT, 1);
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end fail;
 
    procedure trace (what : String) is
