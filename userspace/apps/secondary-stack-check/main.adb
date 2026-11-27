@@ -33,9 +33,8 @@ with System;
 pragma Warnings (Off, "internal GNAT unit");
 with System.Secondary_Stack;
 pragma Warnings (On, "internal GNAT unit");
-with CuBit.Kernel_ABI;
-with CuBit.Kernel_Calls;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 with CuBit.Secondary_Stack_Layout;
 with CuBit.System_Facts;
 with Process_Layout;
@@ -215,9 +214,8 @@ begin
    --  The main thread's count: one YIELD is one call, the reads none.
    declare
       Before : constant Unsigned_64 := CuBit.System_Facts.Thread_System_Calls;
-      Ignore : Unsigned_64;
    begin
-      Ignore := CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Yield);
+      CuBit.Process_Calls.Yield;
       Check (CuBit.System_Facts.Thread_System_Calls - Before = 1,
              "the main thread counts its own system calls");
    end;
