@@ -5,6 +5,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with CuBit.Handles;
+with CuBit.Process_Calls;
 with Startup;
 
 procedure Main is
@@ -68,19 +69,17 @@ procedure Main is
 begin
    --  ABI-002: debug text into its logstore ring, never the kernel console.
    CuBit.Console_Route.Route_Named ("logstore");
-   Raw := syscall (SYSCALL_SBRK, 2 * Page_Size);
+   Raw := CuBit.Process_Calls.Grow_Heap (2 * Page_Size);
    if Raw = Unsigned_64'Last then
       debugPrint ("FILESYSTEM-SCOPE-CHECK: FAIL allocation" & ASCII.LF);
-      Ignored := syscall (SYSCALL_EXIT, 1);
-      return;
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end if;
    Address := (Raw + Page_Size - 1) and not (Page_Size - 1);
    CuBit.Memory_Grants.Create_Via_Capability
      (Filesystem, To_Address (Integer_Address (Address)), 1, True, Loan, OK);
    if not OK then
       debugPrint ("FILESYSTEM-SCOPE-CHECK: FAIL grant" & ASCII.LF);
-      Ignored := syscall (SYSCALL_EXIT, 1);
-      return;
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end if;
 
    Put ("@nvme:0/");
@@ -164,5 +163,5 @@ begin
    if Failures = 0 then
       debugPrint ("FILESYSTEM-SCOPE-CHECK: PASS" & ASCII.LF);
    end if;
-   Ignored := syscall (SYSCALL_EXIT, Unsigned_64 (Failures));
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Code_Of (Unsigned_64 (Failures)));
 end Main;

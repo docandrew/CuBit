@@ -147,7 +147,6 @@ userspace/apps/capability-test/main.adb
 userspace/apps/desktop-check/main.adb
 userspace/apps/devmem-check/main.adb
 userspace/apps/display-check/main.adb
-userspace/apps/filesystem-scope-check/main.adb
 userspace/apps/firmware-undeclared/main.adb
 userspace/apps/futex-check/futex_check_support.adb
 userspace/apps/futex-check/futex_check_support.ads
