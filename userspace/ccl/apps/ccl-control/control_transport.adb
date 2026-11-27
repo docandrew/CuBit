@@ -4,6 +4,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Net_Channels;
 with CCL_Native_Bindings;
 with CuBit.Monotonic;
+with CuBit.Process_Calls;
 
 package body Control_Transport is
    package Channels renames CuBit.Net_Channels;
@@ -28,7 +29,7 @@ package body Control_Transport is
       Success := False;
       Network_Process := To_Word (Registered_Driver (DRIVER_NETSTACK));
       if Network_Process = 0 or Network_Process = Unsigned_64'Last then return; end if;
-      Raw := syscall (SYSCALL_SBRK, 2 * Buffer_Bytes);
+      Raw := CuBit.Process_Calls.Grow_Heap (2 * Buffer_Bytes);
       if Raw = Unsigned_64'Last then return; end if;
       Channels.Create_Arena
         (Arena, CCL_Native_Bindings.Network, To_Address (Integer_Address (Raw)), Ring_Size, Ring_Size, 2,

@@ -156,7 +156,6 @@ userspace/apps/mov-ss-check/main.adb
 userspace/apps/platform-pool-check/main.adb
 userspace/apps/storage-check/main.adb
 userspace/apps/trap-flag-check/main.adb
-userspace/ccl/apps/ccl-control/control_transport.adb
 userspace/ccl/apps/ccl-remote/remote_files.adb
 userspace/ccl/apps/ccl-remote/remote_transport.adb
 userspace/ccl/native/ccl_installer.adb
