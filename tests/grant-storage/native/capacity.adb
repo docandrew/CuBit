@@ -1,3 +1,4 @@
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use type System.Address;
@@ -25,8 +26,7 @@ procedure Capacity is
    begin
       if not Value then
          debugPrint ("TEST: FAIL grant capacity: " & Detail & ASCII.LF);
-         Ignore := syscall (SYSCALL_EXIT);
-         loop null; end loop;
+         CuBit.Process_Calls.Exit_Process;
       end if;
    end Check;
 begin

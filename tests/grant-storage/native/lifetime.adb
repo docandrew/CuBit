@@ -1,3 +1,4 @@
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System; use type System.Address;
@@ -48,8 +49,7 @@ procedure Lifetime is
    begin
       if not Value then
          debugPrint ("TEST: FAIL grant lifetime: " & Detail & ASCII.LF);
-         Ignore := syscall (SYSCALL_EXIT);
-         loop null; end loop;
+         CuBit.Process_Calls.Exit_Process;
       end if;
    end Check;
 
@@ -101,8 +101,7 @@ begin
             Msg.tag := (label => 16#F000#, length => 1, protocol => 0, ipc => <>, reserved => 0);
             Ignore := reply (From, Msg);
             if Exiting then
-               Ignore := syscall (SYSCALL_EXIT);
-               loop null; end loop;
+               CuBit.Process_Calls.Exit_Process;
             end if;
          end;
       end loop;

@@ -70,8 +70,6 @@ tests/gpio-native/models/registry/cubit-messages.ads
 tests/gpio-native/models/registry/cubit-monotonic.adb
 tests/gpu-viewer/native/owner.adb
 tests/grant-forward/native/fixture.adb
-tests/grant-storage/native/capacity.adb
-tests/grant-storage/native/lifetime.adb
 tests/hid-i2c-native/host/cubit-messages.adb
 tests/hid-i2c-native/host/cubit-messages.ads
 tests/hid-i2c-native/host/cubit-monotonic.adb
