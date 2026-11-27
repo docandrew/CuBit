@@ -7,6 +7,7 @@ with CuBit.Channel_Protocol;
 with CuBit.Grant_References;
 with CuBit.Log_Publish_Rings;
 with CuBit.Memory_Grants;
+with CuBit.Process_Calls;
 with Startup;
 
 --  Fault-injection fixture only; never included in normal startup profiles.
@@ -46,5 +47,5 @@ begin
       return;
    end if;
    debugPrint ("TEST: log collector exiting with acquired grant" & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT);
+   CuBit.Process_Calls.Exit_Process;
 end Main;
