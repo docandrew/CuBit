@@ -1,9 +1,9 @@
 pragma Ada_2022;
 with CuBit.Console_Route;
-with Interfaces; use Interfaces;
 with CuBit.Log_Records;
 with CuBit.Logging;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 with CuBit.Streams;
 with Startup;
 
@@ -35,7 +35,6 @@ procedure Main is
    --  The outlet its manifest declares: the ring its launcher lent it, or
    --  one of its own when it was started without one (app replace).
    Outlet : constant CuBit.Streams.StreamId := CuBit.Streams.Open_Outlet ("com.cubit.hello.greeting");
-   Ignore : Unsigned_64;
 begin
    --  ABI-002: debug text into its logstore ring, never the kernel console.
    CuBit.Console_Route.Route_Named ("logstore");
@@ -43,5 +42,5 @@ begin
       CuBit.Streams.streamPrint (Outlet, Greeting & ASCII.LF);
    end if;
    Say (Greeting);
-   Ignore := syscall (SYSCALL_EXIT, Exit_Success);
+   CuBit.Process_Calls.Exit_Process (Exit_Success);
 end Main;
