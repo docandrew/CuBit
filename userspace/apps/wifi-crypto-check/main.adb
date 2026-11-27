@@ -2,6 +2,7 @@ pragma Ada_2022;
 with CuBit.Console_Route;
 with Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 with WiFi_Crypto.Self_Test;
 
 --  rtw89's WiFi_Crypto known-answer self-test on CuBit, with the crates
@@ -18,5 +19,5 @@ begin
    Passed := WiFi_Crypto.Self_Test.All_Passed (Results);
    debugPrint ("wifi-crypto-check: " & WiFi_Crypto.Self_Test.Image (Results) & " "
                & (if Passed then "PASS" else "FAIL") & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT);
+   CuBit.Process_Calls.Exit_Process;
 end Main;
