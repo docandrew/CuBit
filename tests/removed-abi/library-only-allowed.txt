@@ -152,7 +152,6 @@ userspace/apps/futex-check/futex_check_support.ads
 userspace/apps/futex-check/main.adb
 userspace/apps/ipctest-server/main.adb
 userspace/apps/launch-gate-check/main.adb
-userspace/apps/metrics-check/main.adb
 userspace/apps/mov-ss-check/main.adb
 userspace/apps/net-link-check/main.adb
 userspace/apps/net-multi-check/main.adb
