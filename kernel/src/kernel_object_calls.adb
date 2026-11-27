@@ -10,6 +10,8 @@ with Test_Console_Object;
 with Debug_Sessions;
 with VM_Objects;
 with Spinlocks;
+with Notification_ABI;
+with Process.Notifications;
 
 package body Kernel_Object_Calls is
     use type Capabilities.CapabilityType;
@@ -69,6 +71,13 @@ package body Kernel_Object_Calls is
             -- A target's Control mints and revokes debug sessions
             -- (DBG-001); any other label on it is not this path's.
             when Capabilities.CAP_PROCESS =>
+                -- A process's own handle creates notifications charged to
+                -- it (Notification_ABI.Create).
+                if Unsigned_64 (Request.tag.label) = Notification_ABI.Create_Label then
+                    Process.Notifications.Create_Call (Caller, Found.Cap, Request, Reply);
+                    Result := Answered;
+                    return;
+                end if;
                 declare
                     Ours : Boolean;
                 begin
@@ -86,6 +95,9 @@ package body Kernel_Object_Calls is
             when Capabilities.CAP_VM_CREATE | Capabilities.CAP_VM |
                  Capabilities.CAP_VCPU =>
                 VM_Objects.Call (Caller, Found.Cap, Request, Reply);
+                Result := Answered;
+            when Capabilities.CAP_NOTIFICATION_OBJECT =>
+                Process.Notifications.Call (Caller, Found.Cap, Request, Reply);
                 Result := Answered;
             when Capabilities.CAP_TEST_CONSOLE =>
                 Test_Console_Object.Call

@@ -2824,6 +2824,9 @@ package body Process.IPC is
       return Boolean is
       (raiseWake (owner, ownerAddress, sync, any => False));
 
+    function ringDoorbell (owner : ProcessID) return Boolean is
+      (raiseWake (owner, 0, sync => False, any => True));
+
     function wakePeer (caller : ProcessID; reference : Unsigned_64; sync : Boolean;
                        urgent : Boolean := False)
       return Unsigned_64

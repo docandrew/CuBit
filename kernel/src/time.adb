@@ -14,6 +14,7 @@ with Process;
 with Process.IPC;
 with Process.Stuck_Calls;
 with Process.Futex;
+with Process.Wait_Timers;
 with VM_Objects;
 with Process.Queues;
 with Scheduler_Timing;
@@ -469,6 +470,8 @@ is
             Process.Queues.expireSleepers (x86.rdtsc);
         end if;
         Process.armWakeAlarm;
+        -- This CPU's one-object Wait deadlines (IPC revision 2).
+        Process.Wait_Timers.Expire (cpuNum, x86.rdtsc);
         -- The system's time and its deadlines: CPU 0's timer, or any CPU's
         -- where all CPUs read one clock, so a CPU 0 that takes no timer
         -- interrupt (masked, busy, or its timer lost) stops neither.

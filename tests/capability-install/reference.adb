@@ -18,7 +18,8 @@ package body Reference is
               CAP_PROCESS | CAP_DEVICE_MEM | CAP_SCHEDULING | CAP_FIRMWARE_SNAPSHOT |
               CAP_PLATFORM_POWER | CAP_TRACE | CAP_PROCESS_LIST |
               CAP_TEST_CONSOLE | CAP_DEBUG_OBSERVE | CAP_DEBUG_PAUSE |
-              CAP_DEBUG_MODIFY | CAP_DEBUG_INSTRUMENT | CAP_VM_CREATE => null;
+              CAP_DEBUG_MODIFY | CAP_DEBUG_INSTRUMENT | CAP_VM_CREATE |
+              CAP_NOTIFICATION_OBJECT => null;
          when others => return False;
       end case;
       if not Source.rights (RIGHT_GRANT) then

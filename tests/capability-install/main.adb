@@ -101,12 +101,28 @@ procedure Main is
                      CAP_FIRMWARE_SNAPSHOT | CAP_PLATFORM_POWER | CAP_TRACE |
                      CAP_PROCESS_LIST | CAP_TEST_CONSOLE |
                      CAP_DEBUG_OBSERVE | CAP_DEBUG_PAUSE | CAP_DEBUG_MODIFY |
-                     CAP_DEBUG_INSTRUMENT | CAP_VM_CREATE
+                     CAP_DEBUG_INSTRUMENT | CAP_VM_CREATE | CAP_NOTIFICATION_OBJECT
          then
             Expect_Refusal (Cap (K, ALL_RIGHTS, 5, 1), Req (READ_ONLY),
                             ABI.Not_Transferable, "kind " & K'Image);
          end if;
       end loop;
+      -- A notification (IPC revision 2): its Wait handle has no Grant, so
+      -- it is never copied; a Wake handle passes on with its badge, which
+      -- no derivation changes.
+      Expect_Refusal (Cap (CAP_NOTIFICATION_OBJECT, READ_WRITE, 3, 0), Req (READ_WRITE),
+                      ABI.Insufficient_Rights, "a notification's Wait handle");
+      declare
+         Wake_Grant : constant CapabilityRights :=
+           (RIGHT_WRITE | RIGHT_GRANT => True, others => False);
+         Wake_Only : constant CapabilityRights := (RIGHT_WRITE => True, others => False);
+         Waker : constant Capability := Cap (CAP_NOTIFICATION_OBJECT, Wake_Grant, 3, 0, 16#40#);
+      begin
+         Expect_Copy (Waker, Req (Wake_Only), Cap (CAP_NOTIFICATION_OBJECT, Wake_Only, 3, 0, 16#40#),
+                      "a notification's Wake handle, its badge kept");
+         Expect_Refusal (Waker, Req (Wake_Grant, Set_Tag => True, Tag => 16#80#), ABI.Invalid_Argument,
+                         "a Wake handle's badge is never changed");
+      end;
       -- A debug session (DBG-001): procmgr mints it with Read and Grant
       -- and passes on a read-only copy of the same session; never more.
       for K in CAP_DEBUG_OBSERVE .. CAP_DEBUG_INSTRUMENT loop

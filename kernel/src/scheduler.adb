@@ -12,6 +12,7 @@ with Build;
 with Debug_Register_Probe;
 with Mem_mgr;
 with Process.Queues;
+with Process.Notifications;
 with Virtual_Deadlines;
 with Process_Lifetime;
 with TextIO; use TextIO;
@@ -113,6 +114,7 @@ package body Scheduler is
             Process.cpuOnline (cpuData.cpuNum) := True;
             Process.Process_Table.Quiescent (cpuData.cpuNum);
             Process.Thread_Table.Quiescent (cpuData.cpuNum);
+            Process.Notifications.Quiescent (cpuData.cpuNum);
 
             enterCriticalSection (Process.lock);
 

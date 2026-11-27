@@ -27,6 +27,7 @@ with Syscall.IPC;
 with Syscall.Memory;
 with Syscall.Processes;
 with Syscall.Admin;
+with Syscall.Waits;
 with TextIO; use TextIO;
 with Time;
 with Trace;
@@ -166,6 +167,8 @@ package body Syscall is
             when 142  => number := SYSCALL_REPLY_SAVED_WITH_CAPABILITY;
             when 143  => number := SYSCALL_DERIVE_CAPABILITY;
             when Wait_ABI.System_Call_Number => number := SYSCALL_WAIT;
+            when Notification_ABI.Wait_System_Call => number := SYSCALL_WAIT_ONE;
+            when Notification_ABI.Wake_System_Call => number := SYSCALL_WAKE;
             when 42   => number := SYSCALL_SUBMIT_VIA_ENDPOINT_CAPABILITY;
             when 48   => number := SYSCALL_REPLY_WAIT;
             when 51   => number := SYSCALL_MOVE_REPLY_CAPABILITY;
@@ -319,6 +322,8 @@ package body Syscall is
                         when others =>
                             null;
                     end case;
+                when SYSCALL_WAIT_ONE =>
+                    waitKind := Boot_Timeline_Layout.Futex;
                 when others =>
                     null;
             end case;
@@ -542,6 +547,14 @@ package body Syscall is
             -- deadline, arg2 .. arg4 the source's parameters.
             when SYSCALL_WAIT =>
                 IPC.handleWait (arg0, arg1, arg2, arg3, arg4, arg5, retval);
+
+            -- IPC revision 2 (Notification_ABI): arg0 the kind, arg1 the
+            -- object, then the expected value and deadline, or the count.
+            when SYSCALL_WAIT_ONE =>
+                Waits.handleWait (arg0, arg1, arg2, arg3, retval);
+
+            when SYSCALL_WAKE =>
+                Waits.handleWake (arg0, arg1, arg2, retval);
 
             when SYSCALL_REPLY_WITH_CAPABILITY =>
                 IPC.handleReplyWithCap (

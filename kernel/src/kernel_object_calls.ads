@@ -21,7 +21,9 @@
 -- CAP_NOTIFICATION's milestone mark (Boot_Timeline_Marks), and debug
 -- sessions (Debug_Sessions: Mint_Debug and Revoke_Debug on a CAP_PROCESS,
 -- and the four debug kinds' operations), and virtual machines (VM_Objects:
--- CAP_VM_CREATE, CAP_VM, CAP_VCPU). The other kernel
+-- CAP_VM_CREATE, CAP_VM, CAP_VCPU), and notifications (Process.
+-- Notifications: Create on a process's own CAP_PROCESS, the rest on a
+-- CAP_NOTIFICATION_OBJECT). The other kernel
 -- operations move here slice by slice (docs/syscall-abi-audit.md).
 -------------------------------------------------------------------------------
 pragma Ada_2022;

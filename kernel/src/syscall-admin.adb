@@ -46,6 +46,7 @@ with Process_Frames;
 with Kernel_Window;
 with Memory_Accounting;
 with Process.IPC;
+with Process.Notifications;
 with Process.Reports;
 with Process.User_Memory;
 with Process_Launch;
@@ -917,6 +918,10 @@ package body Syscall.Admin is
         -- server exits holding it.
         if retval = 0 and then removed.capType = Capabilities.CAP_REPLY then
             Process.IPC.failReply (removed);
+        end if;
+        -- A notification's Wait handle ends it (IPC revision 2, S1).
+        if retval = 0 and then removed.capType = Capabilities.CAP_NOTIFICATION_OBJECT then
+            Process.Notifications.Closed (removed);
         end if;
     end handleCloseHandle;
 

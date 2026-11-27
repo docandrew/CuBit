@@ -50,6 +50,7 @@ with Process_Identities;
 with Kernel_Controls;
 with Kernel_Credits;
 with Futex_Keys;
+with Private_Futexes;
 with IPC_Request_Ids;
 with LinkedLists;
 with Memory_Grants;
@@ -191,6 +192,11 @@ package Process is
     -- Wait channels are just a pointer to some resource that a process is
     -- waiting on.
     --@TODO replace this with IPC primitives
+
+    -- One-object Wait (IPC revision 2, S1; Process.Wait_Timers): what a
+    -- thread waits on, and how its wait ended.
+    type One_Wait_Kind is (No_One_Wait, Notification_Wait, Private_Word_Wait);
+    type One_Wait_Status is (Wait_Pending, Wait_Woken, Wait_Timed_Out, Wait_Ended);
 
     type ProcessMode is (KERNEL, USER);
     type Readiness_Origin is (Rescheduled, Awakened);
@@ -870,6 +876,22 @@ package Process is
         futexDeadlineActive : Boolean := False;
         futexDeadlineMs     : Unsigned_64 := 0;
 
+        -- One-object Wait (Process.Wait_Timers): the object (a notification
+        -- and its generation, or this thread's private futex slot), how the
+        -- wait ended and the bits it took, written under the object's lock;
+        -- the CPU whose deadline heap holds it while it has a deadline.
+        oneWaitKind         : One_Wait_Kind := No_One_Wait;
+        oneWaitObject       : Unsigned_32 := 0;
+        oneWaitGen          : Unsigned_32 := 0;
+        oneWaitStatus       : One_Wait_Status := Wait_Pending;
+        oneWaitBits         : Unsigned_64 := 0;
+        oneWaitCPU          : Natural := 0;
+        oneWaitTimed        : Boolean := False;
+        -- Its bound notification (Process.Notifications), 0: none; under
+        -- that notification's lock.
+        boundNotification   : Unsigned_32 := 0;
+        boundGen            : Unsigned_32 := 0;
+
         -- The one-use reply authority minted by this thread's most recent
         -- request-bearing receive. Per thread, so concurrent receiving
         -- threads of one server cannot clobber each other's reply. Protected
@@ -986,6 +1008,13 @@ package Process is
         -- slot per sender (Kernel_Controls; Process.IPC.controlLock). All
         -- zero is closed and empty.
         controls : Kernel_Controls.Target_State;
+
+        -- Its private futex table (IPC revision 2, S1; Process.Private_Futex)
+        -- and the lock that serializes it, and the notifications whose Wait
+        -- right it holds (Process.Notifications; their charge).
+        privateFutexes      : Private_Futexes.Table;
+        privateFutexLock    : Spinlocks.Spinlock;
+        notificationsHeld   : Natural := 0;
 
         -- Resource quota (populated from CAP_RESOURCE on resume)
         quota               : ResourceQuota;

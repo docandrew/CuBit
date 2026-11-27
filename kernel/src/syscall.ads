@@ -11,6 +11,7 @@ with System;
 with Boot_Timeline_Layout;
 with Descriptors;
 with Wait_ABI;
+with Notification_ABI;
 
 package Syscall with
     SPARK_Mode => On
@@ -76,6 +77,8 @@ is
         SYSCALL_CHANGE_OWNED_RANGE,
         SYSCALL_RELEASE_OWNED_REGION,
         SYSCALL_WAIT,
+        SYSCALL_WAIT_ONE,
+        SYSCALL_WAKE,
         SYSCALL_REGISTER_DRIVER)
     with Size => Unsigned_64'Size;
 
@@ -136,6 +139,10 @@ is
         -- SLEEP_UNTIL_MONOTONIC_MICROSECOND (119) and
         -- ACCEPT_OFFERED_CAPABILITY (141) are retired.
         SYSCALL_WAIT => Wait_ABI.System_Call_Number,
+        -- IPC revision 2 (Notification_ABI): Wait on one object (a
+        -- notification or a private futex word) and Wake it.
+        SYSCALL_WAIT_ONE => Notification_ABI.Wait_System_Call,
+        SYSCALL_WAKE     => Notification_ABI.Wake_System_Call,
         -- Owned memory, one region API (ABI-002, Process.Owned_Memory):
         -- reserve a region, one operation on a range of it, release it.
         -- Retired, never reused: 115 (ALLOCATE), 116 (RELEASE), 117

@@ -97,7 +97,7 @@ package Capability_ABI with Pure, SPARK_Mode is
       Process, Device_Memory, Reply, Resource, Cspace, Scheduling,
       Hardware_Group, Hardware_Register, Firmware_Snapshot, Platform_Power, Trace,
       Process_List, Test_Console, Debug_Observe, Debug_Pause, Debug_Modify,
-      Debug_Instrument, VM_Create, VM, VCPU);
+      Debug_Instrument, VM_Create, VM, VCPU, Notification_Object);
    for Kind use
      (No_Capability     => 0,
       Endpoint          => 1,
@@ -124,7 +124,8 @@ package Capability_ABI with Pure, SPARK_Mode is
       Debug_Instrument  => 22,
       VM_Create         => 23,
       VM                => 24,
-      VCPU              => 25);
+      VCPU              => 25,
+      Notification_Object => 26);
 
    ---------------------------------------------------------------------------
    --  Rights, as a mask of these bits.

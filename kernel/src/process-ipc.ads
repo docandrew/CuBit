@@ -438,6 +438,13 @@ package Process.IPC is
     function noteWakeWord (owner : ProcessID; ownerAddress : Unsigned_64; sync : Boolean)
       return Boolean;
 
+    -- IPC revision 2, S1 (Process.Notifications): a bound notification
+    -- signalled with no waiter rings owner like a channel doorbell (one
+    -- coalesced Channel_Wake_ABI notice), so its receive returns. The bridge
+    -- to the old receive; it goes with that receive (S3c). Caller holds no
+    -- futex, notification or mailbox lock. False: the mailbox is closed.
+    function ringDoorbell (owner : ProcessID) return Boolean;
+
     -- Wake a channel peer (FUTEX_WAKE, Futex_ABI.Peer_Space): caller is a
     -- party of the live grant named by reference (generation << 32 | slot),
     -- made with the notify flag; the other party's wake word is woken (its

@@ -53,6 +53,9 @@ with Page_Admission;
 with User_Page_Walk;
 with PerCPUData;
 with Process.Futex;
+with Process.Notifications;
+with Process.Private_Futex;
+with Process.Wait_Timers;
 with VM_Objects;
 with Process.DMA;
 with Process.IPC;
@@ -730,6 +733,7 @@ package body Process is
         Spinlocks.Initialize (threadTableLock, threadTableLockName'Access);
         Process_Table.Initialize;
         Thread_Table.Initialize;
+        Notifications.Setup;
         chooseSaveInstruction;
         TextIO.println ("Process: user FP/SIMD state saved with " &
             (case saveWith is
@@ -1650,6 +1654,8 @@ package body Process is
 
     -- The creation-time zero state (see create), without any generation:
     -- generations live in the table's ledger.
+    privateFutexLockName : aliased String := "private-futex";
+
     procedure resetProcessRecord (P : in out Process) is
         ignore : System.Address;
     begin
@@ -1663,6 +1669,7 @@ package body Process is
         P.mainThread := NO_THREAD;
         -- A zeroed lock would read as held by CPU 0.
         Spinlocks.Initialize (P.addressSpaceLock, addressSpaceLockName'Access);
+        Spinlocks.Initialize (P.privateFutexLock, privateFutexLockName'Access);
     end resetProcessRecord;
 
     procedure lockAddressSpace (pid : ProcessID) is
@@ -1703,6 +1710,7 @@ package body Process is
     begin
         Process_Table.Reclaim (cpuOnline);
         Thread_Table.Reclaim (cpuOnline);
+        Notifications.Reclaim;
     end reclaimTablePages;
 
     ---------------------------------------------------------------------------
@@ -2172,6 +2180,7 @@ package body Process is
         finished : Boolean;
     begin
         Futex.cancelWait (t);
+        Wait_Timers.Cancel (t);
         freeGuardedKernelStack (t);
         Spinlocks.enterCriticalSection (lock);
         Process_Lifetime.Finish_Reap (threadtab (t).lifetime, finished);
@@ -2355,6 +2364,9 @@ package body Process is
         -- DMA cleanup is deferred until CPU address-space teardown and all
         -- acquired grants have retired, then serviced in bounded worker steps.
 
+        -- The notifications it holds the Wait right of end first (their
+        -- waiters return Ended, their charge comes back).
+        Notifications.Release_Held (pid);
         -- Release the capability table (every page), before the memory
         -- account closes: the refund goes to it.
         Process_Capabilities.Tables.Release_All (proctab(pid).caps);
@@ -2422,6 +2434,7 @@ package body Process is
         begin
             while t /= NO_THREAD loop
                 Futex.cancelWait (t);
+                Wait_Timers.Cancel (t);
                 freeGuardedKernelStack (t);
                 t := threadtab (t).nextSibling;
             end loop;
@@ -2658,13 +2671,15 @@ package body Process is
         Thread_Slots.Give_Back (proctab(pid).threadSlots, threadtab (me).countSlot);
         Spinlocks.exitCriticalSection (lock);
 
-        -- Join support: clear the word, then wake whoever waits on it.
+        -- Join support: clear the word, then wake whoever waits on it (its
+        -- process's private futex table).
         if addr /= 0 then
             User_Memory.Store_Word32 (pid, addr, 0, ok);
             if ok then
-                ignore := Futex.wakeFor (pid, addr, Unsigned_64'Last);
+                ignore := Private_Futex.wake (pid, addr, Unsigned_64'Last);
             end if;
         end if;
+        Notifications.Unbind_Thread_Of (me);
         IPC.retireThread (me);
 
         Spinlocks.enterCriticalSection (lock);

@@ -1,11 +1,13 @@
 with PerCPUData;
 with Process.IPC;
 with Process.User_Memory;
-with User_Page_Walk;
 with Futex_ABI;
 with Futex_Queues;
 with Memory_Grants;
 with System.Machine_Code;
+with Notification_ABI;
+with Process.Private_Futex;
+with Process.Wait_Timers;
 
 package body Process.Futex is
     use Futex_Keys;
@@ -56,9 +58,6 @@ package body Process.Futex is
              Clobber => "memory, cc", Volatile => True);
         return value;
     end nextTicket;
-
-    function keyOf (pid : ProcessID; address : Unsigned_64) return Key is
-      (Private_Key (Unsigned_32 (pid), address));
 
     -- How a waiter's wait ended.
     type Ending is (By_Wake, By_Timeout, By_Revocation);
@@ -128,15 +127,9 @@ package body Process.Futex is
         if pid = NO_PROCESS then
             return;
         end if;
+        -- Private words live in their process's own table (Process.
+        -- Private_Futex, IPC revision 2): only shared words reach here.
         if not shared then
-            if word mod 4 /= 0 or else word >= User_Page_Walk.User_Limit then
-                return;
-            end if;
-            k := keyOf (pid, word);
-            b := Bucket_Of (k);
-            address := word;
-            ownerAddress := word;
-            ok := True;
             return;
         end if;
         if not Futex_ABI.Well_Formed (word) then
@@ -218,6 +211,10 @@ package body Process.Futex is
         locked, ok : Boolean;
         woken : Unsigned_64;
     begin
+        if not shared then
+            woken := Private_Futex.wake (pid, word, count, sync);
+            return (if woken = Notification_ABI.Bad_Argument then WAKE_REFUSED else woken);
+        end if;
         lockWord (pid, shared, word, k, b, address, owner, ownerAddress, locked, ok);
         if not ok then
             if locked then
@@ -344,6 +341,22 @@ package body Process.Futex is
             if wakeWordOf (pid, wakeShared, wakeWord, 1, sync => True) = WAKE_REFUSED then
                 return FUTEX_FAULT;
             end if;
+        end if;
+        if not shared then
+            -- A private word: its process's own table (IPC revision 2).
+            declare
+                tsc : Unsigned_64 := 0;
+                passed : Boolean := False;
+            begin
+                if deadlineMs /= FOREVER then
+                    Wait_Timers.Deadline_Of_Ms (deadlineMs, tsc, passed);
+                end if;
+                result := Private_Futex.wait
+                  (address => word, expected => expected, timed => deadlineMs /= FOREVER,
+                   passed => passed, tsc => tsc, handOff => wakeFirst);
+                threadtab (me).syncWakee := NO_THREAD;
+                return (if result = Notification_ABI.Bad_Argument then FUTEX_FAULT else result);
+            end;
         end if;
         lockWord (pid, shared, word, k, b, address, owner, ownerAddress, locked, ok);
         if not ok then

@@ -61,7 +61,13 @@ is
         -- root, then the objects the kernel mints from it.
         CAP_VM_CREATE,         -- Create VMs: kernel object, one root (devmgr to procmgr)
         CAP_VM,                -- One VM (control and guest memory by rights)
-        CAP_VCPU               -- One vCPU of a VM
+        CAP_VCPU,              -- One vCPU of a VM
+        -- A notification object (IPC revision 2, Notification_ABI): a word
+        -- of bits and one waiter. RIGHT_READ is Wait (held by one handle,
+        -- never copied: it has no RIGHT_GRANT), RIGHT_WRITE is Wake (its
+        -- tag is the badge, fixed at minting). object.ref = the object's
+        -- slot in Process.Notifications' table, gen = its generation.
+        CAP_NOTIFICATION_OBJECT
     );
 
     ---------------------------------------------------------------------------

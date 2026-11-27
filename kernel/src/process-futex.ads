@@ -4,7 +4,9 @@
 --
 -- @summary Futexes: FUTEX_WAIT and FUTEX_WAKE (docs/threads.md, IPC-010)
 --
--- Private futexes: a key is (process, user word address). Shared futexes
+-- Private futexes live in their process's own table (Process.Private_Futex,
+-- IPC revision 2, S1); this unit's private forms only route there, so old
+-- and new callers share one table. Shared futexes
 -- (IPC-010): a key is (grant slot, grant life, offset), resolved from a
 -- Futex_ABI shared word by Process.IPC.resolveSharedWord, so both parties
 -- of a grant reach the same key, and nobody else reaches it at all.

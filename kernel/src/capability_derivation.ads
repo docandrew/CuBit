@@ -52,7 +52,10 @@ package Capability_Derivation with SPARK_Mode is
                  CAP_DEBUG_INSTRUMENT |
                  -- VM creation (VMM-001): devmgr to procmgr to the program
                  -- its startup plan approves.
-                 CAP_VM_CREATE);
+                 CAP_VM_CREATE |
+                 -- A notification's Wake handles (its Wait handle has no
+                 -- RIGHT_GRANT, so it is never copied: Copyable).
+                 CAP_NOTIFICATION_OBJECT);
 
     -- Kinds whose object is a range (first, count or bytes): device memory
     -- (base, bytes), I/O ports (first port, count), interrupt vectors
