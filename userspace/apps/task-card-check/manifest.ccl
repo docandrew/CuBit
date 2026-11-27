@@ -6,4 +6,8 @@
   version => "0.1.0"
   # Its name for people: the task button's label (UI-061).
   app => (App_Declaration.Declared (App_Presentation name => "Task Card Check"))
-  requests => [(service "desktop" "desktop")])
+  requests => [
+    # ABI-002: its debug text (CuBit.Console_Route).
+    (service "logstore" "logstore")
+    (service "desktop" "desktop")]
+  optional => ["logstore"])

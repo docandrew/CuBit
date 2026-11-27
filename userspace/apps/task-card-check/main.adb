@@ -17,6 +17,7 @@ with CuBit.Desktop_Protocol;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
 with CuBit.Monotonic;
+with CuBit.Console_Route;
 
 procedure Main is
    package DP renames CuBit.Desktop_Protocol;
@@ -71,6 +72,8 @@ procedure Main is
    Opened_First, Opened_Second, Found : Boolean;
    Event : CuBit.UI.App.Input_Event;
 begin
+   --  ABI-002: debug text into its logstore ring, never the kernel console.
+   CuBit.Console_Route.Route_Named ("logstore");
    Open (First, First_W, First_H, "Files", Opened_First);
    Open (Second, Second_W, Second_H, "Second window", Opened_Second);
    if not (Opened_First and Opened_Second) then
