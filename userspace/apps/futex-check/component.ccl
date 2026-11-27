@@ -1,2 +1,3 @@
 (Component name => "futex-check" kind => Kind.Application
-  source => (Source.Ada (Ada_Source)))
+  source => (Source.Ada (Ada_Source
+    sources => ["userspace/lib/wake-latency"])))

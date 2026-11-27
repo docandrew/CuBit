@@ -24,6 +24,7 @@ with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with Futex_Check_Support; use Futex_Check_Support;
+with Wake_Latency; use type Wake_Latency.Word;
 
 procedure Main is
    use ASCII;
@@ -60,6 +61,35 @@ begin
       Stacks (I) := New_Stack;
    end loop;
    Check ((for all S of Stacks => S /= 0), "thread stacks allocated");
+
+   --  Wake latency (IPC revision 2 baseline; from wake-model's IPC-012
+   --  gate, userspace/lib/wake-latency): from a FUTEX_WAKE of a word to its
+   --  waiting thread running, Wake_Latency.Rounds times. Reported, not
+   --  gated: the gate stays with the step that changes futexes (S1).
+   declare
+      Sum   : Wake_Latency.Summary;
+      Stack : constant Unsigned_64 := New_Stack;
+
+      function Image (V : Unsigned_64) return String is
+         S : constant String := Unsigned_64'Image (V);
+      begin
+         return S (S'First + 1 .. S'Last);
+      end Image;
+   begin
+      Wake_Latency.Waiter_Wait := Wake_Latency.Futex_Wait'Access;
+      Result := Spawn (Wake_Latency.Waiter'Access, Stack, 0, 0, null);
+      Check (Stack /= 0 and then Result /= CREATE_FAILED, "wake-latency waiter started");
+      if Stack /= 0 and then Result /= CREATE_FAILED then
+         while Wake_Latency.Ready = 0 loop
+            Ignore := CuBit.Waits.Futex_Wait (Wake_Latency.Ready'Address, 0, FOREVER);
+         end loop;
+         Wake_Latency.Drive;
+         Sum := Wake_Latency.Summarise;
+         debugPrint ("futex-check: wake latency (Futex form): p50 " & Image (Sum.P50_Us) &
+                     " us, p99 " & Image (Sum.P99_Us) & " us, max " & Image (Sum.Max_Us) &
+                     " us over" & Natural'Image (Wake_Latency.Rounds) & " wakes" & LF);
+      end if;
+   end;
 
    --  Futex argument and value checks.
    Check (Futex_Wait (Mutex'Access, 5) = FUTEX_RETRY,

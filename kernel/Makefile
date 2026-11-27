@@ -1210,6 +1210,12 @@ $(eval $(call ccl_program,../userspace/apps/bench-ipc-server,bench-ipc-server.ap
 bench-ipc-client: isodir/boot/bench-ipc-client.app
 $(eval $(call ccl_program,../userspace/apps/bench-ipc-client,bench-ipc-client.app,))
 
+# IPC revision 2 S0: the endpoint fairness benchmark's client
+# (tests/ipc-fairness; headless bench-fairness-*), against bench-ipc-server.
+.PHONY : bench-fairness
+bench-fairness: isodir/boot/fairness-client.app isodir/boot/bench-ipc-server.app
+$(eval $(call ccl_program,../tests/ipc-fairness/client,fairness-client.app,))
+
 # Build the freestanding CuBit Control Language VM self-test app.
 .PHONY : ccl-run
 ccl-run:

@@ -407,7 +407,7 @@ case "$TEST_NAME" in
         ;;
     grant-forward|grant-forward-intermediary-exit|grant-forward-owner-exit|grant-forward-desktop|config-tree|config-inspection|log-authority|log-fields|log-retention|console-route|late-introduction|metrics|rust-native|turso-native-std|turso-native|virtio-gpu-multi-output|display-discovery-multi-output|display-discovery-boot-only|desktop-dual-output)
         ;;
-    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|stdin-inlet|image-share|ladybird-js|ladybird-test262|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|task-cards|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|mailbox-self|mailbox-mutual|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|graphics-report-nodriver|graphics-report-failing|graphics-report-desktop-down|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch|screen-settle)
+    boot-shell-nvme|boot-memory-8g|boot-memory-16g|boot-memory-32g|boot-large-module|async-ipc|bench-ipc|bench-audio|bench-storage|bench-input|bench-scheduler|ccl-vm|ccl-workbench|ccl-workbench-virtio-vga|ccl-workspace|ccl-console|lexicon|dictionary|bible|debugger-gui|debugger-gui-rs|logs|metricsview|ccl-remote|capability-security|network-authority|bench-net|bench-fs|bench-cualloc|kern014-bench|threads|futex|wait|secondary-stacks|ada-runtime|exit-status|clock|avx|rust-std|libc|stdin-inlet|image-share|ladybird-js|ladybird-test262|processes|control-events|binutils|gcc|gnat|ccl-build-native|servo|bench-spread|timesync|tls-probe|tls-service|wget-https|storage-grants|audio-grants|desktop-display|desktop-protocol|display-grants|display-grants-virtio-vga|display-dual-output|input-stream|devices|managed-ui|files|text|calculator|task-cards|neon-blast|ui-latency|clipboard|key-repeat|desktop-doom|desktop-virtio-vga|desktop-vm|display-latency|metrics-latency|virtio-gpu|virtio-vga-primary|bench-latency|boot-timeline|devmem-denials|process-kill|oom-reclaim|scanout-repair|launch-failure|fs-coherence-*|bench-fairness-*|startup-health|generic-launch|ufs|ufs-write|net-link|net-multi|firmware-snapshot|acpi-hardware|acpi-pci-config|acpi-firmware-data|platform-pool|gpio-launch|acpi-one-service|acpi-sci|acpi-shutdown|multi-instance|fat32-volume|usb-disk|usb-eject|program-parameters|supervision|shutdown|shutdown-console|shutdown-text|shutdown-desktop|shutdown-desktop-cancel|startup-wait|large-manifest|usb-hotplug|usb-slots|wifi-crypto|trap-flag|nmi|direction-flag|alignment-flag|kernel-map-probe|mov-ss-debug|llm-mock|agent-mock|agent-app|llm-live|ccl-remote-session|cpu-times|desktop-restart|desktop-reap|font-masks|remote-screenshot|device-build|service-switch|service-switch-reboot|acpi-live-replace|desktop-live-replace|console-run-staged|bench-build|nvme-timeout|nvme-stuck|futex-share|mailbox-self|mailbox-mutual|debug-engine|debug-engine-rs|cpu-refusal|tlb-tags|spawn-rules|debug-observe|launch-gate|debug-kernel|debug-gate-disabled|debug-gate-production|debug-gate-development|virt-report|virt-report-none|vm-hello|vm-linux|vm-desktop|desktop-session|desktop-session-no-invtsc|desktop-launch|power-sources|graphics-report-nodriver|graphics-report-failing|graphics-report-desktop-down|clock-keeper|xhci-bringup|tsc-sync|tsc-skew|tsc-skew-noadjust|net-fetch|screen-settle)
         ;;
     *)
         echo "headless: unknown test: $TEST_NAME" >&2
@@ -516,6 +516,9 @@ cleanup() {
     fi
     if [ -n "$TEMP_LOAD_PROFILE" ]; then
         rm -f "$TEMP_LOAD_PROFILE"
+    fi
+    if [ -n "${TEMP_FAIRNESS_PROFILE:-}" ]; then
+        rm -f "$TEMP_FAIRNESS_PROFILE"
     fi
     if [ -n "$NETWORK_PEER_PID" ]; then
         kill "$NETWORK_PEER_PID" >/dev/null 2>&1 || true
@@ -674,6 +677,18 @@ case "$TEST_NAME" in
         ;;
     bench-ipc)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-ipc.ccl"
+        ;;
+    bench-fairness-*)
+        # IPC revision 2 S0 (tests/ipc-fairness): the case's client
+        # processes call one bench-ipc-server in the same window.
+        TEMP_FAIRNESS_PROFILE="$(mktemp "${TMPDIR:-/tmp}/cubit-fairness.XXXXXX.ccl")"
+        if ! bash "$ROOT_DIR/tests/ipc-fairness/profile.sh" "${TEST_NAME#bench-fairness-}" \
+               > "$TEMP_FAIRNESS_PROFILE"; then
+            echo "headless: unknown bench-fairness case: ${TEST_NAME#bench-fairness-}" >&2
+            exit 2
+        fi
+        INIT_PROFILE="$TEMP_FAIRNESS_PROFILE"
+        QEMU_MEMORY="${QEMU_MEMORY:-512M}"
         ;;
     bench-input)
         INIT_PROFILE="$ROOT_DIR/tests/headless/init-bench-input.ccl"
@@ -2623,6 +2638,20 @@ if [ -n "$INIT_PROFILE" ]; then
             exit 1
         fi
     fi
+    case "$TEST_NAME" in bench-fairness-*)
+        if ! make -s -C "$KERNEL_DIR" bench-fairness; then
+            echo "headless: failed to build bench-fairness (make -C kernel bench-fairness)" >&2
+            exit 1
+        fi
+        for FAIRNESS_IMAGE in fairness-client.app bench-ipc-server.app; do
+            debugfs -w -R "rm $FAIRNESS_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
+            if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$FAIRNESS_IMAGE $FAIRNESS_IMAGE" \
+              "$TEMP_DISK" >/dev/null 2>&1; then
+                echo "headless: failed to install $FAIRNESS_IMAGE" >&2
+                exit 1
+            fi
+        done
+    esac
     if [ "$TEST_NAME" = "bench-ipc" ]; then
         for BENCH_IMAGE_NAME in bench-ipc-client.app bench-ipc-server.app; do
             BENCH_IMAGE="$KERNEL_DIR/isodir/boot/$BENCH_IMAGE_NAME"
@@ -8286,6 +8315,18 @@ usb-eject: end
 "
         if grep -qa 'usb-eject: FAIL' "$SERIAL_LOG"; then
             echo "headless: usb-eject reported a failure" >&2
+            exit 1
+        fi
+        ;;
+    bench-fairness-*)
+        required_markers="
+bench-ipc-server: registered
+FAIRNESS: client label=
+"
+        # Every client reported, none failed; then the case's summary.
+        if ! python3 -I "$ROOT_DIR/tests/ipc-fairness/summary.py" "$SERIAL_LOG" \
+               "$(bash "$ROOT_DIR/tests/ipc-fairness/profile.sh" "${TEST_NAME#bench-fairness-}" --count)"; then
+            echo "headless: $TEST_NAME: a client failed or did not report" >&2
             exit 1
         fi
         ;;

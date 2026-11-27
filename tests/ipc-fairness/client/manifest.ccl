@@ -1,0 +1,21 @@
+# fairness-client (tests/ipc-fairness, headless bench-fairness-*): one client
+# process of the endpoint fairness benchmark (IPC revision 2, S0). Its
+# threads call bench-ipc-server's endpoint in a loop; calls that start inside
+# the window [start, start + window) (monotonic milliseconds since boot) are
+# timed. Every client of a run has the same window, so they overlap.
+(type Fair_Label (range 0 999))
+(type Fair_Threads (range 1 64))
+(type Fair_Milliseconds (range 1 600000))
+(type Fair_Parameters (record
+  (label Fair_Label)
+  (threads Fair_Threads)
+  (start Fair_Milliseconds)
+  (window Fair_Milliseconds)))
+(Executable_Manifest
+  identity => "com.cubit.bench.fairness.client"
+  version => "1"
+  requests => [(service "ipc-test" "ipc-test")
+               # ABI-002: its debug text (CuBit.Console_Route).
+               (service "logstore" "logstore")]
+  optional => ["logstore"]
+  parameters => (Parameter_Signature.Declared "Fair_Parameters"))
