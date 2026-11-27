@@ -12,6 +12,7 @@ tests/acpi-native-completion-routing/models/cubit-messages.adb
 tests/acpi-native-completion-routing/models/cubit-messages.ads
 tests/acpi-native-delays/cubit-kernel_calls.adb
 tests/acpi-native-entry/fixtures/actual/acpi_backend_main.adb
+tests/acpi-native-entry/fixtures/actual/acpi_native_delays.adb
 tests/acpi-native-entry/fixtures/actual/acpi_one_service.adb
 tests/acpi-native-entry/fixtures/actual/cubit-child_exits.ads
 tests/acpi-native-entry/fixtures/actual/cubit-handles-kernel.adb
@@ -23,6 +24,7 @@ tests/acpi-native-entry/fixtures/actual/cubit-memory_grants.adb
 tests/acpi-native-entry/fixtures/actual/cubit-messages.adb
 tests/acpi-native-entry/fixtures/actual/cubit-messages.ads
 tests/acpi-native-entry/fixtures/actual/cubit-process_list.ads
+tests/acpi-native-entry/fixtures/actual/cubit-published_clock.adb
 tests/acpi-native-entry/fixtures/actual/cubit-settings-transport.adb
 tests/acpi-native-entry/fixtures/actual/cubit-streams.adb
 tests/acpi-native-entry/fixtures/actual/cubit-system_facts.adb
@@ -116,10 +118,15 @@ tests/servo/audio-output/abi.h
 tests/stdin-inlet/check/main.adb
 tests/ui-repair-hit-map/native-menu/main.adb
 tests/userspace-allocator/cubit/cualloc-bench.c
+userspace/allocator/process/cualloc_native.adb
+userspace/apps/ada-runtime-check/exception_threads.adb
 userspace/apps/avx-check/main.adb
 userspace/apps/bench-ipc-client/main.adb
 userspace/apps/bench-ipc-server/main.adb
 userspace/apps/capability-test/main.adb
+userspace/apps/clock-check/main.adb
+userspace/apps/clock-keeper-check/main.adb
+userspace/apps/cpu-times-check/main.adb
 userspace/apps/desktop-check/main.adb
 userspace/apps/devmem-check/main.adb
 userspace/apps/display-check/main.adb
@@ -130,10 +137,13 @@ userspace/apps/ipctest-server/main.adb
 userspace/apps/launch-gate-check/main.adb
 userspace/apps/mov-ss-check/main.adb
 userspace/apps/platform-pool-check/main.adb
+userspace/apps/secondary-stack-check/stack_threads.adb
 userspace/apps/storage-check/main.adb
 userspace/apps/trap-flag-check/main.adb
 userspace/lib/debug/stub-rs/src/lib.rs
 userspace/lib/ui/cubit-ui-app.adb
+userspace/services/acpi/ec/native/acpi_ec_native_clock.adb
+userspace/services/acpi/native-clock/acpi_native_delays.adb
 userspace/services/acpi/native/acpi_one_service.adb
 userspace/services/desktop/desktop_launch_refresh.adb
 userspace/services/desktop/main.adb

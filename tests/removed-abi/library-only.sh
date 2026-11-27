@@ -11,8 +11,10 @@
 #                           list only shrinks; at zero, every file is clean)
 #
 #  A reference is a system-call number name (SYSCALL_*), a CuBit.Kernel_ABI
-#  call number, or a raw syscall entry (syscall/syscallN, cubit_syscall,
-#  "syscall" in inline assembly) in Ada, C or Rust source.
+#  call number, the runtime's system-call instruction (CuBit.Kernel_Calls's
+#  Call and Submit, which a renamed Kernel_ABI would otherwise hide), or a
+#  raw syscall entry (syscall/syscallN, cubit_syscall, "syscall" in inline
+#  assembly) in Ada, C or Rust source.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
@@ -21,7 +23,7 @@ cd "$root"
 #  constants), as Kernel_ABI.<Name>.
 calls=$(grep -oE '^ *[A-Z][A-Za-z_0-9]* *: constant System_Call' \
           userspace/runtime/gnat/cubit-kernel_abi.ads | awk '{print $1}' | paste -sd'|')
-pattern="\\bSYSCALL_[A-Z0-9_]+\\b|Kernel_ABI\\.($calls)\\b|\\bsyscall[0-6]? *\\(|\\bcubit_syscall[0-6]?\\b|\"syscall\""
+pattern="\\bSYSCALL_[A-Z0-9_]+\\b|Kernel_ABI\\.($calls)\\b|\\bKernel_Calls\\.(Call|Submit)\\b|\\bsyscall[0-6]? *\\(|\\bcubit_syscall[0-6]?\\b|\"syscall\""
 library='^userspace/(runtime|libc|rust|c)/'
 offenders=$(grep -rlE --include='*.ad[sb]' --include='*.c' --include='*.h' --include='*.rs' \
               "$pattern" userspace tests 2>/dev/null \
