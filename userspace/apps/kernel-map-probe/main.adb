@@ -2,6 +2,8 @@ with Interfaces; use Interfaces;
 with System; use System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Owned_Reservations;
+with CuBit.Process_Calls;
 
 --  Kernel-map probe (KERN-014, docs/kernel-memory-map.md): writes a marker
 --  into its own heap page, prints it, and asks a probe kernel
@@ -32,12 +34,7 @@ procedure Main is
       end loop;
       return Result;
    end Hex;
-   procedure Request (Text : String) is
-      Ignore : constant Unsigned_64 := syscall
-        (SYSCALL_WRITE, STDOUT, Unsigned_64 (To_Integer (Text'Address)), Text'Length);
-   begin
-      null;
-   end Request;
+   procedure Request (Text : String) renames CuBit.Process_Calls.Write_Console;
 
    --  KERN-014 slice 2: the kernel stores into this process's memory
    --  through its own mapping; the hardware decides. Into a writable page
@@ -45,16 +42,13 @@ procedure Main is
    --  with no frame (refused), the kernel half (refused before any access).
    --  The last two faults are recovered, and counted.
    procedure Kernel_Stores is
-      Reserve : constant Unsigned_64 := 146;
-      Change  : constant Unsigned_64 := 147;
-      Commit  : constant Unsigned_64 := 0;
-      Make_Read_Only : constant Unsigned_64 := 3;
-      Page    : constant Unsigned_64 := 4096;
+      package Owned renames CuBit.Owned_Reservations;
+      Page    : constant Unsigned_64 := Owned.Page_Bytes;
       Written : constant Unsigned_64 := 16#5752_4954_5445_4E21#;
-      Base    : constant Unsigned_64 := syscall (Reserve, 2 * Page, 0);
+      Base    : constant Unsigned_64 := Owned.Reserve (2 * Page);
       Word : Unsigned_64 with Import, Volatile, Address => To_Address (Integer_Address (Base));
    begin
-      if Base = 0 or else syscall (Change, Base, Page, Commit) /= 0 then
+      if Base = 0 or else not Owned.Change (Base, Page, Owned.Commit) then
          debugPrint ("kernel-map-probe: FAIL owned memory" & LF);
          return;
       end if;
@@ -63,7 +57,7 @@ procedure Main is
       debugPrint ("kernel-map-probe: writable page " &
                   (if Word = Written then "holds the store" else "FAIL lacks the store") & LF);
       Word := 0;
-      if syscall (Change, Base, Page, Make_Read_Only) /= 0 then
+      if not Owned.Change (Base, Page, Owned.Make_Read_Only) then
          debugPrint ("kernel-map-probe: FAIL read-only" & LF);
          return;
       end if;
@@ -81,14 +75,7 @@ begin
    --  Straight to the kernel's console write, not debugPrint: a console
    --  sink would forward the text, and the kernel would read the
    --  forwarder's memory at this address.
-   declare
-      Request : constant String := "KERN014-PROBE-READ " &
-        Hex (Unsigned_64 (To_Integer (Buffer (Probed)'Address)));
-      Ignore : constant Unsigned_64 := syscall
-        (SYSCALL_WRITE, STDOUT, Unsigned_64 (To_Integer (Request'Address)), Request'Length);
-   begin
-      null;
-   end;
+   Request ("KERN014-PROBE-READ " & Hex (Unsigned_64 (To_Integer (Buffer (Probed)'Address))));
    if Buffer (Probed) /= Marker then
       debugPrint ("kernel-map-probe: FAIL marker changed" & LF);
    end if;
