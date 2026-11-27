@@ -10,6 +10,7 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Grant_References;
+with CuBit.Process_Calls;
 with Compositor_Requests;
 with Desktop_Endpoints;
 
@@ -37,8 +38,12 @@ package body Desktop_App_Describe is
       if Attempted then return; end if;
       Attempted := True;
       --  Two pages' worth, so one page-aligned page lies inside.
-      Raw := syscall (SYSCALL_SBRK, 2 * Page_Bytes);
-      if Raw > Unsigned_64'Last - 2 * Page_Bytes then return; end if;
+      Raw := CuBit.Process_Calls.Grow_Heap (2 * Page_Bytes);
+      if Raw = CuBit.Process_Calls.Heap_Refused
+        or else Raw > Unsigned_64'Last - 2 * Page_Bytes
+      then
+         return;
+      end if;
       Aligned := (Raw + (Page_Bytes - 1)) and not Unsigned_64 (Page_Bytes - 1);
       Page_Address := To_Address (Integer_Address (Aligned));
       MG.Create_Via_Capability (Desktop_Endpoints.Process_Manager, Page_Address, 1, True, Grant, OK);
