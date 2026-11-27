@@ -12,6 +12,7 @@ pragma Ada_2022;
 with Ada.Text_IO; use Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Debug_ABI;
+with CuBit.App_Names;
 with CuBit.Child_Exits;
 with CuBit.Launch_Handles;
 with Handle_Admission;
@@ -80,7 +81,7 @@ procedure Main is
       LH.Handle_Tag_Prefix or LH.Serial_Limit];
    Other_Labels : constant Label_List :=
      [LH.Session_Debug_Operation, LH.Debug_Records_Operation, LH.Exit_Notice_Label,
-      16#0106#, 16#0110#];
+      16#0106#, 16#0110#, CuBit.App_Names.Describe_Operation];
 begin
    --  Wire encoding.
    for W in Unsigned_64 range 0 .. LH.Rights_Word_Limit - 1 loop
@@ -101,6 +102,10 @@ begin
    for L of Other_Labels loop
       Check (not LH.Is_Operation_Label (L), "not a handle operation");
    end loop;
+   --  procmgr's own operations reach its dispatch from an ordinary sender
+   --  (Desktop's Describe, UI-061, once collided with Observe_Op).
+   Check (HA.Route_Of (0, CuBit.App_Names.Describe_Operation) = HA.Ordinary,
+          "Describe is procmgr's own operation, not refused as a handle one");
    for O in LH.Outcome loop
       Check (LH.Is_Outcome_Word (LH.Outcome_Word (O))
              and then LH.To_Outcome (LH.Outcome_Word (O)) = O, "outcome round trip");

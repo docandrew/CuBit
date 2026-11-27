@@ -24,7 +24,9 @@
 pragma Ada_2022;
 
 package CuBit.App_Names with Pure, SPARK_Mode is
-   Describe_Operation : constant := 16#0116#;
+   --  Not 16#0116# .. 16#011C#: those are the launch handles' operations
+   --  (CuBit.Launch_Handles), which procmgr routes before its own.
+   Describe_Operation : constant := 16#010F#;
    Request_Words : constant := 2;
    Grant_Word : constant := 0;
    Process_Word : constant := 1;
