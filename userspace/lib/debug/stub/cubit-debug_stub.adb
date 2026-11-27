@@ -13,10 +13,10 @@ with Thread_ABI;
 with CuBit.Debug_Protocol;
 with CuBit.Grant_References;
 with CuBit.Kernel_ABI;
-with CuBit.Kernel_Calls;
 with CuBit.Memory_Grants;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Owned_Reservations;
+with CuBit.Process_Calls;
 with CuBit.System_Facts;
 with CuBit.Thread_Areas;
 with CuBit.Waits;
@@ -347,8 +347,8 @@ package body CuBit.Debug_Stub is
       end if;
       Low := Stack + ABI.Page_Bytes;
       High := Stack + Bytes;
-      Created := CuBit.Kernel_Calls.Call
-        (ABI.Thread_Create, Unsigned_64 (To_Integer (Code.all'Address)),
+      Created := CuBit.Process_Calls.Create_Thread
+        (Unsigned_64 (To_Integer (Code.all'Address)),
          ((Stack + Bytes) and not (Stack_Alignment - 1)) - Return_Address_Bytes,
          Argument, Area, Unsigned_64 (To_Integer (Exit_Word)));
       if Created = Thread_ABI.Refused or else not Thread_ABI.Is_Created (Created) then
