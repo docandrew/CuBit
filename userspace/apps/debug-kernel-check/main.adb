@@ -27,6 +27,7 @@ with CuBit.Launch_Grants;
 with CuBit.Launch_Handles;
 with CuBit.Launching;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Debug_ABI;
 with Startup;
@@ -72,7 +73,6 @@ procedure Main is
    R : Outcome;
    Info : Program_Info;
    Ts : Thread_List;
-   Ignore : Unsigned_64;
 
    --  The thread whose frames include Wanted; Frames into Fs.
    procedure Find_Frame
@@ -164,7 +164,7 @@ begin
           and then Plain.Rights (LH.Debug));
    if Launched /= CuBit.Launching.Launched then
       Say ("FAIL");
-      Ignore := syscall (SYSCALL_EXIT, Exit_Failure);
+      CuBit.Process_Calls.Exit_Process (Exit_Failure);
    end if;
    CuBit.Waits.Sleep_For (Settle_Ms);
 
