@@ -15,6 +15,7 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles; use CuBit.Handles;
 with CuBit.Handles.Startup;
+with CuBit.Process_Calls;
 with CuBit.Startup_Tables;
 with CuBit.Readiness;
 with CuBit.Monotonic;
@@ -153,7 +154,7 @@ begin
       Result := CuBit.Waits.Wait (W.Requests_Sources, W.Now, Address_Of (M));
       R.Took (T, R.Requests);
       Check (not R.Pending (T, R.Requests), "taking every counted request needs no empty poll");
-      Result := CuBit.Messages.reply (From_Word (Result), M);
+      Check (CuBit.Messages.reply (From_Word (Result), M) /= Unsigned_64'Last, "second request answered");
       Result := CuBit.Waits.Wait (W.Completions_Sources, W.Now,
                                   Unsigned_64 (System.Storage_Elements.To_Integer (C'Address)), 1, 0);
    end;
@@ -199,5 +200,5 @@ begin
    end;
 
    debugPrint ((if Passed then "wait-check: ALL PASS" else "wait-check: SOME FAIL") & LF);
-   Result := syscall (SYSCALL_EXIT, (if Passed then 0 else 1));
+   CuBit.Process_Calls.Exit_Process ((if Passed then CuBit.Process_Calls.Success else CuBit.Process_Calls.Failure));
 end Main;
