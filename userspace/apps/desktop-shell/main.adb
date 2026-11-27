@@ -22,6 +22,7 @@ with CuBit.Desktop_Messages;
 with CuBit.Deadlines;
 with CuBit.Channels;
 with CuBit.Channel_Protocol;
+with CuBit.Process_Calls;
 with CuBit.Process_Events;
 with CuBit.Published_Clock;
 with CuBit.UI;
@@ -65,7 +66,6 @@ procedure main is
    compact   : Boolean := False;
    running   : Boolean := True;
    sentBye   : Boolean := False;
-   ignore    : Unsigned_64;
    --  The window's surface ring (IPC-004): presents and input, no call
    --  unless a side sleeps. presentWanted: a frame waits for a free slot.
    surfaceRing   : Ring.Connection;
@@ -152,7 +152,7 @@ procedure main is
       grantOk : Boolean;
       reply : Message;
    begin
-      raw := syscall (SYSCALL_SBRK, pages * 4096 + 4096);
+      raw := CuBit.Process_Calls.Grow_Heap (pages * 4096 + 4096);
       if raw = Unsigned_64'Last then
          debugPrint ("desktop-shell: pixel buffer alloc failed" & LF);
          return;
@@ -331,8 +331,7 @@ begin
       hello.tag := capCall (UI_Desktop_Service.Endpoint, hello, CuBit.Messages.Wait_Forever);
       if DP.Decode_Hello_Result (CuBit.Desktop_Messages.To_Wire (hello)).Status /= DP.Success then
          debugPrint ("desktop-shell: hello failed" & LF);
-         ignore := syscall (SYSCALL_EXIT, 1);
-         return;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
    end;
 
@@ -365,8 +364,7 @@ begin
       height := created.words (2);
       if surfaceId = 0 then
          debugPrint ("desktop-shell: create surface failed" & LF);
-         ignore := syscall (SYSCALL_EXIT, 1);
-         return;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
    end;
 
@@ -384,8 +382,7 @@ begin
       if windowId = 0 then
          debugPrint ("desktop-shell: create window failed" & LF);
          closeSession;
-         ignore := syscall (SYSCALL_EXIT, 1);
-         return;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
    end;
 
@@ -404,8 +401,7 @@ begin
                      CuBit.Channels.Open_Result'Image (result) & " " &
                      CuBit.Channel_Protocol.Open_Refusal'Image (refusal) & LF);
          closeSession;
-         ignore := syscall (SYSCALL_EXIT, 1);
-         return;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
    end;
    present;
@@ -443,5 +439,5 @@ begin
       closeSession;
    end;
 
-   ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end main;
