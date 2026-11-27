@@ -2,6 +2,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Block_Devices; use CuBit.Block_Devices;
 with CuBit.Memory_Grants;
+with CuBit.Process_Calls;
 with CuBit.String;
 with CuBit.Shared_Copies;
 
@@ -110,7 +111,7 @@ package body ISO9660 is
       then return False; end if;
       Volume_Blocks := Description.blockCount;
       if Buffer = System.Null_Address then
-         Raw := syscall (SYSCALL_SBRK, 9 * 4096);
+         Raw := CuBit.Process_Calls.Grow_Heap (9 * 4096);
          if Raw = Unsigned_64'Last then return False; end if;
          Buffer := To_Address (Integer_Address ((Raw + 4095) and not 4095));
       end if;

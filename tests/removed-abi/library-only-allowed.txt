@@ -163,9 +163,7 @@ userspace/services/desktop/desktop_launch_refresh.adb
 userspace/services/desktop/main.adb
 userspace/services/devmgr/main.adb
 userspace/services/display/main.adb
-userspace/services/filesystem/fs_server-delegations.adb
 userspace/services/filesystem/fs_server-storage.adb
-userspace/services/filesystem/iso9660.adb
 userspace/services/gpio/native/gpio_main_entry.adb
 userspace/services/hda/main.adb
 userspace/services/intel-gpu/intel_gpu_firmware_file.adb

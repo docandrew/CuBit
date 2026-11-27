@@ -3,6 +3,7 @@ with Fs_Server.Handles; use Fs_Server.Handles;
 with Fs_Server.Replies; use Fs_Server.Replies;
 with Fs_Server.Watches; use Fs_Server.Watches;
 with Fs_Volumes;
+with CuBit.Process_Calls;
 
 package body Fs_Server.Delegations is
 
@@ -330,13 +331,12 @@ package body Fs_Server.Delegations is
             slotWord : Unsigned_32 with Volatile, Import,
               Address => entryWord (i, FQ.Dirty_Slot_At);
             sequence : Unsigned_32 := seqWord;
-            ignore : Unsigned_64;
          begin
             if sequence /= 0 then
                while sequence mod 2 = 1 and then waitBudget > 0 and then
                  wanted (taggedHandle (slotWord, owner))
                loop
-                  ignore := syscall (SYSCALL_YIELD);
+                  CuBit.Process_Calls.Yield;
                   waitBudget := waitBudget - 1;
                   sequence := seqWord;
                end loop;
