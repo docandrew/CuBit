@@ -57,6 +57,7 @@ with VM_Objects;
 with Process.DMA;
 with Process.IPC;
 with Process.Reports;
+with Process.Teardown;
 with Process.Owned_Memory;
 with Process.User_Memory;
 with Kernel_Window;
@@ -2239,7 +2240,7 @@ package body Process is
             DMA.Take_Ready (dmaVictim);
             if dmaVictim /= NO_PROCESS then
                 Spinlocks.exitCriticalSection (lock);
-                IPC.releaseDMAAllocations (dmaVictim);
+                Teardown.releaseDMAAllocations (dmaVictim);
                 -- A claimed process/thread must still be reclaimed below.
                 if victimThread /= NO_THREAD then
                     reclaimThread (victimThread);
@@ -2344,7 +2345,7 @@ package body Process is
         -- PID (and therefore its authoritative grant records) until every
         -- borrower has returned.  The address space itself can still be torn
         -- down now; BuddyAllocator defers freeing the pinned data frames.
-        IPC.prepareGrantProtectedTeardown
+        Teardown.prepareGrantProtectedTeardown
           (pid         => pid,
            pidReusable => pidReusable,
            deferred    => grantDeferred);
@@ -2467,7 +2468,7 @@ package body Process is
         Spinlocks.exitCriticalSection (lock);
 
         if grantDeferred then
-            IPC.finishGrantProtectedTeardown (pid);
+            Teardown.finishGrantProtectedTeardown (pid);
         end if;
 
         if ringParent then

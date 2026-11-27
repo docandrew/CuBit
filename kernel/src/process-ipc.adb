@@ -13,6 +13,7 @@ with Readiness_Pages;
 with Futex_ABI;
 with Process.Futex;
 with Process.Reports;
+with Process.Teardown;
 with Readiness_Publication;
 with BuddyAllocator;
 with Call_Sequences;
@@ -35,7 +36,6 @@ with System.Address_To_Access_Conversions;
 with PerCPUData;
 with Process.Queues;
 with Process.User_Memory;
-with Process.DMA;
 with Process_Lifetime;
 with TextIO;
 with Time;
@@ -3546,7 +3546,6 @@ package body Process.IPC is
         end loop;
     end unmapGrantPages;
 
-    procedure completeOwnerPIDIfReady (owner : ProcessID);
     procedure releaseForwardingIfReady (reference : Memory_Grants.Reference);
 
     procedure retireGrantLocked (slot : Memory_Grants.Global_Slot) is
@@ -3592,7 +3591,7 @@ package body Process.IPC is
         if link.active then
             releaseForwardingIfReady (link.parent);
         end if;
-        completeOwnerPIDIfReady (owner);
+        Teardown.completeOwnerPIDIfReady (owner);
     end retireGrantLocked;
 
     procedure releaseForwardingIfReady (reference : Memory_Grants.Reference) is
@@ -3808,7 +3807,7 @@ package body Process.IPC is
                     end if;
                 end if;
             end;
-            completeOwnerPIDIfReady (owner);
+            Teardown.completeOwnerPIDIfReady (owner);
         end closeReceived;
         procedure closeEach is new Sweep_Grants (closeReceived);
     begin
@@ -3908,48 +3907,6 @@ package body Process.IPC is
         Spinlocks.exitCriticalSection (grantLock);
     end acquireGrant;
 
-    procedure releaseDMAAllocations (pid : ProcessID) is
-        complete : Boolean;
-        reusable : Boolean;
-    begin
-        -- Only the retirement worker calls this, after Take_Ready. No grant
-        -- lock is held across the bounded ownership-tag cleanup.
-        Spinlocks.enterCriticalSection (grantLock);
-        if not proctab(pid).grantTeardownPending or else
-           not proctab(pid).grantTeardownReady or else hasActiveGrants (pid)
-        then
-            DMA.Finish_Step (pid, True);
-            Spinlocks.exitCriticalSection (grantLock);
-            return;
-        end if;
-        Spinlocks.exitCriticalSection (grantLock);
-        DMA.Retire_Step (pid, True, complete);
-        Spinlocks.enterCriticalSection (grantLock);
-        DMA.Finish_Step (pid, complete);
-        if complete then
-            reusable := proctab(pid).pidReusableAfterGrants;
-            proctab(pid).grantTeardownPending := False;
-            proctab(pid).grantTeardownReady := False;
-            proctab(pid).pidReusableAfterGrants := False;
-            if reusable then
-                Reports.releaseRetiredPID (pid);
-            end if;
-        end if;
-        Spinlocks.exitCriticalSection (grantLock);
-    end releaseDMAAllocations;
-
-    procedure completeOwnerPIDIfReady (owner : ProcessID) is
-    begin
-        if proctab(owner).grantTeardownPending and then
-           proctab(owner).grantTeardownReady and then
-           not hasActiveGrants (owner)
-        then
-            -- Enqueue only: never walk allocation pages while holding
-            -- grantLock. Repeated notifications cannot duplicate a worker job.
-            DMA.Enqueue (owner);
-        end if;
-    end completeOwnerPIDIfReady;
-
     procedure returnGrant
       (reference : Memory_Grants.Reference;
        success   : out Boolean)
@@ -4041,42 +3998,6 @@ package body Process.IPC is
         ringGrantNotices;
         notifyDMAWork;
     end revokeGrantReference;
-
-    procedure prepareGrantProtectedTeardown
-      (pid         : ProcessID;
-       pidReusable : Boolean;
-       deferred    : out Boolean)
-
-    is
-    begin
-        deferred := False;
-        Spinlocks.enterCriticalSection (grantLock);
-        deferred := hasActiveGrants (pid) or else DMA.Has_Records (pid);
-
-        if deferred then
-            proctab(pid).grantTeardownPending := True;
-            proctab(pid).grantTeardownReady := False;
-            proctab(pid).pidReusableAfterGrants := pidReusable;
-        end if;
-        Spinlocks.exitCriticalSection (grantLock);
-    end prepareGrantProtectedTeardown;
-
-    procedure finishGrantProtectedTeardown (pid : ProcessID)
-
-    is
-    begin
-        -- CPU execution and address-space destruction are complete before
-        -- this call. Require synchronous all-CPU translation retirement too.
-        TLB_Shootdown.Invalidate_All;
-        Spinlocks.enterCriticalSection (grantLock);
-        if proctab(pid).grantTeardownPending then
-            proctab(pid).grantTeardownReady := True;
-            completeOwnerPIDIfReady (pid);
-        end if;
-        Spinlocks.exitCriticalSection (grantLock);
-        ringGrantNotices;
-        notifyDMAWork;
-    end finishGrantProtectedTeardown;
 
     ---------------------------------------------------------------------------
     -- Capability-Aware IPC

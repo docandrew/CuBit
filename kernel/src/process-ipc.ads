@@ -453,18 +453,12 @@ package Process.IPC is
     -- still on its lists (they leave before the slot can be reused).
     function grantListsEmpty (pid : ProcessID) return Boolean;
 
-    -- Called by process teardown.  When acquired grants remain, retain the
-    -- PID until teardown is complete and the final acquisition is returned.
-    procedure prepareGrantProtectedTeardown
-      (pid         : ProcessID;
-       pidReusable : Boolean;
-       deferred    : out Boolean);
-
-    procedure finishGrantProtectedTeardown (pid : ProcessID);
-
-    -- Retirement-worker-only bounded step, after DMA.Take_Ready; at most
-    -- 64 ownership-tag releases. PID stays reserved until all records retire.
-    procedure releaseDMAAllocations (pid : ProcessID);
+    -- For Process.Teardown, which defers a process's teardown while its
+    -- grants are live: whether owner has an active owned grant (caller
+    -- holds grantLock), and ring every process grant work left a notice
+    -- for (caller does not hold grantLock).
+    function hasActiveGrants (owner : ProcessID) return Boolean;
+    procedure ringGrantNotices;
 
     ---------------------------------------------------------------------------
     -- Capability-Aware IPC
