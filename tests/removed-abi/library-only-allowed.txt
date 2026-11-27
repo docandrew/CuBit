@@ -150,9 +150,6 @@ userspace/apps/display-check/main.adb
 userspace/apps/firmware-undeclared/main.adb
 userspace/apps/futex-check/futex_check_support.ads
 userspace/apps/futex-check/main.adb
-userspace/apps/futex-share-client/futex_share_support.adb
-userspace/apps/futex-share-client/futex_share_support.ads
-userspace/apps/futex-share-client/main.adb
 userspace/apps/hello/main.adb
 userspace/apps/install-boot-check/main.adb
 userspace/apps/ipctest-client/departing.adb

@@ -16,7 +16,6 @@ with Interfaces; use Interfaces;
 with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with System.Address_To_Access_Conversions;
-with CuBit.Messages; use CuBit.Messages;
 with CuBit.Grant_References;
 with CuBit.Waits;
 
@@ -25,8 +24,6 @@ package Futex_Share_Support is
    package W renames CuBit.Waits;
    package GR renames CuBit.Grant_References;
 
-   SYSCALL_THREAD_CREATE : constant Unsigned_64 := 90;
-   SYSCALL_THREAD_EXIT   : constant Unsigned_64 := 91;
 
    type Word is mod 2 ** 32 with Atomic, Size => 32;
    package Words is new System.Address_To_Access_Conversions (Word);

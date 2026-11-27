@@ -26,6 +26,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
 with CuBit.Memory_Grants;
 with CuBit.Monotonic;
+with CuBit.Process_Calls;
 with CuBit.Process_Events;
 with CuBit.System_Facts;
 with CuBit.Waits;
@@ -205,7 +206,7 @@ begin
    debugPrint ("futex-share: starting" & LF);
 
    --  Two pages this process owns, granted to the server.
-   Heap := syscall (SYSCALL_SBRK, 5 * Page);
+   Heap := CuBit.Process_Calls.Grow_Heap (5 * Page);
    Aligned := (Heap + Page - 1) and not (Page - 1);
    First_Base := To_Address (Integer_Address (Aligned));
    Second_Base := To_Address (Integer_Address (Aligned + Page));

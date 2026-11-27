@@ -1,6 +1,7 @@
 pragma Ada_2022;
 with System.Machine_Code; use System.Machine_Code;
 with Wait_ABI;
+with CuBit.Process_Calls;
 with CuBit.Process_Events;
 
 package body Futex_Share_Support is
@@ -20,7 +21,7 @@ package body Futex_Share_Support is
    --  Stack memory from the heap. The kernel starts a thread with RSP as
    --  given; a SysV function expects RSP + 8 to be 16-byte aligned.
    function New_Stack return Unsigned_64 is
-      Base : constant Unsigned_64 := syscall (SYSCALL_SBRK, Stack_Size);
+      Base : constant Unsigned_64 := CuBit.Process_Calls.Grow_Heap (Stack_Size);
    begin
       if Base = Unsigned_64'Last or else Base = 0 then
          return 0;
@@ -30,13 +31,12 @@ package body Futex_Share_Support is
 
    function Spawn (Code : Entry_Point; Stack, Argument : Unsigned_64;
                    Exit_Word : Word_Access) return Unsigned_64 is
-     (syscall (SYSCALL_THREAD_CREATE,
-               Unsigned_64 (To_Integer (Code.all'Address)), Stack, Argument, 0,
-               Unsigned_64 (To_Integer (Words.To_Address (Exit_Word)))));
+     (CuBit.Process_Calls.Create_Thread (Unsigned_64 (To_Integer (Code.all'Address)), Stack, Argument, 0,
+                                         Unsigned_64 (To_Integer (Words.To_Address (Exit_Word)))));
 
    procedure Thread_Exit is
    begin
-      Ignore := syscall (SYSCALL_THREAD_EXIT);
+      CuBit.Process_Calls.Exit_Thread;
    end Thread_Exit;
 
    procedure Join (Exit_Word : Word_Access) is
