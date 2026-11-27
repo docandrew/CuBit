@@ -20,6 +20,7 @@ with CuBit.Debug_Target;
 with CuBit.Grant_References;
 with CuBit.Memory_Grants;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Startup;
 
@@ -74,7 +75,6 @@ procedure Main is
      (Target => Startup.Target, Filesystem => Startup.Filesystem, Session => <>);
    Jobs_Thread, Sensors_Thread : Thread_Id := 0;
    G : constant Graph_Access := new Graph_Result;
-   Ignore : Unsigned_64;
 
    --  The thread's frames; the index of the first frame named Expect.
    procedure Show_Frames (Thread : Thread_Id; Fs : out Frame_List; Expect : String; Found : out Natural) is
@@ -146,7 +146,7 @@ begin
    Check ("attach to debug-demo-rs", R = Ok, Outcome'Image (R));
    if R /= Ok then
       Say ("FAIL");
-      Ignore := syscall (SYSCALL_EXIT, Exit_Failure);
+      CuBit.Process_Calls.Exit_Process (Exit_Failure);
    end if;
    Describe (S, Info, R);
    Say ("program " & Image (Info.Program) & " build-id " & Info.Build_Id & " debug file "
@@ -351,9 +351,9 @@ begin
    Detach (S);
    if Failures = 0 then
       Say ("ALL PASS");
-      Ignore := syscall (SYSCALL_EXIT, Exit_Success);
+      CuBit.Process_Calls.Exit_Process (Exit_Success);
    else
       Say ("FAIL" & Failures'Image);
-      Ignore := syscall (SYSCALL_EXIT, Exit_Failure);
+      CuBit.Process_Calls.Exit_Process (Exit_Failure);
    end if;
 end Main;
