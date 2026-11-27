@@ -18,10 +18,10 @@ procedure Main is
    use type CuBit.Launching.Launch_Result;
    use type LA.Launch_Failure;
 
-   Note : constant String := "@nvme:0/delegated/note.txt";
+   Note : constant String := "@system/delegated/note.txt";
    --  Longer than the 64 bytes a scope used to hold (run.sh creates it).
    Deep_Place : constant String :=
-     "@nvme:0/delegated/a-directory-name-longer-than-the-old-sixty-four-byte-scope-limit";
+     "@system/delegated/a-directory-name-longer-than-the-old-sixty-four-byte-scope-limit";
    Failed : Boolean := False;
 
    procedure Say (Text : String; Pass : Boolean) is
@@ -73,19 +73,19 @@ begin
    Start ("denied", 0, "", Result, Failure);
    Say ("child started without delegation", Result = CuBit.Launching.Launched);
    --  Handed read access to the place, it can.
-   Start ("read", LG.Read_Right, "@nvme:0/delegated", Result, Failure);
+   Start ("read", LG.Read_Right, "@system/delegated", Result, Failure);
    Say ("child started with the place delegated", Result = CuBit.Launching.Launched);
    --  A place deeper than 64 bytes, delegated and read.
    Start ("read", LG.Read_Right, Deep_Place, Result, Failure,
           Target => Deep_Place & "/note.txt");
    Say ("a place longer than 64 bytes delegated", Result = CuBit.Launching.Launched);
    --  More rights than the launcher holds: refused, nothing started.
-   Start ("read", LG.Read_Right or LG.Write_Right, "@nvme:0/delegated",
+   Start ("read", LG.Read_Right or LG.Write_Right, "@system/delegated",
           Result, Failure);
    Say ("delegating write it does not hold is refused (Not_Granted)",
         Result = CuBit.Launching.Refused and then Failure = LA.Not_Granted);
    --  A place it does not hold at all: refused.
-   Start ("read", LG.Read_Right, "@nvme:0/libc-check", Result, Failure);
+   Start ("read", LG.Read_Right, "@system/libc-check", Result, Failure);
    Say ("delegating a place it does not hold is refused (Not_Granted)",
         Result = CuBit.Launching.Refused and then Failure = LA.Not_Granted);
    debugPrint ((if Failed then "DELEGATE-CHECK: FAIL" else "DELEGATE-CHECK: PASS") &
