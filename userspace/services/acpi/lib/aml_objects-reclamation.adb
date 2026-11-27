@@ -134,6 +134,7 @@ package body AML_Objects.Reclamation with SPARK_Mode is
       end loop;
       Store.Objects := Scratch.Objects; Store.Bytes := Scratch.Bytes; Store.Elements := Scratch.Elements;
       Store.Live_Used := Live; Store.Bytes_Used := Bytes; Store.Elements_Used := Elements;
+      Store.Next_Free_Hint := 1;
       Status := Reclaimed;
    end Reclaim;
 end AML_Objects.Reclamation;

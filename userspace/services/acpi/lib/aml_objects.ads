@@ -555,6 +555,9 @@ private
    type State (Object_Capacity, Byte_Capacity, Element_Capacity : Storage_Capacity) is record
       Used : Object_ID := 0;
       Live_Used : Object_ID := 0;
+      --  First slot not ruled out by the preceding successful allocation.
+      --  Reclamation resets this to 1 before any freed slot can be reused.
+      Next_Free_Hint : Natural := 1;
       Generation_Limit : AML_Object_Identifiers.Incarnation_Budget := AML_Object_Identifiers.Slot_Incarnation'Last;
       Bytes_Used : Natural := 0;
       Elements_Used : Natural := 0;
@@ -566,6 +569,7 @@ private
       Prepared : Boolean := False;
       Objects, Bytes, Elements : Storage_Capacity := 1;
       Slot, Old_Used, Old_Live : Object_ID := No_Object;
+      Old_Free_Hint : Natural := 1;
       Old_Bytes, Old_Elements, Byte_Count, Element_Count : Natural := 0;
       Generation : AML_Object_Identifiers.Incarnation_Budget := AML_Object_Identifiers.Slot_Incarnation'Last;
       Slot_Stamp : AML_Object_Identifiers.Slot_Incarnation := 0;
@@ -595,6 +599,7 @@ private
      (Same_Capacities (Store, Prior) and then Is_Live (Store, ID) and then not Is_Live (Prior, ID)
       and then Prior.Objects (ID).Stamp < Prior.Generation_Limit
       and then Store.Objects (ID).Stamp = Prior.Objects (ID).Stamp + 1
+      and then Store.Next_Free_Hint = Natural (ID) + 1
       and then Store.Generation_Limit = Prior.Generation_Limit
       and then Store.Live_Used = Prior.Live_Used + 1
       and then Store.Used = Object_ID'Max (Prior.Used, ID)

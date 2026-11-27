@@ -9,7 +9,6 @@ procedure Sparse_Copy_Tests is
    package O renames AML_Objects;
    package R renames AML_Objects.Reclamation;
    package C renames AML_Objects.Copies;
-   use type O.State;
    use type O.Allocation_Status;
    use type O.String_Update_Status;
    use type R.Reclaim_Status;
@@ -20,13 +19,13 @@ procedure Sparse_Copy_Tests is
    use type AML_Object_Identifiers.Slot_Incarnation;
    Store : O.State := O.Empty;
    Scratch : R.Workspace;
-   Keep : R.Keep_Set := [others => False];
+   Keep : R.Keep_Set (1 .. O.Max_Objects) := [others => False];
    Owner : AML_Identity.Identity;
    Issued : Boolean;
    Status : O.Allocation_Status;
    Reclaimed : R.Reclaim_Status;
    Update : O.String_Update_Status;
-   Witness : C.Copy_Witness;
+   Witness : C.Copy_Witness (O.Max_Objects) := C.Empty_Witness;
    Root, Inner, Scalar, String_ID, Buffer_ID, Ref_ID, Target, Other : O.Object_ID;
    Left, Right, Left_Scalar, Right_Scalar, Left_String, Right_String : O.Object_ID;
    Ref : AML_References.Reference;
@@ -45,8 +44,11 @@ procedure Sparse_Copy_Tests is
       Before : constant O.State := Store;
    begin
       C.Clone (Store, Source, Target, Status, Witness);
-      Check (Status = Expected and then Target = O.No_Object and then Store = Before,
-        "exact copy failure rollback");
+      Check (Status = Expected and then Target = O.No_Object
+        and then O.Valid (Store)
+        and then O.Live_Count (Store) >= O.Live_Count (Before),
+        "copy failure preserves prior objects without publishing target");
+      pragma Assert (O.Extends (Store, Before));
    end Reject_Copy;
 begin
    AML_Identity.Issuer.Issue (Owner, Issued); Check (Issued, "owner issuance");
@@ -103,14 +105,19 @@ begin
    C.Clone (Store, Root, Target, Status, Witness);
    Check (Status = O.Allocated and then Target = 1
      and then O.Last_Incarnation (Store, Target) = 3, "clone after reclaim uses next incarnation");
-   -- Byte failure after a package root is provisionally allocated must undo it.
+   -- Byte failure after a package root is provisionally allocated leaves
+   -- completed fresh allocations for the owner to collect.
    Store := O.Empty;
    O.New_Bytes (Store, O.Buffer_Object, AML_Decode.Bytes'(1 .. O.Max_Bytes => 7), Buffer_ID, Status);
    Check (Status = O.Allocated, "full bytes");
    O.New_Package (Store, 1, Root, Status); Check (Status = O.Allocated, "byte failure root");
    O.Set_Element (Store, Root, 0, Buffer_ID); Reject_Copy (Root, O.Byte_Limit);
+   Keep := [others => False]; Keep (Buffer_ID) := True; Keep (Root) := True;
+   Collect;
+   Check (O.Live_Count (Store) = 2 and then not O.Is_Live (Store, 3),
+     "owner root collection releases unpublished partial clone");
    -- Element failure after the root allocation, and a cyclic package that uses
-   -- the last element slot: both must preserve all state, including stamps.
+   -- the last element slot, preserve prior objects and publish no result.
    Store := O.Empty;
    O.New_Package (Store, O.Max_Elements - 2, Inner, Status); Check (Status = O.Allocated, "large package");
    O.New_Package (Store, 1, Root, Status); Check (Status = O.Allocated, "element failure root");

@@ -209,7 +209,8 @@ package body AML_Objects with SPARK_Mode is
       and then Occupied_Total (Present) = Live_Used)
      with Annotate => (GNATprove, Inline_For_Proof);
    function Valid (Store : State) return Boolean is
-     (Store.Bytes_Used <= Store.Byte_Capacity and then Store.Elements_Used <= Store.Element_Capacity
+     (Store.Next_Free_Hint in 1 .. Store.Object_Capacity + 1
+      and then Store.Bytes_Used <= Store.Byte_Capacity and then Store.Elements_Used <= Store.Element_Capacity
       and then Valid_Metadata (Store.Used, Store.Live_Used, Store.Generation_Limit,
        Store.Bytes_Used, Store.Elements_Used, Store.Objects, Store.Elements, Occupancy_Map (Store.Objects)));
    -- Transport record validity across equal element snapshots explicitly.
@@ -261,7 +262,8 @@ package body AML_Objects with SPARK_Mode is
    end Unpack_Valid;
    procedure Reassemble_Valid (Store : State; Present : Occupancy_Array)
      with Ghost,
-       Pre => Store.Bytes_Used <= Store.Byte_Capacity
+       Pre => Store.Next_Free_Hint in 1 .. Store.Object_Capacity + 1
+         and then Store.Bytes_Used <= Store.Byte_Capacity
          and then Store.Elements_Used <= Store.Element_Capacity
          and then Equal_Occupancy (Occupancy_Map (Store.Objects), Present)
          and then Valid_Records (Store.Used, Store.Generation_Limit, Store.Bytes_Used,
@@ -275,6 +277,7 @@ package body AML_Objects with SPARK_Mode is
    procedure Preserve_Valid_Bytes (Prior, Store : State)
      with Ghost,
        Pre => Valid (Prior) and then Same_Capacities (Prior, Store)
+         and then Store.Next_Free_Hint = Prior.Next_Free_Hint
          and then Prior.Used = Store.Used
          and then Prior.Live_Used = Store.Live_Used and then Prior.Generation_Limit = Store.Generation_Limit
          and then Prior.Bytes_Used = Store.Bytes_Used and then Prior.Elements_Used = Store.Elements_Used
@@ -293,6 +296,7 @@ package body AML_Objects with SPARK_Mode is
       -- incarnation limit without materializing a second complete state.
       Store.Used := 0;
       Store.Live_Used := 0;
+      Store.Next_Free_Hint := 1;
       Store.Bytes_Used := 0;
       Store.Elements_Used := 0;
       for ID in Store.Objects'Range loop
@@ -326,6 +330,7 @@ package body AML_Objects with SPARK_Mode is
       return Boolean is
      (Same_Capacities (Store, Prior) and then Fresh_Allocation (Store, Prior, ID)
       and then Store = (Prior with delta Used => Store.Used, Live_Used => Prior.Live_Used + 1,
+        Next_Free_Hint => Natural (ID) + 1,
         Objects => (Prior.Objects with delta ID =>
           Object_Record'(Occupied => True, Stamp => Prior.Objects (ID).Stamp + 1,
                          Tag => Reference_Object, Reference => Value, others => <>))));
@@ -339,6 +344,7 @@ package body AML_Objects with SPARK_Mode is
       return Boolean is
      (Same_Capacities (Store, Prior) and then Fresh_Allocation (Store, Prior, ID)
       and then Store = (Prior with delta Used => Store.Used, Live_Used => Prior.Live_Used + 1,
+        Next_Free_Hint => Natural (ID) + 1,
         Objects => (Prior.Objects with delta ID =>
           Object_Record'(Occupied => True, Stamp => Prior.Objects (ID).Stamp + 1,
                          Tag => Metadata_Object, Reference => Value, others => <>))));
@@ -349,6 +355,7 @@ package body AML_Objects with SPARK_Mode is
       Value : AML_Metadata_Kinds.Snapshot_Description) return Boolean is
      (Same_Capacities (Store, Prior) and then Fresh_Allocation (Store, Prior, ID)
       and then Store = (Prior with delta Used => Store.Used, Live_Used => Prior.Live_Used + 1,
+        Next_Free_Hint => Natural (ID) + 1,
         Objects => (Prior.Objects with delta ID =>
           Object_Record'(Occupied => True, Stamp => Prior.Objects (ID).Stamp + 1,
                          Tag => Metadata_Snapshot_Object, Snapshot => Value, others => <>))));
@@ -608,10 +615,14 @@ package body AML_Objects with SPARK_Mode is
    is
    begin
       ID := No_Object;
+      if Store.Live_Used = Store.Object_Capacity then
+         Status := Object_Limit;
+         return;
+      end if;
       -- Valid metadata puts every occupied slot in 1 .. Used. Equal live
       -- and used counts therefore leave no eligible hole in that prefix.
       if Store.Live_Used < Store.Used then
-         for I in 1 .. Store.Used loop
+         for I in Store.Next_Free_Hint .. Store.Used loop
             if not Store.Objects (I).Occupied and then Store.Objects (I).Stamp < Store.Generation_Limit then
                ID := I; Status := Allocated; return;
             end if;
@@ -619,6 +630,15 @@ package body AML_Objects with SPARK_Mode is
       end if;
       if Store.Used < Store.Object_Capacity then
          for I in Store.Used + 1 .. Store.Object_Capacity loop
+            if not Store.Objects (I).Occupied and then Store.Objects (I).Stamp < Store.Generation_Limit then
+               ID := I; Status := Allocated; return;
+            end if;
+         end loop;
+      end if;
+      -- Defensive fallback if a future reclamation path frees a lower slot
+      -- without resetting the hint. It is cold under the current owner.
+      if Store.Next_Free_Hint > 1 then
+         for I in 1 .. Store.Next_Free_Hint - 1 loop
             if not Store.Objects (I).Occupied and then Store.Objects (I).Stamp < Store.Generation_Limit then
                ID := I; Status := Allocated; return;
             end if;
@@ -635,6 +655,7 @@ package body AML_Objects with SPARK_Mode is
       Store.Objects (ID) := (Item with delta Occupied => True, Stamp => Stamp);
       Store.Used := Object_ID'Max (Store.Used, ID);
       Store.Live_Used := Store.Live_Used + 1;
+      Store.Next_Free_Hint := Natural (ID) + 1;
    end Occupy;
    procedure New_Reference (Store : in out State; Value : AML_References.Reference;
                             ID : out Object_ID; Status : out Allocation_Status) is
@@ -920,6 +941,7 @@ package body AML_Objects with SPARK_Mode is
       and then Plan.Slot_Stamp < Store.Generation_Limit
       and then Plan.Generation = Store.Generation_Limit
       and then Plan.Old_Used = Store.Used and then Plan.Old_Live = Store.Live_Used
+      and then Plan.Old_Free_Hint = Store.Next_Free_Hint
       and then Plan.Old_Bytes = Store.Bytes_Used and then Plan.Old_Elements = Store.Elements_Used
       and then Plan.Old_Bytes <= Store.Byte_Capacity
       and then Plan.Byte_Count <= Store.Byte_Capacity - Plan.Old_Bytes
@@ -941,6 +963,7 @@ package body AML_Objects with SPARK_Mode is
       Plan := (Prepared => True, Objects => Store.Object_Capacity,
         Bytes => Store.Byte_Capacity, Elements => Store.Element_Capacity,
         Slot => Slot, Old_Used => Store.Used, Old_Live => Store.Live_Used,
+        Old_Free_Hint => Store.Next_Free_Hint,
         Old_Bytes => Store.Bytes_Used, Old_Elements => Store.Elements_Used,
         Byte_Count => Natural (Byte_Length), Element_Count => Element_Length,
         Generation => Store.Generation_Limit, Slot_Stamp => Store.Objects (Slot).Stamp);
@@ -955,6 +978,7 @@ package body AML_Objects with SPARK_Mode is
       and then Item.Plan.Slot /= No_Object and then Item.Plan.Slot <= Store.Object_Capacity
       and then Item.Plan.Old_Used <= Store.Object_Capacity
       and then Item.Plan.Old_Live <= Item.Plan.Old_Used
+      and then Item.Plan.Old_Free_Hint in 1 .. Store.Object_Capacity + 1
       and then Item.Plan.Old_Bytes <= Store.Byte_Capacity
       and then Item.Byte_Length = Item.Plan.Byte_Count
       and then Item.Byte_Length <= Store.Byte_Capacity - Item.Plan.Old_Bytes
@@ -971,6 +995,7 @@ package body AML_Objects with SPARK_Mode is
          (if I > Item.Plan.Old_Elements and then I - Item.Plan.Old_Elements <= Item.Element_Length
           then Item.Elements_Before (I - Item.Plan.Old_Elements) else Store.Elements (I))],
        Used => Item.Plan.Old_Used, Live_Used => Item.Plan.Old_Live,
+       Next_Free_Hint => Item.Plan.Old_Free_Hint,
        Bytes_Used => Item.Plan.Old_Bytes, Elements_Used => Item.Plan.Old_Elements));
    function Capture_Construction (Store : State; Plan : Construction_Plan)
       return Construction_Receipt is
@@ -990,6 +1015,7 @@ package body AML_Objects with SPARK_Mode is
          Store.Elements (Item.Plan.Old_Elements + 1 .. Item.Plan.Old_Elements + Item.Element_Length) := Item.Elements_Before;
       end if;
       Store.Used := Item.Plan.Old_Used; Store.Live_Used := Item.Plan.Old_Live;
+      Store.Next_Free_Hint := Item.Plan.Old_Free_Hint;
       Store.Bytes_Used := Item.Plan.Old_Bytes; Store.Elements_Used := Item.Plan.Old_Elements;
       Item.Captured := False;
    end Restore_Construction;
