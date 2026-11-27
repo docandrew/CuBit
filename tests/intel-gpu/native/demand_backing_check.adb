@@ -1,3 +1,4 @@
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -46,8 +47,7 @@ procedure Demand_Backing_Check is
    begin
       if not Condition then
          debugPrint ("TEST: FAIL native demand backing: " & Detail & ASCII.LF);
-         Ignore := syscall (SYSCALL_EXIT);
-         loop null; end loop;
+         CuBit.Process_Calls.Exit_Process;
       end if;
    end Check;
    function Sentinel (Index, Page : Natural) return Unsigned_64 is

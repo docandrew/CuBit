@@ -1,3 +1,4 @@
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -23,8 +24,7 @@ procedure DMA_Growth_Check is
    begin
       if not OK then
          debugPrint ("TEST: FAIL native DMA growth: " & Detail & ASCII.LF);
-         Ignored := syscall (SYSCALL_EXIT);
-         loop null; end loop;
+         CuBit.Process_Calls.Exit_Process;
       end if;
    end Check;
 begin

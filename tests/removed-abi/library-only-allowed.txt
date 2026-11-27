@@ -95,13 +95,8 @@ tests/intel-gpu/ggtt-fixture/fixture_messages.ads
 tests/intel-gpu/native/accounting_check.adb
 tests/intel-gpu/native/allocation_ipc_check.adb
 tests/intel-gpu/native/client_quota_check.adb
-tests/intel-gpu/native/demand_backing_check.adb
-tests/intel-gpu/native/dma_growth_check.adb
 tests/intel-gpu/native/dma_retention_check.adb
 tests/intel-gpu/native/dma_retirement_native.adb
-tests/intel-gpu/native/image_provider_check.adb
-tests/intel-gpu/native/mapping_growth_check.adb
-tests/intel-gpu/native/update_metadata_check.adb
 tests/intel-gpu/native/view_retention_check.adb
 tests/intel-gpu/phy-fixture/cubit-messages.adb
 tests/intel-gpu/phy-fixture/cubit-messages.ads
