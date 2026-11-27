@@ -1,4 +1,5 @@
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Handles;
@@ -28,7 +29,7 @@ procedure Main is
    --  break need not be on one): a page more than asked, rounded up.
    Page_Bytes : constant := 4096;
    function Aligned_Allocation (Bytes : Unsigned_64) return Unsigned_64 is
-      Raw : constant Unsigned_64 := syscall (SYSCALL_SBRK, Bytes + Page_Bytes);
+      Raw : constant Unsigned_64 := CuBit.Process_Calls.Grow_Heap (Bytes + Page_Bytes);
    begin
       return (if Raw = Unsigned_64'Last then Raw
               else (Raw + Page_Bytes - 1) / Page_Bytes * Page_Bytes);
