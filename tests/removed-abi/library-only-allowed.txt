@@ -167,7 +167,6 @@ userspace/services/filesystem/fs_server-storage.adb
 userspace/services/gpio/native/gpio_main_entry.adb
 userspace/services/nvme/main.adb
 userspace/services/procmgr/main.adb
-userspace/services/ramdisk/main.adb
 userspace/services/rtw89/main.adb
 userspace/services/timesync/main.adb
 userspace/services/tls/main.adb

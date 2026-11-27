@@ -4,6 +4,8 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Launch_Configurations;
+with CuBit.Owned_Reservations;
+with CuBit.Process_Calls;
 with Launch_Configuration;
 with Cpio;
 with Ram_Device;
@@ -18,22 +20,20 @@ procedure Main is
    Index : Natural;
    Image : System.Address;
    Image_Size, Heap : Unsigned_64;
-   Ignore : Unsigned_64;
    Tag : MessageTag;
    Boot_Image_Bytes : Unsigned_64 := 0;
 
-   --  Release (SYSCALL_RELEASE_OWNED_REGION) this process's read-only view
-   --  of the boot image, a bounded number of pages per call.
+   --  Release (CuBit.Owned_Reservations.Release) this process's read-only
+   --  view of the boot image, a bounded number of pages per call.
    procedure Release_Boot_View is
-      Page_Bytes : constant := 4096;
+      Page_Bytes : constant := CuBit.Owned_Reservations.Page_Bytes;
       Pages : constant Unsigned_64 := (Boot_Image_Bytes + Page_Bytes - 1) / Page_Bytes;
       Done, Count : Unsigned_64 := 0;
    begin
       while Done < Pages loop
          Count := Unsigned_64'Min (MAX_MAP_INTO_PAGES_PER_CALL, Pages - Done);
-         if syscall (SYSCALL_RELEASE_OWNED_REGION,
-                     Launch_Configuration.Boot_Image_Address + Done * Page_Bytes,
-                     Count * Page_Bytes) /= 0
+         if not CuBit.Owned_Reservations.Release
+                  (Launch_Configuration.Boot_Image_Address + Done * Page_Bytes, Count * Page_Bytes)
          then
             debugPrint ("ramdisk: boot image view not released" & ASCII.LF);
             return;
@@ -71,7 +71,7 @@ begin
            Image_Size mod Ram_Device.Block_Size = 0 and then
            Image_Size <= Unsigned_64 (Natural'Last)
          then
-            Heap := syscall (SYSCALL_SBRK, Image_Size);
+            Heap := CuBit.Process_Calls.Grow_Heap (Image_Size);
             if Heap /= Unsigned_64'Last and then Heap /= 0 then
                declare
                   Source : String (1 .. Natural (Image_Size))
@@ -94,8 +94,7 @@ begin
    end if;
    if not Ready then
       debugPrint ("ramdisk: image initialization failed" & ASCII.LF);
-      Ignore := syscall (SYSCALL_EXIT);
-      return;
+      CuBit.Process_Calls.Exit_Process;
    end if;
    debugPrint ("ramdisk: volatile block device ready" & ASCII.LF);
    Tag := capSend
