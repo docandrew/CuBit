@@ -143,7 +143,6 @@ tests/userspace-allocator/cubit/cualloc-bench.c
 userspace/apps/avx-check/main.adb
 userspace/apps/bench-ipc-client/main.adb
 userspace/apps/bench-ipc-server/main.adb
-userspace/apps/bench-spread/main.adb
 userspace/apps/bench-storage/main.adb
 userspace/apps/capability-test/main.adb
 userspace/apps/clipboard-check/main.adb

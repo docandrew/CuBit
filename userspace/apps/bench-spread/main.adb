@@ -10,6 +10,7 @@
 --  instance's; without it, instances share one CPU.
 ------------------------------------------------------------------------------
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -35,5 +36,5 @@ begin
    Finish := CuBit.Monotonic.Milliseconds;
    debugPrint ("BENCH: spread elapsed_ms" & Unsigned_64'Image (Finish - Start) &
                ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT);
+   CuBit.Process_Calls.Exit_Process;
 end Main;
