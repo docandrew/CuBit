@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with Ada.Command_Line;
+with Ada.Environment_Variables;
 with Ada.Exceptions;
 with Ada.Real_Time;
 with Ada.Streams.Stream_IO;
@@ -213,6 +214,86 @@ procedure ASLTS_Corpus_Runner is
       Drop (Parent); OK := C.Retained_Results (Owner.all) = 0;
    exception when others => Drop (Child); Drop (Parent); raise;
    end Check_Records;
+   procedure Check_Error_Trace is
+      Item : V.Result;
+      Parent, Child : V.Value_Handle := V.No_Value;
+      Description : V.Value_Description;
+      Released : V.Access_Status;
+      Count : Natural;
+      Error_ID, Check_ID : AML_Decode.Integer_Value;
+      Method_Name : String (1 .. 64);
+      Method_Length : Natural;
+      procedure Drop (Handle : in out V.Value_Handle) is
+      begin
+         if Handle /= V.No_Value then
+            C.Release_Result (Owner.all, Handle, Released);
+            Handle := V.No_Value;
+         end if;
+      end Drop;
+      procedure Read_Number (Index : Natural; Number : out AML_Decode.Integer_Value;
+                             Good : out Boolean) is
+      begin
+         Number := 0;
+         Good := False;
+         C.Read_Result_Element (Owner.all, Parent, Index, Child, Access_Result);
+         if Access_Result = V.Available then
+            C.Describe_Result (Owner.all, Child, Description, Access_Result);
+            if Access_Result = V.Available and then Description.Kind = V.Integer_Description then
+               Number := Description.Number;
+               Good := True;
+            end if;
+         end if;
+         Drop (Child);
+      end Read_Number;
+      Good_Error, Good_Check : Boolean;
+   begin
+      if Errors = 0 then return; end if;
+      Count := (if Errors > 128 then 128 else Natural (Errors));
+      Node := Find ("ERRP");
+      if Access_Result /= V.Available or else Node = N.Root then return; end if;
+      C.Observe_Named_Value (Owner.all, Node, Item, Access_Result);
+      if Access_Result /= V.Available or else Item.Status /= AML_Execute.Object_Returned then return; end if;
+      Parent := Item.Handle;
+      C.Describe_Result (Owner.all, Parent, Description, Access_Result);
+      if Access_Result /= V.Available or else Description.Kind /= V.Package_Description
+        or else Description.Length < 3 * Count
+      then Drop (Parent); return; end if;
+      for Index in 0 .. Count - 1 loop
+         Read_Number (3 * Index, Error_ID, Good_Error);
+         Read_Number (3 * Index + 1, Check_ID, Good_Check);
+         Method_Name := [others => ' '];
+         Method_Length := 0;
+         C.Read_Result_Element (Owner.all, Parent, 3 * Index + 2, Child, Access_Result);
+         if Access_Result = V.Available then
+            C.Describe_Result (Owner.all, Child, Description, Access_Result);
+            if Access_Result = V.Available and then Description.Kind = V.String_Description
+              and then Description.Length in 1 .. Method_Name'Length
+            then
+               declare
+                  Data : AML_Decode.Bytes (1 .. Description.Length);
+                  Copied : Natural;
+               begin
+                  C.Read_Result_Bytes (Owner.all, Child, 0, Data, Copied, Access_Result);
+                  if Access_Result = V.Available and then Copied = Data'Length then
+                     Method_Length := Data'Length;
+                     for I in Data'Range loop
+                        Method_Name (I) := Character'Val (Data (I));
+                     end loop;
+                  end if;
+               end;
+            end if;
+         end if;
+         Drop (Child);
+         if Good_Error and then Good_Check then
+            Ada.Text_IO.Put_Line
+              ("ASLTS_ERROR index=" & Index'Image & " error_id=" & Error_ID'Image &
+               " check_id=" & Check_ID'Image & " method=" &
+               (if Method_Length = 0 then "?" else Escape (Method_Name (1 .. Method_Length))));
+         end if;
+      end loop;
+      Drop (Parent);
+   exception when others => Drop (Child); Drop (Parent); raise;
+   end Check_Error_Trace;
    Known, Complete : Boolean;
 begin
    if Bundle_Count = 0 then Emit ("UNSUPPORTED", "stage invalid AML table bundle"); return; end if;
@@ -258,7 +339,13 @@ begin
    end if;
    Integer_Observation ("ERRS", Errors, Known);
    if not Known then Emit ("BLOCKED", "harness report contract missing ERRS"); return; end if;
-   if Errors /= 0 or else Result.Value /= 0 then Emit ("FAIL", "original assertion errors or MN00 return", Result.Status); return; end if;
+   if Errors /= 0 or else Result.Value /= 0 then
+      if Ada.Environment_Variables.Exists ("ACPI_TEST_ASSERTION_IDS") then
+         Check_Error_Trace;
+      end if;
+      Emit ("FAIL", "original assertion errors or MN00 return", Result.Status);
+      return;
+   end if;
    Integer_Observation ("RMRC", Records, Known);
    if not Known then Emit ("BLOCKED", "harness report contract missing RMRC"); return; end if;
    Check_Records (Complete);
