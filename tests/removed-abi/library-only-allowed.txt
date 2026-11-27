@@ -145,7 +145,6 @@ userspace/apps/bench-ipc-client/main.adb
 userspace/apps/bench-ipc-server/main.adb
 userspace/apps/capability-test/main.adb
 userspace/apps/desktop-check/main.adb
-userspace/apps/devices/main.adb
 userspace/apps/devmem-check/main.adb
 userspace/apps/display-check/main.adb
 userspace/apps/filesystem-scope-check/main.adb

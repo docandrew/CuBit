@@ -13,6 +13,7 @@ with Startup;
 
 with CuBit.Devices;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 with CuBit.System_Facts;
 with CuBit.UI;
 with CuBit.UI.App;
@@ -92,7 +93,6 @@ procedure main is
    win : CuBit.UI.App.Window;
    ui : CuBit.UI.State.UI_State;
    controls : CuBit.UI.Controls.Control_Map;
-   ignore : Unsigned_64;
    devices : Device_Array;
    deviceCount : Natural range 0 .. MAX_LOCAL_DEVICES := 0;
    inventoryOverflow : Boolean := False;
@@ -940,12 +940,11 @@ begin
          ok := Open_Outcome in CuBit.UI.App.Opened;
       end;
       if not ok then
-         ignore := syscall (SYSCALL_EXIT, 1);
-         return;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
       debugPrint ("devices: native window ready" & LF);
    end;
    Run_UI (win);
    CuBit.UI.App.Close (win);
-   ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end main;
