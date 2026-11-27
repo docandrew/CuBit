@@ -13,6 +13,7 @@
 with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Benchmark_Clock;
+with CuBit.Process_Calls;
 with CuBit.Timing_Histograms;
 with System.Storage_Elements; use System.Storage_Elements;
 
@@ -115,8 +116,7 @@ begin
              authorityTag => 0,
              words    => (others => 0)), CuBit.Messages.Wait_Forever);
       end;
-      ret := syscall (SYSCALL_EXIT);
-      return;
+      CuBit.Process_Calls.Exit_Process;
    end if;
 
    --  Register as HDA driver: devmgr gives the role to the driver of the
