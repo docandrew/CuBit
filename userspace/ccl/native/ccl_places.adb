@@ -7,6 +7,7 @@ with CuBit.Channel_Protocol;
 with CuBit.Channels;
 with CuBit.Memory_Grants;
 with CCL_Native_Bindings;
+with CuBit.Process_Calls;
 with CuBit.Volume_Ejection;
 
 --  Places through the filesystem's request queue (docs/filesystem-data-
@@ -290,7 +291,7 @@ package body CCL_Places is
    begin
       if File_Ready then return True; end if;
       if File_Page = 0 then
-         Raw := syscall (SYSCALL_SBRK, 2 * PAGE_BYTES);
+         Raw := CuBit.Process_Calls.Grow_Heap (2 * PAGE_BYTES);
          if Raw = Unsigned_64'Last then return False; end if;
          File_Page := (Raw + PAGE_BYTES - 1) and not Unsigned_64 (PAGE_BYTES - 1);
       end if;

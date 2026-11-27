@@ -156,9 +156,6 @@ userspace/apps/mov-ss-check/main.adb
 userspace/apps/platform-pool-check/main.adb
 userspace/apps/storage-check/main.adb
 userspace/apps/trap-flag-check/main.adb
-userspace/ccl/native/ccl_installer.adb
-userspace/ccl/native/ccl_places.adb
-userspace/ccl/native/ccl_workspace.adb
 userspace/lib/debug/stub-rs/src/lib.rs
 userspace/lib/disk-install/install_sources.adb
 userspace/lib/ui/cubit-ui-app.adb

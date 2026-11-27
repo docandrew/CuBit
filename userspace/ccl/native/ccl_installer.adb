@@ -4,6 +4,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Handles;
 with CuBit.Memory_Grants;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 with CCL_Native_Bindings;
 
 --  installer.svc over CuBit.Installer_Protocol: one page of this
@@ -24,7 +25,7 @@ package body CCL_Installer is
          return;
       end if;
       if not Ready then
-         Raw := syscall (SYSCALL_SBRK, 2 * IP.Page_Bytes);
+         Raw := CuBit.Process_Calls.Grow_Heap (2 * IP.Page_Bytes);
          if Raw = 0 or else Raw = Unsigned_64'Last then
             Result := Unavailable;
             return;

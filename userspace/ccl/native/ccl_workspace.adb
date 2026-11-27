@@ -6,6 +6,7 @@ with CuBit.Messages; use CuBit.Messages;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Directory_Pages;
 with CuBit.Memory_Grants;
+with CuBit.Process_Calls;
 with CCL_Native_Bindings;
 
 package body CCL_Workspace is
@@ -68,7 +69,7 @@ package body CCL_Workspace is
          return True;
       end if;
       if Buffer_Address = 0 then
-         Raw := syscall (SYSCALL_SBRK, 2 * DIRECTORY_PAGE_BYTES);
+         Raw := CuBit.Process_Calls.Grow_Heap (2 * DIRECTORY_PAGE_BYTES);
          if Raw = Unsigned_64'Last then
             return False;
          end if;
