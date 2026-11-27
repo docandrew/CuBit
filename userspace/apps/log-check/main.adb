@@ -7,6 +7,7 @@
 --  model.md 7.5), and runs the publisher's checks: a forged observer tag on its
 --  publisher endpoint, a burst, a disconnect and its collector's death.
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -67,10 +68,7 @@ procedure Main is
    begin
       if not Condition then
          debugPrint ("TEST: FAIL log-authority: " & Name & ASCII.LF);
-         Ignore := syscall (SYSCALL_EXIT, 1);
-         loop
-            Ignore := CuBit.Waits.Sleep_For (1000);
-         end loop;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
    end Check;
 
