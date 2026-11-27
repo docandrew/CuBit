@@ -17,6 +17,7 @@ with Startup;
 --  Withed for its elaboration, the startup check (CAP-003); nothing in it
 --  is used here.
 pragma Unreferenced (Startup);
+with CuBit.Process_Calls;
 with CuBit.UI; use CuBit.UI;
 with CuBit.UI.App;
 with CuBit.UI.State;
@@ -57,7 +58,6 @@ procedure Main is
    Focused : Field := Name_Field;
    Revealed : Boolean := False;
    Ready : Boolean := False;
-   Ignore : Unsigned_64;
 
    procedure Say (Text : String) is
    begin
@@ -182,7 +182,7 @@ begin
    end;
    if not OK then
       Say ("FAIL window");
-      Ignore := syscall (SYSCALL_EXIT, 1);
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end if;
    Probe_Ungestured_Paste;
    Run (Win);
@@ -190,5 +190,5 @@ begin
    Editor.Wipe (Fields (Secret_Field));
    App.Close (Win);
    Say ("closed");
-   Ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end Main;
