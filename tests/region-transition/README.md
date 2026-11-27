@@ -7,17 +7,12 @@ Nix environment, with assertions enabled by their GPR files.
 For example, from the checkout root:
 
 ```sh
-nix develop -c bash -c 'cd kernel && alr exec -- gprbuild -p -P ../tests/region-transition/install.gpr && ../tests/region-transition/build-install/install_tests'
+nix develop -c bash -c 'cd kernel && alr exec -- gprbuild -p -P ../tests/region-transition/release.gpr && ../tests/region-transition/build-release/release_tests'
 ```
 
-`install.gpr` exercises contiguous backing installation and rollback. Backing
-must not be released until every installed leaf is removed and translation
-invalidation succeeds. Failures leave the attempt quarantined; the caller
-must retain its registry reservation. This is callback-model testing, not
-live page-table or allocator validation.
+`install.gpr` and `transition.gpr` (contiguous backing installation and the region transition controller) were removed on 2026-11-27 with their kernel units, which never gained a caller; recover them from Git at wip/integration 05c3f27e8. `Region_Registry` now lives in this directory as a test fixture for `release.gpr`.
 
-`release.gpr` tests normal live-region retirement, paired with the installation
-controller. Run it like `install.gpr`, using `build-release/release_tests`.
+`release.gpr` tests normal live-region retirement, as shown above.
 It covers352 success/failure/exception cases for1–16 pages, including every
 unmap, translation synchronization and backing-release callback. It composes
 with the actual region registry: denied attempts remain live; successful

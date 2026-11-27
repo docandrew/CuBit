@@ -42,46 +42,9 @@ These tests do not prove page-table concurrency or native isolation.
   Measure physical use with the existing navigation/resize/close workload;
   reservation size is not stack high-water usage or a predicted saving.
 
-## Sparse metadata
+## Sparse metadata (removed 2026-11-27)
 
-`pages.gpr` tests the actual packed `Owned_Demand_Pages` state. The 1544-byte
-record holds permissions and residency for up to 4096 pages independently,
-plus counts. It is intended to occupy one charged metadata frame per live
-reservation. No allocation or syscall currently uses it.
-
-2026-10-02: 233,504 checks passed, including forward/reverse/permuted commits,
-all insertion ranks, empty/full bounds, permission changes with mixed resident
-and absent pages, neighboring permissions, and reuse with a smaller range.
-SPARK proved 31 checks with zero unproved or justified checks, including exact
-permission updates and preservation of every residency bit. Native kernel
-compilation passed in isolated objects. Evidence and source hashes are in
-`.build-workspaces/penny-demand-nq9qtuvx/demand-metadata-evidence.json`.
-
-Run `pages.gpr` as above in an isolated snapshot, using its
-`build-pages/pages_tests` executable. The separate native compile uses
-`gprbuild -P cubit.gpr --subdirs=demand-metadata-compile -u owned_demand_pages.adb`.
-The unit uses Ada 2012 syntax to match the kernel.
-
-The frame-list insertion prerequisite, `LinkedLists.moveFrontBefore`, is
-covered by `tests/allocation-failures`: all 136 insertion positions in lists
-of 1–16 nodes, foreign/null rejection, unchanged allocation counts, exact
-node identity, and bidirectional structure. The existing 816 detach cases
-and 20,000 model operations also passed, as did a private full kernel link.
-Native fault integration and physical-memory measurements remain pending.
-
-## Discard metadata (2026-10-03)
-
-`Owned_Demand_Pages.Discard` now removes one resident page while preserving
-all permissions and neighboring residency. The caller must complete unmapping,
-TLB synchronization and safe frame-list retirement before publishing removal.
-It does not itself reclaim memory and has no live kernel caller yet.
-
-Hosted tests passed 100,958,243 checks, including full forward, reverse and
-permuted removal, independent neighbor/permission and insertion-rank checks,
-and repeated recommit/discard. SPARK proved the added count, preservation and
-range contracts with no unproved checks. Evidence was generated with the pinned
-Nix toolchain in `/tmp/penny-discard-xwcwldry`; this does not verify native faults,
-concurrent page-table changes, pinned-frame retirement or physical savings.
+`Owned_Demand_Pages` (packed per-reservation residency and permission metadata, with `Discard`) never gained a kernel caller and was removed from `kernel/src` with its `pages.gpr` tests. Recover both from Git at wip/integration 05c3f27e8 if demand paging resumes.
 
 ## Fault access integration (2026-10-03)
 
