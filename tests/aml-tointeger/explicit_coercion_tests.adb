@@ -31,6 +31,10 @@ begin
       Test ("-10", Width, 0);
       Test ("12xyz", Width, 12);
       Test ("0x", Width, 0);
+      -- ACPICA utstrtoul64.c:435-446, 474-501: stop at a bad hex byte
+      -- and return the accumulated zero without an exception.
+      Test ("0x0x12345678", Width, 0);
+      Test ("0x     12345678", Width, 0);
       Test ("12" & Character'Val (0) & "34", Width, 12);
       Test ("4294967295", Width, 4_294_967_295);
       Test ("4294967296", Width, (if Width = Bits_32 then 429_496_729 else 4_294_967_296));
