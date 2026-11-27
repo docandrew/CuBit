@@ -7,7 +7,7 @@ package body Client_Frame_Pair is
    package Frames renames Client_Frame_Buffer;
    use type DP.Status_Code, DP.Wire_Message, Pub.Configuration_Result;
    use type System.Address;
-   use type Debt.Box, DP.Live_Surface_Name;
+   use type DP.Live_Surface_Name;
    procedure Reset (O : in out Owner; Ready : out Boolean) is
    begin
       Ready := Allocated_Bytes (O) = 0 and then not O.Painting and then
