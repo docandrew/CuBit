@@ -29,6 +29,7 @@ pragma Ada_2022;
 with CuBit.Console_Route;
 with Interfaces; use Interfaces;
 with CuBit.Messages;
+with CuBit.Process_Calls;
 with CuBit.Process_Events;
 with CuBit.Logging;
 with CuBit.Log_Records;
@@ -185,7 +186,7 @@ procedure Main is
       Summary_Line;
       Power_Down;
       CuBit.Logging.Flush (Log, Drained);
-      Ignore := CuBit.Messages.syscall (CuBit.Messages.SYSCALL_EXIT);
+      CuBit.Process_Calls.Exit_Process;
    end Finish;
 
    --  The non-blank 32-byte rows of the physical efuse, on serial only (a
