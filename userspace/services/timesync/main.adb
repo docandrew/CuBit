@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with CuBit.Log;
 with Interfaces; use Interfaces;
@@ -39,7 +40,7 @@ procedure Main is
    Reply_Timeout_MS : constant := 2_000;
    Buffer_Size : constant := 4_096;
 
-   Allocation : constant Unsigned_64 := syscall (SYSCALL_SBRK, Buffer_Size);
+   Allocation : constant Unsigned_64 := CuBit.Process_Calls.Grow_Heap (Buffer_Size);
    Buffer_Address : constant System.Address :=
      To_Address (Integer_Address (Allocation));
    Buffer : SNTP.Byte_Array (1 .. Buffer_Size)
@@ -48,7 +49,7 @@ procedure Main is
    --  datagram records (one request out, one reply in).
    Ring_Size : constant := 4_096;
    Stream_Bytes : constant := Channels.Layout.Header_Bytes + 2 * Ring_Size;
-   Stream_Allocation : constant Unsigned_64 := syscall (SYSCALL_SBRK, Stream_Bytes);
+   Stream_Allocation : constant Unsigned_64 := CuBit.Process_Calls.Grow_Heap (Stream_Bytes);
    Arena : Channels.Arena;
    Stream : Channels.Stream;
    Wait_Token : Unsigned_64 := 16#7153_0000_0000_0000#;
