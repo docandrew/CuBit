@@ -108,7 +108,6 @@ tests/ladybird/test262/main.adb
 tests/mesa-anv/futex-adapter-test.c
 tests/mesa-anv/memory-fixture/messages_mock.adb
 tests/mesa-anv/memory-fixture/messages_mock.ads
-tests/mesa-anv/native-log/main.adb
 tests/mesa-anv/native-owned-reservation.c
 tests/mesa-software/native-mesa-window.c
 tests/mesa-software/native-opengl.c

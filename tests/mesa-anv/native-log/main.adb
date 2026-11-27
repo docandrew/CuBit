@@ -1,5 +1,5 @@
 with CuBit.Console_Route;
-with CuBit.Waits;
+with CuBit.Process_Calls;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Protocol;
@@ -25,10 +25,7 @@ procedure Main is
    begin
       if not OK then
          debugPrint ("TEST: FAIL mesa-log-bridge: " & Name & ASCII.LF);
-         Ignore := syscall (SYSCALL_EXIT, 1);
-         loop
-            Ignore := CuBit.Waits.Sleep_For (1000);
-         end loop;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
    end Check;
 begin
