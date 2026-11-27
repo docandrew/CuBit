@@ -21,7 +21,7 @@
 --    and may send it control messages (SEND_CONTROL), so naming one is
 --    giving it authority.
 --
--- Pure decisions over capability snapshots; syscall-ipc.adb's handleSpawn
+-- Pure decisions over capability snapshots; syscall-processes.adb's handleSpawn
 -- applies them. Proved with tests/spawn-admission.
 -------------------------------------------------------------------------------
 with Interfaces; use Interfaces;

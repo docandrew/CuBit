@@ -24,6 +24,8 @@ with Process_Capabilities;
 with Spinlocks;
 with Process_Launch;
 with Syscall.IPC;
+with Syscall.Memory;
+with Syscall.Processes;
 with Syscall.Admin;
 with TextIO; use TextIO;
 with Time;
@@ -387,7 +389,7 @@ package body Syscall is
                 end if;
                 -- Serialized against sibling threads' faults and sbrk.
                 Process.lockAddressSpace (Process.processOf (caller));
-                IPC.handleSbrk (
+                Memory.handleSbrk (
                     Process.processOf (caller), arg0, retval);
                 Process.unlockAddressSpace (Process.processOf (caller));
 
@@ -455,7 +457,7 @@ package body Syscall is
                 retval := 0;
 
             when SYSCALL_MAPFB =>
-                IPC.handleMapFB (
+                Memory.handleMapFB (
                     Process.processOf (caller), arg0, retval);
 
             when SYSCALL_REPLY =>
@@ -570,12 +572,12 @@ package body Syscall is
                 Admin.handleReplyWait (arg0, arg1, retval);
 
             when SYSCALL_SPAWN =>
-                IPC.handleSpawn (
+                Processes.handleSpawn (
                     Process.processOf (caller),
                     arg0, arg1, arg2, retval);
 
             when SYSCALL_MAP_DEVICE =>
-                IPC.handleMapDevice (
+                Memory.handleMapDevice (
                     Process.processOf (caller), arg0, arg1, arg2, arg3, arg4, arg5, retval);
 
             when SYSCALL_INSPECT_CAPABILITY =>
@@ -597,7 +599,7 @@ package body Syscall is
                     arg0, arg1, arg2, arg3, arg4, retval);
 
             when SYSCALL_ALLOC_DMA =>
-                IPC.handleAllocDma (
+                Memory.handleAllocDma (
                     Process.processOf (caller),
                     arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
@@ -619,7 +621,7 @@ package body Syscall is
                     Process.processOf (caller), arg0, arg1, arg2, retval);
 
             when SYSCALL_MAP_INTO =>
-                IPC.handleMapInto (
+                Memory.handleMapInto (
                     Process.processOf (caller),
                     arg0, arg1, arg2, arg3, arg4, arg5, arg6, retval);
 
