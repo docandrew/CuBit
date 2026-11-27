@@ -26,10 +26,14 @@ generic
       Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
    with function Reserve_Cache(Bytes,Alignment:Interfaces.Unsigned_64) return System.Address
       is ACPI_Fallible_Heap.Reserve;
+   with procedure Observe_Region_Handler
+     (IO : Provider.Context; Region : Core.Namespace.Node_ID;
+      Data : Core.Namespace.Operation_Region_Attributes;
+      Ready : in out Boolean; Generation : in out Natural) is null;
 package ACPI_Field_Evaluation is
    package Bindings is new ACPI_Field_Bindings (Core, Provider, Maximum_Bindings, Enable_Startup_Firmware_Resolution,
       Resolve_Startup_Firmware_Target, Enable_Startup_Platform_Resolution,
-      Resolve_Startup_Platform_Target);
+      Resolve_Startup_Platform_Target, Observe_Region_Handler => Observe_Region_Handler);
    Default_Capacity : constant Positive := Maximum_Bindings;
    type Context (Capacity : Positive) is limited private;
    type Context_Access is access all Context;
@@ -76,6 +80,14 @@ package ACPI_Field_Evaluation is
       Budget : Natural; Result : out Core.Values.Result;
       Status : out Core.Values.Access_Status)
      with Pre => Core.Valid (Service) and then not Result'Constrained;
+   -- A service-loop turn borrows the already published binding set. The
+   -- trusted caller supplies a fresh local handler-install acknowledgment.
+   procedure Drain_Region_Connections
+     (Run : in out Context; Service : aliased in out Core.State;
+      IO : in out Provider.Context; Turn_ID, Handler_Generation : Positive;
+      Install_Acknowledged : Boolean;
+      Report : out Bindings.Fields.Connection_Turn_Report)
+     with Pre => Core.Valid (Service);
 private
    type Context (Capacity : Positive) is limited record
       Cache : Bindings.Context (Capacity);

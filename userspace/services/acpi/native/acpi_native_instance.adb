@@ -116,6 +116,7 @@ package body ACPI_Native_Instance is
    Bridge_SCI_Ack_Noted : Boolean := False;
    Bridge_Report_Noted : Boolean := False;
    Bridge_Retention_Noted : Boolean := False;
+   Late_Region_Turn : Natural := 0;
    function Bridge_Metadata_Ready return Boolean;
    function Bridge_Query_Ready return Boolean;
    procedure Bridge_Correlation (Device : ACPI_Service.Node_Descriptor;
@@ -532,6 +533,7 @@ package body ACPI_Native_Instance is
    end Runtime_Dispatch;
    procedure Runtime_Advance (Server : in out ACPI_Requests.State; Result : out ACPI_Native_Server.Owner_Outcome) is
       View : HB.Report;
+      Late : Root.Fields.Late_Region_Report;
    begin
       Bridge_Loop.Advance (Server, Result); View := Bridges.Observe;
       if View.Attempted and then View.Stage in HB.Holding | HB.Finished | HB.Retained
@@ -546,6 +548,29 @@ package body ACPI_Native_Instance is
             " acknowledged=" & View.Acknowledged'Image & " held=" & View.Held_Sessions'Image &
             " failed=" & View.Failed_Reports'Image & " incomplete=" & View.Incomplete_Reports'Image,
             Bridge_Loop.Diagnostics_Quiet (Server));
+      end if;
+      --  The owner has replied to the previous request before this turn.
+      --  Never run _REG while a bridge, event or power owner holds AML.
+      if Result = ACPI_Native_Server.Owner_Idle
+        and then not Bridges.Blocks_AML
+        and then Bridge_Loop.Diagnostics_Quiet (Server)
+        and then One.Runtime.Current = One.Runtime.Status.Idle
+        and then not ACPI_Native_Power_Entry.Blocks_Runtime
+        and then ACPI_Requests.Device_Walk_Finished (Server)
+        and then Late_Region_Turn < Natural'Last
+      then
+         Late_Region_Turn := Late_Region_Turn + 1;
+         One.Runtime_Access.Drain_Regions
+           (Server, Positive (Late_Region_Turn), Late);
+         if Late.Attempted > 0 then
+            ACPI_Native_Diagnostic_Output.Write
+              ("acpi: stage region-late turn=" & Late_Region_Turn'Image &
+               " attempted=" & Late.Attempted'Image &
+               " connected=" & Late.Connected'Image &
+               " failed=" & Late.Failed'Image &
+               " more=" & Late.More'Image, True);
+         end if;
+         if Late.More then Result := ACPI_Native_Server.Owner_Pending; end if;
       end if;
    end Runtime_Advance;
    procedure Serving_Event (Publisher : CuBit.Messages.Process_ID; Item : CuBit.Messages.Message;

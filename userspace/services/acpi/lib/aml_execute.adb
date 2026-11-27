@@ -5131,6 +5131,84 @@ package body AML_Execute with SPARK_Mode is
                            end if;
                         end;
                      end if;
+                     -- The completed region is now live. For a method-local
+                     -- declaration, run its acknowledged local _REG before
+                     -- the declaring method advances to the next opcode.
+                     -- Table roots defer this until all definitions exist.
+                     if not Module_Root then
+                        declare
+                           Notice : Operation_Region_Notice;
+                           Actuals : Value_Arguments :=
+                             [others => (Integer_Datum, 0, Ordinary_Integer)];
+                           Child : Execution_Result;
+                           Child_Returned : Scalar_Location;
+                           Finished : Boolean := False;
+                        begin
+                           Describe_Operation_Region_Notice
+                             (Environment, Active_Lease, Token, Notice);
+                           if Notice.Available then
+                              if Charged = Budget then
+                                 Finish_Operation_Region_Notice
+                                   (Environment, Token, Notice, False, Finished);
+                                 Body_Result := Failure (Budget_Exceeded, Charged);
+                                 return;
+                              end if;
+                              Actuals (0) :=
+                                (Integer_Datum, AML_Decode.Integer_Value (Notice.Space), Ordinary_Integer);
+                              Actuals (1) := (Integer_Datum, 1, Ordinary_Integer);
+                              if Calls_Left = 0 then
+                                 Finish_Operation_Region_Notice
+                                   (Environment, Token, Notice, False, Finished);
+                                 Body_Result := Failure (Call_Limit, Charged);
+                                 return;
+                              end if;
+                              declare
+                                 Method : constant Method_Definition :=
+                                   Get_Method (Environment, Notice.Method_ID);
+                              begin
+                                 if not Method.Exists or else
+                                   Natural (Method.Flags and 7) /= 2
+                                 then
+                                    Finish_Operation_Region_Notice
+                                      (Environment, Token, Notice, False, Finished);
+                                    Body_Result := Failure (Invalid_Method, Charged);
+                                    return;
+                                 end if;
+                                 Run
+                                   ((if Method.Implementation = AML_Implementation then
+                                       Method.Code.Bytes (1 .. Method.Length)
+                                     else Bytes'(1 .. 0 => 0)),
+                                    Method.Code, 0, Method.Width, Actuals, 2,
+                                    Budget - Charged, Method.Scope, Child,
+                                    Calls_Left - 1, Notice.Method_ID, Method.Flags,
+                                    Call_Frame, AML_Declaration_Contexts.Method_Request,
+                                    Method.Implementation, [others => 0], Child_Returned);
+                              end;
+                              Charged := Charged + Child.Charged;
+                              -- _REG's return value is ignored, including an
+                              -- owned compound result bridged from the child.
+                              if Tracking and then Child_Returned /= 0 then
+                                 Clear_If_Present (Child_Returned);
+                              end if;
+                              Publish_Held_Root (Environment, Call_Frame,
+                                AML_Root_Slots.Returned_Value, False,
+                                (Integer_Datum, 0, Ordinary_Integer));
+                              Finish_Operation_Region_Notice
+                                (Environment, Token, Notice,
+                                 Child.Status in Returned | No_Return |
+                                   Object_Returned | Reference_Returned | Metadata_Returned,
+                                 Finished);
+                              if Child.Status not in Returned | No_Return |
+                                Object_Returned | Reference_Returned | Metadata_Returned
+                                or else not Finished
+                              then
+                                 Body_Result := Failure
+                                   ((if Finished then Child.Status else Unsupported_Value), Charged);
+                                 return;
+                              end if;
+                           end if;
+                        end;
+                     end if;
                   end;
                elsif Code (Code'First + Offset) = 16#88# then
                   Offset := Offset + 1;

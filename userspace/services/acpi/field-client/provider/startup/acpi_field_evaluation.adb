@@ -97,4 +97,25 @@ package body ACPI_Field_Evaluation is
       if Provider.Pending (IO) then Status := Core.Values.Busy; return; end if;
       Borrow(Run.Cache,Service,IO,Accepted);
    end Invoke_With_Arguments;
+   procedure Drain_Region_Connections
+     (Run : in out Context; Service : aliased in out Core.State;
+      IO : in out Provider.Context; Turn_ID, Handler_Generation : Positive;
+      Install_Acknowledged : Boolean;
+      Report : out Bindings.Fields.Connection_Turn_Report)
+   is
+      Accepted : Boolean;
+      procedure Drain (Items : Bindings.Fields.Binding_Set) is
+      begin
+         Bindings.Fields.Drain_Region_Connections
+           (Service, IO, Items, Turn_ID, Handler_Generation,
+            Install_Acknowledged, Report);
+      end Drain;
+      procedure Borrow is new Bindings.With_Bindings (Drain);
+   begin
+      Report := (others => <>);
+      if not Install_Acknowledged or else Provider.Pending (IO) then return; end if;
+      Prepare (Run, Service, IO, Accepted);
+      if not Accepted then return; end if;
+      Borrow (Run.Cache, Service, IO, Accepted);
+   end Drain_Region_Connections;
 end ACPI_Field_Evaluation;

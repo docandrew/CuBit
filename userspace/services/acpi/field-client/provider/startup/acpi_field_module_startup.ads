@@ -28,6 +28,11 @@ generic
    with function Reserve_Targets (Bytes, Alignment : Interfaces.Unsigned_64)
      return System.Address is ACPI_Fallible_Heap.Reserve;
    with procedure Release_Targets (Address : System.Address) is ACPI_Fallible_Heap.Release;
+   -- Trusted local handler snapshot; null keeps legacy callers fail-closed.
+   with procedure Observe_Region_Handler
+     (IO : Provider.Context; Region : Core.Namespace.Node_ID;
+      Data : Core.Namespace.Operation_Region_Attributes;
+      Ready : in out Boolean; Generation : in out Natural) is null;
 package ACPI_Field_Module_Startup is
    package Fields is new Core.Field_IO
      (Provider.Context, Provider.Pending, Provider.Describe, Provider.Dispatch,
@@ -41,7 +46,8 @@ package ACPI_Field_Module_Startup is
       Enable_Startup_Platform_Resolution => Enable_Startup_Platform_Resolution,
       Resolve_Startup_Platform_Target => Resolve_Startup_Platform_Target,
       Observe_Field => Provider.Note_Field, Field_Notes_Enabled => Provider.Supports_Field_Notes,
-      Global_Lock_Operation => Provider.Operate_Global_Lock);
+      Global_Lock_Operation => Provider.Operate_Global_Lock,
+      Observe_Region_Handler => Observe_Region_Handler);
    -- Trusted startup callback bridge. Provision Provider before this call;
    -- the outer snapshot/controller owns the one-attempt startup latch.
    -- Never serve or retry after module effects/failure/uncertainty. Preserve

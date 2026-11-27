@@ -192,6 +192,15 @@ package ACPI_Service_Core with SPARK_Mode is
    -- Stronger snapshot check additionally requires the observed object kind.
    function Current_Node (Service : State; Item : Node_Descriptor) return Boolean
      with Pre => Valid (Service);
+   subtype Bulk_Outcome is Values.Bulk_Outcome;
+   procedure Adopt_Bulk_Region
+     (Service : in out State; Item : Node_Descriptor;
+      Outcome : Bulk_Outcome; Accepted : out Boolean)
+     with Pre => Valid (Service), Post => Valid (Service);
+   procedure Release_Bulk_Region
+     (Service : in out State; Item : Node_Descriptor;
+      Succeeded : Boolean; Accepted : out Boolean)
+     with Pre => Valid (Service), Post => Valid (Service);
    procedure Find_Child (Service : State; Parent : Namespace.Node_ID; Part : AML_Names.Segment;
       Node : out Namespace.Node_ID; Status : out Values.Access_Status) with Pre => Valid (Service);
    -- Semantic object selection follows aliases, retaining Found Root.
@@ -464,6 +473,10 @@ package ACPI_Service_Core with SPARK_Mode is
      (IO : in out IO_Context; Domain : AML_Frame_Handles.Invocation_Domain;
       Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
       Outcome : in out AML_Global_Locks.Outcome) is null;
+   with procedure Observe_Region_Handler
+     (IO : IO_Context; Region : Namespace.Node_ID;
+      Data : Namespace.Operation_Region_Attributes;
+      Ready : in out Boolean; Generation : in out Natural) is null;
    package Field_IO is
       pragma Unevaluated_Use_Of_Old (Allow);
       type Module_Target_Count is new Natural;
@@ -493,6 +506,22 @@ package ACPI_Service_Core with SPARK_Mode is
       No_Binding : constant Binding;
       Default_Binding_Capacity : constant Positive := Maximum_Bindings;
       type Binding_Set (Capacity : Positive) is private;
+      type Connection_Turn_Report is record
+         Accepted : Boolean := False;
+         Attempted : Natural := 0;
+         Connected : Natural := 0;
+         Failed : Natural := 0;
+         More : Boolean := False;
+      end record;
+      -- The service loop calls this only after the provider installation
+      -- reply and outside its registration lock. One call attempts at most
+      -- four callbacks, each with its own 100,000-fuel AML invocation.
+      procedure Drain_Region_Connections
+        (Service : aliased in out State; IO : in out IO_Context;
+         Items : Binding_Set; Turn_ID, Handler_Generation : Positive;
+         Install_Acknowledged : Boolean; Report : out Connection_Turn_Report)
+        with Pre => Valid (Service), Post => Valid (Service)
+          and then Report.Attempted <= 4;
       procedure Clear (Items : out Binding_Set);
       procedure Add_Region_Register
         (Service : State; IO : IO_Context; Region : Node_Descriptor;
@@ -623,7 +652,8 @@ package ACPI_Service_Core with SPARK_Mode is
         (IO_Context, Pending, Describe_Target, Dispatch, Completion_Confirmed, Maximum_Bindings,
          Authorize_Target, Maximum_Requests, Maximum_Work, Resolve_Module_Target, Begin_Field, End_Field, Allow_Locked_NVS_Reads,
          Enable_Startup_Firmware_Resolution, Resolve_Startup_Firmware_Target, Allow_Locked_Fields,
-         Enable_Startup_Platform_Resolution, Resolve_Startup_Platform_Target, Observe_Field, Field_Notes_Enabled, Global_Lock_Operation);
+         Enable_Startup_Platform_Resolution, Resolve_Startup_Platform_Target, Observe_Field, Field_Notes_Enabled,
+         Global_Lock_Operation, Observe_Region_Handler);
       type Binding is record
          Inner : Adapter.Binding := Adapter.No_Binding;
       end record;

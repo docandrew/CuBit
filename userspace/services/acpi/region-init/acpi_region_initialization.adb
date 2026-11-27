@@ -37,6 +37,16 @@ package body ACPI_Region_Initialization with SPARK_Mode is
    function Pending (Run : Session) return Boolean is (Run.Handle /= V.No_Value);
    function Observe_Region (Run : Session; Node : Node_ID) return Notice_Result is
      (Run.Items (Node).Notice);
+   function Observe_Bulk (Run : Session; Node : Node_ID)
+     return Bulk_Observation is
+     (Present => Run.Items (Node).Present,
+      Region => Run.Items (Node).Region,
+      Notice => Run.Items (Node).Notice,
+      Directly_Connected => Run.Items (Node).Directly_Connected);
+   function Prepared_Region_Count (Run : Session) return Region_Count is
+     (Run.Info.Regions);
+   function Prepared_Region_Node (Run : Session; Index : Positive)
+     return Node_ID is (Run.Prepared (Index));
    function Observe_Registration (Run : Session; Node : Node_ID)
      return Registration_Observation is
      (Present => Run.Items (Node).Present,
@@ -220,6 +230,7 @@ package body ACPI_Region_Initialization with SPARK_Mode is
                end if;
                Run.Items (Node).Notice := Completed;
                Run.Items (Node).Was_Connected := Connecting_Now;
+               if Connecting_Now then Run.Items (Node).Directly_Connected := True; end if;
                if Coalesce_Local_Notifications then Mark(Notified,Run.Items(Node));end if;
             end if;
          end if;
@@ -247,6 +258,7 @@ package body ACPI_Region_Initialization with SPARK_Mode is
             Core.Read_Region_Descriptor (Service, Description, Run.Items (Node).Data, Status);
             if Status /= V.Available then Stop (Run, Node, AML_Execute.Unsupported_Value); return; end if;
             Run.Info.Regions := Run.Info.Regions + 1;
+            Run.Prepared (Positive (Run.Info.Regions)) := Node;
             Run.Items(Node).Handler_Present := Handler_Ready(Context,Description,Run.Items(Node).Data);
             Run.Items(Node).Available := Run.Items(Node).Handler_Present;
             Run.Items (Node).Suppressed := Suppressed (Service, Context, Run.Items (Node));

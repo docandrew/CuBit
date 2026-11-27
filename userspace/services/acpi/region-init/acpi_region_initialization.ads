@@ -53,6 +53,23 @@ package ACPI_Region_Initialization with SPARK_Mode is
    function Pending (Run : Session) return Boolean;
    function Observe (Run : Session) return Report;
    function Observe_Region (Run : Session; Node : Core.Namespace.Node_ID) return Notice_Result;
+   -- Exact prepared descriptor, including its node incarnation. A Completed
+   -- coalesced sibling is Covered; only Directly_Connected owns a native
+   -- disconnect notification. This is copied session state, not authority.
+   type Bulk_Observation is record
+      Present : Boolean := False;
+      Region : Core.Node_Descriptor := Core.Values.No_Node;
+      Notice : Notice_Result := Not_Attempted;
+      Directly_Connected : Boolean := False;
+   end record;
+   function Observe_Bulk (Run : Session; Node : Core.Namespace.Node_ID)
+     return Bulk_Observation;
+   -- Dense prepared membership avoids scanning all namespace slots at
+   -- native Finish/Disconnect. Each entry still carries its exact descriptor.
+   function Prepared_Region_Count (Run : Session) return Region_Count;
+   function Prepared_Region_Node (Run : Session; Index : Positive)
+     return Core.Namespace.Node_ID
+     with Pre => Index <= Natural (Prepared_Region_Count (Run));
    type Registration_Observation is record
       Present, Handler_Present, Group_Available, Suppressed : Boolean := False;
    end record;
@@ -126,8 +143,10 @@ private
       Notice : Notice_Result := Not_Attempted;
       Suppressed : Boolean := False;
       Was_Connected : Boolean := False;
+      Directly_Connected : Boolean := False;
    end record;
    type Entries is array (Node_ID) of Entry_State;
+   type Prepared_Nodes is array (Positive range 1 .. Node_ID'Last) of Node_ID;
    type Scope_Set is array (Node_ID) of Boolean;
    type Session is limited record
       Info : Report;
@@ -135,6 +154,7 @@ private
       Handle : Core.Values.Value_Handle := Core.Values.No_Value;
       Pending_Node : Node_ID := Core.Namespace.Root;
       Items : Entries;
+      Prepared : Prepared_Nodes := [others => Core.Namespace.Root];
       Scopes : Scope_Set := [others => False];
       Notification_Scopes : Scope_Set := [others => False];
    end record;

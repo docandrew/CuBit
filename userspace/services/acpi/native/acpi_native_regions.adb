@@ -238,6 +238,15 @@ package body ACPI_Native_Regions is
    use type Regions.Phase;
    package Order is new ACPI_Region_Activation_Order (C);
    Run : Regions.Session;
+   -- Exact startup owners retained until native bulk disconnect completes.
+   -- The descriptor includes incarnation; a reused node cannot inherit it.
+   type Bulk_Claim is record
+      Present : Boolean := False;
+      Region : C.Node_Descriptor := C.Values.No_Node;
+      Directly_Connected : Boolean := False;
+   end record;
+   type Bulk_Claim_Set is array (C.Namespace.Node_ID) of Bulk_Claim;
+   Claims : Bulk_Claim_Set := [others => <>];
    type Scope_Set is array (C.Namespace.Node_ID) of Boolean;
    type Ancestor_Map is array (C.Namespace.Node_ID) of C.Namespace.Node_ID;
    Due_After : Ancestor_Map := [others => C.Namespace.Root];
@@ -536,29 +545,73 @@ package body ACPI_Native_Regions is
      (Service : aliased in out C.State; Budget : Natural;
       Charged : in out Natural; Outcome : in out ACPI_Device_Policy.Region_Outcome) is
       pragma Unreferenced (Budget);
-      Accepted : Boolean;
+      Accepted, Adopted, Adopt_Required : Boolean;
+      Bulk : Regions.Bulk_Observation;
+      Kind : C.Bulk_Outcome := C.Values.Bulk_Skipped;
+      Node : C.Namespace.Node_ID := C.Namespace.Root;
    begin
       Charged:=0;Outcome:=ACPI_Device_Policy.Region_Initialization_Failed;
       if Working or else not Attempted then return;end if;Working:=True;
       Regions.Finish_Connect(Run,Service,Context,Accepted);
       Connect_Report:=Regions.Observe(Run);Connect_Captured:=True;
+      if Accepted and then Regions.Observe(Run).Stage = Regions.Connected then
+         for Index in 1 .. Natural (Regions.Prepared_Region_Count (Run)) loop
+            Node := Regions.Prepared_Region_Node (Run, Positive (Index));
+            Bulk := Regions.Observe_Bulk(Run,Node);
+            if Bulk.Present then
+               Adopt_Required := True;
+               case Bulk.Notice is
+                  when Regions.Completed =>
+                     Kind := (if Bulk.Directly_Connected then C.Values.Bulk_Announced
+                              else C.Values.Bulk_Covered);
+                  when Regions.Not_Required | Regions.Missing_Method =>
+                     Kind := C.Values.Bulk_Skipped;
+                  when Regions.Handler_Unavailable =>
+                     -- No announcement and no obligation; a later handler
+                     -- generation may attempt this region separately.
+                     Adopt_Required := False;
+                  when others =>
+                     Accepted := False;
+                     exit;
+               end case;
+               if Adopt_Required then
+                  C.Adopt_Bulk_Region(Service,Bulk.Region,Kind,Adopted);
+                  if not Adopted then Accepted := False; exit; end if;
+                  Claims(Node) := (True,Bulk.Region,Bulk.Directly_Connected);
+               end if;
+            end if;
+         end loop;
+      end if;
       if Accepted then Outcome:=Regions.Outcome(Run);end if;
       Working:=False;
    end Finish;
    procedure Disconnect (Service : aliased in out C.State; Budget : Natural;
       Charged : out Natural; Completed : out Boolean) is
-      Accepted : Boolean;
+      Accepted, Released : Boolean;
+      Node : C.Namespace.Node_ID := C.Namespace.Root;
    begin
       Charged:=0;Completed:=False;if Working then return;end if;
       Working:=True;ACPI_Native_Pre_Device.Close(Service);Working:=False;
       if not ACPI_Native_Pre_Device.Quiet then return;end if;
-      if not Announced and then not Regions.Pending(Run) then Completed:=True;return;end if;
+      if not Attempted and then not Announced and then not Regions.Pending(Run) then
+         Completed:=True;return;
+      end if;
       Working:=True;
       Regions.Disconnect(Run,Service,Context,Budget,Accepted);
       Disconnect_Report := Regions.Observe(Run); Disconnect_Captured := True;
       Charged:=Regions.Observe(Run).Charged;
       Completed:=Accepted and then Regions.Observe(Run).Stage=Regions.Disconnected and then not Regions.Pending(Run);
-      if Completed then Announced:=False;end if;
+      if Completed then
+         for Index in 1 .. Natural (Regions.Prepared_Region_Count (Run)) loop
+            Node := Regions.Prepared_Region_Node (Run, Positive (Index));
+            if Claims(Node).Present then
+               C.Release_Bulk_Region(Service,Claims(Node).Region,True,Released);
+               if not Released then Completed:=False;exit;end if;
+               Claims(Node).Present:=False;
+            end if;
+         end loop;
+         if Completed then Announced:=False;end if;
+      end if;
       Working:=False;
    end Disconnect;
 end ACPI_Native_Regions;

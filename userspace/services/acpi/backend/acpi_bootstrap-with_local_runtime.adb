@@ -17,4 +17,9 @@ package body ACPI_Bootstrap.With_Local_Runtime is
    begin
       End_Owner (Session.Core,Completed,Result);
    end End_Event;
+   procedure Drain_Regions
+     (Session : in out State; Turn_ID : Positive; Report : out Region_Report) is
+   begin
+      Drain_Owner (Session.Core, Turn_ID, Report);
+   end Drain_Regions;
 end ACPI_Bootstrap.With_Local_Runtime;

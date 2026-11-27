@@ -121,6 +121,17 @@ package ACPI_Local_Hardware.Pooled_Fields is
    procedure Initialize_Member_Startup (Service : in out Core.State; Budget : Natural;
       Result : out Core.Namespace.Field_Initialization_Report; Status : out Core.Values.Access_Status);
    procedure Prepare_Fields (Service : Core.State; Accepted : out Boolean);
+   -- A serialized service-loop turn after local handler setup and binding
+   -- publication. Every selected region is rechecked against this mux.
+   type Late_Region_Report is record
+      Accepted : Boolean := False;
+      Attempted, Connected, Failed : Natural := 0;
+      More : Boolean := False;
+   end record;
+   procedure Drain_Late_Regions
+     (Service : aliased in out Core.State;
+      Turn_ID : Positive;
+      Report : out Late_Region_Report);
    procedure Evaluate_Named (Service : aliased in out Core.State; Item : Core.Node_Descriptor;
       Budget : Natural; Result : out Core.Values.Result; Status : out Core.Values.Access_Status)
       with Pre => Core.Valid (Service) and then not Result'Constrained;
@@ -205,6 +216,10 @@ private
    procedure Inspect_EC_Boot (Service : Core.State);
    function Provider_Ready (IO : Mux.Context) return Boolean;
    function Provider_Pending (IO : Mux.Context) return Boolean;
+   procedure Observe_Local_Region_Handler
+     (IO : Mux.Context; Region : Core.Namespace.Node_ID;
+      Data : Core.Namespace.Operation_Region_Attributes;
+      Ready : in out Boolean; Generation : in out Natural);
    procedure Resolve_Module (IO : in out Mux.Context; Geometry : AML_Field_Layout.Register_Geometry;
       Target : in out AML_Field_Access.Target; Accepted : in out Boolean);
    procedure Resolve_Platform (IO : in out Mux.Context; Region : Core.Namespace.Operation_Region_Attributes;
@@ -226,7 +241,8 @@ private
       Allow_Locked_Fields => True, Observe_Field => Note_Field, Field_Notes_Enabled => True,
       Global_Lock_Operation => Operate_AML_Lock);
    package Evaluation is new ACPI_Field_Evaluation (Core,View,Maximum_Bindings,
-      Enable_Startup_Platform_Resolution => True,Resolve_Startup_Platform_Target => Resolve_Platform);
+      Enable_Startup_Platform_Resolution => True,Resolve_Startup_Platform_Target => Resolve_Platform,
+      Observe_Region_Handler => Observe_Local_Region_Handler);
    IO : Mux.Context;
    subtype Cache_Access is Evaluation.Context_Access;
    Cache : Cache_Access := null;
@@ -237,6 +253,10 @@ private
    function Ensure_Cache(Service:Core.State) return Boolean;
    Last_Preparation : Preparation_Report;
    Field_State : Field_Phase := Owner_Fresh;
+   --  The successful local mux install reply is the only source of this
+   --  epoch. A later install transition must advance it before callbacks.
+   Local_Install_Generation : Natural := 0;
+   Local_Install_Acknowledged : Boolean := False;
    Attempted, Completed, Finished, Has_Anchor : Boolean := False;
    Members_Attempted, Members_Completed : Boolean := False;
    Runtime_Claimed : Boolean := False;

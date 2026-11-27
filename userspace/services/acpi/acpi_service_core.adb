@@ -47,6 +47,18 @@ package body ACPI_Service_Core with SPARK_Mode is
      (Values.Current_Binding (Service.Tree, Item));
    function Current_Node (Service : State; Item : Node_Descriptor) return Boolean is
      (Values.Current_Node (Service.Tree, Item));
+   procedure Adopt_Bulk_Region
+     (Service : in out State; Item : Node_Descriptor;
+      Outcome : Bulk_Outcome; Accepted : out Boolean) is
+   begin
+      Values.Adopt_Bulk_Region (Service.Tree, Item, Outcome, Accepted);
+   end Adopt_Bulk_Region;
+   procedure Release_Bulk_Region
+     (Service : in out State; Item : Node_Descriptor;
+      Succeeded : Boolean; Accepted : out Boolean) is
+   begin
+      Values.Release_Bulk_Region (Service.Tree, Item, Succeeded, Accepted);
+   end Release_Bulk_Region;
    procedure Find_Child (Service : State; Parent : Namespace.Node_ID; Part : AML_Names.Segment;
       Node : out Namespace.Node_ID; Status : out Values.Access_Status) is
    begin Values.Find_Child (Service.Tree, Parent, Part, Node, Status); end Find_Child;
@@ -284,6 +296,61 @@ package body ACPI_Service_Core with SPARK_Mode is
      (Service : in out State; Budget : Natural; Report : out Execution_Report;
       Status : out Values.Access_Status);
    package body Field_IO is
+      procedure Drain_Region_Connections
+        (Service : aliased in out State; IO : in out IO_Context;
+         Items : Binding_Set; Turn_ID, Handler_Generation : Positive;
+         Install_Acknowledged : Boolean; Report : out Connection_Turn_Report) is
+         Notice : Adapter.Region_Connection_Notice;
+         Begun, Finished : Boolean;
+         Args : Values.Arguments := [others => (Values.Immediate_Argument, 0)];
+         Outcome : Values.Result;
+         Status : Values.Access_Status;
+         Handle : Values.Value_Handle;
+         Succeeded : Boolean;
+      begin
+         Report := (others => <>);
+         if not Install_Acknowledged or else
+           Service.Import_State not in Legacy_Import | Catalog_Executed
+         then return; end if;
+         Adapter.Begin_Region_Connection_Turn
+           (Service.Tree, Turn_ID, Handler_Generation, Begun);
+         Report.Accepted := Begun;
+         if not Begun then return; end if;
+         for Attempt in 1 .. 4 loop
+            Adapter.Take_Region_Connection
+              (Service.Tree, IO, Handler_Generation, Notice);
+            exit when not Notice.Available;
+            Report.Attempted := Report.Attempted + 1;
+            Args (0).Number := AML_Decode.Integer_Value (Notice.Space);
+            Args (1).Number := 1;
+            Invoke_With_Arguments
+              (Service, IO, Items, Notice.Method_Node, Args, 2,
+               100_000, Outcome, Status);
+            Succeeded := Status = Values.Available and then
+              Outcome.Status in AML_Execute.Returned | AML_Execute.No_Return |
+                AML_Execute.Object_Returned | AML_Execute.Reference_Returned |
+                AML_Execute.Metadata_Returned;
+            if Status = Values.Available and then
+              Outcome.Status in AML_Execute.Object_Returned |
+                AML_Execute.Reference_Returned | AML_Execute.Metadata_Returned
+            then
+               Handle := Outcome.Handle;
+               Release_Result (Service, Handle, Status);
+               Succeeded := Succeeded and then Status = Values.Available;
+            end if;
+            Adapter.Finish_Region_Connection
+              (Service.Tree, Notice, Succeeded, Finished);
+            if Succeeded and then Finished then
+               Report.Connected := Report.Connected + 1;
+            else
+               Report.Failed := Report.Failed + 1;
+            end if;
+         end loop;
+         Report.More := Report.Attempted = 4 and then
+           Adapter.Has_Region_Connection_Work
+             (Service.Tree, IO, Handler_Generation);
+      end Drain_Region_Connections;
+
       procedure Initialize_Members
         (Service : in out State; IO : in out IO_Context;
          Targets : Module_Target_Set; Count : Module_Target_Count;

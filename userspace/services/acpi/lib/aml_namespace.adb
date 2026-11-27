@@ -7247,6 +7247,11 @@ package body Owned with SPARK_Mode is
          Ticket : AML_Execute.Field_Context_Ticket;
          Geometry : AML_Field_Layout.Register_Geometry;
          Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status) is null;
+      -- Read-only trusted provider snapshot. The default refuses dynamic
+      -- connection; a space number or AML declaration is never readiness.
+      with procedure Observe_Region_Handler
+        (IO : IO_Context; Region : Node_ID; Data : Operation_Region_Attributes;
+         Ready : in out Boolean; Generation : in out Natural) is null;
    procedure Run_Context_Session (A : in out Arena; IO : in out IO_Context; Input : aliased AML_Table_Backing.State;
      Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural; Width : AML_Decode.Integer_Width; Scope : Node_ID;
      Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
@@ -7928,7 +7933,31 @@ package body Owned with SPARK_Mode is
       procedure End_Call (E : in out Arena; Scope : Natural)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
       is
-      begin End_Method (E.Tree.all, Scope); end End_Call;
+         Retired : Boolean;
+      begin
+         if Scope > 0 and then Scope <= E.Tree.Used
+           and then E.Tree.Items (Node_ID (Scope)).Active_Calls = 1
+         then
+            --  End_Method retires all lexical names owned by this method.
+            --  The exact node/incarnation must be forgotten first so node
+            --  reuse can publish a fresh connection on the next invocation.
+            for I in 1 .. E.Tree.Used loop
+               if E.Tree.Items (I).Alive
+                 and then E.Tree.Items (I).Owner = Node_ID (Scope)
+                 and then E.Tree.Items (I).Object_Type = Operation_Region_Object
+               then
+                  Dynamic_Connections.Retire_Method_Local
+                    (E.Dynamic_Regions,
+                     (I,
+                      Positive (E.Tree.Items (I).Incarnation)), Retired);
+                  if not Retired then
+                     raise Program_Error with "method-local region retirement invariant";
+                  end if;
+               end if;
+            end loop;
+         end if;
+         End_Method (E.Tree.all, Scope);
+      end End_Call;
 
 
 
@@ -9453,6 +9482,7 @@ package body Owned with SPARK_Mode is
          Status : in out AML_Execute.Execution_Status)
       is
          Node : constant Natural := AML_Declaration_Contexts.Node_Of (Token);
+         Recorded : Boolean := False;
       begin
          Status := AML_Execute.Unsupported_Value;
          if not Execute_Declaration_Valid (Environment, Lease)
@@ -9472,6 +9502,17 @@ package body Owned with SPARK_Mode is
                AML_Declaration_Contexts.Frame_Of (Lease)
              or else AML_Module_Frames.Top (Environment.Tree.Module_Frames) /= AML_Declaration_Contexts.Frame_Of (Lease))
          then return; end if;
+         if AML_Declaration_Contexts.Stamp_Of (Token) = 0 then return; end if;
+         -- Reserve the ledger slot before the non-failing metadata assignment.
+         -- Neither a rejected declaration nor a recycled live node may emit
+         -- a connection event.
+         Dynamic_Connections.Publish
+           (Environment.Dynamic_Regions,
+            (Dynamic_Connections.Region_Node (Node),
+             Positive (AML_Declaration_Contexts.Stamp_Of (Token))),
+            Interfaces.Unsigned_8 (Environment.Tree.Items (Node_ID (Node)).Operation_Info.Space),
+            Recorded);
+         if not Recorded then return; end if;
          -- Atomic metadata publication: no pending module marker survives.
          Environment.Tree.Items (Node_ID (Node)) :=
            (Environment.Tree.Items (Node_ID (Node)) with delta
@@ -10244,6 +10285,76 @@ package body Owned with SPARK_Mode is
          if Status /= AML_Execute.Returned then return; end if;
          Prepare_Source (E, Input, Lease, Scope, Width, Value, Budget, Charged, Succeeded, Status, Plan);
       end Prepare_Authenticated_Source;
+      procedure Describe_Operation_Region_Notice
+        (Environment : in out Arena; Lease : AML_Declaration_Contexts.Lease;
+         Token : AML_Declaration_Contexts.Operation_Region_Reservation;
+         Notice : in out AML_Execute.Operation_Region_Notice) is
+         Node : constant Natural := AML_Declaration_Contexts.Node_Of (Token);
+         Located : Lookup_Result;
+         Definition : AML_Execute.Method_Definition;
+         Ready : Boolean := False;
+         Generation : Natural := 0;
+         Started : Boolean := False;
+      begin
+         Notice := (others => <>);
+         if AML_Declaration_Contexts.Is_Module (Lease)
+           or else not AML_Declaration_Contexts.Issued_By (Token, Lease)
+           or else Node = 0 or else Node > Environment.Tree.Used
+         then return; end if;
+         if not Environment.Tree.Items (Node_ID (Node)).Alive
+           or else Environment.Tree.Items (Node_ID (Node)).Object_Type /= Operation_Region_Object
+           or else Natural (Environment.Tree.Items (Node_ID (Node)).Incarnation) /=
+             AML_Declaration_Contexts.Stamp_Of (Token)
+         then return; end if;
+         if AML_Declaration_Contexts.Stamp_Of (Token) = 0 then return; end if;
+         Observe_Region_Handler
+           (IO, Node_ID (Node), Environment.Tree.Items (Node_ID (Node)).Operation_Info,
+            Ready, Generation);
+         if not Ready or else Generation = 0 then return; end if;
+         -- ACPICA's region callback searches the region namespace node's
+         -- direct parent only. Lifetime owner may be a different method.
+         Located := Canonical_Child
+           (Environment.Tree.all, Environment.Tree.Items (Node_ID (Node)).Up, "_REG");
+         if Located.Status /= Found or else
+           Environment.Tree.Items (Located.Node).Object_Type /= Method_Object
+         then return; end if;
+         Definition := Read_Method (Environment.Tree.all, Natural (Located.Node));
+         if not Definition.Exists or else Natural (Definition.Flags and 7) /= 2
+         then return; end if;
+         Dynamic_Connections.Begin_Immediate
+           (Environment.Dynamic_Regions,
+            (Dynamic_Connections.Region_Node (Node),
+             Positive (AML_Declaration_Contexts.Stamp_Of (Token))),
+            Positive (Generation), Started);
+         if not Started then return; end if;
+         Notice := (Available => True, Method_ID => Natural (Located.Node),
+                    Space => AML_Decode.Byte
+                      (Environment.Tree.Items (Node_ID (Node)).Operation_Info.Space),
+                    Generation => Generation);
+      end Describe_Operation_Region_Notice;
+      procedure Finish_Operation_Region_Notice
+        (Environment : in out Arena;
+         Token : AML_Declaration_Contexts.Operation_Region_Reservation;
+         Notice : AML_Execute.Operation_Region_Notice; Succeeded : Boolean;
+         Accepted : in out Boolean) is
+         Node : constant Natural := AML_Declaration_Contexts.Node_Of (Token);
+      begin
+         Accepted := False;
+         if not Notice.Available or else Notice.Generation = 0
+           or else Node = 0 or else Node > Environment.Tree.Used
+           or else AML_Declaration_Contexts.Stamp_Of (Token) = 0
+         then return; end if;
+         if not Environment.Tree.Items (Node_ID (Node)).Alive
+           or else Environment.Tree.Items (Node_ID (Node)).Object_Type /= Operation_Region_Object
+           or else Natural (Environment.Tree.Items (Node_ID (Node)).Incarnation) /=
+             AML_Declaration_Contexts.Stamp_Of (Token)
+         then return; end if;
+         Dynamic_Connections.Finish_Connect
+           (Environment.Dynamic_Regions,
+            (Dynamic_Connections.Region_Node (Node),
+             Positive (AML_Declaration_Contexts.Stamp_Of (Token))),
+            Positive (Notice.Generation), Succeeded, Accepted);
+      end Finish_Operation_Region_Notice;
       procedure Execute is new AML_Execute.Execute_From_Source
         (Arena,
          AML_Table_Backing.State,
@@ -10308,6 +10419,8 @@ package body Owned with SPARK_Mode is
          Define_Banked_Fields => Execute_Declaration_Banked_Fields,
          Reserve_Operation_Region => Execute_Reserve_Operation_Region,
          Complete_Operation_Region => Execute_Complete_Operation_Region,
+         Describe_Operation_Region_Notice => Describe_Operation_Region_Notice,
+         Finish_Operation_Region_Notice => Finish_Operation_Region_Notice,
          Enter_Serialized_Method => Enter_Serialized,
          Leave_Serialized_Method => Leave_Serialized,
          Operate_Event => Execute_Event,
@@ -10494,6 +10607,9 @@ package body Owned with SPARK_Mode is
          Ticket : AML_Execute.Field_Context_Ticket;
          Geometry : AML_Field_Layout.Register_Geometry;
          Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status) is null;
+      with procedure Observe_Region_Handler
+        (IO : IO_Context; Region : Node_ID; Data : Operation_Region_Attributes;
+         Ready : in out Boolean; Generation : in out Natural) is null;
    procedure Run_Registered_Context_Session
      (A : in out Arena; IO : in out IO_Context; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
       Input : aliased AML_Table_Backing.State; Code : AML_Decode.Bytes;
@@ -11112,7 +11228,8 @@ package body Owned with SPARK_Mode is
          Prepare_Load => Prepare, Prepare_Source => Capture_Source, Copy_Load => Copy_Body,
          Begin_Load => Begin_Body, Finish_Load => Finish,
          Read_Table_Binding => Read_Registered_Table,
-         Complete_Table_Binding => Complete_Registered_Table, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
+         Complete_Table_Binding => Complete_Registered_Table, Global_Lock_Operation => Global_Lock_Operation,
+         Context_Read => Context_Read, Observe_Region_Handler => Observe_Region_Handler);
    begin
       if not Sources_Admitted or else Frame_Pins.Count (A.Frame_Roots) /= 0 or else not Expected_Reservations
         or else (not Deferred_Readiness and then Pending_Members (A.Tree.all) /= 0)
@@ -11139,6 +11256,9 @@ package body Owned with SPARK_Mode is
          Ticket : AML_Execute.Field_Context_Ticket;
          Geometry : AML_Field_Layout.Register_Geometry;
          Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status) is null;
+      with procedure Observe_Region_Handler
+        (IO : IO_Context; Region : Node_ID; Data : Operation_Region_Attributes;
+         Ready : in out Boolean; Generation : in out Natural) is null;
    procedure Invoke_Registered_Context_With_Handoff
      (A : in out Arena; IO : in out IO_Context; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
       Input : aliased AML_Table_Backing.State; Node : Node_ID;
@@ -11150,7 +11270,10 @@ package body Owned with SPARK_Mode is
       Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
       Budget : Natural; Result : out AML_Execute.Execution_Result) is
       Definition : constant AML_Execute.Method_Definition := Read_Method (A.Tree.all, Node);
-      procedure Run is new Run_Registered_Context_Session (IO_Context, Field_Operation, Handoff, Before_Allocation, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
+      procedure Run is new Run_Registered_Context_Session
+        (IO_Context, Field_Operation, Handoff, Before_Allocation,
+         Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read,
+         Observe_Region_Handler => Observe_Region_Handler);
    begin
       if not Definition.Exists then Result := (AML_Execute.Invalid_Method, 0); return; end if;
       if Natural (Definition.Flags and 7) /= Argument_Count then Result := (AML_Execute.Argument_Mismatch, 0); return; end if;
@@ -11177,6 +11300,9 @@ package body Owned with SPARK_Mode is
          Ticket : AML_Execute.Field_Context_Ticket;
          Geometry : AML_Field_Layout.Register_Geometry;
          Value : in out AML_Execute.Datum; Status : in out AML_Execute.Execution_Status) is null;
+      with procedure Observe_Region_Handler
+        (IO : IO_Context; Region : Node_ID; Data : Operation_Region_Attributes;
+         Ready : in out Boolean; Generation : in out Natural) is null;
    procedure Invoke_Registered_Context_Retained
      (A : in out Arena; IO : in out IO_Context; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State; Input : aliased AML_Table_Backing.State;
       Node : Node_ID; Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
@@ -11215,7 +11341,10 @@ package body Owned with SPARK_Mode is
          if Pin_Status /= Pins.Ready then raise Program_Error with "retained result slot invariant"; end if;
          Captured := True;
       end Handoff;
-      procedure Run is new Invoke_Registered_Context_With_Handoff (IO_Context, Field_Operation, Handoff, Before_Allocation, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
+      procedure Run is new Invoke_Registered_Context_With_Handoff
+        (IO_Context, Field_Operation, Handoff, Before_Allocation,
+         Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read,
+         Observe_Region_Handler => Observe_Region_Handler);
       Removed : Release_Status;
    begin
       Result_Root := No_Retained_Root;
@@ -11526,6 +11655,39 @@ package body Owned with SPARK_Mode is
 
       function Current_Node (A : Arena; Item : Node_Descriptor) return Boolean is
         (Current_Binding (A, Item) and then Item.Tag = Kind (A.Inner.Tree.all, Item.Node));
+      procedure Adopt_Bulk_Region
+        (A : in out Arena; Item : Node_Descriptor;
+         Outcome : Bulk_Outcome; Accepted : out Boolean) is
+      begin
+         Accepted := False;
+         if not Current_Node (A, Item) or else Item.Node = Root
+           or else Item.Tag /= Operation_Region_Object
+           or else A.Inner.Tree.Items (Item.Node).Incarnation = 0
+         then return; end if;
+         Dynamic_Connections.Adopt_Bulk
+           (A.Inner.Dynamic_Regions,
+            (Dynamic_Connections.Region_Node (Item.Node),
+             Positive (A.Inner.Tree.Items (Item.Node).Incarnation)),
+            (case Outcome is
+               when Bulk_Announced => Dynamic_Connections.Announced,
+               when Bulk_Covered => Dynamic_Connections.Covered,
+               when Bulk_Skipped => Dynamic_Connections.Skipped), Accepted);
+      end Adopt_Bulk_Region;
+      procedure Release_Bulk_Region
+        (A : in out Arena; Item : Node_Descriptor;
+         Succeeded : Boolean; Accepted : out Boolean) is
+      begin
+         Accepted := False;
+         if not Current_Node (A, Item) or else Item.Node = Root
+           or else Item.Tag /= Operation_Region_Object
+           or else A.Inner.Tree.Items (Item.Node).Incarnation = 0
+         then return; end if;
+         Dynamic_Connections.Release_Bulk
+           (A.Inner.Dynamic_Regions,
+            (Dynamic_Connections.Region_Node (Item.Node),
+             Positive (A.Inner.Tree.Items (Item.Node).Incarnation)),
+            Succeeded, Accepted);
+      end Release_Bulk_Region;
       function Field_Key_Matches (A : Arena; Key : Field_Key) return Boolean is
          F, R : Node_ID;
       begin
@@ -12924,6 +13086,150 @@ package body Owned with SPARK_Mode is
          use type AML_Field_Plans.Read_Form;
          use type AML_Field_Access.Target;
          use type AML_Field_Layout.Field_Geometry;
+         procedure Begin_Region_Connection_Turn
+           (A : in out Arena; Turn_ID, Handler_Generation : Positive;
+            Accepted : out Boolean) is
+         begin
+            Dynamic_Connections.Begin_Turn
+              (A.Inner.Dynamic_Regions, Turn_ID, Handler_Generation, Accepted);
+         end Begin_Region_Connection_Turn;
+
+         procedure Take_Region_Connection
+           (A : in out Arena; IO : IO_Context; Handler_Generation : Positive;
+            Notice : out Region_Connection_Notice) is
+            Selected, Claimed : Boolean;
+            Identity : Dynamic_Connections.Region_Identity;
+            Current : Dynamic_Connections.Observation;
+            Space : Interfaces.Unsigned_8;
+            Located : Lookup_Result;
+            Definition : AML_Execute.Method_Definition;
+            Provider_Ready : Boolean;
+            Observed_Generation : Natural;
+            I : Node_ID;
+         begin
+            Notice := (others => <>);
+            --  Walk only pending region identities. A candidate stays
+            --  pending until its current handler snapshot and method shape
+            --  have both passed; neither a scan nor unavailable IO spends a
+            --  callback from this turn's four-callback allowance.
+            for Scan in 1 .. Dynamic_Connections.Pending_Region_Count
+              (A.Inner.Dynamic_Regions)
+            loop
+               Dynamic_Connections.Next_Candidate
+                 (A.Inner.Dynamic_Regions, Selected, Identity, Space);
+               exit when not Selected;
+               Current := Dynamic_Connections.Observe
+                 (A.Inner.Dynamic_Regions, Identity);
+               I := Node_ID (Identity.Node);
+               if Current.Current in Dynamic_Connections.Pending_Connect |
+                    Dynamic_Connections.Connect_Failed
+                 and then Current.Attempt_Generation < Handler_Generation
+                 and then I <= A.Inner.Tree.Used
+                 and then A.Inner.Tree.Items (I).Alive
+                 and then A.Inner.Tree.Items (I).Object_Type = Operation_Region_Object
+                 and then Natural (A.Inner.Tree.Items (I).Incarnation) =
+                   Identity.Incarnation
+               then
+                  Located := Canonical_Child
+                    (A.Inner.Tree.all, A.Inner.Tree.Items (I).Up, "_REG");
+                  if Located.Status = Found
+                    and then A.Inner.Tree.Items (Located.Node).Object_Type = Method_Object
+                  then
+                     Definition := Read_Method (A.Inner.Tree.all, Natural (Located.Node));
+                     if Definition.Exists and then Natural (Definition.Flags and 7) = 2 then
+                        Provider_Ready := False;
+                        Observed_Generation := 0;
+                        Observe_Region_Handler
+                          (IO, I, A.Inner.Tree.Items (I).Operation_Info,
+                           Provider_Ready, Observed_Generation);
+                        if Provider_Ready and then Observed_Generation = Handler_Generation then
+                           Dynamic_Connections.Claim_Candidate
+                             (A.Inner.Dynamic_Regions, Identity, Claimed);
+                           if Claimed then
+                              Notice :=
+                                (Available => True, Region_Node => I,
+                                 Region_Stamp => AML_References.Node_Incarnation
+                                   (Identity.Incarnation),
+                                 Method_Node => Located.Node,
+                                 Space => AML_Decode.Byte (Space),
+                                 Generation => Handler_Generation);
+                              return;
+                           end if;
+                        end if;
+                     end if;
+                  end if;
+               end if;
+            end loop;
+         end Take_Region_Connection;
+
+         function Has_Region_Connection_Work
+           (A : Arena; IO : IO_Context; Handler_Generation : Positive)
+            return Boolean is
+            I : Node_ID;
+            Located : Lookup_Result;
+            Definition : AML_Execute.Method_Definition;
+            Provider_Ready : Boolean;
+            Observed_Generation : Natural;
+         begin
+            for Index in 1 .. Dynamic_Connections.Pending_Region_Count
+              (A.Inner.Dynamic_Regions)
+            loop
+               I := Node_ID (Dynamic_Connections.Pending_Region_Node
+                 (A.Inner.Dynamic_Regions, Index));
+               if I <= A.Inner.Tree.Used
+                 and then A.Inner.Tree.Items (I).Alive
+                 and then A.Inner.Tree.Items (I).Object_Type = Operation_Region_Object
+                 and then A.Inner.Tree.Items (I).Incarnation > 0
+               then
+                  declare
+                     Current : constant Dynamic_Connections.Observation :=
+                       Dynamic_Connections.Observe
+                         (A.Inner.Dynamic_Regions,
+                          (I, Positive (A.Inner.Tree.Items (I).Incarnation)));
+                  begin
+                     if Current.Current in Dynamic_Connections.Pending_Connect |
+                       Dynamic_Connections.Connect_Failed
+                       and then Current.Attempt_Generation < Handler_Generation
+                     then
+                        Located := Canonical_Child
+                          (A.Inner.Tree.all, A.Inner.Tree.Items (I).Up, "_REG");
+                        if Located.Status = Found
+                          and then A.Inner.Tree.Items (Located.Node).Object_Type = Method_Object
+                        then
+                           Definition := Read_Method (A.Inner.Tree.all, Natural (Located.Node));
+                           if Definition.Exists and then Natural (Definition.Flags and 7) = 2 then
+                              Provider_Ready := False;
+                              Observed_Generation := 0;
+                              Observe_Region_Handler
+                                (IO, I, A.Inner.Tree.Items (I).Operation_Info,
+                                 Provider_Ready, Observed_Generation);
+                              if Provider_Ready and then
+                                Observed_Generation = Handler_Generation
+                              then return True; end if;
+                           end if;
+                        end if;
+                     end if;
+                  end;
+               end if;
+            end loop;
+            return False;
+         end Has_Region_Connection_Work;
+
+         procedure Finish_Region_Connection
+           (A : in out Arena; Notice : Region_Connection_Notice;
+            Succeeded : Boolean; Accepted : out Boolean) is
+         begin
+            Accepted := False;
+            if not Notice.Available or else Notice.Generation = 0
+              or else Notice.Region_Node = Root or else Notice.Region_Stamp = 0
+            then return; end if;
+            Dynamic_Connections.Finish_Connect
+              (A.Inner.Dynamic_Regions,
+               (Dynamic_Connections.Region_Node (Notice.Region_Node),
+                Positive (Notice.Region_Stamp)),
+               Positive (Notice.Generation), Succeeded, Accepted);
+         end Finish_Region_Connection;
+
          function Key_Of (Item : Binding) return Field_Key is
            ((Field => Item.Field, Region => Item.Region));
          use type AML_Field_Layout.Register_Geometry;
@@ -14935,7 +15241,11 @@ package body Owned with SPARK_Mode is
                end if;
             end Perform;
             procedure Run is new Invoke_Context_Retained (IO_Context, Perform, Collect_Before, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Read_PCI_Metadata);
-            procedure Run_Registered is new Invoke_Registered_Context_Retained (IO_Context, Perform, Collect_Before, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Read_PCI_Metadata);
+            procedure Run_Registered is new Invoke_Registered_Context_Retained
+              (IO_Context, Perform, Collect_Before,
+               Global_Lock_Operation => Global_Lock_Operation,
+               Context_Read => Read_PCI_Metadata,
+               Observe_Region_Handler => Observe_Region_Handler);
          begin
             Outcome := (Status => AML_Execute.No_Return, Charged => 0);
             Status := Admission (A); if Status /= Available then return; end if;

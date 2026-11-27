@@ -1,0 +1,9 @@
+project release is
+ for Source_Dirs use (".", "../../userspace/services/acpi/lib");
+ for Object_Dir use "build-release/obj";
+ for Exec_Dir use "build-release";
+ for Main use ("bulk_ledger_tests.adb", "dense_index_tests.adb", "dynamic_lifecycle_tests.adb", "unavailable_generation_tests.adb");
+ package Compiler is
+  for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa", "-gnatwe", "-gnatp");
+ end Compiler;
+end release;

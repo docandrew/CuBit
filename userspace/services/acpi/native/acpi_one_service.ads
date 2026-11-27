@@ -129,7 +129,8 @@ package ACPI_One_Service is
      (ACPI_Native_Delays.Enter_Runtime,ACPI_Native_Delays.Begin_Event,
       ACPI_Native_Delays.End_Event,ACPI_Native_Delays.Close_Startup);
    package Runtime_Access is new ACPI_Requests.With_Local_Runtime
-     (Runtime.Enter_Runtime,Runtime.Begin_Event,Runtime.End_Event);
+     (Runtime.Enter_Runtime,Runtime.Begin_Event,Runtime.End_Event,
+      Root.Fields.Late_Region_Report,Root.Fields.Drain_Late_Regions);
 
    type Core_Retirement_State is (Unobserved,No_Core,Clear_Core,Retained_Results,Retained_Regions,Retained_Events);
    type SCI_Retirement_State is (Not_Armed,SCI_Unobserved,Clear_SCI,Retained_SCI);

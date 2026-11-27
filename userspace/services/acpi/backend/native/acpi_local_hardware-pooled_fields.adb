@@ -274,6 +274,34 @@ package body ACPI_Local_Hardware.Pooled_Fields is
       and then Scope.Ready (Transaction)
       and then (Scope.Observe (Transaction).Held or else ACPI_Local_Hardware.Admitting)
       and then Mux.Is_Ready (IO));
+   procedure Observe_Local_Region_Handler
+     (IO : Mux.Context; Region : Core.Namespace.Node_ID;
+      Data : Core.Namespace.Operation_Region_Attributes;
+      Ready : in out Boolean; Generation : in out Natural) is
+   begin
+      Ready := False;
+      Generation := 0;
+      if Region = Core.Namespace.Root or else not Provider_Ready (IO) then
+         return;
+      end if;
+      -- This is a local, read-only install snapshot. It grants no address
+      -- authority; each Field transaction still uses the current mux policy.
+      case Data.Space is
+         when 0 | 1 | 2 =>
+            Ready := True;  -- memory, IO and PCI config handlers
+         when 3 =>
+            Ready := EC_Info.Status = EC_Ready and then EC_Commands.Quiescent;
+         when 5 =>
+            Ready := CMOS_Handler_Available;
+         when others =>
+            null;
+      end case;
+      if Ready and then Local_Install_Acknowledged then
+         Generation := Local_Install_Generation;
+      else
+         Ready := False;
+      end if;
+   end Observe_Local_Region_Handler;
    function EC_Handler_Available return Boolean is
      (EC_Info.Status=EC_Ready and then Cache/=null and then Completed and then Has_Anchor
       and then Provider_Ready(IO) and then EC_Commands.Quiescent);
@@ -411,6 +439,12 @@ package body ACPI_Local_Hardware.Pooled_Fields is
       ACPI_Native_CMOS_Ports.Initialize (Facts.Century, CMOS_Ready);
       Mux.Initialize (IO,Symbol,Accepted);
       if Accepted then
+         if Local_Install_Generation = Natural'Last then
+            Accepted := False;
+            return;
+         end if;
+         Local_Install_Generation := Local_Install_Generation + 1;
+         Local_Install_Acknowledged := True;
          Field_State := Owner_Ready;
          if CMOS_Ready and then Mux.CMOS_Available (IO) then
             -- One bounded, read-only startup diagnostic through the actual
@@ -549,6 +583,29 @@ package body ACPI_Local_Hardware.Pooled_Fields is
          end case;
       end if;
    end Prepare_Fields;
+   procedure Drain_Late_Regions
+     (Service : aliased in out Core.State;
+      Turn_ID : Positive;
+      Report : out Late_Region_Report) is
+      Inner : Evaluation.Bindings.Fields.Connection_Turn_Report;
+   begin
+      Report := (others => <>);
+      if not Local_Install_Acknowledged or else Local_Install_Generation = 0
+        or else Cache = null
+      then return; end if;
+      if Runtime_Claimed then
+         if not Runtime_Ready (Service) or else not Runtime_Idle then return; end if;
+      elsif not Owns (Service) or else not Provider_Ready (IO)
+        or else Provider_Pending (IO)
+      then return; end if;
+      -- The local mux is installed and currently admitting. The per-region
+      -- observer still checks each actual handler before any AML callback.
+      Evaluation.Drain_Region_Connections
+        (Cache.all, Service, IO, Turn_ID, Positive (Local_Install_Generation),
+         Install_Acknowledged => Local_Install_Acknowledged, Report => Inner);
+      Report := (Accepted => Inner.Accepted, Attempted => Inner.Attempted,
+         Connected => Inner.Connected, Failed => Inner.Failed, More => Inner.More);
+   end Drain_Late_Regions;
    function Preparation_Observation return Preparation_Report is (Last_Preparation);
    procedure Evaluate_Named (Service : aliased in out Core.State; Item : Core.Node_Descriptor;
       Budget : Natural; Result : out Core.Values.Result; Status : out Core.Values.Access_Status) is
@@ -586,11 +643,16 @@ package body ACPI_Local_Hardware.Pooled_Fields is
    end Finish_Startup;
    procedure Close is
       Stopped:Boolean;
-   begin Field_State := Owner_Closed;EC_Commands.Request_Stop(Stopped);end Close;
+   begin
+      Local_Install_Acknowledged := False;
+      Field_State := Owner_Closed;
+      EC_Commands.Request_Stop(Stopped);
+   end Close;
    procedure Cleanup (Completed : out Boolean) is
       Global_Result : AML_Global_Locks.Outcome;
       use type AML_Global_Locks.Outcome;
    begin
+      Local_Install_Acknowledged := False;
       Field_State := Owner_Closed;
       AML_Lock.Maintain (AML_Lock_State, Global_Result);
       Scope.Cleanup (Transaction,Completed);

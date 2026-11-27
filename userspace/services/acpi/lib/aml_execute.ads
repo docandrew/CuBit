@@ -34,6 +34,14 @@ package AML_Execute with SPARK_Mode, Pure is
    type Operation_Region_Syntax is record
       Address_Is_Literal, Length_Is_Literal : Boolean := False;
    end record;
+   --  An authenticated post-publication lookup can offer one immediate local
+   --  _REG callback. A default value offers none and grants no handler rights.
+   type Operation_Region_Notice is record
+      Available : Boolean := False;
+      Method_ID : Natural := 0;
+      Space : AML_Decode.Byte := 0;
+      Generation : Natural := 0;
+   end record;
    type Invocation_Status is (Available, Unsupported_Context, Exhausted);
    type Arguments is array (Natural range 0 .. 6) of AML_Decode.Integer_Value;
    -- ID and conversion caches describe a value. Source separately carries
@@ -533,6 +541,18 @@ package AML_Execute with SPARK_Mode, Pure is
          Width : AML_Decode.Integer_Width; Address, Length : AML_Decode.Integer_Value;
          Syntax : Operation_Region_Syntax;
          Status : in out Execution_Status) is null;
+      -- Called only after successful publication and outside module-root
+      -- execution. The owner must validate Token's live node/incarnation and
+      -- local two-argument method, then use trusted provider readiness.
+      with procedure Describe_Operation_Region_Notice
+        (Environment : in out Context; Lease : AML_Declaration_Contexts.Lease;
+         Token : AML_Declaration_Contexts.Operation_Region_Reservation;
+         Notice : in out Operation_Region_Notice) is null;
+      with procedure Finish_Operation_Region_Notice
+        (Environment : in out Context;
+         Token : AML_Declaration_Contexts.Operation_Region_Reservation;
+         Notice : Operation_Region_Notice; Succeeded : Boolean;
+         Accepted : in out Boolean) is null;
       -- Serialized entry is owner-authenticated and shares the invocation's
       -- explicit-lock level. Default adapters reject rather than simulate it.
       Require_Invocation_Authority : Boolean := False;

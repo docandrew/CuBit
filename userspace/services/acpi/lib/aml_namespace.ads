@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with AML_Global_Locks;
+with AML_Dynamic_Region_Connections;
 with AML_Mutexes;
 with AML_Field_Notes;
 with AML_Profile_Events;
@@ -1580,6 +1581,17 @@ package Owned with SPARK_Mode is
       -- Stronger snapshot check additionally requires the observed object kind.
       function Current_Node (A : Arena; Item : Node_Descriptor) return Boolean
         with Pre => Valid (A);
+      type Bulk_Outcome is (Bulk_Announced, Bulk_Covered, Bulk_Skipped);
+      -- Exact descriptor and incarnation must still name a live OpRegion.
+      -- This records native startup ownership without invoking AML.
+      procedure Adopt_Bulk_Region
+        (A : in out Arena; Item : Node_Descriptor;
+         Outcome : Bulk_Outcome; Accepted : out Boolean)
+        with Pre => Valid (A), Post => Valid (A);
+      procedure Release_Bulk_Region
+        (A : in out Arena; Item : Node_Descriptor;
+         Succeeded : Boolean; Accepted : out Boolean)
+        with Pre => Valid (A), Post => Valid (A);
 
       -- Detached metadata only: neither this copy nor its key grants access.
       procedure Read_Region_Descriptor (A : Arena; Item : Node_Descriptor;
@@ -1927,12 +1939,39 @@ package Owned with SPARK_Mode is
         (IO : in out IO_Context; Domain : AML_Frame_Handles.Invocation_Domain;
          Action : AML_Global_Locks.Operation; Timeout : AML_Mutexes.Timeout;
          Outcome : in out AML_Global_Locks.Outcome) is null;
+         -- Trusted, read-only handler installation snapshot. AML metadata
+         -- alone never makes Ready true; the default refuses connection.
+         with procedure Observe_Region_Handler
+           (IO : IO_Context; Region : Node_ID; Data : Operation_Region_Attributes;
+            Ready : in out Boolean; Generation : in out Natural) is null;
       package Field_IO is
          pragma Unevaluated_Use_Of_Old (Allow);
          type Module_Target_Count is new Natural;
          subtype Module_Target_Position is Positive range 1 .. Maximum_Bindings;
          type Module_Target_Set is array (Positive range <>) of AML_Field_Access.Target;
       subtype Default_Module_Target_Set is Module_Target_Set (Module_Target_Position);
+         type Region_Connection_Notice is record
+            Available : Boolean := False;
+            Region_Node : Node_ID := Root;
+            Region_Stamp : AML_References.Node_Incarnation := 0;
+            Method_Node : Node_ID := Root;
+            Space : AML_Decode.Byte := 0;
+            Generation : Natural := 0;
+         end record;
+         procedure Begin_Region_Connection_Turn
+           (A : in out Arena; Turn_ID, Handler_Generation : Positive;
+            Accepted : out Boolean) with Pre => Valid (A);
+         procedure Take_Region_Connection
+           (A : in out Arena; IO : IO_Context; Handler_Generation : Positive;
+            Notice : out Region_Connection_Notice) with Pre => Valid (A);
+         --  A read-only current snapshot, used only after the fourth
+         --  callback to distinguish more ready work from a saturated turn.
+         function Has_Region_Connection_Work
+           (A : Arena; IO : IO_Context; Handler_Generation : Positive)
+            return Boolean with Pre => Valid (A);
+         procedure Finish_Region_Connection
+           (A : in out Arena; Notice : Region_Connection_Notice;
+            Succeeded : Boolean; Accepted : out Boolean) with Pre => Valid (A);
          procedure Seal_With_Tables
            (A : in out Arena; IO : in out IO_Context;
             Targets : Module_Target_Set; Count : Module_Target_Count;
@@ -2259,12 +2298,14 @@ private
    end record;
    type PCI_Setup_Array is array (Node_ID) of PCI_Setup_Work;
    type State_Owner is access State;
+   package Dynamic_Connections is new AML_Dynamic_Region_Connections (Capacity);
 
    type Arena (Object_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Objects;
       Byte_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Bytes;
       Element_Capacity : AML_Objects.Storage_Capacity := AML_Objects.Max_Elements) is limited record
       Token : AML_Identity.Identity := AML_Identity.No_Identity;
       Tree : State_Owner := new State'(Empty (Object_Capacity, Byte_Capacity, Element_Capacity));
+      Dynamic_Regions : Dynamic_Connections.State;
       Invocation_Issued : AML_Frame_Handles.Invocation_Serial := 0;
       PCI_Work : PCI_Setup_Array;
       PCI_Issued : AML_Execute.Field_Context_Ticket := 0;

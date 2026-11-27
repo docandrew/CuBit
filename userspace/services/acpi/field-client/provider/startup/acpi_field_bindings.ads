@@ -23,10 +23,14 @@ generic
       Name : AML_Names.Segment; Node : Core.Namespace.Node_ID;
       Geometry : AML_Field_Layout.Register_Geometry;
       Target : in out AML_Field_Access.Target; Accepted : in out Boolean) is null;
+   with procedure Observe_Region_Handler
+     (IO : Provider.Context; Region : Core.Namespace.Node_ID;
+      Data : Core.Namespace.Operation_Region_Attributes;
+      Ready : in out Boolean; Generation : in out Natural) is null;
 package ACPI_Field_Bindings is
    package Startup is new ACPI_Field_Module_Startup (Core, Provider, Maximum_Bindings, Enable_Startup_Firmware_Resolution,
       Resolve_Startup_Firmware_Target, Enable_Startup_Platform_Resolution,
-      Resolve_Startup_Platform_Target);
+      Resolve_Startup_Platform_Target, Observe_Region_Handler => Observe_Region_Handler);
    package Fields renames Startup.Fields;
    type Outcome is (Not_Attempted, Built, Built_With_Gaps, Already_Consumed,
                     Provider_Unavailable, Pending_IO, Namespace_Unavailable, Binding_Refused);
