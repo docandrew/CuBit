@@ -5,6 +5,7 @@ with System;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
+with CuBit.Process_Calls;
 with CuBit.TLS_Protocol; use CuBit.TLS_Protocol;
 with CuBit.Handles;
 with Startup;
@@ -16,7 +17,7 @@ with CuBit.Monotonic;
 procedure Main is
    Slot : constant CuBit.Handles.Endpoint := Startup.Tls;
    Size : constant := 4_096;
-   Allocation : constant Unsigned_64 := syscall (SYSCALL_SBRK, Size);
+   Allocation : constant Unsigned_64 := CuBit.Process_Calls.Grow_Heap (Size);
    Buffer : String (1 .. Size) with Import,
      Address => To_Address (Integer_Address (Allocation));
    Reference : CuBit.Memory_Grants.Grant_Reference;

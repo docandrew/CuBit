@@ -155,7 +155,6 @@ userspace/apps/launch-gate-check/main.adb
 userspace/apps/mov-ss-check/main.adb
 userspace/apps/platform-pool-check/main.adb
 userspace/apps/storage-check/main.adb
-userspace/apps/tls-check/main.adb
 userspace/apps/tls-probe/main.adb
 userspace/apps/trap-flag-check/main.adb
 userspace/apps/wait-check/main.adb
