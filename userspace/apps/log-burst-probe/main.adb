@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -49,7 +50,7 @@ procedure Main is
    procedure Fail (Why : String) is
    begin
       debugPrint ("log-burst-probe: FAIL " & Why & ASCII.LF);
-      Ignore := syscall (SYSCALL_EXIT, Exit_Failure);
+      CuBit.Process_Calls.Exit_Process (Exit_Failure);
    end Fail;
 
    procedure Line (Number : Positive) is
