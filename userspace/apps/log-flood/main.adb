@@ -1,5 +1,6 @@
 pragma Ada_2022;
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -46,10 +47,7 @@ procedure Main is
    procedure Fail (Name : String) is
    begin
       debugPrint ("TEST: FAIL log-retention: log-flood: " & Name & ASCII.LF);
-      Ignore := syscall (SYSCALL_EXIT, 1);
-      loop
-         Ignore := CuBit.Waits.Sleep_For (1000);
-      end loop;
+      CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
    end Fail;
 
    function Image (Value : Natural) return String is
@@ -103,5 +101,5 @@ begin
    if not Drained then
       Fail ("logstore did not take the done record");
    end if;
-   Ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end Main;
