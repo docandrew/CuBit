@@ -9,6 +9,7 @@ project Install is
       "device_vector_abi.ads", "device_vector_abi.adb",
       "capability_abi.ads", "capability_abi.adb",
       "capability_tables.ads", "capability_tables.adb",
+      "capability_derivation.ads", "capability_derivation.adb",
       "capability_install.ads", "capability_install.adb",
       "capability_install-placement.ads", "capability_install-placement.adb");
    for Object_Dir use "build";

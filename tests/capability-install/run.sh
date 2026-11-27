@@ -9,7 +9,7 @@ alr exec -- gprbuild -p -q -P "$here/install.gpr"
 "$here/build/main"
 if [[ ${1:-} == --prove ]]; then
     alr exec -- gnatprove -P "$here/install.gpr" \
-        -u capability_install.adb -u test_install.ads -u capability_abi.adb \
+        -u capability_derivation.adb -u capability_install.adb -u test_install.ads -u capability_abi.adb \
         --level=2 -j2 --checks-as-errors=on --report=all
     cat "$here/build/gnatprove/gnatprove.out"
 fi

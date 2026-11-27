@@ -12,7 +12,7 @@ with Device_Memory_Admission;
 with Device_Memory_Authority; use Device_Memory_Authority;
 with Physical_Ranges; use Physical_Ranges;
 with Device_Memory_Publication;
-with Capability_Install;
+with Capability_Derivation;
 
 procedure Authority_Tests is
    package DMA renames Device_Memory_Admission;
@@ -324,7 +324,7 @@ procedure Authority_Tests is
          gen => INITIAL_GENERATION);
       C : Capability;
    begin
-      --  The copy Capability_Install would derive (tests/capability-install).
+      --  The copy Capability_Derivation would derive (tests/capability-install).
       C := (P with delta rights => P.rights and Capabilities.READ_ONLY,
                          object => (16#FEB0_1000#, Page));
       Checks := Checks + 1; pragma Assert (isAttenuationOf (C, P), "derived subrange attenuates");
@@ -881,7 +881,7 @@ procedure Authority_Tests is
       --  Kernel-only: no copy of a device-memory capability gains the tag,
       --  and no copy of the root gains a write right or a wider range.
       declare
-         package CI renames Capability_Install;
+         package CI renames Capability_Derivation;
          Device : constant Capability := Cap (ECAM_Base, PCI_Bus_Bytes, RW_GRANT, NO_AUTHORITY_TAG);
          Narrow : Capability := Root;
       begin
@@ -1193,7 +1193,7 @@ procedure Authority_Tests is
       --  Kernel-only: no device-memory copy gains the tag, no copy of a data
       --  root widens.
       declare
-         package CI renames Capability_Install;
+         package CI renames Capability_Derivation;
          Root : constant Capability := Cap (RCRB_First, RCRB_Last - RCRB_First + 1);
          Narrow : Capability := Root;
       begin

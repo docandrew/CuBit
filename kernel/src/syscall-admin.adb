@@ -32,6 +32,7 @@ with Process_Stops;
 with Device_Vector_ABI;
 with Capabilities.Operations;
 with Capability_ABI;
+with Capability_Derivation;
 with Capability_Install;
 with Process_Capabilities;
 with IPC_Labels;
@@ -505,7 +506,7 @@ package body Syscall.Admin is
         replyTag   : Process.MessageTag;
         derivation : aliased Capability_ABI.Derivation := [others => 0];
         source     : Process_Capabilities.Found;
-        offer      : Capability_Install.Outcome;
+        offer      : Capability_Derivation.Outcome;
         ok         : Boolean;
     begin
         retval := tagToU64 (Process.NULL_TAG);
@@ -518,7 +519,7 @@ package body Syscall.Admin is
         end if;
         Process.User_Memory.Copy
           (callerPID, arg2, derivation'Address, Capability_ABI.Derivation_Bytes, ok);
-        if not ok or else not Capability_Install.Well_Formed (derivation) then
+        if not ok or else not Capability_Derivation.Well_Formed (derivation) then
             return;
         end if;
         -- The offer is a narrowed copy of the caller's own capability (it
@@ -527,8 +528,8 @@ package body Syscall.Admin is
         source := Process_Capabilities.Find_Any
           (Process.proctab(callerPID).caps, derivation (Capability_ABI.Source));
         if source.OK then
-            offer := Capability_Install.Derive
-              (source.Cap, Capability_Install.Decode (derivation));
+            offer := Capability_Derivation.Derive
+              (source.Cap, Capability_Derivation.Decode (derivation));
         end if;
         Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
         if not source.OK or else not offer.Accepted then
@@ -641,7 +642,7 @@ package body Syscall.Admin is
         result :=
           [Capability_ABI.Capability_Kind =>
              Unsigned_64 (Capabilities.CapabilityType'Pos (cap.capType)),
-           Capability_ABI.Rights_Mask   => Capability_Install.Mask_Of (cap.rights),
+           Capability_ABI.Rights_Mask   => Capability_Derivation.Mask_Of (cap.rights),
            Capability_ABI.Authority_Tag => cap.authorityTag,
            -- Its process by identity (the slot and generation it was made
            -- for), not the bare slot.
@@ -702,11 +703,11 @@ package body Syscall.Admin is
         M      : PR.Map renames Physical_Range_Map.Kernel_Map;
         source : constant Capabilities.Capability :=
           ownCap (callerPID, derivation (Capability_ABI.Source));
-        given  : constant Capability_Install.Request := Capability_Install.Decode (derivation);
+        given  : constant Capability_Derivation.Request := Capability_Derivation.Decode (derivation);
         -- The kind travels in the Tag word; the derivation proper is untagged.
-        item   : constant Capability_Install.Request :=
+        item   : constant Capability_Derivation.Request :=
           (given with delta Set_Tag => False, Tag => Capabilities.NO_AUTHORITY_TAG);
-        outcome : constant Capability_Install.Outcome := Capability_Install.Derive (source, item);
+        outcome : constant Capability_Derivation.Outcome := Capability_Derivation.Derive (source, item);
         kind   : Platform_Pool_Sets.Pool_Member_Kind;
     begin
         if not Pool.rights (Capabilities.RIGHT_GRANT) then
@@ -774,7 +775,7 @@ package body Syscall.Admin is
         retval := Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
         Process.User_Memory.Copy
           (callerPID, arg1, derivation'Address, Capability_ABI.Derivation_Bytes, copied);
-        if not copied or else not Capability_Install.Well_Formed (derivation) then
+        if not copied or else not Capability_Derivation.Well_Formed (derivation) then
             return;
         end if;
         -- The platform-register pool as the target (ACPI-POOL-001): add the
@@ -805,9 +806,9 @@ package body Syscall.Admin is
         -- recorded (and any overlapping pool mapping of another process
         -- unmapped) before the copy exists (Platform_Pool).
         declare
-            copy : constant Capability_Install.Outcome := Capability_Install.Derive
+            copy : constant Capability_Derivation.Outcome := Capability_Derivation.Derive
               (ownCap (callerPID, derivation (Capability_ABI.Source)),
-               Capability_Install.Decode (derivation));
+               Capability_Derivation.Decode (derivation));
         begin
             -- No room for the claim: refused (CAPACITY), the copy never made.
             if copy.Accepted
@@ -846,7 +847,7 @@ package body Syscall.Admin is
                               Target_Started    =>
                                 Process.proctab(targetPID).launch = Process_Launch.Started),
                Source   => source.Cap,
-               Item     => Capability_Install.Decode (derivation),
+               Item     => Capability_Derivation.Decode (derivation),
                Result   => placed);
             retval := Process_Capabilities.Result_Word (placed);
         end if;
@@ -876,7 +877,7 @@ package body Syscall.Admin is
         retval := Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
         Process.User_Memory.Copy
           (callerPID, arg0, derivation'Address, Capability_ABI.Derivation_Bytes, copied);
-        if not copied or else not Capability_Install.Well_Formed (derivation) then
+        if not copied or else not Capability_Derivation.Well_Formed (derivation) then
             return;
         end if;
         Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
@@ -889,7 +890,7 @@ package body Syscall.Admin is
               (Target   => Process.proctab(callerPID).caps,
                Admitted => (Admitted => True),
                Source   => source.Cap,
-               Item     => Capability_Install.Decode (derivation),
+               Item     => Capability_Derivation.Decode (derivation),
                Result   => placed);
             retval := Process_Capabilities.Result_Word (placed);
         end if;

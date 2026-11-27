@@ -10,7 +10,7 @@
 -- Place is the whole of INSTALL_CAPABILITY and REPLY_WITH_CAPABILITY once
 -- the kernel has looked up the CSPACE (or reply authority) and the source
 -- under the right locks: it refuses unless Admitted, refuses unless the
--- source may be copied as asked (Capability_Install.Derive), and otherwise
+-- source may be copied as asked (Capability_Derivation.Derive), and otherwise
 -- inserts the copy where the table chooses.
 --
 -- Proved: a refusal changes nothing; an installation changes exactly one
@@ -20,6 +20,7 @@
 -------------------------------------------------------------------------------
 pragma Ada_2022;
 
+with Capability_Derivation; use Capability_Derivation;
 with Capability_Tables;
 
 generic

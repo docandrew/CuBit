@@ -16,7 +16,7 @@ package body Capability_Install.Placement with SPARK_Mode is
        Result   : out Place_Result)
     is
         use type Tables.Insert_Status;
-        Outcome  : Capability_Install.Outcome;
+        Outcome  : Capability_Derivation.Outcome;
         Inserted : Tables.Insert_Result;
     begin
         if not Admitted.Admitted then

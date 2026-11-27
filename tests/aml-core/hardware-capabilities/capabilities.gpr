@@ -3,7 +3,7 @@ project Capabilities is
                         "../../../shared/interrupts");
    for Source_Files use ("capability_tests.adb", "config.ads", "capabilities.ads",
       "capability_abi.ads", "capability_abi.adb",
-      "capability_install.ads", "capability_install.adb",
+      "capability_derivation.ads", "capability_derivation.adb",
       "realtime_admission.ads", "realtime_admission.adb",
       "device_vector_abi.ads", "device_vector_abi.adb");
    for Object_Dir use "../build/hardware-capabilities/obj";

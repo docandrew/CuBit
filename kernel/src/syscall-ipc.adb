@@ -13,7 +13,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with Capabilities;
 with Capabilities.Operations;
 with Capability_ABI;
-with Capability_Install;
+with Capability_Derivation;
 with Process_Capabilities;
 with IPC_Labels;
 with Memory_Grants;
@@ -132,14 +132,14 @@ package body Syscall.IPC is
         use type Process.ProcessID;
     begin
         if targetPID = Process.NO_PROCESS or else targetPID = callerPID
-          or else not Capability_Install.Well_Formed (derivation)
+          or else not Capability_Derivation.Well_Formed (derivation)
         then
             return True;
         end if;
         declare
-            copy : constant Capability_Install.Outcome := Capability_Install.Derive
+            copy : constant Capability_Derivation.Outcome := Capability_Derivation.Derive
               (ownCap (callerPID, derivation (Capability_ABI.Source)),
-               Capability_Install.Decode (derivation));
+               Capability_Derivation.Decode (derivation));
         begin
             return not copy.Accepted
               or else Platform_Pool.Delegating (targetPID, copy.Copy)

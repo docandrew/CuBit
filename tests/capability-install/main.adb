@@ -8,6 +8,7 @@ with Ada.Numerics.Discrete_Random;
 with Interfaces; use Interfaces;
 with Capabilities; use Capabilities;
 with Capability_ABI;
+with Capability_Derivation; use Capability_Derivation;
 with Capability_Install; use Capability_Install;
 with Fake_Pages;
 with Reference;

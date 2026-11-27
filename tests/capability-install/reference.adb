@@ -2,7 +2,7 @@ package body Reference is
    type Wide is range -(2 ** 127) .. 2 ** 127 - 1;
 
    function Derivable
-     (Source : Capability; Item : Capability_Install.Request) return Boolean
+     (Source : Capability; Item : Capability_Derivation.Request) return Boolean
    is
       First_Device_Vector : constant Wide := 48;
       Last_Device_Vector  : constant Wide := 126;

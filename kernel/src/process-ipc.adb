@@ -19,6 +19,7 @@ with BuddyAllocator;
 with Call_Sequences;
 with Process_Identities;
 with Capabilities.Operations;
+with Capability_Derivation;
 with Capability_Install;
 with Process_Capabilities;
 with Config;
@@ -2225,7 +2226,7 @@ package body Process.IPC is
         if replyTo = NO_PROCESS or else mypid = NO_PROCESS or else replyTo = mypid
           or else IPC_Labels.Is_Kernel_Reply (msg.tag.label)
           or else Capability_ABI.Claims_Kernel_Flags (msg.tag.ipc)
-          or else not Capability_Install.Well_Formed (derivation)
+          or else not Capability_Derivation.Well_Formed (derivation)
         then
             return Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
         end if;
@@ -2252,7 +2253,7 @@ package body Process.IPC is
           (Target   => proctab(replyTo).caps,
            Admitted => Capability_Install.Reply_Admits (threadtab (me).replyCap),
            Source   => source.Cap,
-           Item     => Capability_Install.Decode (derivation),
+           Item     => Capability_Derivation.Decode (derivation),
            Result   => placed);
         if placed.Status = Process_Capabilities.Placement.Refused
           and then placed.Why not in Capability_ABI.Limit_Reached |
@@ -2314,7 +2315,7 @@ package body Process.IPC is
         mypid : constant ProcessID := PerCPUData.getCurrentPID;
         found       : Process_Capabilities.Found;
         source      : Process_Capabilities.Found;
-        offer       : Capability_Install.Outcome;
+        offer       : Capability_Derivation.Outcome;
         admitted    : Capability_Install.Admission;
         reply       : Capabilities.Capability;
         closed      : Unsigned_64;
@@ -2331,7 +2332,7 @@ package body Process.IPC is
     begin
         if mypid = NO_PROCESS or else IPC_Labels.Is_Kernel_Reply (msg.tag.label)
           or else Capability_ABI.Claims_Kernel_Flags (msg.tag.ipc)
-          or else not Capability_Install.Well_Formed (derivation)
+          or else not Capability_Derivation.Well_Formed (derivation)
         then
             return Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
         end if;
@@ -2352,7 +2353,7 @@ package body Process.IPC is
             return Capability_ABI.Refusal_Word
               (if not admitted.Admitted then admitted.Why else source.Why);
         end if;
-        offer := Capability_Install.Derive (source.Cap, Capability_Install.Decode (derivation));
+        offer := Capability_Derivation.Derive (source.Cap, Capability_Derivation.Decode (derivation));
         if not offer.Accepted then
             Spinlocks.exitCriticalSection (mailtab(mypid).lock);
             return Capability_ABI.Refusal_Word (offer.Why);

@@ -527,7 +527,7 @@ package Process.IPC is
     ---------------------------------------------------------------------------
     -- capCallOffering (CALL_OFFERING_CAPABILITY, CAP-002)
     -- capCall offering one capability, already derived from the caller's
-    -- table (Capability_Install.Derive): the delivered request carries
+    -- table (Capability_Derivation.Derive): the delivered request carries
     -- Capability_ABI.Capability_Offered, the server may take the offer with
     -- acceptOffered while it answers, and whatever it leaves is dropped when
     -- the call ends.

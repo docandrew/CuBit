@@ -11,7 +11,7 @@ nix develop -c bash -c 'set -e; cd kernel; alr exec -- gprbuild -p -P ../tests/a
 The kernel appends CAP_HARDWARE_GROUP and CAP_HARDWARE_REGISTER after existing
 kinds, preserving their ordinals. They must originate through trusted catalog
 admission or checked membership delegation. Since CAP-002 (no POLICY_MINT, no
-slot derivation) the test checks that Capability_Install never copies either
+slot derivation) the test checks that Capability_Derivation never copies either
 kind into another table: every rights combination, with or without
 narrowing, is refused as Not_Transferable.
 

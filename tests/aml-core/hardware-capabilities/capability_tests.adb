@@ -2,7 +2,7 @@ with Ada.Text_IO;
 with Interfaces; use Interfaces;
 with Capabilities; use Capabilities;
 with Capability_ABI;
-with Capability_Install; use Capability_Install;
+with Capability_Derivation; use Capability_Derivation;
 --  Hardware catalog capabilities (CAP_HARDWARE_GROUP/REGISTER) under CAP-002:
 --  the kinds keep their ordinals, and no derivation copies one into another
 --  table (they originate only through trusted catalog admission), whatever

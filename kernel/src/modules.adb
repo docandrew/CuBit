@@ -914,7 +914,7 @@ package body Modules with SPARK_Mode => Off is
             -- Device vector authority (docs/msi-interrupts.md): a CAP_IRQ
             -- naming the whole device range. GRANT allocates and releases
             -- blocks for drivers; READ reads per-vector counts and owners.
-            -- Never copied (Capability_Install.Copyable).
+            -- Never copied (Capability_Derivation.Copyable).
             place (root (Capabilities.CAP_IRQ, READ_GRANT,
                          Device_Vector_ABI.First_Vector, Device_Vector_ABI.Vector_Count),
                    handles.Vector_Authority);
