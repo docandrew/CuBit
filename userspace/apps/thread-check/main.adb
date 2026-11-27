@@ -16,6 +16,7 @@
 --  uses that again.
 ------------------------------------------------------------------------------
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Machine_Code; use System.Machine_Code;
@@ -100,5 +101,5 @@ begin
    else
       debugPrint ("TEST: FAIL thread-cpu-state" & LF);
    end if;
-   Ignore := syscall (SYSCALL_EXIT);
+   CuBit.Process_Calls.Exit_Process;
 end Main;
