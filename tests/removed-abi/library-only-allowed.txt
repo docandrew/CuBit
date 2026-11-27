@@ -165,7 +165,6 @@ userspace/services/devmgr/main.adb
 userspace/services/display/main.adb
 userspace/services/filesystem/fs_server-storage.adb
 userspace/services/gpio/native/gpio_main_entry.adb
-userspace/services/logstore/log_persistence.adb
 userspace/services/mixer/main.adb
 userspace/services/nvme/main.adb
 userspace/services/nvme/nvme.adb

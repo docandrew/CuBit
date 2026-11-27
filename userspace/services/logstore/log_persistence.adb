@@ -11,6 +11,7 @@ with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Log_Protocol;
 with CuBit.Log_Records;
 with CuBit.Log_Records.Texts;
+with CuBit.Process_Calls;
 with Startup;
 
 package body Log_Persistence is
@@ -73,7 +74,7 @@ package body Log_Persistence is
       Last_Attempt := Now_Ms;
       Attempted := True;
       if not Loan_Ready then
-         Raw := syscall (SYSCALL_SBRK, (Loan_Pages + 1) * CuBit.Memory_Grants.PAGE_SIZE);
+         Raw := CuBit.Process_Calls.Grow_Heap ((Loan_Pages + 1) * CuBit.Memory_Grants.PAGE_SIZE);
          if Raw = 0 or else Raw = Unsigned_64'Last then
             return;
          end if;
