@@ -4,4 +4,5 @@
   (start "logstore.svc" (test-console approve-declared))
   (start "wait-check.app")
   (start "readiness-writer.app")
+  (start "notify-check.app")
 )

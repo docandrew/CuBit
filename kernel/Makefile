@@ -2255,6 +2255,12 @@ $(eval $(call ccl_program,../userspace/apps/oom-check,oom-check.app,))
 .PHONY : wait-check readiness-writer
 wait-check: isodir/boot/wait-check.app
 $(eval $(call ccl_program,../userspace/apps/wait-check,wait-check.app,))
+
+# Notifications and private futexes (IPC revision 2, S1), and the
+# wake-flood benchmark: the wait headless test runs it.
+.PHONY : notify-check
+notify-check: isodir/boot/notify-check.app
+$(eval $(call ccl_program,../userspace/apps/notify-check,notify-check.app,))
 # Shared futexes (IPC-010): headless --test futex-share.
 .PHONY : futex-share
 FUTEX_SHARE_APPS := futex-share-server futex-share-client futex-share-outsider
@@ -3596,7 +3602,7 @@ build/gate/check-declarations.stamp: $(DECLARATION_INPUTS) $(wildcard isodir/boo
 test-console-shipped: world
 	python3 ../tests/test-console/check-shipped.py
 
-world: check-declarations test-programs frame-ticker task-card-check $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check readiness-writer futex-share secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check font-masks trap-flag-check nmi-check direction-flag-check alignment-flag-check kernel-map-probe mov-ss-check clock-keeper-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview tlb-tags ccl-sign initrd ata_disk.img nvme_disk.img iso
+world: check-declarations test-programs frame-ticker task-card-check $(IMAGE_ONLY_BINARIES) cubit_kernel doom sameboy sleep thread-check futex-check wait-check notify-check readiness-writer futex-share secondary-stack-check ada-runtime-check firmware-check firmware-undeclared clock-check avx-check wifi-crypto-check devmem-check fault-check reap-check font-masks trap-flag-check nmi-check direction-flag-check alignment-flag-check kernel-map-probe mov-ss-check clock-keeper-check oom-check stall-check bench-spread capability-test storage-check ipctest-server ipctest-client bench-ipc-server bench-ipc-client ccl-test-host clock timesync tls ccl-vm ccl-workbench filesystem ata nvme ufs installer virtio-net virtio-gpu netstack wget devices files text calculator lexicon dictionary bible config-inspector desktop-shell procmgr shell hda mixer ps2 xhci virtio-input config config-storage netmgr wifi logstore display desktop devmgr llm secrets power agent ccl-remote cpu-times-check metricsvc metricsview tlb-tags ccl-sign initrd ata_disk.img nvme_disk.img iso
 	$(SIGN_PROGRAMS)
 
 .PHONY : headless-test

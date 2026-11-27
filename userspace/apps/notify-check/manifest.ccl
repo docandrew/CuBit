@@ -1,0 +1,8 @@
+# Notifications and private futexes (IPC revision 2, S1) regression checks,
+# and the wake-flood benchmark. No authority beyond the program's own self
+# and self-process handles.
+(executable-manifest v1
+  (identity "com.cubit.notify-check")
+  (version "0.1.0")
+  # ABI-002: its debug text (CuBit.Console_Route).
+  (request-service-optional logstore read-write logstore))

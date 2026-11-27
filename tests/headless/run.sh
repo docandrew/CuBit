@@ -2933,11 +2933,11 @@ if [ -n "$INIT_PROFILE" ]; then
         done
     fi
     if [ "$TEST_NAME" = "wait" ]; then
-        for WAIT_IMAGE in logstore.svc wait-check.app readiness-writer.app; do
+        for WAIT_IMAGE in logstore.svc wait-check.app readiness-writer.app notify-check.app; do
             debugfs -w -R "rm $WAIT_IMAGE" "$TEMP_DISK" >/dev/null 2>&1
             if ! debugfs -w -R "write $KERNEL_DIR/isodir/boot/$WAIT_IMAGE $WAIT_IMAGE" \
               "$TEMP_DISK" >/dev/null 2>&1; then
-                echo "headless: failed to install $WAIT_IMAGE (make -C kernel wait-check readiness-writer)" >&2
+                echo "headless: failed to install $WAIT_IMAGE (make -C kernel wait-check readiness-writer notify-check)" >&2
                 exit 1
             fi
         done
@@ -10284,11 +10284,23 @@ wait-check: a sent wake notice is refused PASS
 wait-check: ALL PASS
 readiness-writer: page readable PASS
 readiness-writer: storing to the page
+notify-check: Wait takes the OR of the badges PASS
+notify-check: a second waiter is refused Busy PASS
+notify-check: the root's waiter is woken by the leaf PASS
+notify-check: a root never becomes a leaf PASS
+notify-check: the bound thread's receive returns a doorbell PASS
+notify-check: its waiter returns Ended PASS
+notify-check: one more is refused PASS
+notify-check: the sleeper was woken PASS
+TIMING: wake-flood-flooded-round-trip
+BENCH: wake-flood
+notify-check: ALL PASS
 "
         # The store to the read-only page (its only store) must end the
         # writer with a write-protection fault, and it never prints "wrote".
         # Serial lines interleave, so match the kernel's one-line record.
         if grep -aF 'wait-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
+           grep -aF 'notify-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
            grep -aqF 'readiness-writer: wrote' "$SERIAL_LOG" ||
            ! grep -aqE 'name=readiness-writer pid=0x[0-9A-F]+ kind=write-protection' "$SERIAL_LOG"; then
             echo "headless: wait checks failed, or the readiness page was writable" >&2
