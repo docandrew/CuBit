@@ -7,6 +7,7 @@ with CuBit.Net_Channel_Layout;
 with CuBit.Net_Link;
 with CuBit.Net_Management;
 with CuBit.Net_Address;
+with CuBit.Process_Calls;
 with CuBit.Published_Clock;
 with CCL_Native_Bindings;
 
@@ -72,7 +73,7 @@ package body Remote_Transport is
       if not CuBit.Handles.Valid (CCL_Native_Bindings.Network) then
          return;
       end if;
-      Raw := syscall (SYSCALL_SBRK, Arena_Buffers * Buffer_Bytes + Page_Bytes);
+      Raw := CuBit.Process_Calls.Grow_Heap (Arena_Buffers * Buffer_Bytes + Page_Bytes);
       if Raw = Unsigned_64'Last then
          return;
       end if;

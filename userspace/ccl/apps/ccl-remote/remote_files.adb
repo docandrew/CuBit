@@ -2,6 +2,7 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Filesystems; use CuBit.Filesystems;
 with CuBit.Memory_Grants;
+with CuBit.Process_Calls;
 with SPARKNaCl;
 with SPARKTLSCrypto.Hashing.SHA256;
 with CCL.Interfaces.Files;
@@ -97,7 +98,7 @@ package body Remote_Files is
       Success := False;
       Work_Length := Work'Length;
       Work_Root (1 .. Work_Length) := Work;
-      Raw := syscall (SYSCALL_SBRK, Buffer_Bytes + Page_Bytes);
+      Raw := CuBit.Process_Calls.Grow_Heap (Buffer_Bytes + Page_Bytes);
       if Raw = Unsigned_64'Last then
          return;
       end if;
