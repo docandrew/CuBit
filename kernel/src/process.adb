@@ -713,8 +713,8 @@ package body Process is
     threadTableLockName : aliased String := "thread table";
     threadTableLock : Spinlocks.Spinlock;
 
-    tableLockName : aliased String := "process table";
-    tableLock : Spinlocks.Spinlock;
+    processTableLockName : aliased String := "process table";
+    processTableLock : Spinlocks.Spinlock;
 
     procedure setup is
         accountingReady : Boolean;
@@ -726,7 +726,7 @@ package body Process is
         -- Before AP startup / publication; never reinitialize live locks.
         Spinlocks.Initialize (lock, lockname'Access);
         Spinlocks.Initialize (grantLock, grantLockName'Access);
-        Spinlocks.Initialize (tableLock, tableLockName'Access);
+        Spinlocks.Initialize (processTableLock, processTableLockName'Access);
         Spinlocks.Initialize (threadTableLock, threadTableLockName'Access);
         Process_Table.Initialize;
         Thread_Table.Initialize;
@@ -1562,12 +1562,12 @@ package body Process is
     ---------------------------------------------------------------------------
     procedure lockProcessTable is
     begin
-        Spinlocks.enterCriticalSection (tableLock);
+        Spinlocks.enterCriticalSection (processTableLock);
     end lockProcessTable;
 
     procedure unlockProcessTable is
     begin
-        Spinlocks.exitCriticalSection (tableLock);
+        Spinlocks.exitCriticalSection (processTableLock);
     end unlockProcessTable;
 
     ---------------------------------------------------------------------------
@@ -1621,6 +1621,8 @@ package body Process is
       (P => stateOf (pid).rootTable'Access);
     function mailtab (pid : ProcessID) return Mailbox_Ref is
       (M => stateOf (pid).inbox'Access);
+    function tableLock (pid : ProcessID) return Lock_Ref is
+      (L => stateOf (pid).inbox.lock'Access);
     function completionTab (pid : ProcessID) return Completion_Ref is
       (C => stateOf (pid).completions'Access);
     function grantsOf (pid : ProcessID) return Grant_State_Ref is

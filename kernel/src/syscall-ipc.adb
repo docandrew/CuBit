@@ -74,9 +74,9 @@ package body Syscall.IPC is
     is
         found : Process_Capabilities.Found;
     begin
-        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (callerPID));
         found := Process_Capabilities.Find_Any (Process.proctab(callerPID).caps, handle);
-        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
         return (if found.OK then found.Cap else Capabilities.NULL_CAPABILITY);
     end ownCap;
 
@@ -292,9 +292,9 @@ package body Syscall.IPC is
             declare
                 found : Process_Capabilities.Found;
             begin
-                Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+                Spinlocks.enterCriticalSection (Process.tableLock (callerPID));
                 found := Process_Capabilities.Find_Any (Process.proctab(callerPID).caps, arg6);
-                Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+                Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
                 if not found.OK then
                     null;
                 elsif found.Cap.capType = Capabilities.CAP_NOTIFICATION then
@@ -416,7 +416,7 @@ package body Syscall.IPC is
         -- grantee consented by holding it (follow-up: name the opt-in
         -- explicitly once channels replace this path).
         if not hasCap then
-            Spinlocks.enterCriticalSection (Process.mailtab(granteePID).lock);
+            Spinlocks.enterCriticalSection (Process.tableLock (granteePID));
             for slot in 0 .. Process_Capabilities.Tables.High_Water
                                (Process.proctab(granteePID).caps) - 1
             loop
@@ -436,7 +436,7 @@ package body Syscall.IPC is
                     end;
                 end if;
             end loop;
-            Spinlocks.exitCriticalSection (Process.mailtab(granteePID).lock);
+            Spinlocks.exitCriticalSection (Process.tableLock (granteePID));
         end if;
 
         if not hasCap then

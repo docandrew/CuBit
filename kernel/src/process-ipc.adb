@@ -1818,13 +1818,13 @@ package body Process.IPC is
         -- is consumed. Otherwise consume the saved reply even when delivery
         -- will fail, or a departed caller would strand the server's handle.
         -- A handle naming anything but a reply is left alone. The owner's
-        -- mailbox lock serializes every edit of its table.
-        Spinlocks.enterCriticalSection (mailtab(mypid).lock);
+        -- table lock serializes every edit of its table.
+        Spinlocks.enterCriticalSection (tableLock (mypid));
         found := Process_Capabilities.Find_Any (proctab(mypid).caps, handle);
         if found.OK and then found.Cap.capType = Capabilities.CAP_REPLY then
             Process_Capabilities.Close (proctab(mypid).caps, handle, cap, closed);
         end if;
-        Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+        Spinlocks.exitCriticalSection (tableLock (mypid));
         if cap.capType /= Capabilities.CAP_REPLY then return 0; end if;
         replyTargetOf (cap, lockedPID, replyThread);
         if lockedPID = NO_PROCESS then return 0; end if;
@@ -1934,14 +1934,14 @@ package body Process.IPC is
             -- Only in the same incarnation: a closed mailbox is being torn
             -- down (its table goes with it), and a new process in the slot
             -- has its own table.
-            Spinlocks.enterCriticalSection (mailtab(replyTo).lock);
+            Spinlocks.enterCriticalSection (tableLock (replyTo));
             if not mailtab(replyTo).closed
               and then generationOf (replyTo) = replyToGeneration
             then
                 Process_Capabilities.Close
                   (proctab(replyTo).caps, word, ignoreCap, ignoreWord);
             end if;
-            Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
+            Spinlocks.exitCriticalSection (tableLock (replyTo));
             return Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
         end if;
         return word;
@@ -1979,10 +1979,10 @@ package body Process.IPC is
         end if;
         -- The saved reply must accept a capability and the copy must be
         -- allowed; otherwise nothing is consumed (answer it normally).
-        Spinlocks.enterCriticalSection (mailtab(mypid).lock);
+        Spinlocks.enterCriticalSection (tableLock (mypid));
         found := Process_Capabilities.Find_Any (proctab(mypid).caps, handle);
         if not found.OK or else found.Cap.capType /= Capabilities.CAP_REPLY then
-            Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+            Spinlocks.exitCriticalSection (tableLock (mypid));
             return Capability_ABI.Refusal_Word
               (if found.OK then Capability_ABI.Wrong_Kind else found.Why);
         end if;
@@ -1990,17 +1990,17 @@ package body Process.IPC is
         source := Process_Capabilities.Find_Any
           (proctab(mypid).caps, derivation (Capability_ABI.Source));
         if not admitted.Admitted or else not source.OK then
-            Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+            Spinlocks.exitCriticalSection (tableLock (mypid));
             return Capability_ABI.Refusal_Word
               (if not admitted.Admitted then admitted.Why else source.Why);
         end if;
         offer := Capability_Derivation.Derive (source.Cap, Capability_Derivation.Decode (derivation));
         if not offer.Accepted then
-            Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+            Spinlocks.exitCriticalSection (tableLock (mypid));
             return Capability_ABI.Refusal_Word (offer.Why);
         end if;
         Process_Capabilities.Close (proctab(mypid).caps, handle, reply, closed);
-        Spinlocks.exitCriticalSection (mailtab(mypid).lock);
+        Spinlocks.exitCriticalSection (tableLock (mypid));
         replyTargetOf (reply, lockedPID, replyThread);
         if lockedPID = NO_PROCESS then
             return Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
@@ -2020,14 +2020,14 @@ package body Process.IPC is
         delivered := completeReplyLocked
           (replyTo, replyThread, reply.object.param, reply.authorityTag, stamped, flags);
         if delivered = 0 and then Capability_ABI.Is_Handle_Word (word) then
-            Spinlocks.enterCriticalSection (mailtab(replyTo).lock);
+            Spinlocks.enterCriticalSection (tableLock (replyTo));
             if not mailtab(replyTo).closed
               and then generationOf (replyTo) = replyToGeneration
             then
                 Process_Capabilities.Close
                   (proctab(replyTo).caps, word, ignoreCap, ignoreWord);
             end if;
-            Spinlocks.exitCriticalSection (mailtab(replyTo).lock);
+            Spinlocks.exitCriticalSection (tableLock (replyTo));
             return Capability_ABI.Refusal_Word (Capability_ABI.Target_Gone);
         end if;
         return word;
@@ -4006,7 +4006,7 @@ package body Process.IPC is
     ---------------------------------------------------------------------------
     -- capSend
     ---------------------------------------------------------------------------
-    -- Resolve an endpoint handle of the calling process under its mailbox
+    -- Resolve an endpoint handle of the calling process under its table
     -- lock, which serializes every edit of the capability table: a sibling
     -- thread cannot close the entry between the checks and the generation
     -- the send then pins. A stale or revoked handle resolves to nothing.
@@ -4026,7 +4026,7 @@ package body Process.IPC is
         authorityTag := Capabilities.NO_AUTHORITY_TAG;
         generation := 0;
         ok := False;
-        Spinlocks.enterCriticalSection (mailtab(pid).lock);
+        Spinlocks.enterCriticalSection (tableLock (pid));
         found := Process_Capabilities.Find_Any (proctab(pid).caps, handle);
         -- Validate the generic object reference before narrowing it to an
         -- index into proctab, whose first valid process entry is 1.
@@ -4047,7 +4047,7 @@ package body Process.IPC is
                 generation := found.Cap.gen;
             end if;
         end if;
-        Spinlocks.exitCriticalSection (mailtab(pid).lock);
+        Spinlocks.exitCriticalSection (tableLock (pid));
     end resolveEndpointHandle;
 
     -- A request as it enters the kernel: the requester's protocol flags and

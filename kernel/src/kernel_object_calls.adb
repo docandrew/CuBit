@@ -26,9 +26,9 @@ package body Kernel_Object_Calls is
         Result := Not_A_Kernel_Object;
         -- A snapshot of the entry, under the caller's mailbox lock (as every
         -- handle lookup): kind, generation, rights.
-        Spinlocks.enterCriticalSection (Process.mailtab (Caller).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (Caller));
         Found := Process_Capabilities.Find_Any (Process.proctab (Caller).caps, Handle);
-        Spinlocks.exitCriticalSection (Process.mailtab (Caller).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (Caller));
         if not Found.OK then
             return;
         end if;

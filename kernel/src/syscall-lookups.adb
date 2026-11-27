@@ -26,10 +26,10 @@ is
     is
         found : Process_Capabilities.Found;
     begin
-        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (callerPID));
         found := Process_Capabilities.Find
           (Process.proctab(callerPID).caps, handle, kind, rights);
-        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
         return found;
     end findOwn;
 

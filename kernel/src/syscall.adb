@@ -216,11 +216,11 @@ package body Syscall is
     is
         found : Process_Capabilities.Found;
     begin
-        Spinlocks.enterCriticalSection (Process.mailtab(pid).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (pid));
         found := Process_Capabilities.Find
           (Process.proctab(pid).caps, handle, Capabilities.CAP_SCHEDULING,
            Capabilities.NO_RIGHTS);
-        Spinlocks.exitCriticalSection (Process.mailtab(pid).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (pid));
         return (if found.OK then found.Cap else Capabilities.NULL_CAPABILITY);
     end schedulingAuthority;
 

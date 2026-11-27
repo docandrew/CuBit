@@ -10,8 +10,8 @@
 -- @description
 -- Each process's table is charged to its memory account (Charged_Metadata_
 -- Pages, the Metadata budget). Every operation on a table holds its owner's
--- mailbox lock (Process.mailtab (pid).lock), as every edit of the old
--- fixed table did.
+-- table lock (Process.tableLock (pid), today the mailbox lock itself), as
+-- every edit of the old fixed table did.
 --
 -- Find is the one way a system call turns a handle word into authority: the
 -- handle must name a live entry of this table (its generation included), of
@@ -97,7 +97,7 @@ package Process_Capabilities with SPARK_Mode => Off is
     with Inline;
 
     ---------------------------------------------------------------------------
-    -- Changes (the owner's mailbox lock held)
+    -- Changes (the owner's table lock held)
     ---------------------------------------------------------------------------
     -- Place Cap where the table chooses. Result: the handle word, or a
     -- Refusal code (Capability_ABI.Handle_Result encoding).

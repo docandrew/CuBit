@@ -38,7 +38,8 @@
 --
 -- Assumed (not proved): Allocate_Page/Release_Page honour their contract
 -- (a fresh, page-aligned 4 KiB page, or OK = False); the caller serializes
--- every operation on one table (the kernel holds the owner's mailbox lock).
+-- every operation on one table (the kernel holds the owner's table lock,
+-- Process.tableLock, today its mailbox lock).
 -- Regression-tested: LRF reuse order and free-list completeness.
 --
 -- Instantiate from a unit with `pragma Ada_2022` (the kernel defaults to

@@ -702,7 +702,7 @@ package body VM_Objects with SPARK_Mode => Off is
                              Ref, Param : Unsigned_64; Gen : Caps.Generation;
                              Handle : out Unsigned_64) is
     begin
-        Spinlocks.enterCriticalSection (Process.mailtab (Caller).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (Caller));
         Process_Capabilities.Insert
           (Process.proctab (Caller).caps,
            (capType      => Kind,
@@ -710,7 +710,7 @@ package body VM_Objects with SPARK_Mode => Off is
             authorityTag => Caps.NO_AUTHORITY_TAG,
             object       => (ref => Ref, param => Param),
             gen          => Gen), Handle);
-        Spinlocks.exitCriticalSection (Process.mailtab (Caller).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (Caller));
     end Insert_Handle;
 
     ---------------------------------------------------------------------------

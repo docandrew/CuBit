@@ -26,8 +26,11 @@ from pathlib import Path
 src = Path(sys.argv[1] if len(sys.argv) > 1 else
            Path(__file__).resolve().parents[2] / "kernel/src")
 header = re.compile(r"^\s*(?:overriding\s+)?(?:procedure|function)\s+(\w+)\b", re.I)
-enter = re.compile(r"enterCriticalSection\s*\(\s*(?:Process\.)?mailtab\s*\(\s*(\w+)\s*\)\s*\.lock", re.I)
-leave = re.compile(r"exitCriticalSection\s*\(\s*(?:Process\.)?mailtab\s*\(\s*(\w+)\s*\)\s*\.lock", re.I)
+# The mailbox lock, by name or as the table lock (Process.tableLock returns
+# the same lock until IPC revision 2's S2 splits them).
+LOCK = r"(?:Process\.)?(?:mailtab\s*\(\s*(\w+)\s*\)\s*\.lock|tableLock\s*\(\s*(\w+)\s*\))"
+enter = re.compile(r"enterCriticalSection\s*\(\s*" + LOCK, re.I)
+leave = re.compile(r"exitCriticalSection\s*\(\s*" + LOCK, re.I)
 pair_lock = re.compile(r"(?<![\w.])lockMailboxes\s*\(", re.I)
 pair_unlock = re.compile(r"(?<![\w.])unlockMailboxes\s*\(", re.I)
 # The caller's own mailbox, as the handlers name it.
@@ -135,7 +138,7 @@ for unit in sorted({u for pattern in UNITS for u in src.glob(pattern)}):
                 line = lines[k]
                 m = enter.search(line)
                 if m:
-                    held.append(m.group(1))
+                    held.append(m.group(1) or m.group(2))
                     continue
                 m = leave.search(line)
                 if m and held:

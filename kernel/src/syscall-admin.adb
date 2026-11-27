@@ -98,10 +98,10 @@ package body Syscall.Admin is
     is
         found : Process_Capabilities.Found;
     begin
-        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (callerPID));
         found := Process_Capabilities.Find
           (Process.proctab(callerPID).caps, handle, kind, rights);
-        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
         return found;
     end findOwn;
 
@@ -112,9 +112,9 @@ package body Syscall.Admin is
     is
         found : Process_Capabilities.Found;
     begin
-        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (callerPID));
         found := Process_Capabilities.Find_Any (Process.proctab(callerPID).caps, handle);
-        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
         return (if found.OK then found.Cap else Capabilities.NULL_CAPABILITY);
     end ownCap;
 
@@ -525,14 +525,14 @@ package body Syscall.Admin is
         end if;
         -- The offer is a narrowed copy of the caller's own capability (it
         -- must hold RIGHT_GRANT): nothing is created.
-        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (callerPID));
         source := Process_Capabilities.Find_Any
           (Process.proctab(callerPID).caps, derivation (Capability_ABI.Source));
         if source.OK then
             offer := Capability_Derivation.Derive
               (source.Cap, Capability_Derivation.Decode (derivation));
         end if;
-        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
         if not source.OK or else not offer.Accepted then
             return;
         end if;
@@ -632,9 +632,9 @@ package body Syscall.Admin is
     begin
         -- arg0: a handle in the caller's own table. Another process's
         -- entries are never read.
-        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (callerPID));
         found := Process_Capabilities.Find_Any (Process.proctab(callerPID).caps, arg0);
-        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
         if not found.OK then
             retval := Capability_ABI.Refusal_Word (found.Why);
             return;
@@ -823,9 +823,9 @@ package body Syscall.Admin is
         secondPID := Process.ProcessID'Max (callerPID, targetPID);
         -- The IPC two-mailbox ascending-PID order. The CSPACE, the source and
         -- the target's table are read and changed as one operation.
-        Spinlocks.enterCriticalSection (Process.mailtab(firstPID).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (firstPID));
         if secondPID /= firstPID then
-            Spinlocks.enterCriticalSection (Process.mailtab(secondPID).lock);
+            Spinlocks.enterCriticalSection (Process.tableLock (secondPID));
         end if;
         cspace := Process_Capabilities.Find_Any (Process.proctab(callerPID).caps, arg0);
         source := Process_Capabilities.Find_Any
@@ -853,9 +853,9 @@ package body Syscall.Admin is
             retval := Process_Capabilities.Result_Word (placed);
         end if;
         if secondPID /= firstPID then
-            Spinlocks.exitCriticalSection (Process.mailtab(secondPID).lock);
+            Spinlocks.exitCriticalSection (Process.tableLock (secondPID));
         end if;
-        Spinlocks.exitCriticalSection (Process.mailtab(firstPID).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (firstPID));
     end handleInstallCap;
 
     ---------------------------------------------------------------------------
@@ -881,7 +881,7 @@ package body Syscall.Admin is
         if not copied or else not Capability_Derivation.Well_Formed (derivation) then
             return;
         end if;
-        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (callerPID));
         source := Process_Capabilities.Find_Any
           (Process.proctab(callerPID).caps, derivation (Capability_ABI.Source));
         if not source.OK then
@@ -895,7 +895,7 @@ package body Syscall.Admin is
                Result   => placed);
             retval := Process_Capabilities.Result_Word (placed);
         end if;
-        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
     end handleDeriveCap;
 
     ---------------------------------------------------------------------------
@@ -910,9 +910,9 @@ package body Syscall.Admin is
         use type Capabilities.CapabilityType;
         removed : Capabilities.Capability;
     begin
-        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (callerPID));
         Process_Capabilities.Close (Process.proctab(callerPID).caps, arg0, removed, retval);
-        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
         -- A saved reply closed unanswered: its caller learns now, as when a
         -- server exits holding it.
         if retval = 0 and then removed.capType = Capabilities.CAP_REPLY then
@@ -985,9 +985,9 @@ package body Syscall.Admin is
                 end if;
             end performLocked;
         begin
-            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            Spinlocks.enterCriticalSection (Process.tableLock (targetPID));
             performLocked;
-            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+            Spinlocks.exitCriticalSection (Process.tableLock (targetPID));
         end;
     end handleResume;
 
@@ -1122,9 +1122,9 @@ package body Syscall.Admin is
                 retval := 0;
             end performLocked;
         begin
-            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            Spinlocks.enterCriticalSection (Process.tableLock (targetPID));
             performLocked;
-            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+            Spinlocks.exitCriticalSection (Process.tableLock (targetPID));
         end;
     end handleInstallLaunchArguments;
 
@@ -1323,7 +1323,7 @@ package body Syscall.Admin is
               processAuthority (callerPID, arg3, Capabilities.RIGHT_GRANT);
             lineHeld : constant Boolean := legacyLineHeld (arg4, arg0);
         begin
-            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            Spinlocks.enterCriticalSection (Process.tableLock (targetPID));
             if not Process.proctab(targetPID).admitted or else
                Process_Lifetime.Closing (Process.threadOf (targetPID).lifetime)
             then
@@ -1343,7 +1343,7 @@ package body Syscall.Admin is
                    Polarity => LA.Polarity_Of (arg2),
                    Outcome  => outcome);
             end if;
-            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+            Spinlocks.exitCriticalSection (Process.tableLock (targetPID));
         end;
         if outcome /= LA.Routed then
             print ("ENABLE_IRQ: refused, vector");
@@ -1495,9 +1495,9 @@ package body Syscall.Admin is
                 retval := Capability_ABI.Refusal_Word (cspace.Why);
                 return;
             end if;
-            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            Spinlocks.enterCriticalSection (Process.tableLock (targetPID));
             performLocked;
-            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+            Spinlocks.exitCriticalSection (Process.tableLock (targetPID));
         end;
         if retval = 0 then
             Process.User_Memory.Copy_To_User
@@ -1542,7 +1542,7 @@ package body Syscall.Admin is
         -- away): withdraw the capability that named the block.
         ownerPID := Process.processOfIdentity (Process_Identities.From_Word (owner));
         if ownerPID /= Process.NO_PROCESS then
-            Spinlocks.enterCriticalSection (Process.mailtab(ownerPID).lock);
+            Spinlocks.enterCriticalSection (Process.tableLock (ownerPID));
             -- Revocation from outside: the owner's handle reports Revoked.
             for slot in 0 .. Process_Capabilities.Tables.High_Water
                                (Process.proctab(ownerPID).caps) - 1
@@ -1562,7 +1562,7 @@ package body Syscall.Admin is
                     end;
                 end if;
             end loop;
-            Spinlocks.exitCriticalSection (Process.mailtab(ownerPID).lock);
+            Spinlocks.exitCriticalSection (Process.tableLock (ownerPID));
         end if;
         retval := 0;
     end handleReleaseDeviceVectors;
@@ -1656,7 +1656,7 @@ package body Syscall.Admin is
         use type Capabilities.CapabilityType;
         me : constant Process.ThreadID := PerCPUData.getCurrentThread;
     begin
-        Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.enterCriticalSection (Process.tableLock (callerPID));
         if Process.threadtab (me).replyCap.capType /= Capabilities.CAP_REPLY then
             retval := Capability_ABI.Refusal_Word (Capability_ABI.Invalid_Argument);
         else
@@ -1666,7 +1666,7 @@ package body Syscall.Admin is
                 Process.threadtab (me).replyCap := Capabilities.NULL_CAPABILITY;
             end if;
         end if;
-        Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+        Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
     end handleSaveReplyCap;
 
 end Syscall.Admin;

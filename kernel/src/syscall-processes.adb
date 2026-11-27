@@ -163,7 +163,7 @@ package body Syscall.Processes is
             mailbox : constant Boolean := Spawn_Admission.Gives_Mailbox (found.Cap);
             words : array (1 .. 3) of Unsigned_64 := [others => ABI.No_Handle];
         begin
-            Spinlocks.enterCriticalSection (Process.mailtab(callerPID).lock);
+            Spinlocks.enterCriticalSection (Process.tableLock (callerPID));
             Process_Capabilities.Insert
               (Process.proctab(callerPID).caps,
                (capType => Capabilities.CAP_PROCESS,
@@ -207,7 +207,7 @@ package body Syscall.Processes is
                         refuse := ABI.To_Refusal (W);
                     end if;
                 end loop;
-                Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+                Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
                 -- Published and suspended, never run: stop it (the reaper
                 -- releases it).
                 if not Process.killProcess (newPID, Process.generationOf (newPID)) then
@@ -216,7 +216,7 @@ package body Syscall.Processes is
                 refused (refuse, "SPAWN: no room for the spawner's handles");
                 return;
             end if;
-            Spinlocks.exitCriticalSection (Process.mailtab(callerPID).lock);
+            Spinlocks.exitCriticalSection (Process.tableLock (callerPID));
             result :=
               [ABI.Child              => Process_Identities.To_Word (Process.identityOf (newPID)),
                ABI.Process            => words (1),

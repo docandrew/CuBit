@@ -594,7 +594,7 @@ package body Debug_Sessions is
                return;
             end if;
 
-            Spinlocks.enterCriticalSection (Process.mailtab (Caller).lock);
+            Spinlocks.enterCriticalSection (Process.tableLock (Caller));
             Process_Capabilities.Insert
               (Process.proctab (Caller).caps,
                (capType      => Cap_Type (Kind),
@@ -603,7 +603,7 @@ package body Debug_Sessions is
                 authorityTag => Caps.NO_AUTHORITY_TAG,
                 object       => (ref => Unsigned_64 (Slot), param => Identity),
                 gen          => Generation), Handle);
-            Spinlocks.exitCriticalSection (Process.mailtab (Caller).lock);
+            Spinlocks.exitCriticalSection (Process.tableLock (Caller));
             if not Capability_ABI.Is_Handle_Word (Handle) then
                Spinlocks.enterCriticalSection (Table_Lock);
                End_Locked (Slot);

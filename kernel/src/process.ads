@@ -657,7 +657,8 @@ package Process is
     type Receive_Lane is (Queued_Messages, Waiting_Senders, IRQ_Doorbell, Kernel_Notices);
 
     type Mailbox is record
-        lock        : Spinlocks.spinlock;
+        -- Also pid's capability-table lock (tableLock), until S2.
+        lock        : aliased Spinlocks.spinlock;
         closed      : Boolean := True;
 
         -- Requests and published events, a ring per sender (step 3)
@@ -1212,6 +1213,16 @@ package Process is
 
     function addrtab (pid : ProcessID) return P4_Ref with Inline;
     function mailtab (pid : ProcessID) return Mailbox_Ref with Inline;
+    -- The lock that serializes every edit of pid's capability table
+    -- (Capability_Tables' callers serialize each table). IPC revision 2, S0:
+    -- it is still the mailbox lock itself (mailtab (pid).lock), so nothing
+    -- changes; S2 gives it its own lock. Some holders also rely on it to
+    -- see pid's admission, stop and mailbox-closed state stable (publish,
+    -- killProcess and teardown change those under the mailbox lock); the
+    -- split must keep them under one order.
+    type Lock_Ref (L : not null access Spinlocks.spinlock) is null record
+      with Implicit_Dereference => L;
+    function tableLock (pid : ProcessID) return Lock_Ref with Inline;
     function completionTab (pid : ProcessID) return Completion_Ref with Inline;
     type Grant_State_Ref (G : not null access Grant_State) is null record
       with Implicit_Dereference => G;

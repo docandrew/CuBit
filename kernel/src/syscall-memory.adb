@@ -664,9 +664,9 @@ package body Syscall.Memory is
             -- Same ordered mailbox locks used by cross-process publication.
             -- Pin both the authority table and destination incarnation until
             -- physical allocation, mapping and tracking publication complete.
-            Spinlocks.enterCriticalSection (Process.mailtab(First).lock);
+            Spinlocks.enterCriticalSection (Process.tableLock (First));
             if Last /= First then
-                Spinlocks.enterCriticalSection (Process.mailtab(Last).lock);
+                Spinlocks.enterCriticalSection (Process.tableLock (Last));
             end if;
             if Process.proctab(callerPID).admitted and then
               Process.proctab(Target).admitted and then
@@ -681,9 +681,9 @@ package body Syscall.Memory is
                 println ("ALLOC_DMA: process closing or unavailable");
             end if;
             if Last /= First then
-                Spinlocks.exitCriticalSection (Process.mailtab(Last).lock);
+                Spinlocks.exitCriticalSection (Process.tableLock (Last));
             end if;
-            Spinlocks.exitCriticalSection (Process.mailtab(First).lock);
+            Spinlocks.exitCriticalSection (Process.tableLock (First));
         end;
     end handleAllocDma;
 
@@ -902,9 +902,9 @@ package body Syscall.Memory is
                 retval := 0;
             end performLocked;
         begin
-            Spinlocks.enterCriticalSection (Process.mailtab(targetPID).lock);
+            Spinlocks.enterCriticalSection (Process.tableLock (targetPID));
             performLocked;
-            Spinlocks.exitCriticalSection (Process.mailtab(targetPID).lock);
+            Spinlocks.exitCriticalSection (Process.tableLock (targetPID));
         end;
     end handleMapInto;
 
