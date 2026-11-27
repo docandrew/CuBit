@@ -1,4 +1,5 @@
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -214,5 +215,5 @@ begin
    --  ABI-002: debug text into its logstore ring, never the kernel console.
    CuBit.Console_Route.Route_Named ("logstore");
    Exercise;
-   Ignored := syscall (SYSCALL_EXIT, (if Passed then 0 else 1));
+   CuBit.Process_Calls.Exit_Process ((if Passed then CuBit.Process_Calls.Success else CuBit.Process_Calls.Failure));
 end Main;

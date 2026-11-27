@@ -141,7 +141,6 @@ tests/stdin-inlet/check/main.adb
 tests/ui-repair-hit-map/native-menu/main.adb
 tests/userspace-allocator/cubit/cualloc-bench.c
 userspace/apps/avx-check/main.adb
-userspace/apps/bench-input/main.adb
 userspace/apps/bench-ipc-client/main.adb
 userspace/apps/bench-ipc-server/main.adb
 userspace/apps/bench-load/sbrk_load.adb
