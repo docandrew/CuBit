@@ -24,6 +24,7 @@ with Mixer_Control;
 with CuBit.Audio_Control;
 with CuBit.Audio_Periods;
 with CuBit.Benchmark_Clock;
+with CuBit.Process_Calls;
 with CuBit.Timing_Histograms;
 
 with CuBit.Handles.Devices;
@@ -307,7 +308,7 @@ begin
       aligned : Unsigned_64;
    begin
       --  Allocate with extra page for alignment
-      raw := syscall (SYSCALL_SBRK, totalBytes + PAGE_SIZE);
+      raw := CuBit.Process_Calls.Grow_Heap (totalBytes + PAGE_SIZE);
       if raw /= Unsigned_64'Last then
          aligned := (raw + PAGE_SIZE - 1) and not (PAGE_SIZE - 1);
          for i in 0 .. Mixer.MAX_STREAMS - 1 loop
