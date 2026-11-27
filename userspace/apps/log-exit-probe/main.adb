@@ -1,9 +1,9 @@
 pragma Ada_2022;
 with CuBit.Console_Route;
-with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Log_Records;
 with CuBit.Logging;
+with CuBit.Process_Calls;
 with Startup;
 
 --  Native regression for LOG-003: a program that publishes a few records
@@ -23,7 +23,6 @@ procedure Main is
    Exit_Failure : constant := 1;
 
    Submitted, Drained : Boolean := True;
-   Ignore : Unsigned_64;
 
    function Image (Value : Natural) return String is
       Raw : constant String := Natural'Image (Value);
@@ -48,8 +47,8 @@ begin
    CuBit.Logging.Flush (Writer, Drained, Wait_Ms => Flush_Wait_Ms);
    if not (Submitted and then Drained) then
       debugPrint ("log-exit-probe: FAIL logstore did not take its records" & ASCII.LF);
-      Ignore := syscall (SYSCALL_EXIT, Exit_Failure);
+      CuBit.Process_Calls.Exit_Process (Exit_Failure);
    end if;
    debugPrint ("log-exit-probe: published " & Image (Stages) & " records, exiting" & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT, Exit_Success);
+   CuBit.Process_Calls.Exit_Process (Exit_Success);
 end Main;

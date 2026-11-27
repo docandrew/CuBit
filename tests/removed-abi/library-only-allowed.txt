@@ -152,7 +152,6 @@ userspace/apps/futex-check/futex_check_support.ads
 userspace/apps/futex-check/main.adb
 userspace/apps/ipctest-server/main.adb
 userspace/apps/launch-gate-check/main.adb
-userspace/apps/log-exit-probe/main.adb
 userspace/apps/log-fields-check/main.adb
 userspace/apps/log-flood/main.adb
 userspace/apps/log-retention-check/main.adb
