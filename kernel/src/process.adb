@@ -56,6 +56,7 @@ with Process.Futex;
 with VM_Objects;
 with Process.DMA;
 with Process.IPC;
+with Process.Reports;
 with Process.Owned_Memory;
 with Process.User_Memory;
 with Kernel_Window;
@@ -2430,7 +2431,7 @@ package body Process is
         -- services hold for it (netstack's channels and scopes).
         setExitReport;
         manager := Service_Registry.Registered (Service_Registry.DRIVER_PROCMGR);
-        IPC.reportExit
+        Reports.reportExit
           (pid, exitMsg, parent, (if parent = NO_PROCESS then 0 else parentGen),
            manager, generationOf (manager), ringParent, ringManager);
 
@@ -2461,7 +2462,7 @@ package body Process is
         end;
         proctab(pid).admitted := False;
         if not grantDeferred and then pidReusable then
-            IPC.releaseRetiredPID (pid);
+            Reports.releaseRetiredPID (pid);
         end if;
         Spinlocks.exitCriticalSection (lock);
 
@@ -2819,7 +2820,7 @@ package body Process is
                         print (" "); println (proctab (Holder).name);
                     end if;
                 end loop;
-                IPC.notifySupervisor
+                Reports.notifySupervisor
                   (pid => pid, faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
                    detail0 => 14, detail1 => Unsigned_64 (To_Integer (addr)),
                    detail2 => Unsigned_64 (Page_Allocation_Result'Pos (result)));
@@ -2851,7 +2852,7 @@ package body Process is
             print (" heapStart "); print (Proctab(pid).heapStart);
             print (" heapEnd "); println (Proctab(pid).heapEnd);
             TextIO.endPrivate;
-            IPC.notifySupervisor (
+            Reports.notifySupervisor (
                 pid        => pid,
                 faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
                 detail0    => 14,  -- #PF vector

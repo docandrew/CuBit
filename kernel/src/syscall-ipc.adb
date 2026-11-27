@@ -22,6 +22,7 @@ with Channel_Wake_ABI;
 with Process;
 with Process_Identities;
 with Process.IPC;
+with Process.Reports;
 with Process.Futex;
 with Time;
 with Wait_ABI;
@@ -333,7 +334,7 @@ package body Syscall.IPC is
         end if;
 
         if not hasCap then
-            Process.IPC.notifySupervisor (
+            Process.Reports.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
                 Unsigned_64 (SyscallNumber'Enum_Rep (
@@ -439,7 +440,7 @@ package body Syscall.IPC is
         end if;
 
         if not hasCap then
-            Process.IPC.notifySupervisor (
+            Process.Reports.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
                 Unsigned_64

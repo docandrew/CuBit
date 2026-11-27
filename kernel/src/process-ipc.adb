@@ -12,6 +12,7 @@
 with Readiness_Pages;
 with Futex_ABI;
 with Process.Futex;
+with Process.Reports;
 with Readiness_Publication;
 with BuddyAllocator;
 with Call_Sequences;
@@ -26,7 +27,6 @@ with Grant_Sweeps;
 with Channel_Wake_ABI;
 with IPC_Labels;
 with IPI;
-with Kernel_Reports;
 with Memory_Grants;
 with Memory_Grants.Loans;
 with Retained_Record_Blocks;
@@ -1692,45 +1692,6 @@ package body Process.IPC is
         Spinlocks.exitCriticalSection (mailtab(dest).lock);
     end notifyDeviceVector;
 
-    function putReport
-      (subject : ProcessID; kind : Kernel_Reports.Report_Kind;
-       recipient : ProcessID; generation : Capabilities.Generation;
-       msg : Message) return Boolean;
-
-    ---------------------------------------------------------------------------
-    -- notifySupervisor
-    -- Send a non-blocking fault event to the supervisor of the given process.
-    ---------------------------------------------------------------------------
-    procedure notifySupervisor (pid        : ProcessID;
-                                faultLabel : Unsigned_32;
-                                detail0    : Unsigned_64;
-                                detail1    : Unsigned_64;
-                                detail2    : Unsigned_64)
-
-    is
-        svpid : constant ProcessID := proctab(pid).svpid;
-        faultMsg : Message := NULL_MESSAGE;
-    begin
-        if svpid = NO_PROCESS then
-            return;
-        end if;
-
-        faultMsg.tag := (label  => faultLabel,
-                         length => 4,
-                         protocol  => 0, ipc => <>,
-                         reserved  => 0);
-        faultMsg.words (0) := Process_Identities.To_Word (identityOf (pid));
-        faultMsg.words (1) := detail0;
-        faultMsg.words (2) := detail1;
-        faultMsg.words (3) := detail2;
-
-        if putReport (pid, Kernel_Reports.Fault_To_Supervisor, svpid,
-                      generationOf (svpid), faultMsg)
-        then
-            ringReport (svpid);
-        end if;
-    end notifySupervisor;
-
     ---------------------------------------------------------------------------
     -- reply
     -- Dual-path reply:
@@ -2390,10 +2351,6 @@ package body Process.IPC is
         end loop;
     end sweepFutexEnds;
 
-    -- Exit and fault reports. reportLock is a leaf.
-    reportLock : Spinlocks.spinlock;
-    reports    : Kernel_Reports.Table;
-
     -- Every process's control messages (proctab(pid).controls). A leaf.
     controlLock : Spinlocks.spinlock;
     -- EVENT_CONTROL: the kind, the sender's identity.
@@ -2909,80 +2866,9 @@ package body Process.IPC is
     end wakePeer;
 
     ---------------------------------------------------------------------------
-    -- Exit and fault reports, and taking notices (docs/ipc-delivery.md)
+    -- Taking notices (docs/ipc-delivery.md); exit and fault reports are
+    -- Process.Reports.
     ---------------------------------------------------------------------------
-
-    function toReport (msg : Message) return Kernel_Reports.Report is
-      (Label   => msg.tag.label,
-       Length  => Kernel_Reports.Word_Count'Min
-                    (Natural (msg.tag.length), Kernel_Reports.Report_Words),
-       Words   => (msg.words (0), msg.words (1), msg.words (2), msg.words (3)),
-       Further => 0);
-
-    function toMessage (value : Kernel_Reports.Report) return Message is
-      (tag => (label => value.Label, length => Unsigned_8 (value.Length),
-               protocol => 0, ipc => <>, reserved => value.Further),
-       authorityTag => 0,
-       words => (value.Words (0), value.Words (1), value.Words (2), value.Words (3)));
-
-    -- A retired process whose last report was just read or dropped.
-    procedure freeReleasedPID (pid : Kernel_Reports.Process) is
-    begin
-        if pid /= Kernel_Reports.No_Process then
-            PIDTracker.freePID (ProcessID (pid), invalidated => True);
-        end if;
-    end freeReleasedPID;
-
-    procedure releaseRetiredPID (pid : ProcessID) is
-        freeNow : Boolean;
-    begin
-        Spinlocks.enterCriticalSection (reportLock);
-        Kernel_Reports.Request_Free (reports, Kernel_Reports.Process (pid), freeNow);
-        Spinlocks.exitCriticalSection (reportLock);
-        if freeNow then
-            PIDTracker.freePID (pid, invalidated => True);
-        end if;
-    end releaseRetiredPID;
-
-    -- Keep a report about subject for recipient (this life); True when
-    -- kept, so the caller rings the recipient once its locks are released.
-    function putReport
-      (subject : ProcessID; kind : Kernel_Reports.Report_Kind;
-       recipient : ProcessID; generation : Capabilities.Generation;
-       msg : Message) return Boolean
-    is
-        kept : Boolean := False;
-    begin
-        if subject = NO_PROCESS or else recipient = NO_PROCESS then
-            return False;
-        end if;
-        Spinlocks.enterCriticalSection (reportLock);
-        -- An exit is reported once per life: its PID is not reused while
-        -- the report is unread, so the slot is free.
-        if kind not in Kernel_Reports.Exit_Kind or else
-           not reports.Subjects (Kernel_Reports.Process (subject)).Reports (kind).Unread
-        then
-            Kernel_Reports.Put
-              (reports, Kernel_Reports.Process (subject), kind,
-               (Id => Kernel_Reports.Process (recipient),
-                Generation => Unsigned_64 (generation)),
-               toReport (msg), kept);
-        end if;
-        Spinlocks.exitCriticalSection (reportLock);
-        return kept;
-    end putReport;
-
-    procedure reportExit
-      (pid : ProcessID; msg : Message;
-       parent : ProcessID; parentGeneration : Capabilities.Generation;
-       manager : ProcessID; managerGeneration : Capabilities.Generation;
-       ringParent, ringManager : out Boolean) is
-    begin
-        ringParent := parentGeneration /= 0 and then
-          putReport (pid, Kernel_Reports.Exit_To_Parent, parent, parentGeneration, msg);
-        ringManager := manager /= parent and then manager /= pid and then
-          putReport (pid, Kernel_Reports.Exit_To_Manager, manager, managerGeneration, msg);
-    end reportExit;
 
     procedure ringReport (recipient : ProcessID) is
     begin
@@ -3019,9 +2905,7 @@ package body Process.IPC is
                grantsOf (receiver).granteeNotices > 0;
         Spinlocks.exitCriticalSection (grantLock);
         if not any then
-            Spinlocks.enterCriticalSection (reportLock);
-            any := Kernel_Reports.Unread_For (reports, Kernel_Reports.Process (receiver));
-            Spinlocks.exitCriticalSection (reportLock);
+            any := Reports.anyUnread (receiver);
         end if;
         if not any then
             Spinlocks.enterCriticalSection (controlLock);
@@ -3035,8 +2919,6 @@ package body Process.IPC is
       (receiver : ProcessID; item : out RingEntry; found : out Boolean)
     is
         msg : Message := NULL_MESSAGE;
-        value : Kernel_Reports.Report;
-        released : Kernel_Reports.Process;
     begin
         item := NULL_RING_ENTRY;
         found := False;
@@ -3049,14 +2931,7 @@ package body Process.IPC is
         takeGrantNoticeLocked (receiver, msg, found);
         Spinlocks.exitCriticalSection (grantLock);
         if not found then
-            Spinlocks.enterCriticalSection (reportLock);
-            Kernel_Reports.Take
-              (reports, Kernel_Reports.Process (receiver), value, found, released);
-            Spinlocks.exitCriticalSection (reportLock);
-            freeReleasedPID (released);
-            if found then
-                msg := toMessage (value);
-            end if;
+            Reports.takeReport (receiver, msg, found);
         end if;
         if not found then
             declare
@@ -3107,10 +2982,7 @@ package body Process.IPC is
         grantsOf (pid).ownerNotices := 0;
         grantsOf (pid).granteeNotices := 0;
         Spinlocks.exitCriticalSection (grantLock);
-        Spinlocks.enterCriticalSection (reportLock);
-        Kernel_Reports.Open
-          (reports, Kernel_Reports.Process (pid), Unsigned_64 (generationOf (pid)));
-        Spinlocks.exitCriticalSection (reportLock);
+        Reports.openReports (pid);
         Spinlocks.enterCriticalSection (controlLock);
         Kernel_Controls.Open (proctab(pid).controls, Unsigned_64 (generationOf (pid)));
         Spinlocks.exitCriticalSection (controlLock);
@@ -3119,7 +2991,6 @@ package body Process.IPC is
     procedure closeNotices (pid : ProcessID) is
         slot, next : Memory_Grants.Global_Slot;
         value : Grant_Pointer;
-        released : Kernel_Reports.Process;
     begin
         Spinlocks.enterCriticalSection (grantLock);
         grantsOf (pid).noticesOpen := False;
@@ -3147,13 +3018,7 @@ package body Process.IPC is
         Spinlocks.enterCriticalSection (controlLock);
         Kernel_Controls.Close (proctab(pid).controls);
         Spinlocks.exitCriticalSection (controlLock);
-        loop
-            Spinlocks.enterCriticalSection (reportLock);
-            Kernel_Reports.Close (reports, Kernel_Reports.Process (pid), released);
-            Spinlocks.exitCriticalSection (reportLock);
-            exit when released = Kernel_Reports.No_Process;
-            freeReleasedPID (released);
-        end loop;
+        Reports.closeReports (pid);
     end closeNotices;
 
     -- A new life of pid owns and receives nothing yet: every grant of an
@@ -4067,7 +3932,7 @@ package body Process.IPC is
             proctab(pid).grantTeardownReady := False;
             proctab(pid).pidReusableAfterGrants := False;
             if reusable then
-                releaseRetiredPID (pid);
+                Reports.releaseRetiredPID (pid);
             end if;
         end if;
         Spinlocks.exitCriticalSection (grantLock);

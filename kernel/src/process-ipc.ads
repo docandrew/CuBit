@@ -66,14 +66,6 @@ package Process.IPC is
     -- (PIDs that waited only for its reading are freed). At reclamation,
     -- before its grants are revoked. Caller holds no IPC lock.
     procedure closeNotices (pid : ProcessID);
-    -- pid's exit report, kept for its parent and for the process manager
-    -- (their lives as given); ring* say whom to ring (ringReport) once the
-    -- caller's locks are released. Before releaseRetiredPID.
-    procedure reportExit
-      (pid : ProcessID; msg : Message;
-       parent : ProcessID; parentGeneration : Capabilities.Generation;
-       manager : ProcessID; managerGeneration : Capabilities.Generation;
-       ringParent, ringManager : out Boolean);
     procedure ringReport (recipient : ProcessID);
     -- A control message from sender to target (this life of each), kept
     -- until target reads it; Busy when every sender slot of target holds
@@ -82,9 +74,6 @@ package Process.IPC is
       (target : ProcessID; targetGeneration : Capabilities.Generation;
        sender : ProcessID; kind : IPC_Labels.Control_Kind;
        result : out Kernel_Controls.Send_Result);
-    -- A retired, invalidated pid goes back to the allocator once no report
-    -- about it is unread; until then its release waits for the last read.
-    procedure releaseRetiredPID (pid : ProcessID);
 
     ---------------------------------------------------------------------------
     -- send
@@ -539,22 +528,6 @@ package Process.IPC is
     ---------------------------------------------------------------------------
     -- Supervisor Notification
     ---------------------------------------------------------------------------
-
-    ---------------------------------------------------------------------------
-    -- notifySupervisor
-    -- Send a non-blocking fault event to the supervisor of the given process.
-    -- Safe to call before acquiring Process.lock (respects lock ordering).
-    -- @param pid        - offending process
-    -- @param faultLabel - EVENT_CAP_FAULT or EVENT_PROCESS_FAULT
-    -- @param detail0    - syscall number or exception vector
-    -- @param detail1    - what was attempted (arg0 or fault address)
-    -- @param detail2    - additional context (arg1 or RIP)
-    ---------------------------------------------------------------------------
-    procedure notifySupervisor (pid        : ProcessID;
-                                faultLabel : Unsigned_32;
-                                detail0    : Unsigned_64;
-                                detail1    : Unsigned_64;
-                                detail2    : Unsigned_64);
 
     ---------------------------------------------------------------------------
     -- Shared futexes (IPC-010, Process.Futex, Futex_ABI)

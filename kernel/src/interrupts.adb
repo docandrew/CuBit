@@ -28,6 +28,7 @@ with Pic;
 with PerCpuData;
 with Process;
 with Process.IPC;
+with Process.Reports;
 with Serial;
 with Scheduler_Alarm;
 with TextIO; use TextIO;
@@ -433,7 +434,7 @@ is
                     print ("  Killing user process "); println (PerCPUData.getCurrentPID);
                     printRegs (frame);
                     TextIO.endPrivate;
-                    Process.IPC.notifySupervisor (
+                    Process.Reports.notifySupervisor (
                         pid        => PerCPUData.getCurrentPID,
                         faultLabel => IPC_Labels.EVENT_PROCESS_FAULT,
                         detail0    => Interfaces.Unsigned_64 (interruptNumber),

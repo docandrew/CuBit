@@ -46,6 +46,7 @@ with Process_Frames;
 with Kernel_Window;
 with Memory_Accounting;
 with Process.IPC;
+with Process.Reports;
 with Process.User_Memory;
 with Process_Launch;
 with Process_Identities;
@@ -200,7 +201,7 @@ package body Syscall.Admin is
         end if;
 
         if not hasCap then
-            Process.IPC.notifySupervisor (
+            Process.Reports.notifySupervisor (
                 callerPID,
                 IPC_Labels.EVENT_CAP_FAULT,
                 Unsigned_64 (SyscallNumber'Enum_Rep (
