@@ -158,22 +158,6 @@ package body Futex_Queues with SPARK_Mode => On is
         pragma Assert (Contains (C, W));
     end Prove_Other_Life_Kept;
 
-    procedure Prove_Private_Kept (B : Bucket; W : Waiter_Id;
-                                  Slot, Generation : Unsigned_32; Address : Unsigned_64) is
-        C : Bucket := B;
-        S, F : Slot_Index;
-        Ok : Boolean;
-        Removed : Waiter_Id;
-    begin
-        Enqueue (C, W, Private_Key (Slot, Address), C.Next_Ticket, S, Ok);
-        if not Ok then
-            return;
-        end if;
-        Remove_Of_Life (C, Slot, Generation, Removed, F);
-        pragma Assert (Removed /= W);
-        pragma Assert (Contains (C, W));
-    end Prove_Private_Kept;
-
     procedure Prove_FIFO (B : Bucket; K : Key; W1, W2 : Waiter_Id) is
         C : Bucket := B;
         S1, S2, F : Slot_Index;

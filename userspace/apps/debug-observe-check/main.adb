@@ -97,8 +97,8 @@ procedure Main is
    Word_Offset   : constant := 16#900#;
    Marker        : constant Unsigned_64 := 16#4B52_414D_4B47_4244#;   --  "DBGKMARK"
    Futex_Value   : constant := 16#2A#;
-   Wait_Call     : constant := 149;   --  Wait_ABI.System_Call_Number
-   Futex_Form    : constant := 8;     --  Wait_ABI.Futex_Sources
+   Wait_Call     : constant := 150;   --  Notification_ABI.Wait_System_Call
+   Futex_Form    : constant := 2;     --  Notification_ABI.Private_Word
    After_Syscall : constant := 92;    --  the JMP after the SYSCALL
 
    type Register_Values is array (1 .. 6) of Unsigned_64;
@@ -158,12 +158,14 @@ procedure Main is
          P := P + 10;
       end loop;
       --  P = Code + 60: the loop.
-      Put (P, 16#B8#, 1); Put (P + 1, Wait_Call, 4);            --  mov eax, 149
-      Put (P + 5, 16#BF#, 1); Put (P + 6, Futex_Form, 4);       --  mov edi, 8
-      Put (P + 10, 16#C6C748#, 3); Put (P + 13, 16#FFFF_FFFF#, 4);  --  mov rsi, -1 (Forever)
-      --  lea rdx, [rip + disp32]: the next instruction is at Code + 84.
-      Put (P + 17, 16#158D48#, 3); Put (P + 20, Word_Offset - 84, 4);
-      Put (P + 24, 16#BA41#, 2); Put (P + 26, Futex_Value, 4);  --  mov r10d, 0x2A
+      --  Wait (Private_Word, the word, its value, Forever).
+      Put (P, 16#B8#, 1); Put (P + 1, Wait_Call, 4);            --  mov eax, 150
+      Put (P + 5, 16#BF#, 1); Put (P + 6, Futex_Form, 4);       --  mov edi, 2
+      --  lea rsi, [rip + disp32]: the next instruction is at Code + 77.
+      Put (P + 10, 16#358D48#, 3); Put (P + 13, Word_Offset - 77, 4);
+      Put (P + 17, 16#C2C749#, 3); Put (P + 20, 16#FFFF_FFFF#, 4);  --  mov r10, -1 (Forever)
+      Put (P + 24, 16#BA#, 1); Put (P + 25, Futex_Value, 4);    --  mov edx, 0x2A
+      Put (P + 29, 16#90#, 1);                                  --  nop
       Put (P + 30, 16#050F#, 2);                                --  syscall
       Put (P + 32, 16#DEEB#, 2);                                --  jmp back 34 bytes
       Put (Code + Marker_Offset, Marker, 8);
@@ -268,9 +270,9 @@ begin
                 "Registers: a blocked thread's callee-saved registers are exact");
          Check (Reg (D.RIP) = Load_Address + After_Syscall
                 and then Reg (D.RAX) = Wait_Call and then Reg (D.RDI) = Futex_Form
-                and then Reg (D.RSI) = Unsigned_64'Last
-                and then Reg (D.RDX) = Load_Address + Word_Offset
-                and then Reg (D.R10) = Futex_Value,
+                and then Reg (D.RSI) = Load_Address + Word_Offset
+                and then Reg (D.RDX) = Futex_Value
+                and then Reg (D.R10) = Unsigned_64'Last,
                 "Registers: RIP follows the SYSCALL, and its arguments are kept");
          Check (Reg (D.Saved_Frame) = Unsigned_64 (D.Frame_Kind'Enum_Rep (D.System_Call))
                 and then Reg (D.Frame_Detail) = Wait_Call

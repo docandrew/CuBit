@@ -4,6 +4,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Wait_ABI;
+with Notification_ABI;
 with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -515,9 +516,13 @@ package body CuBit.Libc_Descriptors is
       Ignore_Result : Unsigned_64;
    begin
       Ignore := Atomic_Add (Waiters'Address, 1, Sequentially_Consistent);
+      --  The process's private futex table (Notification_ABI), microseconds.
       Ignore_Result := CuBit.Kernel_Calls.Call
-        (K.Wait, Wait_ABI.Futex_Sources, Unsigned_64 (Deadline), Value_Of (Events'Address),
-         Unsigned_64 (Unsigned_32'Mod (Sequence)));
+        (K.Wait_One, Notification_ABI.Private_Word, Value_Of (Events'Address),
+         Unsigned_64 (Unsigned_32'Mod (Sequence)),
+         (if Unsigned_64 (Deadline) = K.Forever then Notification_ABI.Forever
+          elsif Unsigned_64 (Deadline) > (K.Forever - 1) / 1_000 then Notification_ABI.Forever
+          else Unsigned_64 (Deadline) * 1_000));
       Ignore := Atomic_Add (Waiters'Address, Minus_One, Sequentially_Consistent);
    end Readiness_Wait;
 
@@ -1411,8 +1416,8 @@ package body CuBit.Libc_Descriptors is
                --  Sleep: a futex wait on a word nobody wakes, until the next
                --  millisecond.
                Ignore := CuBit.Kernel_Calls.Call
-                 (K.Wait, Wait_ABI.Futex_Sources, CuBit.Published_Clock.Milliseconds + 1,
-                  Value_Of (Never'Address), 0);
+                 (K.Wait_One, Notification_ABI.Private_Word, Value_Of (Never'Address), 0,
+                  (CuBit.Published_Clock.Milliseconds + 1) * 1_000);
             end if;
          end loop;
       end;

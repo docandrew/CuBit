@@ -46,15 +46,14 @@ procedure Main is
    end record;
    Threads : array (Waiter_Id range 1 .. 200) of Where;
 
-   --  Private keys, and shared keys (IPC-010): two lives of grant slot 9
-   --  (offsets 0 and 64 of the first), and slot 10. Private (9, 0) has the
-   --  same numbers as a shared key and is another key.
+   --  Shared keys (IPC-010): six lives of grant slot 1 (one bucket, so it
+   --  fills), two lives of grant slot 9 (offsets 0 and 64 of the first),
+   --  and slot 10.
    Keys : constant array (1 .. 10) of Key :=
-     [Private_Key (1, 16#1000#), Private_Key (1, 16#1004#), Private_Key (2, 16#1000#),
-      Private_Key (3, 16#7FFF_FFFF_FFFC#), Private_Key (1, 16#2000_0000#),
-      Private_Key (2, 16#2000_0004#), Shared_Key (9, 1, 0), Shared_Key (9, 1, 64),
+     [Shared_Key (1, 1, 16#1000#), Shared_Key (1, 2, 16#1004#), Shared_Key (1, 3, 16#1000#),
+      Shared_Key (1, 4, 16#7FFF_FFFC#), Shared_Key (1, 5, 16#2000_0000#),
+      Shared_Key (1, 6, 16#2000_0004#), Shared_Key (9, 1, 0), Shared_Key (9, 1, 64),
       Shared_Key (9, 2, 0), Shared_Key (10, 1, 0)];
-   Private_9 : constant Key := Private_Key (9, 0);
 
    procedure Ref_Remove (B : Bucket_Index; W : Waiter_Id) is
    begin
@@ -146,26 +145,24 @@ begin
             end;
          elsif Op = 10 then
             --  A grant life ends: every waiter of it, any offset, and none
-            --  of any other key (another life, another grant, private).
-            if K.Space = Shared_Space then
-               loop
-                  declare
-                     Woken : Waiter_Id;
-                     From  : Slot_Index;
-                  begin
-                     Remove_Of_Life (Buckets (B), K.Owner, K.Generation, Woken, From);
-                     exit when Woken = No_Waiter;
-                     pragma Assert (Threads (Woken).Waiting and then Threads (Woken).S = From);
-                     Threads (Woken).Waiting := False;
-                     Ref_Remove (B, Woken);
-                     Revoked := Revoked + 1;
-                  end;
-               end loop;
-               for I in 1 .. Ref (B).N loop
-                  pragma Assert (not Of_Life (Ref (B).L (I).K, K.Owner, K.Generation));
-               end loop;
-               Check_Agrees (B);
-            end if;
+            --  of any other key (another life, another grant).
+            loop
+               declare
+                  Woken : Waiter_Id;
+                  From  : Slot_Index;
+               begin
+                  Remove_Of_Life (Buckets (B), K.Owner, K.Generation, Woken, From);
+                  exit when Woken = No_Waiter;
+                  pragma Assert (Threads (Woken).Waiting and then Threads (Woken).S = From);
+                  Threads (Woken).Waiting := False;
+                  Ref_Remove (B, Woken);
+                  Revoked := Revoked + 1;
+               end;
+            end loop;
+            for I in 1 .. Ref (B).N loop
+               pragma Assert (not Of_Life (Ref (B).L (I).K, K.Owner, K.Generation));
+            end loop;
+            Check_Agrees (B);
          else
             --  Timeout or kill of a waiting thread, via its recorded slot.
             if Threads (W).Waiting then
@@ -209,12 +206,9 @@ begin
    --  The proved lemmas, executed.
    Prove_FIFO (Empty_Bucket, Keys (1), 5, 6);
    Prove_Key_Isolation (Empty_Bucket, Keys (1), Keys (2), 7);
-   Prove_Key_Isolation (Empty_Bucket, Private_9, Keys (9), 8);
    Prove_Life_Waiter_Taken (Empty_Bucket, 9, 9, 1, 64);
    Prove_Other_Life_Kept (Empty_Bucket, 9, 9, 1, 9, 2, 0);
    Prove_Other_Life_Kept (Empty_Bucket, 9, 9, 1, 10, 1, 0);
-   Prove_Private_Kept (Empty_Bucket, 9, 9, 1, 0);
-   pragma Assert (Private_9 /= Keys (9));
    pragma Assert (Bucket_Of (Keys (7)) = Bucket_Of (Keys (8)) and then
                   Bucket_Of (Keys (7)) = Bucket_Of (Keys (9)));
    Futex_Protocol.Prove_Racing_Store_Covered (0, 1);

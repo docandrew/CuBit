@@ -26,9 +26,6 @@ enum Syscall {
     CallViaEndpointCapability = 128,
     ThreadCreate = 90,
     ThreadExit = 91,
-    /// The one wait (ABI-002 slice 2, shared/capabilities/wait_abi.ads).
-    Wait = 149,
-    FutexWake = 93,
     /// IPC revision 2 (shared/capabilities/notification_abi.ads): Wait on
     /// one object, Wake it.
     WaitOne = 150,

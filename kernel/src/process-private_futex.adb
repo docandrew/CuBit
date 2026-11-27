@@ -24,21 +24,6 @@ package body Process.Private_Futex is
     function wordOk (address : Unsigned_64) return Boolean is
       (address /= 0 and then address mod 4 = 0 and then address < User_Page_Walk.User_Limit);
 
-    -- Caller holds pid's privateFutexLock; t was just taken from its table.
-    procedure finish (t : ThreadID; how : One_Wait_Status; sync : Boolean := False) is
-    begin
-        threadtab (t).oneWaitStatus := how;
-        Spinlocks.enterCriticalSection (lock);
-        if threadtab (t).state = FUTEXWAITING then
-            if sync then
-                readySync (t);
-            else
-                ready (t);
-            end if;
-        end if;
-        Spinlocks.exitCriticalSection (lock);
-    end finish;
-
     function wait (address, expected : Unsigned_64; timed, passed : Boolean;
                    tsc : Unsigned_64; handOff : Boolean := False) return Unsigned_64
     is
@@ -119,8 +104,8 @@ package body Process.Private_Futex is
             Spinlocks.enterCriticalSection (proctab (pid).privateFutexLock);
             PF.Take_Batch (proctab (pid).privateFutexes, address, want, everyone, taken, n);
             for i in 1 .. n loop
-                finish (ThreadID (taken (i)), Wait_Woken,
-                        sync => sync and then woken = 0 and then i = 1);
+                Wait_Timers.Finish (ThreadID (taken (i)), Wait_Woken,
+                                    sync => sync and then woken = 0 and then i = 1);
             end loop;
             -- The batch's threads are readied under the lock, so the reaper
             -- (Cancel takes it) never frees one still being finished here.
@@ -148,7 +133,7 @@ package body Process.Private_Futex is
                        PF.Thread_Ref (t), removed);
             -- Not yet enqueued (removed False): the thread sees this under
             -- the lock and does not block.
-            finish (t, Wait_Timed_Out);
+            Wait_Timers.Finish (t, Wait_Timed_Out);
         end if;
         Spinlocks.exitCriticalSection (proctab (pid).privateFutexLock);
     end Time_Out;

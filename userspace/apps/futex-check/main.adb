@@ -94,11 +94,12 @@ begin
    --  Futex argument and value checks.
    Check (Futex_Wait (Mutex'Access, 5) = FUTEX_RETRY,
           "wait on a changed value returns at once");
-   Check (CuBit.Waits.Wait (Wait_ABI.Futex_Sources, FOREVER, Addr (Mutex'Access) + 1, 0) = FUTEX_FAULT,
+   Check (CuBit.Waits.Futex_Wait (To_Address (Integer_Address (Addr (Mutex'Access) + 1)), 0, FOREVER)
+            = FUTEX_FAULT,
           "unaligned futex word refused");
-   Check (CuBit.Waits.Wait (Wait_ABI.Futex_Sources, FOREVER, 16#FFFF_8000_0000_0000#, 0) = FUTEX_FAULT,
+   Check (CuBit.Waits.Futex_Wait (To_Address (16#FFFF_8000_0000_0000#), 0, FOREVER) = FUTEX_FAULT,
           "kernel-half futex word refused");
-   Check (CuBit.Waits.Wait (Wait_ABI.Futex_Sources, FOREVER, 16#0000_7000_0000_0000#, 0) = FUTEX_FAULT,
+   Check (CuBit.Waits.Futex_Wait (To_Address (16#0000_7000_0000_0000#), 0, FOREVER) = FUTEX_FAULT,
           "unmapped futex word refused");
    Check (Futex_Wake (Mutex'Access, 1) = 0, "wake with no waiters wakes none");
    Start := Now_Ms;

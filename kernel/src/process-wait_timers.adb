@@ -7,6 +7,7 @@ with Wait_Deadlines;
 with x86;
 with Process.Notifications;
 with Process.Private_Futex;
+with Process.Futex;
 
 package body Process.Wait_Timers is
 
@@ -84,6 +85,9 @@ package body Process.Wait_Timers is
         Spinlocks.enterCriticalSection (heapLocks (cpu));
         threadtab (me).oneWaitCPU := cpu;
         threadtab (me).oneWaitTimed := True;
+        threadtab (me).oneWaitDeadlineMs :=
+          (if Time.tscPerDuration = 0 or else tsc <= x86.rdtsc then Time.msTicks
+           else Time.msTicks + (tsc - x86.rdtsc) / Time.tscPerDuration / 1_000);
         WD.Insert (heaps (cpu), WD.Thread_Ref (me), tsc);
         if WD.Earliest (heaps (cpu)) = WD.Thread_Ref (me) then
             armFor (cpu);
@@ -106,12 +110,29 @@ package body Process.Wait_Timers is
         Spinlocks.exitCriticalSection (heapLocks (cpu));
     end Disarm;
 
+    procedure Finish (t : ThreadID; how : One_Wait_Status; bits : Unsigned_64 := 0;
+                      sync : Boolean := False) is
+    begin
+        threadtab (t).oneWaitBits := bits;
+        threadtab (t).oneWaitStatus := how;
+        Spinlocks.enterCriticalSection (lock);
+        if threadtab (t).state = FUTEXWAITING then
+            if sync then
+                readySync (t);
+            else
+                ready (t);
+            end if;
+        end if;
+        Spinlocks.exitCriticalSection (lock);
+    end Finish;
+
     -- Caller holds heapLocks of t's heap; t was just taken from it.
     procedure timeOut (t : ThreadID) is
     begin
         case threadtab (t).oneWaitKind is
             when Notification_Wait => Notifications.Time_Out (t);
             when Private_Word_Wait => Private_Futex.Time_Out (t);
+            when Shared_Word_Wait  => Futex.Time_Out (t);
             when No_One_Wait       => null;
         end case;
     end timeOut;
@@ -148,7 +169,8 @@ package body Process.Wait_Timers is
         case threadtab (t).oneWaitKind is
             when Notification_Wait => Notifications.Cancel (t);
             when Private_Word_Wait => Private_Futex.Cancel (t);
-            when No_One_Wait       => null;
+            -- The reaper's Futex.cancelWait has withdrawn a shared wait.
+            when Shared_Word_Wait | No_One_Wait => null;
         end case;
         Notifications.Unbind_Thread_Of (t);
     end Cancel;

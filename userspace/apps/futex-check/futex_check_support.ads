@@ -10,7 +10,6 @@ package Futex_Check_Support is
 
    SYSCALL_THREAD_CREATE : constant Unsigned_64 := 90;
    SYSCALL_THREAD_EXIT   : constant Unsigned_64 := 91;
-   SYSCALL_FUTEX_WAKE    : constant Unsigned_64 := 93;
 
    FUTEX_WOKEN     : constant Unsigned_64 := 0;
    FUTEX_RETRY     : constant Unsigned_64 := 1;
@@ -37,7 +36,7 @@ package Futex_Check_Support is
      (CuBit.Waits.Futex_Wait (W.all'Address, Unsigned_64 (Expected), Deadline));
 
    function Futex_Wake (W : access Word; Count : Unsigned_64) return Unsigned_64 is
-     (syscall (SYSCALL_FUTEX_WAKE, Addr (W), Count));
+     (CuBit.Waits.Futex_Wake (CuBit.Waits.Private_Word (W.all'Address), Count));
 
    --  A futex mutex (0 unlocked, 1 locked, 2 locked with waiters), the
    --  protocol Rust's std uses.

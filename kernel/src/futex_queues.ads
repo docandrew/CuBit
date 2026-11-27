@@ -4,9 +4,8 @@
 --
 -- @summary Futex wait queues (docs/threads.md)
 --
--- Pure SPARK data structure for the kernel's futex buckets. A futex key is
--- private (process, user address) or shared (grant slot, grant life,
--- offset; IPC-010), Futex_Keys.
+-- Pure SPARK data structure for the kernel's shared futex buckets. A futex
+-- key is (grant slot, grant life, offset; IPC-010), Futex_Keys.
 -- Each bucket holds a bounded set of waiters. Every waiter carries a ticket
 -- from its bucket's counter, so waking the lowest ticket with a key wakes
 -- that key's oldest waiter (FIFO per key).
@@ -167,7 +166,7 @@ package Futex_Queues with SPARK_Mode => On is
 
     -- Whether K is a shared key of this life of grant slot Slot.
     function Of_Life (K : Key; Slot, Generation : Unsigned_32) return Boolean is
-      (K.Space = Shared_Space and then K.Owner = Slot and then K.Generation = Generation);
+      (K.Owner = Slot and then K.Generation = Generation);
 
     function Has_Life (B : Bucket; Slot, Generation : Unsigned_32) return Boolean is
       (for some I in Slot_Index =>
@@ -236,15 +235,5 @@ package Futex_Queues with SPARK_Mode => On is
         Pre  => Well_Formed (B) and then W /= No_Waiter and then not Contains (B, W) and then
                 (Other_Slot /= Slot or else Generation /= Other) and then
                 B.Next_Ticket < Unsigned_64'Last;
-
-    -- ... nor a private waiter whose numbers match (a live grant's life is
-    -- never zero, a private key's always is).
-    procedure Prove_Private_Kept (B : Bucket; W : Waiter_Id;
-                                  Slot, Generation : Unsigned_32; Address : Unsigned_64)
-    with
-        Ghost,
-        Global => null,
-        Pre  => Well_Formed (B) and then W /= No_Waiter and then not Contains (B, W) and then
-                Generation /= 0 and then B.Next_Ticket < Unsigned_64'Last;
 
 end Futex_Queues;

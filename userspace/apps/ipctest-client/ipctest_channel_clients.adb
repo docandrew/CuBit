@@ -2,7 +2,7 @@
 --  ipctest-client's shared channel clients (CAP-002 step 3).
 ------------------------------------------------------------------------------
 pragma Ada_2022;
-with Wait_ABI;
+with CuBit.Waits;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Deadlines.Clock;
 with CuBit.Kernel_ABI;
@@ -68,8 +68,7 @@ package body IPCtest_Channel_Clients is
       loop
          V := Unsigned_32 (Worker_Exit);
          exit when V = 0;
-         Ignore := KC.Call (KA.Wait, Wait_ABI.Futex_Sources, Wait_ABI.Forever,
-                            Unsigned_64 (To_Integer (Worker_Exit'Address)), Unsigned_64 (V));
+         Ignore := CuBit.Waits.Futex_Wait (Worker_Exit'Address, Unsigned_64 (V), CuBit.Waits.Forever);
       end loop;
    end Join_Worker;
 

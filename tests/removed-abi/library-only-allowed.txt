@@ -119,13 +119,11 @@ tests/stdin-inlet/check/main.adb
 tests/ui-repair-hit-map/native-menu/main.adb
 tests/userspace-allocator/cubit/cualloc-bench.c
 userspace/allocator/process/cualloc_native.adb
-userspace/apps/ada-runtime-check/exception_threads.adb
 userspace/apps/avx-check/main.adb
 userspace/apps/bench-ipc-client/main.adb
 userspace/apps/bench-ipc-server/main.adb
 userspace/apps/capability-test/main.adb
 userspace/apps/clock-check/main.adb
-userspace/apps/clock-keeper-check/main.adb
 userspace/apps/cpu-times-check/main.adb
 userspace/apps/desktop-check/main.adb
 userspace/apps/devmem-check/main.adb
@@ -137,7 +135,6 @@ userspace/apps/ipctest-server/main.adb
 userspace/apps/launch-gate-check/main.adb
 userspace/apps/mov-ss-check/main.adb
 userspace/apps/platform-pool-check/main.adb
-userspace/apps/secondary-stack-check/stack_threads.adb
 userspace/apps/storage-check/main.adb
 userspace/apps/trap-flag-check/main.adb
 userspace/lib/debug/stub-rs/src/lib.rs

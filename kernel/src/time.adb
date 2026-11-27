@@ -13,7 +13,6 @@ with PerCPUData;
 with Process;
 with Process.IPC;
 with Process.Stuck_Calls;
-with Process.Futex;
 with Process.Wait_Timers;
 with VM_Objects;
 with Process.Queues;
@@ -342,7 +341,6 @@ is
             then
                 Process.Stuck_Calls.reportStuckCalls (Time.msTicks);
             end if;
-            Process.Futex.expireDeadlines (Time.msTicks);
             VM_Objects.Expire_Halts (Time.msTicks);
         end if;
     end keepTime;

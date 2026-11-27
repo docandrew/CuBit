@@ -44,6 +44,13 @@ package Process.Wait_Timers is
     -- This CPU's timer: time out the waits that are due by now (TSC).
     procedure Expire (cpu : Natural; now : Unsigned_64);
 
+    -- Caller holds the lock of the object t waits on (or waited on): its
+    -- wait ended (how, with bits); t runs again if it blocked, on this CPU
+    -- when sync (readySync). The object's lock is held until t is readied,
+    -- so the reaper (Cancel takes it) never frees a thread being finished.
+    procedure Finish (t : ThreadID; how : One_Wait_Status; bits : Unsigned_64 := 0;
+                      sync : Boolean := False);
+
     -- The reaper: a thread that will not run again leaves its heap, its
     -- object and its bound notification. Not called with Process.lock held.
     procedure Cancel (t : ThreadID);

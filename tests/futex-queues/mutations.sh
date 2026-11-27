@@ -51,14 +51,11 @@ mutate load-ignores-end futex_protocol.adb 's/Seen => S.Value, Live => not S.End
 # A sweep that leaves sleepers.
 mutate sweep-leaves-sleepers futex_protocol.adb '/procedure Sweep (S : in out State) is/,/end Sweep;/ s/if S.T (I).P = Sleeping then/if False then/' || fail=1
 # Ending a life wakes waiters of every life of the slot.
-mutate revoke-any-life futex_queues.ads 's/(K.Space = Shared_Space and then K.Owner = Slot and then K.Generation = Generation)/(K.Space = Shared_Space and then K.Owner = Slot)/' || fail=1
+mutate revoke-any-life futex_queues.ads 's/(K.Owner = Slot and then K.Generation = Generation)/(K.Owner = Slot)/' || fail=1
 # Ending a life wakes that life's waiters of every grant slot.
-# (Dropping the space check alone is an equivalent mutant: a private key's
-# life is always zero and a live grant's never is; Prove_Private_Kept
-# states that.)
-mutate revoke-any-slot futex_queues.ads 's/(K.Space = Shared_Space and then K.Owner = Slot and then K.Generation = Generation)/(K.Space = Shared_Space and then K.Generation = Generation)/' || fail=1
+mutate revoke-any-slot futex_queues.ads 's/(K.Owner = Slot and then K.Generation = Generation)/(K.Generation = Generation)/' || fail=1
 # A grant's shared keys spread over buckets (a one-bucket sweep would miss some).
-mutate grant-spread futex_keys.adb 's/                return Grant_Bucket (K.Owner);/                return Bucket_Index ((Unsigned_64 (K.Owner) + K.Address) mod Bucket_Count);/' || fail=1
+mutate grant-spread futex_keys.adb 's/return Bucket_Index is (Grant_Bucket (K.Owner));/return Bucket_Index is (Bucket_Index ((Unsigned_64 (K.Owner) + K.Address) mod Bucket_Count));/' || fail=1
 # Wake words (IPC-010 option B).
 # The Ready_Word wait sleeps although a wake of its word is pending.
 mutate word-ignores-flag wake_word_protocol.adb 's/Back := S.Activity or else S.Flag or else S.Value \/= E;/Back := S.Activity or else S.Value \/= E;/' || fail=1

@@ -21,9 +21,8 @@
 --  operand.
 --
 --  Wake-plus-wait (IPC-010, the futex counterpart of Reply_Wait): with
---  Wake_First, the futex form first wakes one waiter of the futex arg5
---  names (a private address, or with Wake_Shared a Futex_ABI shared
---  word), then waits, in one kernel entry. The wakee is placed on this CPU
+--  Wake_First and Wake_Shared, the futex form first wakes one waiter of
+--  the Futex_ABI shared word arg5 names, then waits, in one kernel entry. The wakee is placed on this CPU
 --  without preempting the caller, and the caller's sleep switches straight
 --  to it if it is still ready here (no slice donation; deadline order
 --  holds). The wake happens whatever the wait then answers. Wake_First is
@@ -63,9 +62,11 @@
 --              when the word no longer holds C or such a wake came since
 --              the last was taken (it is taken now), checked under the
 --              same lock as the queues: no wake is lost between the two.
---    Futex     {Futex_Word}: sleep while the 32-bit word at A holds B.
---              With Shared_Futex, A is a Futex_ABI shared word (a grant's
---              slot and offset) of a grant this process is a party of.
+--    Futex     {Futex_Word} + Shared_Futex: sleep while the 32-bit word A
+--              holds B. A is a Futex_ABI shared word (a grant's slot and
+--              offset) of a grant this process is a party of. A private
+--              word is refused (Futex_Fault): it waits in its process's own
+--              table, Notification_ABI's Wait (IPC revision 2).
 --              Result: Futex_Woken, Futex_Retry, Futex_Timed_Out,
 --              Futex_Revoked (shared: the grant's life ended) or
 --              Futex_Fault (also: not a party of a live grant).

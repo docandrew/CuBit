@@ -5,8 +5,6 @@ with Futex_ABI;
 with Futex_Queues;
 with Memory_Grants;
 with System.Machine_Code;
-with Notification_ABI;
-with Process.Private_Futex;
 with Process.Wait_Timers;
 
 package body Process.Futex is
@@ -38,11 +36,6 @@ package body Process.Futex is
     -- that bucket's keys (their overflow entries are added under it).
     overflowCount : Natural := 0 with Atomic;
 
-    -- Waits with a deadline, per bucket (overflow waiters count in their
-    -- key's bucket): lets the tick skip idle buckets.
-    deadlines   : array (Bucket_Index) of Natural := (others => 0)
-      with Atomic_Components;
-
     -- Tickets for FIFO order, drawn under the lock of the structure the
     -- waiter joins; a key's waiters are always enqueued under its bucket
     -- lock, so their tickets follow their arrival order.
@@ -62,18 +55,17 @@ package body Process.Futex is
     -- How a waiter's wait ended.
     type Ending is (By_Wake, By_Timeout, By_Revocation);
 
-    -- Caller holds bucketLocks (b); t was just removed from its structure.
+    -- Caller holds t's bucket lock; t was just removed from its structure.
     -- The bucket lock is held until the thread is readied, so cancelWait
     -- (which takes it) never frees a thread still being finished here.
     -- sync: the waker is about to sleep (wake-plus-wait): place t on this
     -- CPU for a direct switch (readySync).
-    procedure finishWait (t : ThreadID; b : Bucket_Index; how : Ending;
-                          sync : Boolean := False) is
+    procedure finishWait (t : ThreadID; how : Ending; sync : Boolean := False) is
     begin
-        if threadtab (t).futexDeadlineActive then
-            threadtab (t).futexDeadlineActive := False;
-            deadlines (b) := deadlines (b) - 1;
-        end if;
+        threadtab (t).oneWaitStatus := (case how is
+                                          when By_Wake       => Wait_Woken,
+                                          when By_Timeout    => Wait_Timed_Out,
+                                          when By_Revocation => Wait_Ended);
         threadtab (t).futexTimedOut := how = By_Timeout;
         threadtab (t).futexRevoked := how = By_Revocation;
         threadtab (t).futexWaiting := False;
@@ -106,12 +98,11 @@ package body Process.Futex is
         end if;
     end removeWaiter;
 
-    -- The key and bucket of a word the calling process names, and where
-    -- the word is in its address space. A shared word is resolved under
-    -- the bucket lock, which the caller then holds (locked); a private
-    -- word's bucket is not locked here (locked False). ok False: malformed,
-    -- or not a party of a live grant.
-    procedure lockWord (pid : ProcessID; shared : Boolean; word : Unsigned_64;
+    -- The key and bucket of a shared word the calling process names, and
+    -- where the word is in its address space, resolved under the bucket
+    -- lock, which the caller then holds (locked). ok False: malformed, or
+    -- not a party of a live grant.
+    procedure lockWord (pid : ProcessID; word : Unsigned_64;
                         k : out Key; b : out Bucket_Index; address : out Unsigned_64;
                         owner : out ProcessID; ownerAddress : out Unsigned_64;
                         locked : out Boolean; ok : out Boolean) is
@@ -124,15 +115,7 @@ package body Process.Futex is
         ownerAddress := 0;
         locked := False;
         ok := False;
-        if pid = NO_PROCESS then
-            return;
-        end if;
-        -- Private words live in their process's own table (Process.
-        -- Private_Futex, IPC revision 2): only shared words reach here.
-        if not shared then
-            return;
-        end if;
-        if not Futex_ABI.Well_Formed (word) then
+        if pid = NO_PROCESS or else not Futex_ABI.Well_Formed (word) then
             return;
         end if;
         b := Grant_Bucket (Unsigned_32 (Futex_ABI.Slot_Of (word)));
@@ -185,23 +168,22 @@ package body Process.Futex is
     function wakeKeyLocked (k : Key; count : Unsigned_64; sync : Boolean)
       return Unsigned_64
     is
-        b : constant Bucket_Index := Bucket_Of (k);
         woken : Unsigned_64 := 0;
         w : Waiter_Id;
     begin
         while woken < count loop
             wakeOldest (k, w);
             exit when w = No_Waiter;
-            finishWait (ThreadID (w), b, By_Wake, sync => sync and then woken = 0);
+            finishWait (ThreadID (w), By_Wake, sync => sync and then woken = 0);
             woken := woken + 1;
         end loop;
         return woken;
     end wakeKeyLocked;
 
-    -- Wake up to count waiters of the word the calling process names.
-    -- WAKE_REFUSED: malformed, or (shared) not a party of a live grant.
-    function wakeWordOf (pid : ProcessID; shared : Boolean; word, count : Unsigned_64;
-                         sync : Boolean) return Unsigned_64
+    -- Wake up to count waiters of the shared word the calling process
+    -- names. WAKE_REFUSED: malformed, or not a party of a live grant.
+    function wakeWordOf (pid : ProcessID; word, count : Unsigned_64; sync : Boolean)
+      return Unsigned_64
     is
         k : Key;
         b : Bucket_Index;
@@ -211,27 +193,19 @@ package body Process.Futex is
         locked, ok : Boolean;
         woken : Unsigned_64;
     begin
-        if not shared then
-            woken := Private_Futex.wake (pid, word, count, sync);
-            return (if woken = Notification_ABI.Bad_Argument then WAKE_REFUSED else woken);
-        end if;
-        lockWord (pid, shared, word, k, b, address, owner, ownerAddress, locked, ok);
+        lockWord (pid, word, k, b, address, owner, ownerAddress, locked, ok);
         if not ok then
             if locked then
                 Spinlocks.exitCriticalSection (bucketLocks (b));
             end if;
             return WAKE_REFUSED;
         end if;
-        if not locked then
-            Spinlocks.enterCriticalSection (bucketLocks (b));
-        end if;
         woken := wakeKeyLocked (k, count, sync);
         Spinlocks.exitCriticalSection (bucketLocks (b));
         -- The word's owner may have named it as its wake word (IPC-010
         -- option B): its Ready wait and its receive wake too.
         if woken < count and then
-           IPC.noteWakeWord ((if shared then owner else pid), ownerAddress,
-                             sync => sync and then woken = 0)
+           IPC.noteWakeWord (owner, ownerAddress, sync => sync and then woken = 0)
         then
             woken := woken + 1;
         end if;
@@ -242,7 +216,7 @@ package body Process.Futex is
     -- enqueued under bucketLocks (b), which the caller holds and this
     -- releases. handOff: switch to this thread's sync wakee on sleeping.
     function waitLocked (pid : ProcessID; k : Key; b : Bucket_Index;
-                         address, expected, deadlineMs : Unsigned_64;
+                         address, expected : Unsigned_64; passed : Boolean;
                          owner : ProcessID; handOff : Boolean) return Unsigned_64
     is
         me  : constant ThreadID := PerCPUData.getCurrentThread;
@@ -252,19 +226,15 @@ package body Process.Futex is
         smallSlot : Small.Slot_Index;
         largeSlot : Large.Slot_Index;
     begin
-        if k.Space = Shared_Space then
-            -- Through this process's mapping, of the grant owner's frame.
-            User_Memory.Load_Shared_Word32 (pid, owner, address, value, ok);
-        else
-            User_Memory.Load_Word32 (pid, address, value, ok);
-        end if;
+        -- Through this process's mapping, of the grant owner's frame.
+        User_Memory.Load_Shared_Word32 (pid, owner, address, value, ok);
         if not ok then
             Spinlocks.exitCriticalSection (bucketLocks (b));
             return FUTEX_FAULT;
         elsif Unsigned_64 (value) /= expected then
             Spinlocks.exitCriticalSection (bucketLocks (b));
             return FUTEX_RETRY;
-        elsif deadlineMs /= FOREVER and then Time.msTicks >= deadlineMs then
+        elsif passed or else threadtab (me).oneWaitStatus = Wait_Timed_Out then
             Spinlocks.exitCriticalSection (bucketLocks (b));
             return FUTEX_TIMED_OUT;
         end if;
@@ -290,11 +260,6 @@ package body Process.Futex is
         threadtab (me).futexBucket := b;
         threadtab (me).futexTimedOut := False;
         threadtab (me).futexRevoked := False;
-        if deadlineMs /= FOREVER then
-            threadtab (me).futexDeadlineMs := deadlineMs;
-            threadtab (me).futexDeadlineActive := True;
-            deadlines (b) := deadlines (b) + 1;
-        end if;
         threadtab (me).futexWaiting := True;
         -- Published before the bucket lock is released: a waker, which
         -- needs that lock, always finds this state.
@@ -330,85 +295,64 @@ package body Process.Futex is
         ownerAddress : Unsigned_64;
         locked, ok : Boolean;
         result : Unsigned_64;
+        timed : Boolean;
+        passed : Boolean := False;
+        tsc : Unsigned_64 := 0;
     begin
-        if pid = NO_PROCESS or else expected > Unsigned_64 (Unsigned_32'Last) then
+        -- Private words wait in their process's own table (Wait_One).
+        if pid = NO_PROCESS or else not shared or else (wakeFirst and then not wakeShared)
+          or else expected > Unsigned_64 (Unsigned_32'Last)
+        then
             return FUTEX_FAULT;
         end if;
         if wakeFirst then
             -- The hand-off's wake: one waiter, placed here, never lost
             -- (an ordinary wake under its bucket lock), whatever the wait
             -- then answers.
-            if wakeWordOf (pid, wakeShared, wakeWord, 1, sync => True) = WAKE_REFUSED then
+            if wakeWordOf (pid, wakeWord, 1, sync => True) = WAKE_REFUSED then
                 return FUTEX_FAULT;
             end if;
         end if;
-        if not shared then
-            -- A private word: its process's own table (IPC revision 2).
-            declare
-                tsc : Unsigned_64 := 0;
-                passed : Boolean := False;
-            begin
-                if deadlineMs /= FOREVER then
-                    Wait_Timers.Deadline_Of_Ms (deadlineMs, tsc, passed);
-                end if;
-                result := Private_Futex.wait
-                  (address => word, expected => expected, timed => deadlineMs /= FOREVER,
-                   passed => passed, tsc => tsc, handOff => wakeFirst);
-                threadtab (me).syncWakee := NO_THREAD;
-                return (if result = Notification_ABI.Bad_Argument then FUTEX_FAULT else result);
-            end;
+        -- A deadline joins this CPU's heap first (Process.Wait_Timers:
+        -- heap lock, then bucket lock); its expiry finds the bucket here.
+        timed := deadlineMs /= FOREVER;
+        if timed then
+            Wait_Timers.Deadline_Of_Ms (deadlineMs, tsc, passed);
+            timed := not passed;
         end if;
-        lockWord (pid, shared, word, k, b, address, owner, ownerAddress, locked, ok);
+        threadtab (me).oneWaitKind := Shared_Word_Wait;
+        threadtab (me).oneWaitStatus := Wait_Pending;
+        if Futex_ABI.Well_Formed (word) then
+            threadtab (me).futexBucket := Grant_Bucket (Unsigned_32 (Futex_ABI.Slot_Of (word)));
+        end if;
+        if timed then
+            Wait_Timers.Arm (me, tsc);
+        end if;
+        lockWord (pid, word, k, b, address, owner, ownerAddress, locked, ok);
         if not ok then
             if locked then
                 Spinlocks.exitCriticalSection (bucketLocks (b));
             end if;
-            threadtab (me).syncWakee := NO_THREAD;
-            return FUTEX_FAULT;
+            result := FUTEX_FAULT;
+        else
+            result := waitLocked (pid, k, b, address, expected, passed, owner,
+                                  handOff => wakeFirst);
         end if;
-        if not locked then
-            Spinlocks.enterCriticalSection (bucketLocks (b));
+        if timed then
+            Wait_Timers.Disarm (me);
         end if;
-        result := waitLocked (pid, k, b, address, expected, deadlineMs, owner,
-                              handOff => wakeFirst);
+        threadtab (me).oneWaitKind := No_One_Wait;
         -- A wait that did not sleep leaves the wakee, if any, to run when
         -- the scheduler finds it due, as after any readySync.
         threadtab (me).syncWakee := NO_THREAD;
         return result;
     end waitForm;
 
-    function wait (address, expected, deadlineMs : Unsigned_64)
-      return Unsigned_64 is
-    begin
-        return waitForm (shared => False, word => address, expected => expected,
-                         deadlineMs => deadlineMs, wakeFirst => False,
-                         wakeShared => False, wakeWord => 0);
-    end wait;
-
-    function wakeFor (pid : ProcessID; address, count : Unsigned_64)
-      return Unsigned_64
-    is
-        result : Unsigned_64;
-    begin
-        if pid = NO_PROCESS or else address mod 4 /= 0 then
-            return 0;
-        end if;
-        result := wakeWordOf (pid, False, address, count, sync => False);
-        return (if result = WAKE_REFUSED then 0 else result);
-    end wakeFor;
-
-    function wake (address, count : Unsigned_64) return Unsigned_64 is
-    begin
-        return wakeFor (PerCPUData.getCurrentPID, address, count);
-    end wake;
-
     function wakeSpace (word, count, space : Unsigned_64; sync : Boolean;
                         urgent : Boolean := False) return Unsigned_64 is
     begin
-        if space = Futex_ABI.Private_Space then
-            return wake (word, count);
-        elsif space = Futex_ABI.Shared_Space then
-            return wakeWordOf (PerCPUData.getCurrentPID, True, word, count, sync => sync);
+        if space = Futex_ABI.Shared_Space then
+            return wakeWordOf (PerCPUData.getCurrentPID, word, count, sync => sync);
         elsif space = Futex_ABI.Peer_Space then
             return IPC.wakePeer (PerCPUData.getCurrentPID, word, sync, urgent);
         else
@@ -429,7 +373,7 @@ package body Process.Futex is
         loop
             Small.Remove_Of_Life (buckets (b), slot, generation, w, from);
             exit when w = No_Waiter;
-            finishWait (ThreadID (w), b, By_Revocation);
+            finishWait (ThreadID (w), By_Revocation);
         end loop;
         if overflowCount > 0 then
             loop
@@ -440,7 +384,7 @@ package body Process.Futex is
                 end if;
                 Spinlocks.exitCriticalSection (overflowLock);
                 exit when w = No_Waiter;
-                finishWait (ThreadID (w), b, By_Revocation);
+                finishWait (ThreadID (w), By_Revocation);
             end loop;
         end if;
         Spinlocks.exitCriticalSection (bucketLocks (b));
@@ -460,15 +404,13 @@ package body Process.Futex is
         for bi in Bucket_Index loop
             Spinlocks.enterCriticalSection (bucketLocks (bi));
             for s in Small.Slot_Index loop
-                if buckets (bi).S (s).Used and then
-                   buckets (bi).S (s).K.Space = Shared_Space
-                then
+                if buckets (bi).S (s).Used then
                     k := buckets (bi).S (s).K;
                     if not IPC.sharedLifeLive (k.Owner, k.Generation) then
                         t := ThreadID (buckets (bi).S (s).Waiter);
                         removeWaiter (t, removed);
                         if removed then
-                            finishWait (t, bi, By_Revocation);
+                            finishWait (t, By_Revocation);
                         end if;
                     end if;
                 end if;
@@ -484,7 +426,7 @@ package body Process.Futex is
         Spinlocks.enterCriticalSection (deadOverflowLock);
         Spinlocks.enterCriticalSection (overflowLock);
         for s in Large.Slot_Index loop
-            if overflow.S (s).Used and then overflow.S (s).K.Space = Shared_Space then
+            if overflow.S (s).Used then
                 found := found + 1;
                 deadOverflow (found) := ThreadID (overflow.S (s).Waiter);
             end if;
@@ -500,12 +442,11 @@ package body Process.Futex is
                 Spinlocks.enterCriticalSection (overflowLock);
                 k := overflow.S (Large.Slot_Index (threadtab (t).futexSlot)).K;
                 Spinlocks.exitCriticalSection (overflowLock);
-                if k.Space = Shared_Space and then
-                   not IPC.sharedLifeLive (k.Owner, k.Generation)
+                if not IPC.sharedLifeLive (k.Owner, k.Generation)
                 then
                     removeWaiter (t, removed);
                     if removed then
-                        finishWait (t, b, By_Revocation);
+                        finishWait (t, By_Revocation);
                     end if;
                 end if;
             end if;
@@ -514,76 +455,24 @@ package body Process.Futex is
         Spinlocks.exitCriticalSection (deadOverflowLock);
     end endDeadSharedLives;
 
-    -- Expired overflow waiters found by one pass (BSP tick only).
-    expiredOverflow : array (1 .. Futex_Keys.Max_Waiter) of ThreadID;
-
-    procedure expireDeadlines (nowMs : Unsigned_64) is
-        t : ThreadID;
+    procedure Time_Out (t : ThreadID) is
+        b : constant Bucket_Index := threadtab (t).futexBucket;
         removed : Boolean;
-        anyTimed : Boolean := False;
-        found : Natural := 0;
-        b : Bucket_Index;
     begin
-        for bi in Bucket_Index loop
-            if deadlines (bi) > 0 then
-                anyTimed := True;
-                Spinlocks.enterCriticalSection (bucketLocks (bi));
-                for s in Small.Slot_Index loop
-                    if buckets (bi).S (s).Used then
-                        t := ThreadID (buckets (bi).S (s).Waiter);
-                        if threadtab (t).futexDeadlineActive and then
-                           threadtab (t).futexDeadlineMs <= nowMs
-                        then
-                            removeWaiter (t, removed);
-                            if removed then
-                                finishWait (t, bi, By_Timeout);
-                            end if;
-                        end if;
-                    end if;
-                end loop;
-                Spinlocks.exitCriticalSection (bucketLocks (bi));
-            end if;
-        end loop;
-
-        -- Overflow waiters: one pass under overflowLock to find candidates,
-        -- then each is removed under its bucket lock after a recheck (the
-        -- bucket lock is taken before overflowLock, never after).
-        if not anyTimed or else overflowCount = 0 then
-            return;
-        end if;
-        Spinlocks.enterCriticalSection (overflowLock);
-        for s in Large.Slot_Index loop
-            if overflow.S (s).Used then
-                t := ThreadID (overflow.S (s).Waiter);
-                if threadtab (t).futexDeadlineActive and then
-                   threadtab (t).futexDeadlineMs <= nowMs
-                then
-                    found := found + 1;
-                    expiredOverflow (found) := t;
-                end if;
-            end if;
-        end loop;
-        Spinlocks.exitCriticalSection (overflowLock);
-        for n in 1 .. found loop
-            t := expiredOverflow (n);
-            b := threadtab (t).futexBucket;
-            Spinlocks.enterCriticalSection (bucketLocks (b));
-            -- Still this wait? (It may have been woken, or the thread may
-            -- have waited again elsewhere, since the pass.)
-            if threadtab (t).futexBucket = b and then
-               threadtab (t).futexWaiting and then
-               threadtab (t).futexInOverflow and then
-               threadtab (t).futexDeadlineActive and then
-               threadtab (t).futexDeadlineMs <= nowMs
-            then
+        Spinlocks.enterCriticalSection (bucketLocks (b));
+        if threadtab (t).oneWaitStatus = Wait_Pending then
+            if threadtab (t).futexWaiting then
                 removeWaiter (t, removed);
                 if removed then
-                    finishWait (t, b, By_Timeout);
+                    finishWait (t, By_Timeout);
                 end if;
+            else
+                -- Not yet enqueued: it sees this under the lock.
+                threadtab (t).oneWaitStatus := Wait_Timed_Out;
             end if;
-            Spinlocks.exitCriticalSection (bucketLocks (b));
-        end loop;
-    end expireDeadlines;
+        end if;
+        Spinlocks.exitCriticalSection (bucketLocks (b));
+    end Time_Out;
 
     procedure cancelWait (tid : ThreadID) is
         b : constant Bucket_Index := threadtab (tid).futexBucket;
@@ -597,10 +486,6 @@ package body Process.Futex is
             removeWaiter (tid, removed);
             if removed then
                 threadtab (tid).futexWaiting := False;
-                if threadtab (tid).futexDeadlineActive then
-                    threadtab (tid).futexDeadlineActive := False;
-                    deadlines (b) := deadlines (b) - 1;
-                end if;
             end if;
         end if;
         Spinlocks.exitCriticalSection (bucketLocks (b));

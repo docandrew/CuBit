@@ -131,46 +131,32 @@ package body Process.Notifications is
         Id    : NO.Object_Id := NO.No_Object;
         Gen   : Unsigned_32 := 0;
         Badge : Unsigned_64 := 0;
-        Rights : Caps.CapabilityRights := Caps.NO_RIGHTS;
     end record;
 
     -- The notification handle names in pid's table, if it holds Right.
     function resolve (pid : ProcessID; handle : Unsigned_64; right : Caps.CapabilityRight)
       return Resolved
     is
+        need : Caps.CapabilityRights := Caps.NO_RIGHTS;
         found : Process_Capabilities.Found;
     begin
+        need (right) := True;
         Spinlocks.enterCriticalSection (mailtab (pid).lock);
-        found := Process_Capabilities.Find_Any (proctab (pid).caps, handle);
+        found := Process_Capabilities.Find (proctab (pid).caps, handle, Caps.CAP_NOTIFICATION_OBJECT, need);
         Spinlocks.exitCriticalSection (mailtab (pid).lock);
-        if not found.OK or else found.Cap.capType /= Caps.CAP_NOTIFICATION_OBJECT
-          or else not found.Cap.rights (right)
-          or else found.Cap.object.ref not in 1 .. NO.Max_Objects
-        then
+        if not found.OK or else found.Cap.object.ref not in 1 .. NO.Max_Objects then
             return (others => <>);
         end if;
         return (OK => True, Id => NO.Object_Id (found.Cap.object.ref), Gen => found.Cap.gen,
-                Badge => found.Cap.authorityTag, Rights => found.Cap.rights);
+                Badge => found.Cap.authorityTag);
     end resolve;
-
-    -- Caller holds the lock of the object t waits on: t's wait ended.
-    procedure finish (t : ThreadID; how : One_Wait_Status; bits : Unsigned_64 := 0) is
-    begin
-        threadtab (t).oneWaitBits := bits;
-        threadtab (t).oneWaitStatus := how;
-        Spinlocks.enterCriticalSection (lock);
-        if threadtab (t).state = FUTEXWAITING then
-            ready (t);
-        end if;
-        Spinlocks.exitCriticalSection (lock);
-    end finish;
 
     -- Caller holds the object's lock: carry out a signal's action. A bound
     -- thread to ring is returned, rung after the lock is released.
     procedure act (r : NO.Signal_Result; ring : in out ThreadID) is
     begin
         case r.What is
-            when NO.Wake_Waiter => finish (ThreadID (r.Thread), Wait_Woken, r.Taken);
+            when NO.Wake_Waiter => Wait_Timers.Finish (ThreadID (r.Thread), Wait_Woken, r.Taken);
             when NO.Ring_Bound  => ring := ThreadID (r.Thread);
             when others         => null;
         end case;
@@ -250,7 +236,7 @@ package body Process.Notifications is
             NO.Finish (E.State, waiter, bound);
             E.Gen := 0;
             if waiter /= NO.No_Thread then
-                finish (ThreadID (waiter), Wait_Ended);
+                Wait_Timers.Finish (ThreadID (waiter), Wait_Ended);
             end if;
             if bound /= NO.No_Thread
               and then threadtab (ThreadID (bound)).boundNotification = Unsigned_32 (id)
@@ -520,7 +506,7 @@ package body Process.Notifications is
             return;
         end if;
         id := NO.Object_Id (cap.object.ref);
-        h := (OK => True, Id => id, Gen => cap.gen, Badge => cap.authorityTag, Rights => cap.rights);
+        h := (OK => True, Id => id, Gen => cap.gen, Badge => cap.authorityTag);
         if not present (cap.object.ref) then
             answer (reply, NA.Ended_Object);
             return;
@@ -656,30 +642,10 @@ package body Process.Notifications is
         end loop;
     end Release_Held;
 
-    procedure Time_Out (t : ThreadID) is
-        id : constant Unsigned_64 := Unsigned_64 (threadtab (t).oneWaitObject);
-        removed : Boolean;
-    begin
-        if not present (id) then
-            return;
-        end if;
-        declare
-            E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
-        begin
-            Spinlocks.enterCriticalSection (E.Lock);
-            if threadtab (t).oneWaitStatus = Wait_Pending
-              and then current (E, threadtab (t).oneWaitGen)
-            then
-                NO.Cancel_Wait (E.State, NO.Thread_Ref (t), removed);
-                -- Not yet the waiter (removed False): it sees this under the
-                -- lock and does not block.
-                finish (t, Wait_Timed_Out);
-            end if;
-            Spinlocks.exitCriticalSection (E.Lock);
-        end;
-    end Time_Out;
-
-    procedure Cancel (t : ThreadID) is
+    -- t leaves the object it waits on: timed out (its heap lock held; t is
+    -- readied if it blocked, or sees the timeout under the object's lock
+    -- before it blocks), or reaped (cancel).
+    procedure leave (t : ThreadID; cancel : Boolean) is
         id : constant Unsigned_64 := Unsigned_64 (threadtab (t).oneWaitObject);
         removed : Boolean;
     begin
@@ -688,13 +654,29 @@ package body Process.Notifications is
                 E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
             begin
                 Spinlocks.enterCriticalSection (E.Lock);
-                if current (E, threadtab (t).oneWaitGen) then
+                if threadtab (t).oneWaitStatus = Wait_Pending
+                  and then current (E, threadtab (t).oneWaitGen)
+                then
                     NO.Cancel_Wait (E.State, NO.Thread_Ref (t), removed);
+                    if cancel then
+                        threadtab (t).oneWaitStatus := Wait_Ended;
+                    else
+                        Wait_Timers.Finish (t, Wait_Timed_Out);
+                    end if;
                 end if;
-                threadtab (t).oneWaitStatus := Wait_Ended;
                 Spinlocks.exitCriticalSection (E.Lock);
             end;
         end if;
+    end leave;
+
+    procedure Time_Out (t : ThreadID) is
+    begin
+        leave (t, cancel => False);
+    end Time_Out;
+
+    procedure Cancel (t : ThreadID) is
+    begin
+        leave (t, cancel => True);
         threadtab (t).oneWaitKind := No_One_Wait;
     end Cancel;
 
@@ -702,10 +684,7 @@ package body Process.Notifications is
         id : constant Unsigned_64 := Unsigned_64 (threadtab (t).boundNotification);
         removed : Boolean;
     begin
-        if id = 0 then
-            return;
-        end if;
-        if present (id) then
+        if id /= 0 and then present (id) then
             declare
                 E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
             begin
@@ -713,14 +692,11 @@ package body Process.Notifications is
                 if E.Gen = threadtab (t).boundGen then
                     NO.Unbind_Thread (E.State, NO.Thread_Ref (t), removed);
                 end if;
-                threadtab (t).boundNotification := 0;
-                threadtab (t).boundGen := 0;
                 Spinlocks.exitCriticalSection (E.Lock);
             end;
-        else
-            threadtab (t).boundNotification := 0;
-            threadtab (t).boundGen := 0;
         end if;
+        threadtab (t).boundNotification := 0;
+        threadtab (t).boundGen := 0;
     end Unbind_Thread_Of;
 
 end Process.Notifications;

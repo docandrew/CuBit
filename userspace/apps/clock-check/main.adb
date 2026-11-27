@@ -23,6 +23,9 @@ with CuBit.Published_Clock;
 with CuBit.Kernel_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Messages;
+with CuBit.Monotonic;
+with CuBit.Handles.Notifications;
+with Notification_ABI;
 
 procedure Main is
    use ASCII;
@@ -154,14 +157,13 @@ begin
    --  Kernel deadlines (msTicks) computed from the page.
    declare
       Word : aliased Unsigned_32 := 0;
-      Deadline : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds + Deadline_Ms;
-      Result : constant Unsigned_64 := Kernel
-        (K.Wait, Wait_ABI.Futex_Sources, Deadline,
-         Unsigned_64 (System.Storage_Elements.To_Integer (Word'Address)),
-         Unsigned_64 (Word));
-      Woke : constant Unsigned_64 := CuBit.Published_Clock.Milliseconds;
+      --  A private futex deadline (microseconds, CuBit.Monotonic's clock).
+      Deadline : constant Unsigned_64 := CuBit.Monotonic.Microseconds + Deadline_Ms * 1_000;
+      Result : constant Unsigned_64 :=
+        CuBit.Handles.Notifications.Private_Wait (Word'Address, Unsigned_64 (Word), Deadline);
+      Woke : constant Unsigned_64 := CuBit.Monotonic.Microseconds;
    begin
-      Check (Result = K.Futex_Timed_Out and then Woke >= Deadline,
+      Check (Result = Notification_ABI.Timed_Out and then Woke >= Deadline,
              "a futex deadline from the page does not expire early");
    end;
 

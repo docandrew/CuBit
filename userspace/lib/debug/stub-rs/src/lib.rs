@@ -80,16 +80,17 @@ mod sys {
     use core::arch::asm;
     pub const EXIT: u64 = 0;
     pub const REPLY_WAIT: u64 = 48;
-    pub const FUTEX_WAKE: u64 = 93;
+    /// IPC revision 2 (Notification_ABI): Wait on one object and Wake it.
+    pub const WAIT_ONE: u64 = 150;
+    pub const WAKE: u64 = 151;
     pub const CREATE_GRANT_FOR_PROCESS: u64 = 102;
     pub const OWNED_GRANT_GENERATION: u64 = 108;
     pub const REVOKE_GRANT_REFERENCE: u64 = 110;
     pub const WAIT: u64 = 149;
     pub const REGISTER_DRIVER: u64 = 2000;
     pub const MESSAGES_SOURCES: u64 = 0b11; // Requests + Events
-    pub const FUTEX_SOURCES: u64 = 0b1000; // Futex_Word
+    pub const PRIVATE_WORD: u64 = 2; // Notification_ABI.Private_Word
     pub const FOREVER: u64 = u64::MAX;
-    pub const PRIVATE_SPACE: u64 = 0;
     pub const GRANT_READ_ONLY: u64 = 0;
     pub const REFUSED: u64 = u64::MAX;
     pub const MAXIMUM_GLOBAL_SLOT: u64 = 256 * 4096 - 1;
@@ -317,8 +318,8 @@ pub fn checkpoint() {
         // `seen`, and a resume changes it before it wakes.
         // SAFETY: a private futex word of this process.
         unsafe {
-            sys::call(sys::WAIT, sys::FUTEX_SOURCES, sys::FOREVER,
-                      RESUME_WORD.as_ptr() as u64, u64::from(seen), 0);
+            sys::call(sys::WAIT_ONE, sys::PRIVATE_WORD, RESUME_WORD.as_ptr() as u64,
+                      u64::from(seen), sys::FOREVER, 0);
         }
     }
     state.store(p::THREAD_RUNNING, Ordering::Release);
@@ -413,8 +414,8 @@ fn handle(made: &mut Vec<Made>, from: u64, message: &Message) -> Message {
             RESUME_WORD.fetch_add(1, Ordering::AcqRel);
             // SAFETY: a private futex word of this process.
             unsafe {
-                sys::call(sys::FUTEX_WAKE, RESUME_WORD.as_ptr() as u64, p::THREAD_CEILING as u64,
-                          sys::PRIVATE_SPACE, 0, 0);
+                sys::call(sys::WAKE, sys::PRIVATE_WORD, RESUME_WORD.as_ptr() as u64,
+                          p::THREAD_CEILING as u64, 0, 0);
             }
             Message::answer(p::REPLY_OK, 0, 0)
         }

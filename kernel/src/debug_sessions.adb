@@ -344,7 +344,7 @@ package body Debug_Sessions is
                when Receiving =>
                  (if Thr.receiveDeadlineActive then Thr.receiveDeadlineMs else No_Deadline),
                when Futex     =>
-                 (if Thr.futexDeadlineActive then Thr.futexDeadlineMs else No_Deadline),
+                 (if Thr.oneWaitTimed then Thr.oneWaitDeadlineMs else No_Deadline),
                when others    => No_Deadline),
          Sampled    => Thr.sampledRIP);
    end Entry_Of;

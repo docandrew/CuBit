@@ -195,7 +195,7 @@ package Process is
 
     -- One-object Wait (IPC revision 2, S1; Process.Wait_Timers): what a
     -- thread waits on, and how its wait ended.
-    type One_Wait_Kind is (No_One_Wait, Notification_Wait, Private_Word_Wait);
+    type One_Wait_Kind is (No_One_Wait, Notification_Wait, Private_Word_Wait, Shared_Word_Wait);
     type One_Wait_Status is (Wait_Pending, Wait_Woken, Wait_Timed_Out, Wait_Ended);
 
     type ProcessMode is (KERNEL, USER);
@@ -873,8 +873,6 @@ package Process is
         futexTimedOut       : Boolean := False;
         -- The shared futex's grant life ended while waiting (IPC-010).
         futexRevoked        : Boolean := False;
-        futexDeadlineActive : Boolean := False;
-        futexDeadlineMs     : Unsigned_64 := 0;
 
         -- One-object Wait (Process.Wait_Timers): the object (a notification
         -- and its generation, or this thread's private futex slot), how the
@@ -887,6 +885,8 @@ package Process is
         oneWaitBits         : Unsigned_64 := 0;
         oneWaitCPU          : Natural := 0;
         oneWaitTimed        : Boolean := False;
+        -- Its deadline on the kernel's millisecond clock, for debug views.
+        oneWaitDeadlineMs   : Unsigned_64 := 0;
         -- Its bound notification (Process.Notifications), 0: none; under
         -- that notification's lock.
         boundNotification   : Unsigned_32 := 0;

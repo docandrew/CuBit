@@ -2,12 +2,13 @@
 -- CuBit OS
 -- Copyright (C) 2026 Jon Andrew
 --
--- @summary Futexes: FUTEX_WAIT and FUTEX_WAKE (docs/threads.md, IPC-010)
+-- @summary Shared futexes: WAIT's futex form and FUTEX_WAKE on words of a
+-- grant (docs/threads.md, IPC-010). Kept until the channel library moves
+-- to notifications (IPC revision 2, S3).
 --
--- Private futexes live in their process's own table (Process.Private_Futex,
--- IPC revision 2, S1); this unit's private forms only route there, so old
--- and new callers share one table. Shared futexes
--- (IPC-010): a key is (grant slot, grant life, offset), resolved from a
+-- Private futexes are each process's own table (Process.Private_Futex,
+-- Wait_One and Wake, IPC revision 2, S1); this unit refuses private words.
+-- Shared futexes: a key is (grant slot, grant life, offset), resolved from a
 -- Futex_ABI shared word by Process.IPC.resolveSharedWord, so both parties
 -- of a grant reach the same key, and nobody else reaches it at all.
 --
@@ -46,14 +47,9 @@ package Process.Futex is
     -- No deadline.
     FOREVER : constant Unsigned_64 := Unsigned_64'Last;
 
-    -- Sleep while the calling process's 32-bit word at address holds
-    -- expected, until woken or the absolute monotonic-ms deadline passes.
-    function wait (address, expected, deadlineMs : Unsigned_64)
-      return Unsigned_64;
-
-    -- Wait's futex form (IPC-010): the word is a private address or, with
-    -- shared, a Futex_ABI shared word. With wakeFirst, first wake one
-    -- waiter of wakeWord (private, or shared with wakeShared) placed on
+    -- Wait's futex form (IPC-010): the word is a Futex_ABI shared word
+    -- (shared True; anything else is refused, FUTEX_FAULT). With wakeFirst
+    -- (and wakeShared), first wake one waiter of shared wakeWord placed on
     -- this CPU (readySync), then wait, switching straight to that waiter
     -- if it is still ready here when this thread sleeps (yieldToSyncWakee).
     -- A malformed or refused wake operand returns FUTEX_FAULT and waits
@@ -67,13 +63,9 @@ package Process.Futex is
        wakeShared : Boolean;
        wakeWord   : Unsigned_64) return Unsigned_64;
 
-    -- Wake up to count of the calling process's waiters on address, oldest
-    -- first. Returns the number woken.
-    function wake (address, count : Unsigned_64) return Unsigned_64;
-
-    -- FUTEX_WAKE (arg2 = Futex_ABI.Private_Space or Shared_Space): a
-    -- private address, or a shared word of a grant the caller is a party
-    -- of (else WAKE_REFUSED).
+    -- FUTEX_WAKE (arg2 = Futex_ABI.Shared_Space): a shared word of a grant
+    -- the caller is a party of (else WAKE_REFUSED; Private_Space is refused:
+    -- private words are woken by Wake).
     --
     -- Peer_Space (IPC-010 option B): word is a grant reference; the caller,
     -- a party of that live notified grant, wakes the other party's wake word
@@ -83,10 +75,6 @@ package Process.Futex is
     function wakeSpace (word, count, space : Unsigned_64; sync : Boolean;
                         urgent : Boolean := False) return Unsigned_64;
 
-    -- Wake up to count waiters of pid on address (thread exit).
-    function wakeFor (pid : ProcessID; address, count : Unsigned_64)
-      return Unsigned_64;
-
     -- A grant life ended (Process.IPC, without grantLock): its waiters
     -- return FUTEX_REVOKED.
     procedure endSharedLife (slot, generation : Unsigned_32);
@@ -95,8 +83,8 @@ package Process.Futex is
     -- grant life is no longer live returns FUTEX_REVOKED.
     procedure endDeadSharedLives;
 
-    -- Timer tick (BSP): time out waits whose deadline has passed.
-    procedure expireDeadlines (nowMs : Unsigned_64);
+    -- Process.Wait_Timers: t's deadline came (its heap lock held).
+    procedure Time_Out (t : ThreadID);
 
     -- The reaper: withdraw a dying thread's wait, if any, before freeing it.
     -- Not called with Process.lock held.

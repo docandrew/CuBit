@@ -21,13 +21,12 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with CuBit.Console_Route;
-with Wait_ABI;
 with Interfaces; use Interfaces;
 with System.Storage_Elements;
 with Clock_Publication;
 with CuBit.Published_Clock;
 with CuBit.Kernel_ABI;
-with CuBit.Kernel_Calls;
+with CuBit.Waits;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Process_Calls;
 
@@ -133,10 +132,7 @@ begin
       Started := Now;
       Stall_CPU_0;
       Begun := Now;
-      Result := CuBit.Kernel_Calls.Call
-        (K.Wait, Wait_ABI.Futex_Sources, Begun + Wait_Ms,
-         Unsigned_64 (System.Storage_Elements.To_Integer (Word'Address)),
-         Unsigned_64 (Word));
+      Result := CuBit.Waits.Futex_Wait (Word'Address, Unsigned_64 (Word), Begun + Wait_Ms);
       Took := Now - Begun;
       Print ("clock-keeper-check: futex deadline" & Natural'Image (Wait_Ms) &
              " ms ended after " & Image (Took) & " ms" & LF);
