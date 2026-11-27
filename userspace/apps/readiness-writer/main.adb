@@ -8,6 +8,7 @@ with CuBit.Console_Route;
 with System.Storage_Elements;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 with Readiness_Publication;
 
 procedure Main is
@@ -15,7 +16,6 @@ procedure Main is
    Page : RP.Readiness_Page
      with Import, Volatile, Async_Writers,
           Address => System.Storage_Elements.To_Address (RP.Page_Address);
-   Ignore : Unsigned_64;
 begin
    --  ABI-002: debug text into its logstore ring, never the kernel console.
    CuBit.Console_Route.Route_Named ("logstore");
@@ -27,5 +27,5 @@ begin
    debugPrint ("readiness-writer: storing to the page" & ASCII.LF);
    Page.Wake_Generation := 0;
    debugPrint ("readiness-writer: wrote FAIL" & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT, 1);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
 end Main;
