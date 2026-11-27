@@ -7,6 +7,7 @@
 --  their input under its own process identity (Desktop tells sources apart
 --  by publisher, CuBit.Input.Decode).
 ------------------------------------------------------------------------------
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 
@@ -353,8 +354,7 @@ begin
    then
       Boot_Log.Line ("xhci: " & Location & " stage configure fail invalid message", True);
       Reply_With (REPLY_ERR);
-      ignore := syscall (SYSCALL_EXIT);
-      return;
+      CuBit.Process_Calls.Exit_Process;
    end if;
 
    --  Word 3: the interrupt mode devmgr programmed (MSI or MSI-X entry 0
@@ -369,8 +369,7 @@ begin
       when others =>
          Boot_Log.Line ("xhci: " & Location & " stage configure fail interrupt mode", True);
          Reply_With (REPLY_ERR);
-         ignore := syscall (SYSCALL_EXIT);
-         return;
+         CuBit.Process_Calls.Exit_Process;
    end case;
    --  The message is well formed: accepted now. devmgr waits on nothing
    --  but this check; the bring-up below (handoff, reset, settle,
@@ -402,8 +401,7 @@ begin
                        Unsigned_64 (XHCI.Init_Result'Pos (initResult)));
       --  Let logstore take the failure before the process ends.
       Boot_Log.Flush;
-      ignore := syscall (SYSCALL_EXIT);
-      return;
+      CuBit.Process_Calls.Exit_Process;
    end if;
 
    XHCI.Probe_Optical;
