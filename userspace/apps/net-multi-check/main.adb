@@ -16,6 +16,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
@@ -114,7 +115,7 @@ begin
    CuBit.Console_Route.Route_Named ("logstore");
    declare
       Raw : constant Unsigned_64 :=
-        syscall (SYSCALL_SBRK, Unsigned_64 (Buffers * Channels.Buffer_Bytes (Ring_Size, Ring_Size)) + Page_Bytes);
+        CuBit.Process_Calls.Grow_Heap (Unsigned_64 (Buffers * Channels.Buffer_Bytes (Ring_Size, Ring_Size)) + Page_Bytes);
       Aligned : constant Unsigned_64 := (Raw + Page_Bytes - 1) / Page_Bytes * Page_Bytes;
       OK : Boolean;
    begin
