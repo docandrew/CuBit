@@ -6,6 +6,7 @@ with CuBit.Filesystems;
 with CuBit.Memory_Grants;
 with Intel_GPU_Firmware_Reader;
 with CuBit.Monotonic;
+with CuBit.Process_Calls;
 package body Intel_GPU_Firmware_File is
    use Interfaces;
    use CuBit.Messages;
@@ -104,7 +105,7 @@ package body Intel_GPU_Firmware_File is
       if Path'Length = 0 or else Path'Length > Scratch'Length then
          Status := Open_Failed; return;
       end if;
-      Raw := syscall (SYSCALL_SBRK, Intel_GPU_Firmware_Reader.Maximum_Blob_Bytes);
+      Raw := CuBit.Process_Calls.Grow_Heap (Intel_GPU_Firmware_Reader.Maximum_Blob_Bytes);
       if Raw = Unsigned_64'Last or else Raw = 0 or else
         Raw > Unsigned_64'Last - Intel_GPU_Firmware_Reader.Maximum_Blob_Bytes
       then Status := Allocation_Failed; return; end if;
