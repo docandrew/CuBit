@@ -3,10 +3,10 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Deadlines;
 with CuBit.Futex_Locks;
 with CuBit.Kernel_ABI;
-with CuBit.Kernel_Calls;
 with CuBit.Messages;
 with CuBit.Monotonic;
 with CuBit.Owned_Reservations;
+with CuBit.Process_Calls;
 with CuBit.Thread_Areas;
 with Charts_Format;
 with Dash_Feeds;
@@ -303,8 +303,8 @@ package body Dash_Runner is
       if Area = CuBit.Thread_Areas.No_Area then
          return;
       end if;
-      if CuBit.Kernel_Calls.Call
-           (ABI.Thread_Create, Unsigned_64 (To_Integer (Data_Loop'Address)),
+      if CuBit.Process_Calls.Create_Thread
+           (Unsigned_64 (To_Integer (Data_Loop'Address)),
             ((Stack + Data_Stack_Bytes) and not (Stack_Alignment - 1)) - Return_Address_Bytes,
             0, Area, Unsigned_64 (To_Integer (Exit_Word'Address))) = ABI.Failed
       then
