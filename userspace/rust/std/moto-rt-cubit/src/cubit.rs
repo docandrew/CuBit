@@ -87,12 +87,12 @@ const SYS_SBRK: u64 = 8;
 const SYS_WRITE: u64 = 12;
 const SYS_THREAD_CREATE: u64 = 90;
 const SYS_THREAD_EXIT: u64 = 91;
-// The one wait (ABI-002 slice 2, shared/capabilities/wait_abi.ads): its
-// futex form is Sources = WAIT_FUTEX_WORD, then the deadline, the word's
-// address and the expected value.
-const SYS_WAIT: u64 = 149;
-const WAIT_FUTEX_WORD: u64 = 1 << 3;
-const SYS_FUTEX_WAKE: u64 = 93;
+// IPC revision 2 (shared/capabilities/notification_abi.ads): Wait on one
+// object and Wake it; futexes are words of the process's own memory, in its
+// private table (Private_Word), with microsecond deadlines.
+const SYS_WAIT_ONE: u64 = 150;
+const SYS_WAKE: u64 = 151;
+const PRIVATE_WORD: u64 = 2;
 
 const FUTEX_TIMED_OUT: u64 = 2;
 const FOREVER: u64 = u64::MAX;
@@ -126,11 +126,16 @@ fn now_ms() -> u64 {
 }
 
 fn futex_wait_raw(word: *const AtomicU32, expected: u32, deadline_ms: u64) -> u64 {
-    unsafe { syscall(SYS_WAIT, WAIT_FUTEX_WORD, deadline_ms, word as u64, expected as u64, 0) }
+    let deadline_us = if deadline_ms == FOREVER {
+        FOREVER
+    } else {
+        deadline_ms.checked_mul(1_000).unwrap_or(FOREVER)
+    };
+    unsafe { syscall(SYS_WAIT_ONE, PRIVATE_WORD, word as u64, expected as u64, deadline_us, 0) }
 }
 
 fn futex_wake_raw(word: *const AtomicU32, count: u64) -> u64 {
-    unsafe { syscall(SYS_FUTEX_WAKE, word as u64, count, 0, 0, 0) }
+    unsafe { syscall(SYS_WAKE, PRIVATE_WORD, word as u64, count, 0, 0) }
 }
 
 // --- entry ------------------------------------------------------------------

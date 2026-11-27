@@ -1,11 +1,14 @@
 pragma Ada_2022;
 with CuBit.Kernel_ABI;
+with Notification_ABI;
 with CuBit.Kernel_Calls;
 with CuBit.Monotonic;
 with CuBit.System_Facts;
 with System.Machine_Code;
 
 package body CuBit.Waits is
+
+   package NA renames Notification_ABI;
 
    Microseconds_Per_Millisecond : constant := 1_000;
 
@@ -37,10 +40,27 @@ package body CuBit.Waits is
       null;
    end Sleep_For;
 
+   --  A private word waits in its process's own table (IPC revision 2,
+   --  Notification_ABI): the Wait and Wake calls, deadline in microseconds.
+   function To_Microseconds (Deadline : Unsigned_64) return Unsigned_64 is
+     (if Deadline = Now or else Deadline = Forever then Deadline
+      elsif Deadline > (Forever - 1) / Microseconds_Per_Millisecond then Forever
+      else Deadline * Microseconds_Per_Millisecond);
+
+   function Private_Result (Result : Unsigned_64) return Unsigned_64 is
+     (if Result = NA.Woken then W.Futex_Woken
+      elsif Result = NA.Retry then W.Futex_Retry
+      elsif Result = NA.Timed_Out then W.Futex_Timed_Out
+      else W.Futex_Fault);
+
+   function Private_Wait (Word, Expected, Deadline : Unsigned_64) return Unsigned_64 is
+     (Private_Result
+        (CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Wait_One, NA.Private_Word, Word, Expected,
+                                  To_Microseconds (Deadline))));
+
    function Futex_Wait (Word : System.Address; Expected, Deadline : Unsigned_64)
      return Unsigned_64 is
-     (Wait (W.Futex_Sources, Deadline,
-            Unsigned_64 (System.Storage_Elements.To_Integer (Word)), Expected));
+     (Private_Wait (Unsigned_64 (System.Storage_Elements.To_Integer (Word)), Expected, Deadline));
 
    --  The kernel's limit, read once (the facts page does not change it
    --  after boot but to withdraw it).
@@ -91,14 +111,16 @@ package body CuBit.Waits is
       then
          return W.Futex_Retry;
       end if;
-      return Wait (W.Futex_Sources + (if Name.Shared then W.Shared_Futex else 0), Deadline,
-                   Name.Word, Expected);
+      if not Name.Shared then
+         return Private_Wait (Name.Word, Expected, Deadline);
+      end if;
+      return Wait (W.Futex_Sources + W.Shared_Futex, Deadline, Name.Word, Expected);
    end Futex_Wait;
 
    function Futex_Wake (Name : Futex_Name; Count : Unsigned_64) return Unsigned_64 is
-     (CuBit.Kernel_Calls.Call
-        (CuBit.Kernel_ABI.Futex_Wake, Name.Word, Count,
-         (if Name.Shared then FA.Shared_Space else FA.Private_Space)));
+     (if Name.Shared
+      then CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Futex_Wake, Name.Word, Count, FA.Shared_Space)
+      else CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Wake, NA.Private_Word, Name.Word, Count));
 
    function Hand_Off (Peer, Mine : Futex_Name; Expected, Deadline : Unsigned_64)
      return Unsigned_64 is

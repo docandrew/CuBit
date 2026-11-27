@@ -10,9 +10,28 @@ use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicU32, Ordering};
 
-/// WAIT's futex-word source bit (Wait_ABI.Futex_Word_Bit).
+/// Wait and Wake's private-word kind (Notification_ABI.Private_Word): a word
+/// of this process's own memory, in its private futex table.
 #[cfg(not(test))]
-const WAIT_FUTEX_WORD: u64 = 1 << 3;
+const PRIVATE_WORD: u64 = 2;
+
+/// Notification_ABI's Private_Word results.
+#[cfg(not(test))]
+const WOKEN: u64 = 0;
+#[cfg(not(test))]
+const RETRY: u64 = 1;
+#[cfg(not(test))]
+const TIMED_OUT: u64 = 2;
+
+/// A millisecond deadline as the microsecond one Wait takes.
+#[cfg(not(test))]
+fn microseconds(deadline_ms: u64) -> u64 {
+    if deadline_ms == FOREVER {
+        FOREVER
+    } else {
+        deadline_ms.checked_mul(1_000).unwrap_or(FOREVER)
+    }
+}
 
 /// Result of [`futex_wait`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,14 +57,14 @@ pub fn futex_wait(word: &AtomicU32, expected: u32, deadline_ms: u64) -> WaitResu
         let result = unsafe {
             // SAFETY: the kernel reads the aligned word through the process's
             // page tables; no pointer outlives the call.
-            // WAIT's futex form: Sources, deadline, the word, the value.
-            crate::syscall5(crate::Syscall::Wait, WAIT_FUTEX_WORD, deadline_ms,
-                            word.as_ptr() as u64, expected as u64, 0)
+            // Wait on a private word: kind, the word, the value, deadline.
+            crate::syscall5(crate::Syscall::WaitOne, PRIVATE_WORD, word.as_ptr() as u64,
+                            expected as u64, microseconds(deadline_ms), 0)
         };
         match result {
-            0 => WaitResult::Woken,
-            1 => WaitResult::Retry,
-            2 => WaitResult::TimedOut,
+            WOKEN => WaitResult::Woken,
+            RETRY => WaitResult::Retry,
+            TIMED_OUT => WaitResult::TimedOut,
             _ => WaitResult::Fault,
         }
     }
@@ -66,7 +85,7 @@ pub fn futex_wake(word: &AtomicU32, count: u32) -> u32 {
     {
         // SAFETY: the address is only a key; the kernel does not dereference it.
         unsafe {
-            crate::syscall3(crate::Syscall::FutexWake, word.as_ptr() as u64, count as u64, 0)
+            crate::syscall3(crate::Syscall::Wake, PRIVATE_WORD, word.as_ptr() as u64, count as u64)
                 as u32
         }
     }

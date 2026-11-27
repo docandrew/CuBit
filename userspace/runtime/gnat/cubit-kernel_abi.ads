@@ -14,6 +14,7 @@
 pragma Ada_2022;
 with Interfaces; use Interfaces;
 with Wait_ABI;
+with Notification_ABI;
 
 package CuBit.Kernel_ABI with Pure, SPARK_Mode is
 
@@ -46,6 +47,11 @@ package CuBit.Kernel_ABI with Pure, SPARK_Mode is
    --  the activity wait, SLEEP, SLEEP_UNTIL, FUTEX_WAIT and
    --  ACCEPT_OFFERED_CAPABILITY.
    Wait                         : constant System_Call := Wait_ABI.System_Call_Number;
+   --  IPC revision 2 (Notification_ABI): Wait on one object (a
+   --  notification or a private futex word, deadline in microseconds) and
+   --  Wake it.
+   Wait_One                     : constant System_Call := Notification_ABI.Wait_System_Call;
+   Wake                         : constant System_Call := Notification_ABI.Wake_System_Call;
 
    Yield                        : constant System_Call := 118;
    --  Owned memory, one region API (kernel Process.Owned_Memory, ABI-002;

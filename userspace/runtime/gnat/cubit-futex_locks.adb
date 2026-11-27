@@ -3,7 +3,7 @@
 --  Copyright (C) 2026 Jon Andrew
 ------------------------------------------------------------------------------
 pragma Ada_2022;
-with Wait_ABI;
+with Notification_ABI;
 with System.Machine_Code; use System.Machine_Code;
 with System;
 with System.Storage_Elements;
@@ -14,6 +14,7 @@ package body CuBit.Futex_Locks is
 
    package KA renames CuBit.Kernel_ABI;
    package KC renames CuBit.Kernel_Calls;
+   package NA renames Notification_ABI;
 
    Unlocked : constant Unsigned_32 := 0;
    Locked   : constant Unsigned_32 := 1;
@@ -53,17 +54,24 @@ package body CuBit.Futex_Locks is
 
    procedure Futex_Wait
      (Where : System.Address; Expected : Unsigned_32; Deadline : Unsigned_64; Timed_Out : out Boolean);
+   --  The process's private futex table (IPC revision 2, Notification_ABI):
+   --  Deadline is a kernel millisecond word, the call takes microseconds.
    procedure Futex_Wait
      (Where : System.Address; Expected : Unsigned_32; Deadline : Unsigned_64; Timed_Out : out Boolean) is
+      Us : constant Unsigned_64 :=
+        (if Deadline = CuBit.Deadlines.Forever_Word then NA.Forever
+         elsif Deadline > (NA.Forever - 1) / 1_000 then NA.Forever
+         else Deadline * 1_000);
    begin
-      Timed_Out := KC.Call (KA.Wait, Wait_ABI.Futex_Sources, Deadline,
-                            Address_Word (Where), Unsigned_64 (Expected))
-                   = KA.Futex_Timed_Out;
+      Timed_Out := KC.Call (KA.Wait_One, NA.Private_Word, Address_Word (Where),
+                            Unsigned_64 (Expected), Us)
+                   = NA.Timed_Out;
    end Futex_Wait;
 
    procedure Futex_Wake (Where : System.Address; Count : Unsigned_64);
    procedure Futex_Wake (Where : System.Address; Count : Unsigned_64) is
-      Ignore : constant Unsigned_64 := KC.Call (KA.Futex_Wake, Address_Word (Where), Count);
+      Ignore : constant Unsigned_64 :=
+        KC.Call (KA.Wake, NA.Private_Word, Address_Word (Where), Count);
    begin
       null;
    end Futex_Wake;

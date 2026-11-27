@@ -8,6 +8,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Wait_ABI;
+with Notification_ABI;
 
 private package CuBit.Handles.Kernel is
 
@@ -52,6 +53,9 @@ private package CuBit.Handles.Kernel is
    Wait                        : constant Unsigned_64 := Wait_ABI.System_Call_Number;
    Reply_Saved_With_Capability : constant Unsigned_64 := 142;
    Derive_Capability           : constant Unsigned_64 := 143;
+   --  IPC revision 2 (Notification_ABI): Wait on one object, Wake it.
+   Wait_One                    : constant Unsigned_64 := Notification_ABI.Wait_System_Call;
+   Wake                        : constant Unsigned_64 := Notification_ABI.Wake_System_Call;
    Register_Driver             : constant Unsigned_64 := 2000;
 
    --  One system call with up to seven arguments (the seventh in R12, as

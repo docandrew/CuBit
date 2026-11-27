@@ -4,6 +4,7 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with Wait_ABI;
+with Notification_ABI;
 with Interfaces; use Interfaces;
 with Ada.Unchecked_Conversion;
 with System.Machine_Code; use System.Machine_Code;
@@ -593,15 +594,21 @@ package body CuBit.Libc_System_Calls is
          if not Valid_Time then
             return Error (EINVAL);
          end if;
-         Result := Kernel (K.Wait, Wait_ABI.Futex_Sources, Deadline,
-                           Unsigned_64 (To_Integer (Word)), Unsigned_64 (Unsigned_32'Mod (Value)));
-         return (case Result is
-                   when K.Futex_Woken     => 0,
-                   when K.Futex_Retry     => Error (EAGAIN),
-                   when K.Futex_Timed_Out => Error (ETIMEDOUT),
-                   when others            => Error (EFAULT));
+         --  A word of this process's own memory: its private futex table
+         --  (IPC revision 2; process-shared futexes do not exist), with a
+         --  microsecond deadline.
+         Result := Kernel (K.Wait_One, Notification_ABI.Private_Word,
+                           Unsigned_64 (To_Integer (Word)), Unsigned_64 (Unsigned_32'Mod (Value)),
+                           (if Deadline = Forever then Notification_ABI.Forever
+                            elsif Deadline > (Forever - 1) / 1_000 then Notification_ABI.Forever
+                            else Deadline * 1_000));
+         return (if Result = Notification_ABI.Woken then 0
+                 elsif Result = Notification_ABI.Retry then Error (EAGAIN)
+                 elsif Result = Notification_ABI.Timed_Out then Error (ETIMEDOUT)
+                 else Error (EFAULT));
       elsif Command = FUTEX_WAKE or else Command = Futex_Wake_Bitset then
-         return To_Long (Kernel (K.Futex_Wake, Unsigned_64 (To_Integer (Word)),
+         return To_Long (Kernel (K.Wake, Notification_ABI.Private_Word,
+                                  Unsigned_64 (To_Integer (Word)),
                                   (if Value < 0 then 0 else Unsigned_64 (Value))));
       elsif Command = FUTEX_CMP_REQUEUE or else Command = FUTEX_REQUEUE then
          if Command = FUTEX_CMP_REQUEUE then
@@ -616,8 +623,8 @@ package body CuBit.Libc_System_Calls is
          --  No requeue: wake every waiter; they recheck and contend.
          --  Correct for condition variables (spurious wakeups are
          --  allowed), only less efficient.
-         return To_Long (Kernel (K.Futex_Wake, Unsigned_64 (To_Integer (Word)),
-                                  K.Forever));
+         return To_Long (Kernel (K.Wake, Notification_ABI.Private_Word,
+                                  Unsigned_64 (To_Integer (Word)), K.Forever));
       end if;
       return Error (ENOSYS);
    end Futex;

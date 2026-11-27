@@ -29,6 +29,10 @@ enum Syscall {
     /// The one wait (ABI-002 slice 2, shared/capabilities/wait_abi.ads).
     Wait = 149,
     FutexWake = 93,
+    /// IPC revision 2 (shared/capabilities/notification_abi.ads): Wait on
+    /// one object, Wake it.
+    WaitOne = 150,
+    Wake = 151,
 }
 
 /// Debug text, through the Ada run time the program links (feature
