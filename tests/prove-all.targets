@@ -35,6 +35,9 @@ capability-tables       | kernel   | kernel | make prove-capability-tables
 capability-install      | kernel   | kernel | make prove-capability-install
 work-stealing           | sched    | kernel | make prove-work-stealing
 futex-queues            | sched    | kernel | make prove-futex-queues
+notifications           | sched    | kernel | make prove-notifications
+private-futexes         | sched    | kernel | make prove-private-futexes
+wait-deadlines          | sched    | kernel | make prove-wait-deadlines
 scheduler-timing        | sched    | kernel | make prove-scheduler-timing
 ccl-cbor                | ccl      | kernel | make prove-ccl-cbor
 usb-optical             | drivers  | kernel | make prove-usb-optical

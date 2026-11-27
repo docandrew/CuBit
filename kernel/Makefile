@@ -556,6 +556,39 @@ prove-process-list-object:
 		-u process_list_abi.ads --level=2 --report=all --checks-as-errors=on -j2
 	@cat ../tests/process-list-object/build/gnatprove/gnatprove.out
 
+.PHONY : test-notifications prove-notifications
+test-notifications:
+	$(ALR) gprbuild -p -P../tests/notifications/notifications_tests.gpr
+	../tests/notifications/build/main
+
+prove-notifications:
+	$(ALR) gnatprove -P../tests/notifications/notifications_tests.gpr \
+		-u notification_objects.adb fan_in_model.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/notifications/build/gnatprove/gnatprove.out
+
+.PHONY : test-private-futexes prove-private-futexes
+test-private-futexes:
+	$(ALR) gprbuild -p -P../tests/private-futexes/private_futexes_tests.gpr
+	../tests/private-futexes/build/main
+
+prove-private-futexes:
+	$(ALR) gnatprove -P../tests/private-futexes/private_futexes_tests.gpr \
+		-u private_futexes.adb word_protocol.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/private-futexes/build/gnatprove/gnatprove.out
+
+.PHONY : test-wait-deadlines prove-wait-deadlines
+test-wait-deadlines:
+	$(ALR) gprbuild -p -P../tests/wait-deadlines/wait_deadlines_tests.gpr
+	../tests/wait-deadlines/build/main
+
+prove-wait-deadlines:
+	$(ALR) gnatprove -P../tests/wait-deadlines/wait_deadlines_tests.gpr \
+		-u wait_deadlines.adb \
+		--level=2 --report=all --checks-as-errors=on -j2
+	@cat ../tests/wait-deadlines/build/gnatprove/gnatprove.out
+
 .PHONY : test-futex-queues prove-futex-queues
 test-futex-queues:
 	$(ALR) gprbuild -p -P../tests/futex-queues/futex_queues_tests.gpr

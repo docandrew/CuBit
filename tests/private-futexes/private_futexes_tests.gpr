@@ -1,0 +1,15 @@
+project Private_Futexes_Tests is
+   Kernel_Src := external ("KERNEL_SRC", "../../kernel/src");
+   for Source_Dirs use (".", Kernel_Src);
+   for Source_Files use ("main.adb", "private_futexes.ads", "private_futexes.adb",
+                         "word_protocol.ads", "word_protocol.adb");
+   for Object_Dir use "build";
+   for Exec_Dir use "build";
+   for Main use ("main.adb");
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnato", "-O2", "-gnatwa");
+   end Compiler;
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=2", "--timeout=60");
+   end Prove;
+end Private_Futexes_Tests;

@@ -1,0 +1,155 @@
+--  Hosted tests of the kernel's notification rules (Notification_Objects)
+--  and of the two-level fan-in model over them (Fan_In_Model).
+pragma Ada_2022;
+with Ada.Text_IO; use Ada.Text_IO;
+with Interfaces; use Interfaces;
+with Notification_Objects; use Notification_Objects;
+with Fan_In_Model;
+
+procedure Main is
+   Failures : Natural := 0;
+
+   procedure Check (Condition : Boolean; What : String) is
+   begin
+      if Condition then
+         Put_Line ("PASS " & What);
+      else
+         Put_Line ("FAIL " & What);
+         Failures := Failures + 1;
+      end if;
+   end Check;
+
+   N, R : Notification;
+   Result : Signal_Result;
+   Outcome : Wait_Outcome;
+   Taken : Unsigned_64;
+   Bind : Bind_Outcome;
+   Removed : Boolean;
+   W, B : Thread_Ref;
+begin
+   --  Semantics: OR of badges, cleared by Wait.
+   Create (N, 3);
+   Signal (N, 2#0001#, First, Result);
+   Check (Result.What = Nothing and then N.Bits = 2#0001#, "signal with no waiter keeps the badge");
+   Signal (N, 2#0100#, First, Result);
+   Check (N.Bits = 2#0101#, "badges OR");
+   Signal (N, 2#0001#, First, Result);
+   Check (N.Bits = 2#0101#, "the same badge twice is one bit");
+   Start_Wait (N, 7, True, Outcome, Taken);
+   Check (Outcome = Got and then Taken = 2#0101# and then N.Bits = 0,
+          "wait takes every pending bit and clears them");
+   Start_Wait (N, 7, False, Outcome, Taken);
+   Check (Outcome = Empty_Now and then Taken = 0, "wait Now with nothing pending");
+
+   --  The single waiter; a second wait is Busy and steals nothing.
+   Start_Wait (N, 7, True, Outcome, Taken);
+   Check (Outcome = Blocked and then N.Waiter = 7, "a wait blocks as the waiter");
+   Start_Wait (N, 8, True, Outcome, Taken);
+   Check (Outcome = Busy and then N.Waiter = 7, "a second waiter is refused Busy");
+   Signal (N, 16#80#, First, Result);
+   Check (Result.What = Wake_Waiter and then Result.Thread = 7 and then Result.Taken = 16#80#
+            and then N.Bits = 0 and then N.Waiter = No_Thread,
+          "a wake hands the bits to the waiter");
+   Start_Wait (N, 8, True, Outcome, Taken);
+   Cancel_Wait (N, 9, Removed);
+   Check (not Removed and then N.Waiter = 8, "cancel of another thread changes nothing");
+   Cancel_Wait (N, 8, Removed);
+   Check (Removed and then N.Waiter = No_Thread, "cancel removes the waiter");
+
+   --  Bound thread: a signal with no waiter rings it, bits stay.
+   Create (R, 3);
+   Bind_Thread (R, 11, Bind, Result);
+   Check (Bind = Bound_Now and then R.Is_Root, "bind a root to a thread");
+   Bind_Thread (R, 12, Bind, Result);
+   Check (Bind = Already, "a root has one bound thread");
+   Signal (R, 4, First, Result);
+   Check (Result.What = Ring_Bound and then Result.Thread = 11 and then R.Bits = 4,
+          "no waiter: the bound thread is rung, the bits wait");
+   Start_Wait (R, 11, True, Outcome, Taken);
+   Check (Outcome = Got and then Taken = 4, "the bound thread takes them");
+
+   --  Leaf -> root.
+   Create (N, 3);
+   Signal (N, 1, First, Result);
+   Bind_Leaf (N, R, 1, (Id => 2, Gen => 1), 16#100#, Bind, Result);
+   Check (Bind = Bound_Now and then Is_Leaf (N) and then R.Bits = 16#100#
+            and then Result.What = Ring_Bound,
+          "bits pending at binding reach the root at once");
+   Start_Wait (R, 11, True, Outcome, Taken);
+   Start_Wait (R, 11, True, Outcome, Taken);
+   Check (Outcome = Blocked, "the root's thread waits");
+   Signal (N, 2, First, Result);
+   Check (Result.What = Forward and then Result.To = (2, 1) and then Result.To_Badge = 16#100#
+            and then N.Bits = 3,
+          "a leaf keeps its bits and forwards its root badge");
+   Signal (R, Result.To_Badge, Second, Result);
+   Check (Result.What = Wake_Waiter and then Result.Thread = 11 and then Result.Taken = 16#100#,
+          "the root's waiter is woken with the leaf's badge");
+   Start_Wait (N, 5, True, Outcome, Taken);
+   Check (Outcome = Got and then Taken = 3, "the leaf's bits are taken from the leaf");
+   Start_Wait (N, 5, True, Outcome, Taken);
+   Check (Outcome = Busy, "a bound leaf has no blocking waiter");
+
+   --  Two levels only.
+   declare
+      Other : Notification;
+   begin
+      Create (Other, 4);
+      Bind_Leaf (R, Other, 2, (Id => 3, Gen => 1), 1, Bind, Result);
+      Check (Bind = Not_Allowed, "a root never becomes a leaf");
+      Bind_Leaf (Other, N, 3, (Id => 1, Gen => 1), 1, Bind, Result);
+      Check (Bind = Not_Allowed, "a leaf never becomes a root");
+      Bind_Leaf (N, Other, 1, (Id => 3, Gen => 1), 1, Bind, Result);
+      Check (Bind = Already, "a leaf has one root");
+      Bind_Thread (N, 13, Bind, Result);
+      Check (Bind = Not_Allowed, "a leaf is not bound to a thread");
+      declare
+         Same : Notification := Other;
+      begin
+         Bind_Leaf (Other, Same, 3, (Id => 3, Gen => 1), 1, Bind, Result);
+      end;
+      Check (Bind = Not_Allowed, "no object is its own root");
+      Bind_Leaf (Other, R, 3, (Id => 2, Gen => 1), 0, Bind, Result);
+      Check (Bind = Not_Allowed, "a zero badge is refused");
+      Signal (N, 1, Second, Result);
+      Check (Result.What /= Forward, "the second step never forwards");
+   end;
+
+   Unbind_Leaf (N);
+   Check (not Is_Leaf (N) and then N.Bits = 1, "unbind keeps the leaf's bits");
+   Finish (R, W, B);
+   Check (R = Empty and then B = 11, "an end hands back its bound thread");
+
+   --  The model: a wake through the table.
+   declare
+      use Fan_In_Model;
+      S : State := Initial;
+      Woken, Rung : Thread_Ref;
+   begin
+      Create_Object (S, 1, 2);
+      Create_Object (S, 2, 3);
+      Fan_In_Model.Bind (S, 1, 2, 16#10#, Bind);
+      Check (Bind = Bound_Now, "model: bind leaf 1 to root 2");
+      Fan_In_Model.Wait (S, 2, 21, True, Outcome, Taken);
+      Fan_In_Model.Wake (S, 1, 4, Woken, Rung, Taken);
+      Check (Woken = 21 and then Taken = 16#10#, "model: a leaf's wake wakes the root's waiter");
+      End_Object (S, 2);
+      Fan_In_Model.Wake (S, 1, 8, Woken, Rung, Taken);
+      Check (Woken = No_Thread and then (S.O (1).Bits and 8) = 8,
+             "model: a stale root: the bits wait in the leaf");
+      Create_Object (S, 2, 3);
+      Fan_In_Model.Wait (S, 2, 21, True, Outcome, Taken);
+      Fan_In_Model.Wake (S, 1, 8, Woken, Rung, Taken);
+      Check (Woken = No_Thread and then S.O (2).Waiter = 21,
+             "model: a new object in the root's place is not reached by the old link");
+      Fan_In_Model.Wait (S, 1, 22, True, Outcome, Taken);
+      Check (Outcome = Got and then not Is_Leaf (S.O (1)),
+             "model: a wait on a leaf whose root ended unbinds it");
+   end;
+
+   if Failures = 0 then
+      Put_Line ("notifications: PASS");
+   else
+      Put_Line ("notifications: FAIL" & Natural'Image (Failures));
+   end if;
+end Main;
