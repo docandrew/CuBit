@@ -2,6 +2,7 @@ with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Owned_Reservations;
+with CuBit.Process_Calls;
 with Owned_Memory_ABI;
 -- Disposable startup fixture. Uses only caller-owned mapping syscalls
 -- (owned regions, ABI-002).
@@ -15,8 +16,7 @@ procedure Native_Records_Check is
    begin
       if not OK then
          debugPrint ("TEST: FAIL native owned records: " & Detail & ASCII.LF);
-         Ignore := syscall (SYSCALL_EXIT);
-         loop null; end loop;
+         CuBit.Process_Calls.Exit_Process;
       end if;
    end Check;
    procedure Sentinel (Address, Expected : Unsigned_64; Write : Boolean) is
@@ -220,6 +220,5 @@ begin
       Sentinel (Base, Unsigned_64(I), True);
    end loop;
    debugPrint ("native owned records: exiting with 64 live mappings" & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT);
-   loop null; end loop;
+   CuBit.Process_Calls.Exit_Process;
 end Native_Records_Check;
