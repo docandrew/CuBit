@@ -111,7 +111,6 @@ tests/mesa-anv/memory-fixture/messages_mock.ads
 tests/mesa-anv/native-owned-reservation.c
 tests/mesa-software/native-mesa-window.c
 tests/mesa-software/native-opengl.c
-tests/metrics-latency/outlet-fixture/main.adb
 tests/observatory-metrics/load/main.adb
 tests/observatory-metrics/native-check/main.adb
 tests/owned-record-table/native_records_check.adb

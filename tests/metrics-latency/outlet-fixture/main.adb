@@ -12,6 +12,7 @@ with CuBit.Handles.Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Metric_Outlet;
 with CuBit.Metrics;
+with CuBit.Process_Calls;
 with CuBit.Startup_State;
 with CuBit.Startup_Tables;
 
@@ -29,7 +30,6 @@ procedure Main is
    Has_Endpoint : constant Boolean :=
      CuBit.Handles.Startup.Optional_Endpoint_Named (CuBit.Metric_Outlet.Startup_Binding).Present;
    Drained : Boolean;
-   Ignore : Unsigned_64;
 begin
    for Sample in 1 .. Samples loop
       CuBit.Metrics.Observe (Samples_Series, Unsigned_64 (Sample));
@@ -40,5 +40,5 @@ begin
                " state=" & CuBit.Metrics.Outlet_State'Image (CuBit.Metrics.State) &
                " drained=" & (if Drained then "yes" else "no") &
                " lost" & Unsigned_64'Image (CuBit.Metrics.Lost) & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end Main;
