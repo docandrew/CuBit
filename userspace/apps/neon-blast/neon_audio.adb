@@ -8,9 +8,9 @@ with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Futex_Locks;
 with CuBit.Handles.Devices;
 with CuBit.Kernel_ABI;
-with CuBit.Kernel_Calls;
 with CuBit.Monotonic;
 with CuBit.Owned_Reservations;
+with CuBit.Process_Calls;
 with CuBit.Thread_Areas;
 with CuBit.Waits;
 with Neon_Replay;
@@ -161,8 +161,8 @@ package body Neon_Audio is
          return;
       end if;
       Is_Running := True;
-      if CuBit.Kernel_Calls.Call
-           (ABI.Thread_Create, Unsigned_64 (To_Integer (Loop_Body'Address)),
+      if CuBit.Process_Calls.Create_Thread
+           (Unsigned_64 (To_Integer (Loop_Body'Address)),
             ((Stack + Stack_Bytes) and not (Stack_Alignment - 1)) - Return_Address_Bytes,
             0, Area, Unsigned_64 (To_Integer (Exit_Word'Address))) = ABI.Failed
       then
