@@ -1,4 +1,5 @@
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with CCL.Evaluation;
 with Interfaces; use Interfaces;
@@ -40,7 +41,6 @@ procedure Main is
    end Write;
    Fixture : constant String := "inspector-native-ok";
    Oversized : constant String (1 .. 1025) := [others => 'x'];
-   Ignore : Unsigned_64;
    Msg : Message := NULL_MESSAGE;
    Buffer : String (1 .. 8192) := [others => ' '] with Alignment => 4096;
    Grant : CuBit.Memory_Grants.Grant_Reference;
@@ -63,8 +63,7 @@ procedure Main is
    begin
       if not Condition then
          debugPrint ("TEST: FAIL config-inspection " & Name & ASCII.LF);
-         Ignore := syscall (SYSCALL_EXIT, 1);
-         loop Ignore := CuBit.Waits.Sleep_For (1000); end loop;
+         CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Failure);
       end if;
    end Check;
    procedure Check_Data_Protocol is
@@ -277,5 +276,5 @@ begin
    Evaluate ("(config.get ""test.config.value"")", 1024, Catalog, Grants, Host, Outcome);
    Check (CCL.Sessions.Result_Image (Outcome) = "String: " & Fixture, "CCL native value");
    debugPrint ("TEST: PASS config-inspection" & ASCII.LF);
-   Ignore := syscall (SYSCALL_EXIT);
+   CuBit.Process_Calls.Exit_Process;
 end Main;

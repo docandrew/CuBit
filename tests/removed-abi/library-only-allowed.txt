@@ -144,7 +144,6 @@ userspace/apps/avx-check/main.adb
 userspace/apps/bench-ipc-client/main.adb
 userspace/apps/bench-ipc-server/main.adb
 userspace/apps/capability-test/main.adb
-userspace/apps/config-check/main.adb
 userspace/apps/config-denied/main.adb
 userspace/apps/config-inspector/main.adb
 userspace/apps/debug-engine-check/main.adb
