@@ -11,6 +11,7 @@ pragma Ada_2022;
 with Interfaces; use Interfaces;
 with System.Storage_Elements; use System.Storage_Elements;
 with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 procedure Sbrk_Load is
    Settle_Ms  : constant := 500;
@@ -44,7 +45,7 @@ begin
                " rounds=" & Natural'Image (Rounds) & " pid=" & Mark'Image & ASCII.LF);
    for Round in 1 .. Rounds loop
       --  SBRK answers the old break: the step's first byte.
-      Base := syscall (SYSCALL_SBRK, Step_Bytes);
+      Base := CuBit.Process_Calls.Grow_Heap (Step_Bytes);
       exit when Base = Failed or else Base = 0;
       if First_Base = 0 then
          First_Base := Base;
