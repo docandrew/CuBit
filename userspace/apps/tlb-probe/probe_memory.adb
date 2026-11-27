@@ -7,14 +7,12 @@
 ------------------------------------------------------------------------------
 pragma Ada_2022;
 with System.Storage_Elements; use System.Storage_Elements;
-with CuBit.Messages; use CuBit.Messages;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 
 package body Probe_Memory is
    package W renames CuBit.Waits;
 
-   SYSCALL_THREAD_CREATE : constant Unsigned_64 := 90;
-   SYSCALL_THREAD_EXIT   : constant Unsigned_64 := 91;
    --  A SysV function expects RSP + 8 to be 16-byte aligned on entry.
    Stack_Alignment : constant := 16;
    Return_Slot : constant := 8;
@@ -50,11 +48,11 @@ package body Probe_Memory is
       Seen_After := Count_Pattern;
       Phase := Survived;
       Ignore := W.Futex_Wake (W.Private_Word (Phase'Address), 1);
-      Ignore := syscall (SYSCALL_THREAD_EXIT);
+      CuBit.Process_Calls.Exit_Thread;
    end Reader;
 
    function New_Stack return Unsigned_64 is
-      Base : constant Unsigned_64 := syscall (SYSCALL_SBRK, Stack_Size);
+      Base : constant Unsigned_64 := CuBit.Process_Calls.Grow_Heap (Stack_Size);
    begin
       if Base = Unsigned_64'Last or else Base = 0 then
          return 0;
@@ -63,7 +61,6 @@ package body Probe_Memory is
    end New_Stack;
 
    function Start_Reader (Stack : Unsigned_64) return Unsigned_64 is
-     (syscall (SYSCALL_THREAD_CREATE,
-               Unsigned_64 (To_Integer (Reader'Address)), Stack, 0, 0,
-               Unsigned_64 (To_Integer (Reader_Exit'Address))));
+     (CuBit.Process_Calls.Create_Thread (Unsigned_64 (To_Integer (Reader'Address)), Stack, 0, 0,
+                                         Unsigned_64 (To_Integer (Reader_Exit'Address))));
 end Probe_Memory;
