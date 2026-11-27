@@ -1,4 +1,5 @@
 with CuBit.Console_Route;
+with CuBit.Process_Calls;
 with CuBit.Waits;
 with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
@@ -44,5 +45,5 @@ begin
    debugPrint ("stall-check: call ended label=" & Unsigned_32'Image (Tag.label) & LF);
    Ignore := CuBit.Waits.Sleep_For (Settle_Ms);
    debugPrint ("stall-check: done" & LF);
-   Ignore := syscall (SYSCALL_EXIT, 0);
+   CuBit.Process_Calls.Exit_Process (CuBit.Process_Calls.Success);
 end Main;

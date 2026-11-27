@@ -154,7 +154,6 @@ userspace/apps/ipctest-server/main.adb
 userspace/apps/launch-gate-check/main.adb
 userspace/apps/mov-ss-check/main.adb
 userspace/apps/platform-pool-check/main.adb
-userspace/apps/stall-check/main.adb
 userspace/apps/storage-check/main.adb
 userspace/apps/swap-probe/main.adb
 userspace/apps/thread-check/main.adb
