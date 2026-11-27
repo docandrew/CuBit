@@ -5,7 +5,7 @@
 --  @summary
 --  Userspace NVMe block device driver.
 --
---  Maps the NVMe controller BAR0 MMIO via SYSCALL_MAP_DEVICE, initializes
+--  Maps the NVMe controller BAR0 MMIO (CuBit.Handles.Devices.Map_Device), initializes
 --  the controller and I/O queues, then offers the shared Block.Device.V1
 --  protocol to authorized clients.
 --
