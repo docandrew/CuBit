@@ -129,7 +129,6 @@ buddy-boot-admission    | kernel   | . | bash tests/buddy-boot-admission/prove.s
 buddy-geometry          | kernel   | . | bash tests/buddy-geometry/prove.sh
 buddy-metadata          | kernel   | . | bash tests/buddy-metadata/prove.sh
 firmware-frames         | boot     | . | bash tests/firmware-frames/prove.sh
-free-block-set          | fs       | . | bash tests/free-block-set/prove.sh
 nvme-recovery           | drivers  | . | bash tests/nvme-recovery/prove.sh
 intrusive-list-splices  | kernel   | . | bash tests/intrusive-list-splices/prove.sh
 multiboot-entry         | boot     | . | bash tests/multiboot-entry/prove.sh

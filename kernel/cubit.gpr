@@ -9,18 +9,11 @@ project CuBit is
                          "../shared/time", "../shared/interrupts", "../shared/boot",
                          "../shared/launch", "../shared/publications",
                          "../shared/capabilities");
-    -- @TODO add src/test for "test" builds
     
     for Main use ("kmain.adb");
 
     for Runtime ("Ada") use "runtime";
 
-    -- vectors.ads is an unfinished, unreferenced API sketch, not kernel code.
-    -- Services.Keyboard (the 2019 PS/2 lower half) is unreferenced since
-    -- input moved to userspace drivers and no longer compiles against
-    -- Process.IPC; it is excluded so `-U` legality checks cover live code.
-    for Excluded_Source_Files use ("vectors.ads",
-                                   "services-keyboard.ads", "services-keyboard.adb");
 
     -- For gprbuild
     package Builder is

@@ -1,5 +1,5 @@
 project Grants is
-   for Source_Dirs use (".", "../../../kernel/src", "../../../shared/hardware");
+   for Source_Dirs use (".", "../hardware-catalog", "../../../kernel/src", "../../../shared/hardware");
    for Object_Dir use "../build/hardware-grants/obj";
    for Exec_Dir use "../build/hardware-grants";
    for Main use ("hardware_grants_tests.adb");

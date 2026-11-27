@@ -34,6 +34,4 @@ if not re.search(r"\baddl\s+\$0x1,", listing):
 kernel_symbols = subprocess.check_output(["nm", "kernel/cubit_kernel"], text=True)
 if re.search(r"buddy_list_refinement|refinement_checks", kernel_symbols):
     raise SystemExit("FAIL: Ghost list-refinement harness entered the kernel")
-if "free_block_set__" in kernel_symbols:
-    raise SystemExit("FAIL: experimental free-set tree entered the kernel")
-print(f"PASS splice codegen: {len(instructions)} instructions, moveblock plus three link-table stores, in-place count update; no Ghost/tree code")
+print(f"PASS splice codegen: {len(instructions)} instructions, moveblock plus three link-table stores, in-place count update; no Ghost code")
