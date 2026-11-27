@@ -10,6 +10,7 @@ with Startup;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Memory_Grants;
 with CuBit.Net_Channels;
+with CuBit.Process_Calls;
 with CuBit.Settings;
 with CuBit.Filesystems;
 with CuBit.TLS_Protocol; use CuBit.TLS_Protocol;
@@ -802,7 +803,7 @@ procedure Main is
 
    function Load_Roots return Boolean is
       use CuBit.Filesystems;
-      Allocation : constant Unsigned_64 := syscall (SYSCALL_SBRK, Roots_Capacity);
+      Allocation : constant Unsigned_64 := CuBit.Process_Calls.Grow_Heap (Roots_Capacity);
       Buffer_Address : constant System.Address :=
         To_Address (Integer_Address (Allocation));
       Reference : CuBit.Memory_Grants.Grant_Reference;
@@ -920,7 +921,7 @@ procedure Main is
 
    function Setup_Buffers return Boolean is
       Allocation : constant Unsigned_64 :=
-        syscall (SYSCALL_SBRK, Unsigned_64 (Maximum_Channels * Net_Buffer_Bytes));
+        CuBit.Process_Calls.Grow_Heap (Unsigned_64 (Maximum_Channels * Net_Buffer_Bytes));
       Granted : Boolean;
    begin
       if Allocation = Unsigned_64'Last then
