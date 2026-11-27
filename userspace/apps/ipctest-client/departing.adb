@@ -5,6 +5,7 @@ with Interfaces; use Interfaces;
 with CuBit.Messages; use CuBit.Messages;
 with CuBit.Handles;
 with CuBit.Handles.Startup;
+with CuBit.Process_Calls;
 
 procedure Departing is
    --  The departing fixture's manifest is the client's: its ipc-test entry.
@@ -40,5 +41,5 @@ begin
       return;
    end if;
    debugPrint ("ipctest-departing: exiting with saved reply" & ASCII.LF);
-   Ignored := syscall (SYSCALL_EXIT);
+   CuBit.Process_Calls.Exit_Process;
 end Departing;
