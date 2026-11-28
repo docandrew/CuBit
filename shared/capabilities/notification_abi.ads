@@ -29,8 +29,10 @@
 --  Wake (Kind, Object, Count), registers arg0 .. arg2:
 --    Notification: Object is a handle with the Wake right. ORs that
 --      handle's badge into the object (the caller passes no bits); a leaf
---      also signals its root with the root badge. Result 1, or Ended (the
---      object has ended), Revoked, Refused.
+--      also signals its root with the root badge. A leaf whose root has
+--      ended is unbound by that Wake and still answers Signalled: the badge
+--      is held in the leaf the handle names, for its own Wait. Result 1, or
+--      Ended (the object has ended), Revoked, Refused.
 --    Private_Word: wake up to Count of the caller's threads waiting on the
 --      word, oldest first. Result: how many, or Bad_Argument.
 --
