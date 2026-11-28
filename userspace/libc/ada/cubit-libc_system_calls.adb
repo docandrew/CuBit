@@ -607,9 +607,10 @@ package body CuBit.Libc_System_Calls is
                  elsif Result = Notification_ABI.Timed_Out then Error (ETIMEDOUT)
                  else Error (EFAULT));
       elsif Command = FUTEX_WAKE or else Command = Futex_Wake_Bitset then
-         return To_Long (Kernel (K.Wake, Notification_ABI.Private_Word,
-                                  Unsigned_64 (To_Integer (Word)),
-                                  (if Value < 0 then 0 else Unsigned_64 (Value))));
+         Result := Kernel (K.Wake, Notification_ABI.Private_Word,
+                           Unsigned_64 (To_Integer (Word)),
+                           (if Value < 0 then 0 else Unsigned_64 (Value)));
+         return (if Notification_ABI.Is_Status (Result) then Error (EINVAL) else To_Long (Result));
       elsif Command = FUTEX_CMP_REQUEUE or else Command = FUTEX_REQUEUE then
          if Command = FUTEX_CMP_REQUEUE then
             declare
@@ -623,8 +624,9 @@ package body CuBit.Libc_System_Calls is
          --  No requeue: wake every waiter; they recheck and contend.
          --  Correct for condition variables (spurious wakeups are
          --  allowed), only less efficient.
-         return To_Long (Kernel (K.Wake, Notification_ABI.Private_Word,
-                                  Unsigned_64 (To_Integer (Word)), K.Forever));
+         Result := Kernel (K.Wake, Notification_ABI.Private_Word,
+                           Unsigned_64 (To_Integer (Word)), K.Forever);
+         return (if Notification_ABI.Is_Status (Result) then Error (EINVAL) else To_Long (Result));
       end if;
       return Error (ENOSYS);
    end Futex;

@@ -64,7 +64,7 @@ package Process.Futex is
        wakeWord   : Unsigned_64) return Unsigned_64;
 
     -- FUTEX_WAKE (arg2 = Futex_ABI.Shared_Space): a shared word of a grant
-    -- the caller is a party of (else WAKE_REFUSED; Private_Space is refused:
+    -- the caller is a party of (else WAKE_REFUSED; 0, the retired private space, is refused:
     -- private words are woken by Wake).
     --
     -- Peer_Space (IPC-010 option B): word is a grant reference; the caller,

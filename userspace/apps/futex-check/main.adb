@@ -102,6 +102,20 @@ begin
    Check (CuBit.Waits.Futex_Wait (To_Address (16#0000_7000_0000_0000#), 0, FOREVER) = FUTEX_FAULT,
           "unmapped futex word refused");
    Check (Futex_Wake (Mutex'Access, 1) = 0, "wake with no waiters wakes none");
+   --  The retired forms (IPC revision 2, S1) are refused, not served: a
+   --  private word in FUTEX_WAKE (93, arg2 0, the old Private_Space) and in
+   --  WAIT's futex form without Shared_Futex.
+   declare
+      Retired_Futex_Wake    : constant := 93;
+      Retired_Private_Space : constant := 0;
+   begin
+      Check (syscall (Retired_Futex_Wake, Addr (Mutex'Access), 1, Retired_Private_Space)
+               = Unsigned_64'Last,
+             "FUTEX_WAKE of a private word refused");
+      Check (CuBit.Waits.Wait (Wait_ABI.Futex_Sources, CuBit.Waits.Now, Addr (Mutex'Access), 0)
+               = FUTEX_FAULT,
+             "WAIT's futex form on a private word refused");
+   end;
    Start := Now_Ms;
    Result := Futex_Wait (Mutex'Access, 0, Now_Ms + 30);
    Check (Result = FUTEX_TIMED_OUT and then Now_Ms - Start >= 30,

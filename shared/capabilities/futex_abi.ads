@@ -7,8 +7,9 @@
 --  kernel (Process.Futex) and the runtime (CuBit.Waits).
 --
 --  @description
---  A private futex is a word of the caller's own address space, named by
---  its address. A shared futex is a word in a memory grant, named by the
+--  A private futex (a word of the caller's own address space) is not named
+--  here: it waits in its process's own table (Notification_ABI's Wait and
+--  Wake, IPC revision 2). A shared futex is a word in a memory grant, named by the
 --  grant's slot and the word's byte offset in the grant, packed in one
 --  register word (Shared_Word). Both parties of the grant, its owner and
 --  its grantee, name the same word the same way whatever their mappings,
@@ -20,8 +21,8 @@
 --      shared word, B the expected value.
 --    Wait's wake operand: Wait_ABI.Wake_First + Wait_ABI.Wake_Shared, arg5
 --      the shared word.
---    FUTEX_WAKE: arg0 the shared word, arg1 the count, arg2 Shared_Space
---      (Private_Space, 0, is a private address as before).
+--    FUTEX_WAKE: arg0 the shared word, arg1 the count, arg2 Shared_Space.
+--      arg2 0 (the retired Private_Space) is refused, Wake_Refused.
 --
 --  Waking a channel peer (IPC-010 option B, Channel_Wake_ABI): FUTEX_WAKE
 --  with arg2 Peer_Space, arg0 a grant's reference word (generation << 32 |
@@ -47,8 +48,7 @@ package Futex_ABI with Pure, SPARK_Mode is
    subtype Grant_Slot_Number is Unsigned_64 range 1 .. Slot_Limit - 1;
    subtype Grant_Offset is Unsigned_64 range 0 .. Offset_Limit - 1;
 
-   --  FUTEX_WAKE's arg2.
-   Private_Space : constant Unsigned_64 := 0;
+   --  FUTEX_WAKE's arg2 (0, the private space, is retired: IPC revision 2).
    Shared_Space  : constant Unsigned_64 := 1;
    Peer_Space    : constant Unsigned_64 := 2;
    --  FUTEX_WAKE's arg3 (Peer_Space), a set: the waker is about to block;

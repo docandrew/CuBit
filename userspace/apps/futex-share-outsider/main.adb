@@ -75,7 +75,9 @@ begin
    Check (Learned and then Futex_ABI.Well_Formed (Shared.Word), "learned a live shared word");
    Check (W.Futex_Wake (Shared, 1) = Futex_ABI.Wake_Refused, "wake without the grant refused");
    Check (W.Futex_Wait (Shared, 0, W.Now) = Wait_ABI.Futex_Fault, "wait without the grant refused");
-   Check (W.Hand_Off (Shared, W.Private_Word (Shared'Address), 0, W.Now) = Wait_ABI.Futex_Fault,
+   --  Both words shared (Hand_Off takes shared words only): refused because
+   --  this process is not a party of the grant.
+   Check (W.Hand_Off (Shared, Shared, 0, W.Now) = Wait_ABI.Futex_Fault,
           "hand-off waking a word without the grant refused");
    Check (not W.Wake_Peer (Notified), "peer wake without being a party refused");
    if Failures = 0 then

@@ -95,7 +95,10 @@ package CuBit.Waits is
    --  the wait answers (a futex result; Futex_Fault, and no wait, when
    --  Peer is refused).
    function Hand_Off (Peer, Mine : Futex_Name; Expected, Deadline : Unsigned_64)
-     return Unsigned_64;
+     return Unsigned_64
+   --  Shared words only: a private word's wait-plus-wake is retired (IPC
+   --  revision 2; private words use Notification_ABI's Wait and Wake).
+   with Pre => Peer.Shared and then Mine.Shared;
 
    --  Wake a channel peer (IPC-010 option B): a futex wake of its wake
    --  word through Grant, a live channel grant (made with the notify flag)

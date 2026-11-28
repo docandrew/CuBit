@@ -90,8 +90,12 @@ package body Process.Wait_Timers is
     end armFor;
 
     procedure Arm (me : ThreadID; tsc : Unsigned_64) is
-        cpu : constant CPU_Index := PerCPUData.getCPUNumber;
+        cpu : CPU_Index;
     begin
+        -- Interrupts off before the CPU is read: the thread stays on it, so
+        -- the heap is this CPU's and the alarm armed below is its own.
+        PerCPUData.pushCLI;
+        cpu := PerCPUData.getCPUNumber;
         Spinlocks.enterCriticalSection (heapLocks (cpu));
         threadtab (me).oneWaitCPU := cpu;
         threadtab (me).oneWaitTimed := True;
@@ -103,6 +107,7 @@ package body Process.Wait_Timers is
             armFor (cpu);
         end if;
         Spinlocks.exitCriticalSection (heapLocks (cpu));
+        PerCPUData.popCLI;
     end Arm;
 
     procedure Disarm (me : ThreadID) is

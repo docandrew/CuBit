@@ -249,6 +249,10 @@ package body Process.Futex is
             Spinlocks.enterCriticalSection (overflowLock);
             ticket := nextTicket;
             Large.Enqueue (overflow, Waiter_Id (me), k, ticket, largeSlot, ok);
+            -- Unreachable: the overflow set has a slot for every thread and
+            -- a thread waits on one word at a time. Were it reached, the
+            -- raise is a kernel panic (no propagation), not a return with a
+            -- deadline still in the heap.
             if not ok then
                 raise ProcessException with "Futex overflow set full";
             end if;

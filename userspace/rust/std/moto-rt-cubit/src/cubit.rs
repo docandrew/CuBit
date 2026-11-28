@@ -135,7 +135,9 @@ fn futex_wait_raw(word: *const AtomicU32, expected: u32, deadline_ms: u64) -> u6
 }
 
 fn futex_wake_raw(word: *const AtomicU32, count: u64) -> u64 {
-    unsafe { syscall(SYS_WAKE, PRIVATE_WORD, word as u64, count, 0, 0) }
+    let woken = unsafe { syscall(SYS_WAKE, PRIVATE_WORD, word as u64, count, 0, 0) };
+    // A status (Notification_ABI.Status_First and above) wakes nobody.
+    if woken >= 1 << 63 { 0 } else { woken }
 }
 
 // --- entry ------------------------------------------------------------------

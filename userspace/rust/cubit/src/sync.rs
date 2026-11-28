@@ -22,6 +22,9 @@ const WOKEN: u64 = 0;
 const RETRY: u64 = 1;
 #[cfg(not(test))]
 const TIMED_OUT: u64 = 2;
+/// Results at and above this are statuses, not counts.
+#[cfg(not(test))]
+const STATUS_FIRST: u64 = 1 << 63;
 
 /// A millisecond deadline as the microsecond one Wait takes.
 #[cfg(not(test))]
@@ -85,8 +88,10 @@ pub fn futex_wake(word: &AtomicU32, count: u32) -> u32 {
     {
         // SAFETY: the address is only a key; the kernel does not dereference it.
         unsafe {
-            crate::syscall3(crate::Syscall::Wake, PRIVATE_WORD, word.as_ptr() as u64, count as u64)
-                as u32
+            let woken =
+                crate::syscall3(crate::Syscall::Wake, PRIVATE_WORD, word.as_ptr() as u64, count as u64);
+            // A status (Notification_ABI.Status_First and above) wakes nobody.
+            if woken >= STATUS_FIRST { 0 } else { woken as u32 }
         }
     }
     #[cfg(test)]

@@ -58,6 +58,10 @@ package body CuBit.Waits is
         (CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Wait_One, NA.Private_Word, Word, Expected,
                                   To_Microseconds (Deadline))));
 
+   --  A private Wake: how many, or Wake_Refused for a malformed word.
+   function Private_Wake_Result (Result : Unsigned_64) return Unsigned_64 is
+     (if NA.Is_Status (Result) then FA.Wake_Refused else Result);
+
    function Futex_Wait (Word : System.Address; Expected, Deadline : Unsigned_64)
      return Unsigned_64 is
      (Private_Wait (Unsigned_64 (System.Storage_Elements.To_Integer (Word)), Expected, Deadline));
@@ -120,7 +124,8 @@ package body CuBit.Waits is
    function Futex_Wake (Name : Futex_Name; Count : Unsigned_64) return Unsigned_64 is
      (if Name.Shared
       then CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Futex_Wake, Name.Word, Count, FA.Shared_Space)
-      else CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Wake, NA.Private_Word, Name.Word, Count));
+      else Private_Wake_Result
+             (CuBit.Kernel_Calls.Call (CuBit.Kernel_ABI.Wake, NA.Private_Word, Name.Word, Count)));
 
    function Hand_Off (Peer, Mine : Futex_Name; Expected, Deadline : Unsigned_64)
      return Unsigned_64 is
