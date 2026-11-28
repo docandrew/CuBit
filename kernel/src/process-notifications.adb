@@ -35,9 +35,11 @@ package body Process.Notifications is
        "the table must hold every process's limit");
 
     -- One object: its lock, the generation its handles carry (Revoke
-    -- advances it), its life (the generation it was created with: what
-    -- bindings name, so a revocation keeps them and only the object's end
-    -- breaks them), both 0 once it ended, and its state. Written only under
+    -- advances it), its life (the generation it was created with, which
+    -- Revoke keeps: what its owner's thread binding names), both 0 once it
+    -- ended, and its state. A leaf's link names the generation of the Wake
+    -- handle it was bound with, so a binding is only as good as that
+    -- handle: Revoke and the end both make it stale. Written only under
     -- the lock; the lock is set up once, when its page is mapped, and never
     -- reset (a stale waker may hold it while the slot is reused).
     type Kernel_Notification is record
@@ -130,10 +132,6 @@ package body Process.Notifications is
     function current (E : Kernel_Notification; gen : Unsigned_32) return Boolean is
       (E.Gen = gen and then E.State.Live);
 
-    -- A binding's link to its root is current: the root is that life.
-    function linked (E : Kernel_Notification; life : Unsigned_32) return Boolean is
-      (E.Life = life and then E.State.Live);
-
     -- What a stale handle answers: Revoked while the object lives on (its
     -- generation advanced), else Ended.
     function stale (E : Kernel_Notification) return Unsigned_64 is
@@ -141,11 +139,18 @@ package body Process.Notifications is
     function staleOutcome (E : Kernel_Notification) return NA.Outcome is
       (if E.State.Live then NA.Revoked_Object else NA.Ended_Object);
 
-    -- A leaf's root has ended (a racy read of its life, which changes only
-    -- when that root ends; never a write).
+    -- What a stale leaf link (made with generation gen) answers: Revoked
+    -- while the root it was made with lives on (a slot's generations only
+    -- advance, so that root's life is at most gen), else Ended.
+    function staleLink (R : Kernel_Notification; gen : Unsigned_32) return Unsigned_64 is
+      (if R.State.Live and then R.Life <= gen then NA.Revoked else NA.Ended);
+
+    -- A leaf's link is stale: its root was revoked or ended since the leaf
+    -- was bound (a racy read of the root's generation, which only advances;
+    -- never a write).
     function rootGone (L : NO.Link) return Boolean is
       (Table.Is_Absent (slot (Unsigned_64 (L.Id)))
-       or else not linked (slot (Unsigned_64 (L.Id)).E.all, L.Gen));
+       or else not current (slot (Unsigned_64 (L.Id)).E.all, L.Gen));
 
     type Resolved is record
         OK    : Boolean := False;
@@ -199,12 +204,15 @@ package body Process.Notifications is
 
     -- Signal object id (generation gen) with badge: the object, then its
     -- root when it is a leaf, each under its own lock, one after the other.
-    -- A leaf whose root has ended is a leaf no more: it is unbound, and the
-    -- bits wait in it for its own Wait (a later Bind_Leaf may bind it again).
+    -- A leaf whose link is stale (its root revoked or ended since the leaf
+    -- was bound) is unbound; the badge is kept in it for its own Wait, and
+    -- the waker learns it was cut off: Revoked, or Ended. (Bound again with
+    -- a fresh Wake handle of the root, it forwards again.)
     function signal (id : NO.Object_Id; gen : Unsigned_32; badge : Unsigned_64) return Unsigned_64 is
         r1, r2 : NO.Signal_Result;
         ring1, ring2 : ThreadID := NO_THREAD;
         delivered : Boolean := False;
+        result : Unsigned_64 := NA.Signalled;
         ObjRef : constant Table.Element_Ref := slot (Unsigned_64 (id));
     begin
         if Table.Is_Absent (ObjRef) then
@@ -226,15 +234,19 @@ package body Process.Notifications is
             declare
                 RootRef : constant Table.Element_Ref := slot (Unsigned_64 (r1.To.Id));
             begin
-                if not Table.Is_Absent (RootRef) then
+                if Table.Is_Absent (RootRef) then
+                    result := NA.Ended;
+                else
                     declare
                         R : Kernel_Notification renames RootRef.E.all;
                     begin
                         Spinlocks.enterCriticalSection (R.Lock);
-                        if linked (R, r1.To.Gen) then
+                        if current (R, r1.To.Gen) then
                             NO.Signal (R.State, r1.To_Badge, NO.Second, r2);
                             act (r2, ring2);
                             delivered := True;
+                        else
+                            result := staleLink (R, r1.To.Gen);
                         end if;
                         Spinlocks.exitCriticalSection (R.Lock);
                     end;
@@ -254,7 +266,7 @@ package body Process.Notifications is
         end if;
         ringBound (ring1);
         ringBound (ring2);
-        return NA.Signalled;
+        return result;
     end signal;
 
     -- End object id (generation gen): its waiter returns Ended, its bound
@@ -509,6 +521,7 @@ package body Process.Notifications is
         told : NO.Signal_Result;
         ring : ThreadID := NO_THREAD;
         live : Boolean;
+        why : NA.Outcome := NA.Ended_Object;
     begin
         if not root.OK or else root.Badge = 0 or else root.Badge > NA.Badge_Last then
             answer (reply, NA.Refused_Call);
@@ -520,7 +533,6 @@ package body Process.Notifications is
         declare
             LR : constant Table.Element_Ref := slot (Unsigned_64 (leaf.Id));
             RR : constant Table.Element_Ref := slot (Unsigned_64 (root.Id));
-            rootLife : Unsigned_32;
         begin
             -- Each looked up once; an ended object is never locked (both
             -- could be the shared Absent record).
@@ -542,13 +554,18 @@ package body Process.Notifications is
                     Spinlocks.enterCriticalSection (L.Lock);
                 end if;
                 live := current (L, leaf.Gen) and then current (R, root.Gen);
+                if not current (L, leaf.Gen) then
+                    why := staleOutcome (L);
+                elsif not current (R, root.Gen) then
+                    -- A revoked root's old Wake handle binds nothing.
+                    why := staleOutcome (R);
+                end if;
                 if live then
-                    rootLife := R.Life;
-                    -- A leaf whose root ended is a leaf no more.
+                    -- A leaf whose link is stale is a leaf no more.
                     if NO.Is_Leaf (L.State) and then rootGone (L.State.Root) then
                         NO.Unbind_Leaf (L.State);
                     end if;
-                    NO.Bind_Leaf (L.State, R.State, leaf.Id, (Id => root.Id, Gen => rootLife),
+                    NO.Bind_Leaf (L.State, R.State, leaf.Id, (Id => root.Id, Gen => root.Gen),
                                   root.Badge, outcome, told);
                     act (told, ring);
                 end if;
@@ -557,7 +574,7 @@ package body Process.Notifications is
             end;
         end;
         if not live then
-            answer (reply, NA.Ended_Object);
+            answer (reply, why);
             return;
         end if;
         ringBound (ring);
@@ -566,8 +583,10 @@ package body Process.Notifications is
 
     -- Revoke: the object's generation advances (the table's ledger, so it
     -- never goes back, not even when the slot is reused); the waiter, which
-    -- holds the old Wait right, wakes Revoked; every other handle is stale.
-    -- Its life is kept, so its bindings (leaves, bound thread) stay. The
+    -- holds the old Wait right, wakes Revoked; every other handle is stale,
+    -- and so is every leaf link made with one (a leaf's next Wake answers
+    -- Revoked and unbinds it). Its bits, its charge and its life, so its
+    -- owner's thread binding, stay. The
     -- revoker's handle is replaced, under one hold of its table lock, by
     -- one of the new generation (the slot it frees is the one taken); if
     -- even that fails, the object ends rather than live on with no handle.

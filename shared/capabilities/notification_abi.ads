@@ -29,10 +29,12 @@
 --  Wake (Kind, Object, Count), registers arg0 .. arg2:
 --    Notification: Object is a handle with the Wake right. ORs that
 --      handle's badge into the object (the caller passes no bits); a leaf
---      also signals its root with the root badge. A leaf whose root has
---      ended is unbound by that Wake and still answers Signalled: the badge
---      is held in the leaf the handle names, for its own Wait. Result 1, or
---      Ended (the object has ended), Revoked, Refused.
+--      also signals its root with the root badge. A binding is only as good
+--      as the root's Wake handle that made it: when the root was revoked or
+--      ended since, the leaf is unbound by that Wake, the badge stays in the
+--      leaf for its own Wait, and the answer is Revoked or Ended (the root
+--      was not told). Result 1, or Ended (the object, or the leaf's root,
+--      has ended), Revoked (likewise revoked), Refused.
 --    Private_Word: wake up to Count of the caller's threads waiting on the
 --      word, oldest first. Result: how many, or Bad_Argument.
 --
@@ -48,7 +50,9 @@
 --                 badge for good, which may be copied with Grant.
 --    Bind_Leaf    on a leaf's Wait handle: (0) = a Wake handle of the
 --                 root. Signals of the leaf then reach the root with that
---                 handle's badge. Two levels only (Not_Allowed otherwise):
+--                 handle's badge, until the root is revoked or ends (a
+--                 revoked root's old Wake handle answers Revoked_Object
+--                 here). Two levels only (Not_Allowed otherwise):
 --                 a root never becomes a leaf, a leaf has no leaves and no
 --                 thread.
 --    Unbind_Leaf  on the leaf's Wait handle.
@@ -64,7 +68,9 @@
 --                 of it is stale: a Wake through one answers Revoked, and a
 --                 thread waiting with the old Wait right wakes Revoked. (1)
 --                 = the revoker's handle, re-stamped (a new handle word; the
---                 old one is closed).
+--                 old one is closed). Revoke keeps the bits, the charge and
+--                 the owner's thread binding. It does not keep leaf links
+--                 made with old Wake handles.
 --  Closing the Wait handle (or the holder's exit) ends the object: its
 --  waiter returns Ended, and every Wake handle of it answers Ended.
 ------------------------------------------------------------------------------

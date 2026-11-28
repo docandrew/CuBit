@@ -10293,8 +10293,12 @@ notify-check: its waiter returns Ended PASS
 notify-check: the waiter with the old Wait right wakes Revoked PASS
 notify-check: a waker of the old generation answers Revoked PASS
 notify-check: no waker of an earlier object reaches a new one PASS
-notify-check: a revoked root keeps its leaves: its waiter wakes PASS
-notify-check: an ended root's leaf is unbound at its wake: its bits wait in it PASS
+notify-check: after the root's Revoke, a leaf bound with its old waker answers Revoked PASS
+notify-check: and the revoked root's waiter does not wake PASS
+notify-check: the root's old waker binds nothing PASS
+notify-check: and the leaf's pending wake reaches the root's waiter PASS
+notify-check: the rebound leaf reaches the root PASS
+notify-check: an ended root's leaf is unbound at its wake (Ended): its bits wait in it PASS
 notify-check: the leaf binds to another root PASS
 notify-check: a binding racing the end of both objects is refused or bound, no fault PASS
 notify-check: the library answers it Wake_Refused, not a count PASS

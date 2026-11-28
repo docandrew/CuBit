@@ -13,8 +13,12 @@
 --     root, so no chain longer than two and no cycle exists;
 --   * revocation by generation: Revoke advances an object's generation, a
 --     capability of an older generation (revoked, or of an ended object
---     whose slot was reused) authorizes nothing (Wake_With, Wait_With
---     change nothing), and generations never go back;
+--     whose slot was reused) authorizes nothing (Wake_With, Wait_With,
+--     Bind_With change nothing), and generations never go back;
+--   * a binding is only as good as the Wake capability that made it: a
+--     leaf's link names that capability's generation, so after the root's
+--     Revoke no leaf reaches it (Revoke), and a Wake of such a leaf unbinds
+--     it, keeping its bits (Wake);
 --   * Wake: the thread woken is exactly the expected one: the waiter of the
 --     object signalled, or of its root when it is a leaf; otherwise the
 --     bound thread is rung; every other object is unchanged; the second
@@ -31,8 +35,9 @@ package Fan_In_Model with SPARK_Mode => On is
     type Generations is array (Id) of Unsigned_32;
 
     -- G: each object's capability generation (Revoke and the end advance
-    -- it); L: its life (only the end advances it), what bindings name, so a
-    -- revocation keeps an object's bindings and only its end breaks them.
+    -- it), what leaf links name; L: its life (only the end advances it),
+    -- what the kernel's thread binding names, so a revocation keeps the
+    -- owner's bound thread (in O) but no leaf link made before it.
     type State is record
         O : Objects;
         G : Generations;
@@ -40,20 +45,20 @@ package Fan_In_Model with SPARK_Mode => On is
     end record;
 
     function Live_Link (S : State; L : Link) return Boolean is
-      (L.Id in Id and then S.L (L.Id) = L.Gen and then S.O (L.Id).Live);
+      (L.Id in Id and then S.G (L.Id) = L.Gen and then S.O (L.Id).Live);
 
     -- A link names an object of the table; a link to an object that is not
     -- live is stale for good (its generation is no longer the object's),
     -- so a new object in that place is never reached through it.
     function Inv (S : State) return Boolean is
-      ((for all I in Id => Valid (S.O (I)))
+      ((for all I in Id => Valid (S.O (I)) and then S.L (I) <= S.G (I))
        and then
        (for all I in Id =>
           (if Is_Leaf (S.O (I)) then
              S.O (I).Root.Id in Id
-             and then S.O (I).Root.Gen <= S.L (S.O (I).Root.Id)
+             and then S.O (I).Root.Gen <= S.G (S.O (I).Root.Id)
              and then (S.O (S.O (I).Root.Id).Live
-                       or else S.O (I).Root.Gen /= S.L (S.O (I).Root.Id))))
+                       or else S.O (I).Root.Gen /= S.G (S.O (I).Root.Id))))
        and then
        (for all I in Id =>
           (if Is_Leaf (S.O (I)) and then Live_Link (S, S.O (I).Root) then
@@ -76,8 +81,8 @@ package Fan_In_Model with SPARK_Mode => On is
          Post => Inv (S) and then not S.O (I).Live and then S.G (I) = S'Old.G (I) + 1
                  and then S.L (I) = S'Old.L (I) + 1;
 
-    -- Bind leaf L to root R with Badge (a Wake right of R). The kernel
-    -- refuses one object bound to itself before locking anything.
+    -- Bind leaf L to root R with Badge (a current Wake right of R). The
+    -- kernel refuses one object bound to itself before locking anything.
     procedure Bind (S : in out State; L, R : Id; Badge : Unsigned_64;
                     Outcome : out Bind_Outcome)
     with Global => null,
@@ -127,8 +132,23 @@ package Fan_In_Model with SPARK_Mode => On is
                  and then (for all J in Id => (if J /= I then S.O (J) = S'Old.O (J)
                                                  and then S.G (J) = S'Old.G (J)))
                  and then not Authorizes (S, I, S'Old.G (I))
-                 -- Its life, so every binding to it or from it, is kept.
-                 and then S.L = S'Old.L;
+                 -- Its life (its bound thread, in O) is kept; no leaf
+                 -- bound with an old Wake right reaches it any more.
+                 and then S.L = S'Old.L
+                 and then (for all J in Id =>
+                             (if Is_Leaf (S.O (J)) and then S.O (J).Root.Id = I then
+                                not Live_Link (S, S.O (J).Root)));
+
+    -- Bind_Leaf through a Wake right of R of generation Gen: nothing
+    -- changes unless it authorizes (a revoked root's old right binds
+    -- nothing: Revoked_Object).
+    procedure Bind_With (S : in out State; L, R : Id; Gen : Unsigned_32; Badge : Unsigned_64;
+                         Done : out Boolean; Outcome : out Bind_Outcome)
+    with Global => null,
+         Pre  => Inv (S) and then S.O (L).Live,
+         Post => Inv (S) and then S.G = S'Old.G and then S.L = S'Old.L
+                 and then Done = Authorizes (S'Old, R, Gen)
+                 and then (if not Done then S = S'Old);
 
     -- A Wait through a capability of generation Gen: nothing changes
     -- unless it authorizes.
@@ -169,8 +189,8 @@ package Fan_In_Model with SPARK_Mode => On is
                  -- Bits are never lost: they are pending in I, or taken
                  -- by the woken waiter.
                  and then (if Woken = No_Thread then (S.O (I).Bits and Badge) = Badge)
-                 -- A leaf whose root ended is unbound: its bits wait in it,
-                 -- for its own Wait.
+                 -- A leaf whose link is stale (its root revoked or ended)
+                 -- is unbound: its bits wait in it, for its own Wait.
                  and then (if Is_Leaf (S'Old.O (I)) and then not Leaf_Root (S'Old, I) then
                              not Is_Leaf (S.O (I)));
 

@@ -173,21 +173,40 @@ begin
              "model: a right of the slot's earlier object does not reach the new one");
    end;
 
-   --  Regression (review 3): a root's Revoke keeps its leaves' bindings; its
-   --  end unbinds a leaf at the leaf's next wake, which can then bind again.
+   --  Regression (review 4, the revoke bypass): a binding is only as good
+   --  as the Wake right that made it. Process B binds its leaf 1 to A's
+   --  root 2 with a Wake right; A revokes 2. B's leaf no longer reaches 2
+   --  (its wake unbinds it, the bits stay in it), B's stale right cannot
+   --  bind again, and a fresh right binds and reaches 2. A root's end
+   --  likewise unbinds a leaf at the leaf's next wake, which can then bind
+   --  to another root.
    declare
       use Fan_In_Model;
       S : State := Initial;
       Woken, Rung, W : Thread_Ref;
+      Done : Boolean;
+      Old_Gen : Unsigned_32;
    begin
       Create_Object (S, 1, 2);
       Create_Object (S, 2, 3);
       Create_Object (S, 4, 3);
+      Old_Gen := S.G (2);
       Fan_In_Model.Bind (S, 1, 2, 16#10#, Bind);
       Revoke (S, 2, W);
       Fan_In_Model.Wait (S, 2, 21, True, Outcome, Taken);
       Fan_In_Model.Wake (S, 1, 4, Woken, Rung, Taken);
-      Check (Woken = 21 and then Taken = 16#10#, "model: a revoked root's leaf still reaches its waiter");
+      Check (Woken = No_Thread and then S.O (2).Waiter = 21 and then S.O (2).Bits = 0,
+             "model: after a root's Revoke, a leaf bound with an old right does not reach it");
+      Check (not Is_Leaf (S.O (1)) and then (S.O (1).Bits and 4) = 4,
+             "model: that leaf is unbound at its wake, bits kept");
+      Bind_With (S, 1, 2, Old_Gen, 16#10#, Done, Bind);
+      Check (not Done and then not Is_Leaf (S.O (1)), "model: the old right binds nothing");
+      Bind_With (S, 1, 2, S.G (2), 16#10#, Done, Bind);
+      Check (Done and then Bind = Bound_Now and then S.O (2).Waiter = No_Thread,
+             "model: a fresh right binds again, and the pending bits reach the root");
+      Fan_In_Model.Wait (S, 2, 21, True, Outcome, Taken);
+      Fan_In_Model.Wake (S, 1, 4, Woken, Rung, Taken);
+      Check (Woken = 21 and then Taken = 16#10#, "model: the rebound leaf reaches the root's waiter");
       End_Object (S, 2);
       Fan_In_Model.Wake (S, 1, 8, Woken, Rung, Taken);
       Check (not Is_Leaf (S.O (1)) and then (S.O (1).Bits and 8) = 8,

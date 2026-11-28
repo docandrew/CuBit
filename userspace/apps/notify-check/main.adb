@@ -180,11 +180,15 @@ begin
              "no waker of an earlier object reaches a new one");
    end;
 
-   --  Regression (review 3): a root's Revoke keeps its leaves' bindings; its
-   --  end unbinds a leaf at the leaf's next wake, which may bind again.
+   --  Regression (review 4, the revoke bypass): a binding is only as good
+   --  as the Wake handle that made it. B's leaf is bound with a waker of
+   --  A's root; A revokes the root. B's leaf wake answers Revoked and A's
+   --  waiter does not wake; the old waker binds nothing; a fresh waker
+   --  binds again. The root's end likewise unbinds the leaf at its wake
+   --  (Ended), which may then bind to another root.
    declare
       R2, L2, R3 : N.Waitable;
-      R2_W, L2_W, R3_W : N.Waker;
+      R2_W, R2_Fresh, L2_W, R3_W : N.Waker;
    begin
       Check (N.Create (Self, R2) = NA.Ok and then N.Create (Self, L2) = NA.Ok
              and then N.Create (Self, R3) = NA.Ok
@@ -194,19 +198,28 @@ begin
              and then N.Bind_Leaf (L2, R2_W) = NA.Ok, "rebind: a root, a leaf, another root");
       Check (N.Revoke (R2) = NA.Ok, "rebind: revoke the root");
       Target := R2;
+      Target_Result := 0;
       Waiting := False;
       Ok := Spawn (Wait_Once'Access, 0, Exit_1'Access);
       while not Waiting loop
          null;
       end loop;
       Pause (5_000);
-      Check (N.Wake (L2_W) = NA.Signalled, "rebind: wake the leaf of a revoked root");
+      Check (N.Wake (L2_W) = NA.Revoked,
+             "after the root's Revoke, a leaf bound with its old waker answers Revoked");
+      Pause (5_000);
+      Check (Target_Result = 0, "and the revoked root's waiter does not wake");
+      Check (N.Bind_Leaf (L2, R2_W) = NA.Revoked_Object, "the root's old waker binds nothing");
+      Check (N.Mint_Waker (R2, 16#200#, False, R2_Fresh) = NA.Ok
+             and then N.Bind_Leaf (L2, R2_Fresh) = NA.Ok, "a fresh waker of the root binds the leaf");
       Join (Exit_1'Access);
-      Check (Target_Result = 16#200#, "a revoked root keeps its leaves: its waiter wakes");
+      Check (Target_Result = 16#200#, "and the leaf's pending wake reaches the root's waiter");
       Check (N.Wait (L2, N.Now) = 4, "rebind: the leaf's own bits");
+      Check (N.Wake (L2_W) = NA.Signalled and then N.Wait (R2, N.Now) = 16#200#
+             and then N.Wait (L2, N.Now) = 4, "the rebound leaf reaches the root");
       Check (N.Close (R2), "rebind: close the root");
-      Check (N.Wake (L2_W) = NA.Signalled and then N.Wait (L2, N.Now) = 4,
-             "an ended root's leaf is unbound at its wake: its bits wait in it");
+      Check (N.Wake (L2_W) = NA.Ended and then N.Wait (L2, N.Now) = 4,
+             "an ended root's leaf is unbound at its wake (Ended): its bits wait in it");
       Check (N.Bind_Leaf (L2, R3_W) = NA.Ok and then N.Wake (L2_W) = NA.Signalled
              and then N.Wait (R3, N.Now) = 16#400#, "the leaf binds to another root");
       Ok := N.Close (L2) and then N.Close (R3);

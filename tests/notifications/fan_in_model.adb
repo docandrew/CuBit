@@ -36,7 +36,7 @@ package body Fan_In_Model with SPARK_Mode => On is
         end if;
         Leaf := S.O (L);
         Root := S.O (R);
-        Bind_Leaf (Leaf, Root, L, (Id => R, Gen => S.L (R)), Badge, Outcome, Told);
+        Bind_Leaf (Leaf, Root, L, (Id => R, Gen => S.G (R)), Badge, Outcome, Told);
         S.O (L) := Leaf;
         S.O (R) := Root;
     end Bind;
@@ -109,7 +109,7 @@ package body Fan_In_Model with SPARK_Mode => On is
                             null;
                     end case;
                 else
-                    -- The root ended: the leaf is unbound.
+                    -- The root was revoked or ended: the leaf is unbound.
                     Unbind_Leaf (S.O (I));
                 end if;
         end case;
@@ -122,6 +122,16 @@ package body Fan_In_Model with SPARK_Mode => On is
         Notification_Objects.Revoke (S.O (I), Waiter);
         S.G (I) := S.G (I) + 1;
     end Revoke;
+
+    procedure Bind_With (S : in out State; L, R : Id; Gen : Unsigned_32; Badge : Unsigned_64;
+                         Done : out Boolean; Outcome : out Bind_Outcome) is
+    begin
+        Done := Authorizes (S, R, Gen);
+        Outcome := Not_Allowed;
+        if Done then
+            Bind (S, L, R, Badge, Outcome);
+        end if;
+    end Bind_With;
 
     procedure Wait_With (S : in out State; I : Id; Gen : Unsigned_32; Me : Thread_Ref;
                          Block : Boolean; Done : out Boolean;

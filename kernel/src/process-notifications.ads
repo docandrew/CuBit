@@ -18,10 +18,13 @@
 -- no RIGHT_WRITE: Wake handles carry a badge and come from Mint_Wake).
 -- The object lives while that handle does: closing it, or the holder's
 -- exit, ends the object, its waiter returns Ended, and every Wake handle of
--- it answers Ended (its generation is gone); a leaf bound to it is unbound
--- at its next wake. Revoke advances the handles' generation but keeps the
--- object's life, which bindings name, so its bindings stay. So nothing is ever
--- charged to a dead process and there is no orphan. (The move of a Wait
+-- it answers Ended (its generation is gone). A binding is only as good as
+-- the Wake handle that made it: a leaf's link names that handle's
+-- generation, so after the root's Revoke or end the leaf's next Wake
+-- unbinds it (the badge stays in the leaf) and answers Revoked or Ended.
+-- Revoke keeps the bits, the charge and the owner's thread binding (which
+-- names the object's life, kept by Revoke). So nothing is ever charged to a
+-- dead process and there is no orphan. (The move of a Wait
 -- right, with the charge, is S2's meeting.)
 --
 -- Wake takes the object's lock and, for a leaf, then its root's lock, one

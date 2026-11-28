@@ -108,7 +108,9 @@ package Notification_Objects with SPARK_Mode => On is
 
     -- Revoked (its generation advanced; every capability of the old one is
     -- stale): the waiter, which waited with a stale Wait right, leaves and
-    -- is told; the bits, bindings and charge stay with the object.
+    -- is told. The bits, the charge and the bound thread stay; leaves bound
+    -- with an old Wake capability name the old generation, so their links
+    -- are stale (the kernel unbinds each at its next signal).
     procedure Revoke (N : in out Notification; Waiter : out Thread_Ref)
     with Pre  => Valid (N),
          Post => Valid (N) and then Waiter = N'Old.Waiter
