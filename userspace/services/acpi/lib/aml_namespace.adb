@@ -7197,6 +7197,12 @@ package body Owned with SPARK_Mode is
       pragma Unreferenced (E, IO, Ref, Width, For_Write, Value);
    begin Status := AML_Execute.Unsupported_Value; end Reject_Field_Operation;
 
+   -- Invocation policy is data; it does not select a new evaluator body.
+   type Session_Policy is record
+      Nested_Loads : Boolean := False;
+      Restricted_Table_Loads : Boolean := False;
+      Module_Recovery : Boolean := False;
+   end record;
    generic
       type IO_Context is limited private;
       with procedure Field_Operation
@@ -7206,9 +7212,6 @@ package body Owned with SPARK_Mode is
       with procedure Handoff (E : in out Arena; Result : AML_Execute.Execution_Result);
       with procedure Before_Allocation (E : in out Arena; Extra : Root_Values;
          Status : out Allocation_Hook_Status) is Skip_Collection;
-      Nested_Loads_Enabled : Boolean := False;
-      Restricted_Table_Loads_Enabled : Boolean := False;
-      Module_Recovery_Enabled : Boolean := False;
       with procedure Prepare_Load
         (E : in out Arena; Input : aliased AML_Table_Backing.State;
          Lease : AML_Declaration_Contexts.Lease; Scope : Natural;
@@ -7264,7 +7267,8 @@ package body Owned with SPARK_Mode is
      Result : out AML_Execute.Execution_Result;
      Session_Request : AML_Declaration_Contexts.Request := AML_Declaration_Contexts.Method_Request;
      Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation;
-     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source);
+     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source;
+     Policy : Session_Policy := (others => False));
    procedure Run_Context_Session (A : in out Arena; IO : in out IO_Context; Input : aliased AML_Table_Backing.State;
      Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural; Width : AML_Decode.Integer_Width; Scope : Node_ID;
      Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
@@ -7272,7 +7276,8 @@ package body Owned with SPARK_Mode is
      Result : out AML_Execute.Execution_Result;
      Session_Request : AML_Declaration_Contexts.Request := AML_Declaration_Contexts.Method_Request;
      Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation;
-     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source) is
+     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source;
+     Policy : Session_Policy := (others => False)) is
       use type AML_Execute.Binding_Status;
       use type AML_References.Object_Handle;
       Entry_Token : constant AML_Identity.Identity := A.Token;
@@ -7318,7 +7323,7 @@ package body Owned with SPARK_Mode is
           (E.Token = AML_Identity.No_Identity or else AML_Identity.Issuer.Is_Issued (E.Token))
           and then E.Token = Entry_Token
           and then (if AML_Frame_Handles.Present (AML_Module_Frames.Top (E.Tree.Module_Frames)) then
-            (Nested_Loads_Enabled or else AML_Declaration_Contexts.Is_Module (Session_Request))
+            (Policy.Nested_Loads or else AML_Declaration_Contexts.Is_Module (Session_Request))
             and then AML_Module_Frames.Belongs_To (E.Tree.Module_Frames,
               AML_Frame_Handles.Bind_Domain (E.Token, E.Invocation_Issued))));
       package Readers is new Named_Readers (Before_Allocation, Read_Table_Binding);
@@ -8563,7 +8568,7 @@ package body Owned with SPARK_Mode is
         (AML_Declaration_Contexts.Is_Module (Lease)
          and then AML_Declaration_Contexts.Is_Live (Execute_Declaration_Lease_Store, Lease)
          and then AML_Frame_Handles.Belongs_To (AML_Declaration_Contexts.Frame_Of (Lease), Admitted_Domain)
-         and then (Nested_Loads_Enabled or else AML_Declaration_Contexts.Is_Module (Session_Request))
+         and then (Policy.Nested_Loads or else AML_Declaration_Contexts.Is_Module (Session_Request))
          and then AML_Declaration_Contexts.Scope_Of (Lease) = Root
          and then AML_Declaration_Contexts.Stamp_Of (Lease) = Natural (Environment.Invocation_Issued)
          and then AML_Module_Frames.Top (Environment.Tree.Module_Frames) = AML_Declaration_Contexts.Frame_Of (Lease));
@@ -8584,7 +8589,7 @@ package body Owned with SPARK_Mode is
          Resume_Offset, Charged : Natural; Continue_Execution : in out Boolean) is
       begin
          Continue_Execution := False;
-         if not Module_Recovery_Enabled or else E.Token /= Entry_Token
+         if not Policy.Module_Recovery or else E.Token /= Entry_Token
            or else not AML_Declaration_Contexts.Is_Module (Lease)
            or else not Execute_Declaration_Valid (E, Lease)
            or else not Has_Definition (E.Tree.Current_Definition)
@@ -8636,7 +8641,7 @@ package body Owned with SPARK_Mode is
       is
       begin
          Continue_Execution := False;
-         if not Module_Recovery_Enabled or else E.Token /= Entry_Token
+         if not Policy.Module_Recovery or else E.Token /= Entry_Token
            or else not AML_Declaration_Contexts.Is_Module (Lease)
            or else not Execute_Declaration_Lexical_Valid (E, Lease, Scope)
            or else not Has_Definition (E.Tree.Current_Definition)
@@ -8713,7 +8718,7 @@ package body Owned with SPARK_Mode is
          end Retain_Failed_Fields;
       begin
          Continue_Execution := False;
-         if not Module_Recovery_Enabled or else E.Token /= Entry_Token
+         if not Policy.Module_Recovery or else E.Token /= Entry_Token
            or else not AML_Declaration_Contexts.Is_Module (Lease)
            or else not Execute_Declaration_Lexical_Valid (E, Lease, Scope)
            or else not Has_Definition (E.Tree.Current_Definition)
@@ -8917,7 +8922,7 @@ package body Owned with SPARK_Mode is
          Lease := AML_Declaration_Contexts.No_Lease; Allowed := False;
          if not AML_Frame_Handles.Belongs_To (Frame, Admitted_Domain) then return; end if;
          if AML_Declaration_Contexts.Is_Module (Intent) then
-            if not (Nested_Loads_Enabled or else AML_Declaration_Contexts.Is_Module (Session_Request)) or else Scope > Environment.Tree.Used then return; end if;
+            if not (Policy.Nested_Loads or else AML_Declaration_Contexts.Is_Module (Session_Request)) or else Scope > Environment.Tree.Used then return; end if;
             if Scope /= Root and then (not Environment.Tree.Items (Node_ID (Scope)).Alive
               or else not Static_Scope (Environment.Tree.Items (Node_ID (Scope)).Object_Type)) then return; end if;
             AML_Declaration_Contexts.Open_Module (Execute_Declaration_Lease_Store, Frame,
@@ -9311,7 +9316,7 @@ package body Owned with SPARK_Mode is
          if not Execute_Declaration_Lexical_Valid (Environment, Lease, Scope) then
             Status := AML_Execute.Unsupported_Value; return;
          end if;
-         if Module_Recovery_Enabled and then AML_Declaration_Contexts.Is_Module (Lease) then
+         if Policy.Module_Recovery and then AML_Declaration_Contexts.Is_Module (Lease) then
             declare Located : constant Lookup_Result :=
               Resolve_Object (Environment.Tree.all, Node_ID (Scope), Region);
             begin
@@ -10224,7 +10229,7 @@ package body Owned with SPARK_Mode is
          Budget : Natural; Charged : in out Natural; Succeeded : in out Boolean;
          Status : in out AML_Execute.Execution_Status; Plan : in out AML_Execute.Load_Table_Plan) is
       begin
-         if not Nested_Loads_Enabled or else not Execute_Declaration_Lexical_Valid (E, Lease, Scope) then
+         if not Policy.Nested_Loads or else not Execute_Declaration_Lexical_Valid (E, Lease, Scope) then
             Status := AML_Execute.Unsupported_Value; return;
          end if;
          Prepare_Load (E, Input, Lease, Scope, Width, Operands, Budget, Charged, Succeeded, Status, Plan);
@@ -10237,7 +10242,7 @@ package body Owned with SPARK_Mode is
          Status : in out AML_Execute.Execution_Status; Plan : in out AML_Execute.Load_Table_Plan) is
          Value : AML_Execute.Datum;
       begin
-         if not Nested_Loads_Enabled or else not Execute_Declaration_Lexical_Valid (E, Lease, Scope)
+         if not Policy.Nested_Loads or else not Execute_Declaration_Lexical_Valid (E, Lease, Scope)
            or else Source.Value_Kind /= AML_Execute.Reference_Datum
          then Status := AML_Execute.Unsupported_Value; return; end if;
          if Buffer_Field_Matches (E, Source.Ref) or else Table_Field_Matches (E, Source.Ref) then
@@ -10412,7 +10417,7 @@ package body Owned with SPARK_Mode is
          Finish_Runtime_Package => Finish_Runtime_Package,
          Abort_Runtime_Packages => Abort_Runtime_Packages,
          Runtime_Package_Supported => True,
-         Allow_Restricted_Table_Loads => Restricted_Table_Loads_Enabled,
+         Allow_Restricted_Table_Loads => Policy.Restricted_Table_Loads,
          Request_Load_Table => Prepare_Authenticated_Load,
          Request_Load_Source => Prepare_Authenticated_Source,
          Copy_Load_Table_Body => Copy_Load,
@@ -10470,29 +10475,6 @@ package body Owned with SPARK_Mode is
       end if;
    end Run_Context_Session;
 
-   generic
-      with procedure Handoff (E : in out Arena; Result : AML_Execute.Execution_Result);
-      with procedure Before_Allocation (E : in out Arena; Extra : Root_Values;
-         Status : out Allocation_Hook_Status) is Skip_Collection;
-   procedure Run_Owned_Session (A : in out Arena; Input : aliased AML_Table_Backing.State;
-     Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural; Width : AML_Decode.Integer_Width; Scope : Node_ID;
-     Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
-     Budget : Natural; Current_Sync : AML_Execute.Sync_Level;
-     Result : out AML_Execute.Execution_Result;
-     Session_Request : AML_Declaration_Contexts.Request := AML_Declaration_Contexts.Method_Request;
-     Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation);
-   procedure Run_Owned_Session (A : in out Arena; Input : aliased AML_Table_Backing.State;
-     Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural; Width : AML_Decode.Integer_Width; Scope : Node_ID;
-     Args : AML_Execute.Value_Arguments; Argument_Count : Natural;
-     Budget : Natural; Current_Sync : AML_Execute.Sync_Level;
-     Result : out AML_Execute.Execution_Result;
-     Session_Request : AML_Declaration_Contexts.Request := AML_Declaration_Contexts.Method_Request;
-     Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation) is
-      IO : Null_Field_Context;
-      procedure Run is new Run_Context_Session (Null_Field_Context, Reject_Field_Operation, Handoff, Before_Allocation);
-   begin
-      Run (A, IO, Input, Code, Source, Source_First, Width, Scope, Args, Argument_Count, Budget, Current_Sync, Result, Session_Request, Implementation);
-   end Run_Owned_Session;
 
    generic
       type IO_Context is limited private;
@@ -10597,7 +10579,8 @@ package body Owned with SPARK_Mode is
       Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation;
       Deferred_Readiness : Boolean := False;
       Enclosing_Table : AML_Execute.Load_Table_Token := AML_Execute.No_Load_Table;
-     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source);
+     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source;
+     Standalone : Boolean := False);
    procedure Run_Registered_Context_Session
      (A : in out Arena; IO : in out IO_Context; Loads : in out AML_Definition_Loads.State; Copies : in out AML_Copied_Tables.State;
       Input : aliased AML_Table_Backing.State; Code : AML_Decode.Bytes;
@@ -10608,7 +10591,8 @@ package body Owned with SPARK_Mode is
       Implementation : AML_Execute.Method_Implementation := AML_Execute.AML_Implementation;
       Deferred_Readiness : Boolean := False;
       Enclosing_Table : AML_Execute.Load_Table_Token := AML_Execute.No_Load_Table;
-     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source) is
+     Startup_Source : AML_Table_Sources.Source := AML_Table_Sources.Absent_Source;
+     Standalone : Boolean := False) is
       use AML_Execute;
       use type AML_Definition_Loads.Load_Phase;
       use type AML_Declaration_Contexts.Lease;
@@ -11190,30 +11174,42 @@ package body Owned with SPARK_Mode is
          Path : AML_Names.Name_Result; Width : AML_Decode.Integer_Width;
          Purpose : AML_Execute.Binding_Purpose; Binding : out AML_Execute.Binding_Result) is
       begin
-         Lookup_With_Owned_Tables (Tree, Backing, Copies, Scope, Path, Width, Purpose, Binding);
+         if Standalone then
+            Lookup_With_Tables (Tree, Backing, Scope, Path, Width, Purpose, Binding);
+         else
+            Lookup_With_Owned_Tables (Tree, Backing, Copies, Scope, Path, Width, Purpose, Binding);
+         end if;
       end Read_Registered_Table;
       procedure Complete_Registered_Table
         (Tree : in out State; Backing : aliased AML_Table_Backing.State; Token : Natural;
          Width : AML_Decode.Integer_Width; Signature, OEM, Table_ID : AML_Execute.Datum;
          Status : out AML_Execute.Execution_Status) is
       begin
-         Complete_Owned_Region (Tree, Backing, Copies, Token, Width, Signature, OEM, Table_ID, Status);
+         if Standalone then
+            Complete_Region (Tree, Backing, Token, Width, Signature, OEM, Table_ID, Status);
+         else
+            Complete_Owned_Region (Tree, Backing, Copies, Token, Width, Signature, OEM, Table_ID, Status);
+         end if;
       end Complete_Registered_Table;
       procedure Run is new Run_Context_Session (IO_Context, Field_Operation, Handoff, Before_Allocation,
-         Nested_Loads_Enabled => True, Module_Recovery_Enabled => True,
-         Restricted_Table_Loads_Enabled => AML_Declaration_Contexts.Is_Module (Session_Request),
          Prepare_Load => Prepare, Prepare_Source => Capture_Source, Copy_Load => Copy_Body,
          Begin_Load => Begin_Body, Finish_Load => Finish,
          Read_Table_Binding => Read_Registered_Table,
          Complete_Table_Binding => Complete_Registered_Table, Global_Lock_Operation => Global_Lock_Operation,
          Context_Read => Context_Read, Observe_Region_Handler => Observe_Region_Handler);
    begin
-      if not Sources_Admitted or else Frame_Pins.Count (A.Frame_Roots) /= 0 or else not Expected_Reservations
-        or else (not Deferred_Readiness and then Pending_Members (A.Tree.all) /= 0)
+      if not Standalone and then
+        (not Sources_Admitted or else Frame_Pins.Count (A.Frame_Roots) /= 0 or else not Expected_Reservations
+         or else (not Deferred_Readiness and then Pending_Members (A.Tree.all) /= 0))
       then Result := (Unsupported_Value, 0); return; end if;
       Run (A, IO, Input, Code, Source, Source_First, Width, Scope, Args, Argument_Count,
-        Budget, Current_Sync, Result, Session_Request, Implementation, Startup_Source);
-      if not Expected_Reservations then raise Program_Error with "active definition leaked reservation"; end if;
+        Budget, Current_Sync, Result, Session_Request, Implementation, Startup_Source,
+        Policy => (Nested_Loads => not Standalone,
+                   Restricted_Table_Loads => not Standalone and then AML_Declaration_Contexts.Is_Module (Session_Request),
+                   Module_Recovery => not Standalone));
+      if not Standalone and then not Expected_Reservations then
+         raise Program_Error with "active definition leaked reservation";
+      end if;
    end Run_Registered_Context_Session;
    generic
       type IO_Context is limited private;
@@ -12108,7 +12104,6 @@ package body Owned with SPARK_Mode is
             procedure Ignore_Module_Result (E : in out Owned.Arena; Result : AML_Execute.Execution_Result) is
                pragma Unreferenced (E, Result);
             begin null; end Ignore_Module_Result;
-            procedure Run_Standalone is new Run_Context_Session (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
             procedure Run_Registered is new Run_Registered_Context_Session (Module_IO, Observe_Module_Field, Ignore_Module_Result, Collect_Before, Global_Lock_Operation => Global_Lock_Operation, Context_Read => Context_Read);
             procedure Run (E : in out Owned.Arena; Backing : aliased AML_Table_Backing.State;
                Code : AML_Decode.Bytes; Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
@@ -12121,8 +12116,9 @@ package body Owned with SPARK_Mode is
                   Run_Registered (E, IO, Loads, Copies, Backing, Code, Source, Source_First, Width,
                     Scope, Args, Count, Fuel, Sync, Result, Request, Deferred_Readiness => True,
                     Enclosing_Table => Executing_Table, Startup_Source => Startup_Source);
-               else Run_Standalone (E, IO, Backing, Code, Source, Source_First, Width, Scope,
-                    Args, Count, Fuel, Sync, Result, Request, Startup_Source => Startup_Source); end if;
+               else Run_Registered (E, IO, Loads, Copies, Backing, Code, Source, Source_First, Width,
+                    Scope, Args, Count, Fuel, Sync, Result, Request,
+                    Startup_Source => Startup_Source, Standalone => True); end if;
             end Run;
             function Signature_At (Index : Positive) return Firmware_Tables.Signature is
                Offset : constant Natural := Input.Tables (Index).Offset;
@@ -12405,7 +12401,6 @@ package body Owned with SPARK_Mode is
             procedure Ignore_Result (E : in out Owned.Arena; Result : AML_Execute.Execution_Result) is
                pragma Unreferenced (E, Result);
             begin null; end Ignore_Result;
-            procedure Run_Standalone is new Run_Owned_Session (Ignore_Result, Collect_Before);
             procedure Run_Registered is new Run_Registered_Context_Session
               (Null_Field_Context, Reject_Field_Operation, Ignore_Result, Collect_Before);
             IO : Null_Field_Context;
@@ -12419,8 +12414,8 @@ package body Owned with SPARK_Mode is
                   Run_Registered (E, IO, Loads, Copies, Backing, Code, Source, Source_First, Width,
                     Scope, Args, Count, Fuel, Sync, Result, Request,
                     Enclosing_Table => AML_Execute.Load_Table_Token (Index));
-               else Run_Standalone (E, Backing, Code, Source, Source_First, Width, Scope,
-                    Args, Count, Fuel, Sync, Result, Request); end if;
+               else Run_Registered (E, IO, Loads, Copies, Backing, Code, Source, Source_First, Width,
+                    Scope, Args, Count, Fuel, Sync, Result, Request, Standalone => True); end if;
             end Run;
             procedure Consume (Backing : aliased AML_Table_Backing.State; Offset, Length : Natural) is
                Args : constant AML_Execute.Value_Arguments :=
