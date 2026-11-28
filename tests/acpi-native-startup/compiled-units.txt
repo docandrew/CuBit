@@ -89,7 +89,6 @@ acpi_target_heap_host.ali
 acpi_target_heap_test_control.ali
 acpi_target_storage.ali
 acpi_unprovisioned_regions.ali
-aml_allocation_retry.ali
 aml_bcd.ali
 aml_buffer_bits.ali
 aml_buffer_layouts.ali

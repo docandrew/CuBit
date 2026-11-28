@@ -1182,8 +1182,6 @@
     "userspace/services/acpi/lib/acpi_lock_trace_protocol.ads": "379adc2be23da2d838b0cd3ab6aff6ede9c06295501e779d2f378777232f9db8",
     "userspace/services/acpi/lib/acpi_startup_timing.adb": "2a6fae1e802de2d468106dca9f8af481aea1a8f6d3e38bb9acf162546b5492ad",
     "userspace/services/acpi/lib/acpi_startup_timing.ads": "34b81ee4b5b732b86152aa64a7860ce99b3f7d2f3703b4c7c0d8c7075b87ae78",
-    "userspace/services/acpi/lib/aml_allocation_retry.adb": "d0cc01c3bfb231547def44998e1fc51c60716a5bc467d94e881e6e5ece09b47c",
-    "userspace/services/acpi/lib/aml_allocation_retry.ads": "5b650c0d4a3dbef91328d58e114997a6f7e481c4c76afb7766c177368e48f893",
     "userspace/services/acpi/lib/aml_work_kinds.ads": "16d852f22b76174a7f2ae89f5dc600feae6a94662d38b1fe90f7d567c69f5264",
     "userspace/services/acpi/module-loading/acpi_module_paths.adb": "a5b7dcc7b402f3d9f00c2e5be645a208df6f7368dc673a08ad192c362e9368c5",
     "userspace/services/acpi/module-loading/acpi_module_paths.ads": "1a492cfc718947da5b1f7e6c18e4267972eb02a8500bf5c82b7911db062fd8fc",

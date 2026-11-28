@@ -122,8 +122,6 @@ userspace/services/acpi/lib/acpi_pci_config_reads.adb
 userspace/services/acpi/lib/acpi_pci_config_reads.ads
 userspace/services/acpi/lib/acpi_pci_memory_reads.adb
 userspace/services/acpi/lib/acpi_pci_memory_reads.ads
-userspace/services/acpi/lib/aml_allocation_retry.adb
-userspace/services/acpi/lib/aml_allocation_retry.ads
 userspace/services/acpi/lib/aml_bcd.adb
 userspace/services/acpi/lib/aml_bcd.ads
 userspace/services/acpi/lib/aml_buffer_bits.adb

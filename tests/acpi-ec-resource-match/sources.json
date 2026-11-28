@@ -3087,16 +3087,6 @@
       "kind": "ada"
     },
     {
-      "path": "userspace/services/acpi/lib/aml_allocation_retry.adb",
-      "sha256": "d0cc01c3bfb231547def44998e1fc51c60716a5bc467d94e881e6e5ece09b47c",
-      "kind": "ada"
-    },
-    {
-      "path": "userspace/services/acpi/lib/aml_allocation_retry.ads",
-      "sha256": "5b650c0d4a3dbef91328d58e114997a6f7e481c4c76afb7766c177368e48f893",
-      "kind": "ada"
-    },
-    {
       "path": "userspace/services/acpi/lib/aml_bcd.adb",
       "sha256": "5db3daf0ebd96033d71d762f523a40f32d4ce56d250d496f5b1fe38fbc38bb9b",
       "kind": "ada"
@@ -4715,7 +4705,6 @@
     "acpi_resource_names.ali",
     "acpi_resource_reader.ali",
     "acpi_service_core.ali",
-    "aml_allocation_retry.ali",
     "aml_bcd.ali",
     "aml_buffer_bits.ali",
     "aml_buffer_layouts.ali",

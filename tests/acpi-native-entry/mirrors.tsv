@@ -473,8 +473,6 @@ tests/acpi-native-entry/fixtures/actual/acpi_target_storage.adb\tuserspace/servi
 tests/acpi-native-entry/fixtures/actual/acpi_target_storage.ads\tuserspace/services/acpi/field-client/provider/acpi_target_storage.ads
 tests/acpi-native-entry/fixtures/actual/acpi_unprovisioned_regions.adb\tuserspace/services/acpi/acpi_unprovisioned_regions.adb
 tests/acpi-native-entry/fixtures/actual/acpi_unprovisioned_regions.ads\tuserspace/services/acpi/acpi_unprovisioned_regions.ads
-tests/acpi-native-entry/fixtures/actual/aml_allocation_retry.adb\tuserspace/services/acpi/lib/aml_allocation_retry.adb
-tests/acpi-native-entry/fixtures/actual/aml_allocation_retry.ads\tuserspace/services/acpi/lib/aml_allocation_retry.ads
 tests/acpi-native-entry/fixtures/actual/aml_bcd.adb\tuserspace/services/acpi/lib/aml_bcd.adb
 tests/acpi-native-entry/fixtures/actual/aml_bcd.ads\tuserspace/services/acpi/lib/aml_bcd.ads
 tests/acpi-native-entry/fixtures/actual/aml_buffer_bits.adb\tuserspace/services/acpi/lib/aml_buffer_bits.adb

@@ -24,7 +24,6 @@ acpi_service.ali
 acpi_service_core.ali
 acpi_system_events.ali
 acpi_unprovisioned_regions.ali
-aml_allocation_retry.ali
 aml_bcd.ali
 aml_buffer_bits.ali
 aml_buffer_layouts.ali

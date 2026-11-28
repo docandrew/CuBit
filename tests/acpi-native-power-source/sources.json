@@ -435,16 +435,6 @@
       "sha256": "6ca66a909b14e3fab4e5c48345cf82c933ac6aaa8d36b2117a0a2dab2c7b3a69"
     },
     {
-      "path": "userspace/services/acpi/lib/aml_allocation_retry.adb",
-      "kind": "ada",
-      "sha256": "d0cc01c3bfb231547def44998e1fc51c60716a5bc467d94e881e6e5ece09b47c"
-    },
-    {
-      "path": "userspace/services/acpi/lib/aml_allocation_retry.ads",
-      "kind": "ada",
-      "sha256": "5b650c0d4a3dbef91328d58e114997a6f7e481c4c76afb7766c177368e48f893"
-    },
-    {
       "path": "userspace/services/acpi/lib/aml_bcd.adb",
       "kind": "ada",
       "sha256": "5db3daf0ebd96033d71d762f523a40f32d4ce56d250d496f5b1fe38fbc38bb9b"

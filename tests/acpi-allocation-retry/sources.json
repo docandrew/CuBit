@@ -1,30 +1,5 @@
 {
-  "production": [
-    {
-      "path": "userspace/services/acpi/lib/aml_allocation_retry.ads",
-      "sha256": "5b650c0d4a3dbef91328d58e114997a6f7e481c4c76afb7766c177368e48f893"
-    },
-    {
-      "path": "userspace/services/acpi/lib/aml_allocation_retry.adb",
-      "sha256": "d0cc01c3bfb231547def44998e1fc51c60716a5bc467d94e881e6e5ece09b47c"
-    },
-    {
-      "path": "userspace/services/acpi/lib/aml_namespace.adb",
-      "sha256": "1464f4ede85c07796dc0a3bde7ee88db26feeb72b67023f6477db94eca2c7eea"
-    },
-    {
-      "path": "userspace/services/acpi/acpi_service_core.ads",
-      "sha256": "1cd0c60133cb226c47bb395892e26afc965e5d3f5a3fb9b857df4d5b62c7e60f"
-    },
-    {
-      "path": "userspace/services/acpi/acpi_service_core.adb",
-      "sha256": "0d133da5b4af3e6a5a19dbc636b9c81269545a13735a0bf1cbeda278d70a63fd"
-    },
-    {
-      "path": "userspace/services/acpi/native/acpi_native_startup_timing.adb",
-      "sha256": "8919982be07c09ec69f480ea524cebce4b721a2a432da3dafbb8f7ab970554f0"
-    }
-  ],
+  "production": [],
   "fixtures": [
     {
       "name": "aml/acpi_fadt-transactions.adb",

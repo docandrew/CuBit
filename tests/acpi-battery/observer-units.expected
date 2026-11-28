@@ -6,7 +6,6 @@ acpi_fadt.ali
 acpi_pci_config_reads.ali
 acpi_resource_names.ali
 acpi_service_core.ali
-aml_allocation_retry.ali
 aml_bcd.ali
 aml_buffer_bits.ali
 aml_buffer_layouts.ali
