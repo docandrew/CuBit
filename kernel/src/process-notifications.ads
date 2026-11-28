@@ -14,10 +14,13 @@
 --
 -- Life and charge. Create makes an object charged to its creator, at most
 -- Notification_ABI.Per_Process_Limit per process, and one Wait handle for
--- it (RIGHT_READ and RIGHT_WRITE, unbadged, no RIGHT_GRANT, so it is never
--- copied). The object lives while that handle does: closing it, or the
--- holder's exit, ends the object, its waiter returns Ended, and every Wake
--- handle of it answers Ended (its generation is gone). So nothing is ever
+-- it (RIGHT_READ and RIGHT_REVOKE, no RIGHT_GRANT, so it is never copied;
+-- no RIGHT_WRITE: Wake handles carry a badge and come from Mint_Wake).
+-- The object lives while that handle does: closing it, or the holder's
+-- exit, ends the object, its waiter returns Ended, and every Wake handle of
+-- it answers Ended (its generation is gone); a leaf bound to it is unbound
+-- at its next wake. Revoke advances the handles' generation but keeps the
+-- object's life, which bindings name, so its bindings stay. So nothing is ever
 -- charged to a dead process and there is no orphan. (The move of a Wait
 -- right, with the charge, is S2's meeting.)
 --

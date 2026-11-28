@@ -103,6 +103,18 @@ begin
 
    pragma Assert (Bad_Reads = 0, "a reader saw freed (poisoned) memory");
    pragma Assert (Table.Absent_Is_Pristine, "a write went to the Absent record");
+   --  One Lookup tells a live record from Absent (Is_Absent): an unused ID,
+   --  and an ID released after it was found present, both look up Absent.
+   declare
+      I : Table.Id;
+   begin
+      Table.Allocate (I);
+      pragma Assert (I /= 0 and then not Table.Is_Absent (Table.Lookup (I)),
+                     "a live record is not Absent");
+      Table.Release (I);
+      pragma Assert (Table.Is_Absent (Table.Lookup (I)), "a released record looks up Absent");
+      pragma Assert (Table.Is_Absent (Table.Lookup (0)), "the null ID looks up Absent");
+   end;
    pragma Assert (Pages_Freed > 0, "no page was ever reclaimed");
    Ada.Text_IO.Put_Line
      ("PASS: object table," & Allocations'Image & " allocations," &

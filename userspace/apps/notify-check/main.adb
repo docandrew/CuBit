@@ -20,6 +20,7 @@ with CuBit.Waits;
 with CuBit.Monotonic;
 with Wait_ABI;
 with Channel_Wake_ABI;
+with Futex_ABI;
 with Notify_Check_Support; use Notify_Check_Support;
 
 procedure Main is
@@ -178,6 +179,66 @@ begin
       Check (N.Wake (Old_W) /= NA.Signalled and then N.Wake (New_W) /= NA.Signalled,
              "no waker of an earlier object reaches a new one");
    end;
+
+   --  Regression (review 3): a root's Revoke keeps its leaves' bindings; its
+   --  end unbinds a leaf at the leaf's next wake, which may bind again.
+   declare
+      R2, L2, R3 : N.Waitable;
+      R2_W, L2_W, R3_W : N.Waker;
+   begin
+      Check (N.Create (Self, R2) = NA.Ok and then N.Create (Self, L2) = NA.Ok
+             and then N.Create (Self, R3) = NA.Ok
+             and then N.Mint_Waker (R2, 16#200#, False, R2_W) = NA.Ok
+             and then N.Mint_Waker (L2, 16#4#, False, L2_W) = NA.Ok
+             and then N.Mint_Waker (R3, 16#400#, False, R3_W) = NA.Ok
+             and then N.Bind_Leaf (L2, R2_W) = NA.Ok, "rebind: a root, a leaf, another root");
+      Check (N.Revoke (R2) = NA.Ok, "rebind: revoke the root");
+      Target := R2;
+      Waiting := False;
+      Ok := Spawn (Wait_Once'Access, 0, Exit_1'Access);
+      while not Waiting loop
+         null;
+      end loop;
+      Pause (5_000);
+      Check (N.Wake (L2_W) = NA.Signalled, "rebind: wake the leaf of a revoked root");
+      Join (Exit_1'Access);
+      Check (Target_Result = 16#200#, "a revoked root keeps its leaves: its waiter wakes");
+      Check (N.Wait (L2, N.Now) = 4, "rebind: the leaf's own bits");
+      Check (N.Close (R2), "rebind: close the root");
+      Check (N.Wake (L2_W) = NA.Signalled and then N.Wait (L2, N.Now) = 4,
+             "an ended root's leaf is unbound at its wake: its bits wait in it");
+      Check (N.Bind_Leaf (L2, R3_W) = NA.Ok and then N.Wake (L2_W) = NA.Signalled
+             and then N.Wait (R3, N.Now) = 16#400#, "the leaf binds to another root");
+      Ok := N.Close (L2) and then N.Close (R3);
+   end;
+
+   --  Regression (review 1): a binding racing the end of both of its
+   --  objects (two threads close them) never locks an ended record.
+   declare
+      Races : constant := 300;
+      Bound_Or_Ended : Boolean := True;
+      Outcome : NA.Outcome;
+   begin
+      for I in 1 .. Races loop
+         if N.Create (Self, Close_A) = NA.Ok and then N.Create (Self, Close_B) = NA.Ok
+           and then N.Mint_Waker (Close_B, 1, False, Close_B_W) = NA.Ok
+         then
+            Ok := Spawn (Close_Both'Access, 0, Exit_1'Access);
+            Outcome := N.Bind_Leaf (Close_A, Close_B_W);
+            Bound_Or_Ended := Bound_Or_Ended
+              and then Outcome in NA.Ok | NA.Ended_Object | NA.Refused_Call | NA.Revoked_Object;
+            Join (Exit_1'Access);
+         end if;
+      end loop;
+      Check (Bound_Or_Ended, "a binding racing the end of both objects is refused or bound, no fault");
+   end;
+
+   --  A misaligned private word: refused at the call, counted as nobody.
+   Check (N.Private_Wake (System.Storage_Elements.To_Address (3), 1) = NA.Bad_Argument,
+          "a private wake of an unaligned word is refused");
+   Check (CuBit.Waits.Futex_Wake (CuBit.Waits.Private_Word (System.Storage_Elements.To_Address (3)), 1)
+            = Futex_ABI.Wake_Refused,
+          "the library answers it Wake_Refused, not a count");
 
    --  The per-process limit, then every one given back.
    declare

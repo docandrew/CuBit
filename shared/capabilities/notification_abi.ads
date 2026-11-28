@@ -38,8 +38,9 @@
 --  0 an Outcome:
 --    Create       on the caller's own process handle (Write): a new
 --                 notification, charged to the caller; (1) = its handle,
---                 with the Wait right and the Wake right, unbadged, never
---                 copied (it has no Grant right).
+--                 with the Wait and Revoke rights, never copied (it has no
+--                 Grant right) and no Wake right (it has no badge: Wake
+--                 handles come from Mint_Wake).
 --    Mint_Wake    on a Wait handle: (0) = badge (1 .. Badge_Last), (1) =
 --                 Grant_Too (0 or 1); (1) = a Wake handle carrying that
 --                 badge for good, which may be copied with Grant.

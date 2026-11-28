@@ -66,6 +66,15 @@ package body Notify_Check_Support is
       CuBit.Process_Calls.Exit_Thread;
    end Wake_Later;
 
+   procedure Close_Both (Argument : Unsigned_64) is
+      pragma Unreferenced (Argument);
+      Ignore : Boolean;
+   begin
+      Ignore := N.Close (Close_B);
+      Ignore := N.Close (Close_A);
+      CuBit.Process_Calls.Exit_Thread;
+   end Close_Both;
+
    procedure Sleep_On_Gate (Argument : Unsigned_64) is
       pragma Unreferenced (Argument);
    begin

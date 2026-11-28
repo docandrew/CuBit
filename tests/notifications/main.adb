@@ -173,6 +173,29 @@ begin
              "model: a right of the slot's earlier object does not reach the new one");
    end;
 
+   --  Regression (review 3): a root's Revoke keeps its leaves' bindings; its
+   --  end unbinds a leaf at the leaf's next wake, which can then bind again.
+   declare
+      use Fan_In_Model;
+      S : State := Initial;
+      Woken, Rung, W : Thread_Ref;
+   begin
+      Create_Object (S, 1, 2);
+      Create_Object (S, 2, 3);
+      Create_Object (S, 4, 3);
+      Fan_In_Model.Bind (S, 1, 2, 16#10#, Bind);
+      Revoke (S, 2, W);
+      Fan_In_Model.Wait (S, 2, 21, True, Outcome, Taken);
+      Fan_In_Model.Wake (S, 1, 4, Woken, Rung, Taken);
+      Check (Woken = 21 and then Taken = 16#10#, "model: a revoked root's leaf still reaches its waiter");
+      End_Object (S, 2);
+      Fan_In_Model.Wake (S, 1, 8, Woken, Rung, Taken);
+      Check (not Is_Leaf (S.O (1)) and then (S.O (1).Bits and 8) = 8,
+             "model: an ended root's leaf is unbound at its wake, bits kept");
+      Fan_In_Model.Bind (S, 1, 4, 16#20#, Bind);
+      Check (Bind = Bound_Now, "model: and binds to another root");
+   end;
+
    if Failures = 0 then
       Put_Line ("notifications: PASS");
    else

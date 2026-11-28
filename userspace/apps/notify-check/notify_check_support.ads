@@ -37,6 +37,11 @@ package Notify_Check_Support is
    Delay_Us : Unsigned_64 := 0;
    procedure Wake_Later (Argument : Unsigned_64) with Convention => C;
 
+   --  Two notifications a thread closes (the binding race).
+   Close_A, Close_B : N.Waitable;
+   Close_B_W        : N.Waker;
+   procedure Close_Both (Argument : Unsigned_64) with Convention => C;
+
    --  A private futex word: the sleeper waits while it holds 0.
    Gate        : aliased Word := 0;
    Gate_Result : Unsigned_64 := 0 with Volatile;

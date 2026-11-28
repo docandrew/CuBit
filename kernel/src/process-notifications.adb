@@ -21,6 +21,7 @@ package body Process.Notifications is
     use type NO.Action;
     use type NO.Bind_Outcome;
     use type NA.Outcome;
+    use type NO.Link;
 
     pragma Compile_Time_Error
       (Natural (NO.Thread_Ref'Last) /= Natural (ThreadID'Last),
@@ -33,14 +34,16 @@ package body Process.Notifications is
       (NA.Per_Process_Limit * (Natural (ProcessID'Last) + 1) > NO.Max_Objects,
        "the table must hold every process's limit");
 
-    -- One object: its lock, the generation its handles carry while it lives
-    -- (0 once it ended), and its state. The lock and the generation are
-    -- written only under the lock; the lock is set up once, when its page
-    -- is mapped, and never reset (a stale waker may hold it while the slot
-    -- is reused).
+    -- One object: its lock, the generation its handles carry (Revoke
+    -- advances it), its life (the generation it was created with: what
+    -- bindings name, so a revocation keeps them and only the object's end
+    -- breaks them), both 0 once it ended, and its state. Written only under
+    -- the lock; the lock is set up once, when its page is mapped, and never
+    -- reset (a stale waker may hold it while the slot is reused).
     type Kernel_Notification is record
         Lock  : Spinlocks.Spinlock;
         Gen   : Unsigned_32 := 0;
+        Life  : Unsigned_32 := 0;
         State : NO.Notification := NO.Empty;
     end record;
 
@@ -66,6 +69,7 @@ package body Process.Notifications is
                 for E of Page loop
                     Spinlocks.Initialize (E.Lock, objectLockName'Access);
                     E.Gen := 0;
+                    E.Life := 0;
                     E.State := NO.Empty;
                 end loop;
             end;
@@ -115,11 +119,20 @@ package body Process.Notifications is
     ---------------------------------------------------------------------------
     -- Helpers
     ---------------------------------------------------------------------------
-    function present (id : Unsigned_64) return Boolean is
-      (id in 1 .. NO.Max_Objects and then Table.Present (Table.Id (id)));
+    -- The record of object id, looked up once: Table.Is_Absent when it is
+    -- not live (then its lock is never taken and it is never written: the
+    -- table's Absent record is shared). A live record may still end and be
+    -- reused after this; its lock and generation decide, never a second
+    -- look.
+    function slot (id : Unsigned_64) return Table.Element_Ref is
+      (Table.Lookup (if id in 1 .. NO.Max_Objects then Table.Id (id) else 0));
 
     function current (E : Kernel_Notification; gen : Unsigned_32) return Boolean is
       (E.Gen = gen and then E.State.Live);
+
+    -- A binding's link to its root is current: the root is that life.
+    function linked (E : Kernel_Notification; life : Unsigned_32) return Boolean is
+      (E.Life = life and then E.State.Live);
 
     -- What a stale handle answers: Revoked while the object lives on (its
     -- generation advanced), else Ended.
@@ -128,11 +141,11 @@ package body Process.Notifications is
     function staleOutcome (E : Kernel_Notification) return NA.Outcome is
       (if E.State.Live then NA.Revoked_Object else NA.Ended_Object);
 
-    -- A leaf's root has ended (racy read of its generation: a link names a
-    -- generation that changes only when that root ends).
+    -- A leaf's root has ended (a racy read of its life, which changes only
+    -- when that root ends; never a write).
     function rootGone (L : NO.Link) return Boolean is
-      (not present (Unsigned_64 (L.Id))
-       or else Table.Lookup (Table.Id (L.Id)).Gen /= L.Gen);
+      (Table.Is_Absent (slot (Unsigned_64 (L.Id)))
+       or else not linked (slot (Unsigned_64 (L.Id)).E.all, L.Gen));
 
     type Resolved is record
         OK    : Boolean := False;
@@ -186,15 +199,19 @@ package body Process.Notifications is
 
     -- Signal object id (generation gen) with badge: the object, then its
     -- root when it is a leaf, each under its own lock, one after the other.
+    -- A leaf whose root has ended is a leaf no more: it is unbound, and the
+    -- bits wait in it for its own Wait (a later Bind_Leaf may bind it again).
     function signal (id : NO.Object_Id; gen : Unsigned_32; badge : Unsigned_64) return Unsigned_64 is
         r1, r2 : NO.Signal_Result;
         ring1, ring2 : ThreadID := NO_THREAD;
+        delivered : Boolean := False;
+        ObjRef : constant Table.Element_Ref := slot (Unsigned_64 (id));
     begin
-        if not present (Unsigned_64 (id)) then
+        if Table.Is_Absent (ObjRef) then
             return NA.Ended;
         end if;
         declare
-            E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
+            E : Kernel_Notification renames ObjRef.E.all;
         begin
             Spinlocks.enterCriticalSection (E.Lock);
             if not current (E, gen) then
@@ -205,18 +222,35 @@ package body Process.Notifications is
             act (r1, ring1);
             Spinlocks.exitCriticalSection (E.Lock);
         end;
-        if r1.What = NO.Forward and then present (Unsigned_64 (r1.To.Id)) then
+        if r1.What = NO.Forward then
             declare
-                R : Kernel_Notification renames Table.Lookup (Table.Id (r1.To.Id)).E.all;
+                RootRef : constant Table.Element_Ref := slot (Unsigned_64 (r1.To.Id));
             begin
-                Spinlocks.enterCriticalSection (R.Lock);
-                -- A root that ended: the bits wait in the leaf.
-                if current (R, r1.To.Gen) then
-                    NO.Signal (R.State, r1.To_Badge, NO.Second, r2);
-                    act (r2, ring2);
+                if not Table.Is_Absent (RootRef) then
+                    declare
+                        R : Kernel_Notification renames RootRef.E.all;
+                    begin
+                        Spinlocks.enterCriticalSection (R.Lock);
+                        if linked (R, r1.To.Gen) then
+                            NO.Signal (R.State, r1.To_Badge, NO.Second, r2);
+                            act (r2, ring2);
+                            delivered := True;
+                        end if;
+                        Spinlocks.exitCriticalSection (R.Lock);
+                    end;
                 end if;
-                Spinlocks.exitCriticalSection (R.Lock);
             end;
+            if not delivered then
+                declare
+                    E : Kernel_Notification renames ObjRef.E.all;
+                begin
+                    Spinlocks.enterCriticalSection (E.Lock);
+                    if current (E, gen) and then E.State.Root = r1.To then
+                        NO.Unbind_Leaf (E.State);
+                    end if;
+                    Spinlocks.exitCriticalSection (E.Lock);
+                end;
+            end if;
         end if;
         ringBound (ring1);
         ringBound (ring2);
@@ -228,12 +262,14 @@ package body Process.Notifications is
     procedure endObject (id : NO.Object_Id; gen : Unsigned_32) is
         waiter, bound : NO.Thread_Ref;
         owner : ProcessID;
+        life : Unsigned_32;
+        R : constant Table.Element_Ref := slot (Unsigned_64 (id));
     begin
-        if not present (Unsigned_64 (id)) then
+        if Table.Is_Absent (R) then
             return;
         end if;
         declare
-            E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
+            E : Kernel_Notification renames R.E.all;
         begin
             Spinlocks.enterCriticalSection (E.Lock);
             if not current (E, gen) then
@@ -241,14 +277,16 @@ package body Process.Notifications is
                 return;
             end if;
             owner := ProcessID (E.State.Owner);
+            life := E.Life;
             NO.Finish (E.State, waiter, bound);
             E.Gen := 0;
+            E.Life := 0;
             if waiter /= NO.No_Thread then
                 Wait_Timers.Finish (ThreadID (waiter), Wait_Ended);
             end if;
             if bound /= NO.No_Thread
               and then threadtab (ThreadID (bound)).boundNotification = Unsigned_32 (id)
-              and then threadtab (ThreadID (bound)).boundGen = gen
+              and then threadtab (ThreadID (bound)).boundGen = life
             then
                 threadtab (ThreadID (bound)).boundNotification := 0;
                 threadtab (ThreadID (bound)).boundGen := 0;
@@ -270,14 +308,6 @@ package body Process.Notifications is
         me  : constant ThreadID := PerCPUData.getCurrentThread;
         pid : constant ProcessID := processOf (me);
         h : Resolved;
-        block : Boolean := deadlineUs /= NA.Now;
-        timed : Boolean := block and then deadlineUs /= NA.Forever;
-        passed : Boolean := False;
-        tsc : Unsigned_64 := 0;
-        outcome : NO.Wait_Outcome;
-        taken : Unsigned_64;
-        result : Unsigned_64 := 0;
-        slept : Boolean := False;
     begin
         if pid = NO_PROCESS then
             return NA.Refused;
@@ -285,64 +315,80 @@ package body Process.Notifications is
         h := resolve (pid, handle, Caps.RIGHT_READ);
         if not h.OK then
             return NA.Refused;
-        elsif not present (Unsigned_64 (h.Id)) then
-            return NA.Ended;
-        end if;
-        if timed then
-            Wait_Timers.Deadline_Of (deadlineUs, tsc, passed);
-            if passed then
-                block := False;
-                timed := False;
-            end if;
-        end if;
-        threadtab (me).oneWaitKind := Notification_Wait;
-        threadtab (me).oneWaitObject := Unsigned_32 (h.Id);
-        threadtab (me).oneWaitGen := h.Gen;
-        threadtab (me).oneWaitStatus := Wait_Pending;
-        threadtab (me).oneWaitBits := 0;
-        if timed then
-            Wait_Timers.Arm (me, tsc);
         end if;
         declare
-            E : Kernel_Notification renames Table.Lookup (Table.Id (h.Id)).E.all;
+            -- The one lookup of the object.
+            R : constant Table.Element_Ref := slot (Unsigned_64 (h.Id));
+            block : Boolean := deadlineUs /= NA.Now;
+            timed : Boolean := block and then deadlineUs /= NA.Forever;
+            passed : Boolean := False;
+            tsc : Unsigned_64 := 0;
+            outcome : NO.Wait_Outcome;
+            taken : Unsigned_64;
+            result : Unsigned_64 := 0;
+            slept : Boolean := False;
         begin
-            Spinlocks.enterCriticalSection (E.Lock);
-            if not current (E, h.Gen) then
-                result := stale (E);
-            elsif threadtab (me).oneWaitStatus = Wait_Timed_Out then
-                result := 0;
-            else
-                -- A leaf whose root ended is a leaf no more.
-                if NO.Is_Leaf (E.State) and then rootGone (E.State.Root) then
-                    NO.Unbind_Leaf (E.State);
-                end if;
-                NO.Start_Wait (E.State, NO.Thread_Ref (me), block, outcome, taken);
-                case outcome is
-                    when NO.Got       => result := taken;
-                    when NO.Empty_Now => result := 0;
-                    when NO.Busy      => result := NA.Busy;
-                    when NO.Blocked   =>
-                        -- Published before the lock is released: a waker,
-                        -- which needs it, always finds this state.
-                        threadtab (me).state := FUTEXWAITING;
-                        slept := True;
-                end case;
+            if Table.Is_Absent (R) then
+                return NA.Ended;
             end if;
-            Spinlocks.exitCriticalSection (E.Lock);
+            if timed then
+                Wait_Timers.Deadline_Of (deadlineUs, tsc, passed);
+                if passed then
+                    block := False;
+                    timed := False;
+                end if;
+            end if;
+            threadtab (me).oneWaitKind := Notification_Wait;
+            threadtab (me).oneWaitObject := Unsigned_32 (h.Id);
+            threadtab (me).oneWaitGen := h.Gen;
+            threadtab (me).oneWaitStatus := Wait_Pending;
+            threadtab (me).oneWaitBits := 0;
+            if timed then
+                Wait_Timers.Arm (me, tsc);
+            end if;
+            declare
+                E : Kernel_Notification renames R.E.all;
+            begin
+                Spinlocks.enterCriticalSection (E.Lock);
+                if not current (E, h.Gen) then
+                    result := stale (E);
+                else
+                    -- A leaf whose root ended is a leaf no more.
+                    if NO.Is_Leaf (E.State) and then rootGone (E.State.Root) then
+                        NO.Unbind_Leaf (E.State);
+                    end if;
+                    -- The deadline came before this thread could block: it
+                    -- still takes the bits pending, but does not block.
+                    NO.Start_Wait (E.State, NO.Thread_Ref (me),
+                                   block and then threadtab (me).oneWaitStatus /= Wait_Timed_Out,
+                                   outcome, taken);
+                    case outcome is
+                        when NO.Got       => result := taken;
+                        when NO.Empty_Now => result := 0;
+                        when NO.Busy      => result := NA.Busy;
+                        when NO.Blocked   =>
+                            -- Published before the lock is released: a
+                            -- waker, which needs it, always finds this state.
+                            threadtab (me).state := FUTEXWAITING;
+                            slept := True;
+                    end case;
+                end if;
+                Spinlocks.exitCriticalSection (E.Lock);
+            end;
+            if slept then
+                yield;
+                result := (case threadtab (me).oneWaitStatus is
+                             when Wait_Woken     => threadtab (me).oneWaitBits,
+                             when Wait_Ended     => NA.Ended,
+                             when Wait_Revoked   => NA.Revoked,
+                             when others         => 0);
+            end if;
+            if timed then
+                Wait_Timers.Disarm (me);
+            end if;
+            threadtab (me).oneWaitKind := No_One_Wait;
+            return result;
         end;
-        if slept then
-            yield;
-            result := (case threadtab (me).oneWaitStatus is
-                         when Wait_Woken     => threadtab (me).oneWaitBits,
-                         when Wait_Ended     => NA.Ended,
-                         when Wait_Revoked   => NA.Revoked,
-                         when others         => 0);
-        end if;
-        if timed then
-            Wait_Timers.Disarm (me);
-        end if;
-        threadtab (me).oneWaitKind := No_One_Wait;
-        return result;
     end wait;
 
     function wake (handle : Unsigned_64) return Unsigned_64 is
@@ -433,17 +479,20 @@ package body Process.Notifications is
         id := NO.Object_Id (raw);
         gen := Unsigned_32 (Table.Generation_Of (raw)) + 1;
         declare
+            -- Just allocated by this thread: live (only its own Wait handle,
+            -- placed below, could end it).
             E : Kernel_Notification renames Table.Lookup (raw).E.all;
         begin
             Spinlocks.enterCriticalSection (E.Lock);
             NO.Create (E.State, NO.Owner_Ref (caller));
             E.Gen := gen;
+            E.Life := gen;
             Spinlocks.exitCriticalSection (E.Lock);
         end;
-        -- The Wait handle: Wait and Wake, unbadged, never copied.
+        -- The Wait handle: Wait and Revoke, never copied (no Grant), and no
+        -- Wake (it has no badge: Mint_Wake gives Wake handles).
         word := insertHandle (caller, id, gen,
-                              [Caps.RIGHT_READ | Caps.RIGHT_WRITE | Caps.RIGHT_REVOKE => True,
-                               others => False], 0);
+                              [Caps.RIGHT_READ | Caps.RIGHT_REVOKE => True, others => False], 0);
         if not Capability_ABI.Is_Handle_Word (word) then
             endObject (id, gen);
             answer (reply, NA.Limit_Reached);
@@ -467,30 +516,45 @@ package body Process.Notifications is
         elsif root.Id = leaf.Id then
             answer (reply, NA.Not_Allowed);
             return;
-        elsif not present (Unsigned_64 (root.Id)) or else not present (Unsigned_64 (leaf.Id)) then
-            answer (reply, NA.Ended_Object);
-            return;
         end if;
         declare
-            L : Kernel_Notification renames Table.Lookup (Table.Id (leaf.Id)).E.all;
-            R : Kernel_Notification renames Table.Lookup (Table.Id (root.Id)).E.all;
+            LR : constant Table.Element_Ref := slot (Unsigned_64 (leaf.Id));
+            RR : constant Table.Element_Ref := slot (Unsigned_64 (root.Id));
+            rootLife : Unsigned_32;
         begin
-            -- The one place two notification locks are held: ascending slot.
-            if leaf.Id < root.Id then
-                Spinlocks.enterCriticalSection (L.Lock);
-                Spinlocks.enterCriticalSection (R.Lock);
-            else
-                Spinlocks.enterCriticalSection (R.Lock);
-                Spinlocks.enterCriticalSection (L.Lock);
+            -- Each looked up once; an ended object is never locked (both
+            -- could be the shared Absent record).
+            if Table.Is_Absent (LR) or else Table.Is_Absent (RR) then
+                answer (reply, NA.Ended_Object);
+                return;
             end if;
-            live := current (L, leaf.Gen) and then current (R, root.Gen);
-            if live then
-                NO.Bind_Leaf (L.State, R.State, leaf.Id, (Id => root.Id, Gen => root.Gen),
-                              root.Badge, outcome, told);
-                act (told, ring);
-            end if;
-            Spinlocks.exitCriticalSection (L.Lock);
-            Spinlocks.exitCriticalSection (R.Lock);
+            declare
+                L : Kernel_Notification renames LR.E.all;
+                R : Kernel_Notification renames RR.E.all;
+            begin
+                -- The one place two notification locks are held: ascending
+                -- slot (two distinct live records).
+                if leaf.Id < root.Id then
+                    Spinlocks.enterCriticalSection (L.Lock);
+                    Spinlocks.enterCriticalSection (R.Lock);
+                else
+                    Spinlocks.enterCriticalSection (R.Lock);
+                    Spinlocks.enterCriticalSection (L.Lock);
+                end if;
+                live := current (L, leaf.Gen) and then current (R, root.Gen);
+                if live then
+                    rootLife := R.Life;
+                    -- A leaf whose root ended is a leaf no more.
+                    if NO.Is_Leaf (L.State) and then rootGone (L.State.Root) then
+                        NO.Unbind_Leaf (L.State);
+                    end if;
+                    NO.Bind_Leaf (L.State, R.State, leaf.Id, (Id => root.Id, Gen => rootLife),
+                                  root.Badge, outcome, told);
+                    act (told, ring);
+                end if;
+                Spinlocks.exitCriticalSection (L.Lock);
+                Spinlocks.exitCriticalSection (R.Lock);
+            end;
         end;
         if not live then
             answer (reply, NA.Ended_Object);
@@ -502,13 +566,16 @@ package body Process.Notifications is
 
     -- Revoke: the object's generation advances (the table's ledger, so it
     -- never goes back, not even when the slot is reused); the waiter, which
-    -- holds the old Wait right, wakes Revoked; the bound thread's binding is
-    -- re-stamped; the revoker's handle is replaced by a re-stamped one.
+    -- holds the old Wait right, wakes Revoked; every other handle is stale.
+    -- Its life is kept, so its bindings (leaves, bound thread) stay. The
+    -- revoker's handle is replaced, under one hold of its table lock, by
+    -- one of the new generation (the slot it frees is the one taken); if
+    -- even that fails, the object ends rather than live on with no handle.
     procedure revoke (caller : ProcessID; handle : Unsigned_64; cap : Capabilities.Capability;
                       reply : out Message)
     is
         id : constant NO.Object_Id := NO.Object_Id (cap.object.ref);
-        E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
+        RR : constant Table.Element_Ref := slot (cap.object.ref);
         waiter : NO.Thread_Ref;
         saturated : Boolean := False;
         outcome : NA.Outcome := NA.Ok;
@@ -516,36 +583,45 @@ package body Process.Notifications is
         removed : Capabilities.Capability;
         closed, word : Unsigned_64;
     begin
-        Spinlocks.enterCriticalSection (E.Lock);
-        if not current (E, cap.gen) then
-            outcome := staleOutcome (E);
-        else
-            Table.Invalidate (Table.Id (id), saturated);
-            if saturated then
-                outcome := NA.Limit_Reached;
+        if Table.Is_Absent (RR) then
+            answer (reply, NA.Ended_Object);
+            return;
+        end if;
+        declare
+            E : Kernel_Notification renames RR.E.all;
+        begin
+            Spinlocks.enterCriticalSection (E.Lock);
+            if not current (E, cap.gen) then
+                outcome := staleOutcome (E);
             else
-                gen := Unsigned_32 (Table.Generation_Of (Table.Id (id))) + 1;
-                E.Gen := gen;
-                NO.Revoke (E.State, waiter);
-                if waiter /= NO.No_Thread then
-                    Wait_Timers.Finish (ThreadID (waiter), Wait_Revoked);
-                end if;
-                if E.State.Bound /= NO.No_Thread
-                  and then threadtab (ThreadID (E.State.Bound)).boundNotification = Unsigned_32 (id)
-                then
-                    threadtab (ThreadID (E.State.Bound)).boundGen := gen;
+                Table.Invalidate (Table.Id (id), saturated);
+                if saturated then
+                    outcome := NA.Limit_Reached;
+                else
+                    gen := Unsigned_32 (Table.Generation_Of (Table.Id (id))) + 1;
+                    E.Gen := gen;
+                    NO.Revoke (E.State, waiter);
+                    if waiter /= NO.No_Thread then
+                        Wait_Timers.Finish (ThreadID (waiter), Wait_Revoked);
+                    end if;
                 end if;
             end if;
-        end if;
-        Spinlocks.exitCriticalSection (E.Lock);
+            Spinlocks.exitCriticalSection (E.Lock);
+        end;
         if outcome /= NA.Ok then
             answer (reply, outcome);
             return;
         end if;
         Spinlocks.enterCriticalSection (tableLock (caller));
         Process_Capabilities.Close (proctab (caller).caps, handle, removed, closed);
+        Process_Capabilities.Insert
+          (proctab (caller).caps, (cap with delta gen => gen), word);
         Spinlocks.exitCriticalSection (tableLock (caller));
-        word := insertHandle (caller, id, gen, cap.rights, cap.authorityTag);
+        if not Capability_ABI.Is_Handle_Word (word) then
+            endObject (id, gen);
+            answer (reply, NA.Ended_Object);
+            return;
+        end if;
         answer (reply, NA.Ok, word);
     end revoke;
 
@@ -566,7 +642,7 @@ package body Process.Notifications is
         end if;
         id := NO.Object_Id (cap.object.ref);
         h := (OK => True, Id => id, Gen => cap.gen, Badge => cap.authorityTag);
-        if not present (cap.object.ref) then
+        if Table.Is_Absent (slot (cap.object.ref)) then
             answer (reply, NA.Ended_Object);
             return;
         end if;
@@ -583,16 +659,20 @@ package body Process.Notifications is
                 live : Boolean;
                 word : Unsigned_64;
                 why : NA.Outcome;
-                E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
+                ER : constant Table.Element_Ref := slot (cap.object.ref);
             begin
+                if Table.Is_Absent (ER) then
+                    answer (reply, NA.Ended_Object);
+                    return;
+                end if;
                 if badge = 0 or else badge > NA.Badge_Last or else grant > 1 then
                     answer (reply, NA.Not_Allowed);
                     return;
                 end if;
-                Spinlocks.enterCriticalSection (E.Lock);
-                live := current (E, cap.gen);
-                why := staleOutcome (E);
-                Spinlocks.exitCriticalSection (E.Lock);
+                Spinlocks.enterCriticalSection (ER.E.Lock);
+                live := current (ER.E.all, cap.gen);
+                why := staleOutcome (ER.E.all);
+                Spinlocks.exitCriticalSection (ER.E.Lock);
                 if not live then
                     answer (reply, why);
                     return;
@@ -611,7 +691,7 @@ package body Process.Notifications is
             bindLeaf (caller, h, request.words (0), reply);
         else
             declare
-                E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
+                ER : constant Table.Element_Ref := slot (cap.object.ref);
                 outcome : NO.Bind_Outcome := NO.Bound_Now;
                 told : NO.Signal_Result;
                 removed : Boolean := False;
@@ -619,27 +699,31 @@ package body Process.Notifications is
                 ended : Boolean := False;
                 why : NA.Outcome := NA.Ended_Object;
             begin
-                Spinlocks.enterCriticalSection (E.Lock);
-                if not current (E, cap.gen) then
+                if Table.Is_Absent (ER) then
+                    answer (reply, NA.Ended_Object);
+                    return;
+                end if;
+                Spinlocks.enterCriticalSection (ER.E.Lock);
+                if not current (ER.E.all, cap.gen) then
                     ended := True;
-                    why := staleOutcome (E);
+                    why := staleOutcome (ER.E.all);
                 elsif label = NA.Unbind_Leaf_Label then
-                    NO.Unbind_Leaf (E.State);
+                    NO.Unbind_Leaf (ER.E.State);
                 elsif label = NA.Bind_Thread_Label then
                     if threadtab (me).boundNotification /= 0 then
                         outcome := NO.Already;
                     else
-                        NO.Bind_Thread (E.State, NO.Thread_Ref (me), outcome, told);
+                        NO.Bind_Thread (ER.E.State, NO.Thread_Ref (me), outcome, told);
                         if outcome = NO.Bound_Now then
                             threadtab (me).boundNotification := Unsigned_32 (id);
-                            threadtab (me).boundGen := cap.gen;
+                            threadtab (me).boundGen := ER.E.Life;
                         end if;
                         if told.What = NO.Ring_Bound then
                             ring := me;
                         end if;
                     end if;
                 else
-                    NO.Unbind_Thread (E.State, NO.Thread_Ref (me), removed);
+                    NO.Unbind_Thread (ER.E.State, NO.Thread_Ref (me), removed);
                     if removed then
                         threadtab (me).boundNotification := 0;
                         threadtab (me).boundGen := 0;
@@ -647,7 +731,7 @@ package body Process.Notifications is
                         outcome := NO.Not_Allowed;
                     end if;
                 end if;
-                Spinlocks.exitCriticalSection (E.Lock);
+                Spinlocks.exitCriticalSection (ER.E.Lock);
                 if ended then
                     answer (reply, why);
                 else
@@ -717,10 +801,11 @@ package body Process.Notifications is
     procedure leave (t : ThreadID; cancel : Boolean) is
         id : constant Unsigned_64 := Unsigned_64 (threadtab (t).oneWaitObject);
         removed : Boolean;
+        R : constant Table.Element_Ref := slot (id);
     begin
-        if present (id) then
+        if not Table.Is_Absent (R) then
             declare
-                E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
+                E : Kernel_Notification renames R.E.all;
             begin
                 Spinlocks.enterCriticalSection (E.Lock);
                 if threadtab (t).oneWaitStatus = Wait_Pending
@@ -752,13 +837,14 @@ package body Process.Notifications is
     procedure Unbind_Thread_Of (t : ThreadID) is
         id : constant Unsigned_64 := Unsigned_64 (threadtab (t).boundNotification);
         removed : Boolean;
+        R : constant Table.Element_Ref := slot (id);
     begin
-        if id /= 0 and then present (id) then
+        if id /= 0 and then not Table.Is_Absent (R) then
             declare
-                E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
+                E : Kernel_Notification renames R.E.all;
             begin
                 Spinlocks.enterCriticalSection (E.Lock);
-                if E.Gen = threadtab (t).boundGen then
+                if E.Life = threadtab (t).boundGen then
                     NO.Unbind_Thread (E.State, NO.Thread_Ref (t), removed);
                 end if;
                 Spinlocks.exitCriticalSection (E.Lock);

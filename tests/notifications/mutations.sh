@@ -60,4 +60,8 @@ mutate revoke-keeps-generation fan_in_model.adb '/procedure Revoke (S/,/end Revo
 mutate wake-ignores-generation fan_in_model.adb '/procedure Wake_With/,/end Wake_With;/ s/Done := Authorizes (S, I, Gen);/Done := S.O (I).Live;/' || fail=1
 # Revoke that leaves the stale waiter waiting.
 mutate revoke-keeps-waiter notification_objects.adb '/procedure Revoke (N/,/end Revoke;/ s/N.Waiter := No_Thread;/null;/' || fail=1
+# Revoke that also ends the object's life (its leaves' bindings break).
+mutate revoke-breaks-bindings fan_in_model.adb '/procedure Revoke (S/,/end Revoke;/ s/S.G (I) := S.G (I) + 1;/S.G (I) := S.G (I) + 1; S.L (I) := S.L (I) + 1;/' || fail=1
+# A wake of a leaf whose root ended leaves it bound (its bits go nowhere).
+mutate wake-keeps-dead-root fan_in_model.adb '/The root ended: the leaf is unbound/,+1 s/Unbind_Leaf (S.O (I));/null;/' || fail=1
 exit $fail

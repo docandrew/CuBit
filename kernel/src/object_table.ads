@@ -62,6 +62,12 @@ package Object_Table with SPARK_Mode => Off is
     -- to it are a caller bug; Absent_Is_Pristine detects them in tests.
     function Lookup (I : Id) return Element_Ref;
 
+    -- R is the Absent record (I was not live when it was looked up): a
+    -- caller that must lock or write the record tests this once, on its
+    -- one Lookup, instead of a Present check before it (the record may be
+    -- released between the two).
+    function Is_Absent (R : Element_Ref) return Boolean;
+
     -- Generation of I (live or released), for identity checks.
     function Generation_Of (I : Valid_Id) return Generation;
 

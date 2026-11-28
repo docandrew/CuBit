@@ -17,6 +17,7 @@ package body Fan_In_Model with SPARK_Mode => On is
     begin
         Finish (S.O (I), Waiter, Bound);
         S.G (I) := S.G (I) + 1;
+        S.L (I) := S.L (I) + 1;
     end End_Object;
 
     procedure Bind (S : in out State; L, R : Id; Badge : Unsigned_64;
@@ -29,9 +30,13 @@ package body Fan_In_Model with SPARK_Mode => On is
             Outcome := Not_Allowed;
             return;
         end if;
+        -- A leaf whose root ended is a leaf no more.
+        if Is_Leaf (S.O (L)) and then not Live_Link (S, S.O (L).Root) then
+            Unbind_Leaf (S.O (L));
+        end if;
         Leaf := S.O (L);
         Root := S.O (R);
-        Bind_Leaf (Leaf, Root, L, (Id => R, Gen => S.G (R)), Badge, Outcome, Told);
+        Bind_Leaf (Leaf, Root, L, (Id => R, Gen => S.L (R)), Badge, Outcome, Told);
         S.O (L) := Leaf;
         S.O (R) := Root;
     end Bind;
@@ -103,6 +108,9 @@ package body Fan_In_Model with SPARK_Mode => On is
                         when others =>
                             null;
                     end case;
+                else
+                    -- The root ended: the leaf is unbound.
+                    Unbind_Leaf (S.O (I));
                 end if;
         end case;
     end Wake;

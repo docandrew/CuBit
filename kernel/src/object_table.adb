@@ -83,6 +83,8 @@ package body Object_Table with SPARK_Mode => Off is
         return (E => Absent'Access);
     end Lookup;
 
+    function Is_Absent (R : Element_Ref) return Boolean is (R.E.all'Address = Absent'Address);
+
     function Generation_Of (I : Valid_Id) return Generation is
       (Ledger.Generation_Of (L, I));
 

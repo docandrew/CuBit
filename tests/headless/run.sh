@@ -10293,6 +10293,11 @@ notify-check: its waiter returns Ended PASS
 notify-check: the waiter with the old Wait right wakes Revoked PASS
 notify-check: a waker of the old generation answers Revoked PASS
 notify-check: no waker of an earlier object reaches a new one PASS
+notify-check: a revoked root keeps its leaves: its waiter wakes PASS
+notify-check: an ended root's leaf is unbound at its wake: its bits wait in it PASS
+notify-check: the leaf binds to another root PASS
+notify-check: a binding racing the end of both objects is refused or bound, no fault PASS
+notify-check: the library answers it Wake_Refused, not a count PASS
 notify-check: one more is refused PASS
 notify-check: the sleeper was woken PASS
 TIMING: wake-flood-flooded-round-trip
@@ -10313,6 +10318,8 @@ notify-check: ALL PASS
     futex)
         required_markers="
 futex-check: wait woken by another thread PASS
+futex-check: FUTEX_WAKE of a private word refused PASS
+futex-check: WAIT's futex form on a private word refused PASS
 futex-check: mutex counter exact under contention PASS
 futex-check: mutual exclusion held PASS
 futex-check: each thread keeps its own fs base PASS
