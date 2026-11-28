@@ -48,9 +48,9 @@ package body Process.Notifications is
     type Page_Records is array (0 .. Entries_Per_Page - 1) of aliased Kernel_Notification;
 
     objectLockName : aliased String := "notification";
-    tableLockName  : aliased String := "notifications";
+    objectsLockName : aliased String := "notifications";
     chargeLockName : aliased String := "notify-charge";
-    tableLock  : Spinlocks.Spinlock;
+    objectsLock : Spinlocks.Spinlock;
     -- Serializes the per-process counts (notificationsHeld). A leaf lock.
     chargeLock : Spinlocks.Spinlock;
 
@@ -74,12 +74,12 @@ package body Process.Notifications is
 
     procedure lockTable is
     begin
-        Spinlocks.enterCriticalSection (tableLock);
+        Spinlocks.enterCriticalSection (objectsLock);
     end lockTable;
 
     procedure unlockTable is
     begin
-        Spinlocks.exitCriticalSection (tableLock);
+        Spinlocks.exitCriticalSection (objectsLock);
     end unlockTable;
 
     package Table is new Object_Table
@@ -97,7 +97,7 @@ package body Process.Notifications is
 
     procedure Setup is
     begin
-        Spinlocks.Initialize (tableLock, tableLockName'Access);
+        Spinlocks.Initialize (objectsLock, objectsLockName'Access);
         Spinlocks.Initialize (chargeLock, chargeLockName'Access);
         Table.Initialize;
     end Setup;
@@ -149,9 +149,9 @@ package body Process.Notifications is
         found : Process_Capabilities.Found;
     begin
         need (right) := True;
-        Spinlocks.enterCriticalSection (mailtab (pid).lock);
+        Spinlocks.enterCriticalSection (tableLock (pid));
         found := Process_Capabilities.Find (proctab (pid).caps, handle, Caps.CAP_NOTIFICATION_OBJECT, need);
-        Spinlocks.exitCriticalSection (mailtab (pid).lock);
+        Spinlocks.exitCriticalSection (tableLock (pid));
         if not found.OK or else found.Cap.object.ref not in 1 .. NO.Max_Objects then
             return (others => <>);
         end if;
@@ -384,7 +384,7 @@ package body Process.Notifications is
     is
         word : Unsigned_64;
     begin
-        Spinlocks.enterCriticalSection (mailtab (caller).lock);
+        Spinlocks.enterCriticalSection (tableLock (caller));
         Process_Capabilities.Insert
           (proctab (caller).caps,
            (capType      => Caps.CAP_NOTIFICATION_OBJECT,
@@ -392,7 +392,7 @@ package body Process.Notifications is
             authorityTag => badge,
             object       => (ref => Unsigned_64 (id), param => 0),
             gen          => gen), word);
-        Spinlocks.exitCriticalSection (mailtab (caller).lock);
+        Spinlocks.exitCriticalSection (tableLock (caller));
         return word;
     end insertHandle;
 
@@ -542,9 +542,9 @@ package body Process.Notifications is
             answer (reply, outcome);
             return;
         end if;
-        Spinlocks.enterCriticalSection (mailtab (caller).lock);
+        Spinlocks.enterCriticalSection (tableLock (caller));
         Process_Capabilities.Close (proctab (caller).caps, handle, removed, closed);
-        Spinlocks.exitCriticalSection (mailtab (caller).lock);
+        Spinlocks.exitCriticalSection (tableLock (caller));
         word := insertHandle (caller, id, gen, cap.rights, cap.authorityTag);
         answer (reply, NA.Ok, word);
     end revoke;
@@ -688,7 +688,7 @@ package body Process.Notifications is
             -- Collect a chunk under the table lock; end them without it
             -- (an object lock is never taken under a mailbox lock).
             count := 0;
-            Spinlocks.enterCriticalSection (mailtab (pid).lock);
+            Spinlocks.enterCriticalSection (tableLock (pid));
             high := Tables.High_Water (proctab (pid).caps);
             while cursor < high and then count < Chunk loop
                 if Tables.Is_Live_At (proctab (pid).caps, cursor) then
@@ -703,7 +703,7 @@ package body Process.Notifications is
                 end if;
                 cursor := cursor + 1;
             end loop;
-            Spinlocks.exitCriticalSection (mailtab (pid).lock);
+            Spinlocks.exitCriticalSection (tableLock (pid));
             for i in 1 .. count loop
                 endObject (found (i).Id, found (i).Gen);
             end loop;
