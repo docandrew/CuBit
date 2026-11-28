@@ -62,7 +62,10 @@ mutate wake-ignores-generation fan_in_model.adb '/procedure Wake_With/,/end Wake
 mutate revoke-keeps-waiter notification_objects.adb '/procedure Revoke (N/,/end Revoke;/ s/N.Waiter := No_Thread;/null;/' || fail=1
 # A leaf link names the root's life, which Revoke keeps (review 4: the
 # revoke bypass; an old Wake right's binding outlives the revocation).
+# (a) the link is stamped with the life: a binding made after a Revoke
+# never reaches the root; (b) liveness is the life's: dd58a67cc's model.
 mutate link-names-life fan_in_model.adb 's/(Id => R, Gen => S.G (R))/(Id => R, Gen => S.L (R))/' || fail=1
+mutate live-link-is-life fan_in_model.ads 's/(L.Id in Id and then S.G (L.Id) = L.Gen/(L.Id in Id and then S.L (L.Id) = L.Gen/' || fail=1
 # A Bind_Leaf that does not check the root right's generation.
 mutate bind-ignores-generation fan_in_model.adb '/procedure Bind_With/,/end Bind_With;/ s/Done := Authorizes (S, R, Gen);/Done := S.O (R).Live;/' || fail=1
 # A wake of a leaf whose root was revoked or ended leaves it bound.

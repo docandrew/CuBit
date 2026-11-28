@@ -88,7 +88,10 @@ package Fan_In_Model with SPARK_Mode => On is
     with Global => null,
          Pre  => Inv (S) and then S.O (L).Live and then S.O (R).Live,
          Post => Inv (S) and then S.G = S'Old.G and then S.L = S'Old.L
-                 and then (if Outcome = Bound_Now then L /= R);
+                 -- A binding made now reaches the root (until its Revoke).
+                 and then (if Outcome = Bound_Now then L /= R
+                           and then Is_Leaf (S.O (L)) and then Live_Link (S, S.O (L).Root)
+                           and then S.O (L).Root.Id = R);
 
     procedure Unbind (S : in out State; L : Id)
     with Global => null,
