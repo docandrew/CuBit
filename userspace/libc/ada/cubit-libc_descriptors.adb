@@ -502,7 +502,7 @@ package body CuBit.Libc_Descriptors is
       Ignore := Atomic_Add (Events'Address, 1, Sequentially_Consistent);
       if Waiters /= 0 then
          Ignore_Woken := CuBit.Kernel_Calls.Call
-           (K.Futex_Wake, Value_Of (Events'Address), K.Forever);
+           (K.Wake, Notification_ABI.Private_Word, Value_Of (Events'Address), K.Forever);
       end if;
       Net_Interrupt;
    end Readiness_Changed;
