@@ -60,11 +60,12 @@ package body Process.Wait_Timers is
 
     -- Caller holds heapLocks (cpu), on cpu: the alarm for its earliest
     -- deadline, when that is within the tick.
-    procedure armFor (cpu : CPU_Index) is
-        key : constant Unsigned_64 := WD.Earliest_Key (heaps (cpu));
+    -- This CPU's alarm for deadline key, when that is within the tick
+    -- (the next regular timer opportunity is at most a millisecond away,
+    -- and its tick arms again). Interrupts disabled.
+    procedure alarmFor (key : Unsigned_64) is
         now : Unsigned_64;
     begin
-        earliest (cpu) := key;
         if not Build.OneShot_Scheduling or else key = Unsigned_64'Last
           or else Time.tscPerDuration = 0
         then
@@ -78,6 +79,14 @@ package body Process.Wait_Timers is
               (Scheduler_Alarm.Delay_Microseconds
                  (Unsigned_64'Max (1, (key - now + Time.tscPerDuration - 1) / Time.tscPerDuration)));
         end if;
+    end alarmFor;
+
+    -- Caller holds heapLocks (cpu), on cpu: note its earliest deadline and
+    -- arm the alarm for it.
+    procedure armFor (cpu : CPU_Index) is
+    begin
+        earliest (cpu) := WD.Earliest_Key (heaps (cpu));
+        alarmFor (earliest (cpu));
     end armFor;
 
     procedure Arm (me : ThreadID; tsc : Unsigned_64) is
@@ -209,6 +218,11 @@ package body Process.Wait_Timers is
             -- More due than one chunk: the alarm comes back at once for them.
             armFor (cpu);
             Spinlocks.exitCriticalSection (heapLocks (cpu));
+        else
+            -- A deadline that was more than a tick away when it joined:
+            -- each tick arms for it once it is within one (the timer's
+            -- interrupt, interrupts disabled).
+            alarmFor (earliest (cpu));
         end if;
         -- Another CPU whose timer has not run its deadlines (masked, in
         -- SMM, its timer lost): this one times them out, late by at most
