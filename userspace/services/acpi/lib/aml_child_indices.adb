@@ -1,16 +1,9 @@
 pragma Ada_2022;
-with Interfaces;
+with AML_Child_Hash;
 package body AML_Child_Indices with SPARK_Mode is
    function Bucket (Scope : Node_ID; Part : AML_Names.Segment) return Bucket_Index is
-      use type Interfaces.Unsigned_64;
-      Offset_Basis : constant Interfaces.Unsigned_64 := 14_695_981_039_346_656_037;
-      Prime : constant Interfaces.Unsigned_64 := 1_099_511_628_211;
-      Value : Interfaces.Unsigned_64 := Offset_Basis xor Interfaces.Unsigned_64 (Scope);
    begin
-      for C of Part loop
-         Value := (Value xor Interfaces.Unsigned_64 (Character'Pos (C))) * Prime;
-      end loop;
-      return Bucket_Index (Value mod Interfaces.Unsigned_64 (Capacity) + 1);
+      return Bucket_Index (AML_Child_Hash.Bucket (Scope, Part, Capacity));
    end Bucket;
    procedure Prepend (Index : in out State; Node : Position; Slot : Bucket_Index) is
       Head : constant Node_ID := Index.Heads (Slot);
