@@ -24,6 +24,10 @@
 --     long whatever the bindings, no cycle can form, and a Wake takes at
 --     most two notification locks, one after the other.
 --
+-- Revocation is by generation, the kernel's: a capability names the object
+-- and its generation, Revoke advances it, and every operation checks it
+-- first (tests/notifications proves a stale capability changes nothing).
+--
 -- The kernel holds each object's lock around these operations (two locks
 -- in ascending identity order only for Bind_Leaf); the object's identity
 -- and generation, and the owner's charge, are the kernel's
@@ -101,6 +105,14 @@ package Notification_Objects with SPARK_Mode => On is
     procedure Finish (N : in out Notification; Waiter, Bound : out Thread_Ref)
     with Pre  => Valid (N),
          Post => N = Empty and then Waiter = N'Old.Waiter and then Bound = N'Old.Bound;
+
+    -- Revoked (its generation advanced; every capability of the old one is
+    -- stale): the waiter, which waited with a stale Wait right, leaves and
+    -- is told; the bits, bindings and charge stay with the object.
+    procedure Revoke (N : in out Notification; Waiter : out Thread_Ref)
+    with Pre  => Valid (N),
+         Post => Valid (N) and then Waiter = N'Old.Waiter
+                 and then N = (N'Old with delta Waiter => No_Thread);
 
     ---------------------------------------------------------------------------
     -- Signal (Wake)

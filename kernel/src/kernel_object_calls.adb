@@ -97,7 +97,7 @@ package body Kernel_Object_Calls is
                 VM_Objects.Call (Caller, Found.Cap, Request, Reply);
                 Result := Answered;
             when Capabilities.CAP_NOTIFICATION_OBJECT =>
-                Process.Notifications.Call (Caller, Found.Cap, Request, Reply);
+                Process.Notifications.Call (Caller, Handle, Found.Cap, Request, Reply);
                 Result := Answered;
             when Capabilities.CAP_TEST_CONSOLE =>
                 Test_Console_Object.Call

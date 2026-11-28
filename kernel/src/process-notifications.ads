@@ -48,7 +48,7 @@ package Process.Notifications is
     function wake (handle : Unsigned_64) return Unsigned_64;
 
     -- Kernel_Object_Calls: a Call on a CAP_NOTIFICATION_OBJECT handle.
-    procedure Call (caller : ProcessID; cap : Capabilities.Capability;
+    procedure Call (caller : ProcessID; handle : Unsigned_64; cap : Capabilities.Capability;
                     request : Message; reply : out Message);
 
     -- Kernel_Object_Calls: Create on the caller's own CAP_PROCESS handle.

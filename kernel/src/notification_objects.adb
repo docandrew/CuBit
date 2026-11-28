@@ -18,6 +18,12 @@ package body Notification_Objects with SPARK_Mode => On is
         N := Empty;
     end Finish;
 
+    procedure Revoke (N : in out Notification; Waiter : out Thread_Ref) is
+    begin
+        Waiter := N.Waiter;
+        N.Waiter := No_Thread;
+    end Revoke;
+
     procedure Signal (N : in out Notification; Badge : Unsigned_64; At_Level : Level;
                       Result : out Signal_Result) is
     begin

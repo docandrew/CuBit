@@ -52,16 +52,22 @@ package CuBit.Handles.Notifications is
                         Result : out Waker) return ABI.Outcome;
 
    --  The bits pending (cleared now), waiting until the deadline for some:
-   --  0 when none came, else ABI.Busy, ABI.Ended or ABI.Refused.
+   --  0 when none came, else ABI.Busy, ABI.Ended, ABI.Revoked or ABI.Refused.
    function Wait (Item : Waitable; Deadline : Unsigned_64) return Unsigned_64;
 
-   --  Signal: ABI.Signalled, ABI.Ended or ABI.Refused.
+   --  Signal: ABI.Signalled, ABI.Ended, ABI.Revoked or ABI.Refused.
    function Wake (Item : Waker) return Unsigned_64;
 
    function Bind_Leaf (Leaf : Waitable; Root : Waker) return ABI.Outcome;
    function Unbind_Leaf (Leaf : Waitable) return ABI.Outcome;
    function Bind_Thread (Root : Waitable) return ABI.Outcome;
    function Unbind_Thread (Root : Waitable) return ABI.Outcome;
+
+   --  Revoke (the Wait handle has Right_Revoke): the notification's
+   --  generation advances, so every Waker of it answers Revoked and a thread
+   --  waiting with the old handle wakes Revoked. Item is replaced by its
+   --  re-stamped handle.
+   function Revoke (Item : in out Waitable) return ABI.Outcome;
 
    --  Ends the notification (Wait handle) or gives up a Wake handle.
    function Close (Item : Waitable) return Boolean;

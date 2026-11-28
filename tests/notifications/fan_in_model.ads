@@ -11,6 +11,10 @@
 --     leaf (so the fan-in is leaf -> root -> thread, two levels);
 --   * Prove_No_Chain: no leaf's root is a leaf, and no object is its own
 --     root, so no chain longer than two and no cycle exists;
+--   * revocation by generation: Revoke advances an object's generation, a
+--     capability of an older generation (revoked, or of an ended object
+--     whose slot was reused) authorizes nothing (Wake_With, Wait_With
+--     change nothing), and generations never go back;
 --   * Wake: the thread woken is exactly the expected one: the waiter of the
 --     object signalled, or of its root when it is a leaf; otherwise the
 --     bound thread is rung; every other object is unchanged; the second
@@ -104,6 +108,31 @@ package Fan_In_Model with SPARK_Mode => On is
          Pre  => Inv (S) and then Me /= No_Thread,
          Post => Inv (S) and then S.G = S'Old.G;
 
+    -- A capability of generation Gen authorizes an operation on I.
+    function Authorizes (S : State; I : Id; Gen : Unsigned_32) return Boolean is
+      (S.O (I).Live and then S.G (I) = Gen);
+
+    -- Revoke (Right_Revoke): I's generation advances, I lives on; its
+    -- waiter (holding the old Wait right) leaves, told Revoked.
+    procedure Revoke (S : in out State; I : Id; Waiter : out Thread_Ref)
+    with Global => null,
+         Pre  => Inv (S) and then S.O (I).Live and then S.G (I) < Unsigned_32'Last,
+         Post => Inv (S) and then S.O (I).Live and then S.G (I) = S'Old.G (I) + 1
+                 and then Waiter = S'Old.O (I).Waiter and then S.O (I).Waiter = No_Thread
+                 and then (for all J in Id => (if J /= I then S.O (J) = S'Old.O (J)
+                                                 and then S.G (J) = S'Old.G (J)))
+                 and then not Authorizes (S, I, S'Old.G (I));
+
+    -- A Wait through a capability of generation Gen: nothing changes
+    -- unless it authorizes.
+    procedure Wait_With (S : in out State; I : Id; Gen : Unsigned_32; Me : Thread_Ref;
+                         Block : Boolean; Done : out Boolean;
+                         Outcome : out Wait_Outcome; Taken : out Unsigned_64)
+    with Global => null,
+         Pre  => Inv (S) and then Me /= No_Thread,
+         Post => Inv (S) and then S.G = S'Old.G and then Done = Authorizes (S'Old, I, Gen)
+                 and then (if not Done then S = S'Old and then Taken = 0);
+
     -- The thread a Wake of I must reach, and how.
     function Leaf_Root (S : State; I : Id) return Boolean is
       (Is_Leaf (S.O (I)) and then Live_Link (S, S.O (I).Root));
@@ -133,6 +162,23 @@ package Fan_In_Model with SPARK_Mode => On is
                  -- Bits are never lost: they are pending in I, or taken
                  -- by the woken waiter.
                  and then (if Woken = No_Thread then (S.O (I).Bits and Badge) = Badge);
+
+    -- A Wake through a capability of generation Gen: nothing changes, and
+    -- nobody wakes, unless it authorizes.
+    procedure Wake_With (S : in out State; I : Id; Gen : Unsigned_32; Badge : Unsigned_64;
+                         Done : out Boolean; Woken, Rung : out Thread_Ref; Taken : out Unsigned_64)
+    with Global => null,
+         Pre  => Inv (S) and then Badge /= 0,
+         Post => Inv (S) and then S.G = S'Old.G and then Done = Authorizes (S'Old, I, Gen)
+                 and then (if not Done then S = S'Old and then Woken = No_Thread
+                           and then Rung = No_Thread and then Taken = 0);
+
+    -- Generations only advance: a capability minted at an older one never
+    -- authorizes again, whatever was created in the slot since.
+    procedure Prove_Stale_Stays_Stale (S : State; I : Id; Gen : Unsigned_32)
+    with Ghost, Global => null,
+         Pre  => Gen < S.G (I),
+         Post => not Authorizes (S, I, Gen);
 
     -- No chain longer than two, no cycle.
     procedure Prove_No_Chain (S : State; I : Id)

@@ -54,4 +54,10 @@ mutate bound-before-waiter notification_objects.adb 's/elsif N.Waiter \/= No_Thr
 mutate no-generation fan_in_model.adb 's/S.G (I) := S.G (I) + 1;/null;/' || fail=1
 # A leaf may be bound to a thread.
 mutate leaf-to-thread notification_objects.adb '/procedure Bind_Thread/,/end Bind_Thread;/ s/if Is_Leaf (R) then/if False then/' || fail=1
+# Revoke that does not advance the generation (an old capability still works).
+mutate revoke-keeps-generation fan_in_model.adb '/procedure Revoke (S/,/end Revoke;/ s/S.G (I) := S.G (I) + 1;/null;/' || fail=1
+# A Wake that does not check the capability's generation.
+mutate wake-ignores-generation fan_in_model.adb '/procedure Wake_With/,/end Wake_With;/ s/Done := Authorizes (S, I, Gen);/Done := S.O (I).Live;/' || fail=1
+# Revoke that leaves the stale waiter waiting.
+mutate revoke-keeps-waiter notification_objects.adb '/procedure Revoke (N/,/end Revoke;/ s/N.Waiter := No_Thread;/null;/' || fail=1
 exit $fail

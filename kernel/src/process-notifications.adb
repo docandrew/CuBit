@@ -20,6 +20,7 @@ package body Process.Notifications is
     use type NO.Thread_Ref;
     use type NO.Action;
     use type NO.Bind_Outcome;
+    use type NA.Outcome;
 
     pragma Compile_Time_Error
       (Natural (NO.Thread_Ref'Last) /= Natural (ThreadID'Last),
@@ -120,6 +121,13 @@ package body Process.Notifications is
     function current (E : Kernel_Notification; gen : Unsigned_32) return Boolean is
       (E.Gen = gen and then E.State.Live);
 
+    -- What a stale handle answers: Revoked while the object lives on (its
+    -- generation advanced), else Ended.
+    function stale (E : Kernel_Notification) return Unsigned_64 is
+      (if E.State.Live then NA.Revoked else NA.Ended);
+    function staleOutcome (E : Kernel_Notification) return NA.Outcome is
+      (if E.State.Live then NA.Revoked_Object else NA.Ended_Object);
+
     -- A leaf's root has ended (racy read of its generation: a link names a
     -- generation that changes only when that root ends).
     function rootGone (L : NO.Link) return Boolean is
@@ -191,7 +199,7 @@ package body Process.Notifications is
             Spinlocks.enterCriticalSection (E.Lock);
             if not current (E, gen) then
                 Spinlocks.exitCriticalSection (E.Lock);
-                return NA.Ended;
+                return stale (E);
             end if;
             NO.Signal (E.State, badge, NO.First, r1);
             act (r1, ring1);
@@ -300,7 +308,7 @@ package body Process.Notifications is
         begin
             Spinlocks.enterCriticalSection (E.Lock);
             if not current (E, h.Gen) then
-                result := NA.Ended;
+                result := stale (E);
             elsif threadtab (me).oneWaitStatus = Wait_Timed_Out then
                 result := 0;
             else
@@ -327,6 +335,7 @@ package body Process.Notifications is
             result := (case threadtab (me).oneWaitStatus is
                          when Wait_Woken     => threadtab (me).oneWaitBits,
                          when Wait_Ended     => NA.Ended,
+                         when Wait_Revoked   => NA.Revoked,
                          when others         => 0);
         end if;
         if timed then
@@ -433,7 +442,8 @@ package body Process.Notifications is
         end;
         -- The Wait handle: Wait and Wake, unbadged, never copied.
         word := insertHandle (caller, id, gen,
-                              [Caps.RIGHT_READ | Caps.RIGHT_WRITE => True, others => False], 0);
+                              [Caps.RIGHT_READ | Caps.RIGHT_WRITE | Caps.RIGHT_REVOKE => True,
+                               others => False], 0);
         if not Capability_ABI.Is_Handle_Word (word) then
             endObject (id, gen);
             answer (reply, NA.Limit_Reached);
@@ -490,7 +500,56 @@ package body Process.Notifications is
         answer (reply, outcomeOf (outcome));
     end bindLeaf;
 
-    procedure Call (caller : ProcessID; cap : Capabilities.Capability;
+    -- Revoke: the object's generation advances (the table's ledger, so it
+    -- never goes back, not even when the slot is reused); the waiter, which
+    -- holds the old Wait right, wakes Revoked; the bound thread's binding is
+    -- re-stamped; the revoker's handle is replaced by a re-stamped one.
+    procedure revoke (caller : ProcessID; handle : Unsigned_64; cap : Capabilities.Capability;
+                      reply : out Message)
+    is
+        id : constant NO.Object_Id := NO.Object_Id (cap.object.ref);
+        E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
+        waiter : NO.Thread_Ref;
+        saturated : Boolean := False;
+        outcome : NA.Outcome := NA.Ok;
+        gen : Unsigned_32 := 0;
+        removed : Capabilities.Capability;
+        closed, word : Unsigned_64;
+    begin
+        Spinlocks.enterCriticalSection (E.Lock);
+        if not current (E, cap.gen) then
+            outcome := staleOutcome (E);
+        else
+            Table.Invalidate (Table.Id (id), saturated);
+            if saturated then
+                outcome := NA.Limit_Reached;
+            else
+                gen := Unsigned_32 (Table.Generation_Of (Table.Id (id))) + 1;
+                E.Gen := gen;
+                NO.Revoke (E.State, waiter);
+                if waiter /= NO.No_Thread then
+                    Wait_Timers.Finish (ThreadID (waiter), Wait_Revoked);
+                end if;
+                if E.State.Bound /= NO.No_Thread
+                  and then threadtab (ThreadID (E.State.Bound)).boundNotification = Unsigned_32 (id)
+                then
+                    threadtab (ThreadID (E.State.Bound)).boundGen := gen;
+                end if;
+            end if;
+        end if;
+        Spinlocks.exitCriticalSection (E.Lock);
+        if outcome /= NA.Ok then
+            answer (reply, outcome);
+            return;
+        end if;
+        Spinlocks.enterCriticalSection (mailtab (caller).lock);
+        Process_Capabilities.Close (proctab (caller).caps, handle, removed, closed);
+        Spinlocks.exitCriticalSection (mailtab (caller).lock);
+        word := insertHandle (caller, id, gen, cap.rights, cap.authorityTag);
+        answer (reply, NA.Ok, word);
+    end revoke;
+
+    procedure Call (caller : ProcessID; handle : Unsigned_64; cap : Capabilities.Capability;
                     request : Message; reply : out Message)
     is
         label : constant Unsigned_64 := Unsigned_64 (request.tag.label);
@@ -511,12 +570,19 @@ package body Process.Notifications is
             answer (reply, NA.Ended_Object);
             return;
         end if;
-        if label = NA.Mint_Wake_Label then
+        if label = NA.Revoke_Label then
+            if cap.rights (Caps.RIGHT_REVOKE) then
+                revoke (caller, handle, cap, reply);
+            else
+                answer (reply, NA.Refused_Call);
+            end if;
+        elsif label = NA.Mint_Wake_Label then
             declare
                 badge : constant Unsigned_64 := request.words (0);
                 grant : constant Unsigned_64 := request.words (1);
                 live : Boolean;
                 word : Unsigned_64;
+                why : NA.Outcome;
                 E : Kernel_Notification renames Table.Lookup (Table.Id (id)).E.all;
             begin
                 if badge = 0 or else badge > NA.Badge_Last or else grant > 1 then
@@ -525,9 +591,10 @@ package body Process.Notifications is
                 end if;
                 Spinlocks.enterCriticalSection (E.Lock);
                 live := current (E, cap.gen);
+                why := staleOutcome (E);
                 Spinlocks.exitCriticalSection (E.Lock);
                 if not live then
-                    answer (reply, NA.Ended_Object);
+                    answer (reply, why);
                     return;
                 end if;
                 word := insertHandle
@@ -550,10 +617,12 @@ package body Process.Notifications is
                 removed : Boolean := False;
                 ring : ThreadID := NO_THREAD;
                 ended : Boolean := False;
+                why : NA.Outcome := NA.Ended_Object;
             begin
                 Spinlocks.enterCriticalSection (E.Lock);
                 if not current (E, cap.gen) then
                     ended := True;
+                    why := staleOutcome (E);
                 elsif label = NA.Unbind_Leaf_Label then
                     NO.Unbind_Leaf (E.State);
                 elsif label = NA.Bind_Thread_Label then
@@ -580,7 +649,7 @@ package body Process.Notifications is
                 end if;
                 Spinlocks.exitCriticalSection (E.Lock);
                 if ended then
-                    answer (reply, NA.Ended_Object);
+                    answer (reply, why);
                 else
                     ringBound (ring);
                     answer (reply, outcomeOf (outcome));

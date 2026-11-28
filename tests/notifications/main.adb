@@ -147,6 +147,32 @@ begin
              "model: a wait on a leaf whose root ended unbinds it");
    end;
 
+   --  Revocation by generation: revoke while waiting, then reuse.
+   declare
+      use Fan_In_Model;
+      S : State := Initial;
+      Woken, Rung, W : Thread_Ref;
+      Done : Boolean;
+      Old_Gen : Unsigned_32;
+   begin
+      Create_Object (S, 3, 4);
+      Old_Gen := S.G (3);
+      Wait_With (S, 3, Old_Gen, 30, True, Done, Outcome, Taken);
+      Check (Done and then Outcome = Blocked, "model: a current Wait right waits");
+      Revoke (S, 3, W);
+      Check (W = 30 and then S.O (3).Waiter = No_Thread, "model: revoke tells the waiter");
+      Wake_With (S, 3, Old_Gen, 1, Done, Woken, Rung, Taken);
+      Check (not Done and then Woken = No_Thread and then S.O (3).Bits = 0,
+             "model: a revoked Wake right changes nothing");
+      Wake_With (S, 3, S.G (3), 1, Done, Woken, Rung, Taken);
+      Check (Done and then S.O (3).Bits = 1, "model: the re-stamped right wakes");
+      End_Object (S, 3);
+      Create_Object (S, 3, 5);
+      Wake_With (S, 3, Old_Gen + 1, 2, Done, Woken, Rung, Taken);
+      Check (not Done and then S.O (3).Bits = 0,
+             "model: a right of the slot's earlier object does not reach the new one");
+   end;
+
    if Failures = 0 then
       Put_Line ("notifications: PASS");
    else

@@ -153,6 +153,32 @@ begin
    Check (N.Wake (Root_W) = NA.Signalled, "the root lives on");
    Check (N.Wait (Root, N.Now) = 16#100#, "and its bits are its own");
 
+   --  Revocation by generation: while a thread waits with the old Wait
+   --  right, then a Waker of the old generation, then the slot reused.
+   declare
+      Old_W, New_W : N.Waker;
+      Before : constant N.Waitable := Root;
+   begin
+      Check (N.Mint_Waker (Root, 16#20#, False, Old_W) = NA.Ok, "revoke: mint a waker");
+      Target := Root;
+      Waiting := False;
+      Ok := Spawn (Wait_Once'Access, 0, Exit_1'Access);
+      while not Waiting loop
+         null;
+      end loop;
+      Pause (5_000);
+      Check (N.Revoke (Root) = NA.Ok, "revoke while a thread waits");
+      Join (Exit_1'Access);
+      Check (Target_Result = NA.Revoked, "the waiter with the old Wait right wakes Revoked");
+      Check (N.Wake (Old_W) = NA.Revoked, "a waker of the old generation answers Revoked");
+      Check (N.Wait (Before, N.Now) = NA.Refused, "the old Wait handle is gone");
+      Check (N.Mint_Waker (Root, 16#40#, False, New_W) = NA.Ok and then N.Wake (New_W) = NA.Signalled
+             and then N.Wait (Root, N.Now) = 16#40#, "the re-stamped handle mints and waits");
+      Check (N.Close (Root) and then N.Create (Self, Root) = NA.Ok, "close it, create again");
+      Check (N.Wake (Old_W) /= NA.Signalled and then N.Wake (New_W) /= NA.Signalled,
+             "no waker of an earlier object reaches a new one");
+   end;
+
    --  The per-process limit, then every one given back.
    declare
       Held : array (1 .. NA.Per_Process_Limit) of N.Waitable;

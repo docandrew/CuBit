@@ -10290,6 +10290,9 @@ notify-check: the root's waiter is woken by the leaf PASS
 notify-check: a root never becomes a leaf PASS
 notify-check: the bound thread's receive returns a doorbell PASS
 notify-check: its waiter returns Ended PASS
+notify-check: the waiter with the old Wait right wakes Revoked PASS
+notify-check: a waker of the old generation answers Revoked PASS
+notify-check: no waker of an earlier object reaches a new one PASS
 notify-check: one more is refused PASS
 notify-check: the sleeper was woken PASS
 TIMING: wake-flood-flooded-round-trip

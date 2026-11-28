@@ -109,4 +109,36 @@ package body Fan_In_Model with SPARK_Mode => On is
 
     procedure Prove_No_Chain (S : State; I : Id) is null;
 
+    procedure Revoke (S : in out State; I : Id; Waiter : out Thread_Ref) is
+    begin
+        Notification_Objects.Revoke (S.O (I), Waiter);
+        S.G (I) := S.G (I) + 1;
+    end Revoke;
+
+    procedure Wait_With (S : in out State; I : Id; Gen : Unsigned_32; Me : Thread_Ref;
+                         Block : Boolean; Done : out Boolean;
+                         Outcome : out Wait_Outcome; Taken : out Unsigned_64) is
+    begin
+        Done := Authorizes (S, I, Gen);
+        Outcome := Busy;
+        Taken := 0;
+        if Done then
+            Wait (S, I, Me, Block, Outcome, Taken);
+        end if;
+    end Wait_With;
+
+    procedure Wake_With (S : in out State; I : Id; Gen : Unsigned_32; Badge : Unsigned_64;
+                         Done : out Boolean; Woken, Rung : out Thread_Ref; Taken : out Unsigned_64) is
+    begin
+        Done := Authorizes (S, I, Gen);
+        Woken := No_Thread;
+        Rung := No_Thread;
+        Taken := 0;
+        if Done then
+            Wake (S, I, Badge, Woken, Rung, Taken);
+        end if;
+    end Wake_With;
+
+    procedure Prove_Stale_Stays_Stale (S : State; I : Id; Gen : Unsigned_32) is null;
+
 end Fan_In_Model;

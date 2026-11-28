@@ -22,7 +22,8 @@ package body CuBit.Handles.Notifications is
      (case W is
         when 0 => ABI.Ok, when 2 => ABI.Not_Allowed, when 3 => ABI.Already,
         when 4 => ABI.Busy_Object, when 5 => ABI.Limit_Reached, when 6 => ABI.No_Memory,
-        when 7 => ABI.Ended_Object, when others => ABI.Refused_Call);
+        when 7 => ABI.Ended_Object, when 8 => ABI.Revoked_Object,
+        when others => ABI.Refused_Call);
 
    --  One Call on Word: the outcome and the reply's word 1.
    procedure Ask (Word : Unsigned_64; Label : Unsigned_64; W0, W1 : Unsigned_64;
@@ -88,6 +89,17 @@ package body CuBit.Handles.Notifications is
      (Simple (Root.Word, ABI.Bind_Thread_Label, 0));
    function Unbind_Thread (Root : Waitable) return ABI.Outcome is
      (Simple (Root.Word, ABI.Unbind_Thread_Label, 0));
+
+   function Revoke (Item : in out Waitable) return ABI.Outcome is
+      Outcome : ABI.Outcome;
+      Word : Unsigned_64;
+   begin
+      Ask (Item.Word, ABI.Revoke_Label, 0, 0, Outcome, Word);
+      if ABI."=" (Outcome, ABI.Ok) then
+         Item := (Word => Word);
+      end if;
+      return Outcome;
+   end Revoke;
 
    function Close (Item : Waitable) return Boolean is (K.Call (K.Close_Handle, Item.Word) = 0);
    function Close (Item : Waker) return Boolean is (K.Call (K.Close_Handle, Item.Word) = 0);

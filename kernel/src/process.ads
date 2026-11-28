@@ -197,7 +197,7 @@ package Process is
     -- thread waits on, and how its wait ended.
     type One_Wait_Kind is
       (No_One_Wait, Notification_Wait, Private_Word_Wait, Shared_Word_Wait, Sleep_Wait);
-    type One_Wait_Status is (Wait_Pending, Wait_Woken, Wait_Timed_Out, Wait_Ended);
+    type One_Wait_Status is (Wait_Pending, Wait_Woken, Wait_Timed_Out, Wait_Ended, Wait_Revoked);
 
     type ProcessMode is (KERNEL, USER);
     type Readiness_Origin is (Rescheduled, Awakened);
