@@ -1,6 +1,5 @@
 pragma Ada_2022;
 with AML_Execute;
-with AML_Allocation_Retry;
 with Ada.Unchecked_Deallocation;
 with AML_Table_Readers;
 with Interfaces;
@@ -7746,10 +7745,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Binding.Status = AML_Execute.Failed_Binding and then Binding.Failure = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Buffer_Literal;
       procedure Literal (E : in out Arena; Scope : Natural; Kind : AML_Execute.Literal_Kind; Width : AML_Decode.Integer_Width; Data : AML_Decode.Bytes;
          Source : aliased AML_Byte_Sources.Storage; Source_First : Natural;
@@ -7778,10 +7776,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Binding.Status = AML_Execute.Failed_Binding and then Binding.Failure = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Literal;
       procedure Dereference_With_Provenance (E : in out Arena; Ref : Reference;
         Width : AML_Decode.Integer_Width;
@@ -7836,10 +7833,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Define_Field_At_Entry;
       procedure Write (E : in out Arena; Scope : Natural; Path : AML_Names.Name_Result; Width : AML_Decode.Integer_Width; Item : AML_Execute.Datum; Status : out AML_Execute.Write_Status)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
@@ -7927,10 +7923,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then AML_Execute."=" (Status, AML_Execute.Write_Value_Limit));
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Write;
       procedure Begin_Call (E : in out Arena; Scope : Natural; Allowed : out Boolean)
         with Pre => Context_Valid (E), Post => Context_Valid (E)
@@ -8010,10 +8005,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Store_Reference;
       procedure Compare_Objects
         (E : in out Arena; Op : AML_Decode.Byte; Left, Right : AML_Execute.Datum;
@@ -8050,10 +8044,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Define_Name;
 
       procedure Complete_Dynamic_Buffer
@@ -8078,10 +8071,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Complete_Dynamic_Buffer;
       procedure Abort_Dynamic_Name
         (E : in out Arena; Token : Name_Reservation; Status : out AML_Execute.Execution_Status)
@@ -8289,10 +8281,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Clone_At_Entry;
       procedure Copy_At_Entry
         (E : in out Arena; Destination : AML_Execute.Copy_Destination;
@@ -8319,10 +8310,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Copy_At_Entry;
       procedure Concatenate_At_Entry
         (E : in out Arena; Width : AML_Decode.Integer_Width;
@@ -8355,10 +8345,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Concatenate_At_Entry;
       procedure Resources_At_Entry
         (E : in out Arena; Width : AML_Decode.Integer_Width;
@@ -8394,10 +8383,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Resources_At_Entry;
 
       procedure To_Buffer_At_Entry
@@ -8437,10 +8425,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end To_Buffer_At_Entry;
       procedure Format_String_At_Entry
         (E : in out Arena; W : AML_Decode.Integer_Width; Mode : AML_Execute.Explicit_String_Mode; Item : AML_Execute.Datum;
@@ -8479,10 +8466,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Format_String_At_Entry;
       procedure Mid_At_Entry
         (E : in out Arena; W : AML_Decode.Integer_Width; Item : AML_Execute.Datum; Start, Count : AML_Decode.Integer_Value;
@@ -8511,10 +8497,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Mid_At_Entry;
       procedure To_String_At_Entry
         (E : in out Arena; W : AML_Decode.Integer_Width; Item : AML_Execute.Datum; Length : AML_Decode.Integer_Value;
@@ -8543,10 +8528,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end To_String_At_Entry;
 
 
@@ -9230,10 +9214,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Execute_Declaration_Event;
       procedure Execute_Declaration_Mutex
         (Environment : in out Arena; Lease : AML_Declaration_Contexts.Lease;
@@ -9310,10 +9293,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Execute_Declaration_Mutex;
       procedure Execute_Declaration_Method
         (Environment : in out Arena; Lease : AML_Declaration_Contexts.Lease; Scope : Natural; Path : AML_Names.Name_Result; Flags : AML_Decode.Byte; Width : AML_Decode.Integer_Width; Code : AML_Decode.Bytes; Status : out AML_Execute.Declaration_Status) is
@@ -9715,10 +9697,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Binding.Status = AML_Execute.Failed_Binding and then Binding.Failure = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Begin_Runtime_Package;
       procedure Append_Runtime_Package
         (E : in out Arena; Lease : AML_Declaration_Contexts.Lease;
@@ -9818,10 +9799,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Append_Runtime_Package;
       procedure Defer_Runtime_Package_Name
         (E : Arena; Lease : AML_Declaration_Contexts.Lease;
@@ -9971,10 +9951,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then Status = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Complete_Runtime_Package_Field;
       procedure Bind_Live_Builder_Members
         (E : in out Arena; Changed : in out Boolean; First : Natural;
@@ -10174,10 +10153,9 @@ package body Owned with SPARK_Mode is
          end Attempt;
          function Capacity_Refused return Boolean is
            (Boundary_Reached and then not Changed and then Binding.Status = AML_Execute.Failed_Binding and then Binding.Failure = AML_Execute.Value_Limit);
-         package Retry is new AML_Allocation_Retry (Attempt,Capacity_Refused);
-         Outcome : Retry.Report;
       begin
-         Retry.Run (Outcome);
+         Attempt (False);
+         if Capacity_Refused then Attempt (True); end if;
       end Finish_Runtime_Package;
       procedure Abort_Runtime_Package
         (E : Arena; Lease : AML_Declaration_Contexts.Lease;
