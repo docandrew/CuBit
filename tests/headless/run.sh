@@ -10324,9 +10324,12 @@ TEST: PASS futex
 futex-check: exiting with live threads
 "
         # The process exits with threads blocked and spinning; the reaper
-        # must then retire it (all its threads) without a kernel fault.
+        # must then retire it (all its threads) without a kernel fault. The
+        # kernel's line and the program's (through logstore) are ordered
+        # within each source only (LOG-009), so the reap may print first.
         if grep -F 'futex-check: ' "$SERIAL_LOG" | grep -qF ' FAIL' ||
-           ! awk '/futex-check: exiting with live threads/ { seen = 1 }
+           ! grep -qF 'futex-check: exiting with live threads' "$SERIAL_LOG" ||
+           ! awk '/futex-check: starting/ { seen = 1 }
                   seen && /reclaimProcess: stopped PID/ { found = 1 }
                   END { exit !found }' "$SERIAL_LOG"; then
             echo "headless: futex checks failed, or the process was not reaped" >&2
