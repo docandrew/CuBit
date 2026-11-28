@@ -1,10 +1,8 @@
 pragma Ada_2022;
 with AML_Profile_Events;
-with AML_Runtime_Exceptions;
 with AML_Field_Layout;
 with ACPI_FADT.Transactions;
 with AML_Mutexes;
-with AML_Fatal;
 with AML_Declaration_Contexts;
 with AML_Execution_Limits;
 with AML_Container_Headers;
@@ -17,10 +15,137 @@ with AML_Byte_Sources;
 with AML_Buffer_Layouts;
 with AML_Data;
 with AML_Names;
-with AML_Coercions;
 with AML_References;
 with AML_Metadata_Kinds;
+with AML_Execution_Types;
 package AML_Execute with SPARK_Mode, Pure is
+   use AML_Execution_Types;
+   --  Removed at the interpreter cutover (INTERPRETER-REDESIGN step 3)
+   subtype Operation_Region_Syntax is AML_Execution_Types.Operation_Region_Syntax;
+   subtype Invocation_Status is AML_Execution_Types.Invocation_Status;
+   subtype Arguments is AML_Execution_Types.Arguments;
+   subtype Object_Value is AML_Execution_Types.Object_Value;
+   subtype Metadata_Mode is AML_Execution_Types.Metadata_Mode;
+   subtype Metadata_Value is AML_Execution_Types.Metadata_Value;
+   subtype Datum_Kind is AML_Execution_Types.Datum_Kind;
+   subtype Datum is AML_Execution_Types.Datum;
+   subtype Scalar_Provenance_Kind is AML_Execution_Types.Scalar_Provenance_Kind;
+   subtype Scalar_Provenance is AML_Execution_Types.Scalar_Provenance;
+   subtype Copy_Destination_Kind is AML_Execution_Types.Copy_Destination_Kind;
+   subtype Copy_Destination is AML_Execution_Types.Copy_Destination;
+   subtype Expression_Values is AML_Execution_Types.Expression_Values;
+   subtype Value_Arguments is AML_Execution_Types.Value_Arguments;
+   subtype Runtime_Error_Code is AML_Execution_Types.Runtime_Error_Code;
+   subtype Execution_Status is AML_Execution_Types.Execution_Status;
+   subtype Execution_Failure is AML_Execution_Types.Execution_Failure;
+   subtype Execution_Result is AML_Execution_Types.Execution_Result;
+   subtype Field_Context_Ticket is AML_Execution_Types.Field_Context_Ticket;
+   Max_Method_Bytes : constant := AML_Execution_Types.Max_Method_Bytes;
+   subtype Method_Length is AML_Execution_Types.Method_Length;
+   subtype Method_Implementation is AML_Execution_Types.Method_Implementation;
+   subtype Match_Visit_Count is AML_Execution_Types.Match_Visit_Count;
+   subtype Match_Operation is AML_Execution_Types.Match_Operation;
+   subtype Explicit_String_Mode is AML_Execution_Types.Explicit_String_Mode;
+   subtype Reference_Store_Mode is AML_Execution_Types.Reference_Store_Mode;
+   subtype Concatenation_Operand_Kind is AML_Execution_Types.Concatenation_Operand_Kind;
+   subtype Concatenation_Descriptor_Kind is AML_Execution_Types.Concatenation_Descriptor_Kind;
+   subtype Concatenation_Operand is AML_Execution_Types.Concatenation_Operand;
+   subtype Concatenation_Destination_Kind is AML_Execution_Types.Concatenation_Destination_Kind;
+   subtype Concatenation_Destination is AML_Execution_Types.Concatenation_Destination;
+   subtype Named_Metadata_Type is AML_Execution_Types.Named_Metadata_Type;
+   subtype Reference_Metadata_Kind is AML_Execution_Types.Reference_Metadata_Kind;
+   subtype Reference_Metadata is AML_Execution_Types.Reference_Metadata;
+   Device_Descriptor : constant Concatenation_Descriptor_Kind := AML_Execution_Types.Device_Descriptor;
+   Region_Descriptor : constant Concatenation_Descriptor_Kind := AML_Execution_Types.Region_Descriptor;
+   Event_Descriptor : constant Concatenation_Descriptor_Kind := AML_Execution_Types.Event_Descriptor;
+   Mutex_Descriptor : constant Concatenation_Descriptor_Kind := AML_Execution_Types.Mutex_Descriptor;
+   Power_Descriptor : constant Concatenation_Descriptor_Kind := AML_Execution_Types.Power_Descriptor;
+   Processor_Descriptor : constant Concatenation_Descriptor_Kind := AML_Execution_Types.Processor_Descriptor;
+   Thermal_Descriptor : constant Concatenation_Descriptor_Kind := AML_Execution_Types.Thermal_Descriptor;
+   Detached_Result : constant Concatenation_Destination_Kind := AML_Execution_Types.Detached_Result;
+   Prepared_Cell_Copy : constant Concatenation_Destination_Kind := AML_Execution_Types.Prepared_Cell_Copy;
+   Named_Attachment : constant Concatenation_Destination_Kind := AML_Execution_Types.Named_Attachment;
+   Reference_Attachment : constant Concatenation_Destination_Kind := AML_Execution_Types.Reference_Attachment;
+   Data_Operand : constant Concatenation_Operand_Kind := AML_Execution_Types.Data_Operand;
+   Namespace_Operand : constant Concatenation_Operand_Kind := AML_Execution_Types.Namespace_Operand;
+   Named_Destination : constant Copy_Destination_Kind := AML_Execution_Types.Named_Destination;
+   Referenced_Destination : constant Copy_Destination_Kind := AML_Execution_Types.Referenced_Destination;
+   Integer_Datum : constant Datum_Kind := AML_Execution_Types.Integer_Datum;
+   Object_Datum : constant Datum_Kind := AML_Execution_Types.Object_Datum;
+   Reference_Datum : constant Datum_Kind := AML_Execution_Types.Reference_Datum;
+   Metadata_Datum : constant Datum_Kind := AML_Execution_Types.Metadata_Datum;
+   Returned : constant Execution_Status := AML_Execution_Types.Returned;
+   Object_Returned : constant Execution_Status := AML_Execution_Types.Object_Returned;
+   Reference_Returned : constant Execution_Status := AML_Execution_Types.Reference_Returned;
+   Metadata_Returned : constant Execution_Status := AML_Execution_Types.Metadata_Returned;
+   No_Return : constant Execution_Status := AML_Execution_Types.No_Return;
+   Truncated : constant Execution_Status := AML_Execution_Types.Truncated;
+   Unsupported : constant Execution_Status := AML_Execution_Types.Unsupported;
+   Uninitialized : constant Execution_Status := AML_Execution_Types.Uninitialized;
+   Missing_Argument : constant Execution_Status := AML_Execution_Types.Missing_Argument;
+   Budget_Exceeded : constant Execution_Status := AML_Execution_Types.Budget_Exceeded;
+   Invalid_Method : constant Execution_Status := AML_Execution_Types.Invalid_Method;
+   Argument_Mismatch : constant Execution_Status := AML_Execution_Types.Argument_Mismatch;
+   Mutex_Order : constant Execution_Status := AML_Execution_Types.Mutex_Order;
+   Duplicate_Name : constant Execution_Status := AML_Execution_Types.Duplicate_Name;
+   Namespace_Limit : constant Execution_Status := AML_Execution_Types.Namespace_Limit;
+   Expression_Limit : constant Execution_Status := AML_Execution_Types.Expression_Limit;
+   Block_Limit : constant Execution_Status := AML_Execution_Types.Block_Limit;
+   Bad_Package : constant Execution_Status := AML_Execution_Types.Bad_Package;
+   Invalid_Control : constant Execution_Status := AML_Execution_Types.Invalid_Control;
+   Unknown_Name : constant Execution_Status := AML_Execution_Types.Unknown_Name;
+   Unsupported_Value : constant Execution_Status := AML_Execution_Types.Unsupported_Value;
+   Bad_Name : constant Execution_Status := AML_Execution_Types.Bad_Name;
+   Call_Limit : constant Execution_Status := AML_Execution_Types.Call_Limit;
+   Division_By_Zero : constant Execution_Status := AML_Execution_Types.Division_By_Zero;
+   Empty_Buffer : constant Execution_Status := AML_Execution_Types.Empty_Buffer;
+   Missing_Result : constant Execution_Status := AML_Execution_Types.Missing_Result;
+   Value_Limit : constant Execution_Status := AML_Execution_Types.Value_Limit;
+   Numeric_Overflow : constant Execution_Status := AML_Execution_Types.Numeric_Overflow;
+   Invalid_Delay : constant Execution_Status := AML_Execution_Types.Invalid_Delay;
+   Delay_Failed : constant Execution_Status := AML_Execution_Types.Delay_Failed;
+   Package_Limit : constant Execution_Status := AML_Execution_Types.Package_Limit;
+   Buffer_Index_Limit : constant Execution_Status := AML_Execution_Types.Buffer_Index_Limit;
+   String_Index_Limit : constant Execution_Status := AML_Execution_Types.String_Index_Limit;
+   Invalid_Match_Operation : constant Execution_Status := AML_Execution_Types.Invalid_Match_Operation;
+   No_Resource_End_Tag : constant Execution_Status := AML_Execution_Types.No_Resource_End_Tag;
+   Invalid_Resource_Type : constant Execution_Status := AML_Execution_Types.Invalid_Resource_Type;
+   Bad_Resource_Length : constant Execution_Status := AML_Execution_Types.Bad_Resource_Length;
+   Resource_Buffer_Length : constant Execution_Status := AML_Execution_Types.Resource_Buffer_Length;
+   Invalid_Field_Length : constant Execution_Status := AML_Execution_Types.Invalid_Field_Length;
+   Buffer_Field_Limit : constant Execution_Status := AML_Execution_Types.Buffer_Field_Limit;
+   Notify_Limit : constant Execution_Status := AML_Execution_Types.Notify_Limit;
+   Mutex_Not_Acquired : constant Execution_Status := AML_Execution_Types.Mutex_Not_Acquired;
+   Invalid_Table_Length : constant Execution_Status := AML_Execution_Types.Invalid_Table_Length;
+   Missing_Operand : constant Execution_Status := AML_Execution_Types.Missing_Operand;
+   Field_Indeterminate : constant Execution_Status := AML_Execution_Types.Field_Indeterminate;
+   Runtime_Exception : constant Execution_Status := AML_Execution_Types.Runtime_Exception;
+   Fatal_Requested : constant Execution_Status := AML_Execution_Types.Fatal_Requested;
+   Module_Completed : constant Execution_Status := AML_Execution_Types.Module_Completed;
+   Decimal_String : constant Explicit_String_Mode := AML_Execution_Types.Decimal_String;
+   Hexadecimal_String : constant Explicit_String_Mode := AML_Execution_Types.Hexadecimal_String;
+   Available : constant Invocation_Status := AML_Execution_Types.Available;
+   Unsupported_Context : constant Invocation_Status := AML_Execution_Types.Unsupported_Context;
+   Exhausted : constant Invocation_Status := AML_Execution_Types.Exhausted;
+   Always_True : constant Match_Operation := AML_Execution_Types.Always_True;
+   Equal_To : constant Match_Operation := AML_Execution_Types.Equal_To;
+   Less_Or_Equal : constant Match_Operation := AML_Execution_Types.Less_Or_Equal;
+   Less_Than : constant Match_Operation := AML_Execution_Types.Less_Than;
+   Greater_Or_Equal : constant Match_Operation := AML_Execution_Types.Greater_Or_Equal;
+   Greater_Than : constant Match_Operation := AML_Execution_Types.Greater_Than;
+   Live_Namespace : constant Metadata_Mode := AML_Execution_Types.Live_Namespace;
+   Captured_Namespace : constant Metadata_Mode := AML_Execution_Types.Captured_Namespace;
+   AML_Implementation : constant Method_Implementation := AML_Execution_Types.AML_Implementation;
+   Interface_Query : constant Method_Implementation := AML_Execution_Types.Interface_Query;
+   Continue_Reference : constant Reference_Metadata_Kind := AML_Execution_Types.Continue_Reference;
+   Metadata_Only : constant Reference_Metadata_Kind := AML_Execution_Types.Metadata_Only;
+   Invalid_Reference : constant Reference_Metadata_Kind := AML_Execution_Types.Invalid_Reference;
+   Direct_Target : constant Reference_Store_Mode := AML_Execution_Types.Direct_Target;
+   Argument_Indirect_Target : constant Reference_Store_Mode := AML_Execution_Types.Argument_Indirect_Target;
+   Explicit_Result_Target : constant Reference_Store_Mode := AML_Execution_Types.Explicit_Result_Target;
+   Detached_Scalar : constant Scalar_Provenance_Kind := AML_Execution_Types.Detached_Scalar;
+   Owned_Integer_Scalar : constant Scalar_Provenance_Kind := AML_Execution_Types.Owned_Integer_Scalar;
+
    use type AML_Decode.Integer_Value;
    Create_DWord_Field_Op : constant AML_Decode.Byte := 16#8A#;
    Create_Word_Field_Op : constant AML_Decode.Byte := 16#8B#;
@@ -29,11 +154,6 @@ package AML_Execute with SPARK_Mode, Pure is
    Create_QWord_Field_Op : constant AML_Decode.Byte := 16#8F#;
    Create_Field_Extension : constant AML_Decode.Byte := 16#13#;
    Operation_Region_Extension : constant AML_Decode.Byte := 16#80#;
-   -- Exact integer-literal syntax observed in an executed declaration.
-   -- These facts alone establish neither table origin nor address authority.
-   type Operation_Region_Syntax is record
-      Address_Is_Literal, Length_Is_Literal : Boolean := False;
-   end record;
    --  An authenticated post-publication lookup can offer one immediate local
    --  _REG callback. A default value offers none and grants no handler rights.
    type Operation_Region_Notice is record
@@ -42,90 +162,18 @@ package AML_Execute with SPARK_Mode, Pure is
       Space : AML_Decode.Byte := 0;
       Generation : Natural := 0;
    end record;
-   type Invocation_Status is (Available, Unsupported_Context, Exhausted);
-   type Arguments is array (Natural range 0 .. 6) of AML_Decode.Integer_Value;
-   -- ID and conversion caches describe a value. Source separately carries
-   -- owner-bound authority for indexing; snapshot-only values leave it empty.
-   type Object_Value is record
-      -- Optional authority for indexing a live object; ID alone grants none.
-      Source : AML_References.Object_Handle := AML_References.No_Object_Handle;
-      ID : Natural := 0;
-      Type_Code : Natural range 0 .. 16 := 0;
-      Size : Natural := 0;
-      Conversion_32, Conversion_64 : AML_Coercions.Result;
-   end record;
-   type Metadata_Mode is (Live_Namespace, Captured_Namespace);
-   type Metadata_Value (Mode : Metadata_Mode := Live_Namespace) is record
-      case Mode is
-         when Live_Namespace => Namespace_Identity : AML_References.Reference;
-         when Captured_Namespace => Snapshot_Source : AML_References.Object_Handle;
-      end case;
-   end record;
-   type Datum_Kind is (Integer_Datum, Object_Datum, Reference_Datum, Metadata_Datum);
-   type Datum (Value_Kind : Datum_Kind := Integer_Datum) is record
-      case Value_Kind is
-         when Integer_Datum =>
-            Number : AML_Decode.Integer_Value := 0;
-            Origin : AML_Decode.Integer_Origin := AML_Decode.Ordinary_Integer;
-         when Object_Datum => Object : Object_Value;
-         when Reference_Datum => Ref : AML_References.Reference;
-         when Metadata_Datum => Metadata : Metadata_Value;
-      end case;
-   end record;
-   -- Numeric data and owner authority travel separately. A detached scalar is
-   -- a value; an owned scalar additionally names its exact authenticated object.
    -- Internal synchronous census protocol; no hardware or object authority.
    type Owner_Census_Status is
      (Census_Collecting, Census_Shared, Census_No_Owner,
       Census_Incomplete, Census_Invalid);
-   type Scalar_Provenance_Kind is (Detached_Scalar, Owned_Integer_Scalar);
-   type Scalar_Provenance (Kind : Scalar_Provenance_Kind := Detached_Scalar) is record
-      case Kind is
-         when Detached_Scalar => null;
-         when Owned_Integer_Scalar => Source : AML_References.Object_Handle;
-      end case;
-   end record;
    Detached_Provenance : constant Scalar_Provenance := (Kind => Detached_Scalar);
-   type Copy_Destination_Kind is (Named_Destination, Referenced_Destination);
-   type Copy_Destination (Kind : Copy_Destination_Kind := Named_Destination) is record
-      case Kind is
-         when Named_Destination => Scope : Natural; Path : AML_Names.Name_Result;
-         when Referenced_Destination => Ref : AML_References.Reference;
-      end case;
-   end record;
-   type Expression_Values is array (Positive range <>) of Datum;
-   type Value_Arguments is array (Natural range 0 .. 6) of Datum;
    function As_Values (Args : Arguments) return Value_Arguments with
      Post => (for all I in Args'Range => As_Values'Result (I).Value_Kind = Integer_Datum
        and then As_Values'Result (I).Number = Args (I));
-   -- A payload status carries the exact nonzero replacement selected by _ERR.
-   -- AE_OK is represented by ordinary continuation, never a runtime failure.
-   subtype Runtime_Error_Code is AML_Runtime_Exceptions.Status_Code range
-     1 .. AML_Runtime_Exceptions.Status_Code'Last;
-   type Execution_Status is
-     (Returned, Object_Returned, Reference_Returned, Metadata_Returned, No_Return, Truncated, Unsupported, Uninitialized,
-      Missing_Argument, Budget_Exceeded, Invalid_Method, Argument_Mismatch, Mutex_Order, Duplicate_Name, Namespace_Limit, Expression_Limit, Block_Limit, Bad_Package, Invalid_Control,
-      Unknown_Name, Unsupported_Value, Bad_Name, Call_Limit, Division_By_Zero, Empty_Buffer, Missing_Result, Value_Limit, Numeric_Overflow, Invalid_Delay, Delay_Failed, Package_Limit, Buffer_Index_Limit, String_Index_Limit, Invalid_Match_Operation, No_Resource_End_Tag, Invalid_Resource_Type, Bad_Resource_Length, Resource_Buffer_Length, Invalid_Field_Length, Buffer_Field_Limit, Notify_Limit, Mutex_Not_Acquired, Invalid_Table_Length, Missing_Operand, Field_Indeterminate, Runtime_Exception, Fatal_Requested, Module_Completed);
    -- Recovery sites describe a failed declaration or consumed name term; they grant no authority.
    type Module_Name_Error_Site is (Operation_Region_Name_Error, Field_Region_Name_Error, Parsed_Name_Term_Error);
-   -- Module_Completed is success only at authenticated root EOF, never failure.
-   subtype Execution_Failure is Execution_Status range No_Return .. Fatal_Requested;
    -- Status-only adapters cannot fabricate a runtime exception or fatal request without its payload.
    subtype Payload_Free_Failure is Execution_Status range No_Return .. Field_Indeterminate;
-   type Execution_Result (Status : Execution_Status := No_Return) is record
-      Charged : Natural;
-      case Status is
-         when Returned =>
-            Value : AML_Decode.Integer_Value;
-            Origin : AML_Decode.Integer_Origin := AML_Decode.Ordinary_Integer;
-         when Object_Returned => Object : Object_Value;
-         when Reference_Returned => Ref : AML_References.Reference;
-         when Metadata_Returned => Metadata : Metadata_Value;
-         when Runtime_Exception => Exception_Code : Runtime_Error_Code;
-         when Fatal_Requested => Fatal : AML_Fatal.Request;
-         when others => null;
-      end case;
-   end record;
    type Binding_Status is (Integer_Binding, Method_Binding, Missing_Binding, Non_Integer_Binding, Failed_Binding, Reference_Binding, Metadata_Binding, Field_Binding);
    type Binding_Result (Status : Binding_Status := Missing_Binding) is record
       case Status is
@@ -143,8 +191,6 @@ package AML_Execute with SPARK_Mode, Pure is
          when others => null;
       end case;
    end record;
-   -- Internal progress only: no device descriptor or hardware authority.
-   type Field_Context_Ticket is new AML_Decode.Integer_Value;
    No_Field_Context : constant Field_Context_Ticket := 0;
    type Field_Context_Phase is (Context_Ready, Context_Value, Context_Failed, Context_Read);
    type Field_Context_Step is record
@@ -155,9 +201,6 @@ package AML_Execute with SPARK_Mode, Pure is
         (Region => (Space => AML_Field_Layout.Memory_Space, Base => 0, Length => 0,
           PCI => (Known => False)), Byte_Offset => 0, Width => ACPI_FADT.Transactions.Byte_Access);
    end record;
-   Max_Method_Bytes : constant := AML_Execution_Limits.Max_Method_Code_Bytes;
-   subtype Method_Length is Natural range 0 .. Max_Method_Bytes;
-   type Method_Implementation is (AML_Implementation, Interface_Query);
    -- Internal methods have no AML code span. Only their authenticated owner
    -- supplies a scalar result; default adapters explicitly remain unavailable.
    type Internal_Method_Status is (Internal_Unavailable, Internal_Rejected, Internal_Returned);
@@ -186,49 +229,15 @@ package AML_Execute with SPARK_Mode, Pure is
    -- This synchronous executor requires exclusive ownership of its context.
    -- No operation currently yields to another AML thread or acquires a Mutex.
    function Method_Level (Flags : AML_Decode.Byte) return Sync_Level;
-   -- Direct targets apply implicit destination conversion; Arg indirection
-   -- replaces the binding. Explicit results replace differing simple types
-   -- while retaining matching Integer/String/Buffer objects. Differing
-   -- authenticated compound results share their canonical source object.
-   subtype Match_Visit_Count is Natural;
 
-   type Match_Operation is
-     (Always_True, Equal_To, Less_Or_Equal, Less_Than, Greater_Or_Equal, Greater_Than);
 
-   type Explicit_String_Mode is (Decimal_String, Hexadecimal_String);
 
-   type Reference_Store_Mode is (Direct_Target, Argument_Indirect_Target, Explicit_Result_Target);
-   -- Insert after Reference_Store_Mode. These are transient operation inputs.
-   type Concatenation_Operand_Kind is (Data_Operand, Namespace_Operand);
-   type Concatenation_Descriptor_Kind is (Device_Descriptor, Region_Descriptor, Event_Descriptor, Mutex_Descriptor, Power_Descriptor, Processor_Descriptor, Thermal_Descriptor);
-   type Concatenation_Operand
-     (Kind : Concatenation_Operand_Kind := Data_Operand) is record
-      case Kind is
-         when Data_Operand => Value : Datum;
-         when Namespace_Operand =>
-            Identity : AML_References.Reference;
-            Descriptor : Concatenation_Descriptor_Kind;
-      end case;
-   end record;
-   type Concatenation_Destination_Kind is
-     (Detached_Result, Prepared_Cell_Copy, Named_Attachment, Reference_Attachment);
-   type Concatenation_Destination
-     (Kind : Concatenation_Destination_Kind := Detached_Result) is record
-      case Kind is
-         when Detached_Result | Prepared_Cell_Copy => null;
-         when Named_Attachment => Scope : Natural; Path : AML_Names.Name_Result;
-         when Reference_Attachment =>
-            Ref : AML_References.Reference;
-            Mode : Reference_Store_Mode;
-      end case;
-   end record;
 
 
    type Write_Status is (Written, Write_Missing, Write_Unsupported, Write_Value_Limit, Write_Empty_Buffer, Write_Buffer_Field_Limit, Write_Field_Indeterminate, Write_Missing_Operand);
    type Declaration_Status is (Declared, Declaration_Duplicate, Declaration_Missing,
                                Declaration_Full, Declaration_Unsupported);
    type Literal_Kind is (String_Literal, Buffer_Literal, Package_Literal);
-   subtype Named_Metadata_Type is AML_Metadata_Kinds.Kind;
    Scope_Metadata : constant Named_Metadata_Type := AML_Metadata_Kinds.Scope_Metadata;
    Field_Metadata : constant Named_Metadata_Type := AML_Metadata_Kinds.Field_Metadata;
    Device_Metadata : constant Named_Metadata_Type := AML_Metadata_Kinds.Device_Metadata;
@@ -240,13 +249,6 @@ package AML_Execute with SPARK_Mode, Pure is
    Processor_Metadata : constant Named_Metadata_Type := AML_Metadata_Kinds.Processor_Metadata;
    Thermal_Metadata : constant Named_Metadata_Type := AML_Metadata_Kinds.Thermal_Metadata;
    Buffer_Field_Metadata : constant Named_Metadata_Type := AML_Metadata_Kinds.Buffer_Field_Metadata;
-   type Reference_Metadata_Kind is (Continue_Reference, Metadata_Only, Invalid_Reference);
-   type Reference_Metadata (Kind : Reference_Metadata_Kind := Invalid_Reference) is record
-      case Kind is
-         when Metadata_Only => Object_Type : Named_Metadata_Type;
-         when others => null;
-      end case;
-   end record;
    type Binding_Purpose is (Inspect_Binding, Evaluate_Binding, Reference_Target, Namespace_Identity);
    -- Immutable external data travels explicitly through recursive calls. A
    -- limited formal prevents copying the backing store into executor frames.

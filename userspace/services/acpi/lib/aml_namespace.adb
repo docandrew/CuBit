@@ -1,4 +1,5 @@
 pragma Ada_2022;
+with AML_Execute;
 with AML_Allocation_Retry;
 with Ada.Unchecked_Deallocation;
 with AML_Table_Readers;
@@ -27,6 +28,11 @@ with AML_Fields;
 with AML_Coercions;
 with AML_Metadata_Kinds;
 package body AML_Namespace with SPARK_Mode is
+   use type AML_Execution_Types.Match_Operation;
+   use type AML_Execution_Types.Concatenation_Operand_Kind;
+   use type AML_Execution_Types.Concatenation_Descriptor_Kind;
+   use type AML_Execution_Types.Concatenation_Destination_Kind;
+   use type AML_Execution_Types.Explicit_String_Mode;
    use type AML_Table_Readers.Selection_Status;
    use type AML_Execute.Method_Implementation;
    -- Semantic by-value snapshot at package elaboration. AML and later mutation
@@ -5680,7 +5686,7 @@ package body Owned with SPARK_Mode is
    procedure Store_Reference_Value
      (A : in out Arena; R : Reference; Width : AML_Decode.Integer_Width;
       Item : AML_Execute.Datum; Status : out AML_Execute.Execution_Status;
-      Mode : AML_Execute.Reference_Store_Mode := AML_Execute.Direct_Target)
+      Mode : AML_Execute.Reference_Store_Mode := AML_Execution_Types.Direct_Target)
    is
    begin
       Status := AML_Execute.Unsupported_Value;
@@ -5992,7 +5998,7 @@ package body Owned with SPARK_Mode is
          case Destination.Kind is
             when Detached_Result | Prepared_Cell_Copy => null;
             when Named_Attachment =>
-               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := AML_Execution_Types.Bad_Name; return; end if;
                if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
                Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
                if Located.Status /= Found then Status := Unknown_Name; return; end if;
@@ -6017,7 +6023,7 @@ package body Owned with SPARK_Mode is
                when Templates.Bad_Resource_Length => Status := Bad_Resource_Length;
                when Templates.Buffer_Length => Status := Resource_Buffer_Length;
                when Templates.No_End_Tag => Status := No_Resource_End_Tag;
-               when Templates.Output_Limit => Status := Value_Limit;
+               when Templates.Output_Limit => Status := AML_Execution_Types.Value_Limit;
                when Templates.Built =>
                   AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
                   if Snapshot_Copy /= AML_Objects.Cloned then
@@ -6026,7 +6032,7 @@ package body Owned with SPARK_Mode is
                   if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
                   AML_Objects.New_Bytes (A.Tree.Values, AML_Objects.Buffer_Object,
                     Built.Data (1 .. Built.Length), ID, Allocated);
-                  if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
+                  if Allocated /= AML_Objects.Allocated then Status := AML_Execution_Types.Value_Limit; return; end if;
                   Read_Source (A, AML_References.Bind_Object (A.Token,
                     AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
                   if Status = Returned then
@@ -6187,7 +6193,7 @@ package body Owned with SPARK_Mode is
       begin
          Builder.Allocate (Built, A.Tree.Values, ID, Allocated);
          if Allocated /= AML_Objects.Allocated then
-            Status := Value_Limit;
+            Status := AML_Execution_Types.Value_Limit;
             return;
          end if;
          -- The initialized arena owns this fresh byte object.
@@ -6208,7 +6214,7 @@ package body Owned with SPARK_Mode is
          AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
          if Snapshot_Copy /= AML_Objects.Cloned then
             AML_Objects.Discard (Prior_Values);
-            Status := Value_Limit;
+            Status := AML_Execution_Types.Value_Limit;
             return;
          end if;
          if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
@@ -6243,7 +6249,7 @@ package body Owned with SPARK_Mode is
       case Destination.Kind is
          when Detached_Result | Prepared_Cell_Copy => null;
          when Named_Attachment =>
-            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := AML_Execution_Types.Bad_Name; return; end if;
             if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
             Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
             if Located.Status /= Found then Status := Unknown_Name; return; end if;
@@ -6265,7 +6271,7 @@ package body Owned with SPARK_Mode is
       begin
          case Built.Status is
             when Builder.Empty_Buffer => Status := Empty_Buffer;
-            when Builder.Length_Limit => Status := Value_Limit;
+            when Builder.Length_Limit => Status := AML_Execution_Types.Value_Limit;
             when Builder.Built =>
                if Destination.Kind = Detached_Result then
                   declare
@@ -6320,7 +6326,7 @@ package body Owned with SPARK_Mode is
          case Destination.Kind is
             when Detached_Result | Prepared_Cell_Copy => null;
             when Named_Attachment =>
-               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := AML_Execution_Types.Bad_Name; return; end if;
                if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
                Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
                if Located.Status /= Found then Status := Unknown_Name; return; end if;
@@ -6334,7 +6340,7 @@ package body Owned with SPARK_Mode is
          if Existing_Buffer then
             ID := Source_ID;
          else
-            if Size > AML_Objects.Max_Bytes then Status := Value_Limit; return; end if;
+            if Size > AML_Objects.Max_Bytes then Status := AML_Execution_Types.Value_Limit; return; end if;
             declare
                Data : AML_Decode.Bytes (1 .. Size) := [others => 0];
             begin
@@ -6347,7 +6353,7 @@ package body Owned with SPARK_Mode is
                end if;
                AML_Objects.New_Bytes (A.Tree.Values, AML_Objects.Buffer_Object, Data, ID, Allocated);
             end;
-            if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
+            if Allocated /= AML_Objects.Allocated then Status := AML_Execution_Types.Value_Limit; return; end if;
          end if;
          Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
          if Status = Returned then
@@ -6419,7 +6425,7 @@ package body Owned with SPARK_Mode is
          case Destination.Kind is
             when Detached_Result | Prepared_Cell_Copy => null;
             when Named_Attachment =>
-               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := AML_Execution_Types.Bad_Name; return; end if;
                if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
                Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
                if Located.Status /= Found then Status := Unknown_Name; return; end if;
@@ -6453,7 +6459,7 @@ package body Owned with SPARK_Mode is
             end loop;
             AML_Objects.New_Bytes (A.Tree.Values, Source_Kind, Data, ID, Allocated);
          end;
-         if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
+         if Allocated /= AML_Objects.Allocated then Status := AML_Execution_Types.Value_Limit; return; end if;
          Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
          if Status = Returned then
             case Destination.Kind is
@@ -6536,7 +6542,7 @@ package body Owned with SPARK_Mode is
          case Destination.Kind is
             when Detached_Result | Prepared_Cell_Copy => null;
             when Named_Attachment =>
-               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+               if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := AML_Execution_Types.Bad_Name; return; end if;
                if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
                Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
                if Located.Status /= Found then Status := Unknown_Name; return; end if;
@@ -6562,7 +6568,7 @@ package body Owned with SPARK_Mode is
             for I in Data'Range loop Data (I) := Source_Byte (I - 1); end loop;
             AML_Objects.New_Bytes (A.Tree.Values, AML_Objects.String_Object, Data, ID, Allocated);
          end;
-         if Allocated /= AML_Objects.Allocated then Status := Value_Limit; return; end if;
+         if Allocated /= AML_Objects.Allocated then Status := AML_Execution_Types.Value_Limit; return; end if;
          Read_Source (A, AML_References.Bind_Object (A.Token, AML_Objects.Address_Of (A.Tree.Values, ID)), Result_Value, Status);
          if Status = Returned then
             case Destination.Kind is
@@ -6608,9 +6614,9 @@ package body Owned with SPARK_Mode is
       procedure Create (Formatted : Formatting.Result) is
          Allocated : AML_Objects.Allocation_Status;
       begin
-         if Formatted.Status /= Formatting.Built then Status := Value_Limit; return; end if;
+         if Formatted.Status /= Formatting.Built then Status := AML_Execution_Types.Value_Limit; return; end if;
          Formatting.Allocate (Formatted, A.Tree.Values, ID, Allocated);
-         Status := (if Allocated = AML_Objects.Allocated then Returned else Value_Limit);
+         Status := (if Allocated = AML_Objects.Allocated then Returned else AML_Execution_Types.Value_Limit);
       end Create;
       procedure Produce_Result is
          Source : AML_References.Object_Handle;
@@ -6638,7 +6644,7 @@ package body Owned with SPARK_Mode is
          AML_Objects.Clone (A.Tree.Values, Prior_Values, Snapshot_Copy);
          if Snapshot_Copy /= AML_Objects.Cloned then
             AML_Objects.Discard (Prior_Values);
-            Status := Value_Limit;
+            Status := AML_Execution_Types.Value_Limit;
             return;
          end if;
          if Node /= 0 then Prior_Node := A.Tree.Items (Node); end if;
@@ -6688,7 +6694,7 @@ package body Owned with SPARK_Mode is
       case Destination.Kind is
          when Detached_Result | Prepared_Cell_Copy => null;
          when Named_Attachment =>
-            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := Bad_Name; return; end if;
+            if Destination.Path.Kind /= AML_Names.Accepted or else Destination.Path.Count = 0 then Status := AML_Execution_Types.Bad_Name; return; end if;
             if Destination.Scope > A.Tree.Used then Status := Unknown_Name; return; end if;
             Located := Resolve_Object (A.Tree.all, Node_ID (Destination.Scope), Destination.Path);
             if Located.Status /= Found then Status := Unknown_Name; return; end if;
@@ -8334,8 +8340,6 @@ package body Owned with SPARK_Mode is
                else Gate := Allocation_Allowed; end if;
             end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
-         use type AML_Execute.Concatenation_Operand_Kind;
-         use type AML_Execute.Concatenation_Destination_Kind;
          function Root_Value (Operand : AML_Execute.Concatenation_Operand) return AML_Execute.Datum is
            (if Operand.Kind = AML_Execute.Data_Operand then Operand.Value
             else (AML_Execute.Reference_Datum, Operand.Identity));
@@ -8372,7 +8376,6 @@ package body Owned with SPARK_Mode is
                else Gate := Allocation_Allowed; end if;
             end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
-         use type AML_Execute.Concatenation_Destination_Kind;
       begin
          Result_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
@@ -8413,7 +8416,6 @@ package body Owned with SPARK_Mode is
                else Gate := Allocation_Allowed; end if;
             end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
-         use type AML_Execute.Concatenation_Destination_Kind;
       begin
          Result_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
@@ -8456,7 +8458,6 @@ package body Owned with SPARK_Mode is
                else Gate := Allocation_Allowed; end if;
             end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
-         use type AML_Execute.Concatenation_Destination_Kind;
       begin
          Result_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
@@ -8499,7 +8500,6 @@ package body Owned with SPARK_Mode is
                else Gate := Allocation_Allowed; end if;
             end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
-         use type AML_Execute.Concatenation_Destination_Kind;
       begin
          Result_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
@@ -8532,7 +8532,6 @@ package body Owned with SPARK_Mode is
                else Gate := Allocation_Allowed; end if;
             end Allocation_Boundary;
          Gate : Allocation_Hook_Status;
-         use type AML_Execute.Concatenation_Destination_Kind;
       begin
          Result_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
          Cell_Value := (AML_Execute.Integer_Datum, 0, AML_Decode.Ordinary_Integer);
@@ -10851,7 +10850,7 @@ package body Owned with SPARK_Mode is
                         if Prior.Extent = Selected.Extent then
                            Spend (Selected.Extent); if not Allowed then return; end if;
                            if Equal_Bytes (Backing, Candidate, Prior_Source, Selected.Extent) then
-                              Plan.Disposition := Load_Handled; Status := Duplicate_Name; return;
+                              Plan.Disposition := Load_Handled; Status := AML_Execution_Types.Duplicate_Name; return;
                            end if;
                         end if;
                      end;
@@ -11084,7 +11083,7 @@ package body Owned with SPARK_Mode is
                         if Same then
                            Plan.Disposition := Load_Handled;
                            if AML_Definition_Loads.Phase (Loads, I) in AML_Definition_Loads.Loaded | AML_Definition_Loads.Loading
-                           then Status := Duplicate_Name; end if;
+                           then Status := AML_Execution_Types.Duplicate_Name; end if;
                            return;
                         end if;
                      end if;
@@ -11114,13 +11113,13 @@ package body Owned with SPARK_Mode is
                end if;
             end loop;
             if Index = 0 then
-               if Extent > Copies.Byte_Capacity then Status := Value_Limit; return; end if;
+               if Extent > Copies.Byte_Capacity then Status := AML_Execution_Types.Value_Limit; return; end if;
                AML_Copied_Tables.Retain (Copies, Data, Budget - Charged, Stored);
                Charged := Charged + Stored.Charged;
                case Stored.Status is
                   when AML_Copied_Tables.Added | AML_Copied_Tables.Already_Retained => null;
                   when AML_Copied_Tables.Budget_Exceeded => Status := Budget_Exceeded; return;
-                  when AML_Copied_Tables.Table_Limit | AML_Copied_Tables.Byte_Limit => Status := Value_Limit; return;
+                  when AML_Copied_Tables.Table_Limit | AML_Copied_Tables.Byte_Limit => Status := AML_Execution_Types.Value_Limit; return;
                   when others => return;
                end case;
                Candidate := (Table_Sources.Copied_Source, Table_Sources.Copied_Table_ID (Stored.ID));
@@ -11162,7 +11161,7 @@ package body Owned with SPARK_Mode is
          if not Plan_Live (Plan) or else Pending (Index).Entered or else Plan.Scope > E.Tree.Used then return; end if;
          if Plan.Scope /= Root and then (not Present (E.Tree.all, Node_ID (Plan.Scope))
            or else not Static_Scope (Kind (E.Tree.all, Node_ID (Plan.Scope)))) then return; end if;
-         Enter_Definition (E.Tree.all, Prior, ID, Allowed); if not Allowed then Status := Value_Limit; return; end if;
+         Enter_Definition (E.Tree.all, Prior, ID, Allowed); if not Allowed then Status := AML_Execution_Types.Value_Limit; return; end if;
          AML_Definition_Loads.Consume (Loads, Index, ID, Allowed);
          if not Allowed then E.Tree.Current_Definition := Prior; return; end if;
          Pending (Index).Prior := Prior; Pending (Index).Entered := True; Status := Returned;
@@ -11352,7 +11351,7 @@ package body Owned with SPARK_Mode is
          Result := (Status => Unsupported_Value, Charged => 0);
          Retention := Invocation_Busy; return;
       end if;
-      Result := (Status => Value_Limit, Charged => 0);
+      Result := (Status => AML_Execution_Types.Value_Limit, Charged => 0);
       Retain (A, (Integer_Datum, 0, AML_Decode.Ordinary_Integer), Reserved_Root, Admission);
       case Admission is
          when Root_Limit => Retention := Result_Root_Limit; return;
@@ -11455,7 +11454,7 @@ package body Owned with SPARK_Mode is
          Result := (Status => Unsupported_Value, Charged => 0);
          Retention := Invocation_Busy; return;
       end if;
-      Result := (Status => Value_Limit, Charged => 0);
+      Result := (Status => AML_Execution_Types.Value_Limit, Charged => 0);
       Retain (A, (Integer_Datum, 0, AML_Decode.Ordinary_Integer), Reserved_Root, Admission);
       case Admission is
          when Root_Limit => Retention := Result_Root_Limit; return;

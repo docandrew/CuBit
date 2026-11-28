@@ -1,4 +1,7 @@
 pragma Ada_2022;
+with AML_Runtime_Exceptions;
+with AML_Fatal;
+with AML_Coercions;
 with AML_Execute.Scalar_Transport;
 with AML_Declaration_Method_Adapter;
 with AML_Integers;
