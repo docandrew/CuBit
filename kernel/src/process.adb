@@ -8,7 +8,8 @@
 --   1. mailtab(pid).lock    (per-mailbox, also protects completionTab(pid))
 --   2. Process.lock         (global process table)
 --   3. cpuReadyLists.lock   (per-CPU scheduler)
---   4. sleepList.lock       (sleep queue)
+-- A CPU's deadline heap lock (Process.Wait_Timers) comes before any object
+-- lock and Process.lock.
 --
 -- @TODO Model lock ordering in SPARK to get formal guarantees of correctness.
 -------------------------------------------------------------------------------
@@ -743,7 +744,6 @@ package body Process is
         TextIO.enableOutputLocking;
         Kernel_Log.Enable_Locking;
         Kernel_Log.Use_Clock (Time.msTicks'Address);
-        Spinlocks.Initialize (sleepList.lock, sleepListLockName'Access);
         -- ProcList.setup (allProcs, Config.MAX_PROCESSES);
         FrameLists.setup (Config.MAX_PROCESSES * Config.PAGES_PER_PROCESS);
         -- MsgQueue.setup (Config.MAX_PROCESSES);
@@ -1900,58 +1900,11 @@ package body Process is
     end notify;
 
 
-    ---------------------------------------------------------------------------
-    -- sleep
-    ---------------------------------------------------------------------------
-    -- Each CPU arms only for sleepers whose home it is, so a wake is
-    -- handled on the CPU where the thread runs: no IPI, and one interrupt
-    -- per sleeper.
-    procedure armWakeAlarm is
+    procedure sleep (us : Time.Duration) is
         now : constant Unsigned_64 := x86.rdtsc;
-        horizon : constant Unsigned_64 := now + ticksOf (1_000);
-        next : Unsigned_64;
     begin
-        if not Build.OneShot_Scheduling or else Time.tscPerDuration = 0 or else
-          Queues.nextWake > horizon
-        then
-            return;
-        end if;
-        next := Queues.nextWakeOn (PerCPUData.getCPUNumber, horizon);
-        if next = Virtual_Deadlines.Idle_Key then
-            return;
-        elsif next <= now then
-            Scheduler_Alarm.Request_Earlier (1);
-        else
-            Scheduler_Alarm.Request_Earlier
-              (Scheduler_Alarm.Delay_Microseconds
-                 (Unsigned_64'Max (1, (next - now + Time.tscPerDuration - 1) /
-                                        Time.tscPerDuration)));
-        end if;
-    end armWakeAlarm;
-
-    procedure sleep (us : Time.Duration)
-    is
-        me : constant ThreadID := PerCPUData.getCurrentThread;
-        wake : constant Unsigned_64 :=
-          (if ticksOf (us) > Unsigned_64'Last - x86.rdtsc then Unsigned_64'Last - 1
-           else x86.rdtsc + ticksOf (us));
-        ignore : ThreadID;
-    begin
-        -- Publish the blocked state and hand off the running context under
-        -- Process.lock. A remote wakeup cannot enqueue this task before its
-        -- context has been saved by the scheduler.
-        Spinlocks.enterCriticalSection (lock);
-        Spinlocks.enterCriticalSection (sleepList.lock);
-
-        threadtab (me).state := SLEEPING;
-
-        Queues.insertByKeyNoLock (sleepList, me, wake, ignore);
-
-        Spinlocks.exitCriticalSection (sleepList.lock);
-        armWakeAlarm;
-
-        Scheduler.enter;
-        Spinlocks.exitCriticalSection (lock);
+        Wait_Timers.Sleep (if ticksOf (us) > Unsigned_64'Last - 1 - now then Unsigned_64'Last - 1
+                           else now + ticksOf (us));
     end sleep;
 
     ---------------------------------------------------------------------------
@@ -2167,7 +2120,6 @@ package body Process is
         end if;
         threadtab (t).state := INVALID;
         Queues.detach (cpuReadyLists(threadtab (t).cpu), t);
-        Queues.detach (sleepList, t);
         if threadtab (t).rtAdmitted then
             Realtime_Admission.Release (realtimeAdmitted, threadtab (t).rtShare);
             threadtab (t).rtAdmitted := False;

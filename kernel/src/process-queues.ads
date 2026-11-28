@@ -94,26 +94,10 @@ package Process.Queues is
 
     ---------------------------------------------------------------------------
     -- wakeFromSleep
-    -- Remove a specific process from the sleep list and ready it.
-    -- Acquires Process.lock before sleepList.lock; caller must not hold either.
+    -- A thread asleep in Process.sleep runs again now (woken); else nothing.
+    -- Caller must not hold Process.lock.
     ---------------------------------------------------------------------------
     procedure wakeFromSleep (pid : ThreadID; woken : out Boolean);
-
-    ---------------------------------------------------------------------------
-    -- The sleep list holds sleeping threads by wake time: absolute TSC
-    -- deadlines, earliest first (insertByKeyNoLock). Any CPU's timer
-    -- interrupt may expire them.
-    ---------------------------------------------------------------------------
-    -- The earliest wake deadline, or Idle_Key when nobody sleeps. A lock-free
-    -- look: callers use it only to decide whether to take the locks.
-    function nextWake return Interfaces.Unsigned_64;
-    -- The earliest wake deadline, at or before horizon, of a sleeper whose
-    -- home is cpu (Idle_Key if none): the one cpu arms its timer for.
-    function nextWakeOn (cpu : Natural; horizon : Interfaces.Unsigned_64)
-      return Interfaces.Unsigned_64;
-    -- Wake every sleeper whose deadline is at or before now.
-    -- Acquires Process.lock; the timer caller must not already hold it.
-    procedure expireSleepers (now : Interfaces.Unsigned_64);
 
     ---------------------------------------------------------------------------
     -- print

@@ -195,7 +195,8 @@ package Process is
 
     -- One-object Wait (IPC revision 2, S1; Process.Wait_Timers): what a
     -- thread waits on, and how its wait ended.
-    type One_Wait_Kind is (No_One_Wait, Notification_Wait, Private_Word_Wait, Shared_Word_Wait);
+    type One_Wait_Kind is
+      (No_One_Wait, Notification_Wait, Private_Word_Wait, Shared_Word_Wait, Sleep_Wait);
     type One_Wait_Status is (Wait_Pending, Wait_Woken, Wait_Timed_Out, Wait_Ended);
 
     type ProcessMode is (KERNEL, USER);
@@ -346,12 +347,6 @@ package Process is
         (others => (lock => <>,
                     head => NO_THREAD, tail => NO_THREAD));
 
-    sleepListLockName : aliased String := "Sleep List";
-    sleepList : ProcQueue := (
-        lock => <>,
-        head => NO_THREAD,
-        tail => NO_THREAD
-    );
 
     ---------------------------------------------------------------------------
     -- IPC Message Types
@@ -1426,16 +1421,10 @@ package Process is
 
     ---------------------------------------------------------------------------
     -- sleep
-    -- Put the running thread to sleep for us microseconds. It wakes at that
-    -- TSC deadline, expired by whichever CPU's timer fires first
-    -- (Queues.expireSleepers); this CPU arms its one-shot timer for it.
+    -- Put the running thread to sleep for us microseconds: its deadline is
+    -- in this CPU's Wait_Deadlines heap (Process.Wait_Timers.Sleep).
     ---------------------------------------------------------------------------
     procedure sleep (us : Time.Duration);
-
-    -- Arm this CPU's one-shot timer for the earliest sleeper whose home it
-    -- is, if that sleeper is due before the next regular timer opportunity
-    -- (one millisecond).
-    procedure armWakeAlarm;
 
     ---------------------------------------------------------------------------
     -- start

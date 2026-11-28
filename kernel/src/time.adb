@@ -461,14 +461,8 @@ is
                 end if;
             end readClock;
         end if;
-        -- Any CPU's timer expires sleepers that are due. One CPU arms its
-        -- timer for the next wake (Process.armWakeAlarm), so one CPU, not
-        -- all, takes each wake interrupt.
-        if Process.Queues.nextWake <= x86.rdtsc then
-            Process.Queues.expireSleepers (x86.rdtsc);
-        end if;
-        Process.armWakeAlarm;
-        -- This CPU's one-object Wait deadlines (IPC revision 2).
+        -- This CPU's deadlines (sleeps and one-object Waits, IPC revision 2):
+        -- each CPU's own heap, its alarm armed for the earliest.
         Process.Wait_Timers.Expire (cpuNum, x86.rdtsc);
         -- The system's time and its deadlines: CPU 0's timer, or any CPU's
         -- where all CPUs read one clock, so a CPU 0 that takes no timer

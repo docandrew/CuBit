@@ -14,9 +14,9 @@ with TextIO; use TextIO;
 -- Ada implementation: custom storage, address overlays or live context state.
 -- Only separately annotated SPARK policy/state routines carry proof obligations.
 with Interfaces;
+with Process.Wait_Timers;
 package body Process.Queues is
 
-    function isInSleepQueue (pid : ThreadID) return Boolean;
     procedure popItemNoLock (q : in out ProcQueue; pid : ThreadID;
                             result : out ThreadID);
 
@@ -228,27 +228,6 @@ package body Process.Queues is
         result := pid;
     end enqueue;
 
-    ---------------------------------------------------------------------------
-    -- dequeueNoLock
-    ---------------------------------------------------------------------------
-    procedure dequeueNoLock (q : in out ProcQueue; result : out ThreadID)
-
-    is
-        pid : ThreadID;
-    begin
-
-        if isEmpty (q) then
-            result := NO_THREAD;
-            return;
-        end if;
-
-        popItemNoLock (q, q.head, pid);
-
-        threadtab (pid).prev := NO_THREAD;
-        threadtab (pid).next := NO_THREAD;
-
-        result := pid;
-    end dequeueNoLock;
 
     ---------------------------------------------------------------------------
     -- dequeue - remove from front of the list while holding the list's lock
@@ -356,105 +335,10 @@ package body Process.Queues is
         result := pid;
     end insertByKeyNoLock;
 
-    ---------------------------------------------------------------------------
-    -- isInSleepQueue
-    -- Check whether the process is actually linked in the sleep list.
-    -- Must be called while holding sleepList.lock.
-    ---------------------------------------------------------------------------
-    function isInSleepQueue (pid : ThreadID) return Boolean
-
-    is
-        curr : ThreadID := sleepList.head;
+    procedure wakeFromSleep (pid : ThreadID; woken : out Boolean) is
     begin
-        while curr /= NO_THREAD loop
-            if curr = pid then
-                return True;
-            end if;
-            curr := threadtab (curr).next;
-        end loop;
-        return False;
-    end isInSleepQueue;
-
-    ---------------------------------------------------------------------------
-    -- wakeFromSleep
-    -- Remove a specific process from the sleep list and ready it.
-    -- Verifies the process is actually in the queue to avoid corruption
-    -- from a race with Process.sleep.
-    ---------------------------------------------------------------------------
-    procedure wakeFromSleep (pid : ThreadID; woken : out Boolean)
-
-    is
-        ignore  : ThreadID;
-    begin
-        woken := False;
-        Spinlocks.enterCriticalSection (lock);
-        Spinlocks.enterCriticalSection (sleepList.lock);
-
-        if threadtab (pid).state = SLEEPING and then
-           isInSleepQueue (pid)
-        then
-            popItemNoLock (sleepList, pid, ignore);
-            woken := True;
-        end if;
-
-        Spinlocks.exitCriticalSection (sleepList.lock);
-
-        if woken then
-            ready (pid);
-        end if;
-        Spinlocks.exitCriticalSection (lock);
+        Wait_Timers.Wake_Sleeper (pid, woken);
     end wakeFromSleep;
-
-    ---------------------------------------------------------------------------
-    -- nextWake / expireSleepers
-    ---------------------------------------------------------------------------
-    function nextWake return Interfaces.Unsigned_64 is
-        head : constant ThreadID := sleepList.head;
-    begin
-        return (if head = NO_THREAD then Virtual_Deadlines.Idle_Key
-                else threadtab (head).runKey);
-    end nextWake;
-
-    function nextWakeOn (cpu : Natural; horizon : Interfaces.Unsigned_64)
-      return Interfaces.Unsigned_64
-    is
-        use type Interfaces.Unsigned_64;
-        cursor : ThreadID;
-        result : Interfaces.Unsigned_64 := Virtual_Deadlines.Idle_Key;
-    begin
-        Spinlocks.enterCriticalSection (sleepList.lock);
-        cursor := sleepList.head;
-        while cursor /= NO_THREAD and then threadtab (cursor).runKey <= horizon loop
-            if threadtab (cursor).cpu = cpu then
-                result := threadtab (cursor).runKey;
-                exit;
-            end if;
-            cursor := threadtab (cursor).next;
-        end loop;
-        Spinlocks.exitCriticalSection (sleepList.lock);
-        return result;
-    end nextWakeOn;
-
-    procedure expireSleepers (now : Interfaces.Unsigned_64) is
-        use type Interfaces.Unsigned_64;
-        due : ThreadID;
-    begin
-        Spinlocks.enterCriticalSection (lock);
-        loop
-            Spinlocks.enterCriticalSection (sleepList.lock);
-            if not isEmpty (sleepList) and then
-               threadtab (sleepList.head).runKey <= now
-            then
-                dequeueNoLock (sleepList, due);
-            else
-                due := NO_THREAD;
-            end if;
-            Spinlocks.exitCriticalSection (sleepList.lock);
-            exit when due = NO_THREAD;
-            ready (due);
-        end loop;
-        Spinlocks.exitCriticalSection (lock);
-    end expireSleepers;
 
 
     ---------------------------------------------------------------------------

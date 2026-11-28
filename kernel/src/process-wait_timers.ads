@@ -25,6 +25,10 @@ package Process.Wait_Timers is
     -- Due waits one tick times out under one hold of its heap's lock.
     Expire_Chunk : constant := 16;
 
+    -- How late another CPU's due deadline may be before this CPU's timer
+    -- times it out (that CPU's timer is not running its clock work).
+    Steal_After_Us : constant := 2_000;
+
     -- The TSC value of an absolute deadline on the user monotonic clock
     -- (microseconds); Passed when it is not in the future.
     procedure Deadline_Of (deadlineUs : Unsigned_64; tsc : out Unsigned_64; passed : out Boolean);
@@ -41,7 +45,8 @@ package Process.Wait_Timers is
     -- deadline has not taken it out already. No object lock held.
     procedure Disarm (me : ThreadID);
 
-    -- This CPU's timer: time out the waits that are due by now (TSC).
+    -- This CPU's timer: time out the waits that are due by now (TSC), and
+    -- another CPU's that are Steal_After_Us overdue.
     procedure Expire (cpu : Natural; now : Unsigned_64);
 
     -- Caller holds the lock of the object t waits on (or waited on): its
@@ -50,6 +55,14 @@ package Process.Wait_Timers is
     -- so the reaper (Cancel takes it) never frees a thread being finished.
     procedure Finish (t : ThreadID; how : One_Wait_Status; bits : Unsigned_64 := 0;
                       sync : Boolean := False);
+
+    -- The calling thread sleeps (SLEEPING) until TSC tsc, or until
+    -- Wake_Sleeper. No lock held.
+    procedure Sleep (tsc : Unsigned_64);
+
+    -- t, asleep in Sleep, runs again now (woken); else nothing. Caller
+    -- does not hold Process.lock.
+    procedure Wake_Sleeper (t : ThreadID; woken : out Boolean);
 
     -- The reaper: a thread that will not run again leaves its heap, its
     -- object and its bound notification. Not called with Process.lock held.

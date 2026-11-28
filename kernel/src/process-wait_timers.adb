@@ -8,6 +8,7 @@ with x86;
 with Process.Notifications;
 with Process.Private_Futex;
 with Process.Futex;
+with Scheduler;
 
 package body Process.Wait_Timers is
 
@@ -126,6 +127,44 @@ package body Process.Wait_Timers is
         Spinlocks.exitCriticalSection (lock);
     end Finish;
 
+    procedure Sleep (tsc : Unsigned_64) is
+        me : constant ThreadID := PerCPUData.getCurrentThread;
+    begin
+        threadtab (me).oneWaitKind := Sleep_Wait;
+        threadtab (me).oneWaitStatus := Wait_Pending;
+        Arm (me, tsc);
+        -- Published and handed off under Process.lock: the timeout (which
+        -- needs it) finds SLEEPING, or Wait_Timed_Out already set.
+        Spinlocks.enterCriticalSection (lock);
+        if threadtab (me).oneWaitStatus = Wait_Pending then
+            threadtab (me).state := SLEEPING;
+            Scheduler.enter;
+        end if;
+        Spinlocks.exitCriticalSection (lock);
+        Disarm (me);
+        threadtab (me).oneWaitKind := No_One_Wait;
+    end Sleep;
+
+    -- Caller holds Process.lock.
+    procedure endSleep (t : ThreadID; how : One_Wait_Status; woken : out Boolean) is
+    begin
+        woken := threadtab (t).oneWaitKind = Sleep_Wait
+          and then threadtab (t).oneWaitStatus = Wait_Pending;
+        if woken then
+            threadtab (t).oneWaitStatus := how;
+            if threadtab (t).state = SLEEPING then
+                ready (t);
+            end if;
+        end if;
+    end endSleep;
+
+    procedure Wake_Sleeper (t : ThreadID; woken : out Boolean) is
+    begin
+        Spinlocks.enterCriticalSection (lock);
+        endSleep (t, Wait_Woken, woken);
+        Spinlocks.exitCriticalSection (lock);
+    end Wake_Sleeper;
+
     -- Caller holds heapLocks of t's heap; t was just taken from it.
     procedure timeOut (t : ThreadID) is
     begin
@@ -133,25 +172,58 @@ package body Process.Wait_Timers is
             when Notification_Wait => Notifications.Time_Out (t);
             when Private_Word_Wait => Private_Futex.Time_Out (t);
             when Shared_Word_Wait  => Futex.Time_Out (t);
+            when Sleep_Wait        =>
+                declare
+                    ignore : Boolean;
+                begin
+                    Spinlocks.enterCriticalSection (lock);
+                    endSleep (t, Wait_Timed_Out, ignore);
+                    Spinlocks.exitCriticalSection (lock);
+                end;
             when No_One_Wait       => null;
         end case;
     end timeOut;
 
-    procedure Expire (cpu : Natural; now : Unsigned_64) is
+    -- Caller holds heapLocks (c): time out c's due waits, one chunk.
+    procedure expireOn (c : CPU_Index; now : Unsigned_64) is
         t : WD.Thread_Ref;
     begin
-        if cpu not in CPU_Index or else earliest (cpu) > now then
-            return;
-        end if;
-        Spinlocks.enterCriticalSection (heapLocks (cpu));
         for n in 1 .. Expire_Chunk loop
-            WD.Pop_Due (heaps (cpu), now, t);
+            WD.Pop_Due (heaps (c), now, t);
             exit when t = WD.No_Thread;
             timeOut (ThreadID (t));
         end loop;
-        -- More due than one chunk: the alarm comes back at once for them.
-        armFor (cpu);
-        Spinlocks.exitCriticalSection (heapLocks (cpu));
+        earliest (c) := WD.Earliest_Key (heaps (c));
+    end expireOn;
+
+    procedure Expire (cpu : Natural; now : Unsigned_64) is
+        taken : Boolean;
+        grace : constant Unsigned_64 := ticksOf (Steal_After_Us);
+    begin
+        if cpu not in CPU_Index then
+            return;
+        end if;
+        if earliest (cpu) <= now then
+            Spinlocks.enterCriticalSection (heapLocks (cpu));
+            expireOn (cpu, now);
+            -- More due than one chunk: the alarm comes back at once for them.
+            armFor (cpu);
+            Spinlocks.exitCriticalSection (heapLocks (cpu));
+        end if;
+        -- Another CPU whose timer has not run its deadlines (masked, in
+        -- SMM, its timer lost): this one times them out, late by at most
+        -- the grace, as the old global lists did for any CPU's tick.
+        for c in CPU_Index loop
+            if c /= cpu and then earliest (c) < Unsigned_64'Last - grace
+              and then earliest (c) + grace <= now
+            then
+                Spinlocks.tryEnterCriticalSection (heapLocks (c), taken);
+                if taken then
+                    expireOn (c, now);
+                    Spinlocks.exitCriticalSection (heapLocks (c));
+                end if;
+            end if;
+        end loop;
     end Expire;
 
     procedure Cancel (t : ThreadID) is
@@ -170,7 +242,7 @@ package body Process.Wait_Timers is
             when Notification_Wait => Notifications.Cancel (t);
             when Private_Word_Wait => Private_Futex.Cancel (t);
             -- The reaper's Futex.cancelWait has withdrawn a shared wait.
-            when Shared_Word_Wait | No_One_Wait => null;
+            when Shared_Word_Wait | Sleep_Wait | No_One_Wait => null;
         end case;
         Notifications.Unbind_Thread_Of (t);
     end Cancel;
