@@ -3496,6 +3496,11 @@ package body AML_Execute with SPARK_Mode is
                           AML_Integers.Normalize (Start.Number, Width), Allowance, Value, Visited, S);
                         if Visited > Allowance then S := Unsupported_Value; return; end if;
                         Charged := Charged + Visited;
+                        if S = Package_Limit and then Enable_Runtime_Error_Handler
+                          and then not Module_Root
+                        then
+                           Mark_Recovery (Recovery.Package_Fault, True);
+                        end if;
                         if S /= Returned then return; end if;
                         V := (Integer_Datum, AML_Integers.Normalize (Value, Width), Ordinary_Integer);
                      end;
@@ -3531,6 +3536,13 @@ package body AML_Execute with SPARK_Mode is
                         if S /= Returned then return; end if;
                         Stack (Depth).Left := Left;
                         Attach_Resources (Left, Right, Stack (Depth).Targets (1), V, S);
+                        if Enable_Runtime_Error_Handler and then not Module_Root then
+                           if S = No_Resource_End_Tag then
+                              Mark_Recovery (Recovery.Resource_End_Fault, True);
+                           elsif S = Resource_Buffer_Length then
+                              Mark_Recovery (Recovery.Resource_Length_Fault, True);
+                           end if;
+                        end if;
                         if S /= Returned then return; end if;
                      end;
                   elsif Stack (Depth).Op = To_String_Op then
@@ -3876,9 +3888,20 @@ package body AML_Execute with SPARK_Mode is
                      begin
                         Read_Reference_Result (V.Ref, Resolved, S);
                         if S = Uninitialized and then AML_References.Kind (V.Ref) = AML_References.Frame_Cell then
-                           S := No_Return; return;
+                           S := No_Return;
+                           if Enable_Runtime_Error_Handler and then not Module_Root then
+                              Mark_Recovery (Recovery.Missing_Return, True);
+                           end if;
+                           return;
                         end if;
-                        if S not in Returned | Payload_Free_Failure then S := Unsupported_Value; end if;
+                        if S = Uninitialized
+                          and then AML_References.Kind (V.Ref) = AML_References.Package_Slot
+                          and then Enable_Runtime_Error_Handler and then not Module_Root
+                        then
+                           Mark_Recovery (Recovery.Package_Fault, True);
+                        elsif S not in Returned | Payload_Free_Failure then
+                           S := Unsupported_Value;
+                        end if;
                         if S /= Returned then return; end if;
                         V := Resolved;
                         Complete_Integer_Result (V, S);
@@ -4726,6 +4749,11 @@ package body AML_Execute with SPARK_Mode is
                     when Create_Word_Field_Op => Word_Field,
                     when Create_DWord_Field_Op => DWord_Field,
                     when others => QWord_Field), State);
+               if State = Buffer_Field_Limit and then Enable_Runtime_Error_Handler
+                 and then not Module_Root
+               then
+                  Handle_Runtime_Error (Recovery.Code (Recovery.Buffer_Fault), True, State);
+               end if;
                if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
             when 16#5B# =>
                if Offset = Limit then Body_Result := Failure (Truncated, Charged); return; end if;
@@ -5016,6 +5044,11 @@ package body AML_Execute with SPARK_Mode is
                elsif Code (Code'First + Offset) = Create_Field_Extension then
                   Offset := Offset + 1;
                   Create_Buffer_Field (Generic_Field, State);
+                  if State = Buffer_Field_Limit and then Enable_Runtime_Error_Handler
+                    and then not Module_Root
+                  then
+                     Handle_Runtime_Error (Recovery.Code (Recovery.Buffer_Fault), True, State);
+                  end if;
                   if State /= Returned then Body_Result := Failure (State, Charged); return; end if;
                elsif Code (Code'First + Offset) = Operation_Region_Extension then
                   Offset := Offset + 1;
